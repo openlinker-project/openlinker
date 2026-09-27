@@ -62,6 +62,21 @@ on:
           - label-download-errors
           - analytics
           - perf
+          # #3365 - four projects existed and could not be CHOSEN from here.
+          # `subiekt` additionally needs `test_subiekt: true` below, because it
+          # talks to a live Subiekt GT bridge on a Windows host; without that
+          # flag every one of its tests skips and the run is green and empty.
+          - subiekt
+          - sales-documents
+          - bench
+          - full-flow
+      test_subiekt:
+        description: >-
+          Run the `subiekt` project for real (needs a reachable Subiekt GT
+          bridge). Off, every test in that project skips.
+        required: false
+        default: false
+        type: boolean
       web_url:
         description: 'OL web URL (overrides the OL_WEB_URL secret).'
         required: false
@@ -103,6 +118,15 @@ jobs:
       OL_PS_WEBSERVICE_KEY: ${{ secrets.E2E_OL_PS_WEBSERVICE_KEY }}
       OL_WC_CONSUMER_KEY: ${{ secrets.E2E_OL_WC_CONSUMER_KEY }}
       OL_WC_CONSUMER_SECRET: ${{ secrets.E2E_OL_WC_CONSUMER_SECRET }}
+      # #3365 - the `subiekt` project is opt-in on top of being chosen, because
+      # it needs a reachable Subiekt GT bridge on a Windows host. Set nowhere
+      # before this, so choosing the project (which was also impossible) would
+      # have produced a run in which every test skipped and the result was
+      # green - see E2E_REQUIRE_EXECUTED below for why that is now a failure.
+      E2E_TEST_SUBIEKT: ${{ inputs.test_subiekt && 'true' || '' }}
+      # A chosen project that executed NOTHING fails the run. Playwright reports
+      # an all-skipped suite as `ok`, and nothing downstream contradicted it.
+      E2E_REQUIRE_EXECUTED: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2

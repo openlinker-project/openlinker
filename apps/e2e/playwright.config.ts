@@ -90,7 +90,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    // #3365 - a run that executed NOTHING must not report success. Opt-in via
+    // E2E_REQUIRE_EXECUTED; see the reporter's own header for why it is not
+    // always on and why it does not police the skip ratio.
+    ['./src/reporters/require-executed.reporter.ts'],
+  ],
   // Backstop, not the primary bound. Specs here chain several individually
   // bounded waits — job pollers (120 s), order ingestion (180 s), regulatory
   // clearance (300 s) — and a 90 s ceiling sat BELOW those budgets, so a test
