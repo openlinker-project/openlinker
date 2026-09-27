@@ -44,7 +44,10 @@ import type {
   OrderPickupPoint,
   OrderPickupPointType,
   OrderDispatchWindow,
+  OrderFulfillmentReadback,
+  SourceFulfillmentReadback,
 } from '@openlinker/core/orders';
+import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { getAllegroSalesCenterOrderUrl } from '../http/allegro-hosts';
 import { Logger } from '@openlinker/shared/logging';
@@ -62,6 +65,8 @@ import {
   ALLEGRO_CARRIER_BY_PLATFORM_TYPE,
   ALLEGRO_FULFILLMENT_STATUS_SENT,
   ALLEGRO_FULFILLMENT_STATUS_CANCELLED,
+  ALLEGRO_FULFILLMENT_DISPATCHED_STATUSES,
+  ALLEGRO_FULFILLMENT_UNDISPATCHED_STATUSES,
   ALLEGRO_OTHER_CARRIER_ID,
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
@@ -112,6 +117,7 @@ export class AllegroOrderSourceAdapter
     OrderSourcePort,
     SourceOptionsReader,
     OrderStatusWriteback,
+    OrderFulfillmentReadback,
     ReturnSourceReader,
     ReturnDecliner
 {
@@ -245,6 +251,79 @@ export class AllegroOrderSourceAdapter
    */
   private async putFulfillment(externalOrderId: string, status: string): Promise<void> {
     await this.httpClient.put(`/order/checkout-forms/${externalOrderId}/fulfillment`, { status });
+  }
+
+  /**
+   * `OrderFulfillmentReadback` (#3365) - ask Allegro what IT says about this
+   * order's fulfilment.
+   *
+   * This is the read half of `markSent`. `PUT /order/checkout-forms/{id}/fulfillment`
+   * writes `fulfillment.status`, and `GET /order/checkout-forms/{id}` returns
+   * that same field - the adapter already fetches it in `getOrder` and reads it
+   * only to detect a cancellation. Nothing beyond that one GET is issued here.
+   *
+   * ## What it deliberately does NOT report
+   *
+   * `waybills` is `null`, not `[]`. Allegro accepts a waybill on
+   * `POST /order/checkout-forms/{id}/shipments` and NO verified read returns
+   * one: the checkout-form resource carries no shipment block, and the one
+   * previous attempt to assume a `GET .../shipments` exists was struck down as
+   * an unverified assumption about somebody else's API
+   * (`docs/plans/implementation-plan-waybill-relay-on-tracking-backfill.md`).
+   * `null` says "this source does not report them"; `[]` would say "it answered
+   * and there are none", which is a claim nothing here can support.
+   * `needs-sandbox-probe`: whether such a read exists at all.
+   *
+   * ## A failure is an OUTCOME, never a throw
+   *
+   * The caller is a read surface. A momentarily unreachable marketplace must
+   * reach an operator as "we could not ask", not as a 500 they cannot act on.
+   */
+  async readFulfillment(input: {
+    externalOrderId: string;
+  }): Promise<SourceFulfillmentReadback> {
+    const checkoutFormId = input.externalOrderId;
+    try {
+      const response = await this.httpClient.get<AllegroCheckoutForm>(
+        `/order/checkout-forms/${checkoutFormId}`
+      );
+      const rawStatus = response.data.fulfillment?.status ?? null;
+      return {
+        outcome: 'read',
+        rawStatus,
+        dispatched: this.readDispatchedFlag(rawStatus),
+        waybills: null,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Allegro fulfillment readback failed for order ${checkoutFormId} (connection: ${this.connectionId}): ${message}`
+      );
+      return unavailableSourceFulfillmentReadback(
+        `Allegro did not answer for checkout form ${checkoutFormId}`
+      );
+    }
+  }
+
+  /**
+   * Map Allegro's own fulfilment status onto the neutral dispatched flag.
+   *
+   * An unrecognised value answers `null`, never `false`. Allegro's seller panel
+   * sets this field from a Polish vocabulary (`WYSLANE`, `ANULOWANE`, ...) while
+   * the write path sends `SENT`, and which spelling a READ returns is exactly
+   * what the sandbox probe settles - so a value this build has not learnt must
+   * read as "we do not know", or an operator is told a parcel is unsent on the
+   * strength of a vocabulary OpenLinker never verified.
+   */
+  private readDispatchedFlag(rawStatus: string | null): boolean | null {
+    if (rawStatus === null) return null;
+    const normalised = rawStatus.trim().toUpperCase();
+    if (ALLEGRO_FULFILLMENT_DISPATCHED_STATUSES.includes(normalised)) return true;
+    if (ALLEGRO_FULFILLMENT_UNDISPATCHED_STATUSES.includes(normalised)) return false;
+    this.logger.warn(
+      `allegro_fulfillment_status_unrecognised: Allegro answered "${rawStatus}", which this build does not map; reporting dispatched as unknown (connection: ${this.connectionId})`
+    );
+    return null;
   }
 
   /** Map the neutral carrier hint → Allegro's fixed carrier vocab (OTHER+name fallback). */

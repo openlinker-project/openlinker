@@ -47,6 +47,18 @@ export {
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
 // Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
 // the guard; never getCapabilityAdapter('ReturnSourceReader').
+export type { OrderFulfillmentReadback } from './domain/ports/capabilities/order-fulfillment-readback.capability';
+export { isOrderFulfillmentReadback } from './domain/ports/capabilities/order-fulfillment-readback.capability';
+export type {
+  SourceFulfillmentReadback,
+  SourceFulfillmentReadbackOutcome,
+  SourceFulfillmentWaybill,
+} from './domain/types/source-fulfillment-readback.types';
+export {
+  SourceFulfillmentReadbackOutcomeValues,
+  unavailableSourceFulfillmentReadback,
+  unsupportedSourceFulfillmentReadback,
+} from './domain/types/source-fulfillment-readback.types';
 export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 // The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a

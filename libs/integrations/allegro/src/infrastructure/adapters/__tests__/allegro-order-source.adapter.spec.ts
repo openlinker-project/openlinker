@@ -49,6 +49,91 @@ describe('AllegroOrderSourceAdapter', () => {
     adapter = new AllegroOrderSourceAdapter(connectionId, httpClient, connection);
   });
 
+  // The read half of `write`. Nothing in this repository could assert what
+  // Allegro itself says about an order - the relay is fire-and-forget by
+  // ADR-027, so every "the marketplace was told" check asserts an OpenLinker
+  // row or a mock. `GET /order/checkout-forms/{id}` returns the very
+  // `fulfillment.status` field `PUT .../fulfillment` writes.
+  describe('readFulfillment - OrderFulfillmentReadback (#3365)', () => {
+    function answerWith(fulfillment: unknown): void {
+      (httpClient.get as jest.Mock).mockResolvedValue({ data: { fulfillment } });
+    }
+
+    it('reports what Allegro said, verbatim, from the order read it already makes', async () => {
+      answerWith({ status: 'SENT' });
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledWith('/order/checkout-forms/cf-1');
+      expect(result.outcome).toBe('read');
+      expect(result.rawStatus).toBe('SENT');
+      expect(result.dispatched).toBe(true);
+    });
+
+    // The seller panel documents this field with a Polish vocabulary while the
+    // write path sends `SENT`. Which spelling a READ returns is unestablished,
+    // so both are accepted rather than one being guessed at.
+    it('accepts the Polish spelling the seller panel sets', async () => {
+      answerWith({ status: 'WYSLANE' });
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        rawStatus: 'WYSLANE',
+        dispatched: true,
+      });
+    });
+
+    it('reports a not-yet-sent order as not dispatched', async () => {
+      answerWith({ status: 'NEW' });
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        rawStatus: 'NEW',
+        dispatched: false,
+      });
+    });
+
+    // The one that matters: an unknown word must never be read as "not sent",
+    // or an operator is told their parcel never went out on the strength of a
+    // vocabulary this build has never seen.
+    it('answers UNKNOWN, never false, for a status it does not recognise', async () => {
+      answerWith({ status: 'SOME_FUTURE_STATUS' });
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.rawStatus).toBe('SOME_FUTURE_STATUS');
+      expect(result.dispatched).toBeNull();
+      expect(result.outcome).toBe('read');
+    });
+
+    it('carries the answer when Allegro names no status at all', async () => {
+      answerWith(undefined);
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        outcome: 'read',
+        rawStatus: null,
+        dispatched: null,
+      });
+    });
+
+    // Allegro ACCEPTS a waybill on POST .../shipments and exposes no verified
+    // read that returns one. `null` says "this source does not report them";
+    // `[]` would claim it answered and listed none, which nothing supports.
+    it('reports waybills as NOT REPORTED, never as an empty list', async () => {
+      answerWith({ status: 'SENT' });
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+      expect(result.waybills).toBeNull();
+      expect(result.waybills).not.toEqual([]);
+    });
+
+    // The caller is a read surface: a momentarily unreachable marketplace must
+    // not become a 500 an operator cannot act on.
+    it('reports an unreachable Allegro as an outcome rather than throwing', async () => {
+      (httpClient.get as jest.Mock).mockRejectedValue(new Error('ECONNRESET'));
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.outcome).toBe('unavailable');
+      expect(result.rawStatus).toBeNull();
+      expect(result.dispatched).toBeNull();
+    });
+  });
+
   describe('write — OrderStatusWriteback (#1159 / #1168)', () => {
     it('dispatched: marks sent + attaches the waybill and returns applied', async () => {
       const result = await adapter.write({
