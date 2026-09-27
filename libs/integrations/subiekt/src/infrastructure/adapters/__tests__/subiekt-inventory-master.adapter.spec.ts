@@ -21,7 +21,7 @@ const PRODUCT_ID = 'ol_product_abc';
 const TOWAR_SYMBOL = 'TW-001';
 
 describe('SubiektInventoryMasterAdapter', () => {
-  let bridge: jest.Mocked<Pick<SubiektInventoryBridgeClient, 'getStock' | 'adjust'>>;
+  let bridge: jest.Mocked<Pick<SubiektInventoryBridgeClient, 'getStock' | 'adjust' | 'listWarehouses'>>;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
   let logger: jest.Mocked<LoggerPort>;
   let adapter: SubiektInventoryMasterAdapter;
@@ -29,6 +29,16 @@ describe('SubiektInventoryMasterAdapter', () => {
   beforeEach(() => {
     bridge = {
       getStock: jest.fn(),
+      // #3365 - a working bridge by default, matching the two magazyny the
+      // live DEMO database carries. Tests about a MISSING warehouse override
+      // it; leaving it unmocked would make every unrelated test look like a
+      // failed warehouse probe.
+      listWarehouses: jest.fn().mockResolvedValue({
+        warehouses: [
+          { id: 1, symbol: 'MAG', nazwa: 'Glowny' },
+          { id: 2, symbol: 'MAP', nazwa: 'Pomocniczy' },
+        ],
+      }),
       adjust: jest.fn(),
     };
     identifierMapping = {
@@ -388,23 +398,110 @@ describe('SubiektInventoryMasterAdapter', () => {
       await expect(configured.getAvailableQuantity(PRODUCT_ID)).resolves.toBe(1);
     });
 
-    it('should throw SubiektConfigException when the configured stockMagazynId names no position this towar is stocked in', async () => {
-      const configured = new SubiektInventoryMasterAdapter(
-        bridge as unknown as SubiektInventoryBridgeClient,
-        identifierMapping,
-        CONNECTION_ID,
-        logger,
-        99,
-      );
-      bridge.getStock.mockResolvedValue({
-        towarSymbol: TOWAR_SYMBOL,
-        positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 }],
-        domyslnyMagazynId: 1,
+    // #3365. Both readings of "this towar has no position in the configured
+    // magazyn" used to produce the same terminal refusal, and both were wrong
+    // in opposite directions: a mistyped digit really must refuse (publishing
+    // 0 pauses every offer), while a towar stocked only ELSEWHERE genuinely
+    // has zero available from the release warehouse - and refusing there kills
+    // the job on its first attempt for every such towar, permanently.
+    describe('a mistyped magazyn id versus a towar stocked elsewhere (#3365)', () => {
+      function adapterFor(configuredId: number): SubiektInventoryMasterAdapter {
+        bridge.getStock.mockResolvedValue({
+          towarSymbol: TOWAR_SYMBOL,
+          positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 }],
+          domyslnyMagazynId: 1,
+        });
+        return new SubiektInventoryMasterAdapter(
+          bridge as unknown as SubiektInventoryBridgeClient,
+          identifierMapping,
+          CONNECTION_ID,
+          logger,
+          configuredId,
+        );
+      }
+
+      it('publishes ZERO when the magazyn exists and this towar is simply not in it', async () => {
+        bridge.listWarehouses.mockResolvedValue({
+          warehouses: [
+            { id: 1, symbol: 'MAG', nazwa: 'Glowny' },
+            { id: 2, symbol: 'MAP', nazwa: 'Pomocniczy' },
+          ],
+        });
+
+        await expect(adapterFor(2).getAvailableQuantity(PRODUCT_ID)).resolves.toBe(0);
       });
 
-      await expect(configured.getAvailableQuantity(PRODUCT_ID)).rejects.toBeInstanceOf(
-        SubiektConfigException,
-      );
+      it('REFUSES when no magazyn carries the configured id', async () => {
+        bridge.listWarehouses.mockResolvedValue({
+          warehouses: [{ id: 1, symbol: 'MAG', nazwa: 'Glowny' }],
+        });
+
+        await expect(adapterFor(99).getAvailableQuantity(PRODUCT_ID)).rejects.toBeInstanceOf(
+          SubiektConfigException,
+        );
+      });
+
+      // Unverified must behave like "does not exist", not like "exists":
+      // publishing a zero pauses live offers and cannot be undone by a retry,
+      // while a refused job is visible and clears once the config is right.
+      it('REFUSES when the warehouse list could not be read at all', async () => {
+        bridge.listWarehouses.mockRejectedValue(new Error('bridge unreachable'));
+
+        await expect(adapterFor(2).getAvailableQuantity(PRODUCT_ID)).rejects.toBeInstanceOf(
+          SubiektConfigException,
+        );
+      });
+
+      // An older bridge has no such route. That is "cannot ask", and it must
+      // not become "the warehouse is missing" - which would refuse a perfectly
+      // good configuration on every install that has not upgraded.
+      it('REFUSES, but does not blame the operator, on a bridge with no warehouses route', async () => {
+        const older = { getStock: bridge.getStock };
+        const configured = new SubiektInventoryMasterAdapter(
+          older as unknown as SubiektInventoryBridgeClient,
+          identifierMapping,
+          CONNECTION_ID,
+          logger,
+          2,
+        );
+        bridge.getStock.mockResolvedValue({
+          towarSymbol: TOWAR_SYMBOL,
+          positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 }],
+          domyslnyMagazynId: 1,
+        });
+
+        await expect(configured.getAvailableQuantity(PRODUCT_ID)).rejects.toThrow(
+          /could not be verified/,
+        );
+      });
+
+      // One connection-level question, asked once - not once per towar on a
+      // catalogue sweep of thousands.
+      it('asks Subiekt for the warehouse list only ONCE per adapter', async () => {
+        bridge.listWarehouses.mockResolvedValue({
+          warehouses: [{ id: 1, symbol: 'MAG', nazwa: 'Glowny' }],
+        });
+        const configured = adapterFor(1);
+
+        await configured.getAvailableQuantity(PRODUCT_ID);
+        await configured.getAvailableQuantity(PRODUCT_ID);
+        await configured.getAvailableQuantity(PRODUCT_ID);
+
+        expect(bridge.listWarehouses).toHaveBeenCalledTimes(1);
+      });
+
+      // No configured warehouse means no question to ask.
+      it('does not probe at all when the operator configured nothing', async () => {
+        bridge.getStock.mockResolvedValue({
+          towarSymbol: TOWAR_SYMBOL,
+          positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 }],
+          domyslnyMagazynId: 1,
+        });
+
+        await adapter.getAvailableQuantity(PRODUCT_ID);
+
+        expect(bridge.listWarehouses).not.toHaveBeenCalled();
+      });
     });
   });
 

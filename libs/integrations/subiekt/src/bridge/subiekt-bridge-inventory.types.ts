@@ -92,3 +92,24 @@ export interface BridgeInventoryAdjustResponse {
 }
 
 export {};
+
+/**
+ * `GET /api/warehouses` response `data` (#3365).
+ *
+ * The seller's own warehouses (`sl_Magazyn`). It exists so `stockMagazynId`
+ * can be told apart from a typo: a configured id that names a REAL warehouse
+ * the towar simply is not stocked in is a legitimate zero (nothing can ship
+ * from there), while one that names no warehouse at all is a mistyped digit.
+ * Before this the adapter refused both identically, and a terminal refusal on
+ * the first case kills the job for every towar outside the release warehouse.
+ */
+export interface BridgeWarehouseRow {
+  /** `sl_Magazyn.mag_Id`. */
+  id: number;
+  symbol: string | null;
+  nazwa: string | null;
+}
+
+export interface BridgeWarehousesResponse {
+  warehouses: BridgeWarehouseRow[];
+}

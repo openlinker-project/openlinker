@@ -156,6 +156,15 @@ export interface BridgeIssueInvoiceRequest {
    * pre-existing string-matching lookup.
    */
   zkId?: number;
+  /**
+   * #3365 - which Subiekt warehouse this document moves stock in
+   * (`sl_Magazyn.mag_Id`), from `SubiektConnectionConfig.stockMagazynId`.
+   *
+   * Absent means the Sfera SESSION decides, which is what every document did
+   * before: `stockMagazynId` steered only the stock READ, so a two-warehouse
+   * install published one warehouse's figure and released from another.
+   */
+  magazynId?: number;
 }
 
 /**

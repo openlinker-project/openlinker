@@ -129,6 +129,12 @@ export class SubiektOrderProcessorAdapter
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly connectionId: string,
     private readonly logger: LoggerPort,
+    /**
+     * The operator's release warehouse (#3365), from
+     * `SubiektConnectionConfig.stockMagazynId`. Absent means the Sfera session
+     * decides, which is the pre-#3365 behaviour.
+     */
+    private readonly stockMagazynId?: number,
   ) {}
 
   /**
@@ -273,6 +279,11 @@ export class SubiektOrderProcessorAdapter
         // currency (ADR-014). Sending it keeps the ZK denominated in what the
         // buyer actually paid instead of Subiekt's default.
         ...(order.totals.currency ? { waluta: order.totals.currency } : {}),
+        // #3365 - the ZK names the warehouse its WZ will later release from.
+        // The ZK reserves nothing (Rezerwacja is false bridge-side), so this
+        // is not a stock movement; it is what keeps the release consistent
+        // with the quantity OpenLinker published.
+        ...(this.stockMagazynId !== undefined ? { magazynId: this.stockMagazynId } : {}),
       });
     } catch (error) {
       throw this.translateBridgeError(error);

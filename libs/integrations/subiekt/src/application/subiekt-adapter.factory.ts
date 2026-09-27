@@ -119,6 +119,7 @@ export class SubiektAdapterFactory {
         identifierMapping,
         connection.id,
         logger,
+        config.stockMagazynId,
       ),
     };
 

@@ -26,6 +26,7 @@ import type {
   BridgeInventoryAdjustRequest,
   BridgeInventoryAdjustResponse,
   BridgeInventoryStockResponse,
+  BridgeWarehousesResponse,
 } from '../../bridge/subiekt-bridge-inventory.types';
 import type { BridgeResponseEnvelope } from '../../bridge/subiekt-bridge.types';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
@@ -73,6 +74,18 @@ export class SubiektInventoryBridgeClient {
       `/api/inventory/${encodeURIComponent(towarSymbol)}/stock`,
     );
     return data;
+  }
+
+  /**
+   * The seller's own warehouses (#3365).
+   *
+   * Optional on the bridge side by deployment reality rather than by contract:
+   * a bridge predating the route answers 404, and the caller must treat that as
+   * "cannot tell", never as "no such warehouse" - concluding the latter from a
+   * missing ROUTE would refuse a perfectly good configuration.
+   */
+  async listWarehouses(): Promise<BridgeWarehousesResponse> {
+    return this.request<BridgeWarehousesResponse>('GET', '/api/warehouses');
   }
 
   async adjust(body: BridgeInventoryAdjustRequest): Promise<BridgeInventoryAdjustResponse> {

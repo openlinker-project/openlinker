@@ -78,6 +78,7 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
      * magazyn the bridge says a movement lands in".
      */
     private readonly stockMagazynId?: number,
+
     /**
      * Symbols of the towary in a Subiekt model, supplied by the factory from
      * `SubiektProductMasterAdapter.readModelMemberSymbols`.
@@ -90,6 +91,63 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
      */
     private readonly readModelMembers?: (modelId: number) => Promise<string[]>,
   ) {}
+
+  /**
+   * Whether `stockMagazynId` names a warehouse that EXISTS in Subiekt (#3365).
+   *
+   * Three states, and the third is why this is not a boolean: `true` it
+   * exists, `false` no warehouse carries that id, `undefined` we could not
+   * find out - an older bridge with no `/api/warehouses` route, or a read that
+   * failed. The undefined case must behave like `false` at the refusal site,
+   * because publishing a zero pauses live offers and is the irreversible half.
+   *
+   * Resolved ONCE per adapter instance rather than per towar: a catalogue sweep
+   * asks about thousands of them and the answer is a property of the
+   * connection, not of the product. A fresh adapter is constructed per
+   * capability call (`getCapabilityAdapter` memoises nothing), so this is not a
+   * cache that can go stale across an operator's edit.
+   */
+  private configuredMagazynExists?: boolean;
+
+  private warehouseProbe?: Promise<void>;
+
+  /**
+   * Ask the bridge once, and never let the answer fail a stock read.
+   *
+   * A 404 here means the bridge predates the route, NOT that the warehouse is
+   * absent - concluding the latter from a missing route would refuse a
+   * perfectly good configuration on every older install.
+   */
+  private async probeConfiguredMagazyn(): Promise<void> {
+    if (this.stockMagazynId === undefined) return;
+    if (this.warehouseProbe === undefined) {
+      this.warehouseProbe = (async (): Promise<void> => {
+        // Probed rather than trusted (the ADR-046 shape): a client compiled
+        // against an older build of this package satisfies the type and has no
+        // such method, and that is "cannot ask", not a failure worth warning
+        // about - it lands on `undefined`, which the refusal site reads as
+        // unverified and therefore refuses.
+        if (typeof this.bridge.listWarehouses !== 'function') {
+          this.configuredMagazynExists = undefined;
+          return;
+        }
+        try {
+          const { warehouses } = await this.bridge.listWarehouses();
+          this.configuredMagazynExists = warehouses.some((w) => w.id === this.stockMagazynId);
+        } catch (error) {
+          this.logger.warn(
+            `subiekt_warehouse_probe_failed: could not verify config.stockMagazynId = ${String(
+              this.stockMagazynId,
+            )} against Subiekt; an unstocked towar will be refused rather than published as zero. ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          this.configuredMagazynExists = undefined;
+        }
+      })();
+    }
+    await this.warehouseProbe;
+  }
 
   /**
    * The towar symbols this product's stock is kept under: one for an ordinary
@@ -343,19 +401,38 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
    * releases from ONE warehouse, so publishing the total advertises units that
    * can never ship.
    *
-   * ## An explicit `stockMagazynId` that matches nothing REFUSES
+   * ## An explicit `stockMagazynId` that names NO WAREHOUSE refuses; one that
+   * names a real warehouse the towar is not stocked in publishes zero
    *
    * The filter this value drives is applied to the towar's own positions, so a
    * magazyn id that names none of them leaves an EMPTY set - which folds to
    * `quantity: 0`, and a `0` from a master is authoritative (#1844) and is the
-   * primitive #1689 uses to pause an offer. One mistyped digit in the
-   * connection config would therefore deactivate every offer of every product
-   * on every channel, silently, with nothing in any log to say why. The
-   * condition is permanent (every retry re-reads the same config against the
-   * same positions), so it surfaces as a terminal `SubiektConfigException`
-   * naming the magazyny the towar IS stocked in, rather than as a published
-   * zero. A towar with no positions at all is left alone: that is a genuine,
-   * correctly-reported out of stock, not a misconfiguration.
+   * primitive #1689 uses to pause an offer.
+   *
+   * Both readings of that emptiness used to produce the same terminal
+   * `SubiektConfigException`, and both readings were wrong in opposite
+   * directions (#3365). One mistyped digit deactivating every offer on every
+   * channel is the failure the refusal was written to prevent - but a towar
+   * stocked ONLY in another magazyn has positions, none of them matching, and
+   * for that towar the honest answer is zero: nothing can ship from the release
+   * warehouse. Refusing there kills the job on the FIRST attempt
+   * (`SubiektConfigException` is non-retryable) for every towar outside that
+   * warehouse, permanently. On a two-magazyn catalogue that is dead jobs for
+   * half the assortment.
+   *
+   * The two cases are distinguishable and the bridge's `GET /api/warehouses`
+   * (#3365) is what distinguishes them:
+   *
+   *   - the id names a warehouse that EXISTS -> a real zero, published;
+   *   - the id names no warehouse at all -> the mistyped digit, refused.
+   *
+   * A bridge too old to answer that route, or a route that fails, leaves the
+   * question unanswered - and an unanswered question falls back to REFUSING,
+   * because publishing a zero is the irreversible half (it pauses live offers)
+   * while a refused job is visible and retryable once the config is corrected.
+   *
+   * A towar with no positions at all is left alone either way: that is a
+   * genuine, correctly-reported out of stock, not a misconfiguration.
    *
    * ## `domyslnyMagazynId` is a FALLBACK, not the release warehouse
    *
@@ -375,9 +452,23 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     if (this.stockMagazynId !== undefined) {
       const configured = String(this.stockMagazynId);
       if (positions.length > 0 && !positions.some((p) => String(p.magazynId) === configured)) {
+        if (this.configuredMagazynExists === true) {
+          // A real warehouse this towar is simply not stocked in. Zero is the
+          // honest answer - nothing can ship from there - and it is what the
+          // rest of this method returns by filtering to a magazyn with no
+          // matching position.
+          this.logger.log(
+            `subiekt_inventory_zero_in_release_magazyn: ${towarSymbol} is not stocked in magazyn ${configured}; publishing 0. ` +
+              `It has stock in magazyn ${positions.map((p) => String(p.magazynId)).join(', ')}.`,
+          );
+          return configured;
+        }
         throw new SubiektConfigException(
           `config.stockMagazynId = ${configured} names no magazyn this towar is stocked in ` +
-            `(${towarSymbol} has stock in magazyn ${positions.map((p) => String(p.magazynId)).join(', ')}). ` +
+            `(${towarSymbol} has stock in magazyn ${positions.map((p) => String(p.magazynId)).join(', ')})` +
+            (this.configuredMagazynExists === false
+              ? ', and no magazyn with that id exists in Subiekt at all. '
+              : ', and the configured magazyn could not be verified against Subiekt. ') +
             'Publishing would report 0 for a product that has stock, which deactivates its offers. ' +
             'Correct stockMagazynId on the connection.',
           'config.stockMagazynId',
@@ -422,6 +513,10 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     positions: BridgeInventoryStockRow[];
     domyslnyMagazynId: number | undefined;
   }> {
+    // #3365 - the single choke point all three release-magazyn resolutions
+    // pass through, so the warehouse probe is awaited here exactly once per
+    // adapter instead of at each of them. It never throws.
+    await this.probeConfiguredMagazyn();
     try {
       const response = await this.bridge.getStock(towarSymbol);
       return {

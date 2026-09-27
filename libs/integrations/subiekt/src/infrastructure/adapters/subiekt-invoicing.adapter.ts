@@ -138,6 +138,8 @@ export class SubiektInvoicingAdapter
   private readonly paymentMethod?: SubiektPaymentMethod;
   private readonly bankAccountId?: number;
   private readonly stanowiskoKasoweId?: number;
+  /** #3365 - the release warehouse stamped on every document this adapter writes. */
+  private readonly stockMagazynId?: number;
 
   constructor(
     private readonly bridge: SubiektBridgeClient,
@@ -155,6 +157,7 @@ export class SubiektInvoicingAdapter
     this.paymentMethod = config.defaultPaymentMethod;
     this.bankAccountId = config.bankAccountId;
     this.stanowiskoKasoweId = config.defaultStanowiskoKasoweId;
+    this.stockMagazynId = config.stockMagazynId;
   }
 
   /**
@@ -206,6 +209,12 @@ export class SubiektInvoicingAdapter
         currency: cmd.currency,
         orderId: cmd.orderId,
         ...(zkId !== null ? { zkId } : {}),
+        // #3365 - the warehouse this sale releases from. Until now NO document
+        // named one: the bridge took whatever the Sfera session defaulted to
+        // while `stockMagazynId` steered only the stock READ, so a
+        // two-warehouse install published one warehouse's figure and shipped
+        // out of another. Absent keeps the pre-#3365 behaviour exactly.
+        ...(this.stockMagazynId !== undefined ? { magazynId: this.stockMagazynId } : {}),
         // Place idempotencyKey on the request BEFORE the call so fiscal dedup
         // holds on every error branch.
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
