@@ -337,3 +337,110 @@ the second, so a PrestaShop order has no business reaching Subiekt, and OpenLink
 the right sentence. Proving the chain needs a stand in the first topology: a publish-only shop
 whose `masterCatalogConnectionId` is the Subiekt connection. `published-product-order.spec.ts`
 runs unchanged the moment one exists, and skips with that requirement stated until then.
+
+---
+
+## Part L — The fifth round: what three production audits found, and what is now proven
+
+Three parallel audits (day-one-at-a-customer, e2e-coverage, ship-readiness) read both
+branches. Four of the seven promises were judged not shippable, and almost every blocker
+turned out to live in the C# bridge rather than in OpenLinker.
+
+### Measured, not reasoned about
+
+The bridge's own header said the numeric `dok_Typ` for a ZK "was never established live"
+and printed the query that would establish it. That query was run against the live DEMO
+database on 2026-09-27:
+
+| FZ | FS | KFS | MM | PZ | WZ | PW | RW | ZD | ZK | PA |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 2 | 6 | 9 | 10 | 11 | 12 | 13 | 15 | 16 | 21 |
+
+229 documents, one code per prefix, no overlap. Also measured on the same database:
+
+- **`sl_Magazyn` has two rows** (`1 MAG Główny`, `2 MAP Magazyn pomocniczy`) and `tw_Stan`
+  holds stock in both — 11 363 units in magazyn 1, 9 in magazyn 2. The demo is NOT a
+  single-warehouse install, and every WZ written so far landed in magazyn 1 only because
+  the Sfera session default happens to agree with what OpenLinker publishes.
+- **`rb__RachBankowy.rb_TypObiektu` is the owner discriminator**: `0` → 4 seller accounts,
+  `1` → **43 accounts belonging to the seller's own kontrahents**, `3` → 4 others. The
+  operator's picker was offering all 51.
+- `dok_DataWyst` exists; the watermark-column guess was right.
+
+### Two audit claims corrected
+
+- *"Every `/api` route is unauthenticated"* — false. `Program.cs` carries a bearer gate with
+  a constant-time comparison that fails closed when no token is configured. What IS true is
+  that it serves plaintext on `0.0.0.0`, and that `/gt-image` was outside both gates.
+- *"The price read and the price write point at different levels"* — false. Sfera level
+  `Id == 0` IS `tc_*1`, which this project had already confirmed live. The real defect was
+  narrower: one level hardcoded, with no way to choose another.
+
+### The e2e suite could not fail
+
+`grep -rn -i subiekt .github/` returned zero. The project was not in
+`test:e2e:unattended`, not in `workflow_dispatch`'s options list — so it could not even be
+PICKED — and `E2E_TEST_SUBIEKT` was set nowhere. The last recorded run reported
+`{"total": 15, "skipped": 15, "ok": true}`: fifteen tests, zero passed, and green.
+
+All four doors are open now, and an all-skipped run fails.
+
+### The stand finally has the topology Part K asked for
+
+Part K concluded that proving the chain needs "a publish-only shop whose
+`masterCatalogConnectionId` is the Subiekt connection", and recorded three closed routes.
+WooCommerce was ruled out on the grounds that its REST keys are hashed — true, and beside
+the point: the actual blocker is that it serves HTTPS with a self-signed `CN=example.com`
+certificate the api container does not trust, which is a compose change.
+
+The route taken instead is a **third PrestaShop connection**, `ProductPublisher` +
+`OrderSource`, mastered by Subiekt. It passes the topology preflight (which is per
+connection) and additionally exercises the `ShopProduct` resolution fallback. Connection
+test: 200.
+
+Two real blockers surfaced while standing it up:
+
+1. **The PrestaShop webservice key had no `categories` permission** — 97 permissions, none
+   for categories. The connection test passes because it reads `products`, so this is
+   invisible until a publish tries to provision a category. Granted GET/POST/PUT/HEAD.
+2. **Signing image URLs invalidates every URL stored before the gate.** Mine, and recorded
+   in the bridge: it self-heals on the next catalogue sweep and nothing already published
+   to a marketplace is affected, but OpenLinker's own thumbnails 404 in the window.
+
+### The run
+
+**7 passed / 2 failed / 3 skipped / 3 never ran** → **11 passed / 2 failed / 2 never ran.**
+
+`published-product-order.spec.ts` **executed for the first time in its existence**, and the
+assertion the file was written for — that an order for a published product resolves back to
+the SAME Subiekt product rather than to a duplicate — **passes**.
+
+Confirmed in the database rather than inferred from a green tick: PrestaShop order 43 was
+ingested twice, `ready` under the publish-only connection with its line resolved to the
+Subiekt variant, and `awaiting_mapping` under the catalogue master. Both correct.
+
+### Three test bugs of one family
+
+Every one resolved something by POSITION or by habit instead of by the fact the spec is
+about:
+
+1. `world.connectionFor` answering positionally onto a zero-product seed connection
+   (fixed in round four).
+2. The image test picking the first product with images — including a RETIRED one, whose
+   variant #1599 staled when its towar joined a model. Its stored URL is not what the
+   catalogue reports and nothing will ever refresh it.
+3. `synthesizeOrder` waiting for the catalogue master to ingest an order for a product
+   OpenLinker had PUBLISHED. Only the publishing connection can resolve that line.
+
+### Still not proven, stated plainly
+
+`the sale reaches Subiekt and moves the towar stock` fails: stock read 517 where 516 or less
+was required. The order reaches OpenLinker `ready` and its destination fan-out has not run
+— `syncStatus` is `[]` and five `marketplace.order.sync` jobs sit queued behind the
+`realtime` lane's per-scope cap on a stand carrying 8 430 dead jobs from earlier rounds.
+That is a throughput condition on this stand, not a verdict on the chain, and it is written
+here as unproven rather than explained away.
+
+`an order reaches Subiekt as a ZK` also still fails, for Part K's original reason: the
+order it builds uses the catalogue master's own driver product, which has no Subiekt
+mapping. The new fixture does not change that spec.
