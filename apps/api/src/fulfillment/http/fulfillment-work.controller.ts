@@ -65,13 +65,13 @@ import {
 import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/inventory';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService, type OrderRecord } from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
+import { Logger } from '@openlinker/shared/logging';
 
 // Value imports (not `import type`): the @CurrentUser() param type feeds
 // decorator metadata, so erasing it breaks the emitted signature.
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { Logger } from '@openlinker/shared/logging';
 import {
   FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
   type IFulfillmentParcelClosureNotifier,

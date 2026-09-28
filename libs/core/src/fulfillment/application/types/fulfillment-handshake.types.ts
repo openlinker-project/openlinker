@@ -64,11 +64,12 @@ export interface RequestFulfillmentCancellationInput {
  * its own member rather than folded into it: `no-op` on `requestCancellation`
  * already covers "no holder has accepted this work" (the negotiation axis
  * saying there is nothing to ask back), while `not-cancellable` covers "a
- * holder accepted it, but the EXECUTION axis has moved past the point where
- * taking it back means anything" — the parcel is already picked, packed or
- * shipped. Collapsing the two into one `no-op` would make a caller unable to
- * tell "nobody to ask" from "too late to ask", which is exactly the
- * distinction an operator surface needs to render correctly.
+ * holder accepted it, but the EXECUTION axis has reached a TERMINAL status" —
+ * `closed` (packed and handed off) / `cancelled` / `incomplete`, never
+ * `in_progress`, which stays cancellable by design (a pick in flight is not
+ * "too late"). Collapsing the two into one `no-op` would make a caller
+ * unable to tell "nobody to ask" from "too late to ask", which is exactly
+ * the distinction an operator surface needs to render correctly.
  */
 export const FulfillmentHandshakeOutcomeValues = [
   'accepted',
