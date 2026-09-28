@@ -1895,3 +1895,56 @@ record file — currently `startSharedPrestashopContainer()` in
 `apps/api/test/integration/helpers/prestashop-container.helper.ts`.
 
 **Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+---
+
+## A workspace package missing from `tsconfig.base.json`'s `paths` degrades to `any` under `pnpm lint`, with no diagnostic and a misleading failure site
+
+**Context**: #3003 — `pnpm lint` failed on a clean checkout at `apps/worker/src/plugins.ts:45`,
+the line assigning the whole `workerPlugins: PluginEntry[]` array literal, reported as "Unsafe
+assignment of type `any[]`". The issue's own bisection blamed `@openlinker/oms` (rebuilding its
+`dist` made the symptom disappear).
+
+**Problem**: `@openlinker/oms` was not the cause. `.eslintrc.js`'s `parserOptions.project:
+['./tsconfig.eslint.json']` with `tsconfigRootDir: __dirname` anchors to the REPO ROOT regardless
+of which package's own `pnpm run lint` invoked ESLint, so every package's lint run shares ONE
+TypeScript program built from `tsconfig.eslint.json` (which only extends `tsconfig.base.json` —
+`apps/api/tsconfig.json` and `apps/worker/tsconfig.json`'s own `paths` are never consulted by
+ESLint at all). `tsconfig.base.json`'s `paths` map was missing entries for two packages,
+`@openlinker/integrations-dpd-polska` and `@openlinker/integrations-infakt` — bisecting the
+literal array (binary search, removing half the elements at a time) isolated `DpdIntegrationModule`
+as a *standalone* reproducer with `OmsModule` entirely absent from the file, proving the report's
+own root-cause claim wrong. A workspace import missing from `paths` falls through to plain
+`node_modules` resolution, which needs a built `dist` (the package's `types`/`exports` field) to
+succeed; absent that, TypeScript's resolver logs "module name ... was not resolved" internally
+(confirmed with `tsc --traceResolution`) but — for reasons not fully explained by this repo's own
+config once resolution genuinely fails — raises **no** `TS2307` diagnostic anywhere in the whole
+compile; the import's type silently becomes `any`. Because `any` in one element of an array
+literal widens the WHOLE literal's inferred type to `any[]`, `no-unsafe-assignment` fires on the
+array's declaration line — nowhere near the actually-broken import — so bisecting by *symptom
+line* points at the wrong culprit; only bisecting the array's *elements* finds it. And because
+`pnpm build` builds every workspace package via `pnpm -r build`, rebuilding ANY sufficiently-widely-
+imported package (including one that was never the cause) makes the symptom disappear too, which
+is what produced the original misattribution.
+
+**Rule**: when `pnpm lint` reports an `any`-typed value from an import that "should" have real
+types, do not trust the reported line — it names where the `any` got USED (often an array/object
+literal several imports away from the real one), not where it originated. Bisect by commenting out
+individual imports/array elements until the error disappears, not by reading the stack trace.
+Once found, the fix is to add the missing package to `tsconfig.base.json`'s `paths` (pointing at
+its `src/index.ts`, matching every other workspace package) rather than building `dist` — a `paths`
+entry resolves to source with **no** prior build step, on every future clean checkout, which a
+built `dist` does not survive past the next `git clean`. `apps/api/tsconfig.json` and
+`apps/worker/tsconfig.json` were also individually incomplete (each missing a different subset of
+packages) — irrelevant to `pnpm lint` for the reason above, but relevant to a live editor's
+language server (which uses the PER-PACKAGE tsconfig, not `tsconfig.eslint.json`) and to
+`pnpm type-check` in edge configurations, so keep all three `paths` maps in sync with the full
+workspace package list rather than growing them ad hoc per import.
+
+**Applies to**: `tsconfig.base.json`, `apps/api/tsconfig.json`, `apps/worker/tsconfig.json`; any
+new `libs/integrations/<name>` or `libs/<name>` package — add its `paths` entry to all three
+in the SAME commit that first imports it from `apps/api` or `apps/worker` source, or the import
+type-checks fine locally (dist already built from prior work) and silently degrades to `any` for
+the next contributor's clean checkout.
+
+**Source**: #3003.
