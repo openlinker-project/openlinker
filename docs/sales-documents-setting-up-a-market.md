@@ -9,7 +9,7 @@ This page gets you from an empty setup to one that issues documents.
 >
 > Screen-by-screen walkthrough of the same screens, with captures: see the user guide's [Sales documents (routing)](./user-guide/04b-sales-documents.md).
 
-Everything below happens on **Settings → Sales documents**.
+Everything below happens on **Settings → Document routing**.
 
 ## What a market is
 
