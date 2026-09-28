@@ -15,18 +15,20 @@
  * because the SERVER validates against it too — the form is not the only way
  * in (the #2610 rule): a raw JSON/`curl` caller must not be able to persist a
  * tag with an arbitrary color string the design system cannot render.
+ *
+ * Matches the eight `--tag-*` tokens `apps/web/src/index.css` defines (the
+ * mockup M3 `--tag-*` proposal, ported verbatim) — the two sets must agree,
+ * or a color this vocabulary accepts would have no dot to paint.
  */
 export const OrderTagColorValues = [
-  'red',
-  'orange',
-  'amber',
-  'green',
-  'teal',
+  'grey',
   'blue',
-  'indigo',
-  'purple',
+  'teal',
+  'green',
+  'amber',
+  'orange',
   'pink',
-  'gray',
+  'violet',
 ] as const;
 export type OrderTagColor = (typeof OrderTagColorValues)[number];
 

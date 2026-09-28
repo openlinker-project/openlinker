@@ -53,7 +53,7 @@ describe('OrderTagService', () => {
     it('should refuse a create at exactly the workspace limit', async () => {
       repository.count.mockResolvedValue(ORDER_TAG_WORKSPACE_LIMIT);
 
-      await expect(service.create('One too many', 'red')).rejects.toThrow(
+      await expect(service.create('One too many', 'amber')).rejects.toThrow(
         OrderTagLimitReachedError,
       );
       expect(repository.create).not.toHaveBeenCalled();
