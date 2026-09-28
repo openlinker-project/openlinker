@@ -20,6 +20,7 @@ import type {
   BridgeKorektaResponse,
   BridgeListBankAccountsResponse,
   BridgeListCashRegistersResponse,
+  BridgeLocateResponse,
   BridgeSetDefaultBankAccountResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
@@ -62,4 +63,15 @@ export interface SubiektBridgeClient {
    * is `GET /api/cash-registers` (#1324).
    */
   listCashRegisters(): Promise<BridgeListCashRegistersResponse>;
+
+  /**
+   * Crash-recovery lookup (#3389, `RegulatoryRecordLocator`): find a document by
+   * the ORIGINAL idempotency key OL stamped on its creation request. The REAL
+   * bridge route is `GET /api/invoices/locate?key=...`.
+   *
+   * A `found: false` answer is a POSITIVE statement that nothing was created
+   * under this key, which the caller acts on by issuing - so the bridge must
+   * fail rather than answer `false` when it could not find out.
+   */
+  locateByOriginalKey(key: string): Promise<BridgeLocateResponse>;
 }

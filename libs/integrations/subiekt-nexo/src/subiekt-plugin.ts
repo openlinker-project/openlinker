@@ -47,6 +47,14 @@ export const subiektAdapterManifest: AdapterMetadata = {
   // and `SubiektConnectionTesterAdapter`, injected via constructor — never via
   // an import of this module, which would cycle back into it).
   defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+  // #3391: two active Subiekt nexo connections pointed at the identical bridge
+  // process would each get their own independent rate limiter against the SAME
+  // underlying bridge, defeating the `maxConcurrent` protection above
+  // per-connection rather than per-bridge. Carried here for the same reason as
+  // in the GT package, NOT copied for symmetry: the failure mode is a property
+  // of one bridge process serving two connections, which is equally reachable
+  // on either product.
+  uniqueConfigKeys: ['bridgeBaseUrl'],
 };
 
 /** Short brand label for domain-exception / dispatch error prefixes. */

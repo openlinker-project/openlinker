@@ -13,6 +13,8 @@ import {
   isBankAccountDefaultSetter,
   isBankAccountsReader,
   isCorrectionIssuer,
+  isPaymentStatusReader,
+  isRegulatoryRecordLocator,
   isRegulatoryStatusReader,
   MissingTaxRateException,
 } from '@openlinker/core/invoicing';
@@ -862,6 +864,58 @@ describe('SubiektInvoicingAdapter', () => {
       expect(req.paymentMethod).toBe('transfer');
       expect(req.bankAccountId).toBe(100007);
       expect(req.stanowiskoKasoweId).toBe(100067);
+    });
+  });
+  describe('locateByQuery (#3389, RegulatoryRecordLocator crash-recovery)', () => {
+    it('is detected as a RegulatoryRecordLocator', () => {
+      const adapter = makeAdapter().adapter;
+      expect(isRegulatoryRecordLocator(adapter)).toBe(true);
+    });
+
+    it('finds a previously-issued document by idempotencyKey and maps it to a neutral result', async () => {
+      const { adapter } = makeAdapter();
+      const issued = await adapter.issueInvoice(command({ idempotencyKey: 'invoice:conn-1:order-1' }));
+      const located = await adapter.locateByQuery({ idempotencyKey: 'invoice:conn-1:order-1' });
+      expect(located).not.toBeNull();
+      expect(located?.providerInvoiceId).toBe(issued.record.providerInvoiceId);
+      // The fake seeds the bridge-native 'sent', which maps to neutral 'submitted'.
+      expect(located?.regulatoryStatus).toBe('submitted');
+    });
+
+    it('returns null when nothing was issued under the given idempotencyKey', async () => {
+      const { adapter } = makeAdapter();
+      const located = await adapter.locateByQuery({ idempotencyKey: 'never-issued-key' });
+      expect(located).toBeNull();
+    });
+
+    it('returns null without a bridge call when the criteria carries no idempotencyKey (Subiekt cannot search by documentNumber pre-crash)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'locateByOriginalKey');
+      const located = await adapter.locateByQuery({
+        documentNumber: 'FV/2026/1',
+        issuedFrom: new Date(),
+        issuedTo: new Date(),
+      });
+      expect(located).toBeNull();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('translates a transport failure during the locate call rather than reporting an absence', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('bridge-unreachable');
+      await expect(adapter.locateByQuery({ idempotencyKey: 'some-key' })).rejects.toBeInstanceOf(
+        SubiektBridgeTransportError,
+      );
+    });
+  });
+
+  describe('PaymentStatusReader is deliberately absent (#3390)', () => {
+    it('is NOT detected as a PaymentStatusReader', () => {
+      // Subiekt nexo exposes no settlement/paid concept through the Sfera or SQL
+      // layer the bridge reads, so an implementation could only report every
+      // document as unpaid. The absence is the honest answer, and this asserts it
+      // stays deliberate rather than drifting into existence unnoticed.
+      expect(isPaymentStatusReader(makeAdapter().adapter)).toBe(false);
     });
   });
 });

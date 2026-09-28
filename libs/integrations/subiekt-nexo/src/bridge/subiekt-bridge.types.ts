@@ -234,6 +234,30 @@ export interface BridgeInvoiceStatusResponse {
 }
 
 /**
+ * `GET /api/invoices/locate?key=...` response (#3389, `RegulatoryRecordLocator`
+ * crash-recovery). `found: false` is a NORMAL, expected outcome (nothing was
+ * ever created under this key) - deliberately never expressed as a null `data`
+ * envelope, since the HTTP client's generic envelope-unwrap treats a null `data`
+ * on a 2xx as a rejection, which would turn "not found" into a thrown error
+ * instead of the clean `null` the capability's contract requires.
+ *
+ * The nexo bridge answers this from its own `IIdempotencyStore` - the same entry
+ * its issue use case writes - rather than by scanning a document column the way
+ * the GT bridge does. The wire shape is identical on both products; only the
+ * source of the answer differs, which is the whole reason this is a bridge route
+ * and not a shared query.
+ */
+export type BridgeLocateResponse =
+  | { found: false }
+  | {
+      found: true;
+      providerInvoiceId: number;
+      numer: string | null;
+      regulatoryStatus: BridgeRegulatoryStatus;
+      clearanceReference: string | null;
+    };
+
+/**
  * One bank account (rachunek bankowy) as the bridge returns it from
  * `GET /api/bank-accounts` (bridge PR #4). All display fields are nullable —
  * the bridge returns `""`/`null` for unset Sfera columns, normalized to `null`

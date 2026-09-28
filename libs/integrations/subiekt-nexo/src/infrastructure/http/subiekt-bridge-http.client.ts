@@ -45,6 +45,7 @@ import type {
   BridgeKorektaRequest,
   BridgeKorektaResponse,
   BridgeListBankAccountsResponse,
+  BridgeLocateResponse,
   BridgeListCashRegistersResponse,
   BridgeRegulatoryStatus,
   BridgeResponseEnvelope,
@@ -102,6 +103,14 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
   invoiceStatus: (providerInvoiceId: string): string =>
     `/api/invoices/${encodeURIComponent(providerInvoiceId)}/status`,
   /** Bank-account discovery; the bridge route is `GET /api/bank-accounts` (#1324). */
+  /**
+   * Crash-recovery locate (#3389). The key rides in the query string and is
+   * encoded - an OL idempotency key is caller-supplied text, not an opaque
+   * token, so it can legitimately contain characters that would otherwise
+   * terminate or re-partition the query.
+   */
+  locate: (key: string): string => `/api/invoices/locate?key=${encodeURIComponent(key)}`,
+
   bankAccounts: '/api/bank-accounts',
   /**
    * Default bank-account selector, templated by the numeric account id. The
@@ -234,6 +243,10 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
       state: 'issued',
       regulatoryStatus: data.regulatoryStatus ?? 'none',
     };
+  }
+
+  async locateByOriginalKey(key: string): Promise<BridgeLocateResponse> {
+    return this.getJson<BridgeLocateResponse>(SUBIEKT_BRIDGE_ENDPOINTS.locate(key));
   }
 
   async listBankAccounts(): Promise<BridgeListBankAccountsResponse> {

@@ -37,6 +37,7 @@ import type {
   BridgeKorektaResponse,
   BridgeListBankAccountsResponse,
   BridgeListCashRegistersResponse,
+  BridgeLocateResponse,
   BridgeSetDefaultBankAccountResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
@@ -113,13 +114,21 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   // Keyed by the STRING form of the numeric providerInvoiceId (matches how the
   // status read keys its lookup).
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
+  /**
+   * Keyed by the OL idempotency key the issue request carried, so
+   * `locateByOriginalKey` has something to find. Mirrors the real bridge, where
+   * the same `IIdempotencyStore` entry serves both the issue short-circuit and
+   * the locate - a fake that remembered the key on only one of the two would
+   * let a drift between them pass unnoticed.
+   */
+  private readonly issuedByKey = new Map<string, BridgeIssueInvoiceResponse>();
   /** The most recent korekta request body (for passthrough assertions in tests). */
   private lastKorektaRequest: BridgeKorektaRequest | null = null;
   /** Discovery state (bank accounts / cash registers), #1324. */
   private bankAccounts: BridgeBankAccount[] = defaultBankAccounts();
   private cashRegisters: BridgeCashRegister[] = defaultCashRegisters();
 
-  issueInvoice(_req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
+  issueInvoice(req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
     const failure = this.failureError();
     if (failure) {
       return Promise.reject(failure);
@@ -135,6 +144,9 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       ...this.issueOverride,
     };
     this.issuedById.set(String(response.providerInvoiceId), response);
+    if (req.idempotencyKey !== undefined) {
+      this.issuedByKey.set(req.idempotencyKey, response);
+    }
     return Promise.resolve(response);
   }
 
@@ -232,6 +244,24 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     return Promise.resolve({ count: cashRegisters.length, cashRegisters });
   }
 
+  locateByOriginalKey(key: string): Promise<BridgeLocateResponse> {
+    const failure = this.failureError();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    const found = this.issuedByKey.get(key);
+    if (!found) {
+      return Promise.resolve({ found: false });
+    }
+    return Promise.resolve({
+      found: true,
+      providerInvoiceId: found.providerInvoiceId,
+      numer: found.providerInvoiceNumber,
+      regulatoryStatus: found.regulatoryStatus,
+      clearanceReference: null,
+    });
+  }
+
   // --- test helpers -----------------------------------------------------------
 
   /**
@@ -275,6 +305,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.seededFailure = null;
     this.issueOverride = null;
     this.issuedById.clear();
+    this.issuedByKey.clear();
     this.lastKorektaRequest = null;
     this.bankAccounts = defaultBankAccounts();
     this.cashRegisters = defaultCashRegisters();

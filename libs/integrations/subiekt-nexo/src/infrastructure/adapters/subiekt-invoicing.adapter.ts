@@ -39,6 +39,9 @@ import type {
   IssueInvoiceCommand,
   IssueInvoiceResult,
   RegulatoryClearanceResult,
+  RegulatoryLocateCriteria,
+  RegulatoryLocateResult,
+  RegulatoryRecordLocator,
   RegulatoryStatusReader,
   UpsertCustomerCommand,
   UpsertCustomerResult,
@@ -115,7 +118,8 @@ export class SubiektInvoicingAdapter
     RegulatoryStatusReader,
     CorrectionIssuer,
     BankAccountsReader,
-    BankAccountDefaultSetter
+    BankAccountDefaultSetter,
+    RegulatoryRecordLocator
 {
   /**
    * Connection-level defaults (#1324). All OPTIONAL — an unset field means the
@@ -351,6 +355,56 @@ export class SubiektInvoicingAdapter
         // The bridge status read carries no authority reference today; preserve
         // any reference already captured on the record.
         clearanceReference: record.clearanceReference,
+      };
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Last-resort crash-recovery lookup (#3389, ADR-035): find a document on
+   * Subiekt's own side after a process died mid-submit and OL no longer knows
+   * whether the request landed.
+   *
+   * Subiekt is a SELF-NUMBERING provider - the document number is assigned only
+   * in the issue response, unlike a `DocumentNumberConsumer` such as KSeF where
+   * core allocates the number BEFORE the request - so `criteria.documentNumber`
+   * is structurally unknown for exactly the crash this method exists to recover
+   * from, and `criteria.idempotencyKey` is the only reliable locate key. A
+   * keyless issuance therefore has nothing to search by and returns `null`
+   * rather than guessing from a `documentNumber` that was never populated
+   * pre-crash in the first place.
+   *
+   * The nexo bridge answers this out of its own idempotency store - the same
+   * entry that short-circuits a retried issue - rather than by scanning a
+   * document column the way the GT bridge does. That difference is entirely
+   * below this seam: the wire shape and this method's contract are identical on
+   * both products.
+   *
+   * `PaymentStatusReader` is deliberately NOT implemented beside this. Subiekt
+   * nexo exposes no settlement/paid concept through the Sfera or SQL layer the
+   * bridge reads, so an implementation could only ever report every document as
+   * unpaid - a confident false answer, which is worse than the capability being
+   * absent and the caller knowing it.
+   */
+  async locateByQuery(criteria: RegulatoryLocateCriteria): Promise<RegulatoryLocateResult | null> {
+    if (criteria.idempotencyKey === undefined) {
+      this.logger.debug(
+        'Subiekt nexo locateByQuery called with no idempotencyKey (the only key this self-numbering provider can search by); returning null',
+        { connectionId: this.connectionId },
+      );
+      return null;
+    }
+
+    try {
+      const located = await this.bridge.locateByOriginalKey(criteria.idempotencyKey);
+      if (!located.found) {
+        return null;
+      }
+      return {
+        providerInvoiceId: String(located.providerInvoiceId),
+        regulatoryStatus: toNeutralRegulatoryStatus(located.regulatoryStatus),
+        clearanceReference: located.clearanceReference,
       };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
