@@ -1,7 +1,8 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Orders export</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="ol.css">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
 <script src="ol-kit.js" defer></script>
 <style>
   /* Page-specific layout only. Everything visual comes from ol.css classes and tokens. */
@@ -90,7 +91,7 @@
   <div data-mk-state="default" data-mk-label="Domyślny">
     <div class="export-modal">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content dialog__content--wide export-dialog js-export" role="dialog" aria-modal="true" aria-labelledby="export-title-1"
+      <div class="dialog__content dialog__content--wide export-dialog js-export" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-1"
            data-scope="view" data-format="csv" data-gran="order" data-preset="accounting" data-pii="false">
         <div class="dialog__header">
           <h2 class="dialog__title" id="export-title-1">Export orders</h2>
@@ -105,7 +106,7 @@
   <div data-mk-state="selected" data-mk-label="Zaznaczone" hidden>
     <div class="export-modal">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content dialog__content--wide export-dialog js-export" role="dialog" aria-modal="true" aria-labelledby="export-title-2"
+      <div class="dialog__content dialog__content--wide export-dialog js-export" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-2"
            data-scope="selected" data-format="xlsx" data-gran="order" data-preset="warehouse" data-pii="true">
         <div class="dialog__header">
           <h2 class="dialog__title" id="export-title-2">Export orders</h2>
@@ -120,7 +121,7 @@
   <div data-mk-state="preparing" data-mk-label="Przygotowanie" hidden>
     <div class="export-modal">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content export-small-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-3">
+      <div class="dialog__content export-small-dialog" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-3">
         <div class="dialog__header">
           <h2 class="dialog__title" id="export-title-3">Preparing export</h2>
           <p class="dialog__description mono-text">orders_2026-09-01_2026-09-25.csv</p>
@@ -149,7 +150,7 @@
   <div data-mk-state="ready" data-mk-label="Gotowy" hidden>
     <div class="export-modal">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content export-small-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-4">
+      <div class="dialog__content export-small-dialog" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-4">
         <div class="dialog__header">
           <div class="export-heading-row">
             <h2 class="dialog__title" id="export-title-4">Export ready</h2>
@@ -180,7 +181,7 @@
   <div data-mk-state="large" data-mk-label="Za duży" hidden>
     <div class="export-modal">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content dialog__content--wide export-dialog js-export" role="dialog" aria-modal="true" aria-labelledby="export-title-5"
+      <div class="dialog__content dialog__content--wide export-dialog js-export" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-5"
            data-scope="range" data-format="xlsx" data-gran="line" data-preset="saved" data-pii="false" data-large="true">
         <div class="dialog__header">
           <h2 class="dialog__title" id="export-title-5">Export orders</h2>
@@ -236,7 +237,7 @@
   <div data-mk-state="error" data-mk-label="Błąd" hidden>
     <div class="export-modal">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content export-small-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-7">
+      <div class="dialog__content export-small-dialog" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-7">
         <div class="dialog__header">
           <h2 class="dialog__title" id="export-title-7">Export failed</h2>
           <p class="dialog__description mono-text">orders_2026-09-01_2026-09-25.csv</p>
