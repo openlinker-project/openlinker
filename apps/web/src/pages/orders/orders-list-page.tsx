@@ -89,6 +89,7 @@ import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/d
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { BulkTagPopover } from '../../features/orders/components/bulk-tag-popover';
 import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
+import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
@@ -109,6 +110,7 @@ import {
   OrderSortDirectionValues,
   SlaStateValues,
   FulfillmentRollupStateValues,
+  ORDER_LIST_COLUMN_IDS,
 } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
@@ -611,6 +613,11 @@ export function OrdersListPage(): ReactElement {
   const [exportOpen, setExportOpen] = useState(false);
   // D35: admin and operator only — a viewer never sees the Export button.
   const exportAccess = useWriteAccess('orders:export', demoMode);
+  // #3530 recovery pass — the list's own column visibility/order. Starts at
+  // every optional column shown (the pre-existing behaviour) until
+  // `OrderColumnVisibilityControl` resolves the viewer's remembered
+  // arrangement or the workspace default, one effect tick after mount.
+  const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>([...ORDER_LIST_COLUMN_IDS]);
 
   // Fire once per successful list load, not on every filter/page refetch —
   // demo-mode analytics only (#1788), no-op elsewhere.
@@ -1255,6 +1262,23 @@ export function OrdersListPage(): ReactElement {
     ],
   );
 
+  // #3530 recovery pass — the column-visibility control filters/reorders the
+  // OPTIONAL columns only. `select` (bulk-action checkbox) and `order` (row
+  // identity) are structural, always first, and never offered as hideable —
+  // hiding either would break bulk dispatch and the row's whole reason for
+  // being, respectively. Mobile cards are untouched: `cardView` below reads
+  // its own `title`/`subtitle` functions, never this `columns` array.
+  const visibleColumns = useMemo(() => {
+    const byId = new Map(columns.map((c) => [c.id, c] as const));
+    const structural = [byId.get('select'), byId.get('order')].filter(
+      (c): c is DataTableColumn<OrderRecord> => c !== undefined,
+    );
+    const optional = visibleColumnIds
+      .map((id) => byId.get(id))
+      .filter((c): c is DataTableColumn<OrderRecord> => c !== undefined);
+    return [...structural, ...optional];
+  }, [columns, visibleColumnIds]);
+
   function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
     retryMutation.mutate(
       { internalOrderId, destinationConnectionId },
@@ -1524,6 +1548,10 @@ export function OrdersListPage(): ReactElement {
               </Button>
             </ReadOnlyLock>
           ) : null}
+          <OrderColumnVisibilityControl
+            visibleColumnIds={visibleColumnIds}
+            onVisibleColumnIdsChange={setVisibleColumnIds}
+          />
           <Button tone="ghost" className="button--sm" onClick={refreshAll}>
             Refresh
             <span className="button__shortcut">R</span>
@@ -1892,7 +1920,7 @@ export function OrdersListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} rowAction label="Loading orders…" />
+        <DataTableSkeleton columns={visibleColumns} rowAction label="Loading orders…" />
       ) : query.error ? (
         <ErrorState
           title="Unable to load orders"
@@ -2017,7 +2045,7 @@ export function OrdersListPage(): ReactElement {
         <>
           <DataTable
             caption="Orders"
-            columns={columns}
+            columns={visibleColumns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             // Top-aligns every cell in the row (#2091, `.orders-table td`). Row

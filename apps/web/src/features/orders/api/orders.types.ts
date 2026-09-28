@@ -1048,6 +1048,31 @@ export const ORDER_EXPORT_COLUMN_LABELS: Record<OrderExportColumnIdValue, string
 };
 
 /**
+ * The `/orders` LIST's own toggleable-column vocabulary (#3530 recovery
+ * pass) — structurally distinct from `ORDER_EXPORT_COLUMN_IDS`
+ * (spreadsheet-shaped scalars) because the list's columns are composite
+ * (`customer` renders a name AND a city; `money` renders four stacked
+ * figures). Deliberately DISJOINT id strings from the export vocabulary, so
+ * one saved `OrderColumnPreset.columns` array can hold both sets at once —
+ * each surface's `OrderColumnPresetManager` narrows to the ids it
+ * recognises and ignores the rest (`order-column-preset-manager.tsx`'s own
+ * docblock).
+ *
+ * `select` (the bulk-action checkbox) and `order` (row identity) are NOT
+ * here — they are structural, not optional, and always render first.
+ */
+export const ORDER_LIST_COLUMN_IDS = ['customer', 'channel', 'status', 'shipment', 'money'] as const;
+export type OrderListColumnIdValue = (typeof ORDER_LIST_COLUMN_IDS)[number];
+
+export const ORDER_LIST_COLUMN_LABELS: Record<OrderListColumnIdValue, string> = {
+  customer: 'Customer',
+  channel: 'Channel',
+  status: 'Status',
+  shipment: 'Shipment',
+  money: 'Money',
+};
+
+/**
  * A personal, named, ordered column set (#3530, D32). `userId: null` marks
  * the single workspace default the read API resolves separately — it never
  * appears inside a user's own array.

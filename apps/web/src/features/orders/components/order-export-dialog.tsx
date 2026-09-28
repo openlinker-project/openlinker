@@ -21,6 +21,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } f
 import { Select } from '../../../shared/ui/select';
 import {
   ORDER_EXPORT_BACKGROUND_THRESHOLD,
+  ORDER_EXPORT_COLUMN_IDS,
+  ORDER_EXPORT_COLUMN_LABELS,
   type CreateOrderExportRequest,
   type OrderExportFormatValue,
   type OrderExportScopeValue,
@@ -28,6 +30,11 @@ import {
   type OrderRecord,
 } from '../api/orders.types';
 import { OrderColumnPresetManager } from './order-column-preset-manager';
+
+const EXPORT_AVAILABLE_COLUMNS = ORDER_EXPORT_COLUMN_IDS.map((id) => ({
+  id,
+  label: ORDER_EXPORT_COLUMN_LABELS[id],
+}));
 import {
   useDownloadExportMutation,
   useOrderExportRunQuery,
@@ -148,7 +155,11 @@ export function OrderExportDialog({
                 </Select>
               </label>
 
-              <OrderColumnPresetManager columns={columns} onColumnsChange={setColumns} />
+              <OrderColumnPresetManager
+                availableColumns={EXPORT_AVAILABLE_COLUMNS}
+                columns={columns}
+                onColumnsChange={setColumns}
+              />
 
               <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                 <label className="orders-toolbar__field">
