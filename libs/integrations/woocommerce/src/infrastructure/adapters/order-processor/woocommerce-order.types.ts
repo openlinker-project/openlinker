@@ -65,6 +65,12 @@ export interface WooCommerceOrderCreateRequest {
   payment_method_title?: string;
   set_paid?: boolean;
   meta_data?: Array<{ key: string; value: string }>;
+  /**
+   * ISO 4217 currency code (#3470). Omitting it stamps the order with the
+   * store's own default currency regardless of what the buyer actually paid
+   * in — a EUR/CZK order silently books as e.g. PLN with the same numerals.
+   */
+  currency?: string;
 }
 
 export interface WooCommerceOrderUpdateRequest {
@@ -79,6 +85,12 @@ export interface WooCommerceOrderResponse {
   date_completed_gmt?: string;
   /** GMT timestamp of the order's last modification — `deliveredAt` fallback. */
   date_modified_gmt?: string;
+  /**
+   * The order's booked total, as a decimal string (WC REST convention).
+   * Read back after create to reconcile against `order.totals.total` (#3470)
+   * — never written by this adapter.
+   */
+  total?: string;
 }
 
 // ─── Customer shapes ──────────────────────────────────────────────────────────

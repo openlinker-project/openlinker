@@ -31,6 +31,24 @@
  *   destination_address_mappings, guarded by the same distributed lock. Best-effort:
  *   a provisioning failure is logged and never aborts order creation. The order
  *   payload always carries the inline address regardless.
+ * - Currency + tax (#3470): the create payload always carries `currency`
+ *   (refused when the source order has none) and every gross-priced line is
+ *   converted to the tax-exclusive amount WC REST expects, using the line's own
+ *   ADR-063 `taxRate` — mirrors `PrestashopOrderProcessorManagerAdapter`. The
+ *   booked `total` is read back and compared against the buyer-paid total,
+ *   warning on drift.
+ * - Payment status (#2600 / #3471): `set_paid` is gated on
+ *   `order.paymentStatus === 'paid'`, never on `order.status` alone — a
+ *   cash-on-delivery order is not settled just because it reached `processing`.
+ * - Carrier mapping (#3471): the shipping line's `method_id` is resolved via
+ *   `IMappingConfigService.resolveCarrierMapping`, keyed on the source
+ *   connection + `order.shipping.methodId` — falls back to WC's `flat_rate`
+ *   when unmapped, matching what `listCarriers()` advertises.
+ * - Non-idempotent create (#3469): `createOrder`'s `POST /orders` is never
+ *   retried by the HTTP client on an ambiguous 5xx/network failure, and a 2xx
+ *   response with no `id` raises `WooCommerceOrderCreateAmbiguousException`
+ *   (registered non-retryable) rather than being treated as a job-level
+ *   retry candidate — both close the same duplicate-order risk.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
@@ -60,11 +78,20 @@ import type {
 import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/core/customers';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
+import { PAYMENT_STATUS, readBuyerTaxId } from '@openlinker/core/orders';
+import { taxRatePercentToFraction } from '@openlinker/core/invoicing';
+import {
+  splitShippingAcrossRates,
+  minorUnitExponentFor,
+  type ShippingSplitLine,
+} from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceOrderProcessingException } from '../../../domain/exceptions/woocommerce-order-processing.exception';
+import { WooCommerceOrderCreateAmbiguousException } from '../../../domain/exceptions/woocommerce-order-create-ambiguous.exception';
 import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
 import { WooCommerceInvalidIdentifierException } from '../../../domain/exceptions/woocommerce-invalid-identifier.exception';
 import { toPositiveInt } from '../../utils/woocommerce-utils';
@@ -86,6 +113,7 @@ import {
   type WooCommerceShippingMethod,
 } from './woocommerce-options.types';
 import { mapToFulfillmentStatusSnapshot } from './woocommerce-fulfillment-status.mapper';
+import { WOOCOMMERCE_VAT_META_KEY_ALLOWLIST } from '../woocommerce-order-source.adapter';
 
 // ─── Module-level pure helpers ────────────────────────────────────────────────
 // Pure functions with no dependency on adapter state — independently testable.
@@ -97,6 +125,14 @@ import { mapToFulfillmentStatusSnapshot } from './woocommerce-fulfillment-status
 export function isValidEmail(value: unknown): value is string {
   return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
+
+/**
+ * WC's built-in "Flat rate" shipping method — the pre-#3471 hardcoded
+ * default, retained as the fallback `method_id` when no carrier mapping
+ * resolves one (#3471). Also one of `listCarriers()`'s returned values, so
+ * the fallback is always a real, valid WC method.
+ */
+const DEFAULT_SHIPPING_METHOD_ID = 'flat_rate';
 
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +153,11 @@ export class WooCommerceOrderProcessorAdapter
     private readonly customerProvisioner: WooCommerceCustomerProvisioner,
     private readonly addressProvisioner: WooCommerceAddressProvisioner,
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
+    // Optional (#3471): resolves the operator-configured carrier mapping for
+    // the shipping line. Absent in the static/unit-test construction path
+    // (`createWooCommercePlugin()` with no deps) — carrier resolution then
+    // falls back to the pre-#3471 hardcoded default.
+    private readonly mappingConfigService?: IMappingConfigService,
   ) {}
 
   // ─── OrderProcessorManagerPort ────────────────────────────────────────────
@@ -125,6 +166,21 @@ export class WooCommerceOrderProcessorAdapter
     this.logger.debug(
       `createOrder: status=${order.status} items=${order.items.length} (connection: ${this.connection.id})`,
     );
+
+    // Step 0 — refuse an order that carries no currency, before any WC write
+    // (#3470, mirrors PrestashopOrderProcessorManagerAdapter's Step 0). With
+    // no `currency` on the payload WC stamps the store's own default
+    // currency, so a EUR/CZK order would otherwise book under the wrong
+    // denomination with the same numerals.
+    const currencyCode = (order.totals.currency ?? '').trim();
+    if (currencyCode === '') {
+      throw new WooCommerceOrderProcessingException(
+        `Order ${order.orderNumber || '(no reference)'}: no currency — the source order ` +
+          `carries no ISO 4217 code, so its WooCommerce currency cannot be set. No order ` +
+          `was created.`,
+        this.connection.id,
+      );
+    }
 
     // Step 1 — extract and validate buyer email from order metadata.
     // OrderSyncService populates metadata.buyerEmail from the source order's
@@ -158,11 +214,13 @@ export class WooCommerceOrderProcessorAdapter
       await this.provisionAddresses(order, order.customerId, customerId);
     }
 
-    // Step 3 — resolve line items (throws on any unresolvable or corrupted mapping)
-    const lineItems = await this.resolveLineItems(order.items);
+    // Step 3 — resolve line items (throws on any unresolvable or corrupted
+    // mapping, or on a gross-priced line with no resolvable tax rate — #3470).
+    const lineItems = await this.resolveLineItems(order);
 
-    // Step 4 — build shipping lines
-    const shippingLines = this.buildShippingLines(order);
+    // Step 4 — build shipping lines, resolving the operator's carrier mapping
+    // (#3471) — mirrors PrestaShop's resolveExternalCarrierId.
+    const shippingLines = await this.buildShippingLines(order);
 
     // Step 5 — build WC order payload.
     // _ol_order_id is a forensic/recovery marker only — NOT a dedup guard. WC REST
@@ -174,11 +232,16 @@ export class WooCommerceOrderProcessorAdapter
     // lost after a successful POST.
     const internalOrderId = order.metadata?.internalOrderId;
 
-    // Gate set_paid: only mark paid for fulfilled/in-progress states. A pending,
-    // cancelled, or refunded order must not be flipped to paid (WC's set_paid:true
-    // forces the order into a paid state and stamps date_paid regardless of status).
-    const markPaid =
-      order.status !== 'pending' && order.status !== 'cancelled' && order.status !== 'refunded';
+    // Gate set_paid on the source's own payment-status statement, never on
+    // `order.status` (#2600 / #3471): a cash-on-delivery order settled by the
+    // buyer on receipt is not paid yet just because it reached `processing`,
+    // and WC's `set_paid: true` forces the order into a paid state and stamps
+    // `date_paid` — the shop's books would show it as settled prematurely.
+    // Absent `paymentStatus` (source doesn't report it) also does not mark
+    // paid — the conservative direction when the fact is unknown.
+    const markPaid = order.paymentStatus === PAYMENT_STATUS.Paid;
+
+    const metaData = this.buildOrderMetaData(order, internalOrderId);
 
     const payload: WooCommerceOrderCreateRequest = {
       status: WC_ORDER_STATUS_MAP[order.status],
@@ -192,30 +255,57 @@ export class WooCommerceOrderProcessorAdapter
       ...(shippingLines.length > 0 ? { shipping_lines: shippingLines } : {}),
       payment_method: 'other',
       payment_method_title: 'External',
+      currency: currencyCode,
       ...(markPaid ? { set_paid: true } : {}),
-      ...(typeof internalOrderId === 'string' && internalOrderId.length > 0
-        ? { meta_data: [{ key: '_ol_order_id', value: internalOrderId }] }
-        : {}),
+      ...(metaData.length > 0 ? { meta_data: metaData } : {}),
     };
 
     // Step 6 — create WC order; return WC-native id as orderId (#877 B2).
     // Identifier-mapping (OL idempotency) and order-mapping writes are owned by
     // OrderSyncService — not the adapter's concern.
+    //
+    // Non-idempotent by construction (#3469): the underlying `post` defaults
+    // to no ambiguous-failure retry, so a lost 5xx/network response here
+    // surfaces once rather than risking a duplicate WC order.
     const raw = await this.httpClient.post<WooCommerceOrderResponse>(
       '/wp-json/wc/v3/orders',
       payload,
     );
 
     if (raw.id === undefined) {
-      throw new WooCommerceResourceNotFoundException(
-        `WooCommerce returned order without ID`,
-        CORE_ENTITY_TYPE.Order,
-        `(${payload.status})`,
-        this.connection.id,
-      );
+      // The create may still have succeeded — the response body simply
+      // lacked `id` — so this must never be retried blindly (#3469): a
+      // retry could book the order a second time. The registered
+      // WooCommerceRetryClassifierAdapter marks this exception non-retryable.
+      throw new WooCommerceOrderCreateAmbiguousException(this.connection.id);
     }
 
+    this.warnOnTotalMismatch(order, raw);
+
     return { orderId: String(raw.id), orderNumber: raw.number };
+  }
+
+  /**
+   * Compares the WC-booked `total` against the buyer-paid `order.totals.total`
+   * and warns (never throws — the order already exists) on drift beyond a
+   * cent of rounding slack (#3470). Read-back only; WC's own `total` is
+   * authoritative for what was actually booked.
+   */
+  private warnOnTotalMismatch(order: OrderCreate, raw: WooCommerceOrderResponse): void {
+    if (raw.total === undefined) {
+      return;
+    }
+    const bookedTotal = Number.parseFloat(raw.total);
+    if (!Number.isFinite(bookedTotal)) {
+      return;
+    }
+    if (Math.abs(bookedTotal - order.totals.total) > 0.01) {
+      this.logger.warn(
+        `WooCommerce order ${String(raw.id)} total mismatch: booked=${bookedTotal} ` +
+          `${order.totals.currency}, expected=${order.totals.total} ${order.totals.currency} ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
   }
 
   // ─── OrderFulfillmentUpdater ──────────────────────────────────────────────
@@ -270,8 +360,15 @@ export class WooCommerceOrderProcessorAdapter
    * onto WooCommerce's order status and PUTs it via `PUT /orders/{id}`.
    *
    * Never throws — the outcome is reported via `OrderWritebackResult`:
-   * - `dispatched` → set WC status `completed` (delegates to `updateFulfillment`,
-   *   the same neutral-`shipped` → WC-`completed` mapping). `applied`.
+   * - `dispatched` → refuse (`rejected`) if WC has already reached a terminal
+   *   fulfilled state (`cancelled` / `refunded`) — mirrors the `cancelled`
+   *   arm's own terminal-state guard, so a delayed relay can never resurrect
+   *   a closed order (#3471). Otherwise set WC status `completed` (delegates
+   *   to `updateFulfillment`, the same neutral-`shipped` → WC-`completed`
+   *   mapping; skipped when already `completed`). `applied` — unless the
+   *   event carried a tracking number, which WC core cannot store: `unsupported`
+   *   instead, so the #1947 late-waybill relay marker is not burned on a
+   *   waybill the shop never actually received.
    * - `cancelled`  → refuse (`rejected`) if WC has already reached a terminal
    *   fulfilled state (`completed` / `refunded`) — the shop is authoritative for
    *   its own live state, so we surface the conflict rather than force a
@@ -289,11 +386,45 @@ export class WooCommerceOrderProcessorAdapter
 
       switch (event.type) {
         case 'dispatched': {
-          await this.updateFulfillment({
-            externalOrderId: event.externalOrderId,
-            status: 'shipped',
-            trackingNumber: event.trackingNumber,
-          });
+          // Read the shop's current status first (#3471 — mirrors the
+          // 'cancelled' branch below): a dispatch relay reaching an order the
+          // shop already closed as cancelled/refunded must not resurrect it
+          // by forcing 'completed' on top.
+          const order = await this.httpClient.get<WooCommerceOrderResponse>(
+            `/wp-json/wc/v3/orders/${event.externalOrderId}`,
+          );
+          const currentStatus = order.status;
+
+          if (currentStatus === 'cancelled' || currentStatus === 'refunded') {
+            this.logger.warn(
+              `WooCommerce order ${event.externalOrderId} already in terminal state ` +
+                `'${currentStatus}' — refusing dispatch writeback (connection: ${this.connection.id})`,
+            );
+            return { outcome: 'rejected', detail: `order already ${currentStatus}` };
+          }
+
+          if (currentStatus !== 'completed') {
+            await this.updateFulfillment({
+              externalOrderId: event.externalOrderId,
+              status: 'shipped',
+              trackingNumber: event.trackingNumber,
+            });
+          }
+
+          if (event.trackingNumber) {
+            // WC core has no order-level tracking field (see
+            // updateFulfillment) — the status write applied (or was already
+            // a no-op at 'completed'), but the waybill itself was never
+            // stored. Reporting plain 'applied' here would let the #1947
+            // late-waybill relay burn its one-time marker on a tracking
+            // number the shop never actually received.
+            return {
+              outcome: 'unsupported',
+              detail:
+                'status applied, but WooCommerce core has no tracking field — the tracking number was not stored',
+            };
+          }
+
           return { outcome: 'applied' };
         }
 
@@ -503,10 +634,27 @@ export class WooCommerceOrderProcessorAdapter
    *
    * N+1 trade-off: calls getExternalIds once per item (product + optionally variant).
    * IdentifierMappingPort has no batch-read method today; acceptable for MVP.
+   *
+   * **Tax treatment (#3470).** WooCommerce REST stores `line_items.subtotal` /
+   * `.total` tax-EXCLUSIVE and computes tax on top from the store's own tax
+   * rules. `order.items[].price` is the buyer-paid amount, which per ADR-014
+   * is GROSS whenever `order.totals.taxTreatment` is `'inclusive'` or unset
+   * (the marketplace default — mirrors
+   * `PrestashopOrderProcessorManagerAdapter.resolveLinePins`). Converting it
+   * with the line's own `taxRate` (ADR-063) is what keeps the WC-computed
+   * gross equal to what the buyer actually paid; skipping this let WC add its
+   * own VAT on top of an already-gross price, over-charging the order. A line
+   * needing conversion with no resolvable rate throws rather than silently
+   * mis-pricing (the ADR-014 `createOrder` invariant) — a wrong order is
+   * worse than none, and none has been created yet.
    */
   private async resolveLineItems(
-    items: OrderItem[],
+    order: OrderCreate,
   ): Promise<WooCommerceLineItemRequest[]> {
+    const items = order.items;
+    // `exclusive` → already net, pin as-is. Everything else (`inclusive`/unset)
+    // → gross, convert to net. Mirrors PrestaShop's `convertGrossToNet`.
+    const convertGrossToNet = order.totals.taxTreatment !== 'exclusive';
     const lineItems: WooCommerceLineItemRequest[] = [];
 
     for (const item of items) {
@@ -579,7 +727,11 @@ export class WooCommerceOrderProcessorAdapter
 
       // Pin buyer-paid price via subtotal/total. WC REST line_items.price is read-only
       // (reflects catalog price); subtotal/total carry the actual buyer-paid amounts.
-      const lineSubtotal = (item.price * item.quantity).toFixed(2);
+      const grossLineAmount = item.price * item.quantity;
+      const netLineAmount = convertGrossToNet
+        ? grossLineAmount / (1 + this.resolveLineTaxFraction(item))
+        : grossLineAmount;
+      const lineSubtotal = netLineAmount.toFixed(2);
       const lineTotal = lineSubtotal;
 
       lineItems.push({
@@ -602,16 +754,144 @@ export class WooCommerceOrderProcessorAdapter
     return lineItems;
   }
 
-  /** Builds WC shipping lines from order totals. Returns empty array when shipping cost is 0. */
-  private buildShippingLines(order: OrderCreate): WooCommerceShippingLineRequest[] {
+  /**
+   * Read a line's ADR-063 percent-as-string tax-rate code (`'23'`, `'0'`,
+   * `'zw'`, …) as a fraction for gross→net conversion (#3470).
+   *
+   * `taxRate === undefined` means the rate was never established (never an
+   * absence of tax) — throws rather than guessing, mirroring
+   * `PrestashopTaxRateUnknownException`'s "fail loudly" precedent (ADR-014 /
+   * #2052): pinning `net = gross` there is what let WooCommerce add its own
+   * VAT on top and book an order costing more than the buyer paid.
+   *
+   * A non-numeric exemption code (`'zw'` / `'np'` / `'oo'`) is a real 0% rate,
+   * not an absence — `taxRatePercentToFraction` returns `null` for it, which
+   * this resolves to `0`.
+   */
+  private resolveLineTaxFraction(item: OrderItem): number {
+    if (item.taxRate === undefined) {
+      throw new WooCommerceOrderProcessingException(
+        `Cannot create WC order: line ${item.sku ?? item.productId} carries no tax rate and ` +
+          `the order is priced gross — converting to the tax-exclusive amount WooCommerce ` +
+          `REST expects would require guessing the rate. No order was created.`,
+        this.connection.id,
+      );
+    }
+    return taxRatePercentToFraction(item.taxRate) ?? 0;
+  }
+
+  /**
+   * Builds WC shipping lines from order totals. Returns empty array when
+   * shipping cost is 0.
+   *
+   * Resolves the destination `method_id` from the operator's carrier mapping
+   * (#3471, mirrors `PrestashopOrderProcessorManagerAdapter.resolveExternalCarrierId`),
+   * keyed on the **source** connection + `order.shipping.methodId` — the same
+   * scoping convention `resolveCarrierMapping` uses everywhere else. Falls
+   * back to the pre-#3471 hardcoded `flat_rate` when no mapping is
+   * configured, no `mappingConfigService` was wired (the static/unit-test
+   * construction path), or the source carries no `shipping.methodId` at all —
+   * `listCarriers()` still advertises `flat_rate` as one of its returned
+   * values, so an unmapped method degrades to a real, valid WC method rather
+   * than a silently-wrong one.
+   *
+   * **Tax treatment (#3470 IMPORTANT-2 review).** Shipping is gross-priced
+   * exactly like the item lines whenever `taxTreatment` is `'inclusive'`/
+   * unset, and WC REST stores `shipping_lines.total` tax-exclusive too — so
+   * sending the gross shipping figure let WC add its own VAT on top of it,
+   * the same bug #3470 fixed for items. A basket can carry more than one tax
+   * rate, so the gross shipping charge is split across the rates present —
+   * proportional to each rate's share of gross line value — via the shared
+   * `splitShippingAcrossRates` (`@openlinker/core/sales-documents`, ADR-063
+   * § 5; this is pure division, never tax computation). Each part is then
+   * converted to net with its OWN rate, mirroring `resolveLineTaxFraction`
+   * rather than inventing a blended heuristic. A line carrying no tax rate
+   * makes the basket's rate mix unresolvable, so the split — and therefore
+   * the whole order — refuses, exactly like an unresolvable item line.
+   *
+   * One WC shipping line is emitted PER RATE PART rather than one blended
+   * total: `shipping_lines` is already an array, WC exposes no per-line tax
+   * OVERRIDE via REST anyway (`total_tax` is recomputed from the store's own
+   * tax settings), so a single blended figure would misrepresent a
+   * mixed-rate charge as a single-rate one with no way to say otherwise. The
+   * ordinary single-rate case (the overwhelming majority of orders) is
+   * unaffected — `splitShippingAcrossRates` returns exactly one part and
+   * this still emits exactly one shipping line.
+   */
+  private async buildShippingLines(order: OrderCreate): Promise<WooCommerceShippingLineRequest[]> {
     if (!order.totals.shipping || order.totals.shipping <= 0) return [];
-    return [
-      {
-        method_id: 'flat_rate',
-        method_title: order.shipping?.methodName ?? 'Shipping',
-        total: order.totals.shipping.toFixed(2),
-      },
-    ];
+
+    const methodId = await this.resolveShippingMethodId(order);
+    const methodTitle = order.shipping?.methodName ?? 'Shipping';
+
+    // `exclusive` → shipping is already net, pin as-is (mirrors resolveLineItems).
+    if (order.totals.taxTreatment === 'exclusive') {
+      return [
+        {
+          method_id: methodId,
+          method_title: methodTitle,
+          total: order.totals.shipping.toFixed(2),
+        },
+      ];
+    }
+
+    const splitLines: ShippingSplitLine[] = order.items.map((item) => ({
+      taxRate: item.taxRate ?? null,
+      gross: item.price * item.quantity,
+    }));
+    const parts = splitShippingAcrossRates(
+      order.totals.shipping,
+      splitLines,
+      minorUnitExponentFor(order.totals.currency),
+    );
+    if (parts === null) {
+      throw new WooCommerceOrderProcessingException(
+        `Cannot create WC order: shipping is gross-priced but the basket's tax-rate mix is ` +
+          `unresolvable (at least one line carries no tax rate), so the shipping charge cannot ` +
+          `be proportionally split into the tax-exclusive amounts WooCommerce REST expects. ` +
+          `No order was created.`,
+        this.connection.id,
+      );
+    }
+
+    return parts.map((part) => {
+      const fraction = taxRatePercentToFraction(part.taxRate) ?? 0;
+      const net = part.amount / (1 + fraction);
+      return {
+        method_id: methodId,
+        // Only decorated with the rate when the basket actually split into
+        // more than one part — the single-rate case keeps the plain title
+        // every existing order (and test) already expects.
+        method_title: parts.length > 1 ? `${methodTitle} (${part.taxRate}%)` : methodTitle,
+        total: net.toFixed(2),
+      };
+    });
+  }
+
+  private async resolveShippingMethodId(order: OrderCreate): Promise<string> {
+    const sourceConnectionId = order.source?.connectionId;
+    const methodId = order.shipping?.methodId;
+
+    if (this.mappingConfigService && sourceConnectionId && methodId) {
+      const mapped = await this.mappingConfigService.resolveCarrierMapping(
+        sourceConnectionId,
+        methodId,
+      );
+      if (mapped && mapped.trim().length > 0) {
+        this.logger.debug(
+          `Resolved carrier mapping: methodId=${methodId} → WC method_id=${mapped} ` +
+            `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id})`,
+        );
+        return mapped;
+      }
+    }
+
+    this.logger.debug(
+      `No carrier mapping for methodId=${methodId ?? '<none>'} (sourceConnectionId=` +
+        `${sourceConnectionId ?? '<none>'}, destinationConnectionId=${this.connection.id}) — ` +
+        `falling back to WC's default 'flat_rate' method.`,
+    );
+    return DEFAULT_SHIPPING_METHOD_ID;
   }
 
   /**
@@ -620,6 +900,20 @@ export class WooCommerceOrderProcessorAdapter
    * type-checks address properties as strings and rejects the whole request
    * with `rest_invalid_param: shipping[company] is not of type string` when a
    * source platform (e.g. Allegro) carries `null` for an optional field.
+   *
+   * `address.taxId` (the buyer's tax id, #2599) is NOT mapped HERE — WC core's
+   * `WooCommerceOrderAddress`/billing/shipping schema has no native tax-id
+   * field at all, so there is nowhere on the address object to put it.
+   * Decided (#3471 item 5): it is written as order-level `meta_data` instead,
+   * under the FIRST key of `WOOCOMMERCE_VAT_META_KEY_ALLOWLIST` — the same
+   * list `WooCommerceOrderSourceAdapter` already reads on INGESTION (#2822).
+   * Writing under that key (rather than inventing a new one) is what lets an
+   * order OL creates round-trip its tax id on the next read of the same shop.
+   * See `buildOrderMetaData`, which resolves the value via the shared
+   * `readBuyerTaxId` (billing-first, #2599) and omits the entry entirely
+   * when the order asserts no tax id (absent or explicitly `null`) — there
+   * is nothing to write in either case, and an omitted entry is honest about
+   * that, unlike writing an empty string.
    */
   private mapAddress(address: Address | undefined): WooCommerceOrderAddress | undefined {
     if (!address) return undefined;
@@ -638,5 +932,30 @@ export class WooCommerceOrderProcessorAdapter
     assign('country', address.country);
     assign('phone', address.phone);
     return mapped;
+  }
+
+  /**
+   * Builds the order-level `meta_data` array for `createOrder`'s payload
+   * (#3471 item 5): the `_ol_order_id` forensic marker (unchanged), plus the
+   * buyer's tax id under the FIRST `WOOCOMMERCE_VAT_META_KEY_ALLOWLIST` key
+   * — `readBuyerTaxId` resolves it billing-first (#2599); an entry is
+   * emitted ONLY for a real asserted string, never for `undefined`
+   * (never asserted) or `null` (asserted to have none) — there is nothing to
+   * write for either, and writing e.g. an empty string would be a false
+   * positive assertion the source never made.
+   */
+  private buildOrderMetaData(
+    order: OrderCreate,
+    internalOrderId: unknown,
+  ): Array<{ key: string; value: string }> {
+    const metaData: Array<{ key: string; value: string }> = [];
+    if (typeof internalOrderId === 'string' && internalOrderId.length > 0) {
+      metaData.push({ key: '_ol_order_id', value: internalOrderId });
+    }
+    const buyerTaxId = readBuyerTaxId(order);
+    if (typeof buyerTaxId === 'string' && buyerTaxId.length > 0) {
+      metaData.push({ key: WOOCOMMERCE_VAT_META_KEY_ALLOWLIST[0], value: buyerTaxId });
+    }
+    return metaData;
   }
 }
