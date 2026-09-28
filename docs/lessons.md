@@ -53,6 +53,39 @@ where the tip branch is also the working branch.
 
 ---
 
+## Shared UI primitives take `tone`, not `variant` - `tsc -b` catches it, a fast visual skim does not
+
+**Context**: building the order-notes panel (#3531/#3533), copying an
+`order-hold-panel.tsx`-style `<Button tone="secondary">` usage from memory
+rather than re-reading the component.
+
+**Problem**: `Button` (`apps/web/src/shared/ui/button.tsx`) exposes
+`ButtonProps.tone: ButtonTone`, not `variant` - a prop name common enough in
+other component libraries that writing `<Button variant="ghost">` compiles
+under a loose editor but fails `tsc -b` with a real type error (an unknown
+prop, since `ButtonHTMLAttributes` has no `variant`). The same session also
+mis-guessed `TimeDisplay`'s `value` prop (it is `iso`) and rendered
+`<ReadOnlyLock message="...">`, standalone, as if it were a lock icon with a
+tooltip - it is a WRAPPER (`{ active, message, children }`) that always
+renders its children and dims them only when `active`, the
+`order-hold-panel.tsx` precedent for how a demo-read-only affordance stays
+visible-but-locked rather than disappearing.
+
+**Rule**: before reusing a shared `shared/ui/*` primitive by name-recall,
+open the file and read its prop interface - do not infer it from a sibling
+component's *usage* site, which shows only the props that call site happened
+to set. `pnpm type-check` (never `tsc --noEmit` on a hand-picked file) is
+what actually catches a wrong prop name; a subjective "looks right" pass over
+JSX does not, because a misnamed prop on an untyped-looking spread often
+renders as if it worked and simply drops the value.
+
+**Applies to**: any new component consuming `apps/web/src/shared/ui/*`
+primitives, especially `Button`, `TimeDisplay`, `ReadOnlyLock`.
+
+**Source**: #3507 (Pilot G03 - orders list search/notes/tags/export), 2026-09-28.
+
+---
+
 ## A test fixture that contradicts the call under test passes until a guard is added
 
 **Context**: ADR-074 gained a rule that a parcel cannot be made exclusive
