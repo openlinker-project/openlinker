@@ -125,17 +125,26 @@ function resolution(
 }
 
 /**
+ * A `getAdapter` answer carrying just the `config` the dispatch path reads. Cast
+ * because the real return type carries a full `Connection` plus adapter
+ * metadata, and none of it is consulted here - the opt-in read touches
+ * `connection.config` and nothing else.
+ */
+function connectionWithConfig(
+  config: Record<string, unknown>
+): Awaited<ReturnType<IIntegrationsService['getAdapter']>> {
+  return { connection: { id: 'conn-1', config } } as unknown as Awaited<
+    ReturnType<IIntegrationsService['getAdapter']>
+  >;
+}
+
+/**
  * A connection that HAS opted into notifying the marketplace when a label is
  * bought (#3365 review). The default mock deliberately does not, because that is
  * what every existing install looks like.
  */
-function optedInConnection(): { connection: { id: string; config: Record<string, unknown> } } {
-  return {
-    connection: {
-      id: 'conn-1',
-      config: { shipping: { notifyMarketplaceOnLabelPurchase: true } },
-    },
-  };
+function optedInConnection(): Awaited<ReturnType<IIntegrationsService['getAdapter']>> {
+  return connectionWithConfig({ shipping: { notifyMarketplaceOnLabelPurchase: true } });
 }
 
 describe('ShipmentDispatchService', () => {
@@ -185,7 +194,7 @@ describe('ShipmentDispatchService', () => {
       // #3365 review: the notification is opt-in, so the DEFAULT connection here
       // carries no `config.shipping.notifyMarketplaceOnLabelPurchase` - which is
       // what every existing install looks like.
-      getAdapter: jest.fn().mockResolvedValue({ connection: { id: 'conn-1', config: {} } }),
+      getAdapter: jest.fn().mockResolvedValue(connectionWithConfig({})),
       getCapabilityAdapter: jest.fn().mockResolvedValue(adapter),
       resolveAdapterMetadata: jest.fn(),
       listCapabilityAdapters: jest.fn(),
