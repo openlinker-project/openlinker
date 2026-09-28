@@ -62,7 +62,8 @@ import type {
   OrderLifecycleEvent,
   OrderWritebackResult,
 } from '@openlinker/core/orders';
-import { describeNetPricedOrderRefusal } from '@openlinker/core/sales-documents';
+import { describeNetPricedOrderRefusal, minorUnitExponentFor } from '@openlinker/core/sales-documents';
+import { distributeOrderDiscount } from '@openlinker/core/orders';
 import type { OrderFulfillmentUpdater, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -234,7 +235,55 @@ export class SubiektOrderProcessorAdapter
         nazwa: 'Dostawa',
       });
     }
-    return lines;
+    return this.applyOrderDiscount(lines, order);
+  }
+
+  /**
+   * Record what the buyer actually paid, when the source discounted the ORDER
+   * rather than its lines (#3365 audit).
+   *
+   * Allegro moves `summary.totalToPay` and leaves every line price untouched,
+   * so OpenLinker infers `discountTotal` as the residual - and this adapter
+   * ignored it entirely (`discountTotal` had zero occurrences in the whole
+   * package). The ZK was therefore written at the UNDISCOUNTED sum: a coupon
+   * sale recorded in the ERP for more money than changed hands, with the order
+   * reading `synced` and the document looking normal.
+   *
+   * The two sibling destinations already diverged here - the invoicing mapper
+   * REFUSES such an order and names the cause, and the PrestaShop processor at
+   * least warns. A commercial order document is the third case: it should
+   * record the sale, at the amount that changed hands, which is exactly what
+   * Subiekt's `WartoscBruttoPrzedRabatem` / `WartoscBruttoPoRabacie` pair is
+   * for. The bridge was writing the same number into both.
+   *
+   * `distributeOrderDiscount` refuses rather than guesses - no discount, a
+   * discount at least as large as the order, a non-positive line sum - and a
+   * refusal returns the lines as listed, which is the pre-#3365 behaviour. A
+   * refusal on a real discount is warned about rather than passed over
+   * silently, because that is the case where the ZK is about to be wrong.
+   */
+  private applyOrderDiscount(lines: BridgeOrderLine[], order: OrderCreate): BridgeOrderLine[] {
+    const discountTotal = order.totals.discountTotal;
+    if (discountTotal === undefined || discountTotal <= 0) return lines;
+
+    const split = distributeOrderDiscount(
+      lines.map((line) => line.wartoscBrutto),
+      discountTotal,
+      minorUnitExponentFor(order.totals.currency),
+    );
+    if (split === null) {
+      this.logger.warn(
+        `subiekt_order_discount_not_distributable orderNumber=${order.orderNumber ?? 'none'} ` +
+          `discountTotal=${discountTotal} lineSum=${lines.reduce((s, l) => s + l.wartoscBrutto, 0)} ` +
+          `connection=${this.connectionId} — the ZK records the lines as listed, which is MORE ` +
+          `than the buyer paid.`,
+      );
+      return lines;
+    }
+    return lines.map((line, index) => ({
+      ...line,
+      wartoscBruttoPoRabacie: split[index]!.grossTotalAfterDiscount,
+    }));
   }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {

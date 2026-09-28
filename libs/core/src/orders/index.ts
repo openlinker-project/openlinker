@@ -458,3 +458,4 @@ export { OrderChangesModule } from './order-changes.module';
 export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
+export * from './domain/types/order-discount-split.types';

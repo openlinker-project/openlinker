@@ -218,6 +218,43 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const MODEL_PAGE_SIZE = 200;
 const MODEL_PAGE_CAP = 20_000;
 
+
+/**
+ * The GROSS sale price, or nothing (#3365 audit).
+ *
+ * This used to read `cenaSprzedazyBrutto ?? cenaSprzedazyNetto`. Both values
+ * come from the same `tw_Cena` row, so a missing row loses both together - but
+ * a row PRESENT with `tc_CenaBrutto{n}` NULL and the netto column set silently
+ * published the NET figure as the buyer-facing gross. On a 23% item that is an
+ * 18.7% underprice, with nothing thrown, nothing logged, and no way for an
+ * operator to tell it apart from a correct price.
+ *
+ * Everything downstream treats this number as gross end to end (ADR-014, and
+ * the bridge's own writer sends gross), so the net value is not a degraded
+ * answer to the same question - it is an answer to a different one.
+ *
+ * Absent is therefore the honest result. A variant with no price is refused by
+ * the publish path with a named `NON_POSITIVE` error the operator can act on,
+ * which is strictly better than a plausible wrong number.
+ */
+function grossSalePrice(
+  row: { cenaSprzedazyBrutto?: number | null; cenaSprzedazyNetto?: number | null } | undefined,
+  logger: LoggerPort,
+  symbol: string,
+): number | undefined {
+  const gross = row?.cenaSprzedazyBrutto;
+  if (gross !== null && gross !== undefined) return gross;
+  if (row?.cenaSprzedazyNetto !== null && row?.cenaSprzedazyNetto !== undefined) {
+    logger.warn(
+      `subiekt_price_net_only symbol=${symbol} netto=${row.cenaSprzedazyNetto} — the configured ` +
+        `price level carries a net price and no gross one, so no price is published for this ` +
+        `towar. Publishing the net figure would understate it by the VAT rate. Fill the gross ` +
+        `column on that price level in Subiekt.`,
+    );
+  }
+  return undefined;
+}
+
 export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger: LoggerPort;
   private readonly baseUrl: string;
@@ -449,7 +486,7 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
         attributes: { Wariant: deriveVariantLabel(model.modelNazwa, member.nazwa) },
         ean: member.kodKreskowy,
         gtin: member.kodKreskowy,
-        price: member.cenaSprzedazyBrutto ?? member.cenaSprzedazyNetto ?? undefined,
+        price: grossSalePrice(member, this.logger, member.symbol),
       });
     }
     return variants;
@@ -507,7 +544,7 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
         attributes: null,
         ean: bridgeProduct.kodKreskowy,
         gtin: bridgeProduct.kodKreskowy,
-        price: bridgeProduct.cenaSprzedazyBrutto ?? bridgeProduct.cenaSprzedazyNetto ?? undefined,
+        price: grossSalePrice(bridgeProduct, this.logger, bridgeProduct.symbol),
       },
     ];
   }
@@ -902,7 +939,7 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
       id: internalId,
       name: model.modelNazwa,
       sku: `MODEL-${model.modelId}`,
-      price: head?.cenaSprzedazyBrutto ?? head?.cenaSprzedazyNetto ?? null,
+      price: grossSalePrice(head, this.logger, head?.symbol ?? '(unknown)') ?? null,
       description: head?.opis ?? null,
       images: images.length > 0 ? images : null,
       currency: head?.waluta ?? null,
@@ -915,7 +952,7 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
       id: internalId,
       name: bridgeProduct.nazwa,
       sku: bridgeProduct.symbol,
-      price: bridgeProduct.cenaSprzedazyBrutto ?? bridgeProduct.cenaSprzedazyNetto ?? null,
+      price: grossSalePrice(bridgeProduct, this.logger, bridgeProduct.symbol) ?? null,
       description: bridgeProduct.opis,
       // Served by the bridge itself from Subiekt's own `tw_ZdjecieTw` blobs.
       // OPENLINKER DOES NOT FETCH THESE. This comment used to claim it

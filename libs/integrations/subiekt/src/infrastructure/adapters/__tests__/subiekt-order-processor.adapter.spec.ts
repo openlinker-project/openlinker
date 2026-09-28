@@ -497,3 +497,132 @@ describe('SubiektOrderProcessorAdapter', () => {
     });
   });
 });
+
+/**
+ * An order-level discount reaching the ZK (#3365 audit).
+ *
+ * Allegro moves `summary.totalToPay` and leaves every line price untouched, so
+ * OpenLinker infers `discountTotal` as the residual - and this adapter ignored
+ * it entirely. The ZK was written at the UNDISCOUNTED sum: a coupon sale
+ * recorded in the ERP for more money than changed hands, with the order reading
+ * `synced` and the document looking normal.
+ */
+describe('SubiektOrderProcessorAdapter — an order-level discount', () => {
+  interface SentLine {
+    wartoscBrutto: number;
+    wartoscBruttoPoRabacie?: number;
+  }
+
+  async function sendOrder(
+    totals: OrderCreate['totals'],
+    items: OrderCreate['items'],
+    logger = noopLogger,
+  ): Promise<SentLine[]> {
+    let captured: { lines: SentLine[] } | undefined;
+    const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
+      captured = JSON.parse(init!.body as string) as { lines: SentLine[] };
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ success: true, data: { id: 9, numer: 'ZK 9/2026' }, error: null }),
+          { status: 200 },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl });
+    const identifierMapping = new InMemoryIdentifierMappingAdapter();
+    for (const item of items) {
+      identifierMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: `SYM-${item.productId}`,
+        connectionId: CONNECTION_ID,
+        internalId: item.productId,
+      });
+    }
+    const adapter = new SubiektOrderProcessorAdapter(
+      client,
+      identifierMapping,
+      CONNECTION_ID,
+      logger,
+    );
+    await adapter.createOrder({
+      status: 'pending',
+      items,
+      totals,
+      billingAddress: {
+        address1: 'Testowa 1',
+        city: 'Warszawa',
+        postalCode: '00-001',
+        country: 'PL',
+        firstName: 'Jan',
+        lastName: 'Kowalski',
+      },
+    } as OrderCreate);
+    return captured!.lines;
+  }
+
+  it('bills each line at what the buyer paid, summing to the order total', async () => {
+    const lines = await sendOrder(
+      {
+        subtotal: 150,
+        tax: 0,
+        shipping: 0,
+        total: 130,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+        discountTotal: 20,
+      },
+      [
+        { id: 'l1', productId: 'ol_product_1', quantity: 1, price: 100, unitPriceGross: 100 },
+        { id: 'l2', productId: 'ol_product_2', quantity: 1, price: 50, unitPriceGross: 50 },
+      ] as OrderCreate['items'],
+    );
+
+    const paid = lines.reduce(
+      (sum, line) => sum + (line.wartoscBruttoPoRabacie ?? line.wartoscBrutto),
+      0,
+    );
+    expect(Math.round(paid * 100)).toBe(Math.round(130 * 100));
+    // The listed amounts survive untouched - Subiekt records both halves.
+    expect(lines.map((l) => l.wartoscBrutto)).toEqual([100, 50]);
+  });
+
+  // No discount must be byte-identical to the pre-#3365 request: the field is
+  // absent, and the bridge writes one number into both Subiekt amounts.
+  it('sends no after-discount amount when the order carries no discount', async () => {
+    const lines = await sendOrder(
+      { subtotal: 200, tax: 0, shipping: 0, total: 200, currency: 'PLN', taxTreatment: 'inclusive' },
+      [
+        { id: 'l1', productId: 'ol_product_1', quantity: 2, price: 100, unitPriceGross: 100 },
+      ] as OrderCreate['items'],
+    );
+    expect(lines[0]!.wartoscBruttoPoRabacie).toBeUndefined();
+    expect(lines[0]!.wartoscBrutto).toBe(200);
+  });
+
+  // A discount the split refuses - here as large as the whole order - bills the
+  // lines as listed, the pre-existing behaviour, and says so, because that is
+  // the case where the ZK is about to be wrong.
+  it('warns rather than passing over an undistributable discount', async () => {
+    const logger = { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() };
+    const lines = await sendOrder(
+      {
+        subtotal: 100,
+        tax: 0,
+        shipping: 0,
+        total: 0,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+        discountTotal: 100,
+      },
+      [
+        { id: 'l1', productId: 'ol_product_1', quantity: 1, price: 100, unitPriceGross: 100 },
+      ] as OrderCreate['items'],
+      logger,
+    );
+    expect(lines[0]!.wartoscBruttoPoRabacie).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('subiekt_order_discount_not_distributable'),
+    );
+  });
+});

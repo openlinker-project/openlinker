@@ -28,6 +28,18 @@ export interface BridgeOrderLine {
   ilosc: number;
   /** Buyer-paid gross total for this line (ADR-014 — never the catalogue price). */
   wartoscBrutto: number;
+  /**
+   * What the buyer actually paid for this line once an ORDER-LEVEL discount is
+   * applied (#3365 audit). Absent means no discount: the bridge bills
+   * `wartoscBrutto` and writes it to both Subiekt amounts, exactly as before.
+   *
+   * Subiekt records a discount as the PAIR `WartoscBruttoPrzedRabatem` /
+   * `WartoscBruttoPoRabacie`, and the bridge was setting both to the same
+   * number - so an Allegro coupon, which reduces the order total without
+   * touching any line price, wrote a ZK for MORE than the buyer paid with
+   * nothing anywhere saying so.
+   */
+  wartoscBruttoPoRabacie?: number;
   /** Display name for a symbol-less service line — ignored when `symbol` is set. */
   nazwa?: string;
 }
