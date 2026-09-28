@@ -936,3 +936,40 @@ export interface OrderLifecyclePhaseSummary {
   blocked: number;
   ready: number;
 }
+
+/**
+ * An internal order note (#3531). `editedAt` is the "edited" marker (D33);
+ * `showToPacker` is decision D12's pack-bench visibility flag.
+ */
+export interface OrderNote {
+  id: string;
+  internalOrderId: string;
+  authorUserId: string;
+  /** Frozen at creation (#2282) — never a live lookup, so it survives a deleted author account. */
+  authorUsername: string;
+  body: string;
+  showToPacker: boolean;
+  editedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrderNoteRequest {
+  body: string;
+  showToPacker?: boolean;
+}
+
+export interface UpdateOrderNoteRequest {
+  body?: string;
+  showToPacker?: boolean;
+}
+
+/** One order tag (#3532, D34). */
+export interface OrderTag {
+  id: string;
+  name: string;
+  color: string;
+  orderCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
