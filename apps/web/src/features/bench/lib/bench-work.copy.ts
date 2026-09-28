@@ -180,12 +180,14 @@ export const benchWorkCopy = {
     body: 'OpenLinker is not sending packing work here, so nothing will appear however long you keep this screen open. Nothing is broken at the bench, and this is not the same as having nothing to pack.',
     remedyTitle: 'What to do about it',
     /**
-     * Names the remedy, per story B3. It points at the settings page that
-     * assigns who carries work out, because that is the fact that is missing —
-     * creating a stock location is a different setup step and would not make a
-     * parcel arrive here.
+     * Names the remedy, per story B3. It points at the guided packing setup
+     * (#3457), which makes every write that lets a parcel arrive here — the
+     * packing connection, the warehouse, the stock location and the switch
+     * itself. Pointing at one of those settings alone would not make work
+     * reach the bench.
      */
-    remedyBody: 'Show this screen to your supervisor. Someone with an administrator account turns on packing in OpenLinker under Settings, on the page that says who decides what. Until then, orders keep going wherever they went before.',
+    remedyBody: 'Show this screen to your supervisor. Someone with an administrator account turns on packing in OpenLinker under Settings › Pack orders in OpenLinker. Until then, orders keep going wherever they went before.',
+    remedyLink: 'Open packing setup',
   },
   scan: {
     /**

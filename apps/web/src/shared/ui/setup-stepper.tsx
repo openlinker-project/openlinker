@@ -4,14 +4,33 @@
  * Horizontal step indicator for multi-step setup wizards. On mobile (< 768 px)
  * it collapses to a "Step N of M" label with progress dots so the full step
  * list does not crowd narrow viewports.
+ *
+ * ## Navigation is opt-in (#3457)
+ *
+ * Passing `onSelectStep` turns each step into a `<button>` an operator can go
+ * back to; steps past `maxReachedStep` render disabled, because a wizard must
+ * not let an operator skip a step it has not shown them. Without
+ * `onSelectStep` the markup is exactly what it was, so the display-only
+ * consumers are unaffected. `testId` names the stepper and its parts
+ * (`{testId}-step-{n}`, `{testId}-button-{n}`, 1-based) for E2E specs that
+ * address a step by number.
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 export interface SetupStepperProps {
   steps: readonly string[];
   currentStep: number; // 0-based
   completedSteps?: ReadonlySet<number>;
   className?: string;
+  /** Makes the steps clickable. Receives the 0-based index. */
+  onSelectStep?: (index: number) => void;
+  /** 0-based. With `onSelectStep`, steps after this one are disabled. Defaults to `currentStep`. */
+  maxReachedStep?: number;
+  testId?: string;
+}
+
+function testIdFor(testId: string | undefined, part: string): string | undefined {
+  return testId === undefined ? undefined : `${testId}-${part}`;
 }
 
 export function SetupStepper({
@@ -19,11 +38,17 @@ export function SetupStepper({
   currentStep,
   completedSteps = new Set(),
   className,
+  onSelectStep,
+  maxReachedStep,
+  testId,
 }: SetupStepperProps): ReactElement {
+  const reached = maxReachedStep ?? currentStep;
+
   return (
     <nav
       aria-label="Setup progress"
       className={['setup-stepper', className].filter(Boolean).join(' ')}
+      data-testid={testId}
     >
       {/* Desktop / tablet: full step list */}
       <ol className="setup-stepper__list" aria-hidden="false">
@@ -38,12 +63,8 @@ export function SetupStepper({
                 ? 'done'
                 : 'upcoming';
 
-          return (
-            <li
-              key={label}
-              className={`setup-stepper__step setup-stepper__step--${modifier}`}
-              aria-current={isCurrent ? 'step' : undefined}
-            >
+          const content: ReactNode = (
+            <>
               <span className="setup-stepper__indicator" aria-hidden="true">
                 {modifier === 'done' ? (
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
@@ -60,6 +81,30 @@ export function SetupStepper({
                 )}
               </span>
               <span className="setup-stepper__label">{label}</span>
+            </>
+          );
+
+          return (
+            <li
+              key={label}
+              className={`setup-stepper__step setup-stepper__step--${modifier}`}
+              aria-current={isCurrent && onSelectStep === undefined ? 'step' : undefined}
+              data-testid={testIdFor(testId, `step-${index + 1}`)}
+            >
+              {onSelectStep === undefined ? (
+                content
+              ) : (
+                <button
+                  type="button"
+                  className="setup-stepper__button"
+                  disabled={index > reached}
+                  aria-current={isCurrent ? 'step' : undefined}
+                  data-testid={testIdFor(testId, `button-${index + 1}`)}
+                  onClick={() => onSelectStep(index)}
+                >
+                  {content}
+                </button>
+              )}
               {index < steps.length - 1 && (
                 <span className="setup-stepper__connector" aria-hidden="true" />
               )}

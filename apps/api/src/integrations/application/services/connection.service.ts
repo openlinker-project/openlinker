@@ -77,6 +77,15 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
  */
 export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
 
+/**
+ * Machine-readable code for the #2407 refusal to enable routing with no active
+ * inventory location (#3457). Same shape and same reason as
+ * `STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE`: the OMS onboarding wizard maps
+ * this 400 to an inline remedy and must not match on the message. Mirrored in
+ * `apps/web/src/features/oms-onboarding/lib/routing-requires-location-error.ts`.
+ */
+export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE = 'ROUTING_REQUIRES_ACTIVE_LOCATION';
+
 @Injectable()
 export class ConnectionService implements IConnectionService {
   private readonly logger = new Logger(ConnectionService.name);
@@ -160,11 +169,14 @@ export class ConnectionService implements IConnectionService {
     }
 
     if ((await this.locations.countActiveLocations()) === 0) {
-      throw new BadRequestException(
-        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+      throw new BadRequestException({
+        statusCode: 400,
+        error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+        message:
+          'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
           "Create one first — the connection's routing readiness panel offers a default, " +
-          'or POST /inventory/locations.'
-      );
+          'or POST /inventory/locations.',
+      });
     }
   }
 
