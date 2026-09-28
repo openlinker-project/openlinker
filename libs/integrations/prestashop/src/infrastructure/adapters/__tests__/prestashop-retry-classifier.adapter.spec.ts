@@ -10,6 +10,7 @@ import { PrestashopInvalidFilterException } from '../../../domain/exceptions/pre
 import { PrestashopApiException } from '../../../domain/exceptions/prestashop-api.exception';
 import { PrestashopOlModuleException } from '../../../domain/exceptions/prestashop-ol-module.exception';
 import { PrestashopAuthenticationException } from '../../../domain/exceptions/prestashop-authentication.exception';
+import { PrestashopAmbiguousWriteException } from '../../../domain/exceptions/prestashop-ambiguous-write.exception';
 
 describe('PrestashopRetryClassifierAdapter', () => {
   const classifier = new PrestashopRetryClassifierAdapter();
@@ -159,6 +160,28 @@ describe('PrestashopRetryClassifierAdapter', () => {
       expect(classifier.getRetryDeferral(new PrestashopApiException('no status'))).toBeNull();
       expect(classifier.getRetryDeferral(new Error('boom'))).toBeNull();
       expect(classifier.getRetryDeferral(undefined)).toBeNull();
+    });
+  });
+
+  describe('PrestashopAmbiguousWriteException (#3469 IMPORTANT-1 review)', () => {
+    it('should classify an ambiguous 5xx write as non-retryable', () => {
+      expect(
+        classifier.isNonRetryable(
+          new PrestashopAmbiguousWriteException('ambiguous', 'POST', 'customers', 500)
+        )
+      ).toBe(true);
+    });
+
+    it('should classify an ambiguous network-error write (no statusCode) as non-retryable', () => {
+      expect(
+        classifier.isNonRetryable(
+          new PrestashopAmbiguousWriteException('network error', 'POST', 'importorder')
+        )
+      ).toBe(true);
+    });
+
+    it('should leave a plain 5xx PrestashopApiException (an idempotent GET/PUT) retryable', () => {
+      expect(classifier.isNonRetryable(new PrestashopApiException('transient', 500))).toBe(false);
     });
   });
 });

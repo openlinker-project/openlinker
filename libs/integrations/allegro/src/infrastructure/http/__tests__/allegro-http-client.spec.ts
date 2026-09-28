@@ -19,6 +19,7 @@ import {
   AllegroAuthenticationException,
   AllegroNetworkException,
   AllegroRateLimitException,
+  AllegroAmbiguousWriteException,
 } from '@openlinker/integrations-allegro';
 
 // Mock fetch globally
@@ -874,18 +875,32 @@ describe('AllegroHttpClient', () => {
         text: () => Promise.resolve('Internal Server Error'),
       });
 
-      await expect(client.post('/sale/product-offers', { id: 'offer-1' })).rejects.toThrow(
-        AllegroApiException,
-      );
+      const error = await client
+        .post('/sale/product-offers', { id: 'offer-1' })
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      // #3469 IMPORTANT-1 review: raised as the distinguishable
+      // AllegroAmbiguousWriteException (a subclass of AllegroApiException,
+      // so every existing `instanceof AllegroApiException` consumer still
+      // matches it) — AllegroRetryClassifierAdapter keys on this type so a
+      // job-level retry does not re-send the same POST.
+      expect(error).toBeInstanceOf(AllegroApiException);
+      expect(error).toBeInstanceOf(AllegroAmbiguousWriteException);
+      expect(error).toMatchObject({ method: 'POST', path: '/sale/product-offers', statusCode: 500 });
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
     it('should NOT retry a network error on POST (exactly one request)', async () => {
       (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNRESET'));
 
-      await expect(client.post('/sale/product-offers', { id: 'offer-1' })).rejects.toThrow(
-        AllegroApiException,
-      );
+      const error = await client
+        .post('/sale/product-offers', { id: 'offer-1' })
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(AllegroAmbiguousWriteException);
+      expect((error as AllegroAmbiguousWriteException).statusCode).toBeUndefined();
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 

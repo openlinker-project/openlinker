@@ -23,6 +23,7 @@ import type {
 } from './allegro-http-client.interface';
 import type { AllegroConnectionTokenState } from './allegro-connection-token-state';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
+import { AllegroAmbiguousWriteException } from '../../domain/exceptions/allegro-ambiguous-write.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
 import { AllegroNetworkException } from '../../domain/exceptions/allegro-network.exception';
 import { AllegroRateLimitException } from '../../domain/exceptions/allegro-rate-limit.exception';
@@ -269,8 +270,26 @@ export class AllegroHttpClient implements IAllegroHttpClient {
           // `POST /sale/product-offers`) mints a duplicate; the caller must
           // opt in via `idempotent: true` (#3469). 429 is handled above and
           // is unaffected — Allegro did not process that request at all.
+          //
+          // Raised as AllegroAmbiguousWriteException, not the bare error
+          // (#3469 IMPORTANT-1 review): gating the retry HERE stops this
+          // client from re-sending the request, but the failure still
+          // propagates out of whatever job called it, and SyncJobRunner
+          // retries a job-level failure by default. A plain
+          // AllegroApiException reads as an ordinary retryable transport
+          // failure to AllegroRetryClassifierAdapter, so the runner would
+          // re-run the whole job and the same non-idempotent POST would go
+          // out again — the duplicate this exists to stop, one layer up.
           if (!isRetryableAttempt(method, options)) {
-            throw error;
+            throw new AllegroAmbiguousWriteException(
+              error.message,
+              method,
+              path,
+              error.statusCode,
+              error.responseBody,
+              error.url,
+              error.allegroErrors,
+            );
           }
         }
 

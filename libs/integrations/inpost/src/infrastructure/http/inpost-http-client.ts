@@ -28,6 +28,7 @@ import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import type { ShipXErrorBody } from '../../domain/types/inpost-shipx.types';
 import { InpostUnauthorizedException } from '../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostNetworkException } from '../../domain/exceptions/inpost-network.exception';
+import { InpostAmbiguousWriteException } from '../../domain/exceptions/inpost-ambiguous-write.exception';
 import type {
   IInpostHttpClient,
   InpostBinaryResponse,
@@ -184,7 +185,15 @@ export class InpostHttpClient implements IInpostHttpClient {
       if (isRetryableAttempt(options)) {
         throw new RetryableHttpError(message);
       }
-      throw new InpostNetworkException(message, error);
+      // Raised as InpostAmbiguousWriteException, not the bare
+      // InpostNetworkException (#3469 IMPORTANT-1 review): this client
+      // refusing to retry only stops IT from re-sending the request — the
+      // failure still propagates out of whatever job called it, and
+      // SyncJobRunner retries a job-level failure by default when no
+      // registered classifier says otherwise. InPost registered none, so an
+      // ambiguous generateLabel failure used to be retried at the job level
+      // and minted a second paid label — the duplicate #3469 exists to stop.
+      throw new InpostAmbiguousWriteException(message, options.method, options.path, undefined, error);
     } finally {
       clearTimeout(timeout);
     }
@@ -218,7 +227,11 @@ export class InpostHttpClient implements IInpostHttpClient {
       if (isRetryableAttempt(options)) {
         throw new RetryableHttpError(message, response.status);
       }
-      throw new InpostNetworkException(message);
+      // See the generateLabel-path comment above (#3469 IMPORTANT-1 review) —
+      // InpostAmbiguousWriteException, not InpostNetworkException, so a
+      // registered classifier can keep the job from retrying and re-sending
+      // this same non-idempotent POST.
+      throw new InpostAmbiguousWriteException(message, options.method, options.path, response.status);
     }
     const flatDetails = flattenShipXFieldErrors(errorBody?.details);
     // ShipX's `details` map is the primary classifier (it names the offending
