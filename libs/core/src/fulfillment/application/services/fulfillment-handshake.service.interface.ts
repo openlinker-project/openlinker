@@ -29,6 +29,12 @@ export interface IFulfillmentHandshakeService {
    *
    * The holder may refuse — that is a normal outcome, not an error, and is why
    * `cancellation_rejected` exists on the negotiation axis.
+   *
+   * Never reaches the executor at all when the EXECUTION axis has already
+   * moved past the cancellable point (#2738) — answers `not-cancellable`
+   * instead, because a holder with no independent will to refuse with (the
+   * OL-OMS executor) would otherwise honestly answer `accepted` for work that
+   * is already picked, packed or shipped.
    */
   requestCancellation(
     input: RequestFulfillmentCancellationInput
