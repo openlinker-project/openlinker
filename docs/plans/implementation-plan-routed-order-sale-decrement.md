@@ -32,7 +32,7 @@ marketplace right away. Today nothing lowers it, so the last unit oversells.
   reconcile pass reading the frontier this table already makes queryable (a
   routed, non-cancelled `FulfillmentWork` with no decrement row for one of its
   lines) is the #2712/#2728 shape: frontier-as-query, no cursor, its own lock,
-  `bulk` lane, global scope. Tracked as a follow-up; must land before this is
+  `bulk` lane, global scope. Tracked as #3629; must land before this is
   load-bearing on a pilot install, since the failure mode of an unenqueued
   decrement is the exact defect this slice exists to fix.
 
