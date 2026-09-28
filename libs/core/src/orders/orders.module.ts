@@ -30,6 +30,17 @@ import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/ref
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import { OrderCancellationSignalRepository } from './infrastructure/persistence/repositories/order-cancellation-signal.repository';
 import { OrderCancellationSignalOrmEntity } from './infrastructure/persistence/entities/order-cancellation-signal.orm-entity';
+import { OrderColumnPresetRepository } from './infrastructure/persistence/repositories/order-column-preset.repository';
+import { OrderColumnPresetOrmEntity } from './infrastructure/persistence/entities/order-column-preset.orm-entity';
+import { OrderColumnPresetService } from './application/services/order-column-preset.service';
+import { OrderNoteRepository } from './infrastructure/persistence/repositories/order-note.repository';
+import { OrderNoteOrmEntity } from './infrastructure/persistence/entities/order-note.orm-entity';
+import { OrderNoteRevisionOrmEntity } from './infrastructure/persistence/entities/order-note-revision.orm-entity';
+import { OrderNoteService } from './application/services/order-note.service';
+import { OrderTagRepository } from './infrastructure/persistence/repositories/order-tag.repository';
+import { OrderTagOrmEntity } from './infrastructure/persistence/entities/order-tag.orm-entity';
+import { OrderTagAssignmentOrmEntity } from './infrastructure/persistence/entities/order-tag-assignment.orm-entity';
+import { OrderTagService } from './application/services/order-tag.service';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
@@ -56,6 +67,12 @@ import {
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
+  ORDER_COLUMN_PRESET_REPOSITORY_TOKEN,
+  ORDER_COLUMN_PRESET_SERVICE_TOKEN,
+  ORDER_NOTE_REPOSITORY_TOKEN,
+  ORDER_NOTE_SERVICE_TOKEN,
+  ORDER_TAG_REPOSITORY_TOKEN,
+  ORDER_TAG_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -93,6 +110,11 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       RefundRecordOrmEntity,
       OrderLineItemOrmEntity,
       OrderCancellationSignalOrmEntity,
+      OrderColumnPresetOrmEntity,
+      OrderNoteOrmEntity,
+      OrderNoteRevisionOrmEntity,
+      OrderTagOrmEntity,
+      OrderTagAssignmentOrmEntity,
     ]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
@@ -157,6 +179,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     TaxCoverageDetectionService,
     DisplayCurrencyConversionService,
     OrderCancellationSignalRepository,
+    OrderColumnPresetRepository,
+    OrderColumnPresetService,
+    OrderNoteRepository,
+    OrderNoteService,
+    OrderTagRepository,
+    OrderTagService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -246,6 +274,30 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
       useExisting: DisplayCurrencyConversionService,
     },
+    {
+      provide: ORDER_COLUMN_PRESET_REPOSITORY_TOKEN,
+      useExisting: OrderColumnPresetRepository,
+    },
+    {
+      provide: ORDER_COLUMN_PRESET_SERVICE_TOKEN,
+      useExisting: OrderColumnPresetService,
+    },
+    {
+      provide: ORDER_NOTE_REPOSITORY_TOKEN,
+      useExisting: OrderNoteRepository,
+    },
+    {
+      provide: ORDER_NOTE_SERVICE_TOKEN,
+      useExisting: OrderNoteService,
+    },
+    {
+      provide: ORDER_TAG_REPOSITORY_TOKEN,
+      useExisting: OrderTagRepository,
+    },
+    {
+      provide: ORDER_TAG_SERVICE_TOKEN,
+      useExisting: OrderTagService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -285,6 +337,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
+    // Exported so the API's orders controller can inject the column-preset
+    // seam (#3530).
+    ORDER_COLUMN_PRESET_SERVICE_TOKEN,
+    // Exported so the API's orders controller AND the bench API module can
+    // inject the note seam (#3531) — the bench reads packer-visible notes.
+    ORDER_NOTE_SERVICE_TOKEN,
+    // Exported so the API's orders controller can inject the tag seam (#3532).
+    ORDER_TAG_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
