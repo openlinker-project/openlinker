@@ -52,7 +52,7 @@ Open **Settings → Document routing**. Under the heading **What each market
 issues** sits one list — a row per country you have configured, plus every
 country that has had recent order activity.
 
-![Document routing settings: a summary line, four filter chips with counts (All markets, Recent orders, Configured no recent orders, Needs a decision), seven highlighted rows reading "Nothing issued" with a short reason and a Configure button, a plain PL row reading "Fiscal receipt", the country search with its Add a market button, and a ★ Rest of world row with its own Configure action](./images/04b-sales-documents-market-list.png)
+![Document routing settings: a summary line, four filter chips with counts (All markets, Recent orders, Configured no recent orders, Needs a decision), eight highlighted rows reading "Nothing issued" with a short reason and a Configure button, a plain PL row reading "Invoice", the country search with its Add a market button, and a ★ Rest of world row with its own Configure action](./images/04b-sales-documents-market-list.png)
 
 - The **summary line** above the list says how many markets currently issue
   nothing, and states plainly that nothing is lost while they are unconfigured.
