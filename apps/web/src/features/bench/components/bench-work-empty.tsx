@@ -16,6 +16,7 @@
  * @module apps/web/src/features/bench/components
  */
 import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
 import { benchWorkCopy } from '../lib/bench-work.copy';
@@ -48,7 +49,15 @@ export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElem
     <div className="bench-work-empty" data-testid="bench-work-empty-not-routed">
       <h2 className="bench-work-empty__title">{benchWorkCopy.emptyNotRouted.title}</h2>
       <p className="bench-work-empty__body">{benchWorkCopy.emptyNotRouted.body}</p>
-      <Alert tone="warning" title={benchWorkCopy.emptyNotRouted.remedyTitle}>
+      <Alert
+        tone="warning"
+        title={benchWorkCopy.emptyNotRouted.remedyTitle}
+        action={
+          <Link className="button button--secondary button--sm" to="/settings/packing" data-testid="link-packing-setup">
+            {benchWorkCopy.emptyNotRouted.remedyLink}
+          </Link>
+        }
+      >
         {benchWorkCopy.emptyNotRouted.remedyBody}
       </Alert>
     </div>

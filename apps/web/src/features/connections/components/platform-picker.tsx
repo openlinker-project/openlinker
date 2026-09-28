@@ -14,7 +14,7 @@ import { captureDemoEvent } from '../../demo';
 export function PlatformPicker(): ReactElement {
   const plugins = usePlatforms();
   const cards = plugins
-    .filter((p) => p.setupCard !== undefined)
+    .filter((p) => p.setupCard !== undefined && p.hideFromCreateConnection !== true)
     .map((p) => ({ platformType: p.platformType, ...p.setupCard! }));
 
   return (
