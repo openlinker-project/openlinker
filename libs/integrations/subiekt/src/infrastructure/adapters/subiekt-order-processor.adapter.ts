@@ -318,32 +318,47 @@ export class SubiektOrderProcessorAdapter
       );
     }
 
-    // THE IDEMPOTENCY KEY, and it must not be empty.
+    // THE IDEMPOTENCY KEY, and it must be globally unique.
     //
     // The bridge uses `orderRef` for two things: it serializes the whole
     // check-then-create sequence on it, and it looks for an already-created ZK
-    // by it. Its own comment records what an empty one costs - "an empty
-    // OrderRef has no natural key to serialize on and runs unlocked" - so an
-    // empty key means an UNLOCKED, UNDEDUPED create. OpenLinker gives up on a
-    // create at 30s while the bridge's COM call can run to 120s and commit
-    // afterwards, so a retry on such an order writes a SECOND sales order for
-    // one sale.
+    // by it - an exact match on `dok_NrPelnyOryg` with no scoping of any kind.
     //
-    // This used to be `order.orderNumber ?? ''`, and `orderNumber` is optional:
-    // Erli's order source never sets it (zero occurrences in the package), so
-    // every Erli order reaching a Subiekt destination took that path.
-    // `internalOrderId` is always present, and it is the FALLBACK rather than
-    // the primary because `orderRef` is stamped onto `dok_NrPelnyOryg`, which
-    // an operator reads - the source's own number is the better thing to show
-    // them, and an OL id is strictly better than the blank they saw before.
+    // It used to be the SOURCE's own order number, which is unique only within
+    // ONE shop. Those are per-shop sequential on PrestaShop, WooCommerce and
+    // Subiekt itself; only Allegro is immune, its number being a checkout-form
+    // UUID. So a PrestaShop order 1001 and a WooCommerce order 1001 landing on
+    // one Subiekt collided: the second found the first's ZK, got it back, and
+    // OpenLinker recorded the sync as SUCCESSFUL while that sale was never
+    // written. Worse than a failure, because a failure is visible.
+    //
+    // `internalOrderId` is unique by construction and always present, so it is
+    // the key now. The source's number is not lost - it leads `uwagi`, which
+    // Subiekt shows on the document - and this additionally REPAIRS the
+    // bridge's own `FindZkIdByOrderRef` fallback, which
+    // `subiekt-invoicing.adapter.ts` records as searching `dok_NrPelnyOryg` for
+    // exactly this id and never matching.
+    //
+    // `legacyOrderRef` carries what a pre-upgrade OpenLinker would have sent,
+    // so an order whose create was mid-retry across the deploy is still found
+    // rather than duplicated. The bridge probes it only after the real key
+    // misses AND only accepts a hit whose gross total matches, because that
+    // value is the colliding one - see the block in `OrdersEndpoints.cs` for
+    // why, and for when both halves can be deleted.
     //
     // Neither present is refused rather than written. A create with no key is
     // the one failure no retry can recover from safely, and a caller that
-    // reached here without one has a defect this cannot paper over.
-    const orderRef = order.orderNumber ?? order.internalOrderId ?? '';
+    // reached here without one has a defect this cannot paper over. Erli's
+    // order source sets no `orderNumber` at all, which is how an empty key used
+    // to reach the bridge and run unlocked there.
+    const orderRef = order.internalOrderId ?? order.orderNumber ?? '';
     if (orderRef === '') {
       throw new SubiektOrderKeyMissingException();
     }
+    const legacyOrderRef =
+      order.orderNumber !== undefined && order.orderNumber !== orderRef
+        ? order.orderNumber
+        : undefined;
 
     let response;
     try {
@@ -351,7 +366,13 @@ export class SubiektOrderProcessorAdapter
         buyer,
         lines,
         orderRef,
-        uwagi: order.orderNumber ? `OpenLinker order ${order.orderNumber}` : undefined,
+        ...(legacyOrderRef !== undefined ? { legacyOrderRef } : {}),
+        // What an operator reads on the document, now that the key itself is an
+        // internal id. The source's number LEADS it rather than trailing an
+        // explanation, because that is the value they are looking for.
+        uwagi: order.orderNumber
+          ? `${order.orderNumber} (OpenLinker ${orderRef})`
+          : `OpenLinker ${orderRef}`,
         // The line amounts below are the buyer-paid figures in the SOURCE's
         // currency (ADR-014). Sending it keeps the ZK denominated in what the
         // buyer actually paid instead of Subiekt's default.

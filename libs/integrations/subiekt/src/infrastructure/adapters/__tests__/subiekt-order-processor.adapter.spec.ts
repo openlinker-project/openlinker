@@ -636,14 +636,14 @@ describe('SubiektOrderProcessorAdapter — an order-level discount', () => {
   });
 
   // The bridge serializes its check-then-create on `orderRef` AND looks up an
-  // already-created ZK by it, and its own comment records that "an empty
-  // OrderRef has no natural key to serialize on and runs unlocked". So an
-  // empty key is an unlocked, undeduped create - and because OpenLinker gives
-  // up at 30s while the bridge's COM call can run to 120s and commit after,
-  // the retry that follows writes a SECOND sales order for one sale.
+  // already-created ZK by it - an exact match on `dok_NrPelnyOryg` with no
+  // scoping of any kind. So the key has to be GLOBALLY unique, and it has to
+  // exist.
   //
-  // This used to be `order.orderNumber ?? ''`, and Erli's order source sets no
-  // `orderNumber` at all, so every Erli order reaching Subiekt took that path.
+  // It used to be the source's own order number, which is unique only within
+  // one shop, and before that it fell back to `''` when the source reported
+  // none at all. Erli sets no `orderNumber` anywhere in its package, so both
+  // failures were reachable from a shipped marketplace.
   describe('the order key the bridge dedupes on (#3365)', () => {
     function keylessAdapterOrder(overrides: Partial<OrderCreate>): OrderCreate {
       return {
@@ -687,23 +687,45 @@ describe('SubiektOrderProcessorAdapter — an order-level discount', () => {
       );
     }
 
-    it('falls back to the internal order id when the source reported no order number', async () => {
+    it('keys on the INTERNAL order id even when the source reported a number', async () => {
+      // A source order number is per-shop sequential everywhere but Allegro, so
+      // two shops' order 1001 reaching one Subiekt made the second sale receive
+      // the first one's ZK - and OpenLinker recorded that as a success.
+      const capture: { body?: unknown } = {};
+      await build(capture).createOrder(
+        keylessAdapterOrder({ orderNumber: '1001', internalOrderId: 'ol_order_abc123' }),
+      );
+      expect(capture.body).toMatchObject({ orderRef: 'ol_order_abc123' });
+    });
+
+    it('carries the source number as the legacy key, for a create mid-retry across the deploy', async () => {
+      const capture: { body?: unknown } = {};
+      await build(capture).createOrder(
+        keylessAdapterOrder({ orderNumber: '1001', internalOrderId: 'ol_order_abc123' }),
+      );
+      expect(capture.body).toMatchObject({ legacyOrderRef: '1001' });
+    });
+
+    it('omits the legacy key when there is no separate source number to probe', async () => {
+      // Sending one equal to `orderRef` would make the bridge run its verified
+      // probe against the key it just missed on - work that cannot succeed.
       const capture: { body?: unknown } = {};
       await build(capture).createOrder(
         keylessAdapterOrder({ internalOrderId: 'ol_order_abc123' }),
       );
       expect(capture.body).toMatchObject({ orderRef: 'ol_order_abc123' });
+      expect(capture.body as Record<string, unknown>).not.toHaveProperty('legacyOrderRef');
     });
 
-    it('prefers the source order number, which is what an operator reads', async () => {
-      // `orderRef` is stamped onto `dok_NrPelnyOryg`. The internal id is the
-      // fallback, never the primary - it is strictly better than the blank the
-      // operator saw before, and strictly worse than the real number.
+    it('shows the operator their own order number, since the key no longer does', async () => {
+      // `dok_NrPelnyOryg` now holds an internal id, so the source's number has
+      // to be somewhere an operator looks - and it LEADS, rather than trailing
+      // an explanation.
       const capture: { body?: unknown } = {};
       await build(capture).createOrder(
-        keylessAdapterOrder({ orderNumber: 'OL-500', internalOrderId: 'ol_order_abc123' }),
+        keylessAdapterOrder({ orderNumber: '1001', internalOrderId: 'ol_order_abc123' }),
       );
-      expect(capture.body).toMatchObject({ orderRef: 'OL-500' });
+      expect((capture.body as { uwagi?: string }).uwagi).toBe('1001 (OpenLinker ol_order_abc123)');
     });
 
     it('REFUSES rather than creating when neither is present', async () => {

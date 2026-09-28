@@ -75,13 +75,30 @@ export interface BridgeCreateOrderRequest {
   buyer: BridgeOrderBuyer;
   lines: BridgeOrderLine[];
   /**
-   * OL's own order id — stamped onto `dok_NrPelnyOryg` (Trim30). #3369: the
-   * bridge now checks this field for an existing ZK BEFORE creating one, so
-   * this is the load-bearing idempotency key for `createOrder`, not merely
-   * defense-in-depth — a retried call with the same `orderRef` returns the
-   * ORIGINAL document rather than minting a second one.
+   * OL's own internal order id — stamped onto `dok_NrPelnyOryg` (Trim30) and
+   * the load-bearing idempotency key for `createOrder`: a retried call with the
+   * same `orderRef` returns the ORIGINAL document rather than minting a second
+   * one (#3369).
+   *
+   * It must be GLOBALLY unique, which is why it is no longer the source's own
+   * order number. Those are per-shop sequential everywhere but Allegro, so two
+   * shops' order 1001 reaching one Subiekt made the second sale silently
+   * receive the first one's ZK. The source number now rides in `uwagi`.
    */
   orderRef: string;
+  /**
+   * What a PRE-UPGRADE OpenLinker would have sent for this same order - its
+   * source order number - so a create that was mid-retry across the deploy is
+   * found rather than duplicated.
+   *
+   * The bridge probes it only after `orderRef` misses, and accepts a hit only
+   * when the gross totals agree, because this value is the per-shop-sequential
+   * one the key moved away from. Omitted when it would equal `orderRef`.
+   *
+   * REMOVABLE with its bridge-side counterpart one release after every
+   * deployment has upgraded.
+   */
+  legacyOrderRef?: string;
   uwagi?: string;
   /**
    * ISO currency the line amounts are denominated in, written to the ZK's

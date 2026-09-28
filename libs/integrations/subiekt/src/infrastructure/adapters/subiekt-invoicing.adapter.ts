@@ -589,12 +589,19 @@ export class SubiektInvoicingAdapter
    * created (`createMapping(Order, orderRef.orderId, destinationConnectionId,
    * internalOrderId)` — and `SubiektOrderProcessorAdapter.createOrder` returns
    * `orderId: String(response.id)`, the ZK's own `dok_Id`). This is a direct
-   * cross-reference, not a string-matching search: it sidesteps the
-   * order-number-vs-order-id mismatch that made `EnsureWarehouseRelease`'s
-   * fallback `FindZkIdByOrderRef(orderId)` lookup never match a natural
-   * order — that lookup searches `dok_NrPelnyOryg` for the OL-internal order
-   * id, but `dok_NrPelnyOryg` is stamped with the marketplace order NUMBER at
-   * create time (`orderRef: order.orderNumber`, `subiekt-order-processor.adapter.ts`).
+   * cross-reference, not a string-matching search.
+   *
+   * It used to additionally sidestep an order-number-vs-order-id mismatch:
+   * `EnsureWarehouseRelease`'s fallback `FindZkIdByOrderRef(orderId)` searches
+   * `dok_NrPelnyOryg` for the OL-internal order id, while `createOrder` stamped
+   * that column with the marketplace order NUMBER, so the fallback could never
+   * match a natural order. **That mismatch is gone** - `createOrder` now sends
+   * `orderRef: order.internalOrderId` (the source number moved to `uwagi`,
+   * because a per-shop-sequential number is not a safe dedupe key across two
+   * shops), so the bridge's fallback finally means what it says.
+   *
+   * This read stays the primary anyway: a direct id cross-reference beats a
+   * string search on a document column whichever value that column holds.
    *
    * Returns `null` (never throws) when the mapping row doesn't exist yet —
    * an order created before this fix shipped, or one whose ZK was mapped
