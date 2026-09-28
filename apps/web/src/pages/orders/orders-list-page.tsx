@@ -76,6 +76,7 @@ import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.sch
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
+import { useOrderTagsQuery } from '../../features/orders/hooks/use-order-tags-query';
 import { SalesDocumentCell } from '../../features/orders/components/sales-document-cell';
 import { TaxRateConflictBadge } from '../../features/orders/components/tax-rate-conflict-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
@@ -86,6 +87,8 @@ import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-c
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
+import { BulkTagPopover } from '../../features/orders/components/bulk-tag-popover';
+import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
@@ -98,6 +101,7 @@ import type {
   SlaStateValue,
   FulfillmentRollupStateValue,
   OrderLifecyclePhaseSummary,
+  OrderTag,
 } from '../../features/orders/api/orders.types';
 import {
   OrderHealthValues,
@@ -114,6 +118,8 @@ import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
 const PAGE_SIZE = 20;
 /** #3529 — same debounce window as `/customers` and `/products`. */
 const SEARCH_DEBOUNCE_MS = 300;
+/** #3532 — the tag-filter `<Select>`'s sentinel for `untagged=true`, so one control can express both axes without colliding with any real tag id. */
+const UNTAGGED_TAG_SELECT_VALUE = '__untagged__';
 
 /**
  * Status segments — partition the order set (#929). The "All" card carries the
@@ -541,6 +547,17 @@ export function OrdersListPage(): ReactElement {
   // tooltip for a demo viewer, per the #1615 precedent.
   const retryWrite = useWriteAccess('orders:write', demoMode);
 
+  // The workspace tag vocabulary (#3532/#3533) — the filter select and the
+  // row tags line both resolve a `tagIds` array against this one map.
+  const tagsQuery = useOrderTagsQuery();
+  const tagById = useMemo(() => {
+    const map = new Map<string, OrderTag>();
+    for (const t of tagsQuery.data ?? []) {
+      map.set(t.id, t);
+    }
+    return map;
+  }, [tagsQuery.data]);
+
   // Channel lookup: connectionId → platformType, cached app-wide via TanStack.
   const connectionsQuery = useConnectionsQuery();
   const platformByConnection = useMemo(() => {
@@ -591,6 +608,9 @@ export function OrdersListPage(): ReactElement {
   const items = query.data?.items ?? [];
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  // D35: admin and operator only — a viewer never sees the Export button.
+  const exportAccess = useWriteAccess('orders:export', demoMode);
 
   // Fire once per successful list load, not on every filter/page refetch —
   // demo-mode analytics only (#1788), no-op elsewhere.
@@ -648,6 +668,9 @@ export function OrdersListPage(): ReactElement {
     (order: OrderRecord): ReactElement => {
       const parsed = parsedFor(order);
       const firstItem = parsed.items[0];
+      const tags = (order.tagIds ?? [])
+        .map((id) => tagById.get(id))
+        .filter((t): t is OrderTag => t !== undefined);
       return (
         <OrderIdentityCell
           orderId={order.internalOrderId}
@@ -656,10 +679,11 @@ export function OrdersListPage(): ReactElement {
           firstItemImageUrl={firstItem?.imageUrl}
           itemCount={parsed.items.length}
           onNavigate={() => captureDemoEvent('demo_order_opened', {})}
+          tags={tags}
         />
       );
     },
-    [parsedFor],
+    [parsedFor, tagById],
   );
 
   // Whether ANY connection exposes a sales-document-issuing capability
@@ -1487,10 +1511,24 @@ export function OrdersListPage(): ReactElement {
       eyebrow={freshness ?? 'Operations'}
       title="Orders"
       actions={
-        <Button tone="ghost" className="button--sm" onClick={refreshAll}>
-          Refresh
-          <span className="button__shortcut">R</span>
-        </Button>
+        <>
+          {exportAccess.canWrite || exportAccess.demoReadOnly ? (
+            <ReadOnlyLock active={exportAccess.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="secondary"
+                className="button--sm"
+                disabled={exportAccess.demoReadOnly}
+                onClick={() => { setExportOpen(true); }}
+              >
+                Export
+              </Button>
+            </ReadOnlyLock>
+          ) : null}
+          <Button tone="ghost" className="button--sm" onClick={refreshAll}>
+            Refresh
+            <span className="button__shortcut">R</span>
+          </Button>
+        </>
       }
     >
       {/* Status segments — partition the set; click to filter by `health`. */}
@@ -1621,6 +1659,40 @@ export function OrdersListPage(): ReactElement {
             {HoldReasonValues.map((value) => (
               <option key={value} value={value}>
                 {HOLD_REASON_COPY[value].label}
+              </option>
+            ))}
+          </Select>
+          {/*
+            #3532 — `tag` and `untagged` are mutually exclusive by convention
+            (the backend never reads them together); a single select over the
+            union of "any", the workspace vocabulary and "No tags" is the whole
+            of that contract, and the server-side filter is what makes the KPI
+            counts, the row count and this select's own choice agree.
+          */}
+          <Select
+            aria-label="Filter by tag"
+            value={untagged ? UNTAGGED_TAG_SELECT_VALUE : (tag ?? '')}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSearchParams((prev) => {
+                const p = new URLSearchParams(prev);
+                p.delete('tag');
+                p.delete('untagged');
+                if (value === UNTAGGED_TAG_SELECT_VALUE) {
+                  p.set('untagged', 'true');
+                } else if (value) {
+                  p.set('tag', value);
+                }
+                p.delete('offset');
+                return p;
+              });
+            }}
+          >
+            <option value="">Any tag</option>
+            <option value={UNTAGGED_TAG_SELECT_VALUE}>No tags</option>
+            {(tagsQuery.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
               </option>
             ))}
           </Select>
@@ -1960,14 +2032,15 @@ export function OrdersListPage(): ReactElement {
                 itemNoun="order"
                 hint={
                   distinctSelectedSources > 1
-                    ? `${distinctSelectedSources} sources · max ${BULK_DISPATCH_MAX_ITEMS} per source`
-                    : `Max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                    ? `${distinctSelectedSources} sources · Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                    : `Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
                 }
                 actions={
                   <>
                     <Button tone="ghost" onClick={clearSelection}>
                       Clear
                     </Button>
+                    <BulkTagPopover selectedOrders={selectedOrders} />
                     <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
                       Dispatch {selectedOrders.length}
                     </Button>
@@ -2294,6 +2367,14 @@ export function OrdersListPage(): ReactElement {
         orders={selectedOrders}
         channelLabelFor={channelLabelForBulk}
         onComplete={clearSelection}
+      />
+
+      <OrderExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        filters={filters}
+        filteredCount={totalStage.total}
+        selectedOrders={selectedOrders}
       />
     </PageLayout>
   );
