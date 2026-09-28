@@ -119,3 +119,65 @@ describe('SubiektOrdersBridgeClient', () => {
     });
   });
 });
+
+/**
+ * A bridge 500 on the ORDER path is the one place a mis-classification costs a
+ * duplicate document (#3365 audit).
+ *
+ * `SubiektRejectedError` passes through `translateBridgeError` unchanged and no
+ * retry classifier recognises it, so it is RETRYABLE - the runner re-POSTs
+ * `createOrder`, and if Subiekt created the ZK before the 500 that is a second
+ * zamowienie and a second kontrahent for one sale. The invoicing, catalogue and
+ * inventory transports all drew this line; this one did not.
+ */
+describe('SubiektOrdersBridgeClient — a server fault wearing the business envelope', () => {
+  function serverError(status: number, reason: string): Response {
+    return {
+      status,
+      ok: false,
+      json: (): Promise<unknown> =>
+        Promise.resolve({ success: false, data: null, error: { code: 'sfera_error', reason } }),
+    } as unknown as Response;
+  }
+
+  it.each([500, 502, 503])('classifies HTTP %s as an indeterminate transport fault', async (status) => {
+    const client = buildClient((() =>
+      Promise.resolve(serverError(status, 'COM session could not attach'))) as FetchLike);
+
+    const error = await client
+      .createOrder({ orderId: 'ol_order_1', lines: [] } as never)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(SubiektBridgeUnreachableWithPhaseError);
+    expect((error as SubiektBridgeUnreachableWithPhaseError).retryability).toBe('indeterminate');
+    // And NOT the business refusal, which is what made it retryable.
+    expect(error).not.toBeInstanceOf(SubiektRejectedError);
+  });
+
+  it('keeps a 4xx a business refusal, and carries the bridge code with it', async () => {
+    const client = buildClient((() =>
+      Promise.resolve(errorResponse(422, 'symbol and nazwa are required'))) as FetchLike);
+
+    const error = await client
+      .createOrder({ orderId: 'ol_order_2', lines: [] } as never)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(SubiektRejectedError);
+    expect((error as SubiektRejectedError).code).toBe('bad_request');
+  });
+
+  // The message an operator reads must not blame the shop for its own bridge
+  // being down. "Subiekt rejected the request: HTTP 500" said exactly that.
+  it('names the bridge rather than Subiekt in the 500 message', async () => {
+    const client = buildClient((() =>
+      Promise.resolve(serverError(500, 'SQL Server unreachable'))) as FetchLike);
+
+    const error = await client
+      .createOrder({ orderId: 'ol_order_3', lines: [] } as never)
+      .catch((e: unknown) => e);
+
+    expect((error as Error).message).toContain('orders bridge answered HTTP 500');
+    expect((error as Error).message).toContain('SQL Server unreachable');
+    expect((error as Error).message).not.toContain('Subiekt rejected the request');
+  });
+});

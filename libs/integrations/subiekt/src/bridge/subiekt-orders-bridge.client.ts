@@ -146,8 +146,33 @@ export class SubiektOrdersBridgeClient {
     }
 
     if (!response.ok || !envelope.success) {
+      if (response.status >= 500) {
+        // A SERVER fault, even when it arrives wearing the business envelope.
+        // The invoicing, catalogue and inventory transports all draw this line;
+        // this one did not, and the consequence is worse here than anywhere
+        // else. `SubiektRejectedError` passes through `translateBridgeError`
+        // unchanged and no retry classifier recognises it, so it is RETRYABLE -
+        // the runner re-POSTs `createOrder`, and if Subiekt created the ZK
+        // before the 500 that is a SECOND zamówienie and a second kontrahent
+        // for one sale. `'indeterminate'` is what routes it to the fiscal-safe
+        // ladder instead, which is the exact guarantee the order processor's
+        // own docblock was written to give for `SubiektBridgeUnreachableError`.
+        //
+        // It also stops the operator being told "Subiekt rejected the request:
+        // HTTP 500" - that sentence blames the shop for its own bridge being
+        // down.
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt orders bridge answered HTTP ${response.status}: ` +
+            `${envelope.error?.reason ?? 'no reason given'}`,
+          'indeterminate',
+        );
+      }
       const reason = envelope.error?.reason ?? `HTTP ${response.status}`;
-      throw new SubiektRejectedError(reason);
+      // The machine-readable code travels with it (#3365): this transport had
+      // already typed `error.code` on the envelope and then dropped it, so no
+      // caller here could tell a not-found from a refusal the way the catalogue
+      // and inventory paths now can.
+      throw new SubiektRejectedError(reason, envelope.error?.code);
     }
 
     if (envelope.data === null) {
