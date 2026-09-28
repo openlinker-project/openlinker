@@ -167,12 +167,25 @@ export class FulfillmentHandshakeService implements IFulfillmentHandshakeService
     // #2738: the guard above reads only the NEGOTIATION axis. `requestStatus`
     // stays `accepted` for the work's whole life once a holder takes it —
     // completion moves the EXECUTION axis instead (ADR-054's whole reason for
-    // having two) — so a cancellation against work already picked, packed or
-    // shipped would otherwise still reach the executor and, for a holder with
-    // no independent will to refuse with (the OL-OMS executor), come back
-    // `accepted`. The guard belongs HERE, before the port is crossed at all,
-    // rather than trusting every present and future executor to refuse
-    // correctly on its own.
+    // having two) — so a cancellation against work whose EXECUTION axis has
+    // already reached a TERMINAL status would otherwise still reach the
+    // executor and, for a holder with no independent will to refuse with
+    // (the OL-OMS executor), come back `accepted`.
+    //
+    // "Past the cancellable point" is implemented as exactly
+    // `isTerminalFulfillmentWorkStatus` — `closed` (packed and handed off) /
+    // `cancelled` / `incomplete` — and nothing wider. The issue's own title
+    // says "already-picked", but `in_progress` (a pick genuinely in flight,
+    // or even fully picked-and-packed-but-not-yet-closed) is DELIBERATELY
+    // NOT terminal and stays cancellable here: `deriveSupportedActions`
+    // already offers `request_cancellation` on exactly `!terminal &&
+    // requestStatus === 'accepted'`, so narrowing this guard to match that
+    // rule (rather than the issue's looser phrase) is what keeps the two
+    // answers from disagreeing about what "still cancellable" means.
+    //
+    // The guard belongs HERE, before the port is crossed at all, rather than
+    // trusting every present and future executor to refuse correctly on its
+    // own.
     if (isTerminalFulfillmentWorkStatus(work.status)) return NOT_CANCELLABLE;
 
     const claimed = await this.repository.transitionRequestStatus({
