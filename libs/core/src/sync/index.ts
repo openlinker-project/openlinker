@@ -145,6 +145,7 @@ export type {
 } from './domain/types/invoicing-job-payloads.types';
 export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { FulfillmentWorkDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { FulfillmentWorkAutoDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRoutePayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkTimeoutSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRelaySweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';

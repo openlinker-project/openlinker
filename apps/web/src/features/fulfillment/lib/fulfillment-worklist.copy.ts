@@ -1,7 +1,16 @@
 /**
- * Fulfilment worklist operator copy (#2410)
+ * Fulfilment filter, paging and lane-label copy (#2410; narrowed by the merge)
  *
- * Every user-visible string the standalone worklist renders.
+ * What survived the worklist page it was written for. The screens merged, so
+ * the fulfilment screen's own page title, loading line, error and
+ * nothing-to-do sentence come from `assign-packing-work.copy.ts`; what is
+ * still read from HERE is the vocabulary that came with the capabilities the
+ * merged screen absorbed - the filter boxes, the pager, the two empty states
+ * only those capabilities can produce, and the lane labels
+ * `fulfillment-lanes.ts` falls back to.
+ *
+ * Keys are deleted here the moment nothing reads them. A copy module is not
+ * an archive: an unread string still reads as vocabulary this product uses.
  *
  * ## Why the PAGE holds no literals of its own
  *
@@ -27,13 +36,6 @@
  */
 
 export const FULFILLMENT_WORKLIST_COPY = {
-  page: {
-    eyebrow: 'Operations',
-    title: 'Fulfilment',
-    description:
-      'The fulfilment tasks waiting to be worked, grouped by where the goods are and how they leave.',
-  },
-
   filter: {
     orderLabel: 'Order',
     orderPlaceholder: 'Filter by order id',
@@ -55,46 +57,11 @@ export const FULFILLMENT_WORKLIST_COPY = {
     pageScopeNote: 'Grouped from the tasks on this page only.',
   },
 
-  row: {
-    taskLabel: 'Fulfilment task',
-    stateLabel: 'State',
-    handshakeLabel: 'Handshake',
-    linesLabel: 'Lines',
-    actionsLabel: 'Actions',
-    /** `3 of 5` — the display-only counters. */
-    lineCount: (fulfilled: number, total: number): string => `${fulfilled} of ${total}`,
-    noLines: 'No lines',
-    /**
-     * The counters are moved by progress ingress without bumping the task's
-     * token (#2400), so they can legitimately be behind. Said once per lane
-     * rather than per row.
-     */
-    countersCaveat:
-      'Picked counts are reported by whoever is working the task and can be a little behind.',
-  },
-
-  loading: {
-    /** Never an empty-state sentence: an unresolved read says nothing yet. */
-    message: 'Loading fulfilment tasks…',
-  },
-
-  error: {
-    title: 'Could not load the fulfilment worklist',
-    message: 'The worklist could not be read just now. Nothing has been changed.',
-    retry: 'Retry',
-  },
-
   empty: {
     /** A filter is narrowing the list and matched nothing. */
     filtered: {
       title: 'No fulfilment tasks match these filters',
       message: 'Nothing on this page matches what you filtered for. Clear the filters to see everything.',
-    },
-    /** Nothing is filtered and there is genuinely nothing to work. */
-    none: {
-      title: 'Nothing to work right now',
-      message:
-        'No fulfilment tasks are waiting. That is normal unless fulfilment routing is switched on.',
     },
     /** Paged past the end — rows exist, this page is simply beyond them. */
     pastEnd: {

@@ -46,7 +46,19 @@ export type JobOutcome = (typeof JOB_OUTCOME_VALUES)[number];
  *   (#1599) — the master-product-sync job's `business_failure` was caused by
  *   this, distinguishing it from any other business failure.
  */
-export const JOB_OUTCOME_REASON_VALUES = ['master_deleted'] as const;
+export const JOB_OUTCOME_REASON_VALUES = [
+  'master_deleted',
+  // Auto-dispatch (#3415) — six settled refusals that used to render as one
+  // undifferentiated "business failure". Mirrors `JobOutcomeReasonValues` in
+  // `@openlinker/core/sync`, which this bundle cannot import (#591).
+  'auto_dispatch_payload_invalid',
+  'auto_dispatch_not_enabled',
+  'auto_dispatch_no_weight',
+  'auto_dispatch_no_address',
+  'auto_dispatch_no_delivery_method',
+  'auto_dispatch_work_not_eligible',
+  'auto_dispatch_shipment_claimed_by_sibling_work',
+] as const;
 export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
 
 export const JOB_TYPE_VALUES = [

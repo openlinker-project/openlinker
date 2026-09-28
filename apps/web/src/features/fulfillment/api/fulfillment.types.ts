@@ -73,7 +73,57 @@ export interface FulfillmentTask {
   orderId: string;
   locationId: string | null;
   deliveryMethod: string | null;
+  /**
+   * The order's own reference, and the facts an operator recognises it by
+   * (#3401). A task carries only internal ids of its own, so without these
+   * the assign board can render nothing but `ol_order_…`.
+   *
+   * `buyerName` is MASKED server-side ("A. Kowalska") — a deliberate,
+   * bounded reversal of ADR-062's exclusion for THIS board only, because a
+   * supervisor deciding who packs a box has to recognise the order.
+   *
+   * All four are `null` when the order or the location row is not there, and
+   * `undefined` against an API that predates them.
+   */
+  orderReference?: string | null;
+  /**
+   * MASKED server-side ("A. Kowalska"). The field name carries that, so no
+   * reader can mistake it for the buyer's own name. `null` under
+   * `OL_STORE_PII=false`, where the persisted address is redacted and there
+   * genuinely is no name - an ordinary answer, not a failure.
+   */
+  buyerNameMasked?: string | null;
+  dispatchByAt?: string | null;
+  carrierName?: string | null;
+  /**
+   * `null` FAR more often than it looks: `inventory_items.locationId IS NULL`
+   * means the master declines to locate its stock (ADR-058 decision 2), and
+   * neither shipped `InventoryMasterPort` adapter can report a location. So
+   * expect no location at all unless the operator set a per-connection
+   * `stockLocationOverride` (#3206).
+   */
+  locationName?: string | null;
   assignedConnectionId: string | null;
+  /**
+   * A supervisor's advisory pre-assignment to a specific PACKER (#3340,
+   * ADR-074) — a distinct axis from `assignedConnectionId`, which is the
+   * HOLDER connection (the executor). `null` = unassigned.
+   */
+  assignedToUserId: string | null;
+  /**
+   * When the task most recently BECAME unassigned (#3424). `null` on an
+   * ASSIGNED row means "assigned right now" — render nothing. `null` on an
+   * UNASSIGNED row means the row predates this column: an UNKNOWN age, not
+   * a zero one — render nothing rather than "0m". Optional against an API
+   * that predates it, the `orderReference` precedent above.
+   */
+  unassignedSince?: string | null;
+  /**
+   * Whether a packer other than `assignedToUserId` may still claim this
+   * task. `true` is the advisory default; server-side enforcement of
+   * `false` lives at the pack bench, not here.
+   */
+  selfServeEligible: boolean;
   /**
    * The orchestration status. **Not the authority on heldness** — nothing
    * writes `on_hold`, so a held task reads `open` with a non-empty
@@ -139,4 +189,27 @@ export interface FulfillmentTaskFilters {
   /** Server-clamped; the response reports what was actually applied. */
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Body of `PATCH /fulfillment/works/:workId/assignment` (#3337, ADR-074;
+ * `expectedVersion` #3340 second follow-up).
+ *
+ * `assignedToUserId` / `selfServeEligible` are optional and independently
+ * applied — `undefined` means "leave alone". `assignedToUserId: null` clears
+ * an assignment; a string id sets or reassigns it.
+ *
+ * `expectedVersion` is a THIRD, independently optional field — a lost-update
+ * guard, not a staffing field. ADR-074 places assignment outside the
+ * legality matrix `applyAction` enforces (which SYSTEM may act), which says
+ * nothing about a stale-write guard (an orthogonal concern: has a PEER
+ * written since this caller read the row). This board always sends it,
+ * carrying the version the row was RENDERED with — never one re-read at
+ * click time, or a fresher value would make the 409 this guard exists to
+ * raise unreachable and hand the last writer the win.
+ */
+export interface UpdateFulfillmentWorkAssignmentRequest {
+  assignedToUserId?: string | null;
+  selfServeEligible?: boolean;
+  expectedVersion?: number;
 }

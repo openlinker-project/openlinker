@@ -20,6 +20,7 @@ import {
   HttpStatus,
   NotFoundException,
   Inject,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -29,6 +30,7 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
+import { Response } from 'express';
 import {
   PRODUCTS_SERVICE_TOKEN,
   IProductsService,
@@ -57,6 +59,7 @@ import {
 } from '@openlinker/core/listings';
 import type { ProductListingsCoverage } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
+import { ProductImageProxyService } from '../application/services/product-image-proxy.service';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { CountProductsQueryDto } from './dto/count-products-query.dto';
 import { CountProductVariantsQueryDto } from './dto/count-product-variants-query.dto';
@@ -181,7 +184,11 @@ export class ProductsController {
     // #2250 - the provenance read. A plain query through the context's own
     // service interface; no new service and no new context for a read.
     @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
-    private readonly taxRateJournal: ITaxRateJournalService
+    private readonly taxRateJournal: ITaxRateJournalService,
+    // #3340 follow-up — a concrete class, not a token: the proxy is an
+    // interface-layer concern with one implementation and no port, exactly
+    // like the trust-panel services one directory over.
+    private readonly productImages: ProductImageProxyService
   ) {}
 
   @AnyRole()
@@ -438,6 +445,61 @@ export class ProductsController {
     dto.variants = variantDtos;
     dto.externalIds = productExternalIds.map((e) => this.toExternalIdDto(e));
     return dto;
+  }
+
+  /**
+   * One of the product's own pictures, fetched by OpenLinker and handed on.
+   *
+   * `@AnyRole()` matches `GET /products/:id` above — a product's photo is no
+   * more sensitive than the product — and that audience deliberately includes
+   * `packer`, who has no other permission at all and needs to see what the
+   * thing in their hand should look like.
+   *
+   * The service explains why this exists rather than a plain stored url, and
+   * why `index` and never a caller-supplied url. Every failure answers 404:
+   * the distinctions between them (shop down, wrong content type, bad url)
+   * are operator diagnostics, in the log, not something a browser painting an
+   * `<img>` can act on differently.
+   */
+  @AnyRole()
+  @Get(':productId/images/:index')
+  @ApiOperation({
+    summary: "Get one of a product's images",
+    description:
+      "Streams the product's image at `index` from the shop, through OpenLinker. " +
+      'The image url itself is never accepted from the caller — only an index into ' +
+      "the product's own stored images (#3340 follow-up).",
+  })
+  @ApiParam({ name: 'productId', description: 'Internal product ID (e.g. ol_product_...)' })
+  @ApiParam({ name: 'index', description: 'Zero-based index into the product images array' })
+  @ApiResponse({ status: 200, description: 'The image bytes' })
+  @ApiResponse({ status: 404, description: 'No such product, image, or the shop did not answer' })
+  async getProductImage(
+    @Param('productId') productId: string,
+    @Param('index') index: string,
+    @Res() response: Response
+  ): Promise<void> {
+    const parsed = Number(index);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new NotFoundException(`No image ${index} for product ${productId}`);
+    }
+
+    const result = await this.productImages.getImage(productId, parsed);
+    if (result.kind === 'failure') {
+      throw new NotFoundException(`No image ${index} for product ${productId}`);
+    }
+
+    response.setHeader('Content-Type', result.image.contentType);
+    response.setHeader('Content-Length', String(result.image.bytes.byteLength));
+    // Private: the route is behind auth, so a shared cache must not keep it.
+    // An hour is long enough to spare the shop a request per table render and
+    // short enough that a replaced photo appears without a hard refresh.
+    response.setHeader('Cache-Control', 'private, max-age=3600');
+    // Belt-and-braces beside the service's own raster allow-list: stops a
+    // mislabelled body being sniffed into HTML by a browser that ignores the
+    // declared Content-Type.
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.end(result.image.bytes);
   }
 
   @AnyRole()

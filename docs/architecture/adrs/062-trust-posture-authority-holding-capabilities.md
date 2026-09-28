@@ -34,6 +34,38 @@ already carries. **(4) `HostServices` is not widened for OMS plugins**, and the 
 (`identifierMapping`, `credentialsResolver`) are noted as the pre-existing exposure an eventual
 third-party trust ADR must address — not silently inherited as acceptable.
 
+### Scope: this ADR is about what crosses to a PLUGIN
+
+Every decision above is about a boundary OpenLinker hands data ACROSS, to code
+it does not own: `RoutingInput` into a router, `HostServices` into a plugin,
+an authority's answer back. Decision (2)'s allowlist is the rule for that
+boundary.
+
+It is **not** a rule about what OpenLinker's own HTTP surfaces disclose to a
+signed-in operator. Those are a different question - the viewer is
+authenticated, their role is known, and the disclosure is bounded by a
+`@Roles` decorator and a hand-written projection rather than by a plugin
+contract - and they are governed by
+`apps/api/src/auth/packer-exclusion.spec.ts`, which enumerates every route a
+packer can reach and what each one carries.
+
+Stating this is a correction rather than a clarification. Three places in the
+pack-bench stack cited this ADR as the authority for an operator-facing
+projection, and one of them (`packer-exclusion.spec.ts`, since fixed) used
+that citation to assert "no total, no price" about a projection that had
+carried both since #3409. A borrowed authority is worse than none: it reads as
+settled and it was describing the wrong boundary.
+
+**The one deliberate widening, recorded here because it is the case that
+prompted the question.** The bench's parcel projection carries the buyer's
+NAME, and the assign board carries it MASKED. Both are disclosures a plugin
+boundary would refuse under decision (2), and both are correct here: the name
+is printed on the label the packer is about to stick on the box, and the
+masked form on the board is what lets a supervisor tell two parcels apart
+without handing a temp the customer register. The masking is server-side and
+the full name is never resolved in the DTO mapper, so the un-masked value does
+not exist on that path to be leaked by a later change.
+
 ## Alternatives considered
 
 - **A runtime sandbox / capability enforcement now**: out of proportion to a first-party-only v1;
@@ -45,6 +77,9 @@ third-party trust ADR must address — not silently inherited as acceptable.
   vocabulary nothing enforces yet.
 
 ## Consequences
+
+**Scope, restated where a reader skimming the consequences will meet it:** the PII allowlist above bounds what reaches a PLUGIN. It is not the rule for OpenLinker's own operator-facing routes, whose disclosures are enumerated in `apps/api/src/auth/packer-exclusion.spec.ts` - see the scope note under Decision.
+
 
 **Pros:** the ADR-003 question is answered instead of dodged; PII exposure through the routing
 port is bounded by construction; a buggy authority degrades to alert-and-hold instead of a

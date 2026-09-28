@@ -96,6 +96,7 @@ import {
   ReturnRefundBlockedError,
   ReturnRefundContendedError,
   ReturnRefundObservationInvalidError,
+  ReturnRestockAlreadyBlockedError,
   ReturnRestockAttestationInvalidError,
 } from '@openlinker/core/returns';
 
@@ -107,6 +108,7 @@ type ReturnRefusal =
   | ReturnLineNotFoundError
   | ReturnCustodyTransitionError
   | ReturnCustodyContendedError
+  | ReturnRestockAlreadyBlockedError
   | ReturnRestockAttestationInvalidError
   | ReturnAuthorizeRefusedError
   | ReturnMatchRefusedError
@@ -123,6 +125,7 @@ type ReturnRefusal =
   ReturnLineNotFoundError,
   ReturnCustodyTransitionError,
   ReturnCustodyContendedError,
+  ReturnRestockAlreadyBlockedError,
   ReturnRestockAttestationInvalidError,
   ReturnAuthorizeRefusedError,
   ReturnMatchRefusedError,
@@ -182,6 +185,7 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
       exception instanceof ReturnNotAttributedError ||
       exception instanceof ReturnCustodyTransitionError ||
       exception instanceof ReturnCustodyContendedError ||
+      exception instanceof ReturnRestockAlreadyBlockedError ||
       exception instanceof ReturnRestockAttestationInvalidError ||
       exception instanceof ReturnAuthorizeRefusedError ||
       exception instanceof ReturnRefundBlockedError ||
@@ -202,7 +206,8 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
       exception instanceof ReturnAuthorizeRefusedError ||
       exception instanceof ReturnMatchRefusedError ||
       exception instanceof ReturnRecordRefusedError ||
-      exception instanceof ReturnRefundBlockedError
+      exception instanceof ReturnRefundBlockedError ||
+      exception instanceof ReturnRestockAlreadyBlockedError
     ) {
       return exception.reason;
     }

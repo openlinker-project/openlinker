@@ -157,7 +157,13 @@ describe('toIssueInvoiceCommand', () => {
     // An empty rate here is the honest passthrough of an order line that never
     // got one, NOT a default (#2257): the mapper names no rate of its own, and
     // the gate refuses such an order before it reaches a provider.
-    expect(cmd.lines[0]).toEqual({ name: 'Named', quantity: 2, unitPriceGross: 10, taxRate: '' });
+    expect(cmd.lines[0]).toEqual({
+      name: 'Named',
+      quantity: 2,
+      unitPriceGross: 10,
+      taxRate: '',
+      orderLineId: 'a',
+    });
     expect(cmd.lines[1].name).toBe('SKU-9');
     expect(cmd.lines[2].name).toBe('PID-5');
   });
@@ -392,10 +398,24 @@ describe('toIssueInvoiceCommand', () => {
       unitPriceGross: 10.49,
       taxRate: '',
     });
+    // Deliberately no `orderLineId` (#3312) - no single `OrderItem` backs a
+    // shipping line, so there is no id to carry. Crediting it is #3290's
+    // concern, not this mapper's.
+    expect(cmd.lines[1]).not.toHaveProperty('orderLineId');
     // Invoice gross (summed by InvoiceService.buildContent over cmd.lines) now
     // equals the order total.
     const gross = cmd.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceGross, 0);
     expect(gross).toBeCloseTo(order.totals.total, 2);
+  });
+
+  it('should carry item.id onto InvoiceLine.orderLineId, the exact join ReturnLine.resolvedOrderLineId points at (#3312)', () => {
+    const order = makeOrder({
+      items: [makeItem({ id: 'order-item-42', name: 'Widget', price: 10, quantity: 1 })],
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines[0].orderLineId).toBe('order-item-42');
   });
 
   it('shipping: an empty line rate leaves the shipping rate empty rather than guessing (#2257)', () => {

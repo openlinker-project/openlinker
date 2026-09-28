@@ -103,3 +103,61 @@ describe('createReturnsApi.getIngestionAvailability', () => {
     expect(await createReturnsApi(request).getIngestionAvailability()).toBeNull();
   });
 });
+
+function proposalOutcome(overrides: Record<string, unknown> = {}): unknown {
+  return { outcome: 'nothing-correctable', proposal: null, changeId: null, opened: false, ...overrides };
+}
+
+describe('createReturnsApi.getCorrectionProposal', () => {
+  it('should GET the preview without a body', async () => {
+    const request = vi.fn().mockResolvedValue(proposalOutcome());
+
+    await createReturnsApi(request).getCorrectionProposal('ol_return_1');
+
+    expect(request).toHaveBeenCalledWith('/returns/ol_return_1/correction-proposal');
+    const init = (request.mock.calls[0] as [string, RequestInit?])[1];
+    expect(init?.method ?? undefined).toBeUndefined();
+  });
+
+  it('should carry changeId and opened through, defaulting to null/false when absent', async () => {
+    const request = vi.fn().mockResolvedValue({ outcome: 'nothing-correctable', proposal: null });
+
+    const result = await createReturnsApi(request).getCorrectionProposal('ol_return_1');
+
+    expect(result.changeId).toBeNull();
+    expect(result.opened).toBe(false);
+  });
+});
+
+describe('createReturnsApi.recordCorrectionProposal', () => {
+  it('should POST to the same path with no body', async () => {
+    const request = vi.fn().mockResolvedValue(proposalOutcome());
+
+    await createReturnsApi(request).recordCorrectionProposal('ol_return_1');
+
+    expect(request).toHaveBeenCalledWith('/returns/ol_return_1/correction-proposal', {
+      method: 'POST',
+    });
+  });
+
+  it('should report the recorded change id and whether it was freshly opened', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(proposalOutcome({ changeId: 'ol_order_change_1', opened: true }));
+
+    const result = await createReturnsApi(request).recordCorrectionProposal('ol_return_1');
+
+    expect(result.changeId).toBe('ol_order_change_1');
+    expect(result.opened).toBe(true);
+  });
+
+  it('should report opened: false when an identical open proposal was reused', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(proposalOutcome({ changeId: 'ol_order_change_1', opened: false }));
+
+    const result = await createReturnsApi(request).recordCorrectionProposal('ol_return_1');
+
+    expect(result.opened).toBe(false);
+  });
+});

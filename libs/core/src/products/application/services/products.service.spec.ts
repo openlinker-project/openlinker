@@ -79,6 +79,7 @@ describe('ProductsService', () => {
     recordTaxRate: jest.fn(),
     clearTaxRate: jest.fn(),
     findTaxRate: jest.fn(),
+    recordPhysicalDimensions: jest.fn(),
   };
 
   beforeEach(async () => {

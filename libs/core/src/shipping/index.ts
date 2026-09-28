@@ -90,6 +90,18 @@ export type {
 export type { ShipmentCod } from './domain/types/shipment-cod.types';
 export type { ShipmentInsuredValue } from './domain/types/shipment-insured-value.types';
 
+// Auto-dispatch parcel derivation (#3340, closing #2729) — pure functions the
+// `fulfillment.work.autoDispatch` worker handler composes with a variant
+// weight lookup and an order read. Exported at the barrel because a host app
+// cannot reach a deep `libs/core/src/shipping/domain/*` path (#591).
+export {
+  AutoDispatchRefusalReasonValues,
+  resolveAutoDispatchDeliveryIntent,
+  resolveAutoDispatchParcel,
+  resolveAutoDispatchRecipient,
+} from './domain/auto-dispatch';
+export type { AutoDispatchRefusalReason, AutoDispatchWorkLine } from './domain/auto-dispatch';
+
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
 export type { KnownProviderRejectionCode } from './domain/types/shipping-provider-rejection.types';
@@ -145,6 +157,7 @@ export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-foun
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
 export { OrderNotDispatchablePaymentStatusException } from './domain/exceptions/order-not-dispatchable-payment-status.exception';
 export { OrderNotDispatchableHeldException } from './domain/exceptions/order-not-dispatchable-held.exception';
+export { FulfillmentWorkDispatchConflictException } from './domain/exceptions/fulfillment-work-dispatch-conflict.exception';
 export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';

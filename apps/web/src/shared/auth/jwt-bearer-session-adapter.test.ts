@@ -209,6 +209,10 @@ describe('JwtBearerSessionAdapter', () => {
           // Opt-in (#1743): the /auth/me mock omits the field, so the adapter
           // fills it in as no consent (analytics off without a choice).
           analyticsConsent: false,
+          // #3404. Same shape as the line above and for the same reason: the
+          // mock omits it, and `null` is the adapter saying the packer has no
+          // printer bound - never a label it guessed.
+          packStationLabel: null,
         },
       });
     });

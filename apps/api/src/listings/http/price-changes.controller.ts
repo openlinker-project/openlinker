@@ -71,6 +71,7 @@ import { PriceChangeItemResponseDto } from './dto/price-change-item-response.dto
 import { PriceChangeResolutionResponseDto } from './dto/price-change-resolution-response.dto';
 import { BulkAcceptPriceChangesResponseDto } from './dto/bulk-accept-price-changes-response.dto';
 import { PriceChangeAutoAppliedItemResponseDto } from './dto/price-change-auto-applied-response.dto';
+import { PriceChangeCountsResponseDto } from './dto/price-change-counts-response.dto';
 
 const DEFAULT_AUTO_APPLIED_LIMIT = 20;
 
@@ -98,6 +99,20 @@ export class PriceChangesController {
       offset: query.offset,
     });
     return PriceChangeListResponseDto.fromDomain(page);
+  }
+
+  @Get('counts')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary:
+      'Exact open-episode count per destination connection, across the whole install (#3325) — ' +
+      'the review-queue connection filter-bar chip counts. A real GROUP BY, never bounded by a ' +
+      "page-size ceiling the way a client-side bucketing of a limited listOpen page was.",
+  })
+  @ApiResponse({ status: 200, type: PriceChangeCountsResponseDto })
+  async counts(): Promise<PriceChangeCountsResponseDto> {
+    const counts = await this.priceChanges.countOpenByDestination();
+    return PriceChangeCountsResponseDto.fromCounts(counts);
   }
 
   @Get('auto-applied')

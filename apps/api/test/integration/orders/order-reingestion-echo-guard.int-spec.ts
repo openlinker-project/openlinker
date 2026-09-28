@@ -204,7 +204,15 @@ describe('Order re-ingestion echo guard (#940)', () => {
 
     // No duplicate internal order was minted; the PS external id still resolves
     // to the original internal order.
-    expect(await recordRepo.count()).toBe(1);
+    //
+    // SCOPED to this test's own source connection. An unscoped `count()` counts
+    // every `order_records` row in the database, so it asserts something about
+    // the whole suite rather than about this order - and fails the moment a
+    // sibling spec sharing the harness has written one (observed: expected 1,
+    // received 5). Same class as the order-column-sort scoping fix on `main`.
+    expect(
+      await recordRepo.count({ where: { sourceConnectionId: allegroConnection.id } })
+    ).toBe(1);
     expect(
       await identifierMapping.getInternalId(
         CORE_ENTITY_TYPE.Order,

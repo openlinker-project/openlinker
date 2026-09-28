@@ -46,7 +46,7 @@ import {
   useSalesDocumentsListQuery,
   SalesDocumentListCell,
   SALES_DOCUMENT_KIND_VALUES,
-  type SalesDocumentKind,
+  type ConcreteDocumentKind,
   type SalesDocumentListItem,
 } from '../../features/sales-documents';
 import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
@@ -60,8 +60,15 @@ const SEARCH_DEBOUNCE_MS = 300;
 const TAX_ID_VALUES = ['with', 'without'] as const;
 type TaxIdFilter = (typeof TAX_ID_VALUES)[number];
 
-function isSalesDocumentKind(value: string | null): value is SalesDocumentKind {
-  return value !== null && (SALES_DOCUMENT_KIND_VALUES as readonly string[]).includes(value);
+// 'both' is a CONNECTION-config sentinel (#3195) — it never labels an actual
+// document record, so it can never be a legal filter value on this
+// record-driven list (`SalesDocumentListFilters.kind` is concrete-only).
+const CONCRETE_DOCUMENT_KIND_VALUES = SALES_DOCUMENT_KIND_VALUES.filter(
+  (k): k is ConcreteDocumentKind => k !== 'both',
+);
+
+function isSalesDocumentKind(value: string | null): value is ConcreteDocumentKind {
+  return value !== null && (CONCRETE_DOCUMENT_KIND_VALUES as readonly string[]).includes(value);
 }
 
 function isTaxIdFilter(value: string | null): value is TaxIdFilter {
@@ -88,7 +95,7 @@ const STATUS_LABEL: Record<string, string> = {
   registered: 'Registered',
 };
 
-function statusOptionsForKind(kind: SalesDocumentKind | undefined): readonly string[] {
+function statusOptionsForKind(kind: ConcreteDocumentKind | undefined): readonly string[] {
   if (kind === 'invoice') return InvoiceStatusValues;
   if (kind === 'fiscal-receipt') return FiscalRegistrationStatusValues;
   return [...new Set([...InvoiceStatusValues, ...FiscalRegistrationStatusValues])];

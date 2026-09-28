@@ -21,6 +21,8 @@
  */
 import { Module } from '@nestjs/common';
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
+import { InventoryModule } from '@openlinker/core/inventory';
+import { UsersApiModule } from '../users/users.module';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
@@ -29,10 +31,12 @@ import { ShippingModule } from '@openlinker/core/shipping';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { BENCH_DOCUMENTS_SERVICE_TOKEN } from './application/interfaces/bench-documents.service.interface';
 import { BENCH_PARCEL_SERVICE_TOKEN } from './application/interfaces/bench-parcel.service.interface';
+import { BENCH_PRESENCE_SERVICE_TOKEN } from './application/interfaces/bench-presence.service.interface';
 import { BENCH_WORK_SERVICE_TOKEN } from './application/interfaces/bench-work.service.interface';
 import { BenchDocumentsService } from './application/services/bench-documents.service';
 import { BenchExecutorResolver } from './application/services/bench-executor.resolver';
 import { BenchParcelService } from './application/services/bench-parcel.service';
+import { BenchPresenceService } from './application/services/bench-presence.service';
 import { BenchWorkService } from './application/services/bench-work.service';
 import { BenchDocumentsController } from './http/bench-documents.controller';
 import { BenchParcelController } from './http/bench-parcel.controller';
@@ -46,6 +50,10 @@ import { BenchWorkController } from './http/bench-work.controller';
     InvoicingModule,
     ShippingModule,
     IntegrationsModule,
+    InventoryModule,
+    // #3424 - the presence heartbeat's one seam. Read-free: the bench calls
+    // `recordBenchActivity` and nothing else here.
+    UsersApiModule,
   ],
   controllers: [BenchWorkController, BenchParcelController, BenchDocumentsController],
   providers: [
@@ -58,6 +66,8 @@ import { BenchWorkController } from './http/bench-work.controller';
     { provide: BENCH_PARCEL_SERVICE_TOKEN, useExisting: BenchParcelService },
     BenchDocumentsService,
     { provide: BENCH_DOCUMENTS_SERVICE_TOKEN, useExisting: BenchDocumentsService },
+    BenchPresenceService,
+    { provide: BENCH_PRESENCE_SERVICE_TOKEN, useExisting: BenchPresenceService },
   ],
 })
 export class BenchApiModule {}

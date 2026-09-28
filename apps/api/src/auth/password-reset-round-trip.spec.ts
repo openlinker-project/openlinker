@@ -88,6 +88,8 @@ describe('Password reset - delivery + reset round trip', () => {
       updateAnalyticsConsent: jest.fn(),
       deleteAdminAtomically: jest.fn(),
       findStaleViewerAccounts: jest.fn(),
+      updatePackStationLabel: jest.fn(),
+      touchLastActive: jest.fn(),
     };
     userRepo.findByEmail.mockImplementation((email: string) =>
       Promise.resolve(email === user.email ? user : null),

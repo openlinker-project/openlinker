@@ -13,14 +13,15 @@
  * here, over published `I*Service` interfaces and never a `*RepositoryPort`.
  * **This adds no core cross-context edge and spends no allow-list entry.**
  *
- * ## Story D2 — one eligibility rule, three shared halves
+ * ## Story D2 — one eligibility rule, four shared halves
  *
  * A refusal here reads exactly what the list reads:
  * `BENCH_WORK_STATUSES` / `BENCH_WORK_REQUEST_STATUSES` and
  * `deriveBenchWorkState` (`bench-work-eligibility.ts`), plus
  * `BenchExecutorResolver` for *"assigned to OpenLinker's own packing
- * executor"*. Nothing about eligibility is spelled twice, which is what makes
- * *"the two can never disagree"* structural rather than a promise.
+ * executor"*, plus — since #3341 — `isClaimableByViewer` for the ADR-074
+ * pre-assignment axis. Nothing about eligibility is spelled twice, which is
+ * what makes *"the two can never disagree"* structural rather than a promise.
  *
  * A work that is not this bench's at all answers **404** rather than a refusal:
  * a packer has no business reading another executor's parcel contents in order
@@ -29,10 +30,12 @@
  * ## Story D4 — the interrupt cannot fire on an address edit
  *
  * The surface polls this read while a parcel is open and interrupts when
- * `refusal` becomes non-null. The projection carries no address, no email, no
- * phone and no total (see `BenchParcelView`), so a change to any of them is
- * invisible here and cannot produce a diff. That is the guarantee, and it is a
- * property of the field list rather than of a comparison somebody wrote
+ * `refusal` becomes non-null. The projection carries no address, no email and
+ * no phone (see `BenchParcelView` — `totalAmount`/`currency`/`carrierName`/
+ * `dispatchByAt` are a deliberate #3409 reversal, not part of this
+ * guarantee), so a change to any of the three still-excluded fields is
+ * invisible here and cannot produce a diff. That is the guarantee, and it is
+ * a property of the field list rather than of a comparison somebody wrote
  * carefully.
  *
  * @module apps/api/src/bench/application/services
@@ -53,27 +56,48 @@ import {
   OrderRecordNotFoundException,
   IOrderRecordService,
 } from '@openlinker/core/orders';
+import {
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  type IInventoryQueryService,
+} from '@openlinker/core/inventory';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
+import {
+  USER_MANAGEMENT_SERVICE_TOKEN,
+  type IUserManagementService,
+} from '../../../users/user-management.service.interface';
 import {
   SHIPMENT_QUERY_SERVICE_TOKEN,
   ReservationConsumeCandidateStatusValues,
   type IShipmentQueryService,
 } from '@openlinker/core/shipping';
 
-import { deriveBenchWorkState, isBenchWorkSelectable } from '../bench-work-eligibility';
+import {
+  deriveBenchWorkState,
+  isBenchWorkSelectable,
+  isClaimableByViewer,
+} from '../bench-work-eligibility';
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import type {
+  BenchCompleteInput,
+  BenchUndoCompletionInput,
   BenchReopenInput,
+  BenchUndoInput,
   BenchVerifyUnitInput,
   IBenchParcelService,
 } from '../interfaces/bench-parcel.service.interface';
 import type {
+  BenchActivityEntryView,
+  BenchClaimResultView,
+  BenchCompleteResultView,
+  BenchUndoCompletionResultView,
   BenchParcelLineView,
   BenchParcelRefusal,
   BenchParcelView,
   BenchReopenResultView,
+  BenchUndoResultView,
   BenchVerificationResultView,
 } from '../types/bench-parcel.types';
+import { productImageProxyPath } from '../../../products/http/product-image-path';
 import { BenchExecutorResolver } from './bench-executor.resolver';
 
 /** Raised when the work is not a parcel this bench may see at all. */
@@ -99,7 +123,15 @@ export class BenchParcelService implements IBenchParcelService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
-    private readonly shipments: IShipmentQueryService
+    private readonly shipments: IShipmentQueryService,
+    @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
+    private readonly inventory: IInventoryQueryService,
+    // #3424 - the presence heartbeat. Bumped by the ACTS below and never by a
+    // read, so a bench tab left open on the rail does not advertise a staffed
+    // station; `recordBenchActivity` is best-effort by contract and never
+    // throws, so no pack action can fail because of it.
+    @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
+    private readonly users: IUserManagementService
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -108,11 +140,32 @@ export class BenchParcelService implements IBenchParcelService {
     return await this.project(work, state);
   }
 
+  /**
+   * Record that this packer just acted at a bench (#3424).
+   *
+   * Fired from the four ACTS below - scan, undo, claim, complete - and never
+   * from a read, so a bench tab left open on the rail overnight does not keep
+   * advertising a staffed station. It is also fired on the REFUSED paths of
+   * those acts, deliberately: a packer who scanned the wrong item, or reached
+   * a parcel someone else holds, is unambiguously standing at a bench, and
+   * reading them as offline for being turned away would be wrong about the
+   * one thing this signal exists to say.
+   *
+   * Awaited rather than fire-and-forget: the underlying call is contractually
+   * incapable of rejecting, so awaiting costs one indexed primary-key UPDATE
+   * and buys an ordering guarantee - a floating promise could land after the
+   * response and leave a test asserting the board's own reading of it flaky.
+   */
+  private async noteActivity(userId: string): Promise<void> {
+    await this.users.recordBenchActivity(userId);
+  }
+
   async getWorkForDocuments(workId: string): Promise<FulfillmentWorkView> {
     return await this.loadBenchWork(workId);
   }
 
   async verifyUnit(input: BenchVerifyUnitInput): Promise<BenchVerificationResultView> {
+    await this.noteActivity(input.verifiedByUserId);
     const work = await this.loadBenchWork(input.workId);
 
     // Story D2, at the write. A parcel the list would refuse must be refused
@@ -130,6 +183,34 @@ export class BenchParcelService implements IBenchParcelService {
       return {
         outcome: 'refused',
         reason: 'not-packable',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    // ADR-074 (#3336/#3337): a packer excluded from a locked assignment may
+    // not RECORD progress on it, whatever the list or `getParcel` chose to
+    // show them. This is the actual server-side guarantee — a frontend
+    // affordance that hides the scan control is a convenience on top of this,
+    // never a substitute for it.
+    //
+    // Deliberately NOT folded into `refusalFor` / `BenchParcelRefusal`: that
+    // rule is VIEWER-INDEPENDENT (status, holds) and is shared with the list's
+    // colouring (story D2's "one rule, two callers"). Assignment eligibility
+    // depends on WHO is asking, so it reads `isClaimableByViewer` - the SAME
+    // predicate #3341's list now colours a row with, and the same one
+    // `reopenParcel` below reads too (#3361 review folded that guard's
+    // once-separate `isExcludedFromAssignment` helper into this one, so the
+    // two write-side guarantees cannot drift apart).
+    if (!isClaimableByViewer(work, input.verifiedByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        // NOT `'not-packable'`, which is what a held or cancelled parcel
+        // answers and which the bench renders as "take it back to the
+        // trolley". A parcel a supervisor locked mid-pack is perfectly
+        // packable - just not by this packer - so sending it back to the
+        // trolley would be an operational error, not a wording one.
+        reason: 'not-claimable-by-viewer',
         parcel: await this.project(work, state),
       };
     }
@@ -171,6 +252,25 @@ export class BenchParcelService implements IBenchParcelService {
   async reopenParcel(input: BenchReopenInput): Promise<BenchReopenResultView> {
     const work = await this.loadBenchWork(input.workId);
 
+    // ADR-074 (#3336/#3337/#3341/#3435 review): the same lock that refuses
+    // `verifyUnit` and `undoLastScan` must refuse `reopenParcel` too -
+    // otherwise a packer excluded from a locked assignment can reopen a
+    // parcel they may not scan into, clearing `packedByUserId` and erasing
+    // the record of who packed it. Reads the same `isClaimableByViewer`
+    // predicate rather than restating the rule, so the write-side guarantees
+    // cannot drift apart. `input.reopenedByUserId` is nullable at this layer
+    // (this route's `@CurrentUser()` is optional by design) and the predicate
+    // accepts that directly - null never equals a real assignee, so an
+    // anonymous reopen against a locked parcel is excluded too.
+    if (!isClaimableByViewer(work, input.reopenedByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-packable',
+        parcel: await this.project(work, state),
+      };
+    }
+
     const result = await this.verification.reopenParcel({
       workId: input.workId,
       reopenedByUserId: input.reopenedByUserId,
@@ -183,6 +283,233 @@ export class BenchParcelService implements IBenchParcelService {
     return {
       outcome: result.outcome,
       reason: result.outcome === 'refused' ? result.reason : null,
+      parcel: await this.project(work, result.state),
+    };
+  }
+
+  async listActivity(workId: string): Promise<BenchActivityEntryView[]> {
+    const work = await this.loadBenchWork(workId);
+    const [events, variants] = await Promise.all([
+      this.verification.listVerifications(workId),
+      work.lines.length === 0
+        ? Promise.resolve([])
+        : this.products.getVariantsByIds([
+            ...new Set(work.lines.map((line) => line.productVariantId)),
+          ]),
+    ]);
+
+    const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+    const productIds = [...new Set(variants.map((variant) => variant.productId))];
+    const products =
+      productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const lineById = new Map(work.lines.map((line) => [line.id, line]));
+
+    const nameForLine = (workLineId: string): string | null => {
+      const line = lineById.get(workLineId);
+      const variant = line === undefined ? undefined : variantById.get(line.productVariantId);
+      const product = variant === undefined ? undefined : productById.get(variant.productId);
+      return product?.name ?? null;
+    };
+
+    // One ledger row can produce TWO activity entries — the verify always
+    // happened, and a voided row means an undo happened LATER, at a
+    // different instant. Splitting them is what lets "verified" and "undone"
+    // both appear on the timeline in their own chronological place, rather
+    // than collapsing a corrected mistake into a single, misleading row.
+    const entries: BenchActivityEntryView[] = [];
+    for (const event of events) {
+      entries.push({
+        workLineId: event.workLineId,
+        name: nameForLine(event.workLineId),
+        kind: 'verified',
+        at: event.verifiedAt.toISOString(),
+        byUserId: event.verifiedByUserId,
+      });
+      if (event.voidedAt !== null) {
+        entries.push({
+          workLineId: event.workLineId,
+          name: nameForLine(event.workLineId),
+          kind: 'undone',
+          at: event.voidedAt.toISOString(),
+          byUserId: event.voidedByUserId,
+        });
+      }
+    }
+
+    // `listVerifications` is already newest-first by `verifiedAt`, which the
+    // split above can invalidate (a row's own `undone` entry sorts after its
+    // `verified` one, but an OLDER row's undo can still be more recent than
+    // a newer row's verify) — so the merged list is re-sorted by its own
+    // `at`.
+    entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    return entries;
+  }
+
+  async claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView> {
+    await this.noteActivity(viewerId);
+    const work = await this.loadBenchWork(workId);
+
+    const refusal = this.refusalFor(work);
+    if (refusal !== null) {
+      const state = await this.verification.getState(workId);
+      return { outcome: 'refused', reason: refusal, parcel: await this.project(work, state) };
+    }
+
+    if (!isClaimableByViewer(work, viewerId)) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    // An UNASSIGNED parcel is claimed through the guarded transition, so two
+    // packers tapping it at the same moment cannot both be told they got it.
+    // `updateAssignment` is existence-only guarded by design - ADR-074's
+    // advisory model needs it that way for a supervisor's reassignment - so
+    // under it both writes landed and both answered `'claimed'`, and the loser
+    // walked off with a parcel somebody else was already packing.
+    if (work.assignedToUserId === null) {
+      const { claimed, work: fresh } = await this.worklist.claimAssignment(workId, viewerId);
+      const state = await this.verification.getState(workId);
+      return {
+        // The FRESH row on both arms, never the pre-write one: on a loss it is
+        // what names the actual holder, and on a win it carries the bumped
+        // token the caller's next guarded action must send.
+        outcome: claimed ? 'claimed' : 'refused',
+        reason: claimed ? null : 'claimed-by-someone-else',
+        parcel: await this.project(fresh, state),
+      };
+    }
+
+    // Idempotent: claiming a parcel already assigned to THIS viewer (or
+    // assigned elsewhere but still self-serve) writes the identical value
+    // again rather than being special-cased, so a double-tap or a retried
+    // request is harmless. Deliberately NOT routed through the guarded claim
+    // above, which would refuse both of those as "somebody else has it" -
+    // including the packer reclaiming their own parcel.
+    const claimed = await this.worklist.updateAssignment({
+      workId,
+      assignedToUserId: viewerId,
+    });
+
+    const state = await this.verification.getState(workId);
+    return { outcome: 'claimed', reason: null, parcel: await this.project(claimed, state) };
+  }
+
+  /**
+   * Declare a parcel finished and off the bench (pack-bench completion).
+   *
+   * Story D2 does NOT apply here — a completed parcel is by definition
+   * already closed, so `held`/`cancelled` can never be true of it, and
+   * `refusalFor` would answer `null` on every reachable row. What DOES
+   * transfer is the ADR-074 lock: the same reason `verifyUnit` re-checks
+   * `isClaimableByViewer` rather than trusting a stale list row, this write
+   * must too, since a parcel locked to a different packer must not be
+   * finished by someone else either.
+   */
+  async completeParcel(input: BenchCompleteInput): Promise<BenchCompleteResultView> {
+    await this.noteActivity(input.completedByUserId);
+    const work = await this.loadBenchWork(input.workId);
+
+    if (!isClaimableByViewer(work, input.completedByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable-by-viewer',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const result = await this.verification.complete({
+      workId: input.workId,
+      completedByUserId: input.completedByUserId,
+      expectedVersion: input.expectedVersion,
+    });
+
+    if (result.outcome === 'refused') {
+      const state = await this.verification.getState(input.workId);
+      return { outcome: 'refused', reason: result.reason, parcel: await this.project(work, state) };
+    }
+
+    // The claim moved `completedAt` and bumped `version` on the ROW `work`
+    // was loaded from before this write — re-fetch, the `claimParcel`
+    // precedent, or the projection would report a stale token and a `null`
+    // `completedAt` for a completion this very call just recorded.
+    const fresh = await this.worklist.get(input.workId);
+    const state = await this.verification.getState(input.workId);
+    return { outcome: 'completed', reason: null, parcel: await this.project(fresh, state) };
+  }
+
+  async undoCompletion(
+    input: BenchUndoCompletionInput
+  ): Promise<BenchUndoCompletionResultView> {
+    const work = await this.loadBenchWork(input.workId);
+
+    // The SAME lock `completeParcel` checks, checked the same way and first.
+    // Undoing a completion writes the very column completing it wrote, so if
+    // these two ever disagreed a packer locked out of finishing a box could
+    // still un-finish one - which is the worse direction, because it takes a
+    // parcel back off a shelf somebody else is about to ship.
+    if (!isClaimableByViewer(work, input.undoneByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable-by-viewer',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const result = await this.verification.undoCompletion({
+      workId: input.workId,
+      expectedVersion: input.expectedVersion,
+    });
+
+    if (result.outcome === 'refused') {
+      const state = await this.verification.getState(input.workId);
+      return { outcome: 'refused', reason: result.reason, parcel: await this.project(work, state) };
+    }
+
+    // Re-fetched for the reason `completeParcel` re-fetches: the write cleared
+    // `completedAt` and bumped `version` on the row `work` was loaded from, so
+    // projecting the stale copy would hand back a token that is already dead
+    // and a `completedAt` for a completion this call just took back.
+    const fresh = await this.worklist.get(input.workId);
+    const state = await this.verification.getState(input.workId);
+    return { outcome: 'undone', reason: null, parcel: await this.project(fresh, state) };
+  }
+
+  async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {
+    await this.noteActivity(input.actorUserId);
+    const work = await this.loadBenchWork(input.workId);
+
+    // ADR-074 (#3336/#3337), same rule as `verifyUnit` above: a packer
+    // excluded from a locked assignment may not RECORD progress on this
+    // parcel, and undoing another packer's recorded scan is recording
+    // progress on it just as much as adding one is. Checked before the void
+    // rather than left to the core service, which has no viewer to read
+    // (#3435 review).
+    if (!isClaimableByViewer(work, input.actorUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-packable',
+        workLineId: null,
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const result = await this.verification.voidLastVerification({
+      workId: input.workId,
+      actorUserId: input.actorUserId,
+    });
+
+    return {
+      outcome: result.outcome,
+      reason: result.outcome === 'refused' ? result.reason : null,
+      workLineId: result.outcome === 'voided' ? result.workLineId : null,
       parcel: await this.project(work, result.state),
     };
   }
@@ -381,12 +708,29 @@ export class BenchParcelService implements IBenchParcelService {
       version: state.version,
       orderReference: readOrderReference(order) ?? work.orderId,
       buyerName: readBuyerName(order),
+      // #3409 (epic #3401) — see the type docblock for why this is now a
+      // deliberate reversal of #2413's exclusion rather than an oversight.
+      totalAmount: order?.totalAmount ?? null,
+      currency: order?.currency ?? null,
+      carrierName: order?.sourceDeliveryMethodName ?? null,
+      dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
       parcelIndex: index >= 0 ? index + 1 : 1,
       parcelTotal: parcels.length > 0 ? parcels.length : 1,
       refusal: this.refusalFor(work),
       holdReason: hold?.reason ?? null,
       closedAt: state.closedAt?.toISOString() ?? null,
       packedByUserId: state.packedByUserId,
+      // From `work`, unlike `closedAt`/`packedByUserId`/`version` above: none
+      // of `verifyUnit` / `reopenParcel` / `undoLastScan` / `claimParcel`
+      // writes these three fields, so the work loaded before THIS call's own
+      // write (if any) already carries their correct value. The one write
+      // that changes `completedAt` — `completeParcel` — re-fetches `work`
+      // itself before calling `project`, exactly as `claimParcel` already
+      // does for `assignedToUserId`.
+      assignedToUserId: work.assignedToUserId,
+      invoicePrintedAt: work.invoicePrintedAt?.toISOString() ?? null,
+      labelPrintedAt: work.labelPrintedAt?.toISOString() ?? null,
+      completedAt: work.completedAt?.toISOString() ?? null,
       lines,
     };
   }
@@ -405,7 +749,13 @@ export class BenchParcelService implements IBenchParcelService {
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
     const variants = variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
     const productIds = [...new Set(variants.map((variant) => variant.productId))];
-    const products = productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+    const [products, binCodes] = await Promise.all([
+      productIds.length === 0 ? Promise.resolve([]) : this.products.getProductsByIds(productIds),
+      // #3402/#3410 — one batched read for the whole parcel, never one per line.
+      variantIds.length === 0
+        ? Promise.resolve(new Map<string, string>())
+        : this.inventory.findBinCodesByVariantIds(variantIds),
+    ]);
 
     const variantById = new Map(variants.map((variant) => [variant.id, variant]));
     const productById = new Map(products.map((product) => [product.id, product]));
@@ -427,6 +777,20 @@ export class BenchParcelService implements IBenchParcelService {
         gtin: variant?.gtin ?? null,
         requiredQuantity: counts?.requiredQuantity ?? 0,
         verifiedQuantity: counts?.verifiedQuantity ?? 0,
+        // #3410 (epic #3401) — the parent PRODUCT's image; ProductVariant
+        // carries none of its own.
+        //
+        // The PROXY path, never the stored url (pack-bench completion follow-up): what the
+        // catalogue sync wrote is the address the BACKEND used to reach the
+        // shop, which on a compose deployment the browser cannot resolve at
+        // all. See `products/application/services/product-image-proxy.service.ts`.
+        imageUrl: productImageProxyPath(product),
+        attributes: variant?.attributes ?? null,
+        binCode: binCodes.get(line.productVariantId) ?? null,
+        weightGrams: variant?.weightGrams ?? null,
+        lengthMm: variant?.lengthMm ?? null,
+        widthMm: variant?.widthMm ?? null,
+        heightMm: variant?.heightMm ?? null,
       };
     });
   }

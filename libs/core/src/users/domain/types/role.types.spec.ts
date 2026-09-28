@@ -86,16 +86,32 @@ describe('ROLE_PERMISSIONS', () => {
      * than the assertion being deleted: an empty set for any other role stays a
      * failure, and `packer` becoming non-empty by accident is one too. A
      * `pack:*` permission arriving with #2416/#2418 is a deliberate edit here.
+     *
+     * #3424 IS that arrival, and this is that edit. `bench:write` exists
+     * because the bench's write controls are rendered client-side and a
+     * client-side gate needs a permission to read - before it they gated on
+     * `orders:write`, which a packer never holds, so "Claim this parcel" and
+     * "Take next task" never rendered for the only role that presses them
+     * while the routes accepted it all along. So the loop's exception is gone
+     * too: `packer` now has a permission like every other role, and leaving it
+     * outside the rule would exempt precisely the role whose permission set
+     * just became load-bearing.
      */
-    it('gives every role except `packer` at least one permission', () => {
+    it('gives every role at least one permission', () => {
       for (const role of UserRoleValues) {
-        if (role === 'packer') continue;
         expect(ROLE_PERMISSIONS[role].length).toBeGreaterThan(0);
       }
     });
 
-    it('gives `packer` no permissions, deliberately', () => {
-      expect(ROLE_PERMISSIONS.packer).toEqual([]);
+    /**
+     * EXACT, never `toContain`. This is one of four places that say what the
+     * narrowest role in the product holds - beside
+     * `bench-packer-authorization.int-spec.ts`, `users.controller.spec.ts` and
+     * `scripts/check-bench-write-roles.mjs` - and each is exact so a fifth
+     * permission cannot arrive without somebody deciding it should.
+     */
+    it('gives `packer` exactly the one permission its bench controls need', () => {
+      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
     });
   });
 

@@ -117,6 +117,7 @@ import {
   type OfferFieldUpdate,
   type OfferFieldUpdater,
   type OfferManagerPort,
+  type OfferCurrencyDeclarer,
   type FrozenOfferField,
   type OfferReader,
   type OfferStatusReadResult,
@@ -260,7 +261,8 @@ export class ErliOfferManagerAdapter
     OfferStockRestorer,
     TaxonomyBorrower,
     ResponsibleProducerReader,
-    DeliveryPriceListReader
+    DeliveryPriceListReader,
+    OfferCurrencyDeclarer
 {
   /**
    * Connections already told that their Erli tax rate is seller-frozen (#2249).
@@ -318,6 +320,17 @@ export class ErliOfferManagerAdapter
    */
   getBorrowedTaxonomy(): TaxonomyOwner {
     return this.allegroEnvironment === 'sandbox' ? 'allegro:sandbox' : 'allegro';
+  }
+
+  /**
+   * The currency this connection settles in (#3203, `OfferCurrencyDeclarer`).
+   * Erli is PLN-only, no currency field on the wire (see `ERLI_CURRENCY`
+   * above), so this is a fixed value rather than a live read. Consumed by
+   * `DestinationCurrencyResolutionService` to answer
+   * `price-change-block.types.ts`'s currency-mismatch guard.
+   */
+  getDestinationCurrency(): string | null {
+    return ERLI_CURRENCY;
   }
 
   /**

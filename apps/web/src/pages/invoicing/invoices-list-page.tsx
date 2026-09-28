@@ -13,7 +13,7 @@
  * #2090 (epic #2086):
  *   - `invoiceNumber` + `documentType` merged into one `Document type` column
  *     (9 -> 8): the provider number over a LABELLED type, `Not yet issued` when
- *     the record carries neither. The column deliberately has no `hideBelow` —
+ *     the record carries neither. The column deliberately has no `hideBelow` -
  *     it hosts #2094's tablet fold of the connection.
  *   - Order column -> the shared `OrderIdentityCell`, fed from `orderSummary`
  *   - Connection column -> the shared `ConnectionCell` (no adornment), replacing
@@ -39,6 +39,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Alert } from '../../shared/ui/alert';
+import { Chip } from '../../shared/ui/chip';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { Button } from '../../shared/ui/button';
@@ -48,6 +49,7 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { CopyableId } from '../../shared/ui/copyable-id';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { isSafeHttpUrl } from '../../shared/lib/is-safe-http-url';
+import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
 import { shortenId } from '../../shared/ui/entity-label';
 import { useTranslation } from '../../shared/i18n';
 import {
@@ -91,6 +93,27 @@ function isTaxIdFilter(value: string | null): value is TaxIdFilter {
   return value !== null && (TAX_ID_VALUES as readonly string[]).includes(value);
 }
 
+/**
+ * Elapsed-time suffix for the "awaiting submission" chip (#3194).
+ *
+ * `oldestAt` is the OLDEST `issuedAt ?? createdAt` among the currently loaded
+ * `pending-submission` rows - an ELAPSED measurement, never an ETA: nothing
+ * about a document sitting with the regulator lets OpenLinker predict when it
+ * clears (see `docs/plans/mockups/sales-document-eparagony-invoicing.html`
+ * "with provider for" note). Deliberately NOT `updatedAt`:
+ * `InvoiceRecordRepository.claimPendingSubmission` bumps `updatedAt` on every
+ * row the offline-resubmit sweep claims (a plain TypeORM `.update()` appends
+ * the `@UpdateDateColumn` to the SET clause unconditionally), so the document
+ * that has waited longest is the one the sweep works hardest and would render
+ * the FRESHEST - inverted.
+ *
+ * The day/hour-granularity formatting itself is `oldestAgeSuffix`
+ * (`shared/lib`, #3194 review) - shared with the sibling `salesDocumentBlocked`
+ * chip on `orders-list-page.tsx`, which this page used to duplicate
+ * byte-for-byte under its own name.
+ */
+const pendingSubmissionAgeSuffix = oldestAgeSuffix;
+
 export function InvoicesListPage(): ReactElement {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -129,7 +152,7 @@ export function InvoicesListPage(): ReactElement {
   // `{ name, status }`, not just the name: that is `ConnectionCellFacts`, and
   // supplying only part of it used to leave the cell's status note unresolved on
   // exactly the batched path #1996 requires (#2027). A Map so a miss coalesces to
-  // `null` — `undefined` reads as "resolve it yourself" and reinstates a per-row
+  // `null` - `undefined` reads as "resolve it yourself" and reinstates a per-row
   // fetch.
   const connectionsById = useMemo(
     () => new Map(connections.map((c) => [c.id, { name: c.name, status: c.status }])),
@@ -139,7 +162,7 @@ export function InvoicesListPage(): ReactElement {
   // Two renderers per identity fact: one for the desktop column, one text-only
   // for the mobile card (see `renderDocumentCardTitle` for why they cannot be the
   // same function). The card used to headline `providerInvoiceNumber ?? r.orderId`
-  // — the raw 41-character UUID this issue exists to remove — on every row without
+  // - the raw 41-character UUID this issue exists to remove - on every row without
   // a provider number, i.e. every pending / issuing / failed row.
   //
   // What IS single-sourced across the pair: the document-type label
@@ -153,7 +176,7 @@ export function InvoicesListPage(): ReactElement {
           DOCUMENT_TYPE_LABEL_FALLBACK[r.documentType] ?? r.documentType,
         )
       : // `''` is what `InvoiceService` writes on the pending row, and the failure
-        // patch never backfills it — so a raw render left the merged cell's only
+        // patch never backfills it - so a raw render left the merged cell's only
         // text blank on exactly the rows a triage filter selects.
         t('invoice.documentType.unknown', DOCUMENT_TYPE_UNKNOWN_LABEL);
 
@@ -164,7 +187,7 @@ export function InvoicesListPage(): ReactElement {
         {r.providerInvoiceNumber ? (
           // `isSafeHttpUrl`, not `r.pdfUrl` truthiness: `InvoicePdfLink` renders an
           // anchor only for an http(s) URL, and nothing validates the scheme
-          // server-side — so branching on truthiness left a relative or garbage
+          // server-side - so branching on truthiness left a relative or garbage
           // URL rendering inert plain text, which is the very state this branch
           // exists to remove. KSeF and inFakt hard-null `pdfUrl` outright, so the
           // Copy path is the common one, not the exception.
@@ -202,12 +225,12 @@ export function InvoicesListPage(): ReactElement {
   // `DataTableCard` wraps `title` + `subtitle` in the row's `<Link>` whenever
   // `rowHref` is set (`data-table.tsx`), and this page always sets it. So the CARD
   // gets text-only renderers: putting the desktop cells there nested an `<a>` and
-  // two `<button>`s inside an anchor — invalid, and worse, the clicks bubbled to
+  // two `<button>`s inside an anchor - invalid, and worse, the clicks bubbled to
   // the card link, so the PDF number navigated to the invoice instead of opening
   // the PDF and both Copy buttons copied AND navigated away. #2089 never hit this
   // because Shipments uses `expandable` and passes no `rowHref`.
   //
-  // Same facts, same single-sourced label — just no affordances, which the card
+  // Same facts, same single-sourced label - just no affordances, which the card
   // does not need: the whole card already navigates to the document.
   const renderDocumentCardTitle = (r: InvoiceRecord): ReactElement => (
     <span className="invoice-document-cell">
@@ -246,7 +269,7 @@ export function InvoicesListPage(): ReactElement {
   const [retryBanner, setRetryBanner] = useState<{ retried: number; skipped: number } | null>(null);
   const retryMutation = useRetryInvoicesMutation();
 
-  // Bulk-issue state (#1355) — a second batch action reusing the same selection
+  // Bulk-issue state (#1355) - a second batch action reusing the same selection
   // + BulkActionBar. Issues invoices for the selected rows' orders; idempotent
   // per (connection, order) server-side.
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
@@ -274,6 +297,15 @@ export function InvoicesListPage(): ReactElement {
       else p.set('offset', String(next));
       return p;
     });
+  }
+
+  /**
+   * #3194 - the "awaiting submission" chip toggles the SAME `regulatoryStatus`
+   * filter the Select above drives; it is a second affordance for one value,
+   * not a second filter dimension.
+   */
+  function toggleAwaitingSubmission(): void {
+    setFilter('regulatoryStatus', regulatoryStatus === 'pending-submission' ? '' : 'pending-submission');
   }
 
   const toggleRow = useCallback((id: string): void => {
@@ -306,7 +338,7 @@ export function InvoicesListPage(): ReactElement {
   // derive (orderId, connectionId) from the loaded rows intersected with the
   // selection (a re-submit is idempotent server-side, so an order already issued
   // just comes back `skipped`). Selection beyond the current page is not resolved
-  // here — a deferred follow-up if bulk issue needs to cross pages.
+  // here - a deferred follow-up if bulk issue needs to cross pages.
   async function handleIssueConfirm(): Promise<void> {
     const rows = query.data?.items ?? [];
     const selectedRows = rows.filter((r) => selected.has(r.id));
@@ -380,7 +412,7 @@ export function InvoicesListPage(): ReactElement {
     },
     {
       // `invoiceNumber` and `documentType` were two columns answering one
-      // question — *what document is this?* — in a nine-column budget (#2090).
+      // question - *what document is this?* - in a nine-column budget (#2090).
       // Merged: the number over the type, the number still a working PDF link.
       //
       // Deliberately NOT `hideBelow: 768` (which `documentType` carried): the
@@ -423,7 +455,7 @@ export function InvoicesListPage(): ReactElement {
       header: t('invoice.column.buyerTaxId', 'Buyer tax ID'),
       // #3188: the value the `taxId=with|without` filter was already asking
       // about. Renders the ORDER DETAIL's own component rather than a second
-      // copy of the three-state vocabulary — there is no second render to drift.
+      // copy of the three-state vocabulary - there is no second render to drift.
       // The record's value is frozen at issue, so this states what the document
       // carries, not what the order asserts today.
       cell: (r) => (
@@ -445,7 +477,7 @@ export function InvoicesListPage(): ReactElement {
     {
       id: 'connection',
       header: t('invoice.column.connection', 'Connection'),
-      // The id used to live in a `title` attribute — invisible, unselectable and
+      // The id used to live in a `title` attribute - invisible, unselectable and
       // unreachable on touch. No adornment: an invoice's connection IS its
       // issuing provider and the column header already says so (#2090).
       cell: (r) => (
@@ -487,6 +519,25 @@ export function InvoicesListPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
   const hasFilters = Boolean(status || connectionId || regulatoryStatus || issuedFrom || issuedTo || taxId);
+
+  // #3194 - "awaiting submission" chip: count + elapsed age of the currently
+  // loaded `pending-submission` invoices. Scoped to THIS PAGE's fetched rows -
+  // there is no separate summary read for invoices (unlike the orders list's
+  // backend-aggregated `salesDocumentBlocked`), so the figure describes what
+  // is on screen rather than the whole install. `oldestAt` is the OLDEST
+  // `issuedAt ?? createdAt` among them (the invoice that has waited longest),
+  // never the newest - an "oldest" label reporting the newest would
+  // understate the wait. NOT `updatedAt`: the offline-resubmit sweep bumps
+  // that column on every row it claims, so the longest-waiting document would
+  // read as the freshest - see `pendingSubmissionAgeSuffix`'s docblock.
+  const pendingSubmissionItems = (query.data?.items ?? []).filter(
+    (r) => r.regulatoryStatus === 'pending-submission',
+  );
+  const pendingSubmissionCount = pendingSubmissionItems.length;
+  const pendingSubmissionOldestAt = pendingSubmissionItems.reduce<string | null>((oldest, r) => {
+    const waitingSince = r.issuedAt ?? r.createdAt;
+    return oldest === null || waitingSince < oldest ? waitingSince : oldest;
+  }, null);
 
   return (
     <PageLayout
@@ -583,17 +634,25 @@ export function InvoicesListPage(): ReactElement {
         </Select>
 
         <Select
-          aria-label={t('invoice.filter.regulatory', 'Filter by regulatory status')}
           data-testid="invoices-filter-regulatory"
+          aria-label={t('invoice.filter.regulatory', 'Filter by regulatory status')}
           value={regulatoryStatus ?? ''}
           onChange={(e) => setFilter('regulatoryStatus', e.target.value)}
         >
           <option value="">{t('invoice.filter.regulatory.all', 'All regulatory statuses')}</option>
-          {/* Drop `not-applicable` (absence of regulatory tracking — noise as a
-              filter) and `cleared` (reserved status no provider emits). */}
-          {RegulatoryStatusValues.filter(
-            (s) => s !== 'not-applicable' && s !== 'cleared',
-          ).map((s) => (
+          {/* #3194 reverses a prior deliberate exclusion of `not-applicable`
+              (read as noise, since it meant "no regulatory tracking") - it is
+              a real, reachable per-provider outcome: `eparagony-invoice.mapper.ts`
+              genuinely returns it. `cleared` stays excluded: repo-wide, nothing
+              writes it - the eparagony mapper emits
+              `not-applicable | rejected | accepted | pending-submission` and
+              never `cleared`, neither does KSeF nor inFakt, and the Subiekt
+              mapper's own comment reads "reserved/unused for Subiekt". Selecting
+              it would filter to a state nothing can be in, and the resulting
+              empty list would read as "you have no cleared documents" - a
+              positive claim about the operator's data derived from an
+              unreachable status. Re-add it once a provider actually emits it. */}
+          {RegulatoryStatusValues.filter((s) => s !== 'cleared').map((s) => (
             <option key={s} value={s}>
               {/* Reuse the badge's label map (#1585 F7) so the filter never falls
                   back to the raw hyphenated slug next to nicely-labelled badges. */}
@@ -601,6 +660,38 @@ export function InvoicesListPage(): ReactElement {
             </option>
           ))}
         </Select>
+
+        {/* #3194 - count + elapsed age of invoices currently `pending-submission`
+            ("with provider for", per the mockup - never an ETA/completion-time
+            estimate, since OpenLinker has no basis for one). Hidden at zero
+            unless the filter it drives is already active, matching the
+            `salesDocumentBlocked` chip's rule on the orders list: a filter
+            an operator applied must stay clearable even once its count drops
+            to zero.
+
+            UNLIKE the orders list's `salesDocumentBlocked` chip, this count is
+            NOT backend-aggregated - there is no separate summary read for
+            invoices, so it counts only the rows on the currently fetched
+            page and is capped at `PAGE_SIZE`. Visually the two chips are
+            identical, so the `title` tooltip states the scope explicitly
+            rather than leaving an operator to infer a whole-install figure
+            from a page-scoped one (the number can only ever UNDERSTATE the
+            real total). */}
+        {pendingSubmissionCount > 0 || regulatoryStatus === 'pending-submission' ? (
+          <Chip
+            data-testid="invoices-chip-awaiting"
+            tone="warning"
+            active={regulatoryStatus === 'pending-submission'}
+            onClick={toggleAwaitingSubmission}
+            title={t(
+              'invoice.chip.awaitingSubmission.scope',
+              'Counts only invoices on this page, not the whole install',
+            )}
+          >
+            {t('invoice.chip.awaitingSubmission', 'Awaiting submission')} {pendingSubmissionCount}
+            {pendingSubmissionAgeSuffix(pendingSubmissionOldestAt)}
+          </Chip>
+        ) : null}
 
         <Select
           aria-label={t('invoice.filter.connection', 'Filter by connection')}
@@ -669,7 +760,7 @@ export function InvoicesListPage(): ReactElement {
       ) : (
         <>
           <DataTable
-            // Scopes the leading-checkbox alignment for the ~60px identity row —
+            // Scopes the leading-checkbox alignment for the ~60px identity row -
             // `DataTable` lands `className` on its container, so the rule is a
             // descendant selector on this page's table only (see `index.css`).
             className="invoices-table"
@@ -689,7 +780,7 @@ export function InvoicesListPage(): ReactElement {
             rowKey={(r) => r.id}
             rowHref={(r) => `/invoices/${r.id}`}
             cardView={{
-              // Text-only, deliberately — see `renderDocumentCardTitle`. Same
+              // Text-only, deliberately - see `renderDocumentCardTitle`. Same
               // facts as the desktop columns, no nested interactive content.
               title: renderDocumentCardTitle,
               subtitle: renderOrderCardSubtitle,
@@ -720,7 +811,7 @@ export function InvoicesListPage(): ReactElement {
         </>
       )}
 
-      {/* C3: Batch retry bar — auto-hides when count=0 */}
+      {/* C3: Batch retry bar - auto-hides when count=0 */}
       <BulkActionBar
         count={selected.size}
         itemNoun={t('invoice.bulk.itemNoun', 'invoice')}

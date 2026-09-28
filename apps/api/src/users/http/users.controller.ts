@@ -6,6 +6,7 @@
  * can detect regressions per method.
  *
  * GET    /users                — list all users (optional ?status filter)
+ * GET    /users/packers        — minimal active-packer roster (admin+operator, #3340)
  * POST   /users/:id/approve    — approve a pending registration with a role
  * POST   /users/:id/reject     — reject and delete a pending registration
  * PATCH  /users/:id/role       — change a user's role
@@ -45,7 +46,9 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
+import { PackerListResponseDto } from '../dto/packer-list-response.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
+import { UpdatePackStationLabelDto } from '../dto/update-pack-station-label.dto';
 import { UserListResponseDto } from '../dto/user-list-response.dto';
 import { IUserManagementService, USER_MANAGEMENT_SERVICE_TOKEN } from '../user-management.service.interface';
 
@@ -69,6 +72,30 @@ export class UsersController {
       pageSize: query.pageSize,
     });
     return UserListResponseDto.fromDomain(result);
+  }
+
+  @Get('packers')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'List active packers for work assignment (admin/operator)',
+    description:
+      'Minimal roster used by the Assign Packing Work screen (#3340) — id + ' +
+      'username only, unlike GET /users which is admin-only and carries the ' +
+      'full user-management projection. ' +
+      'Deliberately narrowed to role=packer only, even though the bench routes ' +
+      '(@Roles(admin, operator, packer)) and the claim predicate accept any user ' +
+      'id — an operator/admin packing a shift is not offered as an assignment ' +
+      'target here. Capped at 500 rows (pageSize) with no total reported back; ' +
+      'past that cap the board silently renders a partial roster.',
+  })
+  @ApiResponse({ status: 200, description: 'Packer roster', type: PackerListResponseDto })
+  async listPackers(): Promise<PackerListResponseDto> {
+    const result = await this.userManagement.listUsers({
+      status: 'active',
+      role: 'packer',
+      pageSize: 500,
+    });
+    return PackerListResponseDto.fromDomain(result.users);
   }
 
   @Post(':id/approve')
@@ -133,6 +160,38 @@ export class UsersController {
       }
       if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
         throw new ForbiddenException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Patch(':id/pack-station-label')
+  @Roles('admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Set or clear a packer's bench/printer label (admin only)",
+    description:
+      'Operator CONFIGURATION, not identity (#3424): the label authenticates ' +
+      'nothing - ADR-071 refuses a station principal - and is displayed ' +
+      "exactly like a connection's operator-authored name. Send null to " +
+      'clear; a blank string is stored as null, so "no label" has one ' +
+      'spelling in the column.',
+  })
+  @ApiResponse({ status: 204, description: 'Label updated' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async updatePackStationLabel(
+    @Param('id') id: string,
+    @Body() dto: UpdatePackStationLabelDto
+  ): Promise<void> {
+    // No `@CurrentUser` and no self-modify guard, unlike the role and status
+    // writes above: a label is not a privilege, so there is no escalation for
+    // an admin editing their own, and the last-admin rule protects access
+    // rather than furniture.
+    try {
+      await this.userManagement.setPackStationLabel(id, dto.packStationLabel);
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
       }
       throw error;
     }

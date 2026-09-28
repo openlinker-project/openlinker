@@ -50,12 +50,15 @@ export interface PriceChangeQueueItem {
   destinationConnectionId: string;
   destinationLabel: string;
   /**
-   * The DESTINATION's own currency (`readConnectionCurrency`), never the
-   * source's (#3162 review — this field previously always fabricated the
-   * source's currency, which is wrong exactly on the one row where it
-   * matters: a `'currency-mismatch'` `blockReason` is true *because* the two
-   * differ). `null` mirrors `'destination-currency-unknown'` — the
-   * destination's currency is not configured/resolvable at all.
+   * The DESTINATION's own currency, never the source's (#3162 review — this
+   * field previously always fabricated the source's currency, which is
+   * wrong exactly on the one row where it matters: a `'currency-mismatch'`
+   * `blockReason` is true *because* the two differ). Resolved via
+   * `IDestinationCurrencyResolutionService` (an adapter-declared value,
+   * #3203) first, falling back to `readConnectionCurrency`'s
+   * `Connection.config.currency` key. `null` mirrors
+   * `'destination-currency-unknown'` — the destination's currency is not
+   * configured/resolvable at all.
    */
   destinationCurrency: string | null;
 

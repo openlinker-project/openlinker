@@ -186,6 +186,19 @@ export interface ConnectionConfig {
    * that connection's stock, which would misattribute the rest.
    */
   stockLocationOverride?: string;
+  /**
+   * Per-connection opt-in to buy a shipping label automatically the moment a
+   * routed `FulfillmentWork` is accepted by this connection (#3340/#2729) —
+   * the missing half of the invoicing `triggerModel` precedent above. Off by
+   * default: this spends the operator's money per parcel, so an absent or
+   * malformed value stays disabled rather than defaulting on. Read via
+   * `readAutoDispatchConfig` (`auto-dispatch.types.ts`).
+   */
+  autoDispatch?: {
+    enabled?: boolean;
+    parcelTemplate?: string;
+    defaultWeightGrams?: number;
+  };
   [key: string]: unknown;
 }
 

@@ -39,6 +39,20 @@ export interface ProductVariant {
   /** Master-derived, not persisted on the variants table. */
   weight?: number;
   /**
+   * Operator-authored PHYSICAL master data (#3403, mockup-parity epic
+   * #3401), PERSISTED on `product_variants` — distinct from `weight` above,
+   * which is master-derived and read fresh per publish call rather than
+   * stored. Captured at product setup and displayed read-only at the pack
+   * bench; never a live scale/measuring capture. `undefined`/`null` means
+   * "not recorded", never zero. Units match `weight`'s own sibling usage in
+   * `libs/core/src/shipping` (`ParcelSpec.weightGrams`, grams) and
+   * millimetres for the three dimensions.
+   */
+  weightGrams?: number | null;
+  lengthMm?: number | null;
+  widthMm?: number | null;
+  heightMm?: number | null;
+  /**
    * Soft-mark set when the variant is deleted at the master — absent from the
    * master's `getProductVariants` response, or the product itself 404s (#1599).
    * Optional at the domain level so adapter drafts and test factories may omit

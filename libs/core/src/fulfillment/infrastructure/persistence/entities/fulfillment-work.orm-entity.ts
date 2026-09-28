@@ -70,6 +70,24 @@ import {
   'CHK_fulfillment_works_closed_parcel_actor',
   'NOT ("parcelClosedAt" IS NOT NULL AND "packedByUserId" IS NULL AND "packedByService" IS NULL)'
 )
+// An EXCLUSIVE assignment must name the packer it is exclusive TO (ADR-074).
+// `selfServeEligible = false` on an unassigned row is a lock belonging to
+// nobody — this file's repository closes that at both writers
+// (`clearAssignment` resets the flag, `setSelfServeEligible(false)` is guarded
+// on an assignee existing). THIRD named `@Check` on this table — see the
+// sibling above for why they are separate rather than widened: this one
+// quantifies over a different pair of columns, under a different condition,
+// and is fixed differently.
+//
+// Declared under the SAME NAME as the migration, per this file's own naming
+// discipline — the integration harness builds schema by `synchronize`, so an
+// anonymous one would carry a hash name there and
+// `fulfillment-work-migration-parity.int-spec.ts` compares CHECK definitions
+// between the two schemas.
+@Check(
+  'CHK_fulfillment_works_exclusive_needs_packer',
+  'NOT ("selfServeEligible" = false AND "assignedToUserId" IS NULL)'
+)
 // The grouping key. Its LEADING COLUMN serves every `WHERE "orderId" = ?`
 // lookup, so there is deliberately no separate (orderId) index — the same
 // argument this tree makes against a redundant index on `return_lines`.
@@ -150,6 +168,52 @@ export class FulfillmentWorkOrmEntity {
   /** The holder. `null` before assignment and again after a rejection. */
   @Column({ type: 'uuid', nullable: true })
   assignedConnectionId!: string | null;
+
+  /**
+   * A supervisor's advisory pre-assignment of this parcel to a specific
+   * PACKER (ADR-074, #3336) — a distinct axis from `assignedConnectionId`
+   * (ADR-054's HOLDER connection, the executor). `null` = unassigned.
+   * `uuid`, matching the sibling `packedByUserId` column on this table.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  assignedToUserId!: string | null;
+
+  /**
+   * Whether a packer OTHER than `assignedToUserId` may still claim this
+   * parcel. `true` (the default) is ADR-074's advisory reading — a
+   * locked-to-one-packer assignment is the exception an operator opts into,
+   * not the default. Enforcement of `false` lives in
+   * `BenchParcelService.verifyUnit` (#3337) — a human-packer guard, not
+   * `FulfillmentHandshakeService`, which negotiates with holder connections
+   * (ADR-054's executor axis, #2399) and has no concept of an acting user;
+   * this column only records the decision.
+   *
+   * **`clearAssignment` resets this to `true` in the same statement that
+   * nulls `assignedToUserId`.** The flag is a decision about the packer being
+   * cleared, not a standing property of the parcel — leaving it behind would
+   * lock the NEXT assignee to an exclusivity nobody chose for them. See
+   * `CHK_fulfillment_works_exclusive_needs_packer` above, which is the
+   * DB-level backstop for the one representable-and-wrong shape this leaves:
+   * an exclusive lock with nobody assigned to hold it.
+   */
+  @Column({ type: 'boolean', default: true })
+  selfServeEligible!: boolean;
+
+  /**
+   * When this work object last BECAME unassigned (#3424, mockup-parity epic
+   * #3401) — set alongside `assignedToUserId` going `null` (creation with no
+   * pre-assignment counts), cleared back to `null` the moment a supervisor
+   * assigns it. Feeds the Assign Packing Work board's "oldest unassigned"
+   * metric (#3428), which needs a durable instant rather than a value
+   * re-derived from `updatedAt` — a column this table's five writers touch
+   * for unrelated reasons.
+   *
+   * No index: read only as part of the operator worklist projection (#3425),
+   * already narrowed to unassigned rows by `assignedToUserId IS NULL` — an
+   * index nothing else reads is cost on every write to this table.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  unassignedSince!: Date | null;
 
   /** `FulfillmentWorkStatus`. Narrowed on read by `isFulfillmentWorkStatus`. */
   @Column({ type: 'varchar', length: 32, default: 'open' })
@@ -265,6 +329,13 @@ export class FulfillmentWorkOrmEntity {
    * full-entity `save()`, and this aggregate is written exclusively by narrow
    * conditional UPDATEs, which it would never observe. Each transition carries
    * `version = version + 1` in its own `SET`.
+   *
+   * `assignToPacker` / `clearAssignment` / `setSelfServeEligible` (#3336) bump
+   * it too, deliberately — the row genuinely changed. The consequence is felt
+   * by a packer mid-parcel: a supervisor's staffing decision on this work
+   * object (a reassignment, or flipping `selfServeEligible`) invalidates the
+   * token the bench is holding, so that packer's next action answers 409 via
+   * `supportedActions` / `expectedVersion` and must re-fetch.
    */
   @Column({ type: 'integer', default: 0 })
   version!: number;
@@ -347,6 +418,73 @@ export class FulfillmentWorkOrmEntity {
    */
   @Column({ type: 'timestamptz', nullable: true })
   parcelClosedAt!: Date | null;
+
+  /**
+   * When this parcel's invoice was FIRST printed at the bench (pack-bench completion), or
+   * `null` if never. Fill-in-when-NULL — `markInvoicePrinted` writes it
+   * `WHERE "invoicePrintedAt" IS NULL`, so a reprint never moves it: the
+   * question is "was it ever printed", and a later value would make a reprint
+   * look like the original print.
+   *
+   * Deliberately does NOT bump `version`: nothing in `supportedActions` or the
+   * ADR-052 authority matrix gates on it, so it is a DISPLAY-ONLY fact — the
+   * `fulfilledQuantity` precedent one row up on this file's own writer table.
+   *
+   * No index: the one thing that reads it is the bench's own parcel
+   * projection, keyed on `id` already.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  invoicePrintedAt!: Date | null;
+
+  /**
+   * When this parcel's shipping label was FIRST fetched for printing (pack-bench completion),
+   * or `null` if never. Same fill-in-when-NULL reading and the same
+   * display-only, no-version-bump treatment as `invoicePrintedAt`.
+   *
+   * Stamped from `GET /shipments/:id/label` — a route in a SIBLING context
+   * (`shipping`), which resolves this work id off `Shipment.fulfillmentWorkId`
+   * (#2402) and calls back into this aggregate's own write seam. That call
+   * crosses no forbidden edge: `shipping` already depends on `fulfillment`
+   * (see `docs/architecture-overview.md § Cross-context dependencies in
+   * core`), and this leaf still injects nothing from `shipping` — the fact
+   * arrives as an argument (a work id), exactly as ADR-053 requires.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  labelPrintedAt!: Date | null;
+
+  /**
+   * When an operator declared this parcel finished and off the bench (pack-bench completion)
+   * — the explicit completion act the `W3401` completion research found missing:
+   * everything after the last scan (label applied, invoice inside, box on the
+   * trolley) was previously invisible. `null` until that act.
+   *
+   * At-most-once CLAIM column, in the `claimParcelClose` /
+   * `claimDispatchRelay` family: `claimCompletion` writes it under `WHERE
+   * "completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL`, so a parcel
+   * cannot be completed twice and cannot be completed before it is packed.
+   * It DOES bump `version` — unlike the two print columns above, a completion
+   * is the terminal legality-gated act on this surface and a client polling
+   * the parcel must see it as a state change.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  completedAt!: Date | null;
+
+  /**
+   * Who declared the completion (pack-bench completion). `null` until `completedAt` is set,
+   * and written in the SAME statement as it, so the two can never disagree.
+   *
+   * `uuid`, matching the sibling `packedByUserId` column on this table (users
+   * are `@PrimaryGeneratedColumn('uuid')` rows). No FK — the by-value
+   * reference this whole table carries throughout — and no service-actor
+   * counterpart: a completion is always an operator act at a terminal in front
+   * of the parcel, never something a background process performs.
+   *
+   * No index: nothing looks up "which parcels did this user complete",
+   * matching `packedByUserId`'s own policy — an index nothing reads is cost on
+   * every write to an already five-writer table (REVIEW C10).
+   */
+  @Column({ type: 'uuid', nullable: true })
+  completedByUserId!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

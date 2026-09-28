@@ -26,7 +26,12 @@ export const benchIdentityCopy = {
     signedInLabel: 'Signed in',
     signedOutLabel: 'Nobody is signed in',
     switchAction: 'Switch packer',
-    switchHint: 'One tap, without leaving the box',
+    /**
+     * Says what the switch DOES, which the mockup puts beside the control.
+     * The previous wording described how easy it was and not what happens,
+     * and a packer taking over a bench needs the second one.
+     */
+    switchHint: 'Switching clears this session - the next person signs themself in',
   },
   locked: {
     title: 'This bench is locked',
@@ -46,4 +51,7 @@ export const benchIdentityCopy = {
     confirmAction: 'Sign in as someone else',
     cancelAction: 'Stay signed in',
   },
+  /** #3408 — the pre-lock countdown warning. Advisory, never a fourth screen. */
+  warning: (secondsRemaining: number): string =>
+    `You'll be signed out in ${String(secondsRemaining)}s — tap anywhere to stay signed in.`,
 } as const;

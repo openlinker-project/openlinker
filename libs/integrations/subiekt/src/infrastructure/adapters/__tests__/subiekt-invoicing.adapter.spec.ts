@@ -13,6 +13,8 @@ import {
   isBankAccountDefaultSetter,
   isBankAccountsReader,
   isCorrectionIssuer,
+  isPaymentStatusReader,
+  isRegulatoryRecordLocator,
   isRegulatoryStatusReader,
   MissingTaxRateException,
 } from '@openlinker/core/invoicing';
@@ -621,6 +623,105 @@ describe('SubiektInvoicingAdapter', () => {
         .mockRejectedValueOnce(new SubiektInvoiceRejectedError('unknown document id'));
       await expect(adapter.getClearanceStatus(issued.record)).rejects.toBeInstanceOf(
         SubiektInvoiceRejectedError,
+      );
+    });
+  });
+
+  describe('locateByQuery (#3389, RegulatoryRecordLocator crash-recovery)', () => {
+    it('is detected as a RegulatoryRecordLocator', () => {
+      const adapter = makeAdapter().adapter;
+      expect(isRegulatoryRecordLocator(adapter)).toBe(true);
+    });
+
+    it('finds a previously-issued document by idempotencyKey and maps it to a neutral result', async () => {
+      const { adapter } = makeAdapter();
+      const issued = await adapter.issueInvoice(command({ idempotencyKey: 'invoice:conn-1:order-1' }));
+      const located = await adapter.locateByQuery({ idempotencyKey: 'invoice:conn-1:order-1' });
+      expect(located).not.toBeNull();
+      expect(located?.providerInvoiceId).toBe(issued.record.providerInvoiceId);
+      expect(located?.regulatoryStatus).toBe('submitted'); // fake seeds 'sent' -> neutral 'submitted'
+    });
+
+    it('returns null when nothing was issued under the given idempotencyKey', async () => {
+      const { adapter } = makeAdapter();
+      const located = await adapter.locateByQuery({ idempotencyKey: 'never-issued-key' });
+      expect(located).toBeNull();
+    });
+
+    it('returns null without a bridge call when the criteria carries no idempotencyKey (Subiekt cannot search by documentNumber pre-crash)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'locateByOriginalKey');
+      const located = await adapter.locateByQuery({
+        documentNumber: 'FV/2026/1',
+        issuedFrom: new Date(),
+        issuedTo: new Date(),
+      });
+      expect(located).toBeNull();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('translates a transport failure during the locate call', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('bridge-unreachable');
+      await expect(
+        adapter.locateByQuery({ idempotencyKey: 'some-key' }),
+      ).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+    });
+  });
+
+  describe('getPaymentStatus (#3390, PaymentStatusReader)', () => {
+    it('is detected as a PaymentStatusReader', () => {
+      const adapter = makeAdapter().adapter;
+      expect(isPaymentStatusReader(adapter)).toBe(true);
+    });
+
+    it('reads unpaid for a freshly-issued document', async () => {
+      const { adapter } = makeAdapter();
+      const issued = await adapter.issueInvoice(command());
+      const result = await adapter.getPaymentStatus(issued.record);
+      expect(result.paymentStatus).toBe('unpaid');
+    });
+
+    it('reads paid once the bridge is seeded as settled', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const issued = await adapter.issueInvoice(command());
+      bridge.seedPaid(Number(issued.record.providerInvoiceId));
+      const result = await adapter.getPaymentStatus(issued.record);
+      expect(result.paymentStatus).toBe('paid');
+    });
+
+    it('returns unknown without a bridge call when the record has no providerInvoiceId', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'getInvoiceStatus');
+      const record = new InvoiceRecord(
+        'rec-pending',
+        'conn-1',
+        'ol_order_1',
+        SUBIEKT_PROVIDER_TYPE,
+        'invoice',
+        'pending',
+        null,
+        null,
+        'not-applicable',
+        null,
+        null,
+        null,
+        null,
+        null,
+        new Date(),
+        new Date(),
+      );
+      const result = await adapter.getPaymentStatus(record);
+      expect(result.paymentStatus).toBe('unknown');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('translates a transport failure during a payment-status read', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const issued = await adapter.issueInvoice(command());
+      bridge.seedFailure('bridge-unreachable');
+      await expect(adapter.getPaymentStatus(issued.record)).rejects.toBeInstanceOf(
+        SubiektBridgeTransportError,
       );
     });
   });

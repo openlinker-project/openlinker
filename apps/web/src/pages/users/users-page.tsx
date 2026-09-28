@@ -19,14 +19,19 @@ import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge'
 import { Button } from '../../shared/ui/button';
 import { Alert } from '../../shared/ui/alert';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { useDemoMode } from '../../features/system';
 import { useUsersQuery } from '../../features/users/hooks/use-users-query';
 import { useApproveUserMutation } from '../../features/users/hooks/use-approve-user-mutation';
 import { useRejectUserMutation } from '../../features/users/hooks/use-reject-user-mutation';
 import { useUpdateRoleMutation } from '../../features/users/hooks/use-update-role-mutation';
 import { useDeactivateUserMutation } from '../../features/users/hooks/use-deactivate-user-mutation';
+import { PackStationLabelDialog } from '../../features/users/components/pack-station-label-dialog';
 import { useReactivateUserMutation } from '../../features/users/hooks/use-reactivate-user-mutation';
 import { useDeleteUserMutation } from '../../features/users/hooks/use-delete-user-mutation';
 import type { UserRole, UserStatus, UserSummary } from '../../features/users/api/users.types';
@@ -54,9 +59,13 @@ interface UsersPageProps {
 export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement {
   const [pendingRoles, setPendingRoles] = useState<Record<string, UserRole>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [labelDialogTarget, setLabelDialogTarget] = useState<UserSummary | null>(null);
   const { showToast } = useToast();
   const { session } = useSession();
   const currentUserId = session.user?.id ?? null;
+  // #3404 — admin-only, same route as the role change above (`@Roles('admin')`).
+  const demoMode = useDemoMode();
+  const packStationWrite = useWriteAccess('users:write', demoMode);
 
   // Per-tab page state lives in the URL (docs/frontend-architecture.md § URL
   // State) so each tab's position is bookmarkable and switching tabs never
@@ -295,6 +304,43 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       ),
     },
     {
+      id: 'packStationLabel',
+      header: 'Pack station',
+      /*
+       * #3404. Its own column rather than an entry in "Actions", because the
+       * VALUE is the useful part on a list - an admin scanning for the bench
+       * nobody has named needs to see the gap, not open three dialogs to find
+       * it.
+       *
+       * Shown for every role, not only `packer`: an operator who covers a
+       * bench at peak has the same printer, and hiding the field by role would
+       * make the column lie about who can be given one.
+       */
+      cell: (row) => (
+        <div className="table-actions">
+          {row.packStationLabel === null || row.packStationLabel === '' ? (
+            <span className="text-muted">Not set</span>
+          ) : (
+            <span className="cell-meta mono-text">{row.packStationLabel}</span>
+          )}
+          {packStationWrite.visible ? (
+            <ReadOnlyLock active={packStationWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="ghost"
+                className="button--sm"
+                disabled={packStationWrite.demoReadOnly}
+                onClick={() => {
+                  setLabelDialogTarget(row);
+                }}
+              >
+                {row.packStationLabel === null || row.packStationLabel === '' ? 'Set' : 'Change'}
+              </Button>
+            </ReadOnlyLock>
+          ) : null}
+        </div>
+      ),
+    },
+    {
       id: 'actions',
       header: 'Actions',
       cell: (row) => {
@@ -442,6 +488,15 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
         <TabsContent value="all">{renderAllContent()}</TabsContent>
         <TabsContent value="pending">{renderPendingContent()}</TabsContent>
       </Tabs>
+
+      {/* #3404 - pinned to the row that opened it, so a list re-fetch behind
+          an open dialog cannot move it onto a different user. */}
+      <PackStationLabelDialog
+        target={labelDialogTarget}
+        onClose={() => {
+          setLabelDialogTarget(null);
+        }}
+      />
 
       <ConfirmDialog
         open={pendingDeleteId !== null}

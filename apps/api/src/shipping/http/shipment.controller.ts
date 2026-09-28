@@ -9,6 +9,19 @@
  * `IOrderRecordService` (#770; degrades to null on lookup failure).
  * Domain exceptions are mapped to HTTP at this boundary. Admin + JWT.
  *
+ * ## `GET :id/label` no longer stamps a print (moved to the bench, #3340)
+ *
+ * This route carries no `@Roles` — a viewer may legitimately download a label
+ * to look at it — and any caller may reach it with nothing more than a
+ * shipment id, so a fetch here is not evidence a packer printed anything. It
+ * used to stamp `FulfillmentWork.labelPrintedAt` on every successful fetch,
+ * which meant a stray GET (a viewer opening the PDF, an automated re-read)
+ * silenced the pack-bench completion dialog's "the label is not printed"
+ * warning for a box that never actually had its label printed. The stamp now
+ * lives solely on `GET /bench/work/:workId/documents/label` — reachable only
+ * through the work, by the bench — which resolves this same shipment through
+ * the identical `IBenchDocumentsService` label projection this route serves.
+ *
  * @module apps/api/src/shipping/http
  */
 

@@ -308,6 +308,42 @@ describe('Price Change Episode Repository Integration', () => {
     expect(bySource.has(UNKNOWN_CONNECTION_ID)).toBe(false);
   });
 
+  it('countOpenByDestination() reports exact per-destination counts, unaffected by any page-size bound (#3325)', async () => {
+    const otherDestId = '77777777-7777-4777-8777-777777777777';
+    // Two episodes on DEST_CONNECTION_ID, one on a second destination — a
+    // real `GROUP BY` over the whole install, no destination scope on the
+    // read itself.
+    await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_2',
+      sourceOldAmount: 100,
+      sourceNewAmount: 90,
+      computedOldAmount: 120,
+      computedNewAmount: 108,
+    });
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_3',
+      destinationConnectionId: otherDestId,
+      sourceOldAmount: 50,
+      sourceNewAmount: 45,
+      computedOldAmount: 60,
+      computedNewAmount: 54,
+    });
+
+    const byDestination = await repository.countOpenByDestination();
+    expect(byDestination.get(DEST_CONNECTION_ID)).toBe(2);
+    expect(byDestination.get(otherDestId)).toBe(1);
+    expect(byDestination.has(UNKNOWN_CONNECTION_ID)).toBe(false);
+  });
+
   it('listOpenDestinationConnectionIds() reports distinct destination ids for a source, deduplicated across variants (#3163 review)', async () => {
     const otherDestId = '77777777-7777-4777-8777-777777777777';
     await repository.upsertOpen({

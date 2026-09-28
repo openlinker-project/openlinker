@@ -54,11 +54,31 @@ describe('Role-set tripwire (#2079 / #2413)', () => {
     // role; do not update this list first.
   });
 
-  it('gives `packer` no permissions, because none describes packing yet', () => {
-    // Not a placeholder. `usePermission` drives FE navigation visibility, so
-    // granting `orders:read` merely to populate the Record would light up the
-    // orders surface for a packer — the opposite of a narrower role. Backend
-    // authorization is @Roles, not this map. See role.types.ts.
-    expect(ROLE_PERMISSIONS.packer).toEqual([]);
+  it('gives `packer` exactly one permission, and it is the bench\'s own', () => {
+    // This read `toEqual([])` until #3424, on the reasoning that granting a
+    // permission "merely to populate the Record" would light up a surface a
+    // packer must not see - `usePermission` drives FE navigation visibility,
+    // so `orders:read` here would hand them the orders nav item.
+    //
+    // That reasoning is unchanged, and is exactly why this assertion stays
+    // EXACT rather than relaxing to "at least one": the next permission added
+    // to this row has to be argued for, not absorbed.
+    //
+    // `bench:write` is not what it was guarding against, on two counts. It
+    // gates one thing - the bench's two claim controls - and NO nav item
+    // declares it, so it lights up nothing (verified by grep over
+    // `apps/web/src/app/nav-registry.ts` at #3424; if an item ever declares
+    // it, granting it here stops being free). And it exists because those
+    // controls are rendered client-side and a client-side gate needs a
+    // permission to read: while this row was `[]` they gated on
+    // `orders:write` and so rendered ZERO times for the only role that would
+    // press them, while the API behind them
+    // (`@Roles('admin', 'operator', 'packer')`) accepted a packer perfectly
+    // well. An empty row was not a narrower role there, it was a broken one.
+    //
+    // Backend authorization is still `@Roles`, not this map. See
+    // role.types.ts, and keep the roles holding `bench:write` identical to
+    // the decorators on `BenchWorkController` / `BenchParcelController`.
+    expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
   });
 });

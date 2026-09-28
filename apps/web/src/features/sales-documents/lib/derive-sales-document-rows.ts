@@ -19,8 +19,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function resolveCapability(connection: Connection): SalesDocumentCapability | null {
-  if (connection.enabledCapabilities.includes('Invoicing')) return 'Invoicing';
-  if (connection.enabledCapabilities.includes('Fiscalization')) return 'Fiscalization';
+  const hasInvoicing = connection.enabledCapabilities.includes('Invoicing');
+  const hasFiscalization = connection.enabledCapabilities.includes('Fiscalization');
+  if (hasInvoicing && hasFiscalization) return 'Both';
+  if (hasInvoicing) return 'Invoicing';
+  if (hasFiscalization) return 'Fiscalization';
   return null;
 }
 

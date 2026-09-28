@@ -414,6 +414,12 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // a plausible edit — and one that would leave both schemas matching and
       // the constraint's own name gone.
       'CHK_fulfillment_works_closed_parcel_actor',
+      // #3360 (ADR-074). Named for the same reason: it is the THIRD `@Check`
+      // on this table, quantifying over `selfServeEligible`/`assignedToUserId`
+      // rather than the packing-actor pair above, and a silent drop here would
+      // leave both sides matching while re-admitting the "exclusive to nobody"
+      // state the migration comment says it exists to close.
+      'CHK_fulfillment_works_exclusive_needs_packer',
       // #2727. Named here rather than left to the definition diff because this
       // file's prose reasons about it: it deliberately OMITS the obvious
       // `"shippedQuantity" <= "quantity"` clause (re-ingestion rewrites the
@@ -510,6 +516,17 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'NOT',
     ]) {
       expect(closedParcelActor).toContain(clause);
+    }
+
+    // The exclusivity predicate (ADR-074), clause by clause: both columns must
+    // appear under a `NOT (… AND …)`, or a weakening applied to both schemas
+    // at once still passes the definition-equality assertion above.
+    const exclusiveNeedsPacker = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_exclusive_needs_packer')
+    );
+    expect(exclusiveNeedsPacker).toBeDefined();
+    for (const clause of ['"selfServeEligible" = false', '"assignedToUserId" IS NULL', 'NOT']) {
+      expect(exclusiveNeedsPacker).toContain(clause);
     }
 
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
@@ -699,6 +716,57 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // majority as OMS routing is adopted, and a partial predicate would also
       // refuse to serve the `IS NULL` scan the fill-in-when-NULL repair needs.
       expect(fromMigration[0].indexdef).not.toContain('WHERE');
+    });
+  });
+
+  /**
+   * `fulfillment_works`' four print/completion columns (pack-bench completion). Already covered
+   * BLANKET by "should agree on every column, type, nullability and default"
+   * above — `fulfillment_works` was already in `TABLES` before this issue, so
+   * the generic comparison alone would already fail on a divergence. This is
+   * a NARROW, targeted assertion beside it: it names the migration that
+   * creates these columns
+   * (`1897000000000-add-fulfillment-work-print-and-completion.ts`) and pins the
+   * shape a divergence would otherwise report only as an opaque row-count
+   * mismatch in the blanket comparison.
+   */
+  describe('fulfillment_works print/completion columns (pack-bench completion)', () => {
+    const COLUMN_SQL = `
+      SELECT column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'fulfillment_works'
+        AND column_name IN ('invoicePrintedAt', 'labelPrintedAt', 'completedAt', 'completedByUserId')
+      ORDER BY column_name
+    `;
+
+    it('should declare all four columns identically in the migration and the entity', async () => {
+      const [fromEntity, fromMigration] = (await Promise.all([
+        harness.getDataSource().query(COLUMN_SQL),
+        migrated.query(COLUMN_SQL),
+      ])) as Record<string, unknown>[][];
+
+      // Non-vacuity: four columns, or the two empty sets below would "match".
+      expect(fromMigration).toHaveLength(4);
+      expect(fromEntity).toEqual(fromMigration);
+
+      const byName = new Map(
+        (fromMigration as { column_name: string; data_type: string; is_nullable: string }[]).map(
+          (row) => [row.column_name, row]
+        )
+      );
+
+      // Every one nullable with NO default: an existing parcel predates every
+      // one of these facts, and a default would fabricate history for
+      // something nobody recorded.
+      for (const column of fromMigration as { is_nullable: string; column_default: unknown }[]) {
+        expect(column).toMatchObject({ is_nullable: 'YES', column_default: null });
+      }
+
+      expect(byName.get('invoicePrintedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
+      expect(byName.get('labelPrintedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
+      expect(byName.get('completedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
+      expect(byName.get('completedByUserId')).toMatchObject({ data_type: 'uuid' });
     });
   });
 });

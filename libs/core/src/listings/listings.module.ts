@@ -86,6 +86,7 @@ import { PriceChangeAutoAppliedLogOrmEntity } from './infrastructure/persistence
 import { PriceChangeAutoAppliedLogRepository } from './infrastructure/persistence/repositories/price-change-auto-applied-log.repository';
 import { PriceChangeApplyService } from './application/services/price-change-apply.service';
 import { PriceChangesService } from './application/services/price-changes.service';
+import { DestinationCurrencyResolutionService } from './application/services/destination-currency-resolution.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -138,6 +139,7 @@ import {
   PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
   PRICE_CHANGE_APPLY_SERVICE_TOKEN,
   PRICE_CHANGES_SERVICE_TOKEN,
+  DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -270,6 +272,11 @@ export {
     {
       provide: PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
       useExisting: PriceChangeEpisodeRepository,
+    },
+    DestinationCurrencyResolutionService,
+    {
+      provide: DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
+      useExisting: DestinationCurrencyResolutionService,
     },
     PriceChangeDetectionService,
     {
@@ -529,6 +536,7 @@ export {
     PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
     PRICE_CHANGE_APPLY_SERVICE_TOKEN,
     PRICE_CHANGES_SERVICE_TOKEN,
+    DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

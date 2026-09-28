@@ -18,4 +18,5 @@ export const priceChangesQueryKeys = {
       filters?.offset ?? 0,
     ] as const,
   autoApplied: () => ['price-changes', 'auto-applied'] as const,
+  counts: () => ['price-changes', 'counts'] as const,
 };

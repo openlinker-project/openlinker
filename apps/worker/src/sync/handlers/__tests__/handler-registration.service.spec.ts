@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (16 realtime / 30 bulk / 5 fiscal / 7 fan-out across 58 job types —
+ * table (17 realtime / 30 bulk / 5 fiscal / 7 fan-out across 59 job types —
  * `fiscalization.register` joined `fiscal` post-ADR, #2156;
  * `inventory.provenance.backfill` joined `bulk` with #2317; the three returns
  * types joined realtime/bulk/fan-out with #2330; `returns.orphan.reconcile`
@@ -21,11 +21,14 @@
  * with #2712 and `fulfillment.work.relaySweep` beside it with #2728. #2609
  * changed no
  * assignment at all), and the consequential assignments
- * the ADR calls out cannot silently churn.
+ * the ADR calls out cannot silently churn. `fulfillment.work.autoDispatch`
+ * joined `realtime` with #3340 (closing #2729) — a NEW job type beside its
+ * `fulfillment.work.dispatch` producer, for the identical
+ * cost-of-starvation reason.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 54 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 57 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -36,13 +39,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 54 handler instances.
+    // The constructor takes the registry followed by 57 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 54 },
+      { length: 57 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -54,8 +57,8 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 58 job types 16/30/5/7 per ADR-050 decision 1', () => {
-    // 16: three of the FIVE fulfilment job types are `realtime` by
+  it('should partition the 59 job types 17/30/5/7 per ADR-050 decision 1', () => {
+    // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
     // `fulfillment.work.relaySweep`, are deliberately NOT — see the `bulk`
@@ -77,7 +80,12 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // puts inbound order sync here. It outranks the "core-owned internal pass"
     // instinct that would suggest `bulk`, because that instinct is about who
     // ENQUEUES a job and the lane is about who is hurt when it is late.
-    expect(registry.getJobTypesByLane('realtime')).toHaveLength(16);
+    //
+    // #3340's `fulfillment.work.autoDispatch` (closing #2729) is the fourth:
+    // buying the label is the same outbound "someone is waiting on this" act
+    // as `fulfillment.work.dispatch` — a packer at the bench, this time,
+    // rather than the holder's own acceptance.
+    expect(registry.getJobTypesByLane('realtime')).toHaveLength(17);
     // 27, and every one of the additions since the lane split shares one
     // profile: background catch-up work that enqueues no children, writes
     // locally, and whose lateness costs nobody a request — so `fan-out` (whose
@@ -132,6 +140,14 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // operator tolerates being slow.
     expect(registry.getLane('fulfillment.work.route')).toBe('realtime');
     expect(registry.getJobTypesByLane('bulk')).not.toContain('fulfillment.work.route');
+  });
+
+  it('should lane the auto-dispatch trigger realtime, never bulk (#3340, closing #2729)', () => {
+    // A packer is waiting on this exactly as they wait on the handshake
+    // itself — a late label is a late shipment, the same argument that lanes
+    // its `fulfillment.work.dispatch` producer.
+    expect(registry.getLane('fulfillment.work.autoDispatch')).toBe('realtime');
+    expect(registry.getJobTypesByLane('bulk')).not.toContain('fulfillment.work.autoDispatch');
   });
 
   it('should lane the master children by TRIGGER, webhook realtime and sweep bulk (#2594)', () => {

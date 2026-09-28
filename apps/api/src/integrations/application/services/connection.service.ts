@@ -25,6 +25,7 @@ import {
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
 import type {
+  AdapterMetadata,
   ConnectionTestResult,
   WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
@@ -427,6 +428,47 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * Core-owned bounds check for `config.autoDispatch` (#3340/#2729) — the
+   * per-connection opt-in to buy a shipping label the moment a routed
+   * `FulfillmentWork` is accepted. Neutral, like the checks above it: every
+   * adapter shares this validation, and the raw JSON editor + curl + MCP all
+   * bypass the connection form's own rules, so a malformed value must be
+   * refused here rather than silently coerced to "off" by
+   * `readAutoDispatchConfig` with no operator feedback — the same
+   * reported-≠-enforced gap `validateStockAndPricingConfig`'s docblock names.
+   *
+   * Never defaults a value in; an absent `autoDispatch` key stays absent.
+   */
+  private validateAutoDispatchConfig(config: Record<string, unknown>): void {
+    const autoDispatch = config.autoDispatch;
+    if (autoDispatch === undefined || autoDispatch === null) return;
+    if (typeof autoDispatch !== 'object' || Array.isArray(autoDispatch)) {
+      throw new BadRequestException('config.autoDispatch must be an object');
+    }
+
+    const { enabled, parcelTemplate, defaultWeightGrams } = autoDispatch as Record<
+      string,
+      unknown
+    >;
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
+    }
+    if (parcelTemplate !== undefined && typeof parcelTemplate !== 'string') {
+      throw new BadRequestException('config.autoDispatch.parcelTemplate must be a string');
+    }
+    if (
+      defaultWeightGrams !== undefined &&
+      (typeof defaultWeightGrams !== 'number' ||
+        !Number.isFinite(defaultWeightGrams) ||
+        defaultWeightGrams <= 0)
+    ) {
+      throw new BadRequestException(
+        'config.autoDispatch.defaultWeightGrams must be a number greater than 0'
+      );
+    }
+  }
+
+  /**
    * Core-owned validation for `config.stockLocationOverride` (#3206): the id
    * must resolve to a location this install actually has, AND that location
    * must be ACTIVE. Rejecting here — rather than letting the sync silently
@@ -517,6 +559,57 @@ export class ConnectionService implements IConnectionService {
           'Stock written to an inactive location is filtered out by fulfilment routing, so the ' +
           'override would decide nothing. Name an active location, or reactivate this one.',
       });
+    }
+  }
+
+  /**
+   * Enforce `metadata.uniqueConfigKeys` (#3391): no ACTIVE connection on this
+   * PLATFORM may claim the identical value for one of the adapter's declared
+   * unique config keys as another active connection already does — the
+   * config-value counterpart of a database unique index, for a JSONB blob no
+   * database constraint can reach. Scoped by `platformType`, never
+   * `adapterKey` — `existing.adapterKey` may be `undefined` for a connection
+   * created without an explicit override (it then falls back to the platform
+   * default), and excluding such a connection from the collision check would
+   * silently reopen the exact gap this guard exists to close.
+   *
+   * Read-then-act against a snapshot list: a benign TOCTOU window exists (two
+   * concurrent creates could both pass and collide) — acceptable here, since
+   * the failure mode this guards against is a same-machine misconfiguration
+   * (an operator pointing two connections at one physical bridge process),
+   * not a fiscal or security boundary.
+   */
+  private async assertUniqueConfigKeys(
+    metadata: Pick<AdapterMetadata, 'platformType' | 'uniqueConfigKeys'>,
+    config: Record<string, unknown>,
+    connectionIdToExclude: string | undefined
+  ): Promise<void> {
+    const keys = metadata.uniqueConfigKeys;
+    if (!keys || keys.length === 0) return;
+
+    const relevantKeys = keys.filter((key) => {
+      const value = config[key];
+      return typeof value === 'string' && value.trim().length > 0;
+    });
+    if (relevantKeys.length === 0) return;
+
+    const siblings = await this.connectionPort.list({
+      platformType: metadata.platformType,
+      status: 'active',
+    });
+    for (const sibling of siblings) {
+      if (sibling.id === connectionIdToExclude) continue;
+      const siblingConfig = (sibling.config ?? {}) as Record<string, unknown>;
+      for (const key of relevantKeys) {
+        const value = (config[key] as string).trim();
+        const siblingValue = siblingConfig[key];
+        if (typeof siblingValue === 'string' && siblingValue.trim() === value) {
+          throw new BadRequestException(
+            `config.${key} must be unique across active ${metadata.platformType} connections — ` +
+              `"${value}" is already used by connection "${sibling.name}" (${sibling.id}).`
+          );
+        }
+      }
     }
   }
 
@@ -704,12 +797,15 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateAutoDispatchConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
         // that a 400 from validation never leaves an orphan credential row.
         // No previous config exists on create, so every claim is a transition.
         await this.assertRouterEnablementPreconditions(rest.config, undefined);
+        // #3391 — no existing connection id to exclude on create.
+        await this.assertUniqueConfigKeys(metadata, rest.config, undefined);
       }
 
       // Persist credentials if the caller supplied raw values. We write the
@@ -964,6 +1060,7 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateAutoDispatchConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
         // #2407 — inside this branch, which is correct ONLY because
@@ -972,6 +1069,8 @@ export class ConnectionService implements IConnectionService {
         // `config` therefore cannot move the A2 claim. If that write ever
         // starts merging, this placement becomes a hole.
         await this.assertRouterEnablementPreconditions(patch.config, existing.config);
+        // #3391 — exclude this connection's own row from the collision check.
+        await this.assertUniqueConfigKeys(metadata, patch.config, connectionId);
       }
 
       const connection = await this.connectionPort.update(connectionId, patch);

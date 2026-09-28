@@ -63,13 +63,14 @@ import {
   orderFromReadySnapshot,
   type IOrderRecordService,
 } from '@openlinker/core/orders';
+import { readAutoDispatchConfig } from '@openlinker/core/identifier-mapping';
 import type {
   FulfillmentWorkDispatchPayloadV1,
   SyncJob,
   SyncJobHandler,
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
-import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { JOB_ENQUEUE_TOKEN, SyncJobExecutionError, type JobEnqueuePort } from '@openlinker/core/sync';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -85,7 +86,9 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
     @Inject(FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN)
-    private readonly timeouts: IFulfillmentDispatchTimeoutService
+    private readonly timeouts: IFulfillmentDispatchTimeoutService,
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -123,6 +126,14 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
         return { outcome: 'business_failure' };
       }
 
+      // #3340, closing #2729. ONLY on a genuine fresh `accepted` — never on
+      // `no-op` (a resumed/retried job re-observing an already-accepted work)
+      // or a cancellation outcome, both of which would re-enqueue the same
+      // label purchase for a work this trigger has already fired for once.
+      if (result.outcome === 'accepted') {
+        await this.maybeEnqueueAutoDispatch(job, payload);
+      }
+
       return { outcome: 'ok' };
     } catch (error) {
       if (error instanceof FulfillmentWorkUnassignedError) {
@@ -136,6 +147,60 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
         );
       }
       throw error;
+    }
+  }
+
+  /**
+   * Enqueue `fulfillment.work.autoDispatch` when — and only when — the
+   * accepting holder's own connection opted in (#3340, closing #2729).
+   *
+   * Gated HERE, before enqueue, rather than inside the auto-dispatch handler
+   * itself: the feature is off by default, so gating post-enqueue would put a
+   * job on the queue for every ordinary acceptance on every install that has
+   * never touched this setting — the `AutoIssueTriggerService` precedent
+   * (invoicing's own trigger decides BEFORE enqueue, never after). The
+   * auto-dispatch handler still re-checks the same config at execution time
+   * (`not-enabled`), because the connection may be reconfigured between this
+   * enqueue and the job actually running.
+   *
+   * BEST-EFFORT and never allowed to fail the handshake: the work is already
+   * durably accepted and packable by the time this runs, so a failure to
+   * enqueue the label purchase must cost the operator nothing worse than a
+   * manual Generate-label click.
+   */
+  private async maybeEnqueueAutoDispatch(
+    job: SyncJob,
+    payload: FulfillmentWorkDispatchPayloadV1
+  ): Promise<void> {
+    try {
+      const { connection } = await this.integrations.getAdapter(job.connectionId);
+      const autoDispatch = readAutoDispatchConfig(connection.config);
+      if (!autoDispatch.enabled) {
+        return;
+      }
+
+      await this.jobEnqueue.enqueueJob({
+        jobType: 'fulfillment.work.autoDispatch',
+        // The SAME executor connection `fulfillment.work.dispatch` itself
+        // runs under — never a synthetic id (#2609).
+        connectionId: job.connectionId,
+        payload: {
+          schemaVersion: 1,
+          workId: payload.workId,
+          orderId: payload.orderId,
+        },
+        // Global per-work uniqueness: this trigger fires at most once per
+        // work (guarded by the `accepted`-only branch above), and a stable
+        // key makes a duplicate enqueue attempt (a retried handshake outcome
+        // read, a redelivered event) a safe no-op rather than a second label.
+        idempotencyKey: `fulfillment:autoDispatch:${payload.workId}`,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Could not enqueue fulfillment.work.autoDispatch for work ${payload.workId} ` +
+          `(connectionId=${job.connectionId}): ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

@@ -70,6 +70,12 @@ export function useInvoiceContentQuery(invoiceId: string): InvoiceContentQueryRe
     // something false about their invoice. The app-wide default is `retry:
     // false`, so this predicate is load-bearing, not decorative.
     retry: (failureCount, error) => !isContentUnavailable(error) && failureCount < 1,
+    // The correction flows gate on `isLoading` and then mount a picker/grid that
+    // observes this same query. With the default `retryOnMount: true`, that
+    // child mounting against an errored query flips it back to pending, the
+    // parent unmounts the child, the query errors again — an unbounded refetch
+    // loop on every invoice without a content snapshot.
+    retryOnMount: false,
   });
 
   const contentUnavailable = isContentUnavailable(query.error);

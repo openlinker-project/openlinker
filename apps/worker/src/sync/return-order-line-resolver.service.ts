@@ -49,11 +49,18 @@ export class ReturnOrderLineResolverService {
    * Resolve every line of one return, and report what happened.
    *
    * Idempotent: core's write is a fill-in-when-NULL claim, so re-running this
-   * for a return whose lines already resolved changes nothing and reports
-   * `alreadyResolved`. That is what makes it safe to re-drive without a lock —
-   * and it is the route by which a return ingested BEFORE this shipped ever gets
-   * its lines resolved, the next time `marketplace.return.sync` runs for it
-   * (the poll fan-out, or an inbound `'return'` webhook since #2400).
+   * for a return whose lines already resolved changes nothing to
+   * `resolvedOrderLineId` and reports `alreadyResolved`. That is what makes it
+   * safe to re-drive without a lock — and it is the route by which a return
+   * ingested BEFORE this shipped ever gets its lines resolved, the next time
+   * `marketplace.return.sync` runs for it (the poll fan-out, or an inbound
+   * `'return'` webhook since #2400). **One exception (#3450)**: an
+   * already-resolved line whose `resolvedProductId` is still `NULL` — i.e. one
+   * resolved before that column existed — DOES change on a re-run: core
+   * backfills the catalogue identity from the same order line the row already
+   * names, reported as `ReturnOrderLineResolutionSummary.catalogIdentityBackfilled`.
+   * That backfill is why re-driving this pass matters even for a return whose
+   * `resolvedOrderLineId` was already set.
    *
    * **There is exactly one caller today**, `MarketplaceReturnSyncHandler`. The
    * `marketplace.returns.statusSync` lifecycle re-read does NOT resolve:

@@ -48,9 +48,39 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ApiError } from '../../../shared/api/api-error';
 
+/**
+ * Why the bench cannot reach OpenLinker, when it cannot (#3407).
+ *
+ * `link-down` is this machine's own network, reported by `navigator.onLine`,
+ * which is reliable in the negative. `server-unreachable` is the other case:
+ * the link is fine and a request still got no answer.
+ *
+ * They are separated because the REMEDY differs - one is "check the network
+ * at this bench", the other is "the network here is fine, OpenLinker is not
+ * answering" - and because the pair is what #3422's three-state indicator
+ * renders. They were always computed apart and then collapsed by an `||`.
+ */
+export type BenchConnectivity = 'ok' | 'server-unreachable' | 'link-down';
+
 export interface BenchReachability {
   /** True when the bench must refuse new work and say so. */
   readonly unreachable: boolean;
+
+  /**
+   * The same answer, told apart by cause.
+   *
+   * It is NOT a hardware-health signal and must never be presented as one.
+   * The mockup's amber reads "hardware problem - scanner/printer"; nothing in
+   * this system can observe that, so the state means what it can prove:
+   * reachable network, unreachable server. A tri-state light whose middle
+   * value is a guess is worse than a two-state one, because a false amber on
+   * a working bench teaches a packer to ignore the red as well.
+   *
+   * `link-down` outranks `server-unreachable` when both hold: a request
+   * cannot reach a server over a link that is down, so the link is the cause
+   * and the failed request is its symptom.
+   */
+  readonly connectivity: BenchConnectivity;
   /** Report that a request never reached the server. */
   readonly reportUnreachable: () => void;
   /** Report that the server answered — anything at all. */
@@ -112,6 +142,10 @@ export function useBenchReachability(): BenchReachability {
   return useMemo(
     () => ({
       unreachable: requestFailed || linkDown,
+      // `linkDown` first: with both true the link is the cause and the failed
+      // request is its symptom, so reporting the request would send a packer
+      // to call about a server that is probably fine.
+      connectivity: linkDown ? 'link-down' : requestFailed ? 'server-unreachable' : 'ok',
       reportUnreachable,
       reportReached,
     }),

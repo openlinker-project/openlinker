@@ -65,6 +65,31 @@ export interface FulfillmentWorkView {
   readonly locationId: string | null;
   readonly deliveryMethod: string | null;
   readonly assignedConnectionId: string | null;
+  /**
+   * A supervisor's advisory pre-assignment of this parcel to a specific
+   * packer, `null` for none (#3336/#3337, ADR-074). A distinct axis from
+   * `assignedConnectionId` — that one is the HOLDER connection.
+   */
+  readonly assignedToUserId: string | null;
+
+  /**
+   * When this parcel last became unassigned, ISO-8601, or `null` (#3424).
+   *
+   * `null` means two different things and the caller must read it against
+   * `assignedToUserId` rather than alone: on an ASSIGNED row it means "it is
+   * assigned right now, there is no waiting to report"; on an UNASSIGNED row
+   * it means the row predates this column, which is an UNKNOWN age, never a
+   * zero one. A board rendering "sat unassigned 0m" for the second case would
+   * claim a parcel just arrived when it may have waited a week.
+   */
+  readonly unassignedSince: string | null;
+  /**
+   * Whether a packer other than `assignedToUserId` may still work this
+   * parcel. `true` is the advisory default. Server-side enforcement of
+   * `false` lives in `BenchParcelService.verifyUnit` (#3337), not here — this
+   * field only reports the operator's decision.
+   */
+  readonly selfServeEligible: boolean;
   readonly status: FulfillmentWorkStatus;
   readonly requestStatus: FulfillmentRequestStatus;
   readonly assignmentAttempt: number;
@@ -98,6 +123,27 @@ export interface FulfillmentWorkView {
    * an internal actor an operator surface has no use for.
    */
   readonly packedByUserId: string | null;
+  /**
+   * When this parcel's invoice was FIRST printed (pack-bench completion), or `null` if never.
+   * Fill-in-when-NULL — a reprint never moves it. On the allowlist because the
+   * bench's own document surface (`BenchDocumentsController`) reads it to
+   * decide whether "print the invoice" or "reprint it" is the honest label.
+   */
+  readonly invoicePrintedAt: Date | null;
+  /** The label sibling of `invoicePrintedAt` (pack-bench completion). Same reading. */
+  readonly labelPrintedAt: Date | null;
+  /**
+   * When an operator declared this parcel finished and off the bench (pack-bench completion),
+   * or `null` until that act. A DISTINCT completion instant from
+   * `parcelClosedAt` — see `FulfillmentWork.completedAt`'s own docblock for
+   * why the two are never merged.
+   */
+  readonly completedAt: Date | null;
+  /**
+   * Who declared it — a USER ID, matching `packedByUserId`'s own reading:
+   * resolving a name is the consumer's, and this view holds no PII.
+   */
+  readonly completedByUserId: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly lines: readonly FulfillmentWorkLineView[];
@@ -216,4 +262,55 @@ export interface ApplyFulfillmentWorkActionInput {
   readonly releaseNote?: string | null;
   /** Audit actor, when the caller has one. */
   readonly actorUserId?: string | null;
+}
+
+/**
+ * The assignment PATCH (#3337, ADR-074) — deliberately NOT one of
+ * `ApplyFulfillmentWorkActionInput`'s actions. ADR-074 states the reason:
+ * "a staffing decision one layer below the [ADR-052] authority matrix, not a
+ * new row in it" — and `OPERATOR_INVOCABLE_ACTIONS` is that matrix's own
+ * legality-gated vocabulary. Folding assignment in would make an advisory
+ * staffing act subject to `supportedActions` / `expectedVersion` legality
+ * gating built for execution-state transitions it is not one of.
+ *
+ * Each field is OPTIONAL and independently applied — `undefined` means
+ * "leave alone", never "clear". `assignedToUserId: null` clears an
+ * assignment; a string sets or reassigns it (`assignToPacker` is not
+ * claim-once, so reassigning an already-assigned parcel is legal). At least
+ * one field must be present — the service refuses an all-`undefined` patch
+ * rather than silently no-op-succeeding.
+ */
+export interface UpdateFulfillmentWorkAssignmentInput {
+  readonly workId: string;
+  readonly assignedToUserId?: string | null;
+  readonly selfServeEligible?: boolean;
+  /**
+   * An OPTIONAL lost-update guard (#3340 second follow-up) — orthogonal to
+   * ADR-074's "outside the authority matrix" placement, which is about
+   * LEGALITY (which system may act), not about protecting a caller's own
+   * read from being silently overwritten. Without it, two supervisors
+   * dragging the same task to two different packers both received a 200,
+   * last write winning with neither told.
+   *
+   * Optional so every existing caller (one that has not read a version to
+   * supply) keeps today's unconditional behaviour on deploy. When supplied,
+   * a mismatch — on EITHER write this input fans out to — raises
+   * `FulfillmentWorkVersionConflictError`, the `applyAction` convention.
+   */
+  readonly expectedVersion?: number;
+}
+
+/**
+ * What `claimAssignment` answers (#3340 follow-up).
+ *
+ * `work` is the FRESH read either way — a successful claim's own effect, or
+ * (on `claimed: false`) the row a peer's claim just moved underneath the
+ * caller. A caller must never project the pre-write object it read before
+ * calling this method: that is precisely the stale-view bug this method
+ * exists to close (two packers both being told they "claimed" a parcel that
+ * only one of them actually holds).
+ */
+export interface ClaimFulfillmentWorkAssignmentResult {
+  readonly claimed: boolean;
+  readonly work: FulfillmentWorkView;
 }

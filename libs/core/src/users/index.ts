@@ -42,6 +42,7 @@ export {
   ROLE_PERMISSIONS,
 } from './domain/types/role.types';
 export type { UserRole, Permission } from './domain/types/role.types';
+export { PACKER_PRESENCE_WINDOW_MS, isPackerOnline } from './domain/types/packer-presence.types';
 export { UserStatusValues } from './domain/types/user-status.types';
 export type { UserStatus } from './domain/types/user-status.types';
 export {

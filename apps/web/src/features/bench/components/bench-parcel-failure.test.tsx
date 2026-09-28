@@ -46,6 +46,13 @@ function line(over: Partial<BenchParcelLine> = {}): BenchParcelLine {
     gtin: null,
     requiredQuantity: 2,
     verifiedQuantity: 0,
+    imageUrl: null,
+    attributes: null,
+    binCode: null,
+    weightGrams: null,
+    lengthMm: null,
+    widthMm: null,
+    heightMm: null,
     ...over,
   };
 }
@@ -56,12 +63,20 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     version: 4,
     orderReference: 'OL-4471',
     buyerName: 'Anna Nowak',
+    totalAmount: null,
+    currency: null,
+    carrierName: null,
+    dispatchByAt: null,
     parcelIndex: 1,
     parcelTotal: 2,
     refusal: null,
     holdReason: null,
     closedAt: null,
     packedByUserId: null,
+    assignedToUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
     lines: [line()],
     ...over,
   };
@@ -581,7 +596,7 @@ describe('bench under failure (#2421)', () => {
 
       // Shown-and-refused, not hidden: a control that vanishes reads as a
       // missing feature and the packer hunts for it.
-      const confirm = await screen.findByRole('button', { name: /confirm this line/i });
+      const confirm = await screen.findByRole('button', { name: /confirm this item/i });
       expect(confirm).toBeDisabled();
       expect(screen.getByText(/Not while the bench is out of touch/i)).toBeInTheDocument();
       await user.click(confirm);

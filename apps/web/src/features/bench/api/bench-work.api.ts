@@ -16,16 +16,34 @@
  * @module apps/web/src/features/bench/api
  */
 import {
+  parseBenchActivityEntries,
+  parseBenchClaimNextResult,
+  parseBenchClaimResult,
+  parseBenchCompleteResult,
   parseBenchDocuments,
+  parseBenchMetrics,
+  parseBenchPackedTodayList,
   parseBenchParcel,
+  parseBenchPresence,
   parseBenchReopenResult,
+  parseBenchUndoCompletionResult,
+  parseBenchUndoResult,
   parseBenchUnlabelledParcelList,
   parseBenchVerificationResult,
 } from './bench-parcel.schema';
 import type {
+  BenchActivityEntry,
+  BenchClaimNextResult,
+  BenchClaimResult,
+  BenchCompleteResult,
   BenchDocuments,
+  BenchMetrics,
+  BenchPackedTodayList,
   BenchParcel,
+  BenchPresence,
   BenchReopenResult,
+  BenchUndoCompletionResult,
+  BenchUndoResult,
   BenchUnlabelledParcelList,
   BenchVerificationResult,
 } from './bench-parcel.types';
@@ -72,12 +90,53 @@ export interface BenchApi {
   ) => Promise<BenchVerificationResult>;
   /** Reopen a box closed by mistake. `expectedVersion` is the token read with the parcel. */
   reopenParcel: (workId: string, expectedVersion?: number) => Promise<BenchReopenResult>;
+  /**
+   * Declare a closed parcel finished and off the bench (pack-bench
+   * completion). `expectedVersion` is the token read with the parcel; a stale
+   * one answers a `version-conflict` refusal with nothing written.
+   */
+  completeParcel: (workId: string, expectedVersion: number) => Promise<BenchCompleteResult>;
+  /**
+   * Take back a completion, and keep every scan (#3415).
+   *
+   * The way back from "done" that is not a reopen — a reopen unpacks the
+   * whole box, this clears `completedAt` alone. `expectedVersion` is the
+   * token read with the parcel, exactly as `completeParcel`'s is.
+   */
+  undoCompletion: (workId: string, expectedVersion: number) => Promise<BenchUndoCompletionResult>;
   /** The invoice that goes inside the box and the label that goes on it. */
   getDocuments: (workId: string) => Promise<BenchDocuments>;
   /** The rendered invoice for this parcel's own order. Creates nothing. */
   downloadInvoice: (workId: string) => Promise<Blob>;
+  /**
+   * The rendered label for this parcel's own shipment (#3340).
+   *
+   * The ONLY print call the bench should make — `shipments.downloadLabel`
+   * still exists for every other caller of a shipment's label, but it no
+   * longer marks anything printed. This route does, because it is reachable
+   * only through the WORK, which is what lets the stamp be attributed to a
+   * packer's box rather than to any caller who happens to know a shipment id.
+   */
+  downloadLabel: (workId: string) => Promise<Blob>;
   /** Finished boxes with no label on them, here and in dispatch. */
   listUnlabelledParcels: () => Promise<BenchUnlabelledParcelList>;
+
+  // ── #3401 mockup-parity: undo, presence, claim, activity, metrics ──────
+
+  /** Undo the single most recent scan on an OPEN parcel (#3405). */
+  undoLastScan: (workId: string) => Promise<BenchUndoResult>;
+  /** Announce presence on this parcel, and learn whether someone else already has (#3406). */
+  pingPresence: (workId: string) => Promise<BenchPresence>;
+  /** "Claim this parcel" — self-assign the CALLER, never anyone else (#3412). */
+  claimParcel: (workId: string) => Promise<BenchClaimResult>;
+  /** "Take next task" — server-picked from the same sorted, filtered worklist (#3412). */
+  claimNext: () => Promise<BenchClaimNextResult>;
+  /** Recent activity for this parcel, newest first (#3411). */
+  listActivity: (workId: string) => Promise<readonly BenchActivityEntry[]>;
+  /** Parcels this bench has closed today, newest-closed first (#3413). */
+  listPackedToday: () => Promise<BenchPackedTodayList>;
+  /** Packed-today count, its trend, and the cross-connection backlog (#3413). */
+  getMetrics: () => Promise<BenchMetrics>;
 }
 
 interface ApiRequest {
@@ -122,14 +181,63 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
         })
       );
     },
+    async completeParcel(workId, expectedVersion): Promise<BenchCompleteResult> {
+      return parseBenchCompleteResult(
+        await request<unknown>(`${work(workId)}/complete`, {
+          method: 'POST',
+          body: JSON.stringify({ expectedVersion }),
+        })
+      );
+    },
+    async undoCompletion(workId, expectedVersion): Promise<BenchUndoCompletionResult> {
+      return parseBenchUndoCompletionResult(
+        await request<unknown>(`${work(workId)}/complete/undo`, {
+          method: 'POST',
+          body: JSON.stringify({ expectedVersion }),
+        })
+      );
+    },
     async getDocuments(workId): Promise<BenchDocuments> {
       return parseBenchDocuments(await request<unknown>(`${work(workId)}/documents`));
     },
     async downloadInvoice(workId): Promise<Blob> {
       return requestBlob(`${work(workId)}/documents/invoice`);
     },
+    async downloadLabel(workId): Promise<Blob> {
+      return requestBlob(`${work(workId)}/documents/label`);
+    },
     async listUnlabelledParcels(): Promise<BenchUnlabelledParcelList> {
       return parseBenchUnlabelledParcelList(await request<unknown>('/bench/unlabelled-parcels'));
+    },
+
+    async undoLastScan(workId): Promise<BenchUndoResult> {
+      return parseBenchUndoResult(
+        await request<unknown>(`${work(workId)}/verifications/undo`, { method: 'POST' })
+      );
+    },
+    async pingPresence(workId): Promise<BenchPresence> {
+      return parseBenchPresence(
+        await request<unknown>(`${work(workId)}/presence`, { method: 'POST' })
+      );
+    },
+    async claimParcel(workId): Promise<BenchClaimResult> {
+      return parseBenchClaimResult(
+        await request<unknown>(`${work(workId)}/claim`, { method: 'POST' })
+      );
+    },
+    async claimNext(): Promise<BenchClaimNextResult> {
+      return parseBenchClaimNextResult(
+        await request<unknown>('/bench/work/claim-next', { method: 'POST' })
+      );
+    },
+    async listActivity(workId): Promise<readonly BenchActivityEntry[]> {
+      return parseBenchActivityEntries(await request<unknown>(`${work(workId)}/activity`));
+    },
+    async listPackedToday(): Promise<BenchPackedTodayList> {
+      return parseBenchPackedTodayList(await request<unknown>('/bench/work/packed-today'));
+    },
+    async getMetrics(): Promise<BenchMetrics> {
+      return parseBenchMetrics(await request<unknown>('/bench/metrics'));
     },
   };
 }

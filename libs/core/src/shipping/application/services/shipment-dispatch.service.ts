@@ -55,6 +55,7 @@ import {
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order-not-dispatchable-held.exception';
+import { FulfillmentWorkDispatchConflictException } from '../../domain/exceptions/fulfillment-work-dispatch-conflict.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
 import {
@@ -154,6 +155,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       // the answer is "this order is already shipping", not "your carrier is".
       const active = await this.shipments.findActiveByOrderId(input.orderId, 'outbound');
       if (active?.providerShipmentId) {
+        // #3340 follow-up: the finished shipment a peer just handed back may
+        // belong to a SIBLING work on a split order — see
+        // `assertNotClaimedBySiblingWork` for the full reasoning, applied
+        // identically here so the contended path cannot report the same false
+        // success the sequential path used to.
+        await this.assertNotClaimedBySiblingWork(input, active);
         this.logger.log(
           `Dispatch for order ${input.orderId} is contended; returning the shipment ` +
             `the concurrent dispatch already generated (${active.id} on connection ` +
@@ -366,6 +373,10 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // window it used to leave open is closed by construction.
     const active = await this.shipments.findActiveByOrderId(input.orderId, 'outbound');
     if (active) {
+      // #3340 follow-up: on a split order this "already active" row may
+      // belong to a SIBLING work, not this one — see
+      // `assertNotClaimedBySiblingWork`.
+      await this.assertNotClaimedBySiblingWork(input, active);
       return active;
     }
 
@@ -441,6 +452,16 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // attributing a parcel to a work that may not have shipped it (#2727).
     const workLink = await this.resolveWorkLink(input.orderId);
 
+    // #3340 follow-up: a caller that ALREADY knows which work this dispatch is
+    // for (the auto-dispatch job) is authoritative — preferred over the
+    // per-order `workLink` guess, which cannot disambiguate a split order at
+    // all (every sibling resolves `ambiguous` for as long as more than one
+    // work is live). Falling back to `workLink` keeps every caller that does
+    // not supply `fulfillmentWorkId` (the manual HTTP dispatch route) byte-
+    // identical to its pre-#3340 behaviour.
+    const linkedWorkId =
+      input.fulfillmentWorkId ?? (workLink.kind === 'unique' ? workLink.workId : undefined);
+
     const shipment = priorBranchOne
       ? await this.shipments.update(priorBranchOne.id, {
           status: SHIPMENT_STATUS.Draft,
@@ -459,7 +480,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
           paczkomatId: input.paczkomatId,
           sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
           // Work linkage (#2402). Stamped at birth on the create branch.
-          fulfillmentWorkId: workLink.kind === 'unique' ? workLink.workId : undefined,
+          fulfillmentWorkId: linkedWorkId,
         });
 
     // The retry branch above REUSED a prior row rather than creating one, so it
@@ -474,8 +495,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // re-reading the row purely to refresh a column no caller consults would be
     // an extra query for nothing — stated so a future reader of `shipment` here
     // knows it can disagree with the row.
-    if (priorBranchOne && workLink.kind === 'unique') {
-      await this.shipments.claimFulfillmentWorkLink(shipment.id, workLink.workId);
+    if (priorBranchOne && linkedWorkId !== undefined) {
+      await this.shipments.claimFulfillmentWorkLink(shipment.id, linkedWorkId);
     }
 
     // Lost-response recovery (#1917). A prior attempt may have committed at the
@@ -599,6 +620,50 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       );
       return { kind: 'none' };
     }
+  }
+
+  /**
+   * Refuse to hand back an already-active shipment when it cannot be
+   * attributed to the CALLER's work (#3340 follow-up).
+   *
+   * Only fires when the caller both (a) supplied `fulfillmentWorkId` — a
+   * caller with no work in hand (the manual HTTP dispatch route) is
+   * untouched — and (b) the order genuinely has more than one live work
+   * (`resolveWorkLink` answers `'ambiguous'`). That second condition is what
+   * keeps this narrow: an active-but-UNLINKED shipment on a single-work order
+   * (a branch-1 row the status poll created before routing existed, or one a
+   * prior dispatch left unclaimed) is legitimately this work's own label —
+   * refusing it there would be a regression, not a fix, since nothing else
+   * disambiguates it.
+   *
+   * `active.fulfillmentWorkId` is checked rather than trusted blindly, because
+   * on a split order EVERY sibling's shipment resolves `ambiguous` at create
+   * time (#2727 — the link stays NULL rather than guessing), so a bare
+   * `fulfillmentWorkId !== null` test would never fire for the exact case this
+   * guards. The real signal is the AMBIGUITY itself plus a caller who knows
+   * precisely which work it is: if the active row is not definitely this
+   * work's (matching id), it must not be reported as satisfying it.
+   */
+  private async assertNotClaimedBySiblingWork(
+    input: ShipmentDispatchInput,
+    active: Shipment,
+  ): Promise<void> {
+    if (input.fulfillmentWorkId === undefined) return;
+    if (active.fulfillmentWorkId === input.fulfillmentWorkId) return;
+
+    const workLink = await this.resolveWorkLink(input.orderId);
+    if (workLink.kind !== 'ambiguous') return;
+
+    this.logger.warn(
+      `Dispatch for order ${input.orderId} (work ${input.fulfillmentWorkId}) refused: an ` +
+        `active shipment (${active.id}) already exists and the order has more than one live ` +
+        'fulfillment work, so it cannot be attributed to this one',
+    );
+    throw new FulfillmentWorkDispatchConflictException(
+      input.orderId,
+      input.fulfillmentWorkId,
+      active.id,
+    );
   }
 
   private describeParameterDivergence(

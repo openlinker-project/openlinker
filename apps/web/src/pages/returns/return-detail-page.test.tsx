@@ -496,6 +496,25 @@ describe('ReturnDetailPage', () => {
       expect(await screen.findByText('What came back')).toBeInTheDocument();
       expect(getCorrectionProposal).not.toHaveBeenCalled();
     });
+
+    it('should keep the correction section in place for an orphan (#3094) — a fixed message, not a dead anchor', async () => {
+      setup({ detail: makeDetail({ bucket: 'orphan', internalOrderId: null }) });
+
+      expect(
+        await screen.findByText(
+          'No credit note is prepared for an unmatched return. Match it to an order first.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('should mount the correction section for a non-orphan return, reachable via #correction (#3094)', async () => {
+      setup({
+        getCorrectionProposal: vi.fn().mockResolvedValue({ outcome: 'no-invoice', proposal: null }),
+      });
+
+      const heading = await screen.findByText('Credit note proposal');
+      expect(heading.closest('section')).toHaveAttribute('id', 'correction');
+    });
   });
 
   describe('restock-blocked surfacing (#2381)', () => {

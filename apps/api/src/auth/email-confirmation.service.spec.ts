@@ -49,6 +49,8 @@ const makeUserManagementService = (): jest.Mocked<IUserManagementService> => ({
   reactivateUser: jest.fn(),
   deleteUser: jest.fn(),
   confirmEmail: jest.fn(),
+  setPackStationLabel: jest.fn(),
+  recordBenchActivity: jest.fn(),
 });
 
 const makeDemoModeService = (enabled = false): jest.Mocked<IDemoModeService> => ({
@@ -73,6 +75,8 @@ const makeUserRepo = (): jest.Mocked<UserRepositoryPort> => ({
   deleteById: jest.fn(),
   updateAnalyticsConsent: jest.fn(),
   findStaleViewerAccounts: jest.fn(),
+  updatePackStationLabel: jest.fn(),
+  touchLastActive: jest.fn(),
   save: jest.fn(),
   deactivateAdminAtomically: jest.fn(),
   updateAdminRoleAtomically: jest.fn(),

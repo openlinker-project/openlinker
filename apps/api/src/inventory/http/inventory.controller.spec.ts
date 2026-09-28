@@ -58,6 +58,7 @@ describe('InventoryController', () => {
       listInventoryItems: jest.fn(),
       getAvailabilityByVariantIds: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
+      findBinCodesByVariantIds: jest.fn(),
       getProductStockAggregates: jest.fn(),
       getDuplicatePositionReport: jest.fn(),
       getProvenanceBackfillStatus: jest.fn(),

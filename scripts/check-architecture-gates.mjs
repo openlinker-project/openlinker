@@ -116,6 +116,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readPriceSyncModeConfig', key: 'config.priceSyncMode' },
   ],
   [
+    'libs/core/src/identifier-mapping/domain/types/auto-dispatch.types.ts',
+    { helper: 'readAutoDispatchConfig', key: 'config.autoDispatch' },
+  ],
+  [
     'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
     {
       helper: 'readSalesDocumentRouting',
@@ -319,8 +323,38 @@ const NON_KNOBS = new Map([
  *    re-opens this same conversation with no further headroom.
  *
  * A reviewer who disagrees should push back on this raise specifically.
+ *
+ * ## Raised to 11 by #3415 (`config.autoDispatch`)
+ *
+ * The tenth knob is `readAutoDispatchConfig` - whether a connection buys its
+ * shipping label automatically when the holder accepts the work, and with
+ * what default parcel weight and template. Registered rather than excused,
+ * and the raise is stated here rather than made quietly, on the same three
+ * grounds as its predecessors:
+ *
+ * 1. `auto-dispatch.types.ts` is a types-and-pure-helpers file with no
+ *    persistence and no binding, exactly like `price-sync-mode.types.ts` and
+ *    `price-change-block.types.ts` beside it. A shared per-connection rules
+ *    model needs both, and this slice must not grow one ahead of the design
+ *    that owns it.
+ * 2. It has to be PER CONNECTION rather than a deployment-wide env flag,
+ *    because buying a label spends the operator's money at a carrier. An
+ *    operator who wants one shop's parcels bought automatically and another's
+ *    bought by hand cannot express that in a global switch, and a global
+ *    switch defaulting either way is wrong for somebody.
+ * 3. The consolidation already has an owner (#2169), and this raise buys
+ *    exactly one more knob before the gate fires again.
+ *
+ * One thing that is NOT like its predecessors, recorded because it should
+ * shape the consolidation rather than be rediscovered: every earlier knob
+ * changes how OpenLinker describes or publishes something, while this one
+ * decides whether OpenLinker SPENDS. Whatever replaces these ten will need a
+ * way to say that a rule costs money, and that is a stronger requirement than
+ * any of the nine before it put on it.
+ *
+ * A reviewer who disagrees should push back on THIS raise specifically.
  */
-const KNOB_THRESHOLD = 10;
+const KNOB_THRESHOLD = 11;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

@@ -187,6 +187,12 @@ describe('AllegroOfferManagerAdapter', () => {
     });
   });
 
+  describe('getDestinationCurrency (#3203)', () => {
+    it('should declare PLN, matching the PL-first assumption baked into the adapter', () => {
+      expect(adapter.getDestinationCurrency()).toBe('PLN');
+    });
+  });
+
   describe('updateOfferQuantity', () => {
     beforeEach(() => {
       // Mock polling response for command status (SUCCESS by default)

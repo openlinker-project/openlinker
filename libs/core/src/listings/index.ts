@@ -399,6 +399,19 @@ export { PriceChangeEpisodePersistenceError } from './domain/exceptions/price-ch
 export { PriceChangeEpisodeSupersededError } from './domain/exceptions/price-change-episode-superseded.error';
 export { resolvePriceChangeBlockReason, readConnectionCurrency } from './domain/types/price-change-block.types';
 export type { IPriceChangeDetectionService } from './application/services/price-change-detection.service.interface';
+// Destination currency resolution (#3203): a destination's REAL currency,
+// resolved via an adapter-declared value (Allegro/Erli, `OfferCurrencyDeclarer`
+// / `ShopCurrencyDeclarer`), consumed by `readConnectionCurrency`'s callers as
+// the primary source before the `Connection.config.currency` key.
+export type { OfferCurrencyDeclarer } from './domain/ports/capabilities/offer-currency-declarer.capability';
+export { isOfferCurrencyDeclarer } from './domain/ports/capabilities/offer-currency-declarer.capability';
+export type { ShopCurrencyDeclarer } from './domain/ports/capabilities/shop-currency-declarer.capability';
+export { isShopCurrencyDeclarer } from './domain/ports/capabilities/shop-currency-declarer.capability';
+export {
+  resolveOfferDestinationCurrency,
+  resolveShopDestinationCurrency,
+} from './application/services/destination-currency-resolution';
+export type { IDestinationCurrencyResolutionService } from './application/services/destination-currency-resolution.service.interface';
 export { PriceChangeAutoAppliedLogEntry } from './domain/entities/price-change-auto-applied-log-entry.entity';
 export type { RecordAutoAppliedPriceChangeInput } from './domain/types/price-change-auto-applied-log.types';
 // #3161 re-review, IMPORTANT — `PriceChangeAutoAppliedLogRepositoryPort` had

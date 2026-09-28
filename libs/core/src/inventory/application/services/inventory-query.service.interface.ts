@@ -78,6 +78,16 @@ export interface IInventoryQueryService {
   ): Promise<readonly VariantStockRow[]>;
 
   /**
+   * Bin/shelf codes per variant (#3402/#3410), for pack-bench DISPLAY. See
+   * `InventoryRepositoryPort.findBinCodesByVariantIds` for the full contract
+   * — first non-null wins across a variant's positions, no availability or
+   * publishing semantics attached.
+   */
+  findBinCodesByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<ReadonlyMap<string, string>>;
+
+  /**
    * Product-level stock aggregates for the given product IDs (#1720).
    *
    * Cross-context display-enrichment seam for the products catalog cockpit:

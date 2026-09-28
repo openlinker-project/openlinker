@@ -23,7 +23,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, QueryFailedError, Repository } from 'typeorm';
+import { ILike, In, QueryFailedError, Repository } from 'typeorm';
 import { formatInternalId } from '@openlinker/core/identifier-mapping';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import { InventoryLocationOrmEntity } from '../entities/inventory-location.orm-entity';
@@ -125,6 +125,21 @@ export class LocationRepository implements LocationRepositoryPort {
   async findById(id: string): Promise<InventoryLocation | null> {
     const entity = await this.ormRepository.findOne({ where: { id } });
     return entity ? this.toDomain(entity) : null;
+  }
+
+  async findByIds(ids: readonly string[]): Promise<InventoryLocation[]> {
+    // The empty guard is not an optimisation: `In([])` compiles to `IN (NULL)`,
+    // which is a round trip that can only ever answer nothing.
+    if (ids.length === 0) {
+      return [];
+    }
+    const entities = await this.ormRepository.find({
+      // De-duplicated, because a page of works routinely names one location
+      // many times over and the parameter list is bounded by the page, not by
+      // the number of distinct locations an operator has.
+      where: { id: In([...new Set(ids)]) },
+    });
+    return entities.map((entity) => this.toDomain(entity));
   }
 
   async list(

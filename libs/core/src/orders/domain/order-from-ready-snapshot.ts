@@ -20,7 +20,15 @@
  * @module libs/core/src/orders/domain
  */
 import type { OrderRecord } from './entities/order-record.entity';
-import type { Address, Order, OrderItem, OrderTotals } from './types/order.types';
+import type {
+  Address,
+  Order,
+  OrderItem,
+  OrderPickupPoint,
+  OrderShipping,
+  OrderTotals,
+} from './types/order.types';
+import { OrderPickupPointTypeValues } from './types/order.types';
 import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unavailable.error';
 import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 import { isTaxRateSource } from '@openlinker/core/products';
@@ -123,8 +131,57 @@ export function orderFromReadySnapshot(
   if (shippingAddress) {
     order.shippingAddress = shippingAddress;
   }
+  // Source-side delivery method + pickup point (#3340/#2729): needed by the
+  // auto-dispatch trigger to resolve a carrier-neutral `DeliveryIntent`
+  // (locker vs courier) and a paczkomat id, mirroring the
+  // `OrderRecordService.persistOrder` writer's own present-only convention -
+  // absent from the snapshot means the source didn't expose one, never a
+  // synthesized default.
+  const shipping = readShipping(snapshot.shipping);
+  if (shipping) {
+    order.shipping = shipping;
+  }
+  const pickupPoint = readPickupPoint(snapshot.pickupPoint);
+  if (pickupPoint) {
+    order.pickupPoint = pickupPoint;
+  }
 
   return order;
+}
+
+/** Narrow an unknown snapshot value into an {@link OrderShipping}; `undefined` when absent/malformed. */
+function readShipping(value: unknown): OrderShipping | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.methodId !== 'string') {
+    return undefined;
+  }
+  const shipping: OrderShipping = { methodId: raw.methodId };
+  if (typeof raw.methodName === 'string') shipping.methodName = raw.methodName;
+  return shipping;
+}
+
+/** Narrow an unknown snapshot value into an {@link OrderPickupPoint}; `undefined` when absent/malformed. */
+function readPickupPoint(value: unknown): OrderPickupPoint | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== 'string') {
+    return undefined;
+  }
+  const pickupPoint: OrderPickupPoint = { id: raw.id };
+  if (typeof raw.name === 'string') pickupPoint.name = raw.name;
+  if (typeof raw.description === 'string') pickupPoint.description = raw.description;
+  if (
+    typeof raw.pointType === 'string' &&
+    (OrderPickupPointTypeValues as readonly string[]).includes(raw.pointType)
+  ) {
+    pickupPoint.pointType = raw.pointType as OrderPickupPoint['pointType'];
+  }
+  return pickupPoint;
 }
 
 /** Pick the first address the command composer would accept (billing wins). */

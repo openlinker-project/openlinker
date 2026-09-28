@@ -46,6 +46,11 @@ export {
   type CorrectionLinePickerProps,
 } from './components/correction-line-picker';
 export {
+  CorrectionLineGrid,
+  type CorrectionLineGridProps,
+  type CorrectionSuggestedLine,
+} from './components/correction-line-grid';
+export {
   useInvoiceContentQuery,
   isContentUnavailable,
   type InvoiceContentQueryResult,

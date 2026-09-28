@@ -51,6 +51,7 @@ describe('InventoryLocationsController', () => {
       createLocation: jest.fn(),
       updateLocation: jest.fn(),
       getLocation: jest.fn(),
+      getLocationsByIds: jest.fn(),
       listLocations: jest.fn(),
       deleteLocation: jest.fn(),
       countPositionsAtLocation: jest.fn(),

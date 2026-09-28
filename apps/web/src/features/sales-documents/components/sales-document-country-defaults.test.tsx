@@ -188,4 +188,48 @@ describe('SalesDocumentCountryDefaults', () => {
       'An order in PL matching none of the rules above gets an Invoice through Ksef Demo.',
     );
   });
+
+  it('should offer both concrete kinds as separate rows for a dual-role connection (#3195)', async () => {
+    const bothConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn_both',
+      name: 'e-paragony (both)',
+      platformType: 'eparagony',
+      status: 'active',
+      enabledCapabilities: ['Invoicing', 'Fiscalization'],
+      supportedCapabilities: ['Invoicing', 'Fiscalization'],
+      config: { salesDocument: { documentKind: 'both' } },
+    };
+    const upsertCountryDefault = vi.fn().mockResolvedValue({
+      id: 'd1',
+      country: 'PL',
+      documentKind: 'fiscal-receipt',
+      connectionId: 'conn_both',
+    });
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([bothConnection]) },
+      salesDocumentRules: {
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        upsertCountryDefault,
+      },
+    });
+
+    renderWithProviders(<SalesDocumentCountryDefaults country="PL" />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Invoice · e-paragony (both)');
+    expect(screen.getByText('Receipt · e-paragony (both)')).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByTestId('country-default'), 'conn_both:fiscal-receipt');
+
+    await waitFor(() => {
+      expect(upsertCountryDefault).toHaveBeenCalledWith({
+        country: 'PL',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn_both',
+      });
+    });
+  });
 });

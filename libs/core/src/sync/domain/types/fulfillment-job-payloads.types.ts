@@ -87,6 +87,29 @@ export interface FulfillmentWorkDispatchPayloadV1 {
 }
 
 /**
+ * Buy a shipping label automatically for ONE accepted work (#3340, closing
+ * #2729).
+ *
+ * Carries the work and order ids and nothing else. `connectionId`
+ * (`SyncJob.connectionId`) is the work's own `assignedConnectionId` — the
+ * same executor connection `FulfillmentWorkDispatchPayloadV1` uses, and read
+ * again by the handler ONLY to re-check `Connection.config.autoDispatch` at
+ * execution time, in case it changed between enqueue and run. Everything else
+ * the label needs (the work's lines, the order's recipient/delivery-method
+ * facts) is resolved by the HANDLER from OpenLinker's own store — never from
+ * the payload, for the identical reason `FulfillmentWorkRoutePayloadV1` gives:
+ * a payload-carried address would put a buyer's data into durable,
+ * operator-visible `sync_jobs.payload` outside every PII control the ADR-062
+ * ship-to projection exists to apply, and a payload-carried line list would
+ * be a snapshot a later re-ingestion could silently make stale.
+ */
+export interface FulfillmentWorkAutoDispatchPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly workId: string;
+  readonly orderId: string;
+}
+
+/**
  * Route ONE order (#2395, `W3a-6`).
  *
  * Carries the order id and nothing else. Everything the router is told — the

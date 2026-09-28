@@ -67,10 +67,16 @@ describe('Bench packer authorization (A5, #2413)', () => {
       .expect(200);
 
     expect(res.body.role).toBe('packer');
-    // The empty permission set is deliberate (`ROLE_PERMISSIONS.packer`), and
-    // it must round-trip as an empty ARRAY rather than as an absent field: the
-    // frontend reads `permissions` as a membership set.
-    expect(res.body.permissions).toEqual([]);
+    // `ROLE_PERMISSIONS.packer` holds exactly ONE permission (#3424): the
+    // bench's write controls are rendered client-side, so the gate needs
+    // something to read - before it existed they gated on `orders:write` and
+    // never rendered for the only role that presses them. The set must also
+    // round-trip as an ARRAY rather than an absent field, since the frontend
+    // reads it as a membership set.
+    //
+    // EXACT, never `toContain`: this spec is what stops a permission the
+    // narrowest role in the product should not hold from being added quietly.
+    expect(res.body.permissions).toEqual(['bench:write']);
   });
 
   it('refuses a packer the customer list (A5)', async () => {

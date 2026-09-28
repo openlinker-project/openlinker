@@ -686,7 +686,10 @@ describe('InvoicingController', () => {
             clearanceReference: null,
             documentNumber: 'FV/2026/1',
             issueDate: '2026-06-23',
-            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '' }],
+            // orderLineId is #3312's addition: toInvoiceLine now stamps the
+            // originating OrderItem.id onto every line built from an order
+            // snapshot (never onto a synthesized line, e.g. shipping).
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '', orderLineId: 'li_1' }],
           }),
         }),
       );

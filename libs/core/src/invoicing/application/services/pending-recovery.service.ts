@@ -338,6 +338,14 @@ export class PendingRecoveryService implements IPendingRecoveryService {
    * number when present, else the provider's own number. The issue-date window is
    * anchored on the record's issue/last-touch instant with a generous margin,
    * because a crashed attempt may not have persisted `issuedAt`.
+   *
+   * `idempotencyKey` (#3389) is always included when the record has one: it is
+   * the ONLY reliable locate key for a self-numbering provider, since
+   * `documentNumber` is structurally unknown for exactly the crash this method
+   * exists to recover from (see `RegulatoryLocateCriteria`'s own docblock). A
+   * `DocumentNumberConsumer` adapter (KSeF) simply ignores the field — it already
+   * has a documentNumber to match on and ADR-026 keeps the choice of which
+   * criterion to use adapter-local.
    */
   private buildCriteria(record: InvoiceRecord): RegulatoryLocateCriteria {
     const anchor = record.issuedAt ?? record.updatedAt;
@@ -345,6 +353,7 @@ export class PendingRecoveryService implements IPendingRecoveryService {
       documentNumber: record.documentNumber ?? record.providerInvoiceNumber ?? undefined,
       issuedFrom: new Date(anchor.getTime() - LOCATE_DATE_WINDOW_MS),
       issuedTo: new Date(anchor.getTime() + LOCATE_DATE_WINDOW_MS),
+      idempotencyKey: record.idempotencyKey ?? undefined,
     };
   }
 

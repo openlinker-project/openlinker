@@ -37,6 +37,16 @@ export interface E2eEnv {
   /** Password for `viewerUser`. Both must be set for the seeded path to engage. */
   viewerPass: string | null;
   /**
+   * Same seeded-account fallback as `viewerUser`, for a pre-existing `packer`
+   * account (#3342/#3343) — some stacks (e.g. a shared demo deployment) run
+   * with self-service registration disabled entirely (`403`), which
+   * `provisionPacker`'s register-then-approve flow cannot work around at all.
+   * Unset ⇒ falls back to registration, matching `viewerUser`'s contract.
+   */
+  packerUser: string | null;
+  /** Password for `packerUser`. Both must be set for the seeded path to engage. */
+  packerPass: string | null;
+  /**
    * Optional pinned order id for post-purchase segments (follow-up). Also the
    * shipping suite's order source (`apps/e2e/tests/shipping/**`) — when unset,
    * shipping specs fall back to the latest `ready` order on the stack (e.g.
@@ -291,6 +301,8 @@ export function resolveEnv(): E2eEnv {
     adminPass: process.env.OL_ADMIN_PASS?.trim() || DEFAULTS.adminPass,
     viewerUser: optional(process.env.E2E_VIEWER_USER),
     viewerPass: optional(process.env.E2E_VIEWER_PASS),
+    packerUser: optional(process.env.E2E_PACKER_USER),
+    packerPass: optional(process.env.E2E_PACKER_PASS),
     orderId: orderId && orderId.length > 0 ? orderId : null,
     resumeFromOrder: optional(process.env.E2E_RESUME_FROM_ORDER),
     productSku: optional(process.env.E2E_PRODUCT_SKU),

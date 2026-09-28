@@ -19,9 +19,10 @@ import { FulfillmentWorkDispatchHandler } from '../fulfillment-work-dispatch.han
 describe('FulfillmentWorkDispatchHandler', () => {
   let handler: FulfillmentWorkDispatchHandler;
   let handshake: { dispatch: jest.Mock };
-  let integrations: { getCapabilityAdapter: jest.Mock };
+  let integrations: { getCapabilityAdapter: jest.Mock; getAdapter: jest.Mock };
   let orderRecords: { getOrderRecord: jest.Mock; markOmsAttention: jest.Mock };
   let timeouts: { recomputeAcceptanceAttention: jest.Mock };
+  let jobEnqueue: { enqueueJob: jest.Mock };
 
   const executor = { requestFulfillment: jest.fn(), requestCancellation: jest.fn() };
 
@@ -68,7 +69,13 @@ describe('FulfillmentWorkDispatchHandler', () => {
         blocking: null,
       }),
     };
-    integrations = { getCapabilityAdapter: jest.fn().mockResolvedValue(executor) };
+    integrations = {
+      getCapabilityAdapter: jest.fn().mockResolvedValue(executor),
+      // Auto-dispatch config resolution (#3340) — disabled by default,
+      // matching `readAutoDispatchConfig`'s own off-by-default reading. Tests
+      // that care about the enqueue set `config.autoDispatch.enabled: true`.
+      getAdapter: jest.fn().mockResolvedValue({ connection: { config: {} }, metadata: {} }),
+    };
     orderRecords = {
       getOrderRecord: jest.fn().mockResolvedValue(readyRecord()),
       // #2712: the handler refreshes the order's A3-X state after every
@@ -79,12 +86,14 @@ describe('FulfillmentWorkDispatchHandler', () => {
     timeouts = {
       recomputeAcceptanceAttention: jest.fn().mockResolvedValue({ kind: 'none' }),
     };
+    jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'j1', isExisting: false }) };
 
     handler = new FulfillmentWorkDispatchHandler(
       handshake as never,
       integrations as never,
       orderRecords as never,
-      timeouts as never
+      timeouts as never,
+      jobEnqueue as never
     );
   });
 
@@ -235,5 +244,86 @@ describe('FulfillmentWorkDispatchHandler', () => {
     handshake.dispatch.mockRejectedValue(boom);
 
     await expect(handler.execute(job(validPayload))).rejects.toBe(boom);
+  });
+
+  describe('auto-dispatch enqueue (#3340, closing #2729)', () => {
+    it('should NOT enqueue fulfillment.work.autoDispatch when the connection has not opted in', async () => {
+      // The default: `readAutoDispatchConfig` reads `config: {}` as disabled.
+      await handler.execute(job(validPayload));
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should enqueue fulfillment.work.autoDispatch on a fresh acceptance when enabled', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true } } },
+        metadata: {},
+      });
+
+      await handler.execute(job(validPayload));
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+        jobType: 'fulfillment.work.autoDispatch',
+        connectionId: 'conn-1',
+        payload: { schemaVersion: 1, workId: 'w1', orderId: 'ol_order_1' },
+        idempotencyKey: 'fulfillment:autoDispatch:w1',
+      });
+    });
+
+    it('should NOT enqueue on a rejected outcome', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true } } },
+        metadata: {},
+      });
+      handshake.dispatch.mockResolvedValue({
+        outcome: 'rejected',
+        idempotencyKey: 'work:w1:1',
+        assignmentAttempt: 1,
+        rejectionReason: 'no-stock',
+        blocking: true,
+      });
+
+      await handler.execute(job(validPayload));
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should NOT enqueue on a no-op (a resumed job re-observing an already-accepted work)', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true } } },
+        metadata: {},
+      });
+      handshake.dispatch.mockResolvedValue({
+        outcome: 'no-op',
+        idempotencyKey: null,
+        assignmentAttempt: null,
+        rejectionReason: null,
+        blocking: null,
+      });
+
+      await handler.execute(job(validPayload));
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should never fail the handshake when the enqueue itself fails', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true } } },
+        metadata: {},
+      });
+      jobEnqueue.enqueueJob.mockRejectedValue(new Error('queue unavailable'));
+
+      // The parcel is already durably accepted; a failure to enqueue the
+      // automatic label purchase must cost the operator nothing worse than a
+      // manual Generate-label click.
+      await expect(handler.execute(job(validPayload))).resolves.toEqual({ outcome: 'ok' });
+    });
+
+    it('should never fail the handshake when resolving the connection config fails', async () => {
+      integrations.getAdapter.mockRejectedValue(new Error('connection disabled'));
+
+      await expect(handler.execute(job(validPayload))).resolves.toEqual({ outcome: 'ok' });
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
   });
 });

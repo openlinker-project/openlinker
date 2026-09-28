@@ -42,6 +42,9 @@ The guide is organized around the left-navigation groups in the admin UI:
 9. **[Settings & Admin](./09-settings-and-admin.md)**
    General settings, AI provider configuration, prompt templates, and the Adapters registry.
 
+10. **[Pack Bench & Assign Packing Work](./10-pack-bench.md)**
+    The in-house fulfilment (OMS) workflow: the pack bench scanning terminal and the Assign Packing Work staffing board.
+
 ---
 
 ## Prerequisites

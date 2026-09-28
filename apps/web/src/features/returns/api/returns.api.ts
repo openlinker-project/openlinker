@@ -200,6 +200,18 @@ export interface ReturnsApi {
   getCorrectionProposal: (returnId: string) => Promise<ReturnCorrectionProposalResult>;
 
   /**
+   * `POST /returns/:returnId/correction-proposal` — the same computation as
+   * the GET preview, additionally recorded as an ADR-044 change proposal an
+   * operator will later confirm through the existing correction flow.
+   *
+   * **Issues nothing.** Takes no body: the row holds no operator picks for an
+   * ambiguous line — a pick belongs to the confirm request, or the next call
+   * to this endpoint would destroy it. An identical open proposal is reused
+   * (`opened: false`) rather than duplicated; a diverged one is replaced.
+   */
+  recordCorrectionProposal: (returnId: string) => Promise<ReturnCorrectionProposalResult>;
+
+  /**
    * `POST /returns/:returnId/authorize` — authorize an operator-authored
    * return (#2372/#2376).
    *
@@ -427,6 +439,14 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
     async getCorrectionProposal(returnId): Promise<ReturnCorrectionProposalResult> {
       const raw = await request<unknown>(
         `/returns/${encodeURIComponent(returnId)}/correction-proposal`
+      );
+      return parseCorrectionProposal(raw);
+    },
+
+    async recordCorrectionProposal(returnId): Promise<ReturnCorrectionProposalResult> {
+      const raw = await request<unknown>(
+        `/returns/${encodeURIComponent(returnId)}/correction-proposal`,
+        { method: 'POST' }
       );
       return parseCorrectionProposal(raw);
     },

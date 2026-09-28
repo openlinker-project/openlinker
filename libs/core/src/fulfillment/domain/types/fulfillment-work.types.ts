@@ -116,6 +116,45 @@ export interface FulfillmentWork {
   /** The holder. `null` until a router assigns one, and again after a rejection. */
   readonly assignedConnectionId: string | null;
 
+  /**
+   * A supervisor's advisory pre-assignment of this parcel to a specific
+   * packer, `null` for none (ADR-074, #3336).
+   *
+   * A distinct axis from `assignedConnectionId` (ADR-054's HOLDER
+   * connection): this one names a PERSON inside an already-accepted holder,
+   * and never touches the executor handshake (#2399/#2712).
+   */
+  readonly assignedToUserId: string | null;
+
+  /**
+   * When this parcel last became unassigned - stamped at creation, cleared
+   * the moment `assignedToUserId` gains a value, and re-stamped the moment it
+   * loses one (#3424).
+   *
+   * It moves in the SAME guarded statement as `assignedToUserId`, never as a
+   * write of its own, so the pair cannot disagree: there is no window in
+   * which a parcel is assigned and still counted as waiting.
+   *
+   * `null` therefore means "assigned right now", NOT "never waited" - a
+   * caller rendering an age reads the value and the assignment together, and
+   * a `null` on an UNASSIGNED row means only that the row predates this
+   * column, which is an unknown age rather than a zero one.
+   */
+  readonly unassignedSince: Date | null;
+
+  /**
+   * Whether a packer other than `assignedToUserId` may still claim this
+   * parcel. `true` (the schema default) is the advisory reading ADR-074
+   * chose: a locked, assigned-only parcel is the explicit exception a
+   * supervisor opts into, not the default. Server-side enforcement of
+   * `false` lives in `BenchParcelService.verifyUnit` (#3337) — a
+   * human-packer guard, not `FulfillmentHandshakeService`, which negotiates
+   * with holder connections (ADR-054's executor axis, #2399) and has no
+   * concept of an acting user; this field only records the operator's
+   * decision.
+   */
+  readonly selfServeEligible: boolean;
+
   readonly status: FulfillmentWorkStatus;
   readonly requestStatus: FulfillmentRequestStatus;
 
@@ -224,6 +263,59 @@ export interface FulfillmentWork {
 
   /** The service that packed it (#2413). `null` when a human did. */
   readonly packedByService: string | null;
+
+  /**
+   * When this parcel's invoice was FIRST printed at the bench, or `null` if
+   * never. Fill-in-when-NULL (pack-bench completion): a reprint never moves it, because the
+   * question this answers is "was it ever printed", and a later value would
+   * make a reprint look like the original print. Stamped by
+   * `markInvoicePrinted`, best-effort, alongside the download that serves the
+   * document — see that method's docblock for why a failed stamp must never
+   * fail or delay the print itself.
+   */
+  readonly invoicePrintedAt: Date | null;
+
+  /**
+   * When this parcel's shipping label was FIRST fetched for printing, or
+   * `null` if never. Same fill-in-when-NULL reading as `invoicePrintedAt`, and
+   * the same reason: a reprint of a label already on file is not a second
+   * origination of it.
+   *
+   * Stamped from `GET /shipments/:id/label` — a route this table cannot see,
+   * since a shipment carries its own `fulfillmentWorkId` by value and the two
+   * contexts do not share a transaction. Best-effort: a failed stamp must never
+   * fail or delay the label download.
+   */
+  readonly labelPrintedAt: Date | null;
+
+  /**
+   * When an operator declared this parcel finished and off the bench — the
+   * label applied, the invoice inside, box on the trolley (`W3401` completion
+   * research). `null` until that act.
+   *
+   * A DISTINCT completion instant from `parcelClosedAt` (D18's silent
+   * auto-close on the last verification) and deliberately so: closing the box
+   * is an inferred consequence of packing, while completion is the one explicit
+   * act this model adds — the industry's dominant pattern (ShipHero's
+   * "Complete Order", Brightpearl's `Packed` state before `Shipped`) for
+   * *something finished, and somebody said so*. At-most-once, claimed by
+   * `claimCompletion` guarded `WHERE "completedAt" IS NULL AND "parcelClosedAt"
+   * IS NOT NULL` — a parcel cannot be completed before it is packed.
+   */
+  readonly completedAt: Date | null;
+
+  /**
+   * Who declared the completion. `null` until `completedAt` is set, and always
+   * set alongside it in the SAME statement — there is no service-actor
+   * variant here (unlike `packedByUserId` / `packedByService`), because a
+   * completion is always an operator act at a terminal in front of the parcel,
+   * never something a background process performs on a work object's behalf.
+   *
+   * No FK, matching every other user-id reference on this table
+   * (`packedByUserId`, `assignedToUserId`): a dangling id from a deleted user
+   * is the honest outcome for an audit fact.
+   */
+  readonly completedByUserId: string | null;
 
   readonly lines: readonly FulfillmentWorkLine[];
   readonly createdAt: Date;

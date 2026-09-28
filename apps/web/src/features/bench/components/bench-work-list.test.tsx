@@ -29,12 +29,21 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     parcelIndex: 1,
     parcelTotal: 2,
     lineCount: 4,
+    // Two named lines against a lineCount of 4, so the overflow line has
+    // something real to say rather than being exercised only at zero.
+    items: [
+      { name: 'Linen tea towel', quantity: 2, imageUrl: null },
+      { name: 'Black Tiger 50ml', quantity: 1, imageUrl: null },
+    ],
     unitsToVerify: 6,
     state: 'packable',
     holdReason: null,
     holdPlacedAt: null,
     expeditedAt: null,
     supportedActions: ['expedite'],
+    assignmentState: 'unassigned',
+    claimable: true,
+    completedAt: null,
     ...over,
   };
 }
@@ -65,25 +74,36 @@ const PACKER = {
   analyticsConsent: true,
 } as const;
 
-function mount(data: BenchWorkListData, options: { canWrite?: boolean } = {}) {
+function mount(
+  data: BenchWorkListData,
+  options: {
+    canWrite?: boolean;
+    onOpenParcel?: (workId: string) => void;
+    bench?: Record<string, unknown>;
+  } = {}
+) {
   const apiClient = createMockApiClient({
     bench: {
       listWork: vi.fn().mockResolvedValue(data),
       setExpedited: vi.fn().mockResolvedValue(undefined),
+      ...options.bench,
     },
   });
   return {
     apiClient,
-    ...renderWithProviders(<BenchWorkList now={new Date('2026-09-04T10:00:00Z')} />, {
-      apiClient,
-      // The query is `enabled` on a signed-in session — the idle lock clears it,
-      // and polling an anonymous bench would be firing unauthenticated reads at
-      // a terminal nobody is standing at. So every case here signs in.
-      sessionAdapter:
-        options.canWrite === true
-          ? createAuthenticatedSessionAdapter()
-          : createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
-    }),
+    ...renderWithProviders(
+      <BenchWorkList now={new Date('2026-09-04T10:00:00Z')} onOpenParcel={options.onOpenParcel} />,
+      {
+        apiClient,
+        // The query is `enabled` on a signed-in session — the idle lock clears it,
+        // and polling an anonymous bench would be firing unauthenticated reads at
+        // a terminal nobody is standing at. So every case here signs in.
+        sessionAdapter:
+          options.canWrite === true
+            ? createAuthenticatedSessionAdapter()
+            : createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
+      }
+    ),
   };
 }
 
@@ -95,7 +115,10 @@ describe('BenchWorkList (#2416)', () => {
     const row = screen.getByTestId('bench-work-row');
     expect(row.textContent).toContain('Jan Wiśniewski');
     expect(row.textContent).toContain('Parcel 1 of 2');
-    expect(row.textContent).toContain('6 units to verify');
+    // "units to scan", not "units to verify": the mockup's own wording, and
+    // still a statement about what the packer will DO rather than about what
+    // is on a shelf — which is the B2 rule the next test enforces.
+    expect(row.textContent).toContain('6 units to scan');
   });
 
   it('should never state or imply that stock is picked or ready (story B2)', async () => {
@@ -120,6 +143,9 @@ describe('BenchWorkList (#2416)', () => {
       })
     );
 
+    // #3416 — held/cancelled rows now live under the "On hold" tab.
+    await userEvent.click(await screen.findByRole('tab', { name: /On hold/ }));
+
     const doNotPack = await screen.findByTestId('bench-section-do-not-pack');
     // Read as text: a class-based assertion would pass against a colour-only
     // signal, which is exactly what B4 forbids.
@@ -134,9 +160,15 @@ describe('BenchWorkList (#2416)', () => {
     // the one section whose absence is dangerous.
     mount(payload({ works: [work({ state: 'held', holdReason: 'address-invalid' })] }));
 
+    // #3416 — the default tab is "At this bench"; a held row is never there.
+    expect(screen.queryByTestId('bench-section-do-not-pack')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bench-section-assigned-to-you')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bench-section-unassigned')).not.toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole('tab', { name: /On hold/ }));
+
     const doNotPack = await screen.findByTestId('bench-section-do-not-pack');
     expect(within(doNotPack).getByText('OL-4471')).toBeInTheDocument();
-    expect(screen.queryByTestId('bench-section-to-pack')).not.toBeInTheDocument();
   });
 
   it('should distinguish the two empty states (story B3)', async () => {
@@ -255,6 +287,307 @@ describe('BenchWorkList (#2416)', () => {
   it('should say when it is showing only part of the work', async () => {
     mount(payload({ total: 900 }));
 
-    expect(await screen.findByText(/more work than fits on this screen/i)).toBeInTheDocument();
+    expect(await screen.findByText(/more work than fits here/i)).toBeInTheDocument();
+  });
+
+  describe('the ADR-074 assignment axis (#3341)', () => {
+    it('marks a parcel assigned to the viewer with `mine` and a visible badge', async () => {
+      mount(payload({ works: [work({ assignmentState: 'mine' })] }));
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(row.dataset.assignmentState).toBe('mine');
+      expect(row.textContent).toContain('Assigned to you');
+    });
+
+    it('marks a parcel assigned to someone else with `assigned-other` and a muted badge', async () => {
+      mount(payload({ works: [work({ assignmentState: 'assigned-other', claimable: false })] }));
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(row.dataset.assignmentState).toBe('assigned-other');
+      expect(row.textContent).toContain('Assigned to another packer');
+    });
+
+    it('marks an unassigned parcel with `unassigned` and renders no badge for it', async () => {
+      mount(payload({ works: [work({ assignmentState: 'unassigned' })] }));
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(row.dataset.assignmentState).toBe('unassigned');
+      expect(row.textContent).not.toContain('Assigned to');
+    });
+
+    it('the three states are three DIFFERENT attribute values, not a coincidence', async () => {
+      mount(
+        payload({
+          works: [
+            work({ workId: 'w-mine', assignmentState: 'mine' }),
+            work({ workId: 'w-none', assignmentState: 'unassigned' }),
+            work({ workId: 'w-other', assignmentState: 'assigned-other', claimable: false }),
+          ],
+          total: 3,
+        })
+      );
+
+      const rows = await screen.findAllByTestId('bench-work-row');
+      const states = rows.map((row) => row.dataset.assignmentState);
+      expect(new Set(states).size).toBe(3);
+    });
+
+    it('renders the open control when the viewer may claim the parcel', async () => {
+      const onOpenParcel = vi.fn();
+      mount(payload({ works: [work({ assignmentState: 'unassigned', claimable: true })] }), {
+        canWrite: true,
+        onOpenParcel,
+      });
+
+      expect(await screen.findByRole('button', { name: 'Open parcel' })).toBeInTheDocument();
+    });
+
+    it('replaces the open control with a reason when the viewer may not claim the parcel', async () => {
+      const onOpenParcel = vi.fn();
+      mount(
+        payload({
+          works: [work({ assignmentState: 'assigned-other', claimable: false })],
+        }),
+        { canWrite: true, onOpenParcel }
+      );
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(within(row).queryByRole('button', { name: 'Open parcel' })).not.toBeInTheDocument();
+      expect(row.textContent).toContain('Only the assigned packer may open this one');
+    });
+
+    it('still offers the open control when self-serve makes an other-assigned parcel claimable', async () => {
+      const onOpenParcel = vi.fn();
+      mount(
+        payload({
+          works: [work({ assignmentState: 'assigned-other', claimable: true })],
+        }),
+        { canWrite: true, onOpenParcel }
+      );
+
+      expect(await screen.findByRole('button', { name: 'Open parcel' })).toBeInTheDocument();
+    });
+  });
+
+  describe('the rail tabs (#3416)', () => {
+    it('renders three tabs with correct counts, "At this bench" active by default', async () => {
+      mount(
+        payload({
+          works: [
+            work({ workId: 'w-1', assignmentState: 'mine' }),
+            work({ workId: 'w-2', state: 'held', holdReason: 'other' }),
+          ],
+          total: 2,
+        }),
+        {
+          bench: {
+            listUnlabelledParcels: vi
+              .fn()
+              .mockResolvedValue({ parcels: [], total: 0, truncated: false }),
+            listPackedToday: vi.fn().mockResolvedValue({
+              works: [{ workId: 'w-3', orderReference: 'OL-4467', buyerName: 'A', parcelIndex: 1, parcelTotal: 1, closedAt: '2026-09-04T09:00:00Z', packedByUserId: null }],
+              total: 3,
+            }),
+          },
+        }
+      );
+
+      const benchTab = await screen.findByRole('tab', { name: /At this bench/ });
+      const holdTab = screen.getByRole('tab', { name: /On hold/ });
+      const doneTab = screen.getByRole('tab', { name: /Packed today/ });
+
+      expect(benchTab).toHaveAttribute('aria-selected', 'true');
+      expect(holdTab).toHaveAttribute('aria-selected', 'false');
+      expect(doneTab).toHaveAttribute('aria-selected', 'false');
+      expect(benchTab.textContent).toContain('1');
+      expect(holdTab.textContent).toContain('1');
+      // Reports the SERVER's total (3), not merely the 1 row this page fetched.
+      expect(doneTab.textContent).toContain('3');
+    });
+
+    it('splits the "At this bench" tab into assigned-to-you, unassigned, and waiting-on-carrier', async () => {
+      mount(
+        payload({
+          works: [
+            work({ workId: 'w-mine', assignmentState: 'mine' }),
+            work({ workId: 'w-open', assignmentState: 'unassigned', claimable: true }),
+          ],
+          total: 2,
+        }),
+        {
+          bench: {
+            listUnlabelledParcels: vi.fn().mockResolvedValue({
+              parcels: [
+                {
+                  workId: 'w-unl',
+                  orderReference: 'OL-9012',
+                  parcelIndex: 1,
+                  parcelTotal: 1,
+                  closedAt: '2026-09-04T09:30:00Z',
+                  carrier: 'InPost',
+                  providerCode: null,
+                },
+              ],
+              total: 1,
+              truncated: false,
+            }),
+          },
+        }
+      );
+
+      const assignedToYou = await screen.findByTestId('bench-section-assigned-to-you');
+      expect(within(assignedToYou).getByText('OL-4471')).toBeInTheDocument();
+
+      const unassigned = screen.getByTestId('bench-section-unassigned');
+      expect(within(unassigned).getByText('OL-4471')).toBeInTheDocument();
+
+      const waiting = screen.getByTestId('bench-section-waiting-on-carrier');
+      expect(within(waiting).getByText('OL-9012')).toBeInTheDocument();
+      expect(within(waiting).getByText(/Nothing left for you to do here/)).toBeInTheDocument();
+    });
+
+    it('scopes the search to the OPEN tab, per the mockup\'s own rule', async () => {
+      mount(
+        payload({
+          works: [
+            work({ workId: 'w-mine', orderReference: 'OL-1111', assignmentState: 'mine' }),
+            work({ workId: 'w-hold', orderReference: 'OL-2222', state: 'held', holdReason: 'other' }),
+          ],
+          total: 2,
+        })
+      );
+
+      await screen.findByText('OL-1111');
+      await userEvent.type(screen.getByLabelText(/Find a parcel/), 'OL-2222');
+
+      // The bench tab is active and holds no OL-2222 row — searching it must
+      // never reach into the hidden "On hold" tab.
+      expect(screen.queryByText('OL-2222')).not.toBeInTheDocument();
+      expect(await screen.findByTestId('bench-search-no-matches')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('tab', { name: /On hold/ }));
+      expect(await screen.findByText('OL-2222')).toBeInTheDocument();
+    });
+
+    it('lets a writer claim an unassigned parcel from the rail', async () => {
+      const claimParcel = vi.fn().mockResolvedValue({
+        outcome: 'claimed',
+        reason: null,
+        parcel: { workId: 'w-open' } as unknown,
+      });
+      mount(
+        payload({ works: [work({ workId: 'w-open', assignmentState: 'unassigned' })] }),
+        { canWrite: true, bench: { claimParcel } }
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Claim this parcel' }));
+
+      expect(claimParcel).toHaveBeenCalledWith('w-open');
+    });
+
+    it('says WHY a claim was refused, instead of leaving the screen unmoved', async () => {
+      // A refusal is a 200, so nothing here throws — before this the packer
+      // clicked "Claim this parcel" and got no feedback of any kind.
+      const claimParcel = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'held',
+        parcel: { workId: 'w-open' } as unknown,
+      });
+      mount(
+        payload({ works: [work({ workId: 'w-open', assignmentState: 'unassigned' })] }),
+        { canWrite: true, bench: { claimParcel } }
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Claim this parcel' }));
+
+      expect(await screen.findByText('That one just went on hold. Try again.')).toBeInTheDocument();
+    });
+
+    it('offers "Take next task", and names it plainly when nothing is unassigned', async () => {
+      const claimNext = vi.fn().mockResolvedValue({ outcome: 'nothing-to-claim', parcel: null });
+      mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
+
+      expect(claimNext).toHaveBeenCalled();
+      expect(await screen.findByText('Nothing unassigned right now.')).toBeInTheDocument();
+    });
+
+    it('says someone got there first when a peer wins the race, never that the queue is empty', async () => {
+      // The rail behind the message is holding a row, so the empty-queue
+      // sentence would contradict what the packer is looking at. This is the
+      // RACE reason — a peer claimed it between the read and the write —
+      // never the standing lock, which gets its own sentence below.
+      const claimNext = vi
+        .fn()
+        .mockResolvedValue({ outcome: 'refused', parcel: null, reason: 'claimed-by-someone-else' });
+      mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
+
+      expect(
+        await screen.findByText('Someone got there first. Try again — there may be more.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Nothing unassigned right now.')).not.toBeInTheDocument();
+    });
+
+    it('names a hold as a hold rather than as a lost race', async () => {
+      const claimNext = vi
+        .fn()
+        .mockResolvedValue({ outcome: 'refused', parcel: null, reason: 'held' });
+      mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
+
+      expect(await screen.findByText('That one just went on hold. Try again.')).toBeInTheDocument();
+    });
+
+    it('names the standing lock rather than a lost race, when the parcel is not claimable at all', async () => {
+      // `not-claimable` is the ADR-074 pre-assignment lock — a standing fact
+      // about who this parcel is for, distinct from `claimed-by-someone-else`
+      // above. Sending a packer to "try again" for a parcel that will keep
+      // refusing them is the wrong remedy.
+      const claimNext = vi
+        .fn()
+        .mockResolvedValue({ outcome: 'refused', parcel: null, reason: 'not-claimable' });
+      mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
+
+      expect(
+        await screen.findByText('That one is already assigned to someone. Try a different one.')
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Someone got there first. Try again — there may be more.')
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the packed-today tab as a read-only log with no open control', async () => {
+      mount(payload({ works: [work()] }), {
+        bench: {
+          listPackedToday: vi.fn().mockResolvedValue({
+            works: [
+              {
+                workId: 'w-done',
+                orderReference: 'OL-4467',
+                buyerName: 'Norbert Blocky',
+                parcelIndex: 1,
+                parcelTotal: 1,
+                closedAt: '2026-09-04T14:36:00Z',
+                packedByUserId: 'user-1',
+              },
+            ],
+            total: 1,
+          }),
+        },
+      });
+
+      await userEvent.click(await screen.findByRole('tab', { name: /Packed today/ }));
+
+      const row = await screen.findByTestId('bench-packed-today-row');
+      expect(within(row).getByText('OL-4467')).toBeInTheDocument();
+      expect(within(row).queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.getByText(/this is a log, not a queue/i)).toBeInTheDocument();
+    });
   });
 });
