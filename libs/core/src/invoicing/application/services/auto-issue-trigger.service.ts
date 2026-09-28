@@ -159,7 +159,10 @@ import type {
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import {
+  SalesDocumentUncountedUnresolvedReasonValues,
+  isTaxRateEnforced,
+} from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
@@ -262,6 +265,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * connection, not per order.
    */
   private readonly manualWinnerWarned = new Set<string>();
+
+  /**
+   * Latch for the once-per-process "nobody declared a document kind" warning.
+   * Not keyed by connection, unlike {@link manualWinnerWarned}: the condition is a
+   * property of the WHOLE install (no connection declares a kind), so there is no
+   * one connection it is about.
+   */
+  private unconfiguredRoutingWarned = false;
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
@@ -581,12 +592,32 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     const eligible = candidates.filter((candidate) => candidate.documentKind !== null);
     const candidateIds = eligible.map((candidate) => candidate.connectionId);
 
-    this.logger.error(
-      `Auto-issue skipped: sales-document routing unresolved (reason=${reason}) — issuing nothing ` +
-        `rather than issuing on an ambiguous or unsupported pick. orderId=${order.id} ` +
-        `candidateConnectionIds=${candidateIds.join(',')} sourceEventId=${sourceEventId ?? 'n/a'}. ` +
-        `Set config.salesDocument.documentKind and config.invoicing.isPrimary appropriately.`,
-    );
+    // #3365 review: `'no-connection-declares-document-kind'` is what an install
+    // that never opted into sales-document routing looks like - #2156 does not
+    // back-fill `config.salesDocument.documentKind` - so logging it at ERROR on
+    // every order told a healthy install that something was broken, once per
+    // order, forever. It is warned ONCE (the `warnOnceIfManualWinnerDisablesInstall`
+    // shape, for the same reason), while a genuine misconfiguration such as
+    // `'ambiguous-connection-no-primary'` keeps its per-order error.
+    if (SalesDocumentUncountedUnresolvedReasonValues.includes(reason)) {
+      if (!this.unconfiguredRoutingWarned) {
+        this.unconfiguredRoutingWarned = true;
+        this.logger.warn(
+          `Auto-issue is not running: no connection declares config.salesDocument.documentKind, ` +
+            `so there is nothing to route to (${candidates.length} capable connection(s)). This is ` +
+            `the normal state of an install that has not configured sales documents - orders still ` +
+            `carry the per-order reason, and this is logged once rather than per order. Set the ` +
+            `document kind on Settings -> Sales documents to turn issuing on.`,
+        );
+      }
+    } else {
+      this.logger.error(
+        `Auto-issue skipped: sales-document routing unresolved (reason=${reason}) — issuing nothing ` +
+          `rather than issuing on an ambiguous or unsupported pick. orderId=${order.id} ` +
+          `candidateConnectionIds=${candidateIds.join(',')} sourceEventId=${sourceEventId ?? 'n/a'}. ` +
+          `Set config.salesDocument.documentKind and config.invoicing.isPrimary appropriately.`,
+      );
+    }
 
     // PII-free detail: a count and the neutral routing reason only. It reaches
     // an operator screen verbatim, so it must never carry buyer data.

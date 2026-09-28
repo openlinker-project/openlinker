@@ -74,6 +74,7 @@ import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-pr
 import { isShipmentReferenceReconciler } from '../../domain/ports/capabilities/shipment-reference-reconciler.capability';
 import { shipmentDispatchLockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS } from './shipment-dispatch-lock';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
+import { readNotifyOnLabelPurchase } from '../../domain/types/dispatch-notification.types';
 import type { ShippingMethod } from '../../domain/types/shipping-method.types';
 import type { DeliveryIntent } from '../../domain/types/delivery-intent.types';
 import { DISPATCH_BLOCKING_PAYMENT_STATUSES } from '../types/dispatch-payment-policy.types';
@@ -659,6 +660,22 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     shipmentId: string,
     connectionId: string,
   ): Promise<void> {
+    // #3365 review: OPT-IN, and off unless the operator said otherwise.
+    //
+    // Buying a label and dispatching a parcel are two acts, and only the
+    // operator knows whether their process treats them as one. Notifying by
+    // default told every install's buyers "your order shipped" the moment a
+    // label was printed - including the warehouses that print in the morning and
+    // hand over in the afternoon. The manual "Mark dispatched" action is
+    // unchanged and remains the route every install already had.
+    //
+    // A config read that FAILS suppresses the notification rather than sending
+    // it: the same direction as the coercer's own default, because a notice sent
+    // on a guess cannot be recalled.
+    if (!(await this.wantsDispatchNotification(connectionId))) {
+      return;
+    }
+
     try {
       await this.jobQueue.enqueue({
         type: 'shipping.shipment.notifyDispatched',
@@ -674,6 +691,27 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
           `generated; the marketplace will not be told automatically, so the operator's ` +
           `"Mark dispatched" action is the remaining route.`,
       );
+    }
+  }
+
+  /**
+   * Read the connection's opt-in, treating an unreadable connection as "no".
+   *
+   * Never throws: this sits between a successfully bought label and the caller's
+   * return value, so a failure here must not turn a completed dispatch into an
+   * error the operator reads as "the label did not work".
+   */
+  private async wantsDispatchNotification(connectionId: string): Promise<boolean> {
+    try {
+      const { connection } = await this.integrations.getAdapter(connectionId);
+      return readNotifyOnLabelPurchase(connection.config);
+    } catch (error) {
+      this.logger.warn(
+        `shipment_dispatch_notification_optin_unreadable connectionId=${connectionId}: ` +
+          `${error instanceof Error ? error.message : String(error)}. Not notifying - the ` +
+          `operator's "Mark dispatched" action remains the route.`,
+      );
+      return false;
     }
   }
 

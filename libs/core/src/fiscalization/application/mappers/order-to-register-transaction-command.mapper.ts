@@ -26,7 +26,7 @@ import {
   minorUnitExponentFor,
   splitShippingAcrossRates,
   describeDiscountCause,
-  totalReconciliationEpsilon,
+  quantityScaledReconciliationEpsilon,
 } from '@openlinker/core/sales-documents';
 
 import type {
@@ -222,7 +222,11 @@ function assertLinesSumToTotal(
     );
   }
 
-  const epsilon = totalReconciliationEpsilon(currency);
+  // #3365 review: the same quantity-scaled bound the invoice half now uses, and
+  // for the same reason - both kinds must answer one question about one sale
+  // identically, or a figure a receipt accepts is one an invoice refuses.
+  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const epsilon = quantityScaledReconciliationEpsilon(currency, totalQuantity);
   const gap = summed - totalGross;
   if (Math.abs(gap) > epsilon) {
     throw new InvalidFiscalLineError(

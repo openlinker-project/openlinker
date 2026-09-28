@@ -7,7 +7,12 @@
  *
  * @module libs/core/src/sales-documents/domain/types
  */
-import { minorUnitExponentFor, splitShippingAcrossRates } from './shipping-tax-split.types';
+import {
+  minorUnitExponentFor,
+  quantityScaledReconciliationEpsilon,
+  splitShippingAcrossRates,
+  totalReconciliationEpsilon,
+} from './shipping-tax-split.types';
 import type { ShippingSplitLine } from './shipping-tax-split.types';
 
 function line(taxRate: string | null, gross: number): ShippingSplitLine {
@@ -147,5 +152,48 @@ describe('minorUnitExponentFor', () => {
     expect(minorUnitExponentFor(null)).toBe(2);
     expect(minorUnitExponentFor(undefined)).toBe(2);
     expect(minorUnitExponentFor('')).toBe(2);
+  });
+});
+
+describe('quantityScaledReconciliationEpsilon', () => {
+  it('should equal the flat bound when the document carries a single unit', () => {
+    // The whole point of the floor: nothing about a one-unit order changes.
+    expect(quantityScaledReconciliationEpsilon('PLN', 1)).toBe(totalReconciliationEpsilon('PLN'));
+    expect(quantityScaledReconciliationEpsilon('PLN', 0)).toBe(totalReconciliationEpsilon('PLN'));
+  });
+
+  it('should admit the drift a round-then-multiply composer really introduces when the basket is larger', () => {
+    // WooCommerce stores `roundCurrency((lineNet + lineTax) / quantity)` and the
+    // document then multiplies it back out, so each UNIT can carry half a grosz.
+    // Three lines of one unit each, every one rounded up, drift by 0.015 - which
+    // the flat 0.01 bound refused, telling the operator their own shop's order
+    // contradicted itself.
+    const drift = 0.015;
+    expect(drift).toBeGreaterThan(totalReconciliationEpsilon('PLN'));
+    expect(drift).toBeLessThanOrEqual(quantityScaledReconciliationEpsilon('PLN', 3));
+  });
+
+  it('should stay too narrow for a whole-order discount to hide inside', () => {
+    // A coupon is a fixed amount with no relation to quantity. A ten-unit basket
+    // widens the bound to 0.05, which is nowhere near a real discount - so the
+    // refusal that names the discount as its cause still fires.
+    expect(quantityScaledReconciliationEpsilon('PLN', 10)).toBeLessThan(1);
+    expect(quantityScaledReconciliationEpsilon('PLN', 200)).toBeLessThan(5);
+  });
+
+  it('should derive from the currency rather than assuming two decimals', () => {
+    // JPY has no minor unit at all, so half of one is 0.5 per unit; KWD has three.
+    expect(quantityScaledReconciliationEpsilon('JPY', 4)).toBeCloseTo(2, 10);
+    expect(quantityScaledReconciliationEpsilon('KWD', 4)).toBeCloseTo(0.002, 10);
+  });
+
+  it('should fall back to the flat bound for a quantity it cannot use', () => {
+    expect(quantityScaledReconciliationEpsilon('PLN', Number.NaN)).toBe(
+      totalReconciliationEpsilon('PLN')
+    );
+    expect(quantityScaledReconciliationEpsilon('PLN', Number.POSITIVE_INFINITY)).toBe(
+      totalReconciliationEpsilon('PLN')
+    );
+    expect(quantityScaledReconciliationEpsilon('PLN', -5)).toBe(totalReconciliationEpsilon('PLN'));
   });
 });

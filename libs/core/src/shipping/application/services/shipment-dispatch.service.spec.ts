@@ -124,6 +124,20 @@ function resolution(
   };
 }
 
+/**
+ * A connection that HAS opted into notifying the marketplace when a label is
+ * bought (#3365 review). The default mock deliberately does not, because that is
+ * what every existing install looks like.
+ */
+function optedInConnection(): { connection: { id: string; config: Record<string, unknown> } } {
+  return {
+    connection: {
+      id: 'conn-1',
+      config: { shipping: { notifyMarketplaceOnLabelPurchase: true } },
+    },
+  };
+}
+
 describe('ShipmentDispatchService', () => {
   let repository: jest.Mocked<ShipmentRepositoryPort>;
   let routing: jest.Mocked<IFulfillmentRoutingService>;
@@ -168,7 +182,10 @@ describe('ShipmentDispatchService', () => {
       getSupportedMethods: jest.fn().mockReturnValue(['paczkomat', 'kurier']),
     };
     integrations = {
-      getAdapter: jest.fn(),
+      // #3365 review: the notification is opt-in, so the DEFAULT connection here
+      // carries no `config.shipping.notifyMarketplaceOnLabelPurchase` - which is
+      // what every existing install looks like.
+      getAdapter: jest.fn().mockResolvedValue({ connection: { id: 'conn-1', config: {} } }),
       getCapabilityAdapter: jest.fn().mockResolvedValue(adapter),
       resolveAdapterMetadata: jest.fn(),
       listCapabilityAdapters: jest.fn(),
@@ -317,8 +334,9 @@ describe('ShipmentDispatchService', () => {
   // told nobody at all. Both paths reach `dispatch()`, so the enqueue lives
   // here and covers both.
   describe('automatic dispatch notification (#3365)', () => {
-    it('enqueues the notification once a label is bought', async () => {
+    it('enqueues the notification once a label is bought, when the connection opted in', async () => {
       arrangeOlManagedCarrierHappyPath();
+      integrations.getAdapter.mockResolvedValue(optedInConnection());
 
       await service.dispatch(makeInput());
 
@@ -377,9 +395,56 @@ describe('ShipmentDispatchService', () => {
           labelPdfRef: 'shipx:label:shipx-adopted',
         });
 
+      integrations.getAdapter.mockResolvedValue(optedInConnection());
+
+      integrations.getAdapter.mockResolvedValue(optedInConnection());
+
       await service.dispatch(makeInput());
 
       expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'shipping.shipment.notifyDispatched' }),
+      );
+    });
+
+    it('enqueues nothing when the connection did not opt in', async () => {
+      // The default state of every install. Buying a label and dispatching a
+      // parcel are two acts, and telling the buyer "your order shipped" the
+      // moment a label prints is a claim the operator has to choose to make.
+      routing.resolve.mockResolvedValue(resolution());
+      const generated = makeShipment({ status: 'generated' });
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(generated);
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-1',
+        trackingNumber: 'TRACK-1',
+        labelPdfRef: 'shipx:label:shipx-1',
+      });
+
+      await service.dispatch(makeInput());
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'shipping.shipment.notifyDispatched' }),
+      );
+    });
+
+    it('does not notify when the opt-in cannot be read, and does not fail the dispatch', async () => {
+      // The label is bought by this point. A config read that fails must not
+      // turn a completed dispatch into an error, and must not send a notice on
+      // a guess either.
+      routing.resolve.mockResolvedValue(resolution());
+      const generated = makeShipment({ status: 'generated' });
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(generated);
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-1',
+        trackingNumber: 'TRACK-1',
+        labelPdfRef: 'shipx:label:shipx-1',
+      });
+      integrations.getAdapter.mockRejectedValue(new Error('connection vanished'));
+
+      await expect(service.dispatch(makeInput())).resolves.toBeDefined();
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'shipping.shipment.notifyDispatched' }),
       );
     });

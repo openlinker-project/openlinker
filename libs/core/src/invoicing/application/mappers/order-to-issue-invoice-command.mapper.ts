@@ -26,8 +26,8 @@ import {
   describeDiscountCause,
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
+  quantityScaledReconciliationEpsilon,
   splitShippingAcrossRates,
-  totalReconciliationEpsilon,
 } from '@openlinker/core/sales-documents';
 
 /**
@@ -299,7 +299,15 @@ function assertLinesSumToTotal(
     );
   }
 
-  const epsilon = totalReconciliationEpsilon(totals.currency);
+  // #3365 review: scale the tolerance by total quantity. A composer that rounds
+  // a per-unit price and then multiplies it back out carries up to half a minor
+  // unit of error PER UNIT - WooCommerce's order source does exactly that - so a
+  // flat one-minor-unit bound refused ordinary multi-line orders and told the
+  // operator their own shop contradicted itself. The bound is the exact worst
+  // case of that round trip rather than a number picked to make a case pass, and
+  // it stays too narrow for a whole-order discount to hide inside.
+  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const epsilon = quantityScaledReconciliationEpsilon(totals.currency, totalQuantity);
   const gap = summed - total;
   if (Math.abs(gap) > epsilon) {
     throw new InvalidInvoiceLineError(
