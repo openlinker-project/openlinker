@@ -29,4 +29,12 @@ export interface IOrderExportService {
   ): Promise<boolean>;
 
   markFailed(id: string, errorMessage: string): Promise<boolean>;
+
+  /**
+   * Physically clear the stored file blob on every expired run, up to
+   * `limit` rows — the seam `OrderExportRetentionService` (worker
+   * `maintenance` role) calls instead of reaching the repository port
+   * directly (the cross-context rule).
+   */
+  purgeExpiredFiles(now: Date, limit: number): Promise<number>;
 }

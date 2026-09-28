@@ -80,6 +80,29 @@ export class OrderExportRepository implements OrderExportRepositoryPort {
     return (updateResult.affected ?? 0) > 0;
   }
 
+  async purgeExpiredFiles(now: Date, limit: number): Promise<number> {
+    // Postgres has no UPDATE ... LIMIT, so the batch is bounded via a
+    // subquery selecting at most `limit` eligible ids first (the
+    // `runBoundedSweep` precedent, applied to a DELETE-shaped write). Only
+    // rows still carrying a non-null `file` are eligible, so a repeated
+    // sweep over an already-cleared row costs nothing. `RETURNING "id"`
+    // rather than trusting the driver's own affected-row reporting, whose
+    // shape through `EntityManager.query()` is not worth depending on here.
+    const cleared: { id: string }[] = await this.repository.manager.query(
+      `UPDATE "order_exports"
+          SET "file" = NULL
+        WHERE "id" IN (
+          SELECT "id" FROM "order_exports"
+           WHERE "file" IS NOT NULL AND "expiresAt" <= $1
+           ORDER BY "expiresAt" ASC
+           LIMIT $2
+        )
+        RETURNING "id"`,
+      [now, limit]
+    );
+    return cleared.length;
+  }
+
   private toDomain(entity: OrderExportRunOrmEntity): OrderExportRun {
     return new OrderExportRun(
       entity.id,

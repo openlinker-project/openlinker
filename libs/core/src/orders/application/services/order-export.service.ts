@@ -49,4 +49,8 @@ export class OrderExportService implements IOrderExportService {
   async markFailed(id: string, errorMessage: string): Promise<boolean> {
     return this.repository.markFailed(id, errorMessage);
   }
+
+  async purgeExpiredFiles(now: Date, limit: number): Promise<number> {
+    return this.repository.purgeExpiredFiles(now, limit);
+  }
 }
