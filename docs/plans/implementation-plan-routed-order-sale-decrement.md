@@ -18,11 +18,23 @@ marketplace right away. Today nothing lowers it, so the last unit oversells.
   `diagnostic`); it does for `ol_managed_carrier` ones, which is exactly what
   #3480 closes.
 - Giving stock back on cancellation (#3479).
-- ADR-061 / DESIGN wording "OL never decrements" (#3483).
+- ADR-061 / DESIGN wording "OL never decrements" — closed in this slice as an
+  amendment to ADR-061 (the hold rule itself is unchanged).
 - Two warehouses (#3454). v1 matches the work's location OR pooled (`NULL`)
   positions.
 - An FE panel listing decrement rows. The order surface gets the attention badge
   only.
+- **A lost `inventory.saleDecrement` enqueue is unmonitored.** Both producers
+  (`OrderIngestionService`, `FulfillmentWorkRouteHandler`) swallow an enqueue
+  failure by design — the intercept's fail-open catch must not escape and mirror
+  an order whose work rows are already committed — but nothing re-drives the
+  gap afterwards, and `inventory.saleDecrement` is event-driven with no cron. A
+  reconcile pass reading the frontier this table already makes queryable (a
+  routed, non-cancelled `FulfillmentWork` with no decrement row for one of its
+  lines) is the #2712/#2728 shape: frontier-as-query, no cursor, its own lock,
+  `bulk` lane, global scope. Tracked as a follow-up; must land before this is
+  load-bearing on a pilot install, since the failure mode of an unenqueued
+  decrement is the exact defect this slice exists to fix.
 
 ## 2. Research (what we reuse)
 

@@ -80,6 +80,13 @@ export const InventorySaleDecrementReasonValues = [
   'interrupted',
   /** The adapter answered with a disposition this build does not recognise. */
   'unrecognised-disposition',
+  /**
+   * A peer decrement for the SAME `(owner, product, variant)` position held the
+   * ordering lock — the `realtime` lane runs concurrently (#2278), and two
+   * works for one position can genuinely overlap. Transient: the lock is short
+   * and the job's own retry ladder re-claims it.
+   */
+  'position-contended',
 ] as const;
 
 export type InventorySaleDecrementReason = (typeof InventorySaleDecrementReasonValues)[number];
@@ -120,6 +127,32 @@ export function buildSaleDecrementIdempotencyKey(
  */
 export function buildUnresolvedSaleDecrementKey(workId: string, orderLineId: string): string {
   return `sale:unresolved:${workId}:${orderLineId}`;
+}
+
+/**
+ * The `realtime` lane runs concurrently (#2278), so two works for the same
+ * `(owner, product, variant)` position can genuinely overlap — a split order,
+ * or two orders in the same tick. Each claims its own idempotency key and both
+ * correctly apply, but the mirror write after each is an ABSOLUTE snapshot of
+ * the master's own answer at that call's return, and the two calls can return
+ * out of order. The Postgres claim guarantees the write is never applied
+ * twice; it says nothing about the mirror being written in the order the
+ * writes actually landed.
+ *
+ * This lock — held around claim → write → mirror — is what orders the two:
+ * the #2617 freshness guard (`observedAt`) cannot help here, because it
+ * compares a write against ITSELF (`inventory_items.updatedAt`, which this
+ * very write is about to bump), never against a sibling decrement racing it
+ * on the same position.
+ */
+export const SALE_DECREMENT_POSITION_LOCK_TTL_MS = 30_000;
+
+export function saleDecrementPositionLockKey(
+  ownerConnectionId: string,
+  productId: string,
+  productVariantId: string | null
+): string {
+  return `sale-decrement:${ownerConnectionId}:${productId}:${productVariantId ?? 'product'}`;
 }
 
 /** The outcome of resolving which product master owns one line. */

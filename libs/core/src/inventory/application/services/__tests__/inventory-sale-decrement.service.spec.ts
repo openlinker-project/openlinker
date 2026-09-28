@@ -9,6 +9,7 @@
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import type { SyncLockPort } from '@openlinker/core/sync';
 
 import { InventorySaleDecrement } from '../../../domain/entities/inventory-sale-decrement.entity';
 import type { InventoryItem } from '../../../domain/entities/inventory-item.entity';
@@ -165,6 +166,7 @@ describe('InventorySaleDecrementService', () => {
   let adapters: Map<string, jest.Mocked<Pick<InventoryMasterPort, 'adjustInventory' | 'listInventory'>>>;
   let integrations: { getCapabilityAdapter: jest.Mock };
   let inventoryService: { setInventory: jest.Mock };
+  let syncLock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
   let service: InventorySaleDecrementService;
 
   const makeAdapter = () => ({
@@ -202,13 +204,22 @@ describe('InventorySaleDecrementService', () => {
     };
     inventoryService = { setInventory: jest.fn().mockResolvedValue(undefined) };
 
+    // Always granted: the lock's own contention behaviour is covered by its
+    // own case below, not by every other test in this file.
+    syncLock = {
+      acquire: jest.fn(() => Promise.resolve('lock-token')),
+      release: jest.fn(() => Promise.resolve(true)),
+      extend: jest.fn(() => Promise.resolve(true)),
+    };
+
     service = new InventorySaleDecrementService(
       {
         findLiveOwnerPositions: jest.fn(() => Promise.resolve(positions)),
       } as unknown as InventoryRepositoryPort,
       repository,
       inventoryService as unknown as IInventoryService,
-      integrations as unknown as IIntegrationsService
+      integrations as unknown as IIntegrationsService,
+      syncLock as unknown as SyncLockPort
     );
   });
 
@@ -235,6 +246,20 @@ describe('InventorySaleDecrementService', () => {
       },
     ]);
     expect(result.attention).toEqual({ kind: 'none' });
+  });
+
+  // The realtime lane runs concurrently (#2278); a peer holding the same
+  // (owner, product, variant) position's lock must never let this run cross
+  // the boundary — it retries instead, with no claim made at all.
+  it('should never cross the boundary when a peer holds the position lock', async () => {
+    syncLock.acquire.mockResolvedValue(null);
+
+    const result = await service.decrementForWork(input());
+
+    expect(shop().adjustInventory).not.toHaveBeenCalled();
+    expect(result.lines[0]).toMatchObject({ status: 'retryable', reason: 'position-contended' });
+    expect(result.retryableLineIds).toEqual(['line-1']);
+    expect(syncLock.release).not.toHaveBeenCalled();
   });
 
   // OL's location id is not the adapter's: the Subiekt adapter reads it as a magazynId.

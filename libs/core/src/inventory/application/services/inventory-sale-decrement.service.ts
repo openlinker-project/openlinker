@@ -39,6 +39,11 @@
  * write went. See `inventory-sale-decrement.types.ts` for why an unknown outcome
  * is never retried automatically.
  *
+ * Steps 5–7 for one `(owner, product, variant)` position run under
+ * {@link saleDecrementPositionLockKey}: the `realtime` lane runs concurrently
+ * (#2278), so two works for the same position can genuinely both apply, and
+ * without the lock their two mirror writes can land out of order.
+ *
  * @module libs/core/src/inventory/application/services
  */
 import { Inject, Injectable } from '@nestjs/common';
@@ -48,6 +53,7 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import { InventoryItem } from '../../domain/entities/inventory-item.entity';
@@ -68,6 +74,8 @@ import {
   buildUnresolvedSaleDecrementKey,
   deriveSaleDecrementAttention,
   resolveSaleDecrementOwner,
+  saleDecrementPositionLockKey,
+  SALE_DECREMENT_POSITION_LOCK_TTL_MS,
 } from '../../domain/types/inventory-sale-decrement.types';
 import {
   INVENTORY_REPOSITORY_TOKEN,
@@ -100,7 +108,9 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     @Inject(INVENTORY_SERVICE_TOKEN)
     private readonly inventoryService: IInventoryService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService
+    private readonly integrations: IIntegrationsService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort
   ) {}
 
   async decrementForWork(input: DecrementForWorkInput): Promise<DecrementForWorkResult> {
@@ -113,7 +123,17 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     const outcomes: SaleDecrementLineOutcome[] = [];
 
     for (const line of input.lines) {
-      if (line.quantity <= 0) continue;
+      if (line.quantity <= 0) {
+        // Should be unreachable — the table's own CHECK and a work line's
+        // counters both forbid a non-positive quantity — which is exactly why
+        // silently dropping it here is wrong: an unreachable branch that fails
+        // silently is how it stops being unreachable.
+        this.logger.warn(
+          `Sale decrement skipped a non-positive quantity: orderId=${input.orderId} ` +
+            `workId=${input.workId} line=${line.orderLineId} quantity=${String(line.quantity)}`
+        );
+        continue;
+      }
       outcomes.push(await this.decrementLine(input, line, positions, adapters));
     }
 
@@ -176,60 +196,84 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
       return this.reportRow(line, await this.decrements.findByKey(ref.idempotencyKey), false);
     }
 
-    const existing = await this.decrements.findByKey(ref.idempotencyKey);
-    if (existing !== null && existing.status !== 'retryable') {
-      return this.reportExisting(line, existing, adapters, resolution.position);
-    }
-
-    const adapter = await this.resolveAdapter(owner, adapters);
-    if ('error' in adapter) {
+    // Everything from here on can write the mirror for this position — the
+    // replay path (an interrupted claim re-reads the master) as well as the
+    // fresh-write path — so it all runs under one lock keyed on the position,
+    // never on this line's own idempotency key. Two overlapping works for the
+    // SAME position each claim distinct keys and both correctly apply; the
+    // lock is what orders their two mirror writes instead of letting the
+    // slower call's stale answer land last. See
+    // `saleDecrementPositionLockKey` for why #2617's freshness guard cannot
+    // substitute for it.
+    const lockKey = saleDecrementPositionLockKey(owner, line.productId, line.productVariantId);
+    const lockToken = await this.syncLock.acquire(lockKey, SALE_DECREMENT_POSITION_LOCK_TTL_MS);
+    if (lockToken === null) {
       await this.decrements.recordUnclaimed(ref, {
         status: 'retryable',
-        reason: 'adapter-unresolved',
-        detail: adapter.error,
+        reason: 'position-contended',
+        detail: `another sale decrement for this product master's stock position is in flight`,
       });
       return this.reportRow(line, await this.decrements.findByKey(ref.idempotencyKey), false);
     }
 
-    const claimed = await this.decrements.claim(ref);
-    if (claimed === null) {
-      // A peer claimed it between our read and this statement.
-      const winner = await this.decrements.findByKey(ref.idempotencyKey);
-      if (winner === null) {
-        throw new Error(`Sale decrement claim vanished: ${ref.idempotencyKey}`);
+    try {
+      const existing = await this.decrements.findByKey(ref.idempotencyKey);
+      if (existing !== null && existing.status !== 'retryable') {
+        return await this.reportExisting(line, existing, adapters, resolution.position);
       }
-      return this.reportExisting(line, winner, adapters, resolution.position);
-    }
 
-    const settlement = await this.write(
-      adapter.adapter,
-      line,
-      ref.idempotencyKey,
-      resolution.availableQuantity
-    );
-    await this.decrements.settle(claimed.id, settlement);
+      const adapter = await this.resolveAdapter(owner, adapters);
+      if ('error' in adapter) {
+        await this.decrements.recordUnclaimed(ref, {
+          status: 'retryable',
+          reason: 'adapter-unresolved',
+          detail: adapter.error,
+        });
+        return this.reportRow(line, await this.decrements.findByKey(ref.idempotencyKey), false);
+      }
 
-    if (settlement.status === 'applied' || settlement.status === 'deduplicated') {
-      await this.mirrorResult(resolution.position, owner, settlement.resultingQuantity, line);
-    } else if (settlement.status === 'in_doubt') {
-      await this.refreshFromMaster(adapter.adapter, resolution.position, owner, line);
-    }
+      const claimed = await this.decrements.claim(ref);
+      if (claimed === null) {
+        // A peer claimed it between our read and this statement.
+        const winner = await this.decrements.findByKey(ref.idempotencyKey);
+        if (winner === null) {
+          throw new Error(`Sale decrement claim vanished: ${ref.idempotencyKey}`);
+        }
+        return await this.reportExisting(line, winner, adapters, resolution.position);
+      }
 
-    if (settlement.status !== 'applied' && settlement.status !== 'deduplicated') {
-      this.logger.error(
-        `Sale decrement did not lower the product master's stock: orderId=${input.orderId} ` +
-          `workId=${input.workId} line=${line.orderLineId} owner=${owner} ` +
-          `status=${settlement.status} reason=${settlement.reason ?? 'unknown'}`
+      const settlement = await this.write(
+        adapter.adapter,
+        line,
+        ref.idempotencyKey,
+        resolution.availableQuantity
       );
-    }
+      await this.decrements.settle(claimed.id, settlement);
 
-    return {
-      orderLineId: line.orderLineId,
-      status: settlement.status,
-      reason: settlement.reason,
-      ownerConnectionId: owner,
-      attempted: true,
-    };
+      if (settlement.status === 'applied' || settlement.status === 'deduplicated') {
+        await this.mirrorResult(resolution.position, owner, settlement.resultingQuantity, line);
+      } else if (settlement.status === 'in_doubt') {
+        await this.refreshFromMaster(adapter.adapter, resolution.position, owner, line);
+      }
+
+      if (settlement.status !== 'applied' && settlement.status !== 'deduplicated') {
+        this.logger.error(
+          `Sale decrement did not lower the product master's stock: orderId=${input.orderId} ` +
+            `workId=${input.workId} line=${line.orderLineId} owner=${owner} ` +
+            `status=${settlement.status} reason=${settlement.reason ?? 'unknown'}`
+        );
+      }
+
+      return {
+        orderLineId: line.orderLineId,
+        status: settlement.status,
+        reason: settlement.reason,
+        ownerConnectionId: owner,
+        attempted: true,
+      };
+    } finally {
+      await this.syncLock.release(lockKey, lockToken);
+    }
   }
 
   /**
@@ -379,6 +423,12 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
       );
       return;
     }
+    // `reserved` is the pre-decrement snapshot, alongside a fresh `available`
+    // from the settlement — a master that moves its own reserved count as
+    // part of the sale can therefore leave the mirror holding one fresh and
+    // one stale number. Bounded: #2321 never subtracts `reservedQuantity`
+    // from ATP, so the consequence is display-only, unlike `refreshFromMaster`
+    // below (used on the `in_doubt` path), which re-reads both from one call.
     await this.writeMirror(position, owner, resultingQuantity, position.reservedQuantity, line);
   }
 

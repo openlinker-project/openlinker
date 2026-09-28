@@ -30,7 +30,12 @@ import {
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
-import { SYNC_JOB_QUEUE_TOKEN, type SyncJobQueuePort } from '@openlinker/core/sync';
+import {
+  SYNC_JOB_QUEUE_TOKEN,
+  SYNC_LOCK_TOKEN,
+  type SyncJobQueuePort,
+  type SyncLockPort,
+} from '@openlinker/core/sync';
 
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import type { IntegrationTestHarness } from './setup';
@@ -123,7 +128,8 @@ describe('Inventory sale decrement (#3453)', () => {
       app.get<Deps[0]>(INVENTORY_REPOSITORY_TOKEN),
       app.get<Deps[1]>(INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN, { strict: false }),
       app.get<IInventoryService>(INVENTORY_SERVICE_TOKEN),
-      integrations
+      integrations,
+      app.get<SyncLockPort>(SYNC_LOCK_TOKEN)
     );
   });
 
