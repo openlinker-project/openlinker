@@ -358,4 +358,26 @@ export interface BridgeEnvelopeError {
   code: string;
   reason: string;
   correlationId: string | null;
+  /**
+   * The bridge's own answer to "did this definitely create nothing?" (bridge
+   * PR #7 review).
+   *
+   * `'rejected'` means it provably did not; `'in-doubt'` means it may have -
+   * a `Sfera.Run` timeout, a COM call whose outcome the bridge could not
+   * observe. The bridge emits both and, until this was read, OpenLinker mapped
+   * every non-2xx to the terminal rejected class.
+   *
+   * That discard landed exactly where ADR-041 §3a matters:
+   * `InvoiceRecord.blocksIssuanceElsewhere` treats a `failed` record as
+   * blocking UNLESS its failure mode is `rejected`, because only a terminal
+   * rejection means another connection is free to issue. So a timeout that may
+   * already have committed an FS was recorded as `rejected`, the
+   * one-document-per-order guard released, and a second fiscal document became
+   * possible for one sale.
+   *
+   * Optional, because a bridge older than the field omits it - and an absent
+   * value is read as `'rejected'`, which is the pre-existing behaviour rather
+   * than a new assumption.
+   */
+  failureMode?: string;
 }

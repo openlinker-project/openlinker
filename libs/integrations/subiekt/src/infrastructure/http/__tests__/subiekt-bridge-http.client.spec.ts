@@ -9,6 +9,7 @@
  * @module libs/integrations/subiekt/src/infrastructure/http/__tests__
  */
 import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../../bridge/subiekt-bridge.errors';
+import { SubiektBridgeUnreachableWithPhaseError } from '../../../bridge/subiekt-transport-retryability';
 import { SubiektBridgeAuthError } from '../../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../../domain/exceptions/subiekt-config.exception';
 import { SubiektBridgeHttpClient } from '../subiekt-bridge-http.client';
@@ -530,5 +531,98 @@ describe('SubiektBridgeHttpClient', () => {
     expect(() => new SubiektBridgeHttpClient('http://169.254.169.254')).toThrow(
       SubiektConfigException,
     );
+  });
+});
+
+/**
+ * `failureMode` was emitted by the bridge and discarded here (bridge PR #7
+ * review).
+ *
+ * Every non-2xx became `SubiektRejectedError`, whose mode is a hard-coded
+ * `'rejected'`. `InvoiceRecord.blocksIssuanceElsewhere` frees another
+ * connection to issue precisely when the mode is `rejected` (ADR-041 §3a), so a
+ * `Sfera.Run` timeout that MAY already have committed an FS released the
+ * one-document-per-order guard, and a second fiscal document became possible
+ * for one sale.
+ */
+describe('SubiektBridgeHttpClient — the bridge says whether an outcome is in doubt', () => {
+  function bodied(status: number, error: Record<string, unknown>): Response {
+    return {
+      status,
+      ok: status < 400,
+      json: (): Promise<unknown> => Promise.resolve({ success: false, data: null, error }),
+    } as unknown as Response;
+  }
+
+  it('raises an INDETERMINATE transport error when the bridge reports in-doubt', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(422, {
+          code: 'sfera_timeout',
+          reason: 'Sfera.Run timed out after 120s',
+          correlationId: null,
+          failureMode: 'in-doubt',
+        }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(SubiektBridgeUnreachableWithPhaseError);
+    expect((error as SubiektBridgeUnreachableWithPhaseError).retryability).toBe('indeterminate');
+    // And NOT the terminal class, which is what released the guard.
+    expect(error).not.toBeInstanceOf(SubiektRejectedError);
+  });
+
+  it('keeps a declared rejection terminal', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(422, {
+          code: 'bad_request',
+          reason: 'symbol is required',
+          correlationId: null,
+          failureMode: 'rejected',
+        }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SubiektRejectedError);
+  });
+
+  // A bridge older than the field says nothing. Reading silence as in-doubt
+  // would block issuance everywhere on every ordinary refusal, so absent stays
+  // terminal - the pre-existing behaviour.
+  it('treats an absent failureMode as terminal', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(422, { code: 'bad_request', reason: 'symbol is required', correlationId: null }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SubiektRejectedError);
+  });
+
+  // The bridge answers 200 with `success: false` on some paths. An in-doubt
+  // outcome must not become terminal merely because the status code was 2xx.
+  it('honours in-doubt on a 200 success:false envelope too', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(200, {
+          code: 'sfera_timeout',
+          reason: 'timed out',
+          correlationId: null,
+          failureMode: 'in-doubt',
+        }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SubiektBridgeUnreachableWithPhaseError);
   });
 });

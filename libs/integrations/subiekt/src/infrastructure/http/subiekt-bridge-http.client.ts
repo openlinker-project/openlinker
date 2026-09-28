@@ -358,8 +358,28 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     }
 
     if (response.status >= 400) {
-      // Business rejection — terminal. Surface the bridge-native rejected error.
-      const reason = await this.readRejectionReason(response);
+      // A business answer - but NOT automatically a terminal one (bridge PR #7
+      // review).
+      //
+      // The bridge says which: `error.failureMode` is `'in-doubt'` when a
+      // `Sfera.Run` timed out and the document MAY have been committed, and
+      // every one of those arrives on a non-2xx. This branch mapped all of them
+      // to the terminal rejected class, and the discard lands exactly where
+      // ADR-041 §3a matters: `blocksIssuanceElsewhere` frees another connection
+      // to issue precisely when the mode is `rejected`, so a timeout that may
+      // already have written an FS released the one-document-per-order guard
+      // and a second fiscal document became possible for one sale.
+      const { reason, failureMode } = await this.readRejection(response);
+      if (failureMode === 'in-doubt') {
+        // Same class the transport-level ambiguities already raise, so nothing
+        // downstream needs to learn a new shape - `SubiektBridgeTransportError`
+        // maps `'indeterminate'` onto the neutral `'in-doubt'` the core guard
+        // reads.
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt bridge reported an in-doubt outcome (HTTP ${response.status}): ${reason}`,
+          'indeterminate',
+        );
+      }
       throw new SubiektRejectedError(reason);
     }
 
@@ -372,6 +392,15 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
         envelope.error?.reason !== undefined && envelope.error.reason.length > 0
           ? envelope.error.reason
           : `HTTP ${response.status}`;
+      // The same rule on the 2xx-enveloped arm: the bridge answers `200` with a
+      // `success: false` body on some paths, and an in-doubt outcome must not
+      // become terminal merely because it arrived with a success status code.
+      if (envelope.error?.failureMode === 'in-doubt') {
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt bridge reported an in-doubt outcome (HTTP ${response.status}): ${reason}`,
+          'indeterminate',
+        );
+      }
       throw new SubiektRejectedError(reason);
     }
     return envelope.data;
@@ -382,30 +411,50 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
    * inside the envelope's `error.reason`; fall back to a bare top-level `reason`
    * and finally to the status code.
    */
-  private async readRejectionReason(response: Response): Promise<string> {
+  private async readRejection(
+    response: Response,
+  ): Promise<{ reason: string; failureMode: string | undefined }> {
     try {
       const parsed: unknown = await response.json();
       if (typeof parsed === 'object' && parsed !== null) {
-        // Enveloped error: { success, data, error: { code, reason } }.
-        const envelopeError = (parsed as { error?: { reason?: unknown } }).error;
+        // Enveloped error: { success, data, error: { code, reason, failureMode } }.
+        const envelopeError = (parsed as {
+          error?: { reason?: unknown; failureMode?: unknown };
+        }).error;
+        // Read UNCONDITIONALLY on the enveloped shape, not only when a reason
+        // is present: a body carrying `failureMode` and a blank reason is still
+        // the bridge telling us the outcome is in doubt, and losing that would
+        // reinstate the very discard this exists to close.
+        const failureMode =
+          envelopeError !== undefined &&
+          envelopeError !== null &&
+          typeof envelopeError.failureMode === 'string'
+            ? envelopeError.failureMode
+            : undefined;
         if (
           envelopeError !== undefined &&
           envelopeError !== null &&
           typeof envelopeError.reason === 'string' &&
           envelopeError.reason.length > 0
         ) {
-          return envelopeError.reason;
+          return { reason: envelopeError.reason, failureMode };
         }
         // Legacy / bare `{ reason }` fallback.
         const reason = (parsed as { reason?: unknown }).reason;
         if (typeof reason === 'string' && reason.length > 0) {
-          return reason;
+          return { reason, failureMode };
+        }
+        if (failureMode !== undefined) {
+          return { reason: `HTTP ${response.status}`, failureMode };
         }
       }
     } catch {
       // Non-JSON / empty body — fall through to the status-based reason.
     }
-    return `HTTP ${response.status}`;
+    // An absent `failureMode` reads as terminal, which is the pre-existing
+    // behaviour: a bridge older than the field said nothing, and inferring
+    // in-doubt from silence would block issuance everywhere on every refusal.
+    return { reason: `HTTP ${response.status}`, failureMode: undefined };
   }
 
   /**
@@ -418,7 +467,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
    * padding the message with a number.
    */
   private async readAuthReason(response: Response): Promise<string | undefined> {
-    const raw = await this.readRejectionReason(response);
+    const { reason: raw } = await this.readRejection(response);
     if (raw === `HTTP ${response.status}`) {
       return undefined;
     }
