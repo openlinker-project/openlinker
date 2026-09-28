@@ -1,10 +1,10 @@
 /**
- * Fulfilment worklist filters (#2410)
+ * Fulfilment worklist filters (#2410, back-link builders added by #3259)
  *
  * Pure read/write helpers over the `/fulfillment` search params, following the
  * `features/returns/lib/returns-filters.ts` shape.
  *
- * Two rules this module owns.
+ * Three rules this module owns.
  *
  * **`offset` is paging, not a filter.** {@link hasActiveFulfillmentFilters}
  * deliberately excludes it: an empty page caused by paging past the end is a
@@ -18,6 +18,13 @@
  * guard that could reject one without inventing a format the backend does not
  * enforce. An id that matches nothing answers an empty page, which the page
  * reports as "no matches" rather than as "nothing to do".
+ *
+ * **The detail page's back link is built here, not re-derived on the detail
+ * page.** `fulfillmentWorkDetailPath` / `fulfillmentWorklistPath` share one
+ * whitelist ({@link FULFILLMENT_BACK_LINK_PARAMS}) so the two directions of
+ * the link can never disagree about which params travel — a detail page that
+ * parsed the query string itself could drift from what this module considers
+ * a legitimate filter the day a new one is added here.
  *
  * @module apps/web/src/features/fulfillment/lib
  */
@@ -106,4 +113,49 @@ export function setFulfillmentOffsetParam(
   if (offset <= 0) next.delete(FULFILLMENT_OFFSET_PARAM);
   else next.set(FULFILLMENT_OFFSET_PARAM, String(offset));
   return next;
+}
+
+/**
+ * Every param the `/fulfillment` screen's own STATE carries (#3259).
+ *
+ * Wider than {@link FULFILLMENT_FILTER_PARAMS}: this list is for the
+ * back-and-forth link between the screen and one task's detail page, which
+ * has to carry the whole address an operator navigated FROM, not only the
+ * two server-side filters — `offset` (paging) and `groupBy` (the screen's
+ * staffing/location axis switch, owned by `assign-packing-work-page.tsx`
+ * rather than by this module, but the URL param it reads and writes all the
+ * same) ride along too. A whitelist rather than "forward everything" so a
+ * stray param on the address bar never rides along uninvited.
+ */
+export const FULFILLMENT_BACK_LINK_PARAMS = [
+  ...FULFILLMENT_FILTER_PARAMS,
+  FULFILLMENT_OFFSET_PARAM,
+  'groupBy',
+] as const;
+
+/** The subset of `params` this feature's own screen owns, in one query string. */
+function pickFulfillmentBackLinkParams(params: URLSearchParams): URLSearchParams {
+  const next = new URLSearchParams();
+  for (const key of FULFILLMENT_BACK_LINK_PARAMS) {
+    const value = params.get(key);
+    if (value !== null && value !== '') next.set(key, value);
+  }
+  return next;
+}
+
+/**
+ * The address of one fulfilment task's detail page (#3096/#3259), carrying
+ * the `/fulfillment` screen's own state forward so the detail page's back
+ * link can restore it. Pass an empty `URLSearchParams()` from a caller with
+ * no worklist position to preserve (the order-detail panel).
+ */
+export function fulfillmentWorkDetailPath(workId: string, params: URLSearchParams): string {
+  const query = pickFulfillmentBackLinkParams(params).toString();
+  return `/fulfillment/works/${encodeURIComponent(workId)}${query.length > 0 ? `?${query}` : ''}`;
+}
+
+/** The `/fulfillment` screen's own address, restoring the given state. */
+export function fulfillmentWorklistPath(params: URLSearchParams): string {
+  const query = pickFulfillmentBackLinkParams(params).toString();
+  return `/fulfillment${query.length > 0 ? `?${query}` : ''}`;
 }

@@ -51,6 +51,7 @@ import {
   UNASSIGNED_LANE_ID,
   clearFulfillmentFilters,
   formatUnassignedAge,
+  fulfillmentWorkDetailPath,
   groupTasksByPacker,
   groupTasksIntoLanes,
   hasActiveFulfillmentFilters,
@@ -321,6 +322,15 @@ export function AssignPackingWorkPage(): ReactElement {
     />
   );
 
+  // #3259 — the task's own detail-page address, carrying this screen's own
+  // state forward (filters, paging, `?groupBy=`) so the detail page's back
+  // link can restore it. `searchParams` is the URL exactly as it stands,
+  // never `filters`/`offset`/`groupBy` re-assembled — those are the SERVER's
+  // shape, and `fulfillmentWorkDetailPath` has its own whitelist for the
+  // browser's.
+  const detailHref = (task: FulfillmentTask): string =>
+    fulfillmentWorkDetailPath(task.id, searchParams);
+
   const body = ((): ReactElement => {
     if (tasksQuery.isPending) {
       return <p className="text-muted">{ASSIGN_PACKING_WORK_COPY.loading.message}</p>;
@@ -408,6 +418,7 @@ export function AssignPackingWorkPage(): ReactElement {
             onTaskDragStart={setDraggedTask}
             onDropOnLane={handleDropOnLane}
             lightestLoad={lightestLanes.has(lane.id)}
+            detailHref={detailHref}
           />
         ))}
       </div>
