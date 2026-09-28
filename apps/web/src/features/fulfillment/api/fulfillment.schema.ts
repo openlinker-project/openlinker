@@ -23,7 +23,8 @@
  */
 import { z } from 'zod';
 
-import type { FulfillmentTask, FulfillmentTaskPage } from './fulfillment.types';
+import type { ShipmentStatus } from '../../shipments';
+import type { FulfillmentTask, FulfillmentTaskPage, FulfillmentTaskShipment } from './fulfillment.types';
 
 /** `null` for a nullish input; the value otherwise. */
 const nullableString = z
@@ -79,6 +80,13 @@ export const fulfillmentTaskSchema = z.object({
   externalWorkId: nullableString,
   acceptedAt: nullableString,
   cancelledAt: nullableString,
+  /**
+   * An ISO STRING, never a `Date` (#3247). The DTO declares `Date` because
+   * that is what Nest serialises FROM; what arrives is a string, and a
+   * `Date`-typed field holding one type-checks and then throws on
+   * `.toLocaleString()`.
+   */
+  expeditedAt: nullableString,
   createdAt: z.string(),
   updatedAt: z.string(),
   lines: z
@@ -106,8 +114,40 @@ export const fulfillmentTaskPageSchema = z.object({
   offset: z.number(),
 });
 
+/**
+ * `GET /fulfillment/works/:workId/shipments` (#3292).
+ *
+ * `status` is parsed as `z.string()`, never `z.enum(SHIPMENT_STATUS_VALUES)`:
+ * the same reasoning as the module docblock's rule for the fulfilment-task
+ * axes applies here too, one context over — a status this build does not yet
+ * know must not fail the whole panel to parse. The cast to `ShipmentStatus`
+ * is safe precisely because nothing branches exhaustively on it:
+ * `ShipmentStatusBadge`'s `Record` lookup already falls back to `'neutral'`
+ * for a value outside the union, so an unrecognised status degrades to a
+ * plain badge rather than a runtime error.
+ */
+export const fulfillmentTaskShipmentSchema = z.object({
+  id: z.string(),
+  status: z.string().transform((value) => value as ShipmentStatus),
+  carrier: nullableString,
+  trackingNumber: nullableString,
+  hasLabel: z.boolean(),
+  createdAt: z.string(),
+  dispatchedAt: nullableString,
+  deliveredAt: nullableString,
+});
+
+export const fulfillmentTaskShipmentsSchema = z
+  .array(fulfillmentTaskShipmentSchema)
+  .nullish()
+  .transform((value) => value ?? []);
+
 export function parseFulfillmentTask(payload: unknown): FulfillmentTask {
   return fulfillmentTaskSchema.parse(payload);
+}
+
+export function parseFulfillmentTaskShipments(payload: unknown): FulfillmentTaskShipment[] {
+  return fulfillmentTaskShipmentsSchema.parse(payload);
 }
 
 export function parseFulfillmentTaskPage(payload: unknown): FulfillmentTaskPage {
