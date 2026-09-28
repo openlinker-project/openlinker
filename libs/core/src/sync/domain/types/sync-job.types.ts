@@ -295,6 +295,25 @@ export const JobStatusValues = ['queued', 'running', 'succeeded', 'dead'] as con
 export type JobStatus = (typeof JobStatusValues)[number];
 
 /**
+ * Sync Job Retention Status Values (#2946)
+ *
+ * A POSITIVE two-value whitelist, never an exclusion list — the
+ * ADR-049/#2604 outbox-retention shape applied to `sync_jobs`. A retention
+ * delete may target ONLY `succeeded` or `dead` rows; `queued`/`running` must
+ * never be reachable through this vocabulary, so a future `JobStatus` member
+ * cannot silently fall through into a prune the way it could if this were
+ * `Exclude<JobStatus, 'queued' | 'running'>`.
+ */
+export const SyncJobRetentionStatusValues = ['succeeded', 'dead'] as const;
+
+/**
+ * Sync Job Retention Status
+ *
+ * Derived union type from SyncJobRetentionStatusValues.
+ */
+export type SyncJobRetentionStatus = (typeof SyncJobRetentionStatusValues)[number];
+
+/**
  * Job Outcome Values
  *
  * Runtime array of all valid job outcome values. Outcome is the *business*

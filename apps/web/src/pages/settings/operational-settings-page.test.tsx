@@ -46,6 +46,8 @@ function view(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     inventorySweepBudget: numeric(100, 2000, 20_000, 'Headroom is the point.'),
     sweepPageSize: numeric(100, 100, 500, 'Ids are joined into a query string.'),
     deletionAuditBudget: numeric(100, 2000, 20_000, 'A 41.7-day cycle is what this is for.'),
+    syncJobRetentionDays: numeric(30, 365, 365, 'Bounded 30-365 days (D16).'),
+    syncJobDeadRetentionDays: numeric(90, 365, 365, 'Bounded 30-365 days (D16).'),
     deletionAuditCadence: { value: '0 * * * *', source: 'default' },
     deletionAuditAlwaysEnabled: true,
     cadenceAppliesAt: 'next-scheduler-start',
@@ -80,6 +82,20 @@ function view(overrides: Record<string, unknown> = {}): Record<string, unknown> 
         absoluteMax: 20_000,
         default: 100,
         envVar: 'OL_MASTER_PRODUCT_RECONCILE_PAGE_LIMIT',
+      },
+      syncJobRetentionDays: {
+        min: 30,
+        recommendedMax: 365,
+        absoluteMax: 365,
+        default: 30,
+        envVar: 'OL_SYNC_JOB_RETENTION_DAYS',
+      },
+      syncJobDeadRetentionDays: {
+        min: 30,
+        recommendedMax: 365,
+        absoluteMax: 365,
+        default: 90,
+        envVar: 'OL_SYNC_JOB_DEAD_RETENTION_DAYS',
       },
     },
     ...overrides,
@@ -382,5 +398,80 @@ describe('OperationalSettingsPage', () => {
     expect(
       await screen.findByText(/clamped when the request is built/),
     ).toBeInTheDocument();
+  });
+
+  describe('job retention (#2946, D16)', () => {
+    it('should render both retention values with their provenance', async () => {
+      renderPage({
+        get: vi.fn().mockResolvedValue(
+          view({
+            syncJobRetentionDays: { value: 45, source: 'setting' },
+            syncJobDeadRetentionDays: { value: 120, source: 'env' },
+          }),
+        ),
+      });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      const dead = await screen.findByRole('spinbutton', {
+        name: 'Days a permanently-failed sync job is kept',
+      });
+      expect(succeeded).toHaveValue(45);
+      expect(dead).toHaveValue(120);
+    });
+
+    it('should save only the retention fields, independently of the sweep-pacing form', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          syncJobRetentionDays: 60,
+          syncJobDeadRetentionDays: 90,
+        });
+      });
+      // The sweep-pacing budgets must never be swept up into this save.
+      expect(update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ catalogueSweepBudget: expect.anything() }),
+      );
+    });
+
+    it('should put a rejected retention value beside its own control', async () => {
+      const update = vi.fn().mockRejectedValue(
+        new ApiError('Bad Request', 400, {
+          message: ['syncJobRetentionDays must not be greater than 365'],
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      await user.clear(succeeded);
+      await user.type(succeeded, '500');
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      expect(
+        await screen.findByText('syncJobRetentionDays must not be greater than 365'),
+      ).toBeInTheDocument();
+    });
+
+    it('should keep the retention save button inert until something changes', async () => {
+      renderPage();
+
+      await screen.findByRole('spinbutton', { name: 'Days a completed sync job is kept' });
+      expect(screen.getByRole('button', { name: 'Save retention' })).toBeDisabled();
+    });
   });
 });

@@ -44,6 +44,7 @@ describe('SyncJobRepository', () => {
       findOne: jest.fn(),
       update: jest.fn(),
       createQueryBuilder: jest.fn(),
+      query: jest.fn(),
       manager: {
         connection: mockDataSource,
       },
@@ -732,6 +733,46 @@ describe('SyncJobRepository', () => {
       expect(threshold.getTime()).toBeLessThanOrEqual(
         afterCall.getTime() - lockTimeoutMinutes * 60 * 1000 + 1000
       );
+    });
+  });
+
+  describe('pruneTerminalJobs (#2946)', () => {
+    it('should delete a batch of matching rows via the oldest-first sub-select and return the affected count', async () => {
+      const olderThan = new Date('2026-08-01T00:00:00Z');
+      ormRepository.query.mockResolvedValue([[], 7]);
+
+      const result = await repository.pruneTerminalJobs('succeeded', olderThan, 500);
+
+      expect(ormRepository.query).toHaveBeenCalledWith(
+        expect.stringContaining('DELETE FROM "sync_jobs"'),
+        ['succeeded', olderThan, 500]
+      );
+      expect(result).toBe(7);
+    });
+
+    it('should return 0 when nothing is eligible, never null/undefined', async () => {
+      ormRepository.query.mockResolvedValue([[], 0]);
+
+      const result = await repository.pruneTerminalJobs('dead', new Date(), 100);
+
+      expect(result).toBe(0);
+    });
+
+    it('should reject a status outside the succeeded|dead whitelist even if the type system is bypassed', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately bypassing SyncJobRetentionStatus to prove the runtime guard, not just the compile-time type
+      const bypassedStatus = 'queued' as any;
+
+      await expect(
+        repository.pruneTerminalJobs(bypassedStatus, new Date(), 100)
+      ).rejects.toThrow(/succeeded, dead/);
+      expect(ormRepository.query).not.toHaveBeenCalled();
+    });
+
+    it('should reject a non-positive batchSize', async () => {
+      await expect(repository.pruneTerminalJobs('succeeded', new Date(), 0)).rejects.toThrow(
+        /batchSize must be a positive integer/
+      );
+      expect(ormRepository.query).not.toHaveBeenCalled();
     });
   });
 
