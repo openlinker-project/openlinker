@@ -785,7 +785,14 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument, documentLines, unlinkedCatalogueLines } =
+    const {
+      record: issued,
+      seller,
+      sourceDocument,
+      documentLines,
+      unlinkedCatalogueLines,
+      warehouseRelease,
+    } =
       issueResult;
     // #2251: prefer the document's OWN per-line amounts over core's
     // recomputation, so the stored figure matches the paper to the grosz.
@@ -838,6 +845,15 @@ export class InvoiceService implements IInvoiceService {
       // correction adapter reports linkage today, and a field nothing populates
       // is noise until one does.
       unlinkedCatalogueLines: unlinkedCatalogueLines ?? null,
+      // Same rule one field over (#3365 audit): `undefined` from a provider
+      // with no warehouse stays `null`, "not reported" - deliberately distinct
+      // from a reported `'not-applicable'`, which means there was something to
+      // ask about and nothing to release. The number is stored only on the one
+      // outcome that has one, so nothing can read a stale document number off a
+      // release that did not happen.
+      warehouseReleaseOutcome: warehouseRelease?.outcome ?? null,
+      warehouseReleaseNumber:
+        warehouseRelease?.outcome === 'released' ? warehouseRelease.documentNumber : null,
     };
     return this.repo.updateOutcome(recordId, patch);
   }

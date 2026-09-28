@@ -38,6 +38,7 @@ import type {
   IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssueInvoiceResult,
+  WarehouseRelease,
   RegulatoryClearanceResult,
   RegulatoryStatusReader,
   UpsertCustomerCommand,
@@ -274,10 +275,62 @@ export class SubiektInvoicingAdapter
       // so omitting the field would make "every line reached the warehouse"
       // indistinguishable from "this provider does not report linkage" (the
       // `null` a non-catalogue provider leaves behind).
-      return { record, unlinkedCatalogueLines };
+      return {
+        record,
+        unlinkedCatalogueLines,
+        warehouseRelease: this.readWarehouseRelease(response.warehouseReleaseNumber, zkId, cmd.orderId),
+      };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
+  }
+
+  /**
+   * What the bridge did about releasing this sale's goods from the warehouse.
+   *
+   * The bridge has always answered - `warehouseReleaseNumber`, the WZ it
+   * created or detected beside the invoice - and OpenLinker discarded it. A
+   * document billed the client, and whether the stock actually left was
+   * knowable only by opening Subiekt.
+   *
+   * ## The bridge's `null` is two different facts, and only this side can tell
+   *
+   * A `null` means "no linked ZK was found". That is correct and quiet for a
+   * manually issued, order-less invoice - there is nothing to release. It is
+   * the opposite for a sale: `resolveZkId` returns `null` on two paths, and the
+   * bridge's own fallback then looks the order up by a column stamped with the
+   * marketplace order NUMBER rather than OpenLinker's internal id, which this
+   * adapter's own docblock records as never matching a natural order. So on a
+   * real sale a `null` means the release did not happen.
+   *
+   * The bridge cannot distinguish them, because it does not know whether one
+   * was due. This adapter does: it knows whether it passed a `zkId`. So the
+   * ANSWER is resolved here and reported, rather than a raw wire value being
+   * passed through for a later reader to misread.
+   *
+   * `undefined` on the wire is an older bridge build that does not report the
+   * field at all, and reports `undefined` onward - "not reported", never a
+   * manufactured failure.
+   */
+  private readWarehouseRelease(
+    reported: string | null | undefined,
+    zkId: number | null,
+    orderId: string,
+  ): WarehouseRelease | undefined {
+    if (reported === undefined) return undefined;
+    if (reported !== null && reported.trim().length > 0) {
+      return { outcome: 'released', documentNumber: reported };
+    }
+    if (zkId === null) {
+      // No order document was handed over, so nothing was due.
+      return { outcome: 'not-applicable', documentNumber: null };
+    }
+    this.logger.error(
+      `subiekt_warehouse_release_missing orderId=${orderId} zkId=${zkId} ` +
+        `connection=${this.connectionId} — the invoice issued and Subiekt reported no warehouse ` +
+        `release, so the client is billed and the stock has not moved.`,
+    );
+    return { outcome: 'not-released', documentNumber: null };
   }
 
   /**

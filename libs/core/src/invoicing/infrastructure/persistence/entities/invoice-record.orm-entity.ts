@@ -28,6 +28,7 @@ import type {
   IssuedDocumentContent,
   IssuedLineSnapshot,
   StoredDocument,
+  WarehouseReleaseOutcome,
 } from '../../../domain/types/invoicing.types';
 import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/types/invoicing.types';
 
@@ -188,6 +189,21 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'integer', nullable: true })
   unlinkedCatalogueLines!: number | null;
+
+  /**
+   * Whether the goods this document billed for left the warehouse in the
+   * provider's own books (#3365 audit). Four states, and a surface must branch
+   * on THIS rather than on the number's nullability - the number is
+   * legitimately absent on three of them. See {@link WarehouseRelease}.
+   *
+   * `NULL` = this provider does not report a release at all.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  warehouseReleaseOutcome!: WarehouseReleaseOutcome | null;
+
+  /** The release document's own number, verbatim. Set only when released. */
+  @Column({ type: 'text', nullable: true })
+  warehouseReleaseNumber!: string | null;
 
   /**
    * Neutral issued-document content snapshot (§7.3), captured at issue time.

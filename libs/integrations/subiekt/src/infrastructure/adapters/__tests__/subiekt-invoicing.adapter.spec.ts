@@ -1170,3 +1170,98 @@ describe('SubiektInvoicingAdapter', () => {
     });
   });
 });
+
+/**
+ * The warehouse release the bridge always answered and OpenLinker threw away
+ * (#3365 audit).
+ *
+ * A repo-wide search for `warehouseReleaseNumber` found a type declaration,
+ * three specs, and no production reader - while `resolveZkId` returns `null` on
+ * two paths and the bridge's own fallback for that case is documented in this
+ * adapter as never matching a natural order. So an invoice could issue with the
+ * correct money while the stock never left, and the only way to notice was to
+ * open Subiekt.
+ *
+ * The four states are asserted, because three of them are quiet and correct and
+ * only one is the alarm.
+ */
+describe('SubiektInvoicingAdapter — the warehouse release', () => {
+  type Release = { outcome: string; documentNumber: string | null } | undefined;
+
+  /**
+   * `zkMapped` is what decides the two silent states apart: the adapter passes
+   * a `zkId` only when the order carries a Subiekt `Order` mapping, so seeding
+   * one is what makes a release DUE.
+   */
+  function buildWarehouseReleaseHarness(input: {
+    warehouseReleaseNumber?: string | null;
+    zkMapped: boolean;
+  }): { adapter: SubiektInvoicingAdapter; cmd: IssueInvoiceCommand; logger: LoggerPort } {
+    const bridge = new FakeSubiektBridgeAdapter();
+    if (input.warehouseReleaseNumber !== undefined) {
+      bridge.seed({ warehouseReleaseNumber: input.warehouseReleaseNumber });
+    }
+    const identifierMapping = new InMemoryIdentifierMappingAdapter();
+    const logger = makeLogger();
+    const adapter = new SubiektInvoicingAdapter(bridge, identifierMapping, 'conn-1', logger);
+    const cmd = command();
+    if (input.zkMapped) {
+      void identifierMapping.createMapping('Order', '4242', 'conn-1', cmd.orderId);
+    }
+    return { adapter, cmd, logger };
+  }
+
+  function readRelease(
+    adapter: { issueInvoice: (cmd: never) => Promise<{ warehouseRelease?: unknown }> },
+    cmd: unknown,
+  ): Promise<Release> {
+    return adapter.issueInvoice(cmd as never).then((r) => r.warehouseRelease as Release);
+  }
+
+  it('reports released, with the number, when the bridge names a WZ', async () => {
+    const { adapter, cmd } = buildWarehouseReleaseHarness({
+      warehouseReleaseNumber: 'WZ 67/2026',
+      zkMapped: true,
+    });
+    await expect(readRelease(adapter, cmd)).resolves.toEqual({
+      outcome: 'released',
+      documentNumber: 'WZ 67/2026',
+    });
+  });
+
+  // Quiet and correct: a manually issued, order-less invoice has nothing to
+  // release, and the bridge's `null` says exactly that.
+  it('reports not-applicable when no order document was handed over', async () => {
+    const { adapter, cmd } = buildWarehouseReleaseHarness({
+      warehouseReleaseNumber: null,
+      zkMapped: false,
+    });
+    await expect(readRelease(adapter, cmd)).resolves.toEqual({
+      outcome: 'not-applicable',
+      documentNumber: null,
+    });
+  });
+
+  // THE ALARM. The same `null` on a real sale means the release did not happen:
+  // the client is billed and the stock has not moved.
+  it('reports not-released when a ZK was handed over and no WZ came back', async () => {
+    const { adapter, cmd, logger } = buildWarehouseReleaseHarness({
+      warehouseReleaseNumber: null,
+      zkMapped: true,
+    });
+    await expect(readRelease(adapter, cmd)).resolves.toEqual({
+      outcome: 'not-released',
+      documentNumber: null,
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('subiekt_warehouse_release_missing'),
+    );
+  });
+
+  // An older bridge omits the field entirely. "Not reported" is the truthful
+  // answer, never a manufactured failure.
+  it('reports nothing at all when the bridge omits the field', async () => {
+    const { adapter, cmd } = buildWarehouseReleaseHarness({ zkMapped: true });
+    await expect(readRelease(adapter, cmd)).resolves.toBeUndefined();
+  });
+});

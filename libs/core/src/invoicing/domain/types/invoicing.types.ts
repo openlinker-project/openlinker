@@ -905,6 +905,53 @@ export interface IssueInvoiceResult {
    * key" — a bridge or API can still drop one downstream.
    */
   unlinkedCatalogueLines?: number;
+  /**
+   * Whether the goods this document billed for actually LEFT the seller's
+   * warehouse in the provider's own books, and under which document number.
+   *
+   * TRI-STATE in the same spirit as {@link unlinkedCatalogueLines}, and for the
+   * same reason - a document that looks entirely normal while the warehouse
+   * never registers the sale:
+   *
+   *   - `undefined` — this provider does not report a release at all. Most do
+   *     not: a provider with no warehouse has nothing to say.
+   *   - `'not-applicable'` — there was nothing to release. A manually issued,
+   *     order-less invoice has no order document behind it.
+   *   - `'released'` — a release document exists; `number` names it.
+   *   - `'not-released'` — the caller expected one and the provider reported
+   *     none. THIS is the state the field exists for: the money is billed and
+   *     the stock has not moved.
+   *
+   * The distinction between the last two cannot come from the provider alone.
+   * A bridge that answers "no release document" cannot know whether one was
+   * due; the ADAPTER can, because it knows whether it handed the provider an
+   * order document to release against. So an adapter resolves the answer and
+   * reports it, rather than passing a raw wire value through.
+   *
+   * Like `unlinkedCatalogueLines`, this is the provider's belief at issue time,
+   * not a later confirmation.
+   */
+  warehouseRelease?: WarehouseRelease;
+}
+
+/** The four answers a provider can give about releasing a document's goods. */
+export const WarehouseReleaseOutcomeValues = [
+  'released',
+  'not-applicable',
+  'not-released',
+] as const;
+
+export type WarehouseReleaseOutcome = (typeof WarehouseReleaseOutcomeValues)[number];
+
+/** What a provider did about releasing the sold goods from its warehouse. */
+export interface WarehouseRelease {
+  readonly outcome: WarehouseReleaseOutcome;
+  /**
+   * The release document's own number, verbatim (Subiekt: `WZ 67/2026`).
+   * `null` on every outcome but `'released'` - and a surface must therefore
+   * branch on the outcome rather than on this being present.
+   */
+  readonly documentNumber: string | null;
 }
 
 /** Query for an issued document by either internal order id or provider id. */
@@ -1032,6 +1079,10 @@ export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
   /** See {@link IssueInvoiceResult.unlinkedCatalogueLines}. Written on the issued patch only. */
   unlinkedCatalogueLines?: number | null;
+  /** See {@link WarehouseRelease}. Written on the issued patch only. */
+  warehouseReleaseOutcome?: WarehouseReleaseOutcome | null;
+  /** The release document's number, stored only on the `'released'` outcome. */
+  warehouseReleaseNumber?: string | null;
   /**
    * Authoritative provider identifier resolved at issue time (e.g. `subiekt`).
    * The pending row is created with `providerType: ''` (the connection's
