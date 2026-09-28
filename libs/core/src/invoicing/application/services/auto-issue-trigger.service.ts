@@ -244,6 +244,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   private readonly shippedViabilityWarned = new Set<string>();
 
   /**
+   * Connections warned once about an `auto-on-paid` order whose source reports
+   * no payment status at all. Same shape and same reason as
+   * {@link shippedViabilityWarned}: the condition is connection-level, so one
+   * warning carries it and per-order logging would bury it.
+   */
+  private readonly paidViabilityWarned = new Set<string>();
+
+  /**
    * One-time diagnosis: connection ids already warned about being the chosen
    * winner while carrying a `manual` trigger model on an install that has
    * OTHER sales-document candidates. Routing resolves the winning connection
@@ -1113,12 +1121,39 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     connectionId: string,
   ): TriggerGateOutcome {
     switch (triggerModel) {
-      case 'auto-on-paid':
+      case 'auto-on-paid': {
         // D3 level-evaluated: qualifies iff the order is currently paid. An unpaid
         // order is `waiting`, never `blocked` — the next transition re-evaluates it.
-        return order.paymentStatus === PAYMENT_STATUS.Paid
-          ? { kind: 'proceed' }
-          : { kind: 'waiting' };
+        if (order.paymentStatus === PAYMENT_STATUS.Paid) {
+          return { kind: 'proceed' };
+        }
+        // An order whose source reports NO payment status at all is a different
+        // fact from one reporting it unpaid, and the difference is invisible
+        // without this (#3365 audit). A connection whose source never populates
+        // the field waits for ever: no document, no warehouse release, no stock
+        // movement, and nothing written anywhere - because `waiting` is
+        // legitimately not a block, so no reason is persisted and no badge
+        // renders.
+        //
+        // That is exactly the shape a shop source was in before it learnt to
+        // report `paid`, and it survives for any source whose vocabulary an
+        // adapter does not know: a WooCommerce store running a custom
+        // order-status plugin, or a PrestaShop state id the shop does not have.
+        //
+        // Warned ONCE per connection, mirroring the `auto-on-shipped` viability
+        // warning twelve lines below, so the silence is diagnosable without
+        // per-poll spam. PII-clean: connection id and the absence itself.
+        if (order.paymentStatus === undefined && !this.paidViabilityWarned.has(connectionId)) {
+          this.paidViabilityWarned.add(connectionId);
+          this.logger.warn(
+            `auto-on-paid connection has seen an order whose source reports NO payment status: ` +
+              `connectionId=${connectionId}. If this source never populates it, the connection ` +
+              `will never auto-issue - and because an unpaid order is 'waiting' rather than ` +
+              `blocked, nothing else will say so.`,
+          );
+        }
+        return { kind: 'waiting' };
+      }
       case 'auto-on-shipped':
         // D6: honored only where the source surfaces 'shipped' inbound.
         if (order.status === 'shipped') {

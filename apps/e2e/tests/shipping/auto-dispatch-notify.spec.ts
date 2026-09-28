@@ -31,9 +31,7 @@ import type { ApiClient } from '../../src/api/api-client';
 import type { Shipment } from '../../src/api/api.types';
 import { PlatformType } from '../../src/world/world';
 import {
-  SYNTHETIC_COURIER_PARCEL,
-  buildCourierRecipient,
-  isCourierUnprovisionedError,
+  buildPickupRecipient,
   releaseDispatchedShipments,
   resolveDispatchedShipment,
   setUpShippingTestOrder,
@@ -102,26 +100,26 @@ test.describe('shipping — automatic dispatch notification (#3365)', () => {
     test.skip(!setup, `no InPost connection, or ${shippingOrderShortageReason()}`);
     const { order, deliveryMethodId } = setup!;
 
-    let dispatch;
-    try {
-      dispatch = await api.shipments.generateLabel({
-        sourceConnectionId: order.sourceConnectionId,
-        sourceDeliveryMethodId: deliveryMethodId,
-        orderId: order.internalOrderId,
-        deliveryIntent: 'address',
-        recipient: buildCourierRecipient(order),
-        parcel: { ...SYNTHETIC_COURIER_PARCEL },
-      });
-    } catch (error) {
-      if (isCourierUnprovisionedError(error)) {
-        test.skip(
-          true,
-          'ShipX sandbox organization has no courier carrier/trucker assigned (verified live via GET /v1/organizations)',
-        );
-        return;
-      }
-      throw error;
-    }
+    // PICKUP POINT, not courier (#3365 audit).
+    //
+    // This dispatched with `deliveryIntent: 'address'`, and the suite's own
+    // helper records - verified live against `GET /v1/organizations` - that the
+    // ShipX sandbox organization enrolls no courier carrier at all. So the
+    // dispatch threw, the spec skipped, and the ONLY assertion that the relay
+    // fires without an operator click never ran, on any run, while the project
+    // reported green. Every sibling spec that needs a label actually bought
+    // uses a locker for the same reason (`cod.spec.ts`, `routing-matrix.spec.ts`,
+    // `declared-value.spec.ts`).
+    test.skip(!env.paczkomatId, 'no locker id configured (set E2E_PACZKOMAT_ID)');
+    const dispatch = await api.shipments.generateLabel({
+      sourceConnectionId: order.sourceConnectionId,
+      sourceDeliveryMethodId: deliveryMethodId,
+      orderId: order.internalOrderId,
+      deliveryIntent: 'pickup_point',
+      recipient: buildPickupRecipient(order),
+      parcel: { template: 'small' },
+      paczkomatId: env.paczkomatId!,
+    });
 
     const shipment = await resolveDispatchedShipment(api, dispatch, order.internalOrderId);
     expect(shipment, 'a shipment was created').toBeTruthy();
@@ -169,20 +167,26 @@ test.describe('shipping — automatic dispatch notification (#3365)', () => {
     const source = world.connectionFor(PlatformType.allegro);
     test.skip(!source, 'no Allegro connection on this stack');
 
-    const dispatched = await findAllegroShipment(
-      api,
-      source!.id,
-      (shipment) => shipment.status === 'dispatched',
+    // Deliberately NOT filtered on `status === 'dispatched'` (#3365 audit).
+    // When the relay is REJECTED, `notifyDispatched` leaves the row at
+    // `generated` on purpose - so a `dispatched` filter selects nothing, the
+    // test skips, and the exact regression it exists to catch reports green.
+    // Any shipment that reached the carrier is a valid subject; what is under
+    // test is what ALLEGRO says about it.
+    const dispatched = await findAllegroShipment(api, source!.id, (shipment) =>
+      ['generated', 'dispatched', 'in-transit', 'delivered'].includes(shipment.status),
     );
     test.skip(
       dispatched === null,
-      'no dispatched Allegro shipment on this stack - buy an order and dispatch it first',
+      'no Allegro shipment on this stack - buy an order and generate a label first',
     );
 
     const view = await api.orders.sourceFulfillment(dispatched!.orderId);
 
-    // `unsupported` would mean the source reports nothing back, `unavailable`
-    // that it could not be reached. Both are states, and neither is evidence.
+    // ASSERTED FIRST, and separately (#3365 audit). `unsupported` means the
+    // source reports nothing back and `unavailable` that it could not be
+    // reached; folding either into the waybill or dispatch assertion below
+    // would report an Allegro outage as "the relay did not land".
     expect(
       view.readback?.outcome,
       `the source did not answer for ${dispatched!.orderId}: ` +
@@ -222,10 +226,26 @@ test.describe('shipping — automatic dispatch notification (#3365)', () => {
     const waybill = relayed!.shipment.trackingNumber as string;
     const view = await api.orders.sourceFulfillment(relayed!.orderId);
 
-    // `null` is "this source does not report waybills" and would make the
-    // assertion below vacuous, so it is called out separately.
+    // The OUTCOME first: an `unavailable` Allegro carries `waybills: null`, and
+    // without this the next assertion would report a marketplace outage as a
+    // missing waybill (#3365 audit).
     expect(
-      view.readback?.waybills,
+      view.readback?.outcome,
+      `the source did not answer for ${relayed!.orderId}: ` +
+        `${view.readback?.detail ?? view.unmappedReason ?? 'no reason given'}`,
+    ).toBe('read');
+
+    // `null` is "this source does not report waybills". Asserted on the
+    // readback itself rather than through optional chaining, because
+    // `view.readback?.waybills` yields `undefined` when `readback` is null -
+    // which is not null, so the guard whose whole job is to prevent vacuity was
+    // itself vacuous.
+    expect(
+      view.readback,
+      `no readback at all for ${relayed!.orderId}`,
+    ).not.toBeNull();
+    expect(
+      view.readback!.waybills,
       `${view.sourceConnectionName} reported no waybill list at all for ${relayed!.orderId}`,
     ).not.toBeNull();
 

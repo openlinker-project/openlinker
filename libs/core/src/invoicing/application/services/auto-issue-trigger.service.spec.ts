@@ -234,6 +234,51 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
+    // #3365 audit: an order whose source reports NO payment status is a
+    // different fact from one reporting it unpaid, and the difference was
+    // invisible. `waiting` is legitimately not a block, so nothing is
+    // persisted and no badge renders - a connection whose source never
+    // populates the field waits for ever with no document, no warehouse
+    // release and no stock movement, and nothing anywhere says so.
+    it('auto-on-paid: warns ONCE per connection when the source reports no payment status', async () => {
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => undefined);
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: undefined }), 'src-1');
+      await service.onOrderTransition(makeOrder({ paymentStatus: undefined }), 'src-1');
+
+      const viability = warn.mock.calls.filter((call) =>
+        String(call[0]).includes('reports NO payment status'),
+      );
+      expect(viability).toHaveLength(1);
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    // An order the source says IS unpaid is the ordinary, correct wait. Warning
+    // on it would bury the one above under every unpaid order on the stack.
+    it('auto-on-paid: does NOT warn for an order reported unpaid', async () => {
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => undefined);
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'awaiting' }), 'src-1');
+
+      expect(
+        warn.mock.calls.filter((call) => String(call[0]).includes('reports NO payment status')),
+      ).toHaveLength(0);
+      warn.mockRestore();
+    });
+
     it('auto-on-shipped: order.status === shipped enqueues', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-shipped')]);
       await service.onOrderTransition(makeOrder({ status: 'shipped' }), 'src-1');
