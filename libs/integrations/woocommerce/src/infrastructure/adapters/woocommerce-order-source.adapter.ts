@@ -263,8 +263,14 @@ function mapShippingAddress(addr: WooCommerceShippingAddress): IncomingOrderAddr
  * false asserted-none. An operator has no way to extend this list today; a
  * per-connection `config` key is the obvious follow-up if this proves too
  * narrow.
+ *
+ * Exported (#3471 item 5, decided) so the order-PROCESSOR side
+ * (`WooCommerceOrderProcessorAdapter.mapAddress`) can write an OL-created
+ * order's buyer tax id under this list's FIRST key — one list, one place
+ * that decides which meta_data key means "buyer tax id" for both the read
+ * and the write direction.
  */
-const WOOCOMMERCE_VAT_META_KEY_ALLOWLIST = [
+export const WOOCOMMERCE_VAT_META_KEY_ALLOWLIST = [
   'VAT Number',
   '_billing_eu_vat_number',
   '_vat_number',

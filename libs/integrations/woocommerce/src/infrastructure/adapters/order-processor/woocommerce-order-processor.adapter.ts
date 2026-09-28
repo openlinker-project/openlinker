@@ -79,8 +79,13 @@ import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@open
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/core/customers';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
-import { PAYMENT_STATUS } from '@openlinker/core/orders';
+import { PAYMENT_STATUS, readBuyerTaxId } from '@openlinker/core/orders';
 import { taxRatePercentToFraction } from '@openlinker/core/invoicing';
+import {
+  splitShippingAcrossRates,
+  minorUnitExponentFor,
+  type ShippingSplitLine,
+} from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
@@ -108,6 +113,7 @@ import {
   type WooCommerceShippingMethod,
 } from './woocommerce-options.types';
 import { mapToFulfillmentStatusSnapshot } from './woocommerce-fulfillment-status.mapper';
+import { WOOCOMMERCE_VAT_META_KEY_ALLOWLIST } from '../woocommerce-order-source.adapter';
 
 // ─── Module-level pure helpers ────────────────────────────────────────────────
 // Pure functions with no dependency on adapter state — independently testable.
@@ -235,6 +241,8 @@ export class WooCommerceOrderProcessorAdapter
     // paid — the conservative direction when the fact is unknown.
     const markPaid = order.paymentStatus === PAYMENT_STATUS.Paid;
 
+    const metaData = this.buildOrderMetaData(order, internalOrderId);
+
     const payload: WooCommerceOrderCreateRequest = {
       status: WC_ORDER_STATUS_MAP[order.status],
       customer_id: customerId,
@@ -249,9 +257,7 @@ export class WooCommerceOrderProcessorAdapter
       payment_method_title: 'External',
       currency: currencyCode,
       ...(markPaid ? { set_paid: true } : {}),
-      ...(typeof internalOrderId === 'string' && internalOrderId.length > 0
-        ? { meta_data: [{ key: '_ol_order_id', value: internalOrderId }] }
-        : {}),
+      ...(metaData.length > 0 ? { meta_data: metaData } : {}),
     };
 
     // Step 6 — create WC order; return WC-native id as orderId (#877 B2).
@@ -788,16 +794,78 @@ export class WooCommerceOrderProcessorAdapter
    * `listCarriers()` still advertises `flat_rate` as one of its returned
    * values, so an unmapped method degrades to a real, valid WC method rather
    * than a silently-wrong one.
+   *
+   * **Tax treatment (#3470 IMPORTANT-2 review).** Shipping is gross-priced
+   * exactly like the item lines whenever `taxTreatment` is `'inclusive'`/
+   * unset, and WC REST stores `shipping_lines.total` tax-exclusive too — so
+   * sending the gross shipping figure let WC add its own VAT on top of it,
+   * the same bug #3470 fixed for items. A basket can carry more than one tax
+   * rate, so the gross shipping charge is split across the rates present —
+   * proportional to each rate's share of gross line value — via the shared
+   * `splitShippingAcrossRates` (`@openlinker/core/sales-documents`, ADR-063
+   * § 5; this is pure division, never tax computation). Each part is then
+   * converted to net with its OWN rate, mirroring `resolveLineTaxFraction`
+   * rather than inventing a blended heuristic. A line carrying no tax rate
+   * makes the basket's rate mix unresolvable, so the split — and therefore
+   * the whole order — refuses, exactly like an unresolvable item line.
+   *
+   * One WC shipping line is emitted PER RATE PART rather than one blended
+   * total: `shipping_lines` is already an array, WC exposes no per-line tax
+   * OVERRIDE via REST anyway (`total_tax` is recomputed from the store's own
+   * tax settings), so a single blended figure would misrepresent a
+   * mixed-rate charge as a single-rate one with no way to say otherwise. The
+   * ordinary single-rate case (the overwhelming majority of orders) is
+   * unaffected — `splitShippingAcrossRates` returns exactly one part and
+   * this still emits exactly one shipping line.
    */
   private async buildShippingLines(order: OrderCreate): Promise<WooCommerceShippingLineRequest[]> {
     if (!order.totals.shipping || order.totals.shipping <= 0) return [];
-    return [
-      {
-        method_id: await this.resolveShippingMethodId(order),
-        method_title: order.shipping?.methodName ?? 'Shipping',
-        total: order.totals.shipping.toFixed(2),
-      },
-    ];
+
+    const methodId = await this.resolveShippingMethodId(order);
+    const methodTitle = order.shipping?.methodName ?? 'Shipping';
+
+    // `exclusive` → shipping is already net, pin as-is (mirrors resolveLineItems).
+    if (order.totals.taxTreatment === 'exclusive') {
+      return [
+        {
+          method_id: methodId,
+          method_title: methodTitle,
+          total: order.totals.shipping.toFixed(2),
+        },
+      ];
+    }
+
+    const splitLines: ShippingSplitLine[] = order.items.map((item) => ({
+      taxRate: item.taxRate ?? null,
+      gross: item.price * item.quantity,
+    }));
+    const parts = splitShippingAcrossRates(
+      order.totals.shipping,
+      splitLines,
+      minorUnitExponentFor(order.totals.currency),
+    );
+    if (parts === null) {
+      throw new WooCommerceOrderProcessingException(
+        `Cannot create WC order: shipping is gross-priced but the basket's tax-rate mix is ` +
+          `unresolvable (at least one line carries no tax rate), so the shipping charge cannot ` +
+          `be proportionally split into the tax-exclusive amounts WooCommerce REST expects. ` +
+          `No order was created.`,
+        this.connection.id,
+      );
+    }
+
+    return parts.map((part) => {
+      const fraction = taxRatePercentToFraction(part.taxRate) ?? 0;
+      const net = part.amount / (1 + fraction);
+      return {
+        method_id: methodId,
+        // Only decorated with the rate when the basket actually split into
+        // more than one part — the single-rate case keeps the plain title
+        // every existing order (and test) already expects.
+        method_title: parts.length > 1 ? `${methodTitle} (${part.taxRate}%)` : methodTitle,
+        total: net.toFixed(2),
+      };
+    });
   }
 
   private async resolveShippingMethodId(order: OrderCreate): Promise<string> {
@@ -833,16 +901,19 @@ export class WooCommerceOrderProcessorAdapter
    * with `rest_invalid_param: shipping[company] is not of type string` when a
    * source platform (e.g. Allegro) carries `null` for an optional field.
    *
-   * `address.taxId` (the buyer's tax id, #2599) is deliberately NOT mapped
-   * (#3471 item 5, documented rather than silently dropped). WC core's
+   * `address.taxId` (the buyer's tax id, #2599) is NOT mapped HERE — WC core's
    * `WooCommerceOrderAddress`/billing/shipping schema has no native tax-id
-   * field — VAT-number plugins each invent their own `meta_data` key
-   * (`_billing_vat_number`, `_billing_eu_vat_number`, …), and there is no
-   * single convention to target. Writing an unverified key risks silently
-   * missing whichever plugin (if any) a given shop actually runs, or
-   * colliding with a key that plugin uses for something else. A store that
-   * needs the buyer's tax id on the order should map it via its own plugin's
-   * documented integration point.
+   * field at all, so there is nowhere on the address object to put it.
+   * Decided (#3471 item 5): it is written as order-level `meta_data` instead,
+   * under the FIRST key of `WOOCOMMERCE_VAT_META_KEY_ALLOWLIST` — the same
+   * list `WooCommerceOrderSourceAdapter` already reads on INGESTION (#2822).
+   * Writing under that key (rather than inventing a new one) is what lets an
+   * order OL creates round-trip its tax id on the next read of the same shop.
+   * See `buildOrderMetaData`, which resolves the value via the shared
+   * `readBuyerTaxId` (billing-first, #2599) and omits the entry entirely
+   * when the order asserts no tax id (absent or explicitly `null`) — there
+   * is nothing to write in either case, and an omitted entry is honest about
+   * that, unlike writing an empty string.
    */
   private mapAddress(address: Address | undefined): WooCommerceOrderAddress | undefined {
     if (!address) return undefined;
@@ -861,5 +932,30 @@ export class WooCommerceOrderProcessorAdapter
     assign('country', address.country);
     assign('phone', address.phone);
     return mapped;
+  }
+
+  /**
+   * Builds the order-level `meta_data` array for `createOrder`'s payload
+   * (#3471 item 5): the `_ol_order_id` forensic marker (unchanged), plus the
+   * buyer's tax id under the FIRST `WOOCOMMERCE_VAT_META_KEY_ALLOWLIST` key
+   * — `readBuyerTaxId` resolves it billing-first (#2599); an entry is
+   * emitted ONLY for a real asserted string, never for `undefined`
+   * (never asserted) or `null` (asserted to have none) — there is nothing to
+   * write for either, and writing e.g. an empty string would be a false
+   * positive assertion the source never made.
+   */
+  private buildOrderMetaData(
+    order: OrderCreate,
+    internalOrderId: unknown,
+  ): Array<{ key: string; value: string }> {
+    const metaData: Array<{ key: string; value: string }> = [];
+    if (typeof internalOrderId === 'string' && internalOrderId.length > 0) {
+      metaData.push({ key: '_ol_order_id', value: internalOrderId });
+    }
+    const buyerTaxId = readBuyerTaxId(order);
+    if (typeof buyerTaxId === 'string' && buyerTaxId.length > 0) {
+      metaData.push({ key: WOOCOMMERCE_VAT_META_KEY_ALLOWLIST[0], value: buyerTaxId });
+    }
+    return metaData;
   }
 }

@@ -412,6 +412,106 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     expect((payload as Record<string, unknown>).billing).not.toHaveProperty('email');
   });
 
+  // ── buyer tax id → meta_data (#3471 item 5, decided) ──
+
+  it('should write the buyer tax id under the first VAT meta_data key, billing-first', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(
+      makeOrder({
+        billingAddress: {
+          taxId: 'PL1234567890',
+          firstName: 'Jan', lastName: 'Kowalski',
+          address1: 'ul. Kwiatowa 1', city: 'Warszawa',
+          postalCode: '00-001', country: 'PL',
+        },
+      }),
+    );
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const metaData = (payload as { meta_data?: Array<{ key: string; value: string }> }).meta_data ?? [];
+    expect(metaData).toContainEqual({ key: 'VAT Number', value: 'PL1234567890' });
+  });
+
+  it('should fall back to shipping tax id when billing asserts nothing', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(
+      makeOrder({
+        shippingAddress: {
+          taxId: 'PL9999999999',
+          firstName: 'Jan', lastName: 'Kowalski',
+          address1: 'ul. Kwiatowa 1', city: 'Warszawa',
+          postalCode: '00-001', country: 'PL',
+        },
+      }),
+    );
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const metaData = (payload as { meta_data?: Array<{ key: string; value: string }> }).meta_data ?? [];
+    expect(metaData).toContainEqual({ key: 'VAT Number', value: 'PL9999999999' });
+  });
+
+  it('should omit the VAT meta_data entry when no tax id was asserted', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder());
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const metaData = (payload as { meta_data?: Array<{ key: string; value: string }> }).meta_data ?? [];
+    expect(metaData.find((m) => m.key === 'VAT Number')).toBeUndefined();
+  });
+
+  it('should omit the VAT meta_data entry when the order asserts the buyer has none', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(
+      makeOrder({
+        billingAddress: {
+          taxId: null,
+          firstName: 'Jan', lastName: 'Kowalski',
+          address1: 'ul. Kwiatowa 1', city: 'Warszawa',
+          postalCode: '00-001', country: 'PL',
+        },
+      }),
+    );
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const metaData = (payload as { meta_data?: Array<{ key: string; value: string }> }).meta_data ?? [];
+    expect(metaData.find((m) => m.key === 'VAT Number')).toBeUndefined();
+  });
+
+  it('should carry both the internal-order-id marker and the VAT entry when both apply', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(
+      makeOrder({
+        metadata: { internalOrderId: 'ol-order-abc123' },
+        billingAddress: {
+          taxId: 'PL1234567890',
+          firstName: 'Jan', lastName: 'Kowalski',
+          address1: 'ul. Kwiatowa 1', city: 'Warszawa',
+          postalCode: '00-001', country: 'PL',
+        },
+      }),
+    );
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const metaData = (payload as { meta_data?: Array<{ key: string; value: string }> }).meta_data ?? [];
+    expect(metaData).toContainEqual({ key: '_ol_order_id', value: 'ol-order-abc123' });
+    expect(metaData).toContainEqual({ key: 'VAT Number', value: 'PL1234567890' });
+  });
+
   it('should set status: completed when OL status is shipped', async () => {
     const httpClient = makeHttpClient();
     const identifierMapping = makeIdentifierMapping();
@@ -1075,6 +1175,79 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
     const shippingLines = (payload as { shipping_lines: Array<Record<string, unknown>> }).shipping_lines;
     expect(shippingLines[0]).toMatchObject({ method_id: 'flat_rate' });
+  });
+
+  // ── shipping tax split (#3470 IMPORTANT-2 review) ──
+
+  it('should convert a single-rate gross shipping charge to net using that rate', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(
+      makeOrder({
+        items: [{ id: 'i1', productId: 'ol-prod-1', quantity: 1, price: 100, taxRate: '23' }],
+        totals: { subtotal: 100, tax: 0, shipping: 12.3, total: 112.3, currency: 'PLN' },
+      }),
+    );
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const shippingLines = (payload as { shipping_lines: Array<Record<string, unknown>> }).shipping_lines;
+    // 12.30 gross / 1.23 = 10.00 net, at the basket's one rate (23%).
+    expect(shippingLines).toHaveLength(1);
+    expect(shippingLines[0]).toMatchObject({ total: '10.00' });
+  });
+
+  it('should split shipping across rates and net-convert each part for a mixed-rate basket', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    identifierMapping.getExternalIds.mockImplementation((entityType: string) => {
+      if (entityType === 'Product') {
+        return Promise.resolve([{ externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
+      }
+      if (entityType === 'Customer') {
+        return Promise.resolve([{ externalId: '7', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType }]);
+      }
+      return Promise.resolve([]);
+    });
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    // Two lines, two rates, equal gross share (50/50) — 10.00 gross shipping
+    // splits 5.00/5.00, each converted to net at its own rate.
+    await adapter.createOrder(
+      makeOrder({
+        items: [
+          { id: 'i1', productId: 'ol-prod-1', quantity: 1, price: 100, taxRate: '23' },
+          { id: 'i2', productId: 'ol-prod-1', quantity: 1, price: 100, taxRate: '8' },
+        ],
+        totals: { subtotal: 200, tax: 0, shipping: 10, total: 210, currency: 'PLN' },
+      }),
+    );
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const shippingLines = (payload as { shipping_lines: Array<Record<string, unknown>> }).shipping_lines;
+    expect(shippingLines).toHaveLength(2);
+    const totals = shippingLines.map((l) => l.total).sort();
+    // 5.00 / 1.23 = 4.07 (23%), 5.00 / 1.08 = 4.63 (8%).
+    expect(totals).toEqual(['4.07', '4.63']);
+  });
+
+  it('should refuse the order when shipping is gross-priced but no line has a positive gross to split it against', async () => {
+    // Every line has a resolvable tax rate (so resolveLineItems succeeds),
+    // but a $0 gross line carries nothing to proportion a paid shipping
+    // charge against — splitShippingAcrossRates itself refuses this
+    // (totalGross <= 0), a DIFFERENT unresolvable case than a missing rate.
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await expect(
+      adapter.createOrder(
+        makeOrder({
+          items: [{ id: 'i1', productId: 'ol-prod-1', quantity: 1, price: 0, taxRate: '23' }],
+          totals: { subtotal: 0, tax: 0, shipping: 12.3, total: 12.3, currency: 'PLN' },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(WooCommerceOrderProcessingException);
   });
 });
 
