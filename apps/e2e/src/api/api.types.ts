@@ -526,6 +526,17 @@ export interface Shipment {
   updatedAt: string;
 }
 
+/**
+ * POST /shipments/:id/cancel response (`CancelShipmentResponseDto`, apps/api).
+ * NOT a bare `Shipment` - the row plus `cancelledAfterDispatch`, the one fact
+ * the row itself cannot express (whether the dispatch notification had
+ * already run when the cancel landed, per #3365).
+ */
+export interface CancelShipmentResult {
+  shipment: Shipment;
+  cancelledAfterDispatch: boolean;
+}
+
 /** Decimal-string money descriptor shared by COD and insured-value inputs. */
 export interface ShippingMoneyInput {
   amount: string;

@@ -33,6 +33,7 @@ import type {
   DescriptionFormatView,
   BulkIssueInvoicesInput,
   BulkIssueInvoicesResult,
+  CancelShipmentResult,
   CategoryMappingInput,
   CategoryParameter,
   CategoryParametersResponse,
@@ -888,9 +889,13 @@ export class ApiClient {
     /** Mark a shipment dispatched (mutating — attended run only). */
     notifyDispatched: (id: string): Promise<Shipment> =>
       this.request<Shipment>(`/shipments/${id}/notify-dispatched`, { method: 'POST' }),
-    /** Cancel a not-yet-dispatched shipment (mutating — attended run only). */
-    cancel: (id: string): Promise<Shipment> =>
-      this.request<Shipment>(`/shipments/${id}/cancel`, { method: 'POST' }),
+    /**
+     * Cancel a shipment (mutating — attended run only). Returns the cancelled
+     * row plus `cancelledAfterDispatch` (#3365) - NOT a bare `Shipment`; see
+     * `CancelShipmentResult`.
+     */
+    cancel: (id: string): Promise<CancelShipmentResult> =>
+      this.request<CancelShipmentResult>(`/shipments/${id}/cancel`, { method: 'POST' }),
     /**
      * Download the carrier handover protocol over a set of dispatched shipments
      * (POST /shipments/bulk/protocol) — binary response, metadata-only like
