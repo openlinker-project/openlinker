@@ -23,6 +23,8 @@ export class OperationalSettings {
     public readonly inventorySweepBudget: number | null,
     public readonly sweepPageSize: number | null,
     public readonly deletionAuditBudget: number | null,
+    public readonly syncJobRetentionDays: number | null,
+    public readonly syncJobDeadRetentionDays: number | null,
     public readonly deletionAuditCadence: string | null,
     public readonly updatedAt: Date,
     public readonly updatedBy: string | null

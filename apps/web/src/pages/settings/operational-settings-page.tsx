@@ -35,6 +35,7 @@ import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { PacingValueField } from '../../features/settings/components/pacing-value-field';
+import { SyncJobRetentionSection } from '../../features/settings/components/sync-job-retention-section';
 import { SyncPacingConfirmDialog } from '../../features/settings/components/sync-pacing-confirm-dialog';
 import { SyncPacingImpact } from '../../features/settings/components/sync-pacing-impact';
 import { useCatalogueSizeQuery } from '../../features/settings/hooks/use-catalogue-size-query';
@@ -661,6 +662,13 @@ export function OperationalSettingsPage(): ReactElement {
           />
         </div>
       ) : null}
+
+      {/* Self-contained: its own query/mutation, its own loading and error
+          states, and its own immediate save — a retention window in days has
+          no catalogue-size projection the way the sweep budgets above do, so
+          it deliberately does not share SyncPacingValues / the confirm
+          dialog. */}
+      <SyncJobRetentionSection />
     </PageLayout>
   );
 }
