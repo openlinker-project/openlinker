@@ -10,13 +10,13 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
+import type { WarehouseReleaseOutcome } from '@openlinker/core/invoicing';
 import {
   DocumentTypeValues,
   InvoiceStatus,
   InvoiceStatusValues,
   RegulatoryStatus,
   RegulatoryStatusValues,
-  WarehouseReleaseOutcome,
   WarehouseReleaseOutcomeValues,
 } from '@openlinker/core/invoicing';
 

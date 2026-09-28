@@ -40,6 +40,17 @@ it. See
 
 ## What works
 
+At a glance, and this table is the thing #3400's version of it got wrong: the
+adapter ships **five** capabilities, not one.
+
+| Capability | Sub-capabilities |
+|---|---|
+| `ProductMaster` | catalogue read, including models-as-variants |
+| `InventoryMaster` | stock read, plus PW/RW stock adjustment |
+| `OrderSource` | order feed + hydrate, poll-only (see *Ingestion latency* below) |
+| `OrderProcessorManager` | order push as a ZK |
+| `Invoicing` | `RegulatoryStatusReader` (read the bridge-reported KSeF regulatory status), `CorrectionIssuer` (issue corrections of an already-issued document, #1229), `BankAccountsReader` / `BankAccountDefaultSetter` (list and default the seller's payable bank accounts, #1303), `RegulatoryRecordLocator` (crash-recovery - locate a document by its original idempotency key when a prior issuance's outcome is unknown, #3389), `PaymentStatusReader` (read whether a document is settled, `dok_Rozliczony`, #3390) |
+
 **Catalogue read** (`ProductMaster`). Symbol, name, description, unit of
 measure, weight, net and gross sale price, currency, EAN/barcode, VAT rate,
 product images, and the towar's group.
@@ -54,6 +65,76 @@ product images, and the towar's group.
 **Stock read** (`InventoryMaster`), from `tw_Stan`, for one release warehouse
 per towar. See the multi-warehouse note below - this is the one place where
 getting the configuration wrong has a real consequence.
+
+## Scope
+
+**This section replaced #3400's, which said the opposite.** That text read
+*"Subiekt is an `Invoicing`-only integration - it never implements
+`ProductMaster`, `InventoryMaster`, `OrderProcessorManager`, or any other
+capability"*, and it was true of `main` when it was written. This branch is what
+makes it false: the adapter now ships all four of those plus `OrderSource`, and
+a README telling an operator the opposite of what the code does is worse than no
+README. What survives from #3400 is everything it actually researched - the two
+capabilities Sfera cannot support, and the ingestion-latency findings - because
+none of that changed.
+
+An operator therefore does **not** need a second connection for catalogue,
+stock or orders. They do still need one for anything in the list below.
+
+What this integration **does not, and cannot, do** on this Sfera SDK tier (both
+researched and confirmed live, not assumed — see #3392 / #3393 for the full evidence):
+
+- **`PaymentMarker.markPaid`** — there is no writable path to mark a document as paid.
+  The session object exposes exactly two managers (`SuDokumentyManager`,
+  `KontrahenciManager`); neither creates a payment/settlement record, and the one
+  plausible property on a loaded document (`Rozliczony`) is silently read-only in
+  effect — setting it and saving reports success but never persists.
+- **`RegulatoryDocumentReader`** — there is no headless way to retrieve a rendered
+  document (PDF or otherwise). The only export-shaped method on a document object,
+  `Drukuj`, is unconditionally interactive (blocks on a modal dialog) regardless of
+  whether it is called with or without a file-path argument, on every code path
+  tested.
+
+Both gaps are structural to the exposed Sfera automation surface, not something this
+adapter's implementation could route around safely. If InsERT exposes a broader
+finance/reporting manager in a future Sfera license tier, both should be revisited.
+
+## Ingestion latency (#3396)
+
+This section came from #3400 and reasons about regulatory and settlement status,
+because those were the only reads Subiekt had when it was written. Everything
+below still holds, and it now covers **four more capabilities**: the catalogue,
+stock and order reads this branch adds are scheduled polls for exactly the same
+reason. Stock is the one to watch - it is read on the master-sync cadence rather
+than pushed, which is what the multi-warehouse note further down is about.
+
+Subiekt has **no outbound webhook or event mechanism** of any kind — it is a
+Windows-desktop ERP with a COM automation surface, not a service that can call back
+out to OpenLinker. Every fact this integration reads from Subiekt (KSeF regulatory
+status, settlement status, a crash-recovered document lookup) is therefore either an
+**on-demand read** (triggered by an operator action or another OL flow) or a
+**scheduled poll**, never a push.
+
+- **KSeF regulatory status** (`RegulatoryStatusReader`) is kept fresh by the shared
+  `invoicing.regulatoryStatus.reconcile` scheduler task
+  (`OL_REGULATORY_RECONCILE_CRON`, **default every 30 minutes**), which runs for
+  every `Invoicing`-capable connection, Subiekt included. A KSeF status change inside
+  Subiekt GT is therefore visible in OpenLinker within one reconcile interval, not
+  instantly.
+- **Settlement/paid status** (`PaymentStatusReader`, #3390) has **no periodic sweep
+  at all** on this adapter. The only existing caller of this capability
+  (`PaymentStatusRefreshHandler` / `invoicing.paymentStatus.refreshByExternalId`) is
+  itself webhook-triggered — enqueued when a provider like inFakt calls back with a
+  `invoice_marked_as_paid` event. Since Subiekt has no webhook to trigger that job,
+  `PaymentStatusReader.getPaymentStatus` is reachable today only through a direct,
+  on-demand call (e.g. a future manual "refresh payment status" action); an operator
+  marking an invoice paid inside Subiekt's own UI does **not** automatically
+  propagate into OpenLinker. Wiring a periodic sweep for poll-only providers is a
+  reasonable follow-up if this capability needs to stay fresh unattended, but is not
+  implemented here.
+
+There is no way to get push-based freshness without InsERT itself exposing an
+outbound event mechanism, which does not exist on this Sfera SDK tier.
 
 **Stock adjustment**, by PW (positive delta) / RW (negative delta) documents,
 with an optional idempotency key so a retried adjustment does not double-move
