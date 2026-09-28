@@ -44,6 +44,23 @@ export interface SynthesizeOrderOptions {
   /** Override unit gross (tax-incl) price; defaults to the variant/product price. */
   unitPriceTaxIncl?: number;
   /**
+   * Sell BELOW the catalogue price, as a fraction off (`0.39` = 39% off).
+   *
+   * Expressed as a PrestaShop `specific_price` scoped to this run's own fresh
+   * customer, NOT merely as a lower `unitPriceTaxIncl` on the order rows. A
+   * price posted on the order alone does not survive: PrestaShop recomputes
+   * the cart's total from the CATALOGUE, and when the two disagree it files
+   * the order under "Payment error" (`paid = 0`), which then stalls every
+   * downstream gate. So the reduction has to be something the shop itself
+   * applies, and the order rows are priced to MATCH what it will compute.
+   *
+   * The caller must not assume the resulting figure: read it back off the
+   * ingested order. This is what makes an amount assertion downstream able to
+   * tell a carried price from a catalogue lookup, which at list price it
+   * cannot.
+   */
+  discountFraction?: number;
+  /**
    * Requested gross (tax-incl) shipping cost, defaulting to `9.99`.
    *
    * NOT honoured by PrestaShop. Verified live against the demo install: the
@@ -240,9 +257,29 @@ export async function synthesizeOrder(
   const { product, variant } = driver;
 
   const quantity = options.quantity ?? 1;
-  const unitPrice = options.unitPriceTaxIncl ?? variant.price ?? product.price ?? 0;
-  if (unitPrice <= 0) {
+  const cataloguePrice = options.unitPriceTaxIncl ?? variant.price ?? product.price ?? 0;
+  if (cataloguePrice <= 0) {
     throw new Error(`synthesizeOrder: driver variant ${variant.id} has no positive price`);
+  }
+  const discountFraction = options.discountFraction ?? 0;
+  if (discountFraction < 0 || discountFraction >= 1) {
+    throw new Error(
+      `synthesizeOrder: discountFraction must be in [0, 1), got ${discountFraction}`,
+    );
+  }
+  // Rounded the way PrestaShop rounds a percentage reduction, so the order
+  // rows we post agree with the total the shop recomputes from the cart. A
+  // disagreement here is not a rounding nit - it is the "Payment error" state
+  // the shipping comment below records.
+  const unitPrice =
+    discountFraction === 0
+      ? cataloguePrice
+      : Math.round(cataloguePrice * (1 - discountFraction) * 100) / 100;
+  if (unitPrice <= 0) {
+    throw new Error(
+      `synthesizeOrder: a ${discountFraction * 100}% reduction on ${cataloguePrice} rounds to ` +
+        `${unitPrice}, which is not a sellable price`,
+    );
   }
 
   const countryId = (await ps.getCountryIdByIso('PL')) ?? '1';
@@ -272,6 +309,18 @@ export async function synthesizeOrder(
     throw new Error(`synthesizeOrder: product ${product.id} has no PrestaShop external id mapped`);
   }
   const externalVariantId = externalIdForVariant(variant, prestashop.id);
+
+  // The reduction has to exist BEFORE the cart, because PrestaShop prices a
+  // cart row when the row is created. Scoped to the customer minted two
+  // statements above, which exists only for this run.
+  if (discountFraction > 0) {
+    await ps.createSpecificPrice({
+      productId: externalProductId,
+      productAttributeId: externalVariantId ?? '0',
+      idCustomer: customer.id,
+      reductionFraction: discountFraction,
+    });
+  }
 
   const cart = await ps.createCart({
     idCustomer: customer.id,

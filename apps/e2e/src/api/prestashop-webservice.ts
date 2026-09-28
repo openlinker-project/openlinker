@@ -211,6 +211,23 @@ export interface CreateAddressInput {
   phone?: string;
 }
 
+/**
+ * Input for `createSpecificPrice` — a customer-scoped catalogue reduction.
+ *
+ * Scoped to ONE customer (`idCustomer`) rather than to a cart, because a cart
+ * has to exist before it can be named and PrestaShop computes a cart's totals
+ * at creation. A per-run customer is unique by construction, so the reduction
+ * cannot reach another order.
+ */
+export interface CreateSpecificPriceInput {
+  productId: string;
+  /** Combination id, or `'0'` for "every combination of this product". */
+  productAttributeId?: string;
+  idCustomer: string;
+  /** Fraction off, e.g. `0.39` for 39% off. */
+  reductionFraction: number;
+}
+
 /** Input for `createOrder` — the minimal fields the webservice requires. */
 export interface CreateOrderInput {
   idCustomer: string;
@@ -916,6 +933,62 @@ export class PrestashopWebserviceClient {
    * golden path's fresh-product option) — see the caveat already documented on
    * `createProduct`.
    */
+  /**
+   * Put a percentage reduction on one product FOR ONE CUSTOMER, so PrestaShop
+   * itself prices the cart below the catalogue figure.
+   *
+   * This exists because a discount cannot be expressed on the order alone
+   * (#3365). `POST /api/orders` takes line prices and totals, but PrestaShop
+   * recomputes the cart's own total from the CATALOGUE and files the order
+   * under "Payment error" when the two disagree - the same mismatch the
+   * shipping comment in `order-synthesis.ts` records, measured across 29 orders
+   * on the demo shop. So a fixture that merely posts a lower `unitPriceTaxIncl`
+   * gets the catalogue price back, silently, with the order intact.
+   *
+   * `price = -1` is PrestaShop's own sentinel for "keep the catalogue price and
+   * apply the reduction to it", which is what keeps this a DISCOUNT rather than
+   * a second price the test would then have to predict the rounding of.
+   *
+   * Every scope field must be present and explicit: the webservice rejects a
+   * `specific_price` with a missing scope column rather than defaulting it.
+   */
+  async createSpecificPrice(input: CreateSpecificPriceInput): Promise<{ id: string }> {
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <specific_price>',
+      `    <id_product>${escapeXml(input.productId)}</id_product>`,
+      `    <id_product_attribute>${escapeXml(input.productAttributeId ?? '0')}</id_product_attribute>`,
+      `    <id_customer>${escapeXml(input.idCustomer)}</id_customer>`,
+      '    <id_shop>0</id_shop>',
+      '    <id_cart>0</id_cart>',
+      '    <id_currency>0</id_currency>',
+      '    <id_country>0</id_country>',
+      '    <id_group>0</id_group>',
+      '    <id_shop_group>0</id_shop_group>',
+      '    <id_specific_price_rule>0</id_specific_price_rule>',
+      '    <price>-1</price>',
+      '    <from_quantity>1</from_quantity>',
+      `    <reduction>${input.reductionFraction.toFixed(6)}</reduction>`,
+      '    <reduction_tax>1</reduction_tax>',
+      '    <reduction_type>percentage</reduction_type>',
+      '    <from>0000-00-00 00:00:00</from>',
+      '    <to>0000-00-00 00:00:00</to>',
+      '  </specific_price>',
+      '</prestashop>',
+    ].join('\n');
+
+    const body = await this.send('POST', '/api/specific_prices', xml);
+    const created = asRecord(pick(body, 'specific_price'));
+    const id = asStringOrNull(pick(created, 'id'));
+    if (!id) {
+      throw new Error(
+        `PrestaShop createSpecificPrice returned no id: ${JSON.stringify(body).slice(0, 200)}`,
+      );
+    }
+    return { id };
+  }
+
   async createOrder(input: CreateOrderInput): Promise<{ id: string }> {
     const currencyId = input.currencyId ?? '1';
     const languageId = input.languageId ?? '1';

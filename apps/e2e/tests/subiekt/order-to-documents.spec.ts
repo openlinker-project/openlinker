@@ -135,8 +135,8 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
   let soldVariantId: string | null = null;
   const soldQuantity = 1;
   /**
-   * What the buyer was charged per unit, and what the catalogue says the same
-   * variant costs. Held apart on purpose: the ZK test below asserts BOTH that
+   * What the buyer was actually charged, read off the ingested order, and what
+   * the catalogue says the same variant costs. Held apart on purpose: the ZK test below asserts BOTH that
    * Subiekt recorded the first figure and that the two genuinely differ, so it
    * cannot pass by a catalogue lookup happening to return the right number.
    */
@@ -208,29 +208,27 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     // was used. A real marketplace sale almost never matches the catalogue: a
     // coupon, a campaign price or a marketplace-funded discount all send a
     // LOWER figure, and ADR-014 is explicit that OpenLinker carries what the
-    // buyer paid and never recomputes it. So the fixture charges 61% of the
-    // catalogue price - not a half or a quarter, so a substitution cannot match
-    // through an arithmetic coincidence - and the ZK test asserts the gap is
-    // real before asserting Subiekt honoured it.
+    // buyer paid and never recomputes it.
+    //
+    // 39% off - not a half or a quarter, so a catalogue substitution cannot
+    // match through an arithmetic coincidence. The reduction is applied by
+    // PRESTASHOP, via a customer-scoped `specific_price`; posting a lower line
+    // price alone does not survive, because the shop recomputes the cart total
+    // from the catalogue and files the mismatch as "Payment error". The figure
+    // that matters is therefore READ BACK off the ingested order below, never
+    // predicted here.
     const cataloguePrice = shopDriver!.variant.price ?? shopDriver!.product.price ?? 0;
     expect(
       cataloguePrice,
       'the driver variant carries no positive catalogue price, so no discount can be expressed',
     ).toBeGreaterThan(0);
-    const discountedPrice = Math.round(cataloguePrice * 61) / 100;
-    expect(
-      discountedPrice,
-      `a 61% price of ${cataloguePrice} rounded to ${discountedPrice}, which is not strictly ` +
-        `below the catalogue figure - pick a driver product priced above 0.02`,
-    ).toBeLessThan(cataloguePrice);
     catalogueUnitPriceGross = cataloguePrice;
-    soldUnitPriceGross = discountedPrice;
 
     const synthesized = await synthesizeOrder(
       { api, world, jobs, poll },
       {
         quantity: 1,
-        unitPriceTaxIncl: discountedPrice,
+        discountFraction: 0.39,
         driver: { product: shopDriver!.product, variant: shopDriver!.variant },
         // The shop's own id for what OpenLinker published: a `ShopProduct`
         // mapping is invisible to the products API, so the synthesiser's own
@@ -248,6 +246,25 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     const ingestedFromPrestashop =
       shopDriver!.publishConnection.id === synthesized.order.sourceConnectionId;
     internalOrderId = synthesized.order.internalOrderId;
+    // What the shop ACTUALLY charged, read off the ingested order rather than
+    // computed here. If PrestaShop ignored the reduction this is the catalogue
+    // figure, and the assertion below says so instead of a later amount test
+    // passing while proving nothing.
+    const ingestedTotal = (synthesized.order.orderSnapshot as { totals?: { total?: number } })
+      .totals?.total;
+    expect(
+      ingestedTotal,
+      'the ingested order carries no total, so the sale price cannot be established',
+    ).toBeTruthy();
+    expect(
+      ingestedTotal!,
+      `the sale was supposed to be discounted 39% off a catalogue ${cataloguePrice}, and the ` +
+        `ingested order carries ${ingestedTotal}. PrestaShop recomputes a cart from the ` +
+        `catalogue, so an undiscounted total here means the specific_price did not apply - and ` +
+        `every amount assertion downstream would then pass without proving the buyer's price ` +
+        `was carried rather than looked up.`,
+    ).toBeLessThan(cataloguePrice * soldQuantity);
+    soldUnitPriceGross = ingestedTotal!;
     soldProduct = synthesized.product;
     soldVariantId = synthesized.variant.id;
 
@@ -385,15 +402,15 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     // here - the case that is invisible when the fixture pays list price. The
     // gap is asserted FIRST, so a fixture that silently stopped discounting
     // reports that rather than passing green on a test that checks nothing.
-    expect(
+expect(
       soldUnitPriceGross,
       'the fixture recorded no sale price, so the comparison below would be vacuous',
     ).not.toBeNull();
     expect(
       soldUnitPriceGross!,
-      `the fixture was supposed to charge BELOW the catalogue price and charged ` +
-        `${soldUnitPriceGross} against a catalogue ${catalogueUnitPriceGross}. Without a gap ` +
-        `this test cannot tell a carried price from a looked-up one.`,
+      `the order carries ${soldUnitPriceGross} against a catalogue ` +
+        `${catalogueUnitPriceGross}. Without a gap this test cannot tell a carried price from ` +
+        `a looked-up one, so it is failed rather than passed on a vacuous comparison.`,
     ).toBeLessThan(catalogueUnitPriceGross!);
 
     const snapshot = order.orderSnapshot as { totals?: { total?: number } };
@@ -410,7 +427,7 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       type: 'subiekt',
       description:
         `verified in Subiekt: ${zk!.numer}, kontrahent "${zk!.kontrahentNazwa}", ` +
-        `${zk!.wartoscBrutto} ${zk!.waluta}, ${zk!.lines.length} position(s). Sold at ` +
+        `${zk!.wartoscBrutto} ${zk!.waluta}, ${zk!.lines.length} position(s). The buyer paid ` +
         `${soldUnitPriceGross} against a catalogue ${catalogueUnitPriceGross}, so the ZK ` +
         `carried the buyer's price rather than the catalogue's.`,
     });
