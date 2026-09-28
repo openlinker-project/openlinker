@@ -130,6 +130,31 @@ export type FulfillmentProgressEvent =
   | FulfillmentClosedEvent;
 
 /**
+ * Mint the progress idempotency key for a parcel closure OpenLinker itself
+ * witnessed — the pack bench's automatic close (D18) or the desktop
+ * worklist's manual `close` action (#3525).
+ *
+ * Every OTHER `idempotencyKey` crossing this seam is a THIRD PARTY's own dedup
+ * token, because a webhook or a poll answer can be redelivered by a system OL
+ * does not control. Neither closing path here is that: OpenLinker is both the
+ * reporting "vendor" and the operator surface, and the closing WRITE itself
+ * (`claimParcelClose` / `transitionStatus`) is already the at-most-once event
+ * — so the key is MINTED from that write's own instant rather than received.
+ * That is also what makes a reopen-then-reclose (D19: a genuinely NEW closing
+ * act) mint a genuinely new key instead of colliding with the claim row the
+ * first close already burned.
+ *
+ * Pure; the rule for the type it sits beside (`engineering-standards.md` §
+ * the pure-rule exception to "types only").
+ */
+export function buildFulfillmentParcelClosureIdempotencyKey(
+  workId: string,
+  closedAt: Date
+): string {
+  return `parcel-closed:${workId}:${closedAt.getTime()}`;
+}
+
+/**
  * Something a caller OUTSIDE this context must do as a consequence of recorded
  * progress — reported, never performed.
  *

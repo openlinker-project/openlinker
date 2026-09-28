@@ -12,14 +12,17 @@
  * succeeds for one participant and fails transiently for another cannot record
  * the asymmetry — retry stays all-or-nothing. #861 stays open for that half.
  *
- * **Nothing calls this in production yet**, consistent with the wave:
- * `IFulfillmentProgressService.record` — which produces the intent this consumes
- * — has no production caller either. #2398's poller is the first for both, so a
- * reader grepping for the consumer today finds only the specs.
+ * **First called in production by #3525**: `apps/api`'s
+ * `FulfillmentParcelClosureNotifierService` composes this with
+ * `IFulfillmentProgressService.record` after a parcel closes at the pack
+ * bench or through the desktop worklist's manual `close` action, and the
+ * `fulfillment.work.relaySweep` handler (#2728) re-drives this same method
+ * for anything that failed transiently. #2398's polling-holder read remains
+ * unbuilt and would be a second, independent caller when it lands.
  *
  * @module libs/core/src/orders/application/services
  * @implements {IFulfillmentDispatchRelayService}
- * @see #2398 for the first production caller of the progress ingress
+ * @see #3525 for the first production caller of the progress ingress
  */
 import { Inject, Injectable } from '@nestjs/common';
 
@@ -144,14 +147,17 @@ export class FulfillmentDispatchRelayService implements IFulfillmentDispatchRela
    *    nothing to retry, and releasing would re-drive the relay forever against a
    *    participant that can never accept it.
    *  - `unsupported` + NO reason — STRUCTURAL, and this arm is deliberate rather
-   *    than a fall-through. `OrderWritebackUnsupportedReason` is populated by the
-   *    RELAY, and `writeToTarget` passes an adapter's own `OrderWritebackResult`
-   *    through verbatim — so a bare `unsupported` is the common shape from an
-   *    adapter's own `default:` arm (Allegro, Erli, WooCommerce and PrestaShop all
-   *    emit one). Treated as structural because an adapter saying "I do not
-   *    support this event" is a statement about its capability, and because the
-   *    claim exists to stop a non-idempotent source POST being re-driven: when the
-   *    reason is unknowable, NOT re-driving is the safe direction.
+   *    than a fall-through. Since #3526, `writeToTarget` defaults EVERY
+   *    `unsupported` outcome to `no-capability` when an adapter's own
+   *    `default:` arm declines an event kind (bare `unsupported`, the common
+   *    shape from Allegro, Erli, WooCommerce and PrestaShop), so this arm is
+   *    now unreachable through any in-tree adapter — kept for an out-of-tree
+   *    adapter compiled against an older port (ADR-055 forward-compat), which
+   *    can still answer with no reason at all. Treated as structural for the
+   *    same reason as the named `no-capability` case above: an adapter saying
+   *    "I do not support this event" is a statement about its capability, and
+   *    the claim exists to stop a non-idempotent source POST being re-driven —
+   *    when the reason is unknowable, NOT re-driving is the safe direction.
    *
    *    The cost is stated rather than hidden. Erli's `dispatched` writeback is
    *    gated by `OL_ERLI_DISPATCH_WRITEBACK_ENABLED` and returns a bare

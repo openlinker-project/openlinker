@@ -72,6 +72,10 @@ import {
 } from '@openlinker/core/shipping';
 
 import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
+import {
   deriveBenchWorkState,
   isBenchWorkSelectable,
   isClaimableByViewer,
@@ -131,7 +135,11 @@ export class BenchParcelService implements IBenchParcelService {
     // station; `recordBenchActivity` is best-effort by contract and never
     // throws, so no pack action can fail because of it.
     @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
-    private readonly users: IUserManagementService
+    private readonly users: IUserManagementService,
+    // #3525 - the SAME notifier the desktop worklist's manual close uses.
+    // Best-effort by contract; never able to fail the scan.
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -237,6 +245,18 @@ export class BenchParcelService implements IBenchParcelService {
     if (result.outcome === 'verified' && result.state.closedAt !== null) {
       const packedBy = result.state.packedByUserId;
       if (packedBy !== null) await this.recordOrderPacked(work.orderId, packedBy);
+
+      // #3525 — the SAME instant this call closed the parcel is the instant
+      // reported to the order's channel. `work.assignedConnectionId` is
+      // non-null here by construction: `loadBenchWork` above already refused
+      // any work not assigned to one of THIS bench's own packing executors.
+      if (work.assignedConnectionId !== null) {
+        await this.parcelClosureNotifier.notifyParcelClosed({
+          workId: work.id,
+          connectionId: work.assignedConnectionId,
+          closedAt: result.state.closedAt,
+        });
+      }
     }
 
     return {
