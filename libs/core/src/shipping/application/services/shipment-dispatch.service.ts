@@ -536,6 +536,21 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       } else {
         const adopted = await this.adoptExistingCarrierShipment(shipment.id, adapter, input.orderId);
         if (adopted) {
+          // ADOPTION MUST NOTIFY TOO (#3365 audit). This `return` used to
+          // short-circuit past the `enqueueDispatchNotification` below - this
+          // file's ONLY call to it - so a label the carrier had already minted
+          // was recovered, the parcel shipped, and the marketplace was never
+          // told. Permanently: `waybillRelayedAt` stayed null and unwritable,
+          // so the failure counter stayed 0 and the "Tracking not sent" badge
+          // could never render; and `ShipmentStatusSyncService` could not
+          // rescue it either, because its push gate opens only from
+          // `dispatched`/`in-transit` and nothing else moves a row off
+          // `generated`. The only trace was a `log`-level line that did not
+          // mention the skipped notification.
+          //
+          // The job is idempotent at its own dedupe key, so enqueuing here
+          // cannot double-notify a shipment that already was.
+          await this.enqueueDispatchNotification(adopted.id, processorConnectionId);
           return adopted;
         }
       }

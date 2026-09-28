@@ -348,6 +348,42 @@ describe('ShipmentDispatchService', () => {
       expect(result.kind).toBe('dispatched');
     });
 
+    // THE PATH THAT TOLD NOBODY (#3365 audit). A retry that finds the carrier
+    // already minted a label ADOPTS it and used to `return` straight out,
+    // short-circuiting past the only `enqueueDispatchNotification` in the file.
+    // The parcel shipped, the marketplace was never told, and permanently:
+    // `waybillRelayedAt` stayed null so the failure counter stayed 0 and the
+    // "Tracking not sent" badge could never render, while
+    // `ShipmentStatusSyncService`'s push gate opens only from
+    // `dispatched`/`in-transit` and nothing else moves a row off `generated`.
+    it('enqueues the notification for a label ADOPTED on the retry path', async () => {
+      routing.resolve.mockResolvedValue(
+        resolution({
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      );
+      // An existing row from a prior attempt, with no provider reference yet -
+      // which is what sends `dispatch` down the reconciliation branch.
+      const prior = makeShipment({ status: 'failed', providerShipmentId: null });
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(prior);
+      const adopted = makeShipment({ status: 'generated', providerShipmentId: 'shipx-adopted' });
+      repository.update.mockResolvedValue(adopted);
+      (adapter as unknown as { findShipmentByReference: jest.Mock }).findShipmentByReference =
+        jest.fn().mockResolvedValue({
+          providerShipmentId: 'shipx-adopted',
+          trackingNumber: 'TRACK-ADOPTED',
+          labelPdfRef: 'shipx:label:shipx-adopted',
+        });
+
+      await service.dispatch(makeInput());
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'shipping.shipment.notifyDispatched' }),
+      );
+    });
+
     it('enqueues nothing when the label was never bought', async () => {
       routing.resolve.mockResolvedValue(resolution());
       orderHolds.getOpenHold.mockRejectedValue(new Error('db down'));
