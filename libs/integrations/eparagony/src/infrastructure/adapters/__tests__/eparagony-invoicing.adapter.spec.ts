@@ -83,6 +83,10 @@ function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoice
     currency: 'PLN',
     lines: [{ name: 'T-shirt', quantity: 2, unitPriceGross: 49.2, taxRate: '23' }],
     idempotencyKey: IDEMPOTENCY_KEY,
+    // Core always allocates one for this adapter (#3500); defaulted here so
+    // every test not specifically exercising its absence issues a document
+    // the vendor would actually accept.
+    documentNumber: 'OL/2026/09/1',
     ...overrides,
   };
 }
@@ -703,6 +707,10 @@ function makeCorrectionCommand(
     lines: [{ originalLineNumber: 1, newQuantity: 1 }],
     idempotencyKey: CORRECTION_IDEMPOTENCY_KEY,
     originalDocument: makeOriginalDocument(),
+    // Core always allocates one for this adapter (#3500); defaulted here so
+    // every test not specifically exercising its absence corrects a document
+    // the vendor would actually accept.
+    documentNumber: 'OL-POC/2026/KOR/1',
     ...overrides,
   };
 }
