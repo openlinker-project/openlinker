@@ -208,7 +208,7 @@ export function SubiektSetupForm({
         label="Issue the invoice"
         name="triggerModel"
         error={form.formState.errors.triggerModel?.message}
-        description={`Every order OpenLinker sends to ${identity.productName} becomes a ZK. This decides whether the invoice follows automatically, or waits for you. Change it later in Settings → Sales documents.`}
+        description={`Every order OpenLinker sends to ${identity.productName} becomes a ZK. This decides whether the invoice follows automatically, or waits for you. Change it later in Settings → Document routing.`}
       >
         <Select
           {...form.register('triggerModel')}
@@ -241,7 +241,7 @@ export function SubiektSetupForm({
               ? 'automatically once an order is paid'
               : 'only when you issue them by hand'}
             . Change that, or switch it off entirely, in{' '}
-            <Link to="/settings/sales-documents">Settings → Sales documents</Link>.
+            <Link to="/settings/sales-documents">Settings → Document routing</Link>.
           </Alert>
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>

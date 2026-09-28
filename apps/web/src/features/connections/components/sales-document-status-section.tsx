@@ -3,7 +3,7 @@
  *
  * READ-ONLY summary of this connection's sales-document routing config
  * (`config.salesDocument.documentKind` / `config.invoicing.isPrimary`) plus a
- * link to the single editable surface — Settings → Sales documents.
+ * link to the single editable surface - Settings -> Document routing.
  *
  * Renamed and demoted from `InvoicingPrimarySection` (#2047), which rendered
  * an editable "Auto-issue invoices on this connection" checkbox. That shape
@@ -116,7 +116,7 @@ export function SalesDocumentStatusSection({
         </Alert>
       ) : null}
       <p className="rate-limit-section__help">
-        Read-only. <Link to="/settings/sales-documents">Manage in Settings → Sales documents</Link>
+        Read-only. <Link to="/settings/sales-documents">Manage in Settings → Document routing</Link>
         {otherPrimary ? ` ${otherPrimary.name} is already primary.` : ''}
       </p>
     </section>
