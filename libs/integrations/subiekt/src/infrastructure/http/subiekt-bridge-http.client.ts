@@ -52,6 +52,7 @@ import type {
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from './subiekt-url-safety';
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../../bridge/subiekt-bridge-timeout';
 import {
   classifyRetryability,
   extractErrorCode,
@@ -148,7 +149,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     // Strip a single trailing slash so path concatenation stays canonical.
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
-    this.timeoutMs = opts.timeoutMs ?? 30000;
+    this.timeoutMs = opts.timeoutMs ?? SUBIEKT_BRIDGE_TIMEOUT_MS;
     // Pre-existing silent fallback, surfaced (not introduced) by the
     // strengthened `check-outbound-http.mjs` in #1968 — `no-restricted-globals`
     // never saw it, because it flags the bare identifier `fetch`, not a member

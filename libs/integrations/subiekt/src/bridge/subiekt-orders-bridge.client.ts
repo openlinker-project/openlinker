@@ -30,6 +30,7 @@ import type {
   BridgeWriteShippingRequest,
   BridgeWriteShippingResponse,
 } from './subiekt-bridge-orders.types';
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from './subiekt-bridge-timeout';
 
 export interface SubiektOrdersBridgeClientOptions {
   token?: string;
@@ -37,7 +38,7 @@ export interface SubiektOrdersBridgeClientOptions {
   fetchImpl?: FetchLike;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+
 
 export class SubiektOrdersBridgeClient {
   private readonly baseUrl: string;
@@ -55,7 +56,7 @@ export class SubiektOrdersBridgeClient {
     }
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
-    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.timeoutMs = opts.timeoutMs ?? SUBIEKT_BRIDGE_TIMEOUT_MS;
     // eslint-disable-next-line no-restricted-globals -- test-only fallback; production call sites all inject a connection-bound transport (SubiektBridgeHttpClient precedent, #1810)
     this.fetchImpl = opts.fetchImpl ?? (globalThis.fetch);
   }

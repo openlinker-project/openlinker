@@ -58,11 +58,12 @@ import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bri
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from '../http/subiekt-url-safety';
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../../bridge/subiekt-bridge-timeout';
 
 /** Provider identifier stamped onto the neutral result (mirrors `SUBIEKT_PROVIDER_TYPE`). */
 export const SUBIEKT_FISCAL_PROVIDER_TYPE = 'subiekt-gt';
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+
 
 export class SubiektFiscalizationAdapter implements FiscalizationPort {
   constructor(
@@ -71,7 +72,7 @@ export class SubiektFiscalizationAdapter implements FiscalizationPort {
     private readonly logger: LoggerPort,
     private readonly fetchImpl: FetchLike,
     private readonly token?: string,
-    private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
+    private readonly timeoutMs: number = SUBIEKT_BRIDGE_TIMEOUT_MS,
   ) {
     // Defense-in-depth SSRF guard, same predicate the invoicing transport uses.
     if (!isBridgeUrlSafe(bridgeBaseUrl)) {
