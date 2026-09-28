@@ -22,6 +22,10 @@ import type {
   PlaceOrderHoldResult,
   ReleaseOrderHoldRequest,
   ReleaseOrderHoldResult,
+  OrderNote,
+  CreateOrderNoteRequest,
+  UpdateOrderNoteRequest,
+  OrderTag,
 } from './orders.types';
 
 export interface OrdersApi {
@@ -74,6 +78,24 @@ export interface OrdersApi {
     holdId: string,
     body: ReleaseOrderHoldRequest,
   ) => Promise<ReleaseOrderHoldResult>;
+  /** An order's notes, oldest first (#3531). */
+  listNotes: (internalOrderId: string) => Promise<OrderNote[]>;
+  createNote: (internalOrderId: string, body: CreateOrderNoteRequest) => Promise<OrderNote>;
+  /** D33: the author edits their own note only; the server answers 403 otherwise. */
+  updateNote: (
+    internalOrderId: string,
+    noteId: string,
+    body: UpdateOrderNoteRequest,
+  ) => Promise<OrderNote>;
+  /** D33: the author or an admin. */
+  deleteNote: (internalOrderId: string, noteId: string) => Promise<void>;
+  /** The workspace tag vocabulary, each with its live order count (#3532). */
+  listTags: () => Promise<OrderTag[]>;
+  createTag: (name: string, color: string) => Promise<OrderTag>;
+  assignTag: (internalOrderId: string, tagId: string) => Promise<void>;
+  unassignTag: (internalOrderId: string, tagId: string) => Promise<void>;
+  /** Tag ids assigned to one order (#3532). */
+  listOrderTags: (internalOrderId: string) => Promise<string[]>;
 }
 
 interface ApiRequest {
@@ -223,6 +245,51 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
         `/orders/${encodeURIComponent(internalOrderId)}/holds/${encodeURIComponent(holdId)}/release`,
         { method: 'POST', body: JSON.stringify(body) },
       );
+    },
+    listNotes(internalOrderId): Promise<OrderNote[]> {
+      return request<OrderNote[]>(`/orders/${encodeURIComponent(internalOrderId)}/notes`);
+    },
+    createNote(internalOrderId, body): Promise<OrderNote> {
+      return request<OrderNote>(`/orders/${encodeURIComponent(internalOrderId)}/notes`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    updateNote(internalOrderId, noteId, body): Promise<OrderNote> {
+      return request<OrderNote>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      );
+    },
+    deleteNote(internalOrderId, noteId): Promise<void> {
+      return request<void>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}`,
+        { method: 'DELETE' },
+      );
+    },
+    listTags(): Promise<OrderTag[]> {
+      return request<OrderTag[]>('/order-tags');
+    },
+    createTag(name, color): Promise<OrderTag> {
+      return request<OrderTag>('/order-tags', {
+        method: 'POST',
+        body: JSON.stringify({ name, color }),
+      });
+    },
+    assignTag(internalOrderId, tagId): Promise<void> {
+      return request<void>(`/orders/${encodeURIComponent(internalOrderId)}/tags`, {
+        method: 'POST',
+        body: JSON.stringify({ tagId }),
+      });
+    },
+    unassignTag(internalOrderId, tagId): Promise<void> {
+      return request<void>(
+        `/orders/${encodeURIComponent(internalOrderId)}/tags/${encodeURIComponent(tagId)}`,
+        { method: 'DELETE' },
+      );
+    },
+    listOrderTags(internalOrderId): Promise<string[]> {
+      return request<string[]>(`/orders/${encodeURIComponent(internalOrderId)}/tags`);
     },
   };
 }
