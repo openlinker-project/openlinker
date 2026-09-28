@@ -514,12 +514,47 @@ jobs:
       # describes as broken under this runner's Docker-in-Docker network; an
       # ordinary published port works exactly as it does for any other
       # `docker run -p` container here.
+      #
+      # `127.0.0.1::5432` was wrong for a reason distinct from the Ryuk
+      # callback problem: it publishes the port on the DOCKER HOST's loopback
+      # only. This `self-hosted` runner is ITSELF a container
+      # (`/home/docker/actions-runner/...`, its own network namespace), so its
+      # `127.0.0.1` is not the host's — a published port bound to the host's
+      # loopback is unreachable from here no matter which port number is used
+      # (confirmed live: `ECONNREFUSED 127.0.0.1:32768` from the migration
+      # step below, while `docker exec ... pg_isready` — which runs INSIDE
+      # the Postgres container's own namespace — reported ready throughout).
+      #
+      # `Integration Tests`' Testcontainers-driven Postgres does not hit this:
+      # testcontainers-node's `resolveHost` (container-runtime/utils/
+      # resolve-host.js) detects it is running inside a container (checks for
+      # `/.dockerenv`) and, instead of trusting `localhost`, resolves the
+      # gateway IP of the Docker `bridge` network and connects through THAT
+      # address — the one interface of the docker HOST that every container
+      # attached to the default bridge network (this runner included) can
+      # always reach. Testcontainers never binds the published port to a
+      # specific host IP either (`generic-container.js`'s `withExposedPorts`
+      # sets only `HostPort`, no `HostIp`, which Docker defaults to `0.0.0.0`
+      # — published on every host interface); it is the DESTINATION address
+      # that changes, never the bind address. We replicate that exact
+      # mechanism rather than inventing a second one: publish on every
+      # interface as before, but connect to the gateway address everywhere
+      # below instead of `localhost`.
+      #
+      # (Binding the publish itself to the gateway address, i.e.
+      # `-p "${GATEWAY}::5432"`, was tried and rejected: on at least one
+      # Docker setup checked while fixing this, that populates
+      # `NetworkSettings.Ports` with an empty list — no port at all — rather
+      # than failing loudly, which would have made the failure this fix
+      # exists to remove reappear as a different, more confusing one.)
       - name: Start a throwaway Postgres
         run: |
           docker rm -f ol-backup-restore-ci-pg >/dev/null 2>&1 || true
+          PG_GATEWAY_HOST="$(docker network inspect bridge --format '{{ (index .IPAM.Config 0).Gateway }}')"
+          echo "PG_GATEWAY_HOST=$PG_GATEWAY_HOST" >> "$GITHUB_ENV"
           docker run -d --name ol-backup-restore-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=openlinker \
-            -p 127.0.0.1::5432 \
+            -p 5432 \
             postgres:17-alpine
           PG_HOST_PORT="$(docker inspect -f '{{ (index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort }}' ol-backup-restore-ci-pg)"
           echo "PG_HOST_PORT=$PG_HOST_PORT" >> "$GITHUB_ENV"
@@ -528,6 +563,18 @@ jobs:
             sleep 1
           done
           docker exec ol-backup-restore-ci-pg pg_isready -U postgres
+          # The check above only proves the daemon is ready INSIDE the
+          # container's own network namespace — exactly what was already true
+          # in the failing run above while the migration step still got
+          # ECONNREFUSED. Prove reachability over the SAME address migration
+          # will actually dial: a raw TCP connect through bash's `/dev/tcp`
+          # (no extra binary needed on the runner) against
+          # `PG_GATEWAY_HOST:PG_HOST_PORT`.
+          for i in $(seq 1 30); do
+            timeout 1 bash -c "cat < /dev/null > /dev/tcp/${PG_GATEWAY_HOST}/${PG_HOST_PORT}" 2>/dev/null && break
+            sleep 1
+          done
+          timeout 1 bash -c "cat < /dev/null > /dev/tcp/${PG_GATEWAY_HOST}/${PG_HOST_PORT}"
       # Seeds a REAL database via the actual migration chain, which is also
       # #2684's own from-empty proof: this Postgres container has never run
       # `CREATE EXTENSION "uuid-ossp"` at all until BootstrappedDataSource
@@ -535,7 +582,7 @@ jobs:
       - name: Seed a database via the real migration chain
         working-directory: apps/api
         env:
-          DB_HOST: localhost
+          DB_HOST: ${{ env.PG_GATEWAY_HOST }}
           DB_PORT: ${{ env.PG_HOST_PORT }}
           DB_USERNAME: postgres
           DB_PASSWORD: postgres
@@ -570,7 +617,7 @@ jobs:
       - name: Assert 0 pending migrations against the restored database
         working-directory: apps/api
         env:
-          DB_HOST: localhost
+          DB_HOST: ${{ env.PG_GATEWAY_HOST }}
           DB_PORT: ${{ env.PG_HOST_PORT }}
           DB_USERNAME: postgres
           DB_PASSWORD: postgres
