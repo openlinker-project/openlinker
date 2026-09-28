@@ -66,4 +66,20 @@ describe('fulfillment api', () => {
 
     expect(request).toHaveBeenCalledWith('/fulfillment/works/ol_work_1');
   });
+
+  it('lists the shipments for one task (#3292)', async () => {
+    const request = vi.fn().mockResolvedValue([]);
+
+    await createFulfillmentApi(request).listShipments('ol_work_1');
+
+    expect(request).toHaveBeenCalledWith('/fulfillment/works/ol_work_1/shipments');
+  });
+
+  it('encodes the work id in the shipments URL', async () => {
+    const request = vi.fn().mockResolvedValue([]);
+
+    await createFulfillmentApi(request).listShipments('a b&c');
+
+    expect(request).toHaveBeenCalledWith('/fulfillment/works/a%20b%26c/shipments');
+  });
 });
