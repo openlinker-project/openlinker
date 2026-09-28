@@ -595,6 +595,23 @@ export interface OrderRecord {
   activeHold?: OrderHold | null;
   /** Every hold this order has ever carried, open and released (#2341). Detail only. */
   holdHistory?: OrderHold[] | null;
+  /**
+   * The Status-group "open return" badge (#2998). Absent means no OPEN
+   * return was found for this order — never a positive "no returns" claim,
+   * since the batched read is best-effort and degrades to absent on failure.
+   */
+  openReturn?: OrderOpenReturn;
+  /**
+   * Tag ids assigned to this order (#3532, D34). Absent means "not
+   * projected on this read"; an empty array is a positive "no tags".
+   */
+  tagIds?: string[];
+}
+
+/** The open-return badge payload (#2998) — count plus a stage hint. */
+export interface OrderOpenReturn {
+  count: number;
+  stage: string;
 }
 
 /** One inert state as an order row carries it (#2352). */
@@ -825,6 +842,27 @@ export interface OrderFilters {
    * filter on the page.
    */
   holdReason?: HoldReason;
+  /**
+   * "Is it packed" filter (#2997). ANDed with `health`, not a sixth bucket —
+   * an order is routinely packed AND `needs_attention`.
+   */
+  packed?: boolean;
+  /**
+   * Free-text search (#3527/#3528): order number, buyer name, buyer email,
+   * any line SKU, or a shipment tracking number. Debounced client-side
+   * before landing here (`?search=`).
+   */
+  search?: string;
+  /**
+   * "Has an open return" filter (#2998). "Open" is the `/returns` list's own
+   * `all_open` segment predicate, reused server-side rather than redefined
+   * here.
+   */
+  openReturn?: boolean;
+  /** One tag id (#3532, D34), `?tag=`. Mutually exclusive with `untagged`. */
+  tag?: string;
+  /** "No tags" filter (#3532), `?untagged=`. Mutually exclusive with `tag`. */
+  untagged?: boolean;
 }
 
 /**
