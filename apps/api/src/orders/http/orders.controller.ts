@@ -634,7 +634,16 @@ export class OrdersController {
     return toSalesDocumentViewDto(view);
   }
 
-  @Roles('admin', 'operator', 'viewer')
+  // #3365 review: NOT `viewer`, unlike its sales-document neighbour above.
+  //
+  // That one reads OpenLinker's own persisted projection. This one resolves the
+  // source adapter and issues a live GET against the marketplace on every call.
+  // The call is paced - the Allegro client goes through the shared per-connection
+  // limiter - so it is not unbounded, but a viewer refreshing a detail page still
+  // CONSUMES the operator's own budget, and what queues behind it is the order
+  // sync. A role defined as look-but-do-not-touch should not be able to starve
+  // the ingestion of the orders it is looking at.
+  @Roles('admin', 'operator')
   @Get(':internalOrderId/source-fulfillment')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
