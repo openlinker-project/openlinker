@@ -164,10 +164,13 @@ export function buildFulfillmentParcelClosureIdempotencyKey(
  * and `barrel-purity.spec.ts` independently forbid under this directory — and
  * that prohibition is the design, not an obstacle to route around.
  *
- * **Nothing consumes these yet.** #2401 owns the relay and is the first
- * consumer; it also brings the already-built `claimDispatchRelay` (#2392,
+ * #2401 owns the relay and is the first CONSUMER of this type; it also
+ * brings the already-built `claimDispatchRelay` (#2392,
  * `WHERE "dispatchRelayedAt" IS NULL`) into use and adds its
- * `releaseDispatchRelay` counterpart.
+ * `releaseDispatchRelay` counterpart. Since #3525, `apps/api`'s
+ * `FulfillmentParcelClosureNotifierService` is `record()`'s first production
+ * CALLER — every parcel closed at the bench or through the desktop worklist
+ * produces one of these against a real `dispatch` intent.
  */
 export type FulfillmentRelayIntent =
   | {
@@ -221,10 +224,12 @@ export type FulfillmentProgressOutcome =
    * Closing this needs a transaction spanning the per-line updates, and
    * `FulfillmentWorkRepositoryPort` deliberately offers none today ("the axis
    * transitions open no transaction and accept none"); widening that seam is
-   * **#2395's**. It cannot bite while `record()` has no production caller, which
-   * is precisely why it is written down here rather than left to be rediscovered
-   * — **#2398 is the issue that makes it reachable**, the moment its poller
-   * becomes the first caller.
+   * **#2395's**. It still cannot bite through `record()`'s first production
+   * caller (#3525's `FulfillmentParcelClosureNotifierService`), which sends
+   * only `'shipped'` events — the one kind whose `apply()` arm never calls
+   * `applyLineDeltas` at all — so this remains written down here rather than
+   * discovered live. **#2398 is the issue that makes it reachable**, the
+   * moment its poller sends a `'picked'` or `'short_picked'` event.
    */
   | { readonly status: 'precondition-failed'; readonly reason: string };
 
