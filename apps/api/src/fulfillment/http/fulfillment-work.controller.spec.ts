@@ -33,6 +33,7 @@ import {
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import { FulfillmentWorkController } from './fulfillment-work.controller';
 import type { ApplyFulfillmentWorkActionDto } from './dto/apply-fulfillment-work-action.dto';
+import type { IFulfillmentParcelClosureNotifier } from '../application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 
 const view = (overrides: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView =>
   ({
@@ -86,10 +87,13 @@ const collaborators = (): {
   orders: { findByIds: BatchedRead };
   locations: { getLocationsByIds: BatchedRead };
   products: { getVariantsByIds: BatchedRead; getProductsByIds: BatchedRead };
+  parcelClosureNotifier: { notifyParcelClosed: jest.Mock };
 } => ({
   orders: { findByIds: batchedRead() },
   locations: { getLocationsByIds: batchedRead() },
   products: { getVariantsByIds: batchedRead(), getProductsByIds: batchedRead() },
+  // #3525
+  parcelClosureNotifier: { notifyParcelClosed: jest.fn().mockResolvedValue(undefined) },
 });
 
 type Collaborators = ReturnType<typeof collaborators>;
@@ -102,7 +106,8 @@ const build = (
     worklist,
     deps.orders as never,
     deps.locations as never,
-    deps.products as never
+    deps.products as never,
+    deps.parcelClosureNotifier as unknown as IFulfillmentParcelClosureNotifier
   ),
   ...deps,
 });
@@ -159,6 +164,54 @@ describe('FulfillmentWorkController', () => {
       expect(worklist.applyAction).toHaveBeenCalledWith(
         expect.objectContaining({ actorUserId: 'user-1' })
       );
+    });
+  });
+
+  /**
+   * #3525 — the desktop worklist's manual `close` action is the SECOND path
+   * that never reported fulfilment progress or notified the order's channel.
+   * `BenchParcelService.verifyUnit` covers the bench's automatic close.
+   */
+  describe('#3525 — closing a parcel notifies the channel', () => {
+    it('notifies the channel when the `close` action succeeds', async () => {
+      const closedWork = view({
+        status: 'closed',
+        assignedConnectionId: '11111111-1111-1111-1111-111111111111',
+        updatedAt: new Date('2026-09-04T10:00:00Z'),
+      });
+      worklist.applyAction.mockResolvedValue(closedWork);
+      const { controller: c, parcelClosureNotifier } = build(worklist);
+
+      await c.applyAction('work-1', 'close', body(), user);
+
+      expect(parcelClosureNotifier.notifyParcelClosed).toHaveBeenCalledWith({
+        workId: 'work-1',
+        connectionId: '11111111-1111-1111-1111-111111111111',
+        closedAt: new Date('2026-09-04T10:00:00Z'),
+      });
+    });
+
+    it('does NOT notify for any other action', async () => {
+      worklist.applyAction.mockResolvedValue(view({ status: 'scheduled' }));
+      const { controller: c, parcelClosureNotifier } = build(worklist);
+
+      await c.applyAction('work-1', 'schedule', body(), user);
+
+      expect(parcelClosureNotifier.notifyParcelClosed).not.toHaveBeenCalled();
+    });
+
+    it('logs and skips rather than notifying against a null connection', async () => {
+      // `deriveSupportedActions` carries no precondition on an assigned
+      // holder for `close` (unlike `submit` / `request_cancellation`), so a
+      // work object could legally reach `in_progress` — and therefore
+      // `closed` — with no holder. A progress event needs a reporting
+      // connection, so this state is skipped rather than notified.
+      worklist.applyAction.mockResolvedValue(view({ status: 'closed', assignedConnectionId: null }));
+      const { controller: c, parcelClosureNotifier } = build(worklist);
+
+      await c.applyAction('work-1', 'close', body(), user);
+
+      expect(parcelClosureNotifier.notifyParcelClosed).not.toHaveBeenCalled();
     });
   });
 

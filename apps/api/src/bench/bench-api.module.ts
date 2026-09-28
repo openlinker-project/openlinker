@@ -29,6 +29,11 @@ import { ProductsModule } from '@openlinker/core/products';
 import { ShippingModule } from '@openlinker/core/shipping';
 
 import { IntegrationsModule } from '../integrations/integrations.module';
+// #3525 — the SAME dispatch-relay notifier the desktop worklist's manual
+// close uses, shared rather than copied. Imported for its ONE export,
+// `FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN`; `FulfillmentApiModule` never
+// imports this module back, so no cycle.
+import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
 import { BENCH_DOCUMENTS_SERVICE_TOKEN } from './application/interfaces/bench-documents.service.interface';
 import { BENCH_PARCEL_SERVICE_TOKEN } from './application/interfaces/bench-parcel.service.interface';
 import { BENCH_PRESENCE_SERVICE_TOKEN } from './application/interfaces/bench-presence.service.interface';
@@ -54,6 +59,7 @@ import { BenchWorkController } from './http/bench-work.controller';
     // #3424 - the presence heartbeat's one seam. Read-free: the bench calls
     // `recordBenchActivity` and nothing else here.
     UsersApiModule,
+    FulfillmentApiModule,
   ],
   controllers: [BenchWorkController, BenchParcelController, BenchDocumentsController],
   providers: [

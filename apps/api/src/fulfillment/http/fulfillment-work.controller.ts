@@ -65,12 +65,17 @@ import {
 import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/inventory';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService, type OrderRecord } from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
+import { Logger } from '@openlinker/shared/logging';
 
 // Value imports (not `import type`): the @CurrentUser() param type feeds
 // decorator metadata, so erasing it breaks the emitted signature.
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import {
   readCarrierName,
   readMaskedBuyerName,
@@ -102,6 +107,8 @@ interface WorklistFacts {
 @ApiTags('fulfillment')
 @Controller('fulfillment/works')
 export class FulfillmentWorkController {
+  private readonly logger = new Logger(FulfillmentWorkController.name);
+
   constructor(
     @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
     private readonly worklist: IFulfillmentWorklistService,
@@ -110,7 +117,9 @@ export class FulfillmentWorkController {
     @Inject(LOCATION_SERVICE_TOKEN)
     private readonly locations: ILocationService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly products: IProductsService
+    private readonly products: IProductsService,
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
   ) {}
 
   @Get()
@@ -259,10 +268,49 @@ export class FulfillmentWorkController {
         // the audit column exists precisely to answer "who suspended this".
         actorUserId: user.id,
       });
+      // #3525: the desktop worklist's manual close is the SECOND path that
+      // closes a parcel — the bench's automatic close is the other, in
+      // `BenchParcelService.verifyUnit`. Best-effort and after the action has
+      // already committed, so a notify failure never turns a successful
+      // close into a failed response.
+      if (action === 'close') {
+        await this.notifyParcelClosed(work);
+      }
       return this.toDto(work, await this.loadFacts([work]));
     } catch (error) {
       throw this.toHttp(error);
     }
+  }
+
+  /**
+   * Record that this work's parcel closed and forward the resulting relay
+   * intent (#3525). Never throws — see
+   * `IFulfillmentParcelClosureNotifier.notifyParcelClosed`'s own contract.
+   *
+   * `assignedConnectionId` carries no precondition in `deriveSupportedActions`
+   * for `close` (unlike `submit` / `request_cancellation`), so a work object
+   * COULD legally reach `in_progress` with no holder and still be closeable.
+   * A progress event needs a reporting connection, so that state is logged
+   * and skipped rather than notified against a connection that does not
+   * exist.
+   */
+  private async notifyParcelClosed(work: FulfillmentWorkView): Promise<void> {
+    if (work.assignedConnectionId === null) {
+      this.logger.warn(
+        `Fulfilment work ${work.id} closed with no assigned connection; nothing to notify`
+      );
+      return;
+    }
+    await this.parcelClosureNotifier.notifyParcelClosed({
+      workId: work.id,
+      connectionId: work.assignedConnectionId,
+      // The instant THIS write applied — `transitionStatus` bumps it via
+      // TypeORM's `@UpdateDateColumn` injection (#2071's database-stamped
+      // rule), and `work` was re-read after the write by `applyAction`'s own
+      // `this.get(...)`, so it carries the close's own instant rather than a
+      // stale one.
+      closedAt: work.updatedAt,
+    });
   }
 
   @Patch(':workId/assignment')

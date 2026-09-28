@@ -8,6 +8,9 @@
  * trackingNumber backfill), and (3) relays a newly-arrived waybill to **every**
  * participant of the order — the source marketplace included — through the
  * single role-agnostic `OrderStatusWriteback` lifecycle relay (#1168 / ADR-027).
+ * The same relay fires a `delivered` event on the delivered transition
+ * (#3526) — see `relayDeliveredToParticipants` for why that one needs no
+ * dedicated claim column the way the waybill relay's `waybillRelayedAt` does.
  *
  * Mirrors `OfferStatusSyncService` (#816): the service returns scan stats; the
  * caller (worker handler) advances the persisted `connection_cursors` offset.
@@ -245,6 +248,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     // 1. Status — advance only into TERMINAL states. Forward transitions out
     //    of `generated → dispatched` are #837's job (it pairs source + dest
     //    notify with the transition); #838 must not race that pairing.
+    const isNewTransitionIntoDelivered =
+      snapshot.status !== shipment.status && snapshot.status === SHIPMENT_STATUS.Delivered;
     if (
       snapshot.status !== shipment.status &&
       TerminalShipmentStatusValues.includes(
@@ -261,6 +266,21 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       if (snapshot.status === SHIPMENT_STATUS.Failed) {
         patch.failedAt = new Date();
       }
+    }
+
+    // #3526 — relay `delivered` to every participant the moment THIS call
+    // discovers the transition, independent of whatever the waybill logic
+    // below decides (a shipment can be delivered with its waybill already
+    // known, so it must not wait on a null→value tracking backfill that will
+    // never come). See `relayDeliveredToParticipants` for why this needs no
+    // dedicated claim column the way the waybill relay's `waybillRelayedAt`
+    // does.
+    if (isNewTransitionIntoDelivered) {
+      // The SNAPSHOT's instant, never `shipment.deliveredAt` — `shipment` is
+      // the pre-patch row this tick loaded, so that field is still `null`
+      // here; the carrier's own instant is what `patch.deliveredAt` above was
+      // just set from.
+      await this.relayDeliveredToParticipants(shipment, snapshot.deliveredAt);
     }
 
     // 2a. Carrier-of-record — backfill on null → value transition (#769).
@@ -480,6 +500,64 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     }
 
     return 'relayed';
+  }
+
+  /**
+   * Relay `delivered` to every participant of the order (#3526).
+   *
+   * BEST-EFFORT and never throws — a failed or partial relay costs nothing
+   * worse than the next carrier poll finding the SAME transition again if it
+   * somehow re-observes it (see below), unlike the waybill relay above, whose
+   * far-side call is a NON-IDEMPOTENT create (`POST /shipments`) and therefore
+   * needs `waybillRelayedAt`'s dedicated claim/release cycle. Setting a
+   * platform's own delivered-equivalent status is idempotent on every shipped
+   * `OrderStatusWriteback` adapter (writing a status a participant already
+   * holds is a no-op there), so this carries no comparable claim column.
+   *
+   * "At most once per shipment" in the ordinary case is a CONSEQUENCE of the
+   * caller's own guard, not a claim this method makes for itself: the caller
+   * fires this only on `snapshot.status !== shipment.status`, and once the
+   * persisted row reads `delivered`, `SCAN_STATUSES` excludes it from every
+   * later poll tick while `syncOneByProviderShipmentId`'s own comparison
+   * refuses to re-patch an already-delivered row — so a REDELIVERED carrier
+   * webhook for an already-delivered shipment never reaches this method a
+   * second time.
+   *
+   * Accepted, narrow limitation, stated rather than hidden: two callers racing
+   * on the SAME shipment (a poll tick and a concurrent webhook, both reading
+   * the pre-patch row before either persists) could both observe the
+   * transition and both relay once. Bounded by the idempotency argument
+   * above — the operator-visible cost is at most a duplicate no-op status
+   * write on the far side, never a duplicate physical action.
+   */
+  private async relayDeliveredToParticipants(
+    shipment: Shipment,
+    deliveredAt: Date | undefined,
+  ): Promise<void> {
+    try {
+      const result = await this.orderLifecycleRelay.relay({
+        internalOrderId: shipment.orderId,
+        originConnectionId: shipment.connectionId,
+        event: { type: 'delivered', deliveredAt },
+      });
+      for (const target of result.targets) {
+        if (target.outcome === 'rejected') {
+          this.logger.warn(
+            `Delivered relay to ${target.connectionId} failed for shipment ${shipment.id}` +
+              `${target.detail ? `: ${target.detail}` : ''}`,
+          );
+        }
+      }
+    } catch (error) {
+      // The relay reports per-target outcomes rather than throwing, but it CAN
+      // throw before its per-target loop (identifier resolution) — the same
+      // shape `relayWaybillToParticipants` catches. Swallowed here rather than
+      // aborting `buildPatchAndMaybePush`, which would discard the whole
+      // patch — terminal status, deliveredAt, carrier backfill included.
+      this.logger.warn(
+        `Delivered relay threw for shipment ${shipment.id} (order ${shipment.orderId}): ${this.message(error)}`,
+      );
+    }
   }
 
   private message(error: unknown): string {
