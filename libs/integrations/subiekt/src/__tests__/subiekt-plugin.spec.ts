@@ -50,6 +50,16 @@ describe('createSubiektPlugin', () => {
       expect(subiektAdapterManifest.platformType).toBe('subiekt-gt');
     });
 
+    // #3365 review (I12): the bridge-side /api/fiscalize endpoint has never
+    // been compiled or run against a real fiscal printer — advertising the
+    // capability here would make it operator-tickable and auto-issue-reachable
+    // (#2156) against an unverified endpoint, which ADR-042's exactly-once
+    // guarantee cannot honestly back yet. This must stay off until
+    // fiscalization-not-live-verified.md's steps are done.
+    it("supportedCapabilities does NOT include 'Fiscalization' (unverified live, #3365 review)", () => {
+      expect(subiektAdapterManifest.supportedCapabilities).not.toContain('Fiscalization');
+    });
+
     it('createSubiektPlugin().manifest === subiektAdapterManifest (no drift)', () => {
       expect(createSubiektPlugin().manifest).toBe(subiektAdapterManifest);
     });

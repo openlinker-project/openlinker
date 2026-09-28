@@ -227,11 +227,31 @@ export interface BridgeKorektaRequest {
 }
 
 /**
+ * One line's quantity movement Subiekt did NOT itself apply for a korekta
+ * (`Program.cs.ready`'s `#4-review fix`) — the bridge has no confirmed-live way
+ * to reverse a warehouse movement on a KFS, so a quantity-reducing line reports
+ * the delta here instead of silently having no stock effect.
+ */
+export interface BridgeKorektaQuantityDelta {
+  lp: number;
+  delta: number;
+}
+
+/**
  * Issue-CORRECTION response — the `data` payload of the bridge's `ResponseEnvelope`
  * for `POST /api/invoices/{origId}/corrections`. Distinct from the issue-invoice
  * response: it carries `korygowanyId` (the corrected original's numeric id) and a
  * nullable `przyczyna`, and it carries NEITHER a `regulatoryStatus` NOR a `pdfUrl`
  * (a correction's KSeF status is read back later via the status endpoint).
+ *
+ * `stockAutoReleased` / `quantityDeltas` are the correction-side counterpart of
+ * `BridgeIssueInvoiceResponse.warehouseReleaseNumber` — but the shape is not the
+ * same, because a korekta carries no confirmed-live way to reverse a warehouse
+ * movement: Subiekt reports whether it auto-adjusted stock as a BOOLEAN
+ * (`dok_JestRuchMag` on the KFS), never a numbered WZ document. `stockAutoReleased:
+ * false` with a non-empty `quantityDeltas` means the caller must move the stock
+ * itself (`POST /api/inventory/adjust`) for each reported delta.
+ * Optional/additive on the wire — an older bridge build omits both entirely.
  */
 export interface BridgeKorektaResponse {
   providerInvoiceId: number;
@@ -239,6 +259,8 @@ export interface BridgeKorektaResponse {
   korygowanyId: number;
   przyczyna: string | null;
   state: BridgeInvoiceState;
+  stockAutoReleased?: boolean;
+  quantityDeltas?: BridgeKorektaQuantityDelta[] | null;
 }
 
 /**

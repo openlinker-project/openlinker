@@ -111,6 +111,8 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   private customerCounter = 0;
   private seededFailure: SeededFailure | null = null;
   private issueOverride: Partial<BridgeIssueInvoiceResponse> | null = null;
+  /** Overrides for `issueCorrection` alone (#3365, `stockAutoReleased`/`quantityDeltas`) — a korekta response carries fields `issueOverride` cannot express. */
+  private correctionOverride: Partial<BridgeKorektaResponse> | null = null;
   // Keyed by the STRING form of the numeric providerInvoiceId (matches how the
   // status read keys its lookup).
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
@@ -175,6 +177,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       korygowanyId: origId,
       przyczyna: req.przyczyna ?? null,
       state,
+      ...this.correctionOverride,
     };
     // Remember a status-shaped entry so a subsequent status read-back resolves
     // (the korekta response itself carries no regulatoryStatus).
@@ -300,6 +303,11 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.issueOverride = issueResponse;
   }
 
+  /** Override fields on the next (and subsequent) `issueCorrection` response until `clear()`. */
+  seedCorrection(correctionResponse: Partial<BridgeKorektaResponse>): void {
+    this.correctionOverride = correctionResponse;
+  }
+
   /** The body passed to the most recent `issueCorrection` call (passthrough assertions). */
   getLastKorektaRequest(): BridgeKorektaRequest | null {
     return this.lastKorektaRequest;
@@ -331,6 +339,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.customerCounter = 0;
     this.seededFailure = null;
     this.issueOverride = null;
+    this.correctionOverride = null;
     this.issuedById.clear();
     this.lastKorektaRequest = null;
     this.lastIssueInvoiceRequest = null;

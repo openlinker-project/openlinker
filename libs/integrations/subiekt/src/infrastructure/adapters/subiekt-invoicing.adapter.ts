@@ -192,7 +192,7 @@ export class SubiektInvoicingAdapter
     // Resolve each line's Subiekt catalogue symbol so the document carries real
     // catalogue positions instead of free-text service lines — see
     // `resolveTowarSymbols` and the line mapper's header.
-    const { symbolByProductId, unmappedProductIds } = await this.resolveTowarSymbols(cmd.lines);
+    const { symbolByProductId, unmappedCatalogueKeys } = await this.resolveTowarSymbols(cmd.lines);
     // Count LINES, not products: two lines of the same unmapped product are two
     // lines the warehouse will not see, and the operator is looking at a
     // document whose lines are what they can count.
@@ -208,7 +208,11 @@ export class SubiektInvoicingAdapter
     const unlinkedCatalogueLines = cmd.lines.filter((line) => {
       if (line.productId === undefined) return false;
       if (line.productId === '') return true;
-      return unmappedProductIds.has(line.productId);
+      // Keyed the way the resolver keys it - by variant where there is one
+      // (#3365 review). A model's members share a product id, so testing the
+      // product marked every sibling line unlinked as soon as one variant
+      // failed to resolve.
+      return unmappedCatalogueKeys.has(line.variantId ?? line.productId);
     }).length;
 
     try {
@@ -423,10 +427,48 @@ export class SubiektInvoicingAdapter
         ),
         // The Subiekt bridge builds and submits the korekta document itself —
         // no machine-readable document for OL to capture, same as issueInvoice.
+        warehouseRelease: this.readCorrectionWarehouseRelease(response, cmd.orderId, origId),
       };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
+  }
+
+  /**
+   * The correction-side counterpart of `readWarehouseRelease` — same neutral
+   * `WarehouseRelease` shape, a DIFFERENT signal underneath. A korekta carries
+   * no confirmed-live way to reverse a warehouse movement, so Subiekt reports a
+   * BOOLEAN (`stockAutoReleased`, `dok_JestRuchMag`), never a numbered WZ — a
+   * `documentNumber` is therefore always `null` here, whatever the outcome.
+   *
+   * `undefined` on the wire is an older bridge build that omits the field —
+   * reported onward as "not reported", the same rule `readWarehouseRelease`
+   * applies. `quantityDeltas` is what tells "nothing was due" (a price-only
+   * correction, `not-applicable`) apart from "a release was due and Subiekt did
+   * not auto-apply it" (`not-released`, the alarm — the client's credit note
+   * is issued and the stock never moved, so the caller must adjust it via the
+   * inventory master's own `adjustInventory` for the reported deltas).
+   */
+  private readCorrectionWarehouseRelease(
+    response: { stockAutoReleased?: boolean; quantityDeltas?: { lp: number; delta: number }[] | null },
+    orderId: string,
+    origId: number,
+  ): WarehouseRelease | undefined {
+    if (response.stockAutoReleased === undefined) return undefined;
+    if (response.stockAutoReleased) {
+      return { outcome: 'released', documentNumber: null };
+    }
+    if (response.quantityDeltas === undefined || response.quantityDeltas === null || response.quantityDeltas.length === 0) {
+      // No quantity moved (e.g. a price-only correction) — nothing was due.
+      return { outcome: 'not-applicable', documentNumber: null };
+    }
+    this.logger.error(
+      `subiekt_correction_warehouse_release_missing orderId=${orderId} origId=${origId} ` +
+        `connection=${this.connectionId} — the correction changed quantity on ` +
+        `${response.quantityDeltas.length} line(s) and Subiekt did not auto-release the ` +
+        `warehouse movement; the stock has not moved and must be adjusted directly.`,
+    );
+    return { outcome: 'not-released', documentNumber: null };
   }
 
   /**
@@ -518,7 +560,7 @@ export class SubiektInvoicingAdapter
 
   private async resolveTowarSymbols(
     lines: readonly { productId?: string; variantId?: string }[],
-  ): Promise<{ symbolByProductId: Map<string, string>; unmappedProductIds: Set<string> }> {
+  ): Promise<{ symbolByProductId: Map<string, string>; unmappedCatalogueKeys: Set<string> }> {
     const resolved = new Map<string, string>();
     // Keyed by the LINE's catalogue key - `variantId` when it has one - not by
     // the product. A Subiekt MODEL is ONE OL product standing for several
@@ -533,7 +575,7 @@ export class SubiektInvoicingAdapter
       ).values(),
     ];
     if (keys.length === 0) {
-      return { symbolByProductId: resolved, unmappedProductIds: new Set() };
+      return { symbolByProductId: resolved, unmappedCatalogueKeys: new Set() };
     }
 
     const unmapped: string[] = [];
@@ -565,10 +607,15 @@ export class SubiektInvoicingAdapter
         if (variantSymbol) {
           resolved.set(key, variantSymbol);
         } else {
-          unmapped.push(productId);
+          // #3365 review: the same key `resolved` uses, not the bare product id.
+          // A Subiekt MODEL is ONE OL product standing for several towary, so two
+          // of its members on one document share a `productId` - recording the
+          // product here made ONE unresolved variant mark every sibling line
+          // unlinked, including the ones that resolved perfectly well.
+          unmapped.push(key);
         }
       } catch (error: unknown) {
-        unmapped.push(productId);
+        unmapped.push(key);
         this.logger.warn(
           'Subiekt resolveTowarSymbols: identifier-mapping lookup failed; the line falls back to a free-text service line and will not move stock',
           {
@@ -583,10 +630,10 @@ export class SubiektInvoicingAdapter
     if (unmapped.length > 0) {
       this.logger.warn(
         'Subiekt resolveTowarSymbols: product(s) have no Subiekt catalogue mapping on this connection; their document lines will be free-text and will NOT release warehouse stock',
-        { connectionId: this.connectionId, productIds: unmapped },
+        { connectionId: this.connectionId, catalogueKeys: unmapped },
       );
     }
-    return { symbolByProductId: resolved, unmappedProductIds: new Set(unmapped) };
+    return { symbolByProductId: resolved, unmappedCatalogueKeys: new Set(unmapped) };
   }
 
   /**

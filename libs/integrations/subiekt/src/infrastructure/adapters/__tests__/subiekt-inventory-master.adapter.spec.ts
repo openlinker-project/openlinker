@@ -553,6 +553,42 @@ describe('SubiektInventoryMasterAdapter', () => {
       expect(result.adjustmentOutcome?.idempotency).toBe('honoured');
     });
 
+    // The bridge used to truncate a key to 30 chars, so it could never actually
+    // dedupe - reporting 'unsupported' on the very FIRST apply was correct then.
+    // It now hashes the key instead, so a first-time apply is just as honoured
+    // as a later repeat: a caller retrying under the SAME key will be
+    // recognised. Reporting 'unsupported' here would tell a caller to keep
+    // defending against a double-increment the bridge no longer needs help with.
+    it('should report idempotency honoured on the FIRST apply of a key, not only on a repeat', async () => {
+      bridge.adjust.mockResolvedValue({
+        deduplicated: false,
+        documentId: 42,
+        documentNumber: 'PW 1/2026',
+        stanAfter: 20,
+      });
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [{ magazynId: 1, magazynSymbol: 'GŁ', stan: 20, stanRez: 0 }],
+      });
+
+      const result = await adapter.adjustInventory({
+        productId: PRODUCT_ID,
+        quantity: 10,
+        idempotencyKey: 'return:ol_return_1:line1:1',
+      });
+
+      expect(result.adjustmentOutcome?.disposition).toBe('applied');
+      expect(result.adjustmentOutcome?.idempotency).toBe('honoured');
+    });
+
+    it('should translate a bridge not-found rejection into MasterProductNotFoundError', async () => {
+      bridge.adjust.mockRejectedValue(new SubiektRejectedError('Towar nie znaleziono lub usunięty: TW-001'));
+
+      await expect(
+        adapter.adjustInventory({ productId: PRODUCT_ID, quantity: 10 }),
+      ).rejects.toBeInstanceOf(MasterProductNotFoundError);
+    });
+
     it('should pass a negative delta through unchanged (RW on the bridge side)', async () => {
       bridge.adjust.mockResolvedValue({
         deduplicated: false,

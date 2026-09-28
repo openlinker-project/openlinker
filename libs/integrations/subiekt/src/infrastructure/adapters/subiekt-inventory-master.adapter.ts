@@ -410,12 +410,14 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
         ...inventory,
         adjustmentOutcome: {
           disposition: response.deduplicated ? 'deduplicated' : 'applied',
-          idempotency:
-            adjustment.idempotencyKey !== undefined
-              ? response.deduplicated
-                ? 'honoured'
-                : 'unsupported'
-              : 'not_requested',
+          // 'honoured' is a claim about whether the bridge CAN dedupe a
+          // repeat of this key, not about whether THIS call happened to be
+          // one — that half is `disposition`. The bridge now hashes the key
+          // instead of truncating it to 30 chars, so it can actually make
+          // good on the promise; a first-time apply is honoured exactly as
+          // much as a dedupe hit, because a later retry against the SAME key
+          // will be recognised either way.
+          idempotency: adjustment.idempotencyKey !== undefined ? 'honoured' : 'not_requested',
           // The bridge reports no instant for its own write today — an
           // honest absence rather than fabricating "now" (#2368's rule: the
           // MASTER's instant, never OL's clock).
@@ -423,6 +425,15 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
         },
       };
     } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError && looksLikeSubiektNotFound(error)) {
+        // The bridge reports "no such towar" for a KNOWN symbol - a master
+        // deletion, same as the two read paths this adapter already
+        // classifies this way. Without this, a product deleted in Subiekt
+        // surfaced here as a generic transport failure instead of the
+        // deletion signal `MasterInventorySyncService.handleMasterDeletion`
+        // keys on, and the offers it should have paused kept selling.
+        throw new MasterProductNotFoundError(adjustment.productId, this.connectionId, error);
+      }
       throw this.translateBridgeError(error);
     }
   }

@@ -622,6 +622,50 @@ describe('SubiektInvoicingAdapter', () => {
         SubiektBridgeTransportError,
       );
     });
+
+    // #3365 review — issueCorrection was returning no warehouseRelease signal
+    // at all, unlike issueInvoice, even though the bridge has always answered
+    // stockAutoReleased/quantityDeltas for this endpoint.
+    describe('warehouseRelease (mirrors issueInvoice, #3365 review)', () => {
+      it('reports released when Subiekt auto-released the stock movement', async () => {
+        const { adapter, bridge } = makeAdapter();
+        bridge.seedCorrection({ stockAutoReleased: true });
+        const { warehouseRelease } = await adapter.issueCorrection(correctionCommand());
+        expect(warehouseRelease).toEqual({ outcome: 'released', documentNumber: null });
+      });
+
+      it('reports not-applicable when nothing was due (no quantity deltas)', async () => {
+        const { adapter, bridge } = makeAdapter();
+        bridge.seedCorrection({ stockAutoReleased: false, quantityDeltas: [] });
+        const { warehouseRelease } = await adapter.issueCorrection(
+          correctionCommand({ lines: [{ originalLineNumber: 2, newUnitPriceGross: 80.5 }] }),
+        );
+        expect(warehouseRelease).toEqual({ outcome: 'not-applicable', documentNumber: null });
+      });
+
+      // THE ALARM: quantity changed and Subiekt did not auto-release — the
+      // credit note is issued and the stock has not moved.
+      it('reports not-released and logs an error when a release was due and Subiekt did not auto-apply it', async () => {
+        const { adapter, bridge, logger } = makeAdapter();
+        bridge.seedCorrection({
+          stockAutoReleased: false,
+          quantityDeltas: [{ lp: 1, delta: 2 }],
+        });
+        const { warehouseRelease } = await adapter.issueCorrection(correctionCommand());
+        expect(warehouseRelease).toEqual({ outcome: 'not-released', documentNumber: null });
+        expect(logger.error).toHaveBeenCalledWith(
+          expect.stringContaining('subiekt_correction_warehouse_release_missing'),
+        );
+      });
+
+      // An older bridge build omits the field entirely — "not reported", never
+      // a manufactured failure, mirroring readWarehouseRelease's same rule.
+      it('reports nothing at all when the bridge omits the field', async () => {
+        const { adapter } = makeAdapter();
+        const { warehouseRelease } = await adapter.issueCorrection(correctionCommand());
+        expect(warehouseRelease).toBeUndefined();
+      });
+    });
   });
 
   describe('getClearanceStatus (#1230)', () => {
@@ -1364,5 +1408,57 @@ describe('SubiektInvoicingAdapter — the warehouse release', () => {
   it('reports nothing at all when the bridge omits the field', async () => {
     const { adapter, cmd } = buildWarehouseReleaseHarness({ zkMapped: true });
     await expect(readRelease(adapter, cmd)).resolves.toBeUndefined();
+  });
+});
+
+describe('unlinkedCatalogueLines for a MODEL product (#3365 review)', () => {
+  it('counts only the sibling line whose variant failed to resolve, not both', async () => {
+    // A Subiekt model is ONE OL product standing for several towary, so two of
+    // its members on one document share a `productId` and differ only by
+    // `variantId`. The resolver keys on the variant; the unmapped set used to
+    // record the bare PRODUCT, so one unresolved variant marked BOTH lines
+    // unlinked - over-reporting a line that was linked perfectly well.
+    const { adapter, identifierMapping } = makeAdapter();
+    // The product resolves to a MODEL grouping, which is never a towar, so each
+    // line falls through to its own variant - which is the shape that exposes
+    // the bug.
+    identifierMapping.seed({
+      entityType: CORE_ENTITY_TYPE.Product,
+      externalId: 'model:5',
+      connectionId: 'conn-1',
+      internalId: 'ol_product_model',
+    });
+    // Variant A has a towar; variant B has none.
+    identifierMapping.seed({
+      entityType: CORE_ENTITY_TYPE.ProductVariant,
+      externalId: 'TOWAR-A',
+      connectionId: 'conn-1',
+      internalId: 'ol_variant_a',
+    });
+
+    const result = await adapter.issueInvoice(
+      command({
+        lines: [
+          {
+            name: 'A',
+            quantity: 1,
+            unitPriceGross: 10,
+            taxRate: '23',
+            productId: 'ol_product_model',
+            variantId: 'ol_variant_a',
+          },
+          {
+            name: 'B',
+            quantity: 1,
+            unitPriceGross: 10,
+            taxRate: '23',
+            productId: 'ol_product_model',
+            variantId: 'ol_variant_b',
+          },
+        ],
+      }),
+    );
+
+    expect(result.unlinkedCatalogueLines).toBe(1);
   });
 });
