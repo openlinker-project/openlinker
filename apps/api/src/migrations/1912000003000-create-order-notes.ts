@@ -6,6 +6,11 @@
  * pre-edit capture that lets an edit's previous text survive being
  * overwritten.
  *
+ * `internalOrderId` is `text`, never `uuid` — an internal order id has the
+ * shape `ol_order_{uuid}` (`docs/architecture-overview.md § Identifier
+ * Mapping Service`), matching every other reference to it in this context
+ * (`order_holds`, `order_changes`, `refund_records`).
+ *
  * Timestamp: this epic's synthetic block (#3507), one step after
  * `1912000002000-create-order-column-presets.ts`.
  */
@@ -18,7 +23,7 @@ export class CreateOrderNotes1912000003000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE TABLE "order_notes" (
         "id"               uuid NOT NULL DEFAULT uuid_generate_v4(),
-        "internalOrderId"  uuid NOT NULL,
+        "internalOrderId"  text NOT NULL,
         "authorUserId"     uuid NOT NULL,
         "authorUsername"   text NOT NULL,
         "body"             text NOT NULL,

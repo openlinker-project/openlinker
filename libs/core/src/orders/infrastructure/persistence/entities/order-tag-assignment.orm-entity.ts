@@ -21,7 +21,11 @@ export class OrderTagAssignmentOrmEntity {
   @Index('IDX_order_tag_assignments_tagId')
   tagId!: string;
 
-  @Column({ type: 'uuid' })
+  // `internalOrderId` is `ol_order_{uuid}` (`docs/architecture-overview.md §
+  // Identifier Mapping Service`), never a bare uuid — `text`, matching every
+  // other reference to it in this context (`OrderHoldOrmEntity`,
+  // `OrderChangeOrmEntity`, `RefundRecordOrmEntity`).
+  @Column({ type: 'text' })
   @Index('IDX_order_tag_assignments_internalOrderId')
   internalOrderId!: string;
 
