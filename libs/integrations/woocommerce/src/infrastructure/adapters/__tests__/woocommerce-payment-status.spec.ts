@@ -40,21 +40,41 @@ describe('deriveWooCommercePaymentStatus', () => {
     },
   );
 
-  it.each(['pending', 'on-hold', 'failed', 'cancelled', 'checkout-draft'])(
-    'reports awaiting for %s',
-    (status) => {
-      expect(deriveWooCommercePaymentStatus(order({ status }))).toBe('awaiting');
-    },
-  );
+  // THE REGRESSION THIS FILE EXISTS FOR.
+  //
+  // A first version reported `'awaiting'` for these.
+  // `DISPATCH_BLOCKING_PAYMENT_STATUSES` holds `awaiting` and `refunded`, so
+  // either one refuses a label with a 422, and the label form hides its manual
+  // cash-on-delivery amount field for any status but unknown or `cod` - and its
+  // own docblock names WooCommerce among the sources that keep that path.
+  //
+  // WooCommerce cannot express cash on delivery here: the method is
+  // `payment_method`, a free-text slug a plugin chooses. So an unpaid COD order
+  // would have been refused a label until it was paid, while the buyer pays the
+  // courier on delivery.
+  it.each([
+    'pending',
+    'on-hold',
+    'failed',
+    'cancelled',
+    'checkout-draft',
+    'refunded',
+    'awaiting-shipment',
+  ])('never returns a status that would refuse a dispatch, for %s', (status) => {
+    const answer = deriveWooCommercePaymentStatus(order({ status }));
+    expect(answer).not.toBe('awaiting');
+    expect(answer).not.toBe('refunded');
+  });
 
-  // Refunded is tested first and wins over the stamp: the money did arrive,
-  // and then went back.
-  it('reports refunded even though the order carries a payment date', () => {
+  // Withheld even with WooCommerce's own payment stamp on the row: a refund is
+  // a dispatch-blocking answer, and this seam does not give one.
+  it('answers nothing for a refunded order, stamp or no stamp', () => {
     expect(
       deriveWooCommercePaymentStatus(
         order({ status: 'refunded', date_paid_gmt: '2026-09-28T10:00:00' }),
       ),
-    ).toBe('refunded');
+    ).toBeUndefined();
+    expect(deriveWooCommercePaymentStatus(order({ status: 'refunded' }))).toBeUndefined();
   });
 
   // A plugin may register its own status. Reading it as `awaiting` would
@@ -74,9 +94,13 @@ describe('deriveWooCommercePaymentStatus', () => {
     expect(answers).not.toContain('cod');
   });
 
+  it('answers nothing for a status it does not recognise', () => {
+    expect(deriveWooCommercePaymentStatus(order({ status: 'wc-partial' }))).toBeUndefined();
+  });
+
   it('treats a blank stamp as no stamp at all', () => {
-    expect(deriveWooCommercePaymentStatus(order({ status: 'pending', date_paid: '   ' }))).toBe(
-      'awaiting',
-    );
+    expect(
+      deriveWooCommercePaymentStatus(order({ status: 'pending', date_paid: '   ' })),
+    ).toBeUndefined();
   });
 });

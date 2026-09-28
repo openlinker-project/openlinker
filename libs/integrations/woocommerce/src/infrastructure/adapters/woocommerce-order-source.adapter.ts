@@ -233,25 +233,41 @@ function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEvent
  * stamp, leaves it null on an order the merchant considers paid - so the two
  * core statuses that mean money arrived stand in for it.
  *
- * ## An unrecognised status answers NOTHING rather than guessing
+ * ## It reports `'paid'` or NOTHING, and the silence is load-bearing
  *
- * WooCommerce lets a plugin register its own statuses. Reading one as
- * `'awaiting'` would state that somebody has not paid on the strength of a word
- * this adapter has never seen; reading it as paid would be worse. Such a store
- * keeps exactly the behaviour it had before this function existed, and the
- * remedy is to teach the adapter that status rather than to let it assume.
+ * A first version returned `'awaiting'` for the core unpaid statuses. That is
+ * true about the store and wrong about OpenLinker, because
+ * `DISPATCH_BLOCKING_PAYMENT_STATUSES` holds `awaiting` and `refunded` - either
+ * one REFUSES a label with a 422 - and the label form hides its manual
+ * cash-on-delivery amount field for any status other than unknown or `cod`.
+ * Both were explicitly load-bearing on this source reporting NOTHING; the
+ * form's own docblock names WooCommerce among the sources that "keep the
+ * manual-COD path".
  *
- * `'cod'` is never returned: WooCommerce carries the payment METHOD as
- * `payment_method`, a free-text slug a plugin chooses, and mapping it would be
- * guesswork. An unpaid cash-on-delivery order reads `'awaiting'`, which is
- * true.
+ * WooCommerce cannot express cash on delivery here either: the method is
+ * `payment_method`, a free-text slug a plugin chooses. So an unpaid COD order
+ * would report `'awaiting'` and OpenLinker would refuse to ship it until it was
+ * paid, while the buyer pays the courier on delivery - a deadlock with no
+ * escape state. `'cancelled'` and `'failed'` would block a re-dispatch for the
+ * same reason.
+ *
+ * The rule is about the SOURCE's vocabulary rather than about the gate: a
+ * source that cannot distinguish "unpaid, prepay expected" from "unpaid, pays
+ * the courier" must not report a status that assumes the first. `'paid'` blocks
+ * nothing and is the only value the auto-issue gate needs.
+ *
+ * A status this adapter has never seen answers nothing for a second reason: a
+ * plugin's own word is not evidence about anybody's money.
  */
 export function deriveWooCommercePaymentStatus(
   order: Pick<WooCommerceOrder, 'status' | 'date_paid' | 'date_paid_gmt'>,
 ): PaymentStatus | undefined {
   const status = order.status.toLowerCase();
+  // Withheld, not reported: `refunded` is a dispatch-blocking status, and the
+  // money question a refund raises is not one this seam should answer with a
+  // value that refuses a label.
   if (status === 'refunded') {
-    return PAYMENT_STATUS.Refunded;
+    return undefined;
   }
   const paidAt = order.date_paid_gmt ?? order.date_paid;
   if (typeof paidAt === 'string' && paidAt.trim().length > 0) {
@@ -259,15 +275,6 @@ export function deriveWooCommercePaymentStatus(
   }
   if (status === 'processing' || status === 'completed') {
     return PAYMENT_STATUS.Paid;
-  }
-  if (
-    status === 'pending' ||
-    status === 'on-hold' ||
-    status === 'failed' ||
-    status === 'cancelled' ||
-    status === 'checkout-draft'
-  ) {
-    return PAYMENT_STATUS.Awaiting;
   }
   return undefined;
 }

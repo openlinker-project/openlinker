@@ -251,29 +251,50 @@ export function deriveOrderStatusFromState(state: PrestashopOrderState): OrderSt
  * parcel ships and is delivered while still unpaid, so inferring payment from
  * shipment would report money the seller has not received.
  *
- * ## `'awaiting'` is evidence, `'cod'` would be a guess
+ * ## It reports `'paid'` or NOTHING, and the silence is the load-bearing part
  *
- * `paid` is PrestaShop's own flag on its own state row, so its ABSENCE is the
- * shop saying the order is not settled - a fact, not an inference, which is why
- * this returns `'awaiting'` rather than nothing. `'cod'` is deliberately never
- * returned: `ps_order_state` carries no such flag, the payment method lives on
- * the order as free text written by whichever module handled it, and reading it
- * across languages and modules would be exactly the id-table guessing #2607
- * removed. A COD order that has not been paid reads `'awaiting'`, which is
- * true.
+ * A first version of this returned `'awaiting'` when the flag was clear, on the
+ * reasoning that PrestaShop's own `paid = 0` is evidence rather than an
+ * inference. That reasoning is sound about the shop and wrong about
+ * OpenLinker, because of what reads the value downstream:
  *
- * A refund-labelled state reports `'refunded'` and is tested FIRST, because
- * PrestaShop leaves `paid` set on a refunded order - the money did arrive, and
- * then went back.
+ *   - `DISPATCH_BLOCKING_PAYMENT_STATUSES` holds `awaiting` and `refunded`, so
+ *     either one REFUSES a label with a 422;
+ *   - the label form hides its manual cash-on-delivery amount field for any
+ *     status other than unknown or `cod`.
+ *
+ * Both were explicitly load-bearing on this source reporting NOTHING - the
+ * policy's own docblock says "`undefined` (payment unknown - PrestaShop /
+ * legacy orders) … PERMIT dispatch", and the form's says "sources that don't
+ * report payment (PrestaShop / WooCommerce / DPD) keep the manual-COD path".
+ *
+ * And `ps_order_state` cannot express cash on delivery. It carries no such
+ * flag; the payment method is free text on the ORDER, written by whichever
+ * module handled it. So a shop sitting in the stock `Awaiting Cash On Delivery
+ * validation` state - the ordinary Polish *za pobraniem* flow - would report
+ * `'awaiting'`, and OpenLinker would refuse to ship it until it was paid,
+ * while the buyer pays the courier on delivery. A deadlock with no escape
+ * state, produced by a source telling the truth.
+ *
+ * The rule is therefore about the SOURCE's vocabulary rather than about the
+ * gate: a source that cannot distinguish "unpaid, prepay expected" from
+ * "unpaid, pays the courier" must not report a status that assumes the first.
+ * `'paid'` is safe because it blocks nothing, and it is the only value the
+ * auto-issue gate needs.
+ *
+ * `'refunded'` is withheld for the same reason and one more: it is read from a
+ * LABEL, and the refund vocabulary matches word stems, so a shop state named
+ * "Zwrot do nadawcy" (return to sender) would permanently refuse dispatch for
+ * that order on a naming accident.
  */
-export function derivePaymentStatusFromState(state: PrestashopOrderState): PaymentStatus {
+export function derivePaymentStatusFromState(state: PrestashopOrderState): PaymentStatus | undefined {
   if (isRefundedOrderState(state)) {
-    return PAYMENT_STATUS.Refunded;
+    return undefined;
   }
   if (isTruthyStateFlag(state.paid)) {
     return PAYMENT_STATUS.Paid;
   }
-  return PAYMENT_STATUS.Awaiting;
+  return undefined;
 }
 
 /**

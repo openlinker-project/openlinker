@@ -27,37 +27,70 @@ describe('derivePaymentStatusFromState', () => {
     expect(derivePaymentStatusFromState(state({ paid: '1' }))).toBe('paid');
   });
 
-  it('reports awaiting when the flag is clear', () => {
-    expect(derivePaymentStatusFromState(state({ paid: '0', name: 'Awaiting bank wire payment' }))).toBe(
-      'awaiting',
-    );
+  it('answers NOTHING when the flag is clear', () => {
+    expect(
+      derivePaymentStatusFromState(state({ paid: '0', name: 'Awaiting bank wire payment' })),
+    ).toBeUndefined();
   });
 
-  // PrestaShop leaves `paid` set on a refunded order - the money did arrive,
-  // and then went back - so the refund label is tested first.
-  it('reports refunded even though the paid flag is still set', () => {
-    expect(derivePaymentStatusFromState(state({ paid: '1', name: 'Refunded' }))).toBe('refunded');
+  // THE REGRESSION THIS FILE EXISTS FOR.
+  //
+  // A first version reported `'awaiting'` here. `DISPATCH_BLOCKING_PAYMENT_STATUSES`
+  // holds `awaiting` and `refunded`, so either one refuses a label with a 422,
+  // and the label form hides its manual cash-on-delivery amount field for any
+  // status but unknown or `cod`. Both were load-bearing on this source saying
+  // nothing.
+  //
+  // `ps_order_state` cannot express cash on delivery - no flag, and the method
+  // is free text on the ORDER - so the stock `Awaiting Cash On Delivery
+  // validation` state would have refused to ship until it was paid, while the
+  // buyer pays the courier on delivery. A deadlock with no escape state.
+  it('never returns a status that would refuse a dispatch', () => {
+    const everyShape = [
+      state({ paid: '0', name: 'Awaiting cash on delivery validation' }),
+      state({ paid: '0', name: 'Awaiting check payment' }),
+      state({ paid: '0', name: 'Payment error' }),
+      state({ paid: '1', name: 'Payment accepted' }),
+      state({ paid: '1', name: 'Refunded' }),
+      state({ paid: '0', name: 'Zwrot do nadawcy' }),
+      state({ paid: '0', name: 'Canceled' }),
+      state({ paid: '0', shipped: '1', name: 'Shipped' }),
+      state({ paid: '0', delivered: '1', name: 'Delivered' }),
+    ].map(derivePaymentStatusFromState);
+
+    // Mirrors `DISPATCH_BLOCKING_PAYMENT_STATUSES`. Spelled out rather than
+    // imported, because an integration package may not reach into the core
+    // shipping policy - and because the two must be compared by a human when
+    // either changes.
+    expect(everyShape).not.toContain('awaiting');
+    expect(everyShape).not.toContain('refunded');
+  });
+
+  // Withheld for a second reason as well: it is read from a LABEL, and the
+  // refund vocabulary matches word stems, so "Zwrot do nadawcy" (return to
+  // sender) would permanently refuse dispatch on a naming accident.
+  it('answers nothing for a refund-labelled state rather than blocking it', () => {
+    expect(derivePaymentStatusFromState(state({ paid: '1', name: 'Refunded' }))).toBeUndefined();
+    expect(
+      derivePaymentStatusFromState(state({ paid: '0', name: 'Zwrot do nadawcy' })),
+    ).toBeUndefined();
   });
 
   // A cash-on-delivery parcel ships and is delivered while still unpaid, so
   // payment is read from the paid flag alone and never from a shipment flag.
   it('does NOT infer payment from a shipped or delivered state', () => {
-    expect(derivePaymentStatusFromState(state({ paid: '0', shipped: '1', name: 'Shipped' }))).toBe(
-      'awaiting',
-    );
+    expect(
+      derivePaymentStatusFromState(state({ paid: '0', shipped: '1', name: 'Shipped' })),
+    ).toBeUndefined();
     expect(
       derivePaymentStatusFromState(state({ paid: '0', delivered: '1', name: 'Delivered' })),
-    ).toBe('awaiting');
+    ).toBeUndefined();
   });
 
-  // `ps_order_state` carries no COD flag; the payment method is free text on
-  // the order, written by whichever module handled it. An unpaid COD order
-  // reads awaiting, which is true.
   it('never reports cod', () => {
     const answers = [
       state({ paid: '0', name: 'Awaiting cash on delivery validation' }),
       state({ paid: '1', name: 'Payment accepted' }),
-      state({ paid: '0', shipped: '1', name: 'Shipped' }),
     ].map(derivePaymentStatusFromState);
     expect(answers).not.toContain('cod');
   });

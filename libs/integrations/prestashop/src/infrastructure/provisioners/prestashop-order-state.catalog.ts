@@ -135,7 +135,11 @@ export class PrestashopOrderStateSnapshot {
    */
   paymentStatusOf(stateId: string | number | undefined): PaymentStatus | null {
     const state = this.find(stateId);
-    return state === null ? null : derivePaymentStatusFromState(state);
+    // `?? null` collapses the derivation's two silences into one, deliberately:
+    // an id the shop does not have and a state that says nothing about money
+    // are both "this shop is not telling us", and no caller acts differently on
+    // the difference.
+    return state === null ? null : (derivePaymentStatusFromState(state) ?? null);
   }
 
   /**
