@@ -30,4 +30,24 @@ export interface OrderExportRepositoryPort {
 
   /** Move a `pending` run to `failed`. Same conditional-write shape as `markReady`. */
   markFailed(id: string, errorMessage: string): Promise<boolean>;
+
+  /**
+   * Physically clear the stored `file` blob on every run whose `expiresAt`
+   * has already passed (#3534 recovery pass — the 7-day TTL was previously
+   * enforced only as a download-time refusal, never a real deletion). The
+   * ROW survives as a lightweight audit record (requester, row count,
+   * format, timestamps); only the base64 bytes are cleared — this is what
+   * "physically deletes expired export BLOBS" means here, as opposed to
+   * deleting the run's own audit trail.
+   *
+   * Bounded to `limit` rows per call so a caller can budget a sweep across
+   * several batches (the `runBoundedSweep` precedent applied to a DELETE
+   * rather than an enqueue) instead of holding one unbounded UPDATE against
+   * a table every export write also contends for. Only rows that still
+   * carry a non-null `file` are touched, so a repeated sweep over an
+   * already-cleared row is a cheap no-op rather than a wasted write.
+   *
+   * @returns the number of rows cleared in this call.
+   */
+  purgeExpiredFiles(now: Date, limit: number): Promise<number>;
 }
