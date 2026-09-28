@@ -201,6 +201,63 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
   // model-carrying catalogue got NOTHING from #3357 - every one of its order
   // lines kept the NULL rate that fix exists to remove - and the only trace
   // was a log line. This asserts the read now lands.
+  // The promise names five things pulled from Subiekt - catalogue, variants,
+  // PRICES, EANs and stock - and until now no assertion in this suite touched a
+  // price or an EAN at all. Both are read from the SAME `tw_Towar` row the
+  // variant comes from, so an adapter that maps the row but drops these two
+  // columns passed every test in this file.
+  test('every variant carries the price and the EAN its towar holds', async ({ api, world, env }) => {
+    test.skip(!env.testSubiekt, 'opt-in — set E2E_TEST_SUBIEKT=true');
+    const connection = world.connectionFor(PlatformType.subiektGt);
+    test.skip(!connection, 'no Subiekt GT connection on this stack');
+
+    const products = await loadProducts(api, connection!.id, 200);
+    // An empty catalogue would make every assertion below vacuous, so it is a
+    // failure rather than a skip: nothing was pulled, which is exactly what the
+    // promise says must happen.
+    expect(
+      products.length,
+      'the Subiekt connection reported no product at all - the catalogue sync has not run, ' +
+        'or it pulled nothing',
+    ).toBeGreaterThan(0);
+
+    const priced: string[] = [];
+    const unpriced: string[] = [];
+    const withEan: string[] = [];
+    const withoutEan: string[] = [];
+    for (const { product, variants } of products) {
+      for (const variant of variants) {
+        const price = variant.price ?? product.price ?? null;
+        const label = `${product.name} / ${variant.sku ?? variant.id}`;
+        (price !== null && price > 0 ? priced : unpriced).push(label);
+        const barcode = variant.ean ?? variant.gtin ?? null;
+        (barcode !== null && barcode.trim().length > 0 ? withEan : withoutEan).push(label);
+      }
+    }
+
+    // A price is REQUIRED of every variant: `tw_Towar` always carries one, a
+    // zero would publish an unsellable offer, and the bulk wizard refuses a
+    // variant without one - so a missing price is a mapping defect, not a
+    // catalogue state.
+    expect(
+      unpriced,
+      `${unpriced.length} of ${priced.length + unpriced.length} variants carry no positive ` +
+        `price. A towar always has one, so an empty value here is the adapter dropping the ` +
+        `column rather than the catalogue being incomplete.`,
+    ).toEqual([]);
+
+    // An EAN is NOT required of every towar - a seller legitimately stocks
+    // goods with no barcode - so this asserts the column is READ at all rather
+    // than that every row has one. An adapter that never maps it produces zero,
+    // which is the shape this catches.
+    expect(
+      withEan.length,
+      `not one of ${withEan.length + withoutEan.length} variants carries an EAN. A catalogue ` +
+        `can legitimately hold barcode-less goods, but not exclusively - this is the adapter ` +
+        `not reading the column.`,
+    ).toBeGreaterThan(0);
+  });
+
   test('a model product carries the VAT rate its members agree on', async ({
     api,
     world,
@@ -216,6 +273,13 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
     const grouped = await waitForGroupedProducts(api, connection!.id, 180_000);
     test.skip(grouped.length === 0, 'no multi-variant product on this Subiekt');
 
+    // Counted across the whole set and asserted after the loop (#3365 audit).
+    // Per product a null rate only warns, because members that genuinely
+    // disagree are real data - but that made the ONLY unconditional assertion
+    // in this test a timestamp, so a build that read every row and resolved
+    // nothing passed green. A catalogue where NOTHING resolves is not mixed
+    // data, it is the rate no longer being read.
+    let resolvedRates = 0;
     for (const { product } of grouped) {
       // POLLED, not read once. `jobs.triggerAndWait` waits for the SWEEP, and
       // a sweep's job is to enqueue children - the per-product syncs that
@@ -248,9 +312,18 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
             `answer, not a failed read - fix the tw_IdVatSp assignment in Subiekt.`,
         );
       } else {
+        resolvedRates += 1;
         expect(detail.taxRate).toMatch(/^(\d+|zw|np|oo)$/);
       }
     }
+
+    expect(
+      resolvedRates,
+      `not one of ${grouped.length} model products resolved a VAT rate. Every member carrying ` +
+        `a rate that disagrees is real data and only warns above, but a whole catalogue ` +
+        `resolving nothing means the rate is not being read - check tw_IdVatSp and the ` +
+        `bridge's VAT join.`,
+    ).toBeGreaterThan(0);
   });
 
   test('a towar the operator did NOT group stays its own product — grouping is never guessed', async ({
@@ -300,6 +373,12 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
     // to clear rather than tolerating it.
     const deadline = Date.now() + 180_000;
     let shared: [string, string[]][] = [];
+    // How many towar SKUs the invariant was actually checked against. Asserted
+    // below, because `expect([]).toEqual([])` is vacuously true: on a catalogue
+    // that pulled NOTHING this test was the only one in the file with no
+    // data-availability skip, so it was also the only one that ran - and it
+    // passed, green, having compared an empty map against an empty list.
+    let checkedSkus = 0;
     for (;;) {
       const products = await loadProducts(api, connection!.id, 300);
       const owners = new Map<string, string[]>();
@@ -309,10 +388,17 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
           owners.set(variant.sku, [...(owners.get(variant.sku) ?? []), product.name]);
         }
       }
+      checkedSkus = owners.size;
       shared = [...owners.entries()].filter(([, names]) => names.length > 1);
       if (shared.length === 0 || Date.now() >= deadline) break;
       await new Promise((resolve) => setTimeout(resolve, 5_000));
     }
+    expect(
+      checkedSkus,
+      'the catalogue reported no towar SKU at all, so this invariant was checked against ' +
+        'nothing. Either the Subiekt sync has not run, or it pulled an empty catalogue - ' +
+        'both of which this test would otherwise report as a pass.',
+    ).toBeGreaterThan(0);
     expect(
       shared.map(([sku, names]) => `${sku} -> ${names.join(' | ')}`),
       'a towar is claimed by more than one product',

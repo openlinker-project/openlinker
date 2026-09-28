@@ -142,6 +142,15 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     );
 
     const synthesized = await synthesizeOrder({ api, world, jobs, poll }, { quantity: 1 });
+    // Which source actually ingested it - read from the order rather than
+    // assumed, because two connections can poll one shop and either may win.
+    const ingestedFromPrestashop =
+      world.connectionFor(PlatformType.prestashop)?.id === synthesized.order.sourceConnectionId ||
+      (await api.connections.list()).some(
+        (c) =>
+          c.id === synthesized.order.sourceConnectionId &&
+          c.platformType === PlatformType.prestashop,
+      );
     internalOrderId = synthesized.order.internalOrderId;
     soldProduct = synthesized.product;
     soldVariantId = synthesized.variant.id;
@@ -177,10 +186,28 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       expect(reason, 'a refusal must name the missing figure, not merely refuse').toMatch(
         /no gross \(tax-inclusive\) (price|shipping)/i,
       );
-      // PASSES rather than skips. The refusal IS the assertion here, and a
-      // skipped test reports nothing to whoever reads the run - which is the
-      // same complaint this whole exercise makes about silent behaviour. The
-      // two tests after it skip, because there is genuinely no ZK to document.
+      // A PrestaShop order reaching here is a REGRESSION, not a design
+      // outcome, and it is failed rather than annotated (#3365 audit).
+      //
+      // The branch exists for a source that genuinely reports neither a gross
+      // line price nor gross shipping. PrestaShop is not one: it reports
+      // `unit_price_tax_incl` on every order row and the mapper carries it. So
+      // on this path the refusal means the carrying broke somewhere between
+      // the mapper and the order snapshot - and passing green here would
+      // additionally skip BOTH remaining tests in this file, turning one
+      // regression into a whole file that reports nothing. That is the exact
+      // silence this suite exists to remove, one level up.
+      expect(
+        ingestedFromPrestashop,
+        `PrestaShop reports a gross line price on every order row, so a refusal naming a ` +
+          `missing gross figure means it was lost between the mapper and the order snapshot ` +
+          `(check the snapshot allowlist first - it has lost a field twice). Refusal: ${reason}`,
+      ).toBe(false);
+      // PASSES rather than skips for a source that really is net-only. The
+      // refusal IS the assertion there, and a skipped test reports nothing to
+      // whoever reads the run - the same complaint this whole exercise makes
+      // about silent behaviour. The two tests after it skip, because there is
+      // genuinely no ZK to document.
       testInfo.annotations.push({
         type: 'subiekt',
         description:

@@ -281,7 +281,26 @@ export async function synthesizeOrder(
     rows: [{ productId: externalProductId, productAttributeId: externalVariantId ?? '0', quantity }],
   });
 
-  const shipping = options.shippingTaxIncl ?? 9.99;
+  // Shipping defaults to ZERO, and that is a fact about PrestaShop rather than
+  // a simplification (#3365).
+  //
+  // `POST /api/orders` resets `total_shipping` to 0 whatever the request or its
+  // cart carries - already recorded in `infakt-provider.spec.ts` - so the 9.99
+  // this used to add never reached the shop. What it DID do was make
+  // `total_paid_real` (the figure we post) disagree with `total_paid` (the
+  // figure PrestaShop recomputes from the cart), and PrestaShop answers that
+  // disagreement by discarding the requested state and filing the order under
+  // "Payment error" (id 8, `paid = 0`).
+  //
+  // Measured on the demo shop: all 29 orders in state 8 carry that mismatch,
+  // while the consistent ones sit in state 2 "Payment accepted". An unpaid
+  // order is then correctly `awaiting`, the `auto-on-paid` gate waits for ever,
+  // no document is issued, no warehouse release follows and stock never moves -
+  // which is how a spec asserting a stock drop came to read `517 -> 517`.
+  //
+  // The option survives for the day synthesis moves to `validateOrder` through
+  // the OL module's `importorder` endpoint, where a carrier cost is real.
+  const shipping = options.shippingTaxIncl ?? 0;
   const totalProducts = (unitPrice * quantity).toFixed(6);
   const totalPaid = (unitPrice * quantity + shipping).toFixed(6);
   const created = await ps.createOrder({
