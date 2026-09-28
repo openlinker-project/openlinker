@@ -23,6 +23,8 @@ import {
 } from '@openlinker/integrations-prestashop';
 import type { OrderCreate } from '@openlinker/core/orders';
 import type { PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
+import { derivePrestashopOrderReference } from '../../mappers/prestashop-order-reference';
+import { Logger } from '@openlinker/shared/logging';
 
 describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
   let adapter: OrderProcessorHarness['adapter'];
@@ -154,7 +156,9 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         idOrderState: IMPORT_ORDER_STATE_ID,
         amountPaid: order.totals.total,
         paymentMethod: 'Check payment',
-        orderReference: order.orderNumber,
+        // #3473 — sent as the derived, VARCHAR(9)-safe reference, not the raw
+        // (14-char) orderNumber; both sides must derive to agree.
+        orderReference: derivePrestashopOrderReference(order.orderNumber as string),
       });
       // #909: the adapter no longer writes the order mapping — OrderSyncService owns it.
       expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
@@ -163,6 +167,57 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         orderId: '999',
         orderNumber: order.orderNumber,
       });
+    });
+
+    it('should not log any PII (name, street, phone, email, tax id) from the incoming order (#3474)', async () => {
+      const order = createTestOrder({
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Warszawa',
+          postalCode: '00-001',
+          country: 'PL',
+          phone: '+48500600700',
+          taxId: '1234567890',
+        },
+        shippingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Warszawa',
+          postalCode: '00-001',
+          country: 'PL',
+          phone: '+48500600700',
+        },
+      });
+      mockIdentifierMapping.getExternalIds = jest.fn().mockImplementation((entityType: string) => {
+        if (entityType === 'Customer') {
+          return Promise.resolve([{ connectionId: connection.id, externalId: '42', entityType }]);
+        }
+        if (entityType === 'Product') {
+          return Promise.resolve([{ connectionId: connection.id, externalId: '100', entityType }]);
+        }
+        if (entityType === 'ProductVariant') {
+          return Promise.resolve([{ connectionId: connection.id, externalId: '300', entityType }]);
+        }
+        return Promise.resolve([]);
+      });
+      setCreateResourceDispatch({ id: '123' }, { id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder);
+      mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
+      const debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+
+      await adapter.createOrder(order);
+
+      const loggedLines = debugSpy.mock.calls.map((call) => String(call[0]));
+      for (const line of loggedLines) {
+        expect(line).not.toContain('Jan');
+        expect(line).not.toContain('Kowalski');
+        expect(line).not.toContain('ul. Testowa');
+        expect(line).not.toContain('+48500600700');
+        expect(line).not.toContain('1234567890');
+      }
+      debugSpy.mockRestore();
     });
 
     it('should recover the existing external order id on a PS duplicate-key error', async () => {
@@ -192,9 +247,11 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           }
           return Promise.resolve([]);
         });
-      // Cart + pins succeed; the order POST hits a unique-constraint error so the
-      // adapter falls into its defense-in-depth recovery (#909): re-query PS by
-      // reference and adopt the existing order's id.
+      // The reference lookup now runs BEFORE cart/pin creation (#3473), so a
+      // pre-existing PrestaShop order is recovered proactively — cart
+      // creation is never even attempted. `createResource('orders', ...)`
+      // rejecting with a duplicate-key error is kept in the mock only to
+      // prove the recovery path does NOT depend on reaching it.
       mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
         if (resource === 'carts') return Promise.resolve({ id: '123' });
         if (resource === 'specific_prices') return Promise.resolve({ id: 'sp_test' });
@@ -220,6 +277,8 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
 
       // Defense-in-depth recovery returns the recovered PS-native id (#909).
       expect(result.orderId).toBe('888');
+      // #3473 — recovered BEFORE any cart/sidecar/pin row was created.
+      expect(mockHttpClient.createResource).not.toHaveBeenCalledWith('carts', expect.anything());
       // The adapter still does not write the mapping — OrderSyncService owns it.
       expect(mockIdentifierMapping.createMapping).not.toHaveBeenCalled();
     });
@@ -285,7 +344,13 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
       await expect(adapter.createOrder(order)).rejects.toThrow('Product not found in PrestaShop');
     });
 
-    it('should handle variant ID not found gracefully (uses 0 for no variant)', async () => {
+    it('should throw and not call importOrder when a requested variant mapping is missing (#3472)', async () => {
+      // Before #3472 this silently fell back to id_product_attribute=0 (the
+      // base/default combination) — the wrong item, the wrong stock
+      // decrement, possibly the wrong price, with no error raised. A missing
+      // variant mapping must now refuse the order the same way a missing
+      // PRODUCT mapping already does, so it goes through `awaiting_mapping`
+      // instead of shipping the wrong combination.
       const order = createTestOrder();
       const externalCustomerId = '42';
       const externalProductId1 = '100';
@@ -322,23 +387,20 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
             ]);
           }
           if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
-            return Promise.resolve([]); // Variant not found - should use 0
+            return Promise.resolve([]); // Variant not found — must refuse, not default to 0.
           }
           return Promise.resolve([]);
         });
 
-      const createdOrder: PrestashopOrder = {
-        id: '999',
-        reference: order.orderNumber,
-      };
-      mockHttpClient.createResource = jest.fn().mockResolvedValue(createdOrder);
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
 
-      const result = await adapter.createOrder(order);
-
-      // Should still succeed - variant mapping not found means use 0 (no variant)
-      expect(result).toBeDefined();
-      expect(mockHttpClient.createResource).toHaveBeenCalled();
+      const error = await adapter.createOrder(order).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(PrestashopApiException);
+      expect((error as Error).message).toContain('Variant not found in PrestaShop');
+      expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
     });
 
     it('should handle order creation API error', async () => {
@@ -1082,7 +1144,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           idOrderState: IMPORT_ORDER_STATE_ID,
           amountPaid: order.totals.total,
           paymentMethod: 'Check payment',
-          orderReference: order.orderNumber,
+          orderReference: derivePrestashopOrderReference(order.orderNumber as string),
         });
       });
 
