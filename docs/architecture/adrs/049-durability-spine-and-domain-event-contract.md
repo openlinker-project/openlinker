@@ -153,9 +153,9 @@ auto-dead-lettering: neither of the two remaining consumers can construct its de
 from a raw pending entry (the master-deletion handler needs a decoded event, job-intake a parsed
 job request), and discarding the entry instead would be unrecoverable loss. *Reversal gate
 (prose-only):* the first poison entry observed in production, or the Wave 5 spine (decision 1)
-removing the PEL from the durable path entirely. **Tracked as #2301, whose own acceptance criteria
-gate any fix on confirming that observation first — see the Amendment below for why that
-observation is harder than it sounds.**
+removing the PEL from the durable path entirely. **Tracked as #2301 — see the Amendment below: the
+gate has since fired by the second route, a durable terminal state (option 2), rather than by a
+confirmed production observation.**
 
 **Migration path:**
 - #2164 makes PEL entries recoverable (stable identity, startup drain, orphan reclaim).
@@ -219,32 +219,65 @@ This ADR's decisions govern OL's own durability spine. The PrestaShop module run
 **Where this does and does not touch the decisions above.** The module is not covered by decision 1 - it is a separate process writing to its own database, and its atomicity guarantee is local (the outbox row commits with the shop-side change). What it inherits is decision 4's shape: identity derived from the business fact, never minted at insert - and #2603 is precisely the story of what happens when the derivation smuggles a clock into it.
 
 
-## Amendment (#2301) — the poison-entry gate is half-fired, and "no alarm yet" is not sound evidence
+## Amendment (#2301, D48) — the gate fired by the second route: a durable terminal state, not a confirmed production observation
 
 The reversal gate above names two conditions: the Wave 5 spine (decision 1) removing the PEL from
-the durable path, or the first poison entry observed in production. #2280 fired the first
-condition **only for the webhook path** — see the #2280 amendment above. The `master-deletion` and
-`job-intake` consumers still carry a PEL and the gap remains open for both; #2301 tracks it and is
-**deliberately gated**, not ready to build, pending an answer to its own first acceptance
-criterion: *"Determine whether `MAX_RECOVERY_ATTEMPTS` has been crossed in production; record the
-finding on this issue."*
+the durable path, or the first poison entry observed in production. #2280 fired the first condition
+for the webhook path only (see the #2280 amendment above). Neither condition was met for the two
+remaining consumers (`master-deletion-offer-pause`, `job-intake`) by observation — **production
+log/metrics access this repository's own tooling does not provide was still unavailable when this
+pass (#3508/D48) ran, and remains an open fact rather than a closed one.** What changed is the
+mandate: the operator decided the gap should close on its own merits rather than continuing to wait
+on evidence that could not be gathered, so **option 2 — build the durable terminal state — is now
+the chosen direction**, not a fallback taken for lack of the alarm.
 
-That determination requires production log/metrics access this repository's own tooling does not
-provide, and was not answered by this pass (#3508) for exactly that reason — it is recorded here as
-still open rather than guessed at. What this pass DID find, from static analysis alone, is a reason
-the eventual answer needs care in how it is read: **`RecoveryAttemptTracker` is an in-memory `Map`
-scoped to one process's instance of the owning consumer service** (`libs/shared/src/redis/stream-
-consumer.ts`), so its count resets to zero on every worker restart. The alarm requires ten
-*consecutive* failed recovery attempts within **one process's lifetime** — not ten failures across
-the entry's whole poisoned history. An entry that fails eight times, survives a deploy, and resumes
-failing in the new process never crosses the threshold in either process, and on a worker that
-restarts more often than a poison entry's drain cadence produces ten attempts, the alarm can
-structurally never fire even for a genuinely stuck entry. So "the alarm has never logged" is
-necessary but not sufficient evidence that #2301's first condition ("has it ever been crossed") is
-false — a durable, cross-restart count (e.g. Redis-backed, keyed by entry id) would answer the
-question soundly, but implementing one is exactly the kind of fix #2301 explicitly defers until the
-gate fires, so it is not done here. `RecoveryAttemptTracker`'s own docblock now carries this same
-caveat, so a future reader investigating the gate meets it at the source rather than only here.
+Three things were built, closing the gap for both remaining consumers.
+
+- **The counter moved off the in-memory `Map` this ADR's earlier amendment flagged as
+  unsound evidence.** `RecoveryAttemptTracker` (`libs/shared/src/redis/stream-consumer.ts`) is now
+  backed by Redis: `recordFailure` does `INCR poison:{stream}:{group}:{id}` and refreshes a TTL
+  (`POISON_COUNTER_TTL_SECONDS`, 7 days — well above the ~50-minute worst-case drain horizon
+  `RECLAIM_INTERVAL_MS × MAX_RECOVERY_ATTEMPTS` describes), and `succeeded` issues `DEL` on the same
+  key. A worker restart no longer resets the count, which is precisely the soundness gap the earlier
+  amendment identified: an entry that failed eight times, survived a deploy, and resumed failing in
+  a new process now continues from nine and ten rather than restarting at one in a process that has
+  never seen it before. The one-time alarm (`justCrossedThreshold`, `=== MAX_RECOVERY_ATTEMPTS`) is
+  unchanged in shape; a second predicate, `hasReachedThreshold` (`>= MAX_RECOVERY_ATTEMPTS`), was
+  added alongside it because the terminal write below is retriable and must keep firing past the
+  one-time crossing, not just at it.
+- **Past the threshold, the entry is written to a new durable table, `stream_dead_letters`
+  (migration `1913000000002`), and only then `XACK`ed.** The table lives in the `events` core
+  context — the owner of the publish half of this repo's one Redis-Streams publish/consume pair
+  (`RedisStreamsEventPublisher`), and the natural place to complete it with the consume-side
+  terminal state; neither `sync` (job-intake's payload is job-request-shaped) nor a per-consumer
+  home fits both writers, since the master-deletion handler's payload is domain-event-shaped and the
+  two share no typed structure. `raw_fields` is `jsonb`, stored exactly as `XRANGE`/`XPENDING` hand
+  the entry back — never a typed payload, which is precisely what auto-dead-lettering was rejected
+  for when this table did not exist (see the "Known gap" text above: neither consumer can construct
+  a typed payload from a raw pending entry). The write-then-ack ordering is the same discipline
+  decision 4's dedup guarantee already relies on elsewhere in this ADR: the row commits before the
+  entry leaves the PEL, so a crash between the two leaves the entry pending — Redis redelivers it,
+  the same `(stream, consumer_group, entry_id)` is written again, and the repository's
+  `INSERT ... ON CONFLICT ... DO UPDATE` (never touching `first_seen_at`) makes that re-write
+  idempotent rather than a growing pile of rows. A failed insert is therefore never silent loss: the
+  entry simply stays pending and is retried on the next recovery pass, exactly as an ordinary
+  handler failure is.
+- **The entry is now operator-visible.** A read-only list + count is exposed on Diagnostics > Jobs
+  & Logs (admin/operator/viewer), reusing the existing jobs-diagnostics table pattern. There is no
+  replay action in this pass — a poison entry's raw fields are evidence for a human to read, not
+  (yet) a request this repository knows how to safely re-drive.
+
+**What this amendment does not claim.** It does not claim a poison entry was ever observed in
+production — that remains unknown, for the same tooling-access reason as before. It does not change
+decision 1's long-term direction: removing the job-intake stream hop (i.e. giving `jobs.sync` the
+same transactional-work-row treatment #2280 gave the webhook path) is still recorded as the
+eventual, structural fix, and the `master-deletion` consumer's own event stream is a further
+instance of the same non-webhook-writer gap this ADR's #2280 amendment already named as future work.
+What this amendment does claim is narrower and load-bearing on its own: **the counter is now
+durable, so a future reader investigating this gate has a real answer to reach for rather than a
+process-scoped one that could structurally never surface a genuinely stuck entry** — and past
+`MAX_RECOVERY_ATTEMPTS`, the entry's existence is a row in Postgres rather than a single log line
+that scrolls away.
 
 Two stale references this pass also corrected while reading the code for this investigation: both
 consumer files' "two of the three consumers" comments (a count that predates #2280/#2300 retiring
