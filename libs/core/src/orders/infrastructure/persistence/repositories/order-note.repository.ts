@@ -12,7 +12,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Not, Repository } from 'typeorm';
 import { OrderNoteOrmEntity } from '../entities/order-note.orm-entity';
 import { OrderNoteRevisionOrmEntity } from '../entities/order-note-revision.orm-entity';
 import type { OrderNoteRepositoryPort } from '../../../domain/ports/order-note-repository.port';
@@ -55,6 +55,7 @@ export class OrderNoteRepository implements OrderNoteRepositoryPort {
     entity.showToPacker = input.showToPacker;
     entity.editedAt = null;
     entity.deletedAt = null;
+    entity.pinnedAt = null;
     const saved = await this.notes.save(entity);
     return this.toDomain(saved);
   }
@@ -88,6 +89,34 @@ export class OrderNoteRepository implements OrderNoteRepositoryPort {
     const updated = await this.notes.findOne({ where: { id } });
     if (!updated) {
       throw new Error(`OrderNote ${id} vanished during delete`);
+    }
+    return this.toDomain(updated);
+  }
+
+  async pin(id: string, internalOrderId: string, pinnedAt: Date): Promise<OrderNote> {
+    return this.dataSource.transaction(async (manager) => {
+      // Unpin whichever note currently holds this order's pin (if any) BEFORE
+      // setting the new one — both in one transaction, or the partial unique
+      // index refuses the second write while the first is still holding it.
+      await manager.update(
+        OrderNoteOrmEntity,
+        { internalOrderId, pinnedAt: Not(IsNull()) },
+        { pinnedAt: null }
+      );
+      await manager.update(OrderNoteOrmEntity, { id }, { pinnedAt });
+      const updated = await manager.findOne(OrderNoteOrmEntity, { where: { id } });
+      if (!updated) {
+        throw new Error(`OrderNote ${id} vanished during pin`);
+      }
+      return this.toDomain(updated);
+    });
+  }
+
+  async unpin(id: string): Promise<OrderNote> {
+    await this.notes.update({ id }, { pinnedAt: null });
+    const updated = await this.notes.findOne({ where: { id } });
+    if (!updated) {
+      throw new Error(`OrderNote ${id} vanished during unpin`);
     }
     return this.toDomain(updated);
   }
@@ -197,6 +226,7 @@ export class OrderNoteRepository implements OrderNoteRepositoryPort {
       showToPacker: entity.showToPacker,
       editedAt: entity.editedAt,
       deletedAt: entity.deletedAt,
+      pinnedAt: entity.pinnedAt,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };

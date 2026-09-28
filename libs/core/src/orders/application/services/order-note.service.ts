@@ -76,6 +76,29 @@ export class OrderNoteService implements IOrderNoteService {
     await this.repository.softDelete(noteId, new Date());
   }
 
+  async pin(noteId: string, callerUserId: string, isAdmin: boolean): Promise<OrderNote> {
+    const existing = await this.repository.findById(noteId);
+    if (!existing || existing.deletedAt) {
+      throw new OrderNoteNotFoundError(noteId);
+    }
+    // Same D33 shape as delete: the author, or an admin.
+    if (existing.authorUserId !== callerUserId && !isAdmin) {
+      throw new OrderNoteNotAuthoredError(noteId);
+    }
+    return this.repository.pin(noteId, existing.internalOrderId, new Date());
+  }
+
+  async unpin(noteId: string, callerUserId: string, isAdmin: boolean): Promise<OrderNote> {
+    const existing = await this.repository.findById(noteId);
+    if (!existing || existing.deletedAt) {
+      throw new OrderNoteNotFoundError(noteId);
+    }
+    if (existing.authorUserId !== callerUserId && !isAdmin) {
+      throw new OrderNoteNotAuthoredError(noteId);
+    }
+    return this.repository.unpin(noteId);
+  }
+
   async getPackerVisibleForOrders(
     internalOrderIds: readonly string[]
   ): Promise<Map<string, OrderNote[]>> {

@@ -37,6 +37,21 @@ export interface IOrderNoteService {
    */
   delete(noteId: string, callerUserId: string, isAdmin: boolean): Promise<void>;
 
+  /**
+   * Pin a note — same authorship rule as delete (D33: the author, or an
+   * admin). Unpins whichever note previously held the order's pin, if any.
+   *
+   * @throws {OrderNoteNotFoundError} no such note.
+   * @throws {OrderNoteNotAuthoredError} caller is neither the author nor `isAdmin`.
+   */
+  pin(noteId: string, callerUserId: string, isAdmin: boolean): Promise<OrderNote>;
+
+  /**
+   * @throws {OrderNoteNotFoundError} no such note.
+   * @throws {OrderNoteNotAuthoredError} caller is neither the author nor `isAdmin`.
+   */
+  unpin(noteId: string, callerUserId: string, isAdmin: boolean): Promise<OrderNote>;
+
   /** Batched read for the `/orders` page and the pack bench — see the port. */
   getPackerVisibleForOrders(
     internalOrderIds: readonly string[]

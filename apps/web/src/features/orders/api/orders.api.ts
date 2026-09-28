@@ -26,6 +26,11 @@ import type {
   CreateOrderNoteRequest,
   UpdateOrderNoteRequest,
   OrderTag,
+  OrderTagColorValue,
+  BulkAssignOrderTagResult,
+  OrderColumnPreset,
+  OrderExportRun,
+  CreateOrderExportRequest,
 } from './orders.types';
 
 export interface OrdersApi {
@@ -89,17 +94,52 @@ export interface OrdersApi {
   ) => Promise<OrderNote>;
   /** D33: the author or an admin. */
   deleteNote: (internalOrderId: string, noteId: string) => Promise<void>;
+  /** Pin a note (author or admin). Unpins the order's previous pin, if any. */
+  pinNote: (internalOrderId: string, noteId: string) => Promise<OrderNote>;
+  /** Unpin a note (author or admin). */
+  unpinNote: (internalOrderId: string, noteId: string) => Promise<OrderNote>;
   /** The workspace tag vocabulary, each with its live order count (#3532). */
   listTags: () => Promise<OrderTag[]>;
-  createTag: (name: string, color: string) => Promise<OrderTag>;
+  /** D34: admin or operator, from the picker. Refused past the workspace limit of 50. */
+  createTag: (name: string, color: OrderTagColorValue) => Promise<OrderTag>;
+  /** Admin only — the Settings tag manager. */
+  updateTag: (tagId: string, patch: { name?: string; color?: OrderTagColorValue }) => Promise<OrderTag>;
+  /** Admin only — also removes every order assignment naming the tag. */
+  deleteTag: (tagId: string) => Promise<void>;
   assignTag: (internalOrderId: string, tagId: string) => Promise<void>;
   unassignTag: (internalOrderId: string, tagId: string) => Promise<void>;
   /** Tag ids assigned to one order (#3532). */
   listOrderTags: (internalOrderId: string) => Promise<string[]>;
+  /** Assign one tag to every named order — the bulk action bar (#3532). */
+  bulkAssignTag: (tagId: string, orderIds: string[]) => Promise<BulkAssignOrderTagResult>;
+
+  /** The caller's own saved column presets (#3530, D32). */
+  listColumnPresets: () => Promise<OrderColumnPreset[]>;
+  /** The workspace default, or `null` if an admin never set one. */
+  getWorkspaceDefaultColumnPreset: () => Promise<OrderColumnPreset | null>;
+  createColumnPreset: (name: string, columns: string[]) => Promise<OrderColumnPreset>;
+  updateColumnPreset: (id: string, patch: { name?: string; columns?: string[] }) => Promise<OrderColumnPreset>;
+  deleteColumnPreset: (id: string) => Promise<void>;
+  /** Admin only. */
+  setWorkspaceDefaultColumnPreset: (columns: string[]) => Promise<OrderColumnPreset>;
+
+  /** Open an export run over the current filtered view or an explicit selection (#3534, D35). */
+  requestExport: (body: CreateOrderExportRequest) => Promise<OrderExportRun>;
+  getExportRun: (runId: string) => Promise<OrderExportRun>;
+  /**
+   * The generated file, as a Blob — the API requires a Bearer token, so a
+   * plain `<a href>` cannot carry it (the `invoicing`/`shipments` download
+   * precedent, `requestBlob` + `triggerBlobDownload`).
+   */
+  downloadExport: (runId: string) => Promise<Blob>;
 }
 
 interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+interface ApiBlobRequest {
+  (path: string, init?: RequestInit): Promise<Blob>;
 }
 
 function buildQuery(
@@ -182,7 +222,7 @@ function buildSummaryQuery(filters?: OrderHealthSummaryFilters): string {
   return qs.length > 0 ? `?${qs}` : '';
 }
 
-export function createOrdersApi(request: ApiRequest): OrdersApi {
+export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest): OrdersApi {
   return {
     list(filters, pagination): Promise<PaginatedOrders> {
       return request<PaginatedOrders>(`/orders${buildQuery(filters, pagination)}`);
@@ -267,6 +307,18 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
         { method: 'DELETE' },
       );
     },
+    pinNote(internalOrderId, noteId): Promise<OrderNote> {
+      return request<OrderNote>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}/pin`,
+        { method: 'POST' },
+      );
+    },
+    unpinNote(internalOrderId, noteId): Promise<OrderNote> {
+      return request<OrderNote>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/${encodeURIComponent(noteId)}/pin`,
+        { method: 'DELETE' },
+      );
+    },
     listTags(): Promise<OrderTag[]> {
       return request<OrderTag[]>('/order-tags');
     },
@@ -275,6 +327,21 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
         method: 'POST',
         body: JSON.stringify({ name, color }),
       });
+    },
+    updateTag(tagId, patch): Promise<OrderTag> {
+      return request<OrderTag>(`/order-tags/${encodeURIComponent(tagId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      });
+    },
+    deleteTag(tagId): Promise<void> {
+      return request<void>(`/order-tags/${encodeURIComponent(tagId)}`, { method: 'DELETE' });
+    },
+    bulkAssignTag(tagId, orderIds): Promise<BulkAssignOrderTagResult> {
+      return request<BulkAssignOrderTagResult>(
+        `/order-tags/${encodeURIComponent(tagId)}/bulk-assign`,
+        { method: 'POST', body: JSON.stringify({ orderIds }) },
+      );
     },
     assignTag(internalOrderId, tagId): Promise<void> {
       return request<void>(`/orders/${encodeURIComponent(internalOrderId)}/tags`, {
@@ -290,6 +357,47 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
     },
     listOrderTags(internalOrderId): Promise<string[]> {
       return request<string[]>(`/orders/${encodeURIComponent(internalOrderId)}/tags`);
+    },
+    listColumnPresets(): Promise<OrderColumnPreset[]> {
+      return request<OrderColumnPreset[]>('/orders/column-presets');
+    },
+    getWorkspaceDefaultColumnPreset(): Promise<OrderColumnPreset | null> {
+      return request<OrderColumnPreset | null>('/orders/column-presets/workspace-default');
+    },
+    createColumnPreset(name, columns): Promise<OrderColumnPreset> {
+      return request<OrderColumnPreset>('/orders/column-presets', {
+        method: 'POST',
+        body: JSON.stringify({ name, columns }),
+      });
+    },
+    updateColumnPreset(id, patch): Promise<OrderColumnPreset> {
+      return request<OrderColumnPreset>(`/orders/column-presets/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      });
+    },
+    deleteColumnPreset(id): Promise<void> {
+      return request<void>(`/orders/column-presets/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    },
+    setWorkspaceDefaultColumnPreset(columns): Promise<OrderColumnPreset> {
+      return request<OrderColumnPreset>('/orders/column-presets/workspace-default', {
+        method: 'PUT',
+        body: JSON.stringify({ columns }),
+      });
+    },
+    requestExport(body): Promise<OrderExportRun> {
+      return request<OrderExportRun>('/orders/export', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
+    getExportRun(runId): Promise<OrderExportRun> {
+      return request<OrderExportRun>(`/orders/export/${encodeURIComponent(runId)}`);
+    },
+    downloadExport(runId): Promise<Blob> {
+      return requestBlob(`/orders/export/${encodeURIComponent(runId)}/download`);
     },
   };
 }

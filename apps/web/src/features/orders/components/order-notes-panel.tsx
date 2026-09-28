@@ -2,14 +2,15 @@
  * Order Notes Panel (#3531/#3533, mockup M3)
  *
  * Internal, office-facing notes on an order detail page: the thread, the add
- * form, and per-note edit/delete gated by D33 (the author edits/deletes their
- * own; an admin may delete any). "Show to packer" carries the PII warning the
- * mockup requires — the text reaches the shared pack-bench terminal.
+ * form, and per-note edit/pin/delete. Edit is author-only; pin and delete are
+ * author-or-admin (D33's shape, extended to pin per the epic's recovery
+ * pass). "Show to packer" carries the PII warning the mockup requires — the
+ * text reaches the shared pack-bench terminal.
  *
- * Scope note: this pass ships the thread, add, edit, delete and the
- * showToPacker flag. The mockup's "pin one note full-width under the header"
- * treatment is NOT implemented here — no pin field exists on the backend
- * (#3531 shipped without it) — so every note renders in this one panel.
+ * The pinned note (at most one per order, server-enforced) renders in its
+ * own full-width slot above the thread (mockup M3: "pin one note full width
+ * under the order header") and again inline in the thread with a "Pinned"
+ * badge — the thread is the complete list, the slot is a shortcut to it.
  *
  * @module apps/web/src/features/orders/components
  */
@@ -28,6 +29,8 @@ import { useOrderNotesQuery } from '../hooks/use-order-notes-query';
 import {
   useCreateOrderNoteMutation,
   useDeleteOrderNoteMutation,
+  usePinOrderNoteMutation,
+  useUnpinOrderNoteMutation,
   useUpdateOrderNoteMutation,
 } from '../hooks/use-order-note-mutations';
 
@@ -55,10 +58,15 @@ function NoteRow({
   const [showToPackerDraft, setShowToPackerDraft] = useState(note.showToPacker);
   const updateNote = useUpdateOrderNoteMutation(internalOrderId);
   const deleteNote = useDeleteOrderNoteMutation(internalOrderId);
+  const pinNote = usePinOrderNoteMutation(internalOrderId);
+  const unpinNote = useUnpinOrderNoteMutation(internalOrderId);
 
   const isAuthor = currentUserId !== undefined && currentUserId === note.authorUserId;
   const canEdit = canWrite && isAuthor;
   const canDelete = canWrite && (isAuthor || isAdmin);
+  // Same author-or-admin shape as delete (D33), extended to pin.
+  const canPin = canWrite && (isAuthor || isAdmin);
+  const isPinned = note.pinnedAt !== null;
 
   function startEdit(): void {
     setDraft(note.body);
@@ -80,6 +88,11 @@ function NoteRow({
         <span className="mono-text">{note.authorUsername}</span>
         <TimeDisplay iso={note.createdAt} format="datetime" />
         {note.editedAt ? <span className="order-note-row__edited">edited</span> : null}
+        {isPinned ? (
+          <span className="status-badge status-badge--neutral status-badge--compact">
+            <span>Pinned</span>
+          </span>
+        ) : null}
         {note.showToPacker ? <span className="order-note-row__flag">Show to packer</span> : null}
       </div>
 
@@ -120,11 +133,23 @@ function NoteRow({
         <p className="order-note-row__body">{note.body}</p>
       )}
 
-      {!editing && (canEdit || canDelete) ? (
+      {!editing && (canEdit || canPin || canDelete) ? (
         <div className="order-note-row__actions">
           {canEdit ? (
             <Button tone="ghost" onClick={startEdit}>
               Edit
+            </Button>
+          ) : null}
+          {canPin ? (
+            <Button
+              tone="ghost"
+              onClick={() => {
+                if (isPinned) unpinNote.mutate(note.id);
+                else pinNote.mutate(note.id);
+              }}
+              disabled={pinNote.isPending || unpinNote.isPending}
+            >
+              {isPinned ? 'Unpin' : 'Pin'}
             </Button>
           ) : null}
           {canDelete ? (
@@ -242,5 +267,34 @@ export function OrderNotesPanel({ internalOrderId }: OrderNotesPanelProps): Reac
         <p className="muted-text">Adding a note needs the operator or admin role.</p>
       )}
     </section>
+  );
+}
+
+/**
+ * The full-width pinned-note slot under the order header (mockup M3). Reads
+ * the SAME query key as {@link OrderNotesPanel} — React Query dedupes the
+ * two fetches, so mounting both costs one request, not two. Renders nothing
+ * while loading or when no note is pinned; never a "no pinned note" claim.
+ */
+export function PinnedOrderNoteBanner({ internalOrderId }: OrderNotesPanelProps): ReactElement | null {
+  const notesQuery = useOrderNotesQuery(internalOrderId);
+  const pinned = (notesQuery.data ?? []).find((note) => note.pinnedAt !== null);
+  if (!pinned) {
+    return null;
+  }
+  return (
+    <div className="order-note-pinned" role="note" aria-label="Pinned note">
+      <span className="order-note-pinned__label">Pinned note</span>
+      <p className="order-note__body">{pinned.body}</p>
+      <span className="order-note-row__meta">
+        <span className="mono-text">{pinned.authorUsername}</span>
+        <TimeDisplay iso={pinned.createdAt} format="datetime" />
+        {pinned.showToPacker ? (
+          <span className="status-badge status-badge--neutral status-badge--compact">
+            <span>Shown to packer</span>
+          </span>
+        ) : null}
+      </span>
+    </div>
   );
 }

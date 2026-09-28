@@ -40,7 +40,11 @@ import { OrderActivityTimeline } from '../../features/orders/components/order-ac
 import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
-import { OrderNotesPanel } from '../../features/orders/components/order-notes-panel';
+import {
+  OrderNotesPanel,
+  PinnedOrderNoteBanner,
+} from '../../features/orders/components/order-notes-panel';
+import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
@@ -347,6 +351,10 @@ export function OrderDetailPage(): ReactElement {
       title="Order detail"
     >
       <OrderDetailHeader order={order} snapshot={snapshot} />
+
+      <OrderTagsHeaderRow internalOrderId={order.internalOrderId} />
+
+      <PinnedOrderNoteBanner internalOrderId={order.internalOrderId} />
 
       <OrderHealthSummary
         syncStatus={order.syncStatus}
