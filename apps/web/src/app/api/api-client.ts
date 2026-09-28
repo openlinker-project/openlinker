@@ -474,7 +474,7 @@ export function createApiClient({
     mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
     operationalSettings: createOperationalSettingsApi(request),
-    orders: createOrdersApi(request),
+    orders: createOrdersApi(request, requestBlob),
     posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
