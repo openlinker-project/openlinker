@@ -118,6 +118,27 @@ public static class BridgeConfig
     /// marketplaces fetch them, so it cannot be loopback-only.</summary>
     public static readonly int HttpPort = ReadInt("HttpPort", 5056);
 
+    /// <summary>#3365 - which of Subiekt's sale price levels to read and write
+    /// (1-based, as the operator sees it). Default 1 keeps every existing
+    /// install byte-identical; see PriceLevel.cs for why it exists.
+    ///
+    /// CLAMPED rather than refused at boot: a bridge that will not start
+    /// because of one mistyped number takes down order ingestion, invoicing
+    /// and stock along with the price. Out of range falls back to 1 and says
+    /// so - and clamping is also what keeps the value safe to interpolate into
+    /// a column name, since it can then only ever be one of ten.</summary>
+    public static readonly int PriceLevel = ReadPriceLevel();
+
+    private static int ReadPriceLevel()
+    {
+        var raw = ReadInt("PriceLevel", 1);
+        if (raw >= 1 && raw <= 10) return raw;
+        Console.Error.WriteLine(
+            $"BridgeConfig: PriceLevel={raw} is outside Subiekt's 1..10 range - using 1. " +
+            "Correct it in appsettings.json or OL_BRIDGE_PRICE_LEVEL.");
+        return 1;
+    }
+
     /// <summary>Base URL the image links in a catalogue read are built from.
     ///
     /// THE CONSUMER IS THE BROWSER, NOT OPENLINKER. OpenLinker never fetches an

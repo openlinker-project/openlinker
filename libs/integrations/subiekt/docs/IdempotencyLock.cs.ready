@@ -60,15 +60,41 @@ public static class IdempotencyLock
         finally
         {
             gate.Release();
-            // Best-effort cleanup so the dictionary does not grow forever.
-            // CurrentCount == 1 means nobody else is waiting on this gate
-            // RIGHT NOW - a race here (a new waiter arriving between the
-            // check and the removal) just means that waiter's SemaphoreSlim
-            // gets discarded and GetOrAdd hands out a fresh one; it can
-            // never mean two callers hold the gate at once, because removal
-            // only ever happens after Release().
-            if (gate.CurrentCount == 1)
-                Locks.TryRemove(new KeyValuePair<string, SemaphoreSlim>(key, gate));
+            // THE CLEANUP IS GONE, and its removal is the fix (PR #7 review).
+            //
+            // It used to read `if (gate.CurrentCount == 1) Locks.TryRemove(...)`
+            // under a comment asserting that a race there "can never mean two
+            // callers hold the gate at once, because removal only ever happens
+            // after Release()". It can, and it takes three overlapping calls on
+            // one key - which is exactly the traffic this lock was added for,
+            // a retry racing the original still in flight:
+            //
+            //   1. A releases; CurrentCount == 1 (no waiter at that instant).
+            //   2. A evaluates the check as true, and is preempted here.
+            //   3. B does GetOrAdd -> still this gate, WaitAsync succeeds,
+            //      CurrentCount -> 0. B is INSIDE the critical section.
+            //   4. A resumes and removes the entry: the dictionary still maps
+            //      the key to this gate, so the compare-and-remove succeeds.
+            //   5. C does GetOrAdd -> absent -> mints a NEW semaphore, enters
+            //      immediately.
+            //
+            // B and C are now both inside `body()` on different semaphores.
+            // The consequence is the one this class exists to prevent: two
+            // `FindExistingZk` / `FindByIdempotencyKey` reads both answering
+            // "not found", and two fiscal documents for one sale.
+            //
+            // A ConcurrentDictionary cannot express "acquire-or-create, and
+            // remove-if-idle" atomically, so the choice is a lock around both
+            // halves or no removal at all. No removal is chosen: entries are
+            // keyed on reduced idempotency keys and each holds one
+            // SemaphoreSlim, so the growth is bounded in practice by the
+            // distinct keys one process lifetime sees, and it is strictly
+            // cheaper than the correctness it was buying.
+            //
+            // Worth stating plainly, because it is the assumption that breaks
+            // silently: this is an IN-PROCESS mutex. It serializes one bridge
+            // instance and nothing else, so two bridges against one Subiekt are
+            // not protected by it.
         }
     }
 }

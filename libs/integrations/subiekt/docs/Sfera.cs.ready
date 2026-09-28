@@ -101,8 +101,38 @@ public static class Sfera
         {
             var count = System.Threading.Interlocked.Increment(ref _recycleCount);
             Console.Error.WriteLine($"Sfera.RecycleWorker: abandoning the current worker thread + Sfera session (recycle #{count}) - a stuck COM call cannot be aborted on .NET Core.");
-            _queue.CompleteAdding();
+            var abandoned = _queue;
+            abandoned.CompleteAdding();
             _queue = new BlockingCollection<Job>();
+            // FAULT WHAT WAS QUEUED BEHIND THE STUCK CALL (PR #7 review).
+            //
+            // The old worker is by definition inside `job.Work(Session())`, so
+            // it never returns to `GetConsumingEnumerable()` and never reaches
+            // the `finally` that sets `Done`. Every job already queued behind
+            // it was therefore neither run nor signalled: each caller waited out
+            // its OWN full timeout and then called `RecycleWorker` in turn, so
+            // one stuck dialog produced N+1 recycles and N+1 abandoned
+            // threads - and a recycle triggered by a stale caller replaced
+            // whatever queue was current by then, which could be a healthy one
+            // holding a legitimate in-flight job. The cascade sustained itself
+            // while traffic continued, and `RecycleCount` climbed far faster
+            // than "one per stuck call", which is how somebody reads the counter
+            // and concludes COM is failing constantly.
+            //
+            // Draining and faulting them makes each of those callers fail at
+            // once with a reason that names the cause, instead of waiting out a
+            // timeout and recycling again.
+            var orphaned = 0;
+            foreach (var pending in abandoned.GetConsumingEnumerable())
+            {
+                pending.Error = new TimeoutException(
+                    "Abandoned by a Sfera worker recycle: an earlier COM call hung and this job " +
+                    "was still queued behind it. It never reached Subiekt.");
+                pending.Done.Set();
+                orphaned++;
+            }
+            if (orphaned > 0)
+                Console.Error.WriteLine($"Sfera.RecycleWorker: faulted {orphaned} job(s) queued behind the stuck call rather than letting each wait out its own timeout.");
             _sub = null;
             SpawnWorker();
         }
@@ -262,6 +292,12 @@ public static class Sfera
             dynamic d = sub.SuDokumentyManager.DodajZK();
             try
             {
+                // #3365 - name the warehouse. A ZK reserves nothing here
+                // (Rezerwacja is deliberately false, below), so this is not a
+                // stock movement - but it IS what the WZ later derives from
+                // via NaPodstawie, and a ZK in one warehouse followed by a
+                // release from another is the mismatch this change removes.
+                DocumentWarehouse.Apply(d, req.MagazynId, "ZK");
                 d.KontrahentId = req.KontrahentId;
                 d.LiczonyOdCenBrutto = true;          // marketplace prices are gross
                 // The buyer-paid figures below are denominated in the SOURCE's
@@ -269,10 +305,33 @@ public static class Sfera
                 // own default, so a EUR order became a PLN order of the same
                 // numeric value. Best-effort: an unknown symbol must not fail
                 // an order that is already paid.
+                // REFUSED, not swallowed (#3365 audit). The catch here preserved
+                // exactly the failure the comment above describes: a EUR order
+                // became a PLN order of the same numeric value, with the only
+                // trace on the bridge process's stderr on the operator's Windows
+                // box. Nothing reached OpenLinker, the job, or any log an
+                // operator reads.
+                //
+                // "Best-effort: an unknown symbol must not fail an order that is
+                // already paid" had the trade backwards. A refused order is
+                // visible and fixable - the operator adds the currency to
+                // Subiekt and retries. A silently redenominated one is a wrong
+                // number in the ERP that nobody can see, and every document
+                // drawn from that ZK inherits it.
+                //
+                // A domestic order is unaffected: OpenLinker sends the ISO code
+                // and an install whose default is PLN accepts "PLN".
                 if (req.Waluta != "")
                 {
                     try { d.WalutaSymbol = req.Waluta; }
-                    catch (Exception e) { Console.Error.WriteLine($"Sfera.CreateZk: could not set WalutaSymbol='{req.Waluta}' - {e.Message}"); }
+                    catch (Exception e)
+                    {
+                        throw new InvalidOperationException(
+                            $"Subiekt would not accept currency '{req.Waluta}' on this order. " +
+                            "Add it to Subiekt's currency table (Słowniki > Waluty) and retry - " +
+                            "writing the document without it would record the amounts in the " +
+                            $"install's default currency instead. ({e.Message})", e);
+                    }
                 }
                 // Answer the stock-reservation question up front. Left unset,
                 // Subiekt raises a modal Tak/Nie dialog and the COM call blocks
@@ -294,8 +353,12 @@ public static class Sfera
                     }
                     poz.IloscJm = line.Quantity;
                     // ADR-014: the buyer-paid amount wins over the price list.
+                    // The PAIR is what records a discount: `PrzedRabatem` is the
+                    // line as listed, `PoRabacie` what the buyer paid for it.
+                    // Equal when no discount applies, which is the whole of the
+                    // pre-#3365 behaviour.
                     poz.WartoscBruttoPrzedRabatem = line.GrossTotal;
-                    poz.WartoscBruttoPoRabacie    = line.GrossTotal;
+                    poz.WartoscBruttoPoRabacie    = line.GrossTotalAfterDiscount ?? line.GrossTotal;
                 }
 
                 if (req.NumerOryginalny != "")
@@ -315,8 +378,104 @@ public static class Sfera
     /// <summary>dok_NrPelnyOryg is varchar(30) — a longer value is refused outright.</summary>
     public static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
 
+    /// <summary>#3440: reduce a long, semantically-structured OL idempotency key to
+    /// something dok_NrPelnyOryg (varchar(30)) can hold, WITHOUT discarding the part
+    /// that varies.
+    ///
+    /// Truncating is not a size fix, it is a silent collision: every OL key of this
+    /// shape leads with a fixed prefix and a long id, so `Trim30` keeps the part that
+    /// is the same for many operations and throws away the part that tells them apart.
+    /// `invoice:{connectionId}:{orderId}` (~90 chars) collapsed every document for a
+    /// connection onto the first one ever issued; `return:{returnId}:{lineId}:{seq}`
+    /// (~88 chars) collapses every LINE of one return onto its first line AND discards
+    /// the `seq` that exists precisely to tell a retry from a fresh disposition, so the
+    /// second line's restock comes back "deduplicated" and no stock moves for it.
+    ///
+    /// Hash rather than truncate: SHA-256 hex, first 30 chars. Deterministic, so a
+    /// genuine retry of the same key still resolves to the same document and the
+    /// fiscal-safety idempotency guarantee is preserved; 30 hex chars is 120 bits, so
+    /// a collision across any realistic volume is not a practical concern.
+    ///
+    /// Applied ONLY where the key really is one of these long structured keys - NOT to
+    /// a plain order-id lookup, which is short enough on its own and is left alone
+    /// (`FindZkIdByOrderRef`, confirmed unaffected by the #3440 investigation).
+    ///
+    /// UPGRADE NOTE: a key stored under the old truncation is not found under the new
+    /// reduction. The only affected operations are ones already in flight across the
+    /// upgrade; a retry of one of those can create a second document. That window is
+    /// the price of no longer collapsing unrelated operations onto each other, which
+    /// is a permanent, silent loss rather than a one-off one.</summary>
+    public static string ReduceIdempotencyKey(string key)
+    {
+        if (key.Length <= 30) return key;
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(hash).Substring(0, 30);
+    }
+
     /// <summary>kh_Nazwa (short name) is nvarchar(50).</summary>
     public static string Trim50(string s) => s.Length <= 50 ? s : s.Substring(0, 50);
+
+    /// <summary>
+    /// SubiektDokumentStatusEnum.gtaSubiektDokumentStatusZrealizowany.
+    ///
+    /// The enum is shared across every document type and most of its values are
+    /// about warehouse effect, but four are about ORDERS specifically: 5
+    /// (niezrealizowane), 6 (bez rezerwacji), 7 (zarezerwowany) and 8
+    /// (zrealizowane) all say "Dotyczy dokumentow typu Zamowienie (ZM, ZK i ZD)"
+    /// in the GT Sfera help (SubiektDokumentStatusEnum.htm).
+    ///
+    /// Do NOT reach for the same-named enum in the `sfera-api-main` dump lying
+    /// around locally - that is Subiekt NEXO (InsERT.Moria.*, no SuDokument at
+    /// all) and proves nothing about GT.
+    /// </summary>
+    private const int ZamowienieZrealizowane = 8;
+
+    /// <summary>
+    /// Marks a ZK as realized (dok_Status = 8).
+    ///
+    /// WHY THIS EXISTS. Subiekt derives an order's realization from the
+    /// documents linked to it, and OpenLinker's invoice is created standalone
+    /// (DodajFS, not from the order), so nothing links back. On an install
+    /// where the document type is set to release stock automatically, the
+    /// auto-WZ is linked to the INVOICE rather than to the ZK - confirmed on a
+    /// live database: every recent WZ carries dok_DoDokId pointing at an FS/PA,
+    /// every recent FS carries none, and 33 of 38 ZKs sat at status 6 having in
+    /// fact been invoiced and shipped. An operator opening Subiekt saw a pile
+    /// of outstanding orders that were all long since fulfilled.
+    ///
+    /// The other branch of EnsureWarehouseRelease already calls
+    /// NaPodstawie(zkId), and those ZKs DO reach 8 on their own - so this is
+    /// the same end state Subiekt itself writes, reached explicitly on the one
+    /// path where Subiekt cannot reach it.
+    ///
+    /// Returns false rather than throwing: an order whose goods have shipped
+    /// and whose invoice exists must not have that invoice fail over a status
+    /// flag.
+    /// </summary>
+    public static bool MarkOrderRealized(int zkId)
+    {
+        var ok = false;
+        try
+        {
+            Run(sub =>
+            {
+                dynamic d = sub.SuDokumentyManager.WczytajDokument(zkId);
+                try
+                {
+                    d.StatusDokumentu = ZamowienieZrealizowane;
+                    d.Zapisz();
+                    ok = true;
+                }
+                finally { try { d.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(60));
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Sfera.MarkOrderRealized: could not mark ZK {zkId} realized: {e.Message}");
+        }
+        return ok;
+    }
 
     /// <summary>Writes the shipping block onto a Subiekt document (ZK/FS/...).</summary>
     public static string WriteShipping(int dokId, ShippingInfo s)
@@ -510,6 +669,18 @@ public sealed class ZkLine
     public string Symbol = "";
     public decimal Quantity;
     public decimal GrossTotal;
+    /// <summary>
+    /// What the buyer actually paid for this line, when an order-level discount
+    /// applies (#3365 audit). `null` means no discount - the line is billed at
+    /// `GrossTotal` and both Sfera amounts carry it, exactly as before.
+    ///
+    /// Subiekt models a discount as the PAIR `WartoscBruttoPrzedRabatem` /
+    /// `WartoscBruttoPoRabacie`, and this bridge was setting both to the same
+    /// number - so an Allegro coupon, which reduces the order total without
+    /// touching any line price, wrote a ZK for MORE than the buyer paid, with
+    /// nothing anywhere saying so.
+    /// </summary>
+    public decimal? GrossTotalAfterDiscount;
     /// <summary>Display name for a symbol-less service line (e.g. shipping) — ignored when Symbol is set.</summary>
     public string? Name;
 }
@@ -527,4 +698,7 @@ public sealed class ZkRequest
     /// written to SuDokument.WalutaSymbol so a foreign-currency order is not
     /// silently booked as though its figures were zlotys.</summary>
     public string Waluta = "";
+    /// <summary>#3365 - the warehouse this order will be released from. Null
+    /// keeps the pre-#3365 behaviour: the Sfera session decides.</summary>
+    public int? MagazynId;
 }

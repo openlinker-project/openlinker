@@ -200,11 +200,11 @@ string TaxClass(decimal? rate) => rate switch
     _    => "rate-" + rate.Value.ToString("0.##", CultureInfo.InvariantCulture),
 };
 
-const string BaseSelect = @"
+string BaseSelect = $@"
 SELECT  t.tw_Id, t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_PodstKodKresk,
         t.tw_Masa, t.tw_Rodzaj, t.tw_Zablokowany,
         v.vat_Stawka,
-        c.tc_CenaNetto1, c.tc_CenaBrutto1,
+        {PriceLevel.SelectColumns},
         ISNULL(s.stan, 0)  AS stan,
         ISNULL(s.rez, 0)   AS rez,
         md.mdt_Id          AS modelId,
@@ -271,7 +271,7 @@ object Variation(Row t, Dictionary<int, List<string>> cechy)
                      .Concat((cechy.TryGetValue(t.Id, out var cs) ? cs : new List<string>())
                               .Select((cecha, i) => (object)new { id = 100 + i, name = cecha, option = "tak" }))
                      .ToArray(),
-        image = t.HasImage ? new { id = t.Id, src = $"{PublicBase}/gt-image/{t.Id}" } : null,
+        image = t.HasImage ? new { id = t.Id, src = $"{PublicBase}/gt-image/{t.Id}{ImageUrlSignature.QuerySuffix(t.Id)}" } : null,
         stock_quantity = (int)Math.Floor(available),
         manage_stock = true,
         stock_status = available > 0 ? "instock" : "outofstock",
@@ -313,7 +313,7 @@ object ProductOf(List<Row> g, Dictionary<int, List<string>> cechy)
             ? new object[] { new { id = gid, name = head.GroupName ?? "", slug = "grupa-" + gid } }
             : Array.Empty<object>(),
         images = g.Where(x => x.HasImage)
-                  .Select(x => new { id = x.Id, src = $"{PublicBase}/gt-image/{x.Id}", alt = x.Name })
+                  .Select(x => new { id = x.Id, src = $"{PublicBase}/gt-image/{x.Id}{ImageUrlSignature.QuerySuffix(x.Id)}", alt = x.Name })
                   .ToArray(),
         attributes = new object[] { new { id = 0, name = "Wariant", position = 0, variation = true, visible = true,
                                          options = g.Select(x => x.Name).ToArray() } }
@@ -411,22 +411,26 @@ app.MapGet("/wp-json/wc/v3/products/{pid:int}/variations/{vid:int}", async (int 
 // --- ZAMOWIENIA: dokumenty ZK z Subiekta jako zamowienia WooCommerce ----------
 // GT nie ma znacznika modyfikacji dokumentu, wiec date_modified jest syntetyczna:
 // data wystawienia + numer dokumentu w sekundach. Monotoniczna, co wystarcza kursorowi.
-// #6-review fix: this used to filter `d.dok_Typ = 16`, an UNCONFIRMED numeric
-// code that OrdersEndpoints.cs's own file header and Invoicing.cs both
-// explicitly say was never established live - both of those instead filter
-// `dok_NrPelny LIKE 'ZK %'`, which IS confirmed live (#753's invoicing E2E
-// run). Two different filters for "is this a ZK" inside the SAME diff meant
-// the WC-shim order routes could silently match the wrong rows (or none) on
-// a real install where 16 turns out not to be ZK's code. Aligned to the
-// confirmed-live filter rather than the unconfirmed one.
-const string OrderSelect = @"
+// #3365: back to `dok_Typ`, now MEASURED rather than assumed.
+//
+// A #6 review moved this off `dok_Typ = 16` because that code "was never
+// established live", and aligned it with the `dok_NrPelny LIKE 'ZK %'` filter
+// the other two files used. Aligning them was right; the target was not. That
+// pattern matches a rendered, OPERATOR-EDITABLE numbering template and needs a
+// literal space, so on a customer numbering `ZK/18/2026` it matches nothing and
+// every one of these routes answers empty with HTTP 200.
+//
+// The query the header itself prescribed was finally run (see DocumentTypes.cs):
+// ZK is 16, one code, 41 rows, no overlap with any other prefix. All five sites
+// now share that one constant.
+string OrderSelect = $@"
 SELECT  d.dok_Id, d.dok_NrPelny, d.dok_DataWyst, d.dok_WartBrutto, d.dok_Status,
         k.kh_Id, k.kh_Symbol, k.kh_EMail,
         a.adr_Nazwa, a.adr_Ulica, a.adr_NrDomu, a.adr_Kod, a.adr_Miejscowosc, a.adr_NIP, a.adr_Telefon
 FROM    dok__Dokument d
 LEFT JOIN kh__Kontrahent k ON k.kh_Id = d.dok_PlatnikId
 OUTER APPLY (SELECT TOP 1 * FROM adr__Ewid WHERE adr_IdObiektu = k.kh_Id AND adr_TypAdresu = 1) a
-WHERE   d.dok_NrPelny LIKE 'ZK %'
+WHERE   d.dok_Typ = {DocumentTypes.Zk}
 ";
 
 static string Iso(DateTime d, int id) => d.Date.AddSeconds(id).ToString("yyyy-MM-ddTHH:mm:ss");
@@ -621,8 +625,17 @@ app.MapGet("/wp-json/wc/v3/taxes", async (HttpRequest req) =>
 });
 
 // Zdjecie towaru prosto z tw_ZdjecieTw (blob w bazie GT).
-app.MapGet("/gt-image/{towarId:int}", async (int towarId) =>
+app.MapGet("/gt-image/{towarId:int}", async (int towarId, HttpRequest imgReq) =>
 {
+    // #3365 - the only gate this route has. It is excluded from basic auth by
+    // an explicit carve-out and from the bearer gate because its path is not
+    // under /api, and it takes a SEQUENTIAL integer - so without this, anyone
+    // reaching port 5056 could count 1..N and take the whole image library.
+    // A header cannot be the answer: a browser and a marketplace fetch these
+    // URLs and neither attaches one. See ImageUrlSignature for what this does
+    // and, just as importantly, what it does not claim to do.
+    if (!ImageUrlSignature.IsValid(towarId, imgReq.Query[ImageUrlSignature.ParameterName]))
+        return Results.NotFound();
     await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(
@@ -644,31 +657,6 @@ app.MapGet("/wp-json/wc/v3/system_status", () => Results.Ok(new
 // WooCommerce-owy PUT /orders/{id}. Adapter WC w OL przysyla tylko {status} -
 // numer przesylki gubi po drodze, wiec przewoznika/paczkomat czytamy z meta_data
 // albo z pol wlasnych requestu, ktore przysle dopiero prawdziwy adapter Subiekta.
-
-/// <summary>Reads back the shipping block this bridge previously wrote, as label -> value.</summary>
-async Task<Dictionary<string, string>> ReadShippingBlock(int dokId)
-{
-    var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-    try
-    {
-        await using var c = new SqlConnection(BridgeConfig.ConnectionString);
-        await c.OpenAsync();
-        await using var cmd = new SqlCommand("SELECT dok_UwagiExt FROM dok__Dokument WHERE dok_Id = @id", c);
-        cmd.Parameters.AddWithValue("@id", dokId);
-        var raw = await cmd.ExecuteScalarAsync();
-        if (raw is null || raw is DBNull) return map;
-        foreach (var line in Convert.ToString(raw)!.Split('\n'))
-        {
-            var i = line.IndexOf(':');
-            if (i <= 0) continue;
-            var key = line[..i].Trim();
-            var val = line[(i + 1)..].Trim();
-            if (key.Length > 0 && val.Length > 0) map[key] = val;
-        }
-    }
-    catch { /* a merge is best-effort; never block the write */ }
-    return map;
-}
 
 app.MapPut("/wp-json/wc/v3/orders/{id:int}", async (int id, HttpRequest req) =>
 {
@@ -728,15 +716,9 @@ app.MapPut("/wp-json/wc/v3/orders/{id:int}", async (int id, HttpRequest req) =>
 
     // Merge, never overwrite. A caller that knows only the status (the WooCommerce
     // adapter sends exactly that) must not wipe the carrier, waybill and pickup
-    // point a previous, richer call already wrote.
-    var previous = await ReadShippingBlock(id);
-    if (info.Carrier == "")     info.Carrier     = previous.GetValueOrDefault("Przewoznik", "");
-    if (info.Tracking == "")    info.Tracking    = previous.GetValueOrDefault("Nr przesylki", "");
-    if (info.PickupPoint == "") info.PickupPoint = previous.GetValueOrDefault("Punkt odbioru", "");
-    if (info.TrackingUrl == "") info.TrackingUrl = previous.GetValueOrDefault("Sledzenie", "");
-    if (info.ShipmentRef == "") info.ShipmentRef = previous.GetValueOrDefault("Przesylka OL", "");
-    if (info.OrderRef == "")    info.OrderRef    = previous.GetValueOrDefault("Zamowienie OL", "");
-    if (info.Status == "")      info.Status      = previous.GetValueOrDefault("Status", "");
+    // point a previous, richer call already wrote. Shared with the native
+    // /api/orders/{id}/shipping route, which was missing it entirely.
+    await ShippingBlockMerge.FillBlanksFromDocument(id, info);
 
     try
     {

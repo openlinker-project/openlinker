@@ -28,16 +28,18 @@
 // *** NOT LIVE-VERIFIED - built with no access to run dotnet/sqlcmd on this
 // machine (sandboxed worktree). Three things below are UNCONFIRMED and must be
 // checked before first real use: ***
-//   1. DokDataKolumna (the watermark date column name) - a guess. Verify with:
-//      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-//      WHERE TABLE_NAME='dok__Dokument' AND COLUMN_NAME LIKE 'dok_Data%'
-//      and correct the constant below if it isn't dok_DataWyst.
-//   2. The ZK filter uses dok_NrPelny LIKE 'ZK %' rather than a dok_Typ code
-//      (deliberately - Invoicing.cs never established ZK's numeric dok_Typ,
-//      while 'ZK 18/2026'-style numbering IS confirmed live in this DB from the
-//      #753 invoicing E2E run). Prefer switching to dok_Typ once confirmed via:
-//      SELECT DISTINCT dok_Typ FROM dok__Dokument WHERE dok_NrPelny LIKE 'ZK %'
-//      (a numeric-code filter is index-friendlier than a LIKE on dok_NrPelny).
+//   1. DokDataKolumna (the watermark date column name) - CONFIRMED (#3365).
+//      INFORMATION_SCHEMA lists dok_DataWyst on dok__Dokument; the guess was
+//      right.
+//   2. The ZK filter - RESOLVED (#3365). It used dok_NrPelny LIKE 'ZK %'
+//      because the numeric dok_Typ had never been established. The query this
+//      note prescribed was run against the live DEMO database and answered
+//      ZK = 16, one code, 41 rows. All five sites in this project now share
+//      DocumentTypes.Zk. That matters more than index-friendliness: the LIKE
+//      pattern matches a rendered, OPERATOR-EDITABLE numbering template and
+//      needs a literal space, so on a customer numbering `ZK/18/2026` it
+//      matched nothing and the idempotency guard below silently minted a
+//      duplicate ZK on every retry.
 //   3. The line-items table/columns (pd__Pozycja, tw_Symbol/tw_Nazwa/pd_Ilosc/
 //      pd_WartoscBrutto, pd_DokumentId, pd_TowarId, dok_KontrahentId) follow this
 //      DB's double-underscore naming convention (dok__Dokument/kh__Kontrahent/
@@ -51,7 +53,12 @@ using Microsoft.Data.SqlClient;
 
 public static class OrdersEndpoints
 {
-    // UNCONFIRMED - see file header note 1.
+    // CONFIRMED (#3365) - see file header note 1, which this used to contradict
+    // by still saying UNCONFIRMED after the header was updated.
+    //
+    // It is a DATE OF ISSUE, not an event timestamp, so many ZK rows share one
+    // value - which is why the feed below pages on (date, id) rather than on the
+    // date alone. See ListOrderFeed.
     private const string DokDataKolumna = "dok_DataWyst";
 
     // One source of configuration for every file that talks to SQL - see
@@ -70,7 +77,7 @@ public static class OrdersEndpoints
     // failure looked identical and a caller had no way to tell "safe to
     // retry" from "must verify before retrying".
     private static IResult Fail(string code, string reason, int status = 422, string failureMode = "rejected") =>
-        Results.Json(new { success = false, data = (object?)null, error = new { code, reason, correlationId = (string?)null, failureMode } }, statusCode: status);
+        BridgeEnvelope.Fail(code, reason, status, failureMode);
 
     public static void MapOrdersEndpoints(this WebApplication app)
     {
@@ -110,8 +117,8 @@ public static class OrdersEndpoints
             // 500 sfera_error - misleading retry logic on the caller side
             // into treating a caller-supplied bad value as a transient
             // server failure.
-            if (since is { Length: > 0 } && !DateTime.TryParse(since, CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
-                return Fail("bad_request", $"'since' is not a parseable timestamp: '{since}'.", 400);
+            if (since is { Length: > 0 } && !TryParseCursor(since, out _, out _))
+                return Fail("bad_request", $"'since' is not a parseable cursor: '{since}'.", 400);
 
             try
             {
@@ -152,7 +159,7 @@ public static class OrdersEndpoints
 
             try
             {
-                var numer = Sfera.WriteShipping(id, new ShippingInfo
+                var info = new ShippingInfo
                 {
                     Carrier = body.Carrier ?? "",
                     Tracking = body.TrackingNumber ?? "",
@@ -161,7 +168,14 @@ public static class OrdersEndpoints
                     TrackingUrl = body.TrackingUrl ?? "",
                     ShipmentRef = body.ShipmentRef ?? "",
                     OrderRef = body.OrderRef ?? "",
-                });
+                };
+                // MERGE, never overwrite. Sfera.WriteShipping assigns both
+                // remarks fields, so without this a status-only write wiped the
+                // waybill a richer earlier write had recorded - and a
+                // shipped-then-cancelled sequence left only "Anulowane" behind.
+                // The shim route has always done this; this one did not.
+                await ShippingBlockMerge.FillBlanksFromDocument(id, info);
+                var numer = Sfera.WriteShipping(id, info);
                 return Ok(new WriteShippingResponse(numer));
             }
             catch (TimeoutException ex)
@@ -209,6 +223,41 @@ public static class OrdersEndpoints
                 var existingZk = await FindExistingZk(req.OrderRef);
                 if (existingZk is not null)
                     return new CreateOrderResponse(existingZk.Value.Id, existingZk.Value.Numer);
+            }
+
+            // TRANSITIONAL, and deliberately VERIFIED rather than trusted.
+            //
+            // OpenLinker used to send the source's own order number as OrderRef
+            // and now sends its internal order id, because a source order
+            // number is only unique WITHIN one shop: a PrestaShop order 1001
+            // and a WooCommerce order 1001 landing on one Subiekt collided, and
+            // the second sale silently got the first one's ZK back and was
+            // never written. The id is unique by construction.
+            //
+            // But an order whose create was mid-retry across that deploy was
+            // written under the OLD key and is invisible to the new one - which
+            // would mint exactly the duplicate this whole area exists to
+            // prevent. Hence this probe.
+            //
+            // The probe searches on the colliding value, so it CANNOT be
+            // trusted on its own without reopening the bug. It is accepted only
+            // when the document's gross total matches the request's, which two
+            // different shops' order 1001 will not do except by coincidence, and
+            // a coincidence there returns a document for the same money rather
+            // than a different sale's. That is strictly safer than the
+            // unverified match every call used to perform.
+            //
+            // REMOVABLE one release after every deployment has upgraded: drop
+            // this block and LegacyOrderRef together. Nothing else reads it.
+            if (req.LegacyOrderRef is { Length: > 0 } legacy && legacy != req.OrderRef)
+            {
+                var legacyZk = await FindExistingZk(legacy);
+                if (legacyZk is not null)
+                {
+                    var requested = req.Lines.Sum(l => l.WartoscBrutto);
+                    if (Math.Abs(legacyZk.Value.Gross - requested) <= 0.01m)
+                        return new CreateOrderResponse(legacyZk.Value.Id, legacyZk.Value.Numer);
+                }
             }
 
             // #3369 idempotency fix, part 2: EnsureKontrahent's existingId=0 path
@@ -268,6 +317,7 @@ public static class OrdersEndpoints
                 Uwagi = req.Uwagi ?? "",
                 Rezerwacja = false,
                 Waluta = req.Waluta ?? "",
+                MagazynId = req.MagazynId,
             };
             foreach (var line in req.Lines)
             {
@@ -285,53 +335,106 @@ public static class OrdersEndpoints
         });
     }
 
-    private static async Task<(int Id, string Numer)?> FindExistingZk(string orderRef)
+    private static async Task<(int Id, string Numer, decimal Gross)?> FindExistingZk(string orderRef)
     {
         await using var c = new SqlConnection(ConnStr);
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
-            "SELECT TOP 1 dok_Id, dok_NrPelny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_NrPelny LIKE 'ZK %'", c);
+            $"SELECT TOP 1 dok_Id, dok_NrPelny, dok_WartBrutto FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = {DocumentTypes.Zk}", c);
         cmd.Parameters.AddWithValue("@k", Trim30(orderRef));
         await using var r = await cmd.ExecuteReaderAsync();
         if (!await r.ReadAsync()) return null;
-        return (r.GetInt32(0), r.GetString(1).Trim());
+        return (r.GetInt32(0), r.GetString(1).Trim(), r.IsDBNull(2) ? 0m : r.GetDecimal(2));
     }
 
     /// <summary>dok_NrPelnyOryg is varchar(30) - refused outright past that length.</summary>
     private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
 
+    /// <summary>#3365 review: parse a feed cursor in EITHER form.
+    ///
+    /// The current form is composite - `{iso}|{dok_Id}` - because the watermark
+    /// column is a date of issue rather than an event timestamp, so many ZK rows
+    /// legitimately share one value and a date alone cannot say where a page
+    /// stopped inside that value.
+    ///
+    /// A bare timestamp is still accepted, because that is what every cursor
+    /// persisted before this change looks like. It resolves to id 0, which
+    /// deliberately RE-READS every row carrying that timestamp: under the old
+    /// strict `>` those rows were skipped, so re-reading them is the repair, not a
+    /// cost. Re-delivery is free - OL's `syncOrderFromSource` is an idempotent
+    /// update-or-create under a per-order lock.</summary>
+    private static bool TryParseCursor(string cursor, out DateTime watermark, out int lastId)
+    {
+        watermark = default;
+        lastId = 0;
+        var bar = cursor.LastIndexOf('|');
+        if (bar < 0)
+            return DateTime.TryParse(cursor, CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark);
+
+        return DateTime.TryParse(cursor[..bar], CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark)
+            && int.TryParse(cursor[(bar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out lastId);
+    }
+
+    private static string FormatCursor(DateTime watermark, int lastId) =>
+        watermark.ToString("o", CultureInfo.InvariantCulture) + "|" + lastId.ToString(CultureInfo.InvariantCulture);
+
     /// <summary>
-    /// Watermark-cursor page over ZK documents. 'since' is an ISO timestamp
-    /// (null = beginning); nextCursor is the max watermark seen in this page,
+    /// Keyset page over ZK documents, ordered by (issue date, document id).
+    ///
+    /// The id is not decoration. `dok_DataWyst` is the DATE a document was
+    /// issued, and in this database that is a day rather than an instant - so a
+    /// shop issuing more than `limit` orders in one day has more than `limit`
+    /// rows carrying the identical value. Paging on the date alone with a strict
+    /// `>` then walked the cursor past the whole of that day after the first
+    /// page, and every remaining order from it was never read again: not delayed,
+    /// LOST, with nothing anywhere to say so. Ordering by (date, id) and
+    /// comparing the pair is what makes the page boundary land between two rows
+    /// instead of in the middle of a group of equals.
+    ///
+    /// 'since' is null for the beginning; nextCursor is the last row of the page,
     /// or null when the page was empty.
     /// </summary>
     private static async Task<OrderFeedResponse> ListOrderFeed(string? since, int limit)
     {
+        DateTime watermark = default;
+        var lastId = 0;
+        var hasCursor = since is { Length: > 0 } && TryParseCursor(since, out watermark, out lastId);
+
         await using var c = new SqlConnection(ConnStr);
         await c.OpenAsync();
         var sql = $@"SELECT TOP (@limit) dok_Id, dok_NrPelny, {DokDataKolumna}
                      FROM dok__Dokument
-                     WHERE dok_NrPelny LIKE 'ZK %'
-                       AND (@since IS NULL OR {DokDataKolumna} > @since)
-                     ORDER BY {DokDataKolumna} ASC";
+                     WHERE dok_Typ = {DocumentTypes.Zk}
+                       AND (@since IS NULL
+                            OR {DokDataKolumna} > @since
+                            OR ({DokDataKolumna} = @since AND dok_Id > @sinceId))
+                     ORDER BY {DokDataKolumna} ASC, dok_Id ASC";
         await using var cmd = new SqlCommand(sql, c);
         cmd.Parameters.AddWithValue("@limit", limit);
-        cmd.Parameters.AddWithValue("@since", (object?)(since is null ? null : DateTime.Parse(since, CultureInfo.InvariantCulture)) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@since", hasCursor ? watermark : (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@sinceId", lastId);
 
         var items = new List<OrderFeedItem>();
+        DateTime lastWatermark = default;
+        var lastRowId = 0;
         await using (var r = await cmd.ExecuteReaderAsync())
         {
             while (await r.ReadAsync())
             {
                 var data = r.GetDateTime(2);
+                lastWatermark = data;
+                lastRowId = r.GetInt32(0);
                 items.Add(new OrderFeedItem(
-                    r.GetInt32(0),
+                    lastRowId,
                     r.GetString(1).Trim(),
                     data.ToString("o", CultureInfo.InvariantCulture)));
             }
         }
 
-        var nextCursor = items.Count > 0 ? items[^1].DataWystawienia : null;
+        // The cursor names the LAST ROW READ, not the highest date seen. Those are
+        // the same thing only when no two rows share a date, which is exactly the
+        // assumption that made the old cursor lose orders.
+        var nextCursor = items.Count > 0 ? FormatCursor(lastWatermark, lastRowId) : null;
         return new OrderFeedResponse(items, nextCursor);
     }
 
@@ -437,10 +540,30 @@ public sealed class CreateOrderRequest
     public OrderBuyerDto Buyer { get; set; } = new();
     public List<OrderLineDto> Lines { get; set; } = new();
     public string OrderRef { get; set; } = "";
+    /// <summary>The key a PRE-UPGRADE OpenLinker would have sent for this same
+    /// order - its source order number. Probed only when OrderRef finds
+    /// nothing, and only accepted when the gross totals match, because the
+    /// value is the colliding one this change moved away from. See the block
+    /// in CreateOrder for why, and for when it can be deleted.</summary>
+    public string? LegacyOrderRef { get; set; }
     public string? Uwagi { get; set; }
     /// <summary>ISO currency the line amounts are denominated in. Null/empty
     /// leaves the document on Subiekt's own default currency.</summary>
     public string? Waluta { get; set; }
+    /// <summary>#3365 - the warehouse this order will be released from.
+    ///
+    /// This property was MISSING while OpenLinker was already sending the
+    /// field: `ReadFromJsonAsync` skips unmapped members, so the value arrived
+    /// and was dropped on the floor, and `DocumentWarehouse.Apply(d,
+    /// req.MagazynId, "ZK")` in Sfera.CreateZk always saw null. The sender and
+    /// the consumer were both written; the wire shape between them was not -
+    /// the exact "reported is not enforced" gap this change set exists to
+    /// remove, one layer down.
+    ///
+    /// It matters beyond the ZK itself: EnsureWarehouseRelease builds the WZ
+    /// with NaPodstawie(zkId), so a ZK in the session's default warehouse and
+    /// a WZ naming another is the mismatch, not its absence.</summary>
+    public int? MagazynId { get; set; }
 }
 
 public sealed record CreateOrderResponse(int Id, string Numer);

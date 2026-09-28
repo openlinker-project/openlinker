@@ -79,7 +79,7 @@ public static class FiscalizationEndpoints
     // `error.reason`, so every rejected fiscalize call reported a generic
     // HTTP status with no real reason string on the caller side.
     private static IResult Fail(string code, string reason, int status = 422, string failureMode = "rejected") =>
-        Results.Json(new { success = false, data = (object?)null, error = new { code, reason, correlationId = (string?)null, failureMode } }, statusCode: status);
+        BridgeEnvelope.Fail(code, reason, status, failureMode);
 
     public static void MapFiscalizationEndpoints(this WebApplication app)
     {
@@ -122,7 +122,7 @@ public static class FiscalizationEndpoints
             // calls under the same idempotencyKey could both read "not
             // found" and both fiscalize, double-registering a real sale on
             // the physical device. Serialized per reduced key.
-            return await IdempotencyLock.RunExclusive(Trim30(body.IdempotencyKey), async () =>
+            return await IdempotencyLock.RunExclusive(Sfera.ReduceIdempotencyKey(body.IdempotencyKey), async () =>
             {
                 // --- idempotency pre-check (mirrors Invoicing.cs's FindByIdempotencyKey,
                 //     PA doctype = dok_Typ 21) ------------------------------------
@@ -155,8 +155,14 @@ public static class FiscalizationEndpoints
                         // creation, available since GT 1.12
                         // (Pomoc/gta.chm/SuDokumentyManager_DodajPAf.htm).
                         dynamic d = mgr.DodajPAf();
+                        // #3365 - a fiscal receipt moves stock like any other
+                        // sale document, so it names its warehouse too.
                         try
                         {
+                            // INSIDE the try - see the KFS site in Invoicing.cs
+                            // for why: a throw out here leaks an open Sfera
+                            // document on the single COM worker thread.
+                            DocumentWarehouse.Apply(d, body.MagazynId, "PAf");
                             d.LiczonyOdCenBrutto = true;
 
                             for (int i = 0; i < body.Lines.Count; i++)
@@ -182,7 +188,7 @@ public static class FiscalizationEndpoints
                                 try { d.KasaId = ksaId; } catch { /* best-effort, mirrors Invoicing.cs */ }
                             }
 
-                            d.NumerOryginalny = Trim30(body.IdempotencyKey);
+                            d.NumerOryginalny = Sfera.ReduceIdempotencyKey(body.IdempotencyKey);
 
                             // --- the fiscalization act itself ---------------------
                             d.RejestrujNaUF = true;                       // SuDokument_RejestrujNaUF.htm
@@ -279,7 +285,7 @@ public static class FiscalizationEndpoints
         // distinct dok_Typ before relying on this).
         await using var cmd = new SqlCommand(
             "SELECT TOP 1 dok_Id, dok_NrPelny, dok_StatusFiskal FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = 21", c);
-        cmd.Parameters.AddWithValue("@k", Trim30(key));
+        cmd.Parameters.AddWithValue("@k", Sfera.ReduceIdempotencyKey(key));
         await using var r = await cmd.ExecuteReaderAsync();
         if (!await r.ReadAsync()) return null;
         var (status, _) = MapFiscalStatus(r.IsDBNull(2) ? (int?)null : r.GetInt32(2));
@@ -296,7 +302,12 @@ public static class FiscalizationEndpoints
         return r is null || r is DBNull ? null : Convert.ToInt32(r);
     }
 
-    private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+    // #3440: the fiscal key core sends is `fiscal:{connectionId}:{orderId}`, about
+    // 85 characters. Truncating it to 30 kept `fiscal:` plus most of the connection
+    // id and threw the ORDER id away - so every registration on one connection
+    // shared one key, and the second sale of the day was reported as already
+    // registered and never reached the device. Reduce by hash instead; one
+    // definition, in Sfera.cs, so the three paths that need it cannot drift.
 }
 
 public sealed class FiscalizeLine
@@ -319,6 +330,9 @@ public sealed class FiscalizeRequest
     public List<FiscalizeLine> Lines { get; set; } = new();
     public int? StanowiskoKasoweId { get; set; }
     public int DrukarkaFiskalnaId { get; set; }
+    /// <summary>#3365 - the warehouse this receipt releases from. Null keeps
+    /// the pre-#3365 behaviour: the Sfera session decides.</summary>
+    public int? MagazynId { get; set; }
 }
 
 public sealed record FiscalizeResponse(int DocumentId, string DocumentNumber, string Status, int? RawStatusFiskalny);
