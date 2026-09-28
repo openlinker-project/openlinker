@@ -1928,3 +1928,63 @@ record file — currently `startSharedPrestashopContainer()` in
 `apps/api/test/integration/helpers/prestashop-container.helper.ts`.
 
 **Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+---
+
+## `internalOrderId` is `text` (`ol_order_{uuid}`), never a bare `uuid` column
+
+**Context**: the G03 orders-list epic (#3507) added `order_notes` and `order_tag_assignments`,
+each carrying an `internalOrderId` column, and both migrations declared it `uuid NOT NULL` — matching
+`authorUserId`/`assignedByUserId` right next to it, which really are uuids.
+
+**Problem**: an internal order id has the shape `ol_order_{uuid}` (`docs/architecture-overview.md §
+Identifier Mapping Service` — `ol_{prefix}_{uuid}`, stored as `TEXT`), so a real order id is not
+valid `uuid` input and every insert against a real order would fail with a Postgres type error. Every
+other reference to this exact column in the same context — `order_holds`, `order_changes`,
+`refund_records` — already types it `text`; the two new tables were the only ones that got it wrong,
+and nothing caught it because the integration test fixtures happened to use literal uuid-shaped
+strings as order ids, which pass a `uuid` column silently.
+
+**Rule**: when adding a column that stores an internal id (`internalOrderId`, `internalProductId`,
+etc.), grep the SAME entity type in a sibling table first (`grep -B2 'internalOrderId!:' libs/core/src/orders/infrastructure/persistence/entities/*.ts`)
+rather than inferring the column type from what LOOKS like a uuid in a test fixture. An internal id's
+wire format is `text`; only a genuine platform-native uuid (`users.id`, a Postgres-generated PK) is
+`uuid`.
+
+**Applies to**: any new ORM entity/migration carrying `internalOrderId`, `internalProductId`, or any
+other `ol_*`-prefixed internal id as a foreign-value column.
+
+**Source**: session-013 recovery pass on #3507 (G03), caught by code review before merge — no
+migration had shipped yet, so both were fixed in place rather than needing a follow-up migration.
+
+---
+
+## A migration backfill must copy application logic, never call it — and never lean on an optional Postgres extension for correctness
+
+**Context**: the `order_records.searchText` backfill migration (#3527) used PostgreSQL's `unaccent()`
+extension to normalize existing rows, reasoning that it was "close enough" to the application's own
+`deriveOrderSearchText`/`normalizeOrderSearchText`.
+
+**Problem**: two separate problems compound. First, `unaccent` is an optional contrib extension not
+guaranteed available on every managed Postgres, and even where installed its diacritic-folding table
+is NOT guaranteed byte-identical to the application's own normalizer — `normalizeOrderSearchText`'s
+own docblock names the exact trap (`ł`/`ø`/`ß`-class letters plain NFD does not decompose, which is
+why that function carries a hand-maintained `NON_DECOMPOSING_LETTERS` table `unaccent` may fold
+differently or not at all). Second, and more generally: any migration backfill that calls a database
+extension or re-derives logic separately from the application's own function is a SECOND
+implementation of that logic, which drifts the moment either side changes.
+
+**Rule**: a migration backfill of an application-derived column copies the application's pure
+function verbatim into the migration file (with a comment naming the source function and the
+migration that must be kept in sync), and runs it in TypeScript against pages of rows read with
+`SELECT`, never inside a bare SQL `UPDATE` calling a database extension. This is the same rule
+`1892000000000-inline-sales-document-rule-amounts.ts` already established for its own hash
+canonicalization ("the canonicalisation is COPIED, not imported... a migration has to reproduce the
+rule as it stands AT THE MOMENT IT RUNS") — apply it to a backfill's *value computation* too, not
+only to its hashing.
+
+**Applies to**: any migration backfilling a column that mirrors what an application-layer pure
+function computes.
+
+**Source**: session-013 recovery pass on #3507 (G03) review, fixed same-branch before the migration
+had run anywhere.
