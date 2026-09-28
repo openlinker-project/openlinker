@@ -838,6 +838,13 @@ describe('OrdersController', () => {
         // Tri-state, projected verbatim: `null` is "this provider does not
         // report catalogue linkage", which the fixture's record is.
         unlinkedCatalogueLines: null,
+        // Four-state, projected verbatim, and `null` is the honest answer for
+        // this fixture: the provider has no warehouse and was never asked. The
+        // NUMBER is legitimately absent on three of the four outcomes, which is
+        // why nothing downstream tests its nullability - only `'not-released'`
+        // is a claim. See `warehouseReleaseBadge`.
+        warehouseReleaseOutcome: null,
+        warehouseReleaseNumber: null,
       });
     });
 
