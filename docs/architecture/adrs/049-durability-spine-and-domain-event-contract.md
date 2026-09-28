@@ -149,12 +149,13 @@ That counter is deliberately **local, not Redis'**. `deliveriesCounter` is incre
 actual delivery (`XREADGROUP` / `XCLAIM`); the drain path is `XPENDING` + `XRANGE`, both pure reads,
 so keying the alarm on it would leave it unreachable on precisely the path where poison
 accumulates. What is deliberately *not* done is
-auto-dead-lettering: two of the three consumers cannot construct their dead-letter payload from a
-raw pending entry (the webhook handler needs a decoded event, job-intake a parsed job request), and
-discarding the entry instead would be unrecoverable loss. *Reversal gate (prose-only):* the first
-poison entry
-observed in production, or the Wave 5 spine (decision 1) removing the PEL from the durable path
-entirely.
+auto-dead-lettering: neither of the two remaining consumers can construct its dead-letter payload
+from a raw pending entry (the master-deletion handler needs a decoded event, job-intake a parsed
+job request), and discarding the entry instead would be unrecoverable loss. *Reversal gate
+(prose-only):* the first poison entry observed in production, or the Wave 5 spine (decision 1)
+removing the PEL from the durable path entirely. **Tracked as #2301, whose own acceptance criteria
+gate any fix on confirming that observation first — see the Amendment below for why that
+observation is harder than it sounds.**
 
 **Migration path:**
 - #2164 makes PEL entries recoverable (stable identity, startup drain, orphan reclaim).
@@ -217,6 +218,41 @@ This ADR's decisions govern OL's own durability spine. The PrestaShop module run
 
 **Where this does and does not touch the decisions above.** The module is not covered by decision 1 - it is a separate process writing to its own database, and its atomicity guarantee is local (the outbox row commits with the shop-side change). What it inherits is decision 4's shape: identity derived from the business fact, never minted at insert - and #2603 is precisely the story of what happens when the derivation smuggles a clock into it.
 
+
+## Amendment (#2301) — the poison-entry gate is half-fired, and "no alarm yet" is not sound evidence
+
+The reversal gate above names two conditions: the Wave 5 spine (decision 1) removing the PEL from
+the durable path, or the first poison entry observed in production. #2280 fired the first
+condition **only for the webhook path** — see the #2280 amendment above. The `master-deletion` and
+`job-intake` consumers still carry a PEL and the gap remains open for both; #2301 tracks it and is
+**deliberately gated**, not ready to build, pending an answer to its own first acceptance
+criterion: *"Determine whether `MAX_RECOVERY_ATTEMPTS` has been crossed in production; record the
+finding on this issue."*
+
+That determination requires production log/metrics access this repository's own tooling does not
+provide, and was not answered by this pass (#3508) for exactly that reason — it is recorded here as
+still open rather than guessed at. What this pass DID find, from static analysis alone, is a reason
+the eventual answer needs care in how it is read: **`RecoveryAttemptTracker` is an in-memory `Map`
+scoped to one process's instance of the owning consumer service** (`libs/shared/src/redis/stream-
+consumer.ts`), so its count resets to zero on every worker restart. The alarm requires ten
+*consecutive* failed recovery attempts within **one process's lifetime** — not ten failures across
+the entry's whole poisoned history. An entry that fails eight times, survives a deploy, and resumes
+failing in the new process never crosses the threshold in either process, and on a worker that
+restarts more often than a poison entry's drain cadence produces ten attempts, the alarm can
+structurally never fire even for a genuinely stuck entry. So "the alarm has never logged" is
+necessary but not sufficient evidence that #2301's first condition ("has it ever been crossed") is
+false — a durable, cross-restart count (e.g. Redis-backed, keyed by entry id) would answer the
+question soundly, but implementing one is exactly the kind of fix #2301 explicitly defers until the
+gate fires, so it is not done here. `RecoveryAttemptTracker`'s own docblock now carries this same
+caveat, so a future reader investigating the gate meets it at the source rather than only here.
+
+Two stale references this pass also corrected while reading the code for this investigation: both
+consumer files' "two of the three consumers" comments (a count that predates #2280/#2300 retiring
+the webhook consumer group entirely) and `stream-consumer.ts`'s own module header, which still
+described the webhook path as "retired by #2280; only its one-shot upgrade drain still reads that
+group" — that drain shipped in v0.8.0 and was itself deleted by #2300. Both now state that exactly
+two consumer groups remain (`master-deletion-offer-pause`, `job-intake`) and that the
+`webhook-handler` group has no reader anywhere in the tree.
 
 ## References
 

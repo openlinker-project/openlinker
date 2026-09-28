@@ -2,21 +2,31 @@
  * Redis Stream Consumer Primitives
  *
  * Recovery primitives shared by every Redis Streams consumer group in the system
- * (#2164). Three consumers — the webhook-to-job handler in `apps/api` (retired
- * by #2280; only its one-shot upgrade drain still reads that group), the
- * master-deletion handler and the job-intake consumer in `apps/worker` — each
- * ran a structurally identical `XREADGROUP ... '>'` loop that could never reach
- * its own Pending Entries List. A process killed between read and ACK lost its
- * in-flight message permanently, and on the webhook path the `webhook_deliveries`
- * row still read `published`, so a dropped order looked like a delivered one.
+ * (#2164). Originally three consumers — the webhook-to-job handler in
+ * `apps/api`, the master-deletion handler and the job-intake consumer in
+ * `apps/worker` — each ran a structurally identical `XREADGROUP ... '>'` loop
+ * that could never reach its own Pending Entries List. A process killed
+ * between read and ACK lost its in-flight message permanently, and on the
+ * webhook path the `webhook_deliveries` row still read `published`, so a
+ * dropped order looked like a delivered one.
  *
- * This module supplies only the three primitives that fix it — stable identity,
- * own-history drain, and orphan reclaim — deliberately NOT a base class or a
- * unified loop. The three consumers differ materially (job-intake dead-letters
- * to a database row rather than a stream; the webhook handler runs a shutdown
- * drain; batch sizes and ACK semantics differ), so extracting the shared
- * primitives fixes the defect at single-source without rewriting three live
- * consumers.
+ * **Only TWO of the three remain (#2301).** #2280 moved the webhook path onto
+ * the durable-spine design (ADR-049 decision 1): routing now runs at ingress
+ * and a webhook-derived job commits straight to `sync_jobs` inside the gate
+ * transaction, so that path no longer transits a Redis stream at ALL — there
+ * is nothing left for this module's primitives to recover there. Its one-shot
+ * upgrade drain (`LegacyInboundWebhookDrain`, which read the retired
+ * `webhook-handler` group's pre-#2280 backlog through the new path) shipped in
+ * v0.8.0 and was itself deleted by #2300 once the backlog it existed to drain
+ * had run its course. The `webhook-handler` consumer group therefore has no
+ * reader anywhere in this codebase today.
+ *
+ * This module supplies only the three primitives that fix the remaining gap —
+ * stable identity, own-history drain, and orphan reclaim — deliberately NOT a
+ * base class or a unified loop. The two live consumers differ materially
+ * (job-intake dead-letters to a database row rather than a stream; batch
+ * sizes and ACK semantics differ), so extracting the shared primitives fixes
+ * the defect at single-source without rewriting both consumers identically.
  *
  * Written dependency-free (Node built-ins only, structural client typing) so it
  * can move to a dedicated package subpath later without any consumer change.
@@ -220,6 +230,23 @@ export interface RecoveryLogger {
  * per entry rather than on every pass: a poison entry recurs by definition, so
  * an unguarded `error` line per pass is alert fatigue on the channel meant to
  * carry real incidents.
+ *
+ * **Observability caveat (#2301), load-bearing for reading the alarm's
+ * silence.** This counter is an in-memory `Map` on ONE process's instance of
+ * the owning consumer service — it holds no state across a worker restart.
+ * An entry stuck failing for, say, 8 consecutive attempts that then survives
+ * a deploy resets to 0 in the new process and starts counting again; ten
+ * consecutive FAILURES WITHIN ONE PROCESS LIFETIME is what the alarm
+ * requires, not ten failures total. On a worker that restarts more often
+ * than a poison entry's drain cadence produces ten attempts, this alarm can
+ * structurally never fire even for a genuinely stuck entry. So "the alarm
+ * has never fired" is NOT sound evidence that no poison entry has ever
+ * existed — ADR-049's stated reversal-gate check ("confirm whether
+ * `MAX_RECOVERY_ATTEMPTS` has ever been crossed in a real deployment", #2301)
+ * needs to account for this before treating a silent alarm as a clean
+ * answer. Making the counter durable (e.g. a Redis-backed count keyed by
+ * entry id) is exactly the kind of change #2301 explicitly defers to a
+ * decision made once the gate fires, so it is deliberately NOT done here.
  */
 export class RecoveryAttemptTracker {
   private readonly failures = new Map<string, number>();
