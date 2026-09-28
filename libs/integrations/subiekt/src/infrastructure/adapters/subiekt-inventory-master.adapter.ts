@@ -91,6 +91,12 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
      * reported as one rather than silently returning no stock.
      */
     private readonly readModelMembers?: (modelId: number) => Promise<string[]>,
+    /**
+     * Whether this towar has since JOINED a model - the inventory-side twin of
+     * `SubiektProductMasterAdapter.assertStillAProduct`. Optional so an adapter
+     * built without it behaves exactly as it did before the guard existed.
+     */
+    private readonly readModelIdForSymbol?: (symbol: string) => Promise<number | null>,
   ) {}
 
   /**
@@ -151,6 +157,70 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
   }
 
   /**
+   * Refuse to answer for a towar that has since joined a model.
+   *
+   * The inventory-side twin of `SubiektProductMasterAdapter.assertStillAProduct`,
+   * and it exists because that guard covered only half the system. The product
+   * master stopped serving a modelled towar as a standalone product and raised
+   * `MasterProductNotFoundError`, which stales its variants. The inventory
+   * master kept answering for the same mapping, and
+   * `MasterInventorySyncService`'s lone-variant fallback then wrote a LIVE
+   * `inventory_items` row against the variant the products side had just
+   * staled - resurrecting it on every tick.
+   *
+   * Measured on the demo stand before this shipped: six ghost positions across
+   * two models, ~2 991 phantom units, refreshed minutes apart, while the
+   * products side reported the same six towary `master_deleted` thirty times in
+   * three hours. One system, two answers, and only the wrong one succeeded.
+   *
+   * The enumeration is what keeps this reachable rather than historical: the
+   * inventory sweep walks OpenLinker's OWN `Product` mappings, and
+   * `markProductDeletedAtMaster` deliberately never deletes one - so a towar
+   * that joined a model stays on the work list for ever.
+   *
+   * ## It fails OPEN, and that is the load-bearing half
+   *
+   * No reader wired, an unreadable answer, or a towar the map does not mention
+   * all mean "not a member", so an ordinary standalone towar can never be
+   * turned into a false deletion by this guard. That direction matters more
+   * than the one being fixed: a false deletion DOES reach
+   * `marketplace.offer.pauseStale` and would zero live offers, whereas the
+   * ghost it removes is a row no offer is mapped to.
+   *
+   * ## Why raising here cannot pause a live offer
+   *
+   * `MasterInventorySyncService.handleMasterDeletion` delegates to
+   * `markProductDeletedAtMaster`, which stales the orphan's variants and emits
+   * `master.product.stale` only when it actually staled something. The orphan's
+   * lone variant is ALREADY stale, so nothing is marked, the event does not
+   * fire, and no pause job is enqueued. What does run is the empty-keep-set
+   * prune, which stales the ghost row - so the existing six repair themselves
+   * on the next tick with no migration and no backfill script.
+   */
+  private async assertNotAModelMember(productId: string, symbol: string): Promise<void> {
+    if (!this.readModelIdForSymbol) return;
+    let modelId: number | null;
+    try {
+      modelId = await this.readModelIdForSymbol(symbol);
+    } catch (error: unknown) {
+      // An unreadable answer is not evidence that the towar was regrouped.
+      this.logger.warn(
+        `subiekt_model_membership_unreadable symbol=${symbol} productId=${productId} ` +
+          `connection=${this.connectionId} — serving its stock as a standalone towar: ` +
+          `${(error as Error).message}`,
+      );
+      return;
+    }
+    if (modelId === null) return;
+    this.logger.log(
+      `subiekt_towar_became_variant symbol=${symbol} modelId=${modelId} productId=${productId} ` +
+        `connection=${this.connectionId} — reporting it deleted at the master so its stale ` +
+        `inventory row is pruned; its stock now belongs to model ${modelId}.`,
+    );
+    throw new MasterProductNotFoundError(productId, this.connectionId);
+  }
+
+  /**
    * The towar symbols this product's stock is kept under: one for an ordinary
    * towar, N for a model.
    *
@@ -162,7 +232,10 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
   ): Promise<{ symbols: string[]; isModel: boolean }> {
     const key = await this.resolveTowarSymbol(productId);
     const modelId = modelIdFromProductKey(key);
-    if (modelId === null) return { symbols: [key], isModel: false };
+    if (modelId === null) {
+      await this.assertNotAModelMember(productId, key);
+      return { symbols: [key], isModel: false };
+    }
     if (!this.readModelMembers) {
       throw new SubiektConfigException(
         `Product ${productId} is keyed by Subiekt model ${modelId}, but this adapter was built ` +

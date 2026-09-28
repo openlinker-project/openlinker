@@ -584,3 +584,142 @@ describe('SubiektInventoryMasterAdapter', () => {
     });
   });
 });
+
+/**
+ * The inventory-side twin of `assertStillAProduct` (#3365 audit).
+ *
+ * The product master already refuses to serve a towar that has since joined a
+ * model. The inventory master did not, so `MasterInventorySyncService`'s
+ * lone-variant fallback wrote a LIVE `inventory_items` row against the variant
+ * the products side had just staled - on every tick. Measured on the demo
+ * stand before this shipped: six ghost positions, ~2 991 phantom units, while
+ * the products side reported the same six towary `master_deleted` thirty times
+ * in three hours.
+ *
+ * BOTH arms are asserted. The refusal is the fix; the pass-through is what
+ * stops the fix from being worse than the bug, because a FALSE deletion does
+ * reach `marketplace.offer.pauseStale` and would zero live offers.
+ */
+describe('SubiektInventoryMasterAdapter — a towar that joined a model', () => {
+  const CONN = 'conn-guard';
+  const ORPHAN_PRODUCT = 'ol_product_orphan';
+
+  function build(readModelIdForSymbol?: (symbol: string) => Promise<number | null>) {
+    const bridge = {
+      getStock: jest.fn().mockResolvedValue({
+        towarSymbol: 'WOBLACK100',
+        positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 512, stanRez: 0 }],
+        domyslnyMagazynId: 1,
+      }),
+      adjust: jest.fn(),
+      listWarehouses: jest.fn(),
+    };
+    const mapping = {
+      getExternalIds: jest.fn().mockResolvedValue([
+        {
+          externalId: 'WOBLACK100',
+          platformType: 'subiekt-gt',
+          connectionId: CONN,
+          entityType: 'Product',
+        },
+      ]),
+      getOrCreateInternalId: jest.fn().mockResolvedValue('ol_variant_x'),
+    } as unknown as jest.Mocked<IdentifierMappingPort>;
+    const log: jest.Mocked<LoggerPort> = {
+      log: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
+    const adapter = new SubiektInventoryMasterAdapter(
+      bridge as unknown as SubiektInventoryBridgeClient,
+      mapping,
+      CONN,
+      log,
+      undefined,
+      undefined,
+      readModelIdForSymbol,
+    );
+    return { adapter, bridge, log };
+  }
+
+  it('refuses to report stock for a towar the bridge says is now a model member', async () => {
+    const { adapter, bridge } = build(() => Promise.resolve(1));
+    await expect(adapter.listInventory(ORPHAN_PRODUCT)).rejects.toBeInstanceOf(
+      MasterProductNotFoundError,
+    );
+    // And it refuses BEFORE spending a bridge read on stock it will not use.
+    expect(bridge.getStock).not.toHaveBeenCalled();
+  });
+
+  // The arm that stops this being worse than the bug it fixes. An ordinary
+  // standalone towar must keep resolving, or the guard turns every one of them
+  // into a false deletion - and THAT path reaches the offer pause.
+  it('resolves normally when the bridge reports the towar belongs to no model', async () => {
+    const { adapter } = build(() => Promise.resolve(null));
+    const inventory = await adapter.listInventory(ORPHAN_PRODUCT);
+    expect(inventory).toHaveLength(1);
+    expect(inventory[0]?.available).toBe(512);
+  });
+
+  // Fails OPEN on every absence, for the same reason.
+  it('resolves normally when no membership reader is wired at all', async () => {
+    const { adapter } = build(undefined);
+    const inventory = await adapter.listInventory(ORPHAN_PRODUCT);
+    expect(inventory).toHaveLength(1);
+  });
+
+  it('resolves normally, with a warning, when the membership read throws', async () => {
+    const { adapter, log } = build(() => Promise.reject(new Error('bridge said no')));
+    const inventory = await adapter.listInventory(ORPHAN_PRODUCT);
+    expect(inventory).toHaveLength(1);
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('subiekt_model_membership_unreadable'),
+    );
+  });
+
+  // A model-KEYED product is not a member of anything; the guard must not fire
+  // on the very shape the model path exists to serve.
+  it('does not ask about membership for a product already keyed by its model', async () => {
+    const readModelIdForSymbol = jest.fn().mockResolvedValue(1);
+    const bridge = {
+      getStock: jest.fn().mockResolvedValue({
+        towarSymbol: 'WOBLACK100',
+        positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 5, stanRez: 0 }],
+        domyslnyMagazynId: 1,
+      }),
+      adjust: jest.fn(),
+      listWarehouses: jest.fn(),
+    };
+    const mapping = {
+      getExternalIds: jest.fn().mockImplementation((entityType: string) =>
+        Promise.resolve(
+          entityType === 'Product'
+            ? [
+                {
+                  externalId: 'model:1',
+                  platformType: 'subiekt-gt',
+                  connectionId: CONN,
+                  entityType: 'Product',
+                },
+              ]
+            : [],
+        ),
+      ),
+      getOrCreateInternalId: jest.fn().mockResolvedValue('ol_variant_x'),
+      getInternalId: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IdentifierMappingPort>;
+    const adapter = new SubiektInventoryMasterAdapter(
+      bridge as unknown as SubiektInventoryBridgeClient,
+      mapping,
+      CONN,
+      { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
+      undefined,
+      () => Promise.resolve(['WOBLACK100']),
+      readModelIdForSymbol,
+    );
+
+    await adapter.listInventory('ol_product_model');
+    expect(readModelIdForSymbol).not.toHaveBeenCalled();
+  });
+});

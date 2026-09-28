@@ -835,6 +835,36 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     }
   }
 
+  /**
+   * The model this towar now belongs to, or `null` when it is still a product
+   * of its own.
+   *
+   * Public for the same reason `readModelMemberSymbols` is, and for the
+   * opposite direction: `assertStillAProduct` already refuses to serve a
+   * modelled towar as a standalone product, and its docblock says why - two
+   * OpenLinker products claiming one towar, both syncing, both publishable,
+   * the operator's stock split between them. The INVENTORY master had no such
+   * guard, so it kept answering for the orphan and writing a live
+   * `inventory_items` row against a variant the products side had already
+   * staled. Measured on the demo stand: six ghost positions, ~2 991 phantom
+   * units, refreshed on every tick, while the products side reported the same
+   * six towary `master_deleted` thirty times in three hours.
+   *
+   * Backed by the same `/api/models` walk `listProductKeys` uses and served
+   * through the per-instance GET memo, so a sweep page that resolves one
+   * adapter pays for it once rather than once per product.
+   *
+   * An empty map answers `null` for everything, which is the honest reading of
+   * both cases that produce one: an install where the operator groups nothing,
+   * and a bridge too old to serve the route. Both mean "no towar is a variant"
+   * - the pre-model behaviour - so this can only ever fail OPEN, never turn an
+   * ordinary standalone towar into a false deletion.
+   */
+  async readModelIdForSymbol(symbol: string): Promise<number | null> {
+    const symbolToModelId = await this.readSymbolToModelId();
+    return symbolToModelId.get(symbol) ?? null;
+  }
+
   /** Internal id -> external symbol, via the connection's own mapping. `null` when unmapped (caller decides deleted vs. never-synced). */
   private async resolveExternalSymbol(internalProductId: string): Promise<string | null> {
     const externalIds = await this.identifierMapping.getExternalIds(

@@ -112,6 +112,14 @@ export class SubiektAdapterFactory {
         // which towary a model holds. One bound question rather than the whole
         // product adapter, so it cannot start reaching for a second capability.
         (modelId: number) => productMaster.readModelMemberSymbols(modelId),
+        // The inventory-side twin of `assertStillAProduct` (#3365 audit). The
+        // product master already refuses to serve a towar that joined a model;
+        // without this the inventory master kept answering for the same
+        // mapping and resurrected the variant the products side had staled.
+        // Bound to the SAME product-master instance, so the `/api/models` walk
+        // it needs is served from that adapter's per-instance GET memo - one
+        // walk per resolved adapter, not one per product.
+        (symbol: string) => productMaster.readModelIdForSymbol(symbol),
       ),
       orderSource: new SubiektOrderSourceAdapter(ordersClient, logger, identifierMapping, connection.id),
       orderProcessor: new SubiektOrderProcessorAdapter(
