@@ -25,6 +25,7 @@ import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
 import type { IUserManagementService } from '../../../users/user-management.service.interface';
+import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
 import {
   BenchParcelNotAtThisBenchError,
@@ -94,6 +95,8 @@ function harness(options: {
   complete?: jest.Mock;
   undoCompletion?: jest.Mock;
   claimAssignment?: jest.Mock;
+  /** #3525 */
+  notifyParcelClosed?: jest.Mock;
 }) {
   const work = options.work ?? workView();
 
@@ -185,6 +188,10 @@ function harness(options: {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
   } as unknown as IUserManagementService;
 
+  const parcelClosureNotifier = {
+    notifyParcelClosed: options.notifyParcelClosed ?? jest.fn().mockResolvedValue(undefined),
+  } as unknown as IFulfillmentParcelClosureNotifier;
+
   return {
     service: new BenchParcelService(
       executors,
@@ -194,11 +201,13 @@ function harness(options: {
       products,
       shipments,
       inventory,
-      users
+      users,
+      parcelClosureNotifier
     ),
     verification,
     orders,
     worklist,
+    parcelClosureNotifier,
   };
 }
 
@@ -698,6 +707,73 @@ describe('BenchParcelService (#2418)', () => {
       expect(markPacked).toHaveBeenCalled();
       expect(result.outcome).toBe('verified');
       expect(result.parcel.closedAt).not.toBeNull();
+    });
+  });
+
+  /**
+   * #3525 — the bench's automatic close is one of the two paths that never
+   * reported fulfilment progress or notified the order's channel. This block
+   * covers the OTHER path — the desktop worklist's manual `close` action —
+   * against `FulfillmentWorkController`'s own spec.
+   */
+  describe('#3525 — closing the parcel notifies the channel', () => {
+    it('notifies the channel with the CLOSING instant when this verification closed the parcel', async () => {
+      const closedAt = new Date('2026-09-04T10:00:00Z');
+      const { service, verification, parcelClosureNotifier } = harness({});
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt, packedByUserId: 'user-1' }),
+      });
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      // The default fixture's `assignedConnectionId` is `EXECUTOR_ID` —
+      // `loadBenchWork` refuses any work not assigned to one of this
+      // bench's own packing executors, so it is always non-null here.
+      expect(parcelClosureNotifier.notifyParcelClosed).toHaveBeenCalledWith({
+        workId: 'work-1',
+        connectionId: EXECUTOR_ID,
+        closedAt,
+      });
+    });
+
+    it('notifies NOTHING when the verification did not close the parcel', async () => {
+      const { service, verification, parcelClosureNotifier } = harness({});
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt: null }),
+      });
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(parcelClosureNotifier.notifyParcelClosed).not.toHaveBeenCalled();
+    });
+
+    it('notifies NOTHING for a deduplicated gesture', async () => {
+      const { service, verification, parcelClosureNotifier } = harness({});
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'deduplicated',
+        state: state({ closedAt: new Date('2026-09-04T10:00:00Z') }),
+      });
+
+      await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(parcelClosureNotifier.notifyParcelClosed).not.toHaveBeenCalled();
     });
   });
 
