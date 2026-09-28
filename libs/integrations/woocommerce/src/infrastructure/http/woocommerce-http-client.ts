@@ -9,6 +9,14 @@
  * Retry loop: exponential backoff for 429 and 5xx responses. Non-retryable
  * status codes (401, 403, 404) throw typed domain exceptions immediately.
  *
+ * **Retry asymmetry (guards duplicate writes, #3469).** `429` always
+ * retries — WooCommerce did NOT process the request. An ambiguous `5xx` or a
+ * network/timeout error retries only when the call is idempotent: `GET` /
+ * `PUT` / `DELETE` always are; `POST` is only when the caller opts in via
+ * `WooCommerceRequestOptions.idempotent` (unused by any call site today —
+ * every `post` is a genuine create, e.g. order create, and a blind retry
+ * after a committed-but-lost response would book it twice).
+ *
  * SSRF redirect guard (#969): the config-time `IsSsrfSafeUrlConstraint` only
  * validates the configured `siteUrl`. `fetch` follows redirects by default, so
  * a validated https store URL could be 302'd to `http://10.0.0.5` at request
@@ -19,7 +27,7 @@
  * @module libs/integrations/woocommerce/src/infrastructure/http
  */
 import type { RetryConfig } from './woocommerce-http-client.types';
-import type { IWooCommerceHttpClient } from './woocommerce-http-client.interface';
+import type { IWooCommerceHttpClient, WooCommerceRequestOptions } from './woocommerce-http-client.interface';
 import type { FetchLike } from '@openlinker/shared/http';
 import { WooCommerceUnauthorizedException } from '../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../domain/exceptions/woocommerce-network.exception';
@@ -80,17 +88,19 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
       : '';
     const separator = qs ? (path.includes('?') ? '&' : '?') : '';
     const url = `${this.siteUrl}${path}${separator}${qs}`;
-    return this.request<T>('GET', url);
+    // GET is idempotent by HTTP semantics — always safe to retry.
+    return this.request<T>('GET', url, undefined, 0, true);
   }
 
-  async post<T>(path: string, body: unknown): Promise<T> {
+  async post<T>(path: string, body: unknown, options?: WooCommerceRequestOptions): Promise<T> {
     const url = `${this.siteUrl}${path}`;
-    return this.request<T>('POST', url, body);
+    return this.request<T>('POST', url, body, 0, options?.idempotent === true);
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
     const url = `${this.siteUrl}${path}`;
-    return this.request<T>('PUT', url, body);
+    // PUT is idempotent by HTTP semantics — always safe to retry.
+    return this.request<T>('PUT', url, body, 0, true);
   }
 
   async delete<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
@@ -99,14 +109,21 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
       : '';
     const separator = qs ? (path.includes('?') ? '&' : '?') : '';
     const url = `${this.siteUrl}${path}${separator}${qs}`;
-    return this.request<T>('DELETE', url);
+    // DELETE is idempotent by HTTP semantics — always safe to retry.
+    return this.request<T>('DELETE', url, undefined, 0, true);
   }
 
+  /**
+   * @param idempotent - Whether an ambiguous 5xx or network/timeout error is
+   *   safe to auto-retry (#3469). `429` is always retried regardless — see
+   *   the class-level docblock.
+   */
   private async request<T>(
     method: string,
     url: string,
-    body?: unknown,
-    redirectCount = 0,
+    body: unknown,
+    redirectCount: number,
+    idempotent: boolean,
   ): Promise<T> {
     let delay = this.retryConfig.initialDelayMs;
 
@@ -134,7 +151,7 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
 
         // 3xx with a Location — SSRF-guard the target before following it.
         if (response.status >= 300 && response.status < 400) {
-          return this.followRedirect<T>(response, method, url, body, redirectCount);
+          return this.followRedirect<T>(response, method, url, body, redirectCount, idempotent);
         }
 
         if (response.ok) {
@@ -160,8 +177,11 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           );
         }
 
-        // Only retry 429 (rate limit) and 5xx (server errors)
-        const isRetryable = response.status === 429 || response.status >= 500;
+        // 429 (rate limit) always retries — WooCommerce did not process the
+        // request. An ambiguous 5xx (may have committed server-side) retries
+        // only when the call is idempotent (#3469).
+        const isRetryable =
+          response.status === 429 || (response.status >= 500 && idempotent);
         if (isRetryable && attempt < this.retryConfig.maxRetries) {
           await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
           delay *= this.retryConfig.backoffMultiplier;
@@ -188,14 +208,20 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           throw new WooCommerceNetworkException('WooCommerce request timed out', err as Error);
         }
 
-        if (attempt < this.retryConfig.maxRetries) {
+        // A network error is ambiguous — the request may have reached
+        // WooCommerce and committed. Retry only when the call is idempotent
+        // (#3469); a non-idempotent POST/PATCH surfaces immediately instead
+        // of blindly re-sending a create that may have already succeeded.
+        if (idempotent && attempt < this.retryConfig.maxRetries) {
           await this.sleep(Math.min(delay, this.retryConfig.maxDelayMs));
           delay *= this.retryConfig.backoffMultiplier;
           continue;
         }
 
         throw new WooCommerceNetworkException(
-          `WooCommerce network error after ${this.retryConfig.maxRetries} retries`,
+          idempotent
+            ? `WooCommerce network error after ${this.retryConfig.maxRetries} retries`
+            : `WooCommerce network error (not retried — non-idempotent call): ${(err as Error).message}`,
           err as Error,
         );
       } finally {
@@ -219,6 +245,7 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
     fromUrl: string,
     body: unknown,
     redirectCount: number,
+    idempotent: boolean,
   ): Promise<T> {
     const location = response.headers.get('location');
     if (!location) {
@@ -253,7 +280,7 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
       );
     }
 
-    return this.request<T>(method, target.toString(), body, redirectCount + 1);
+    return this.request<T>(method, target.toString(), body, redirectCount + 1, idempotent);
   }
 
   /**
