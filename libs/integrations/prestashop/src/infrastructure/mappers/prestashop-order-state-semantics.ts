@@ -41,7 +41,8 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  */
-import type { OrderStatus } from '@openlinker/core/orders';
+import type { OrderStatus, PaymentStatus } from '@openlinker/core/orders';
+import { PAYMENT_STATUS } from '@openlinker/core/orders';
 
 import type { PrestashopOrderState } from '../../domain/types/prestashop-options.types';
 
@@ -227,6 +228,52 @@ export function deriveOrderState(state: PrestashopOrderState): OrderStateDerivat
  */
 export function deriveOrderStatusFromState(state: PrestashopOrderState): OrderStatus {
   return deriveOrderState(state).status;
+}
+
+/**
+ * What this state says about the MONEY, read from the same row.
+ *
+ * ## Why this exists
+ *
+ * `PrestashopOrderSourceAdapter` reported no `paymentStatus` at all, and on a
+ * connection whose `triggerModel` is `auto-on-paid` the gate reads exactly that
+ * field (`order.paymentStatus === 'paid'`). So every PrestaShop order was
+ * `waiting` for ever: no invoice, no receipt, no warehouse release, and
+ * therefore no stock movement either - silently, with no block reason, because
+ * "not paid yet" is legitimately not a block. Measured on the demo stack:
+ * 150 PrestaShop orders, 18 WooCommerce, 28 Subiekt, every one of them with a
+ * null payment status, against 95 Allegro orders reading `paid`.
+ *
+ * ## It is derived INDEPENDENTLY of the status, not from it
+ *
+ * `deriveOrderState` puts `delivered` and `shipped` first because those flags
+ * beat everything for a STATUS. They must not do so here: a cash-on-delivery
+ * parcel ships and is delivered while still unpaid, so inferring payment from
+ * shipment would report money the seller has not received.
+ *
+ * ## `'awaiting'` is evidence, `'cod'` would be a guess
+ *
+ * `paid` is PrestaShop's own flag on its own state row, so its ABSENCE is the
+ * shop saying the order is not settled - a fact, not an inference, which is why
+ * this returns `'awaiting'` rather than nothing. `'cod'` is deliberately never
+ * returned: `ps_order_state` carries no such flag, the payment method lives on
+ * the order as free text written by whichever module handled it, and reading it
+ * across languages and modules would be exactly the id-table guessing #2607
+ * removed. A COD order that has not been paid reads `'awaiting'`, which is
+ * true.
+ *
+ * A refund-labelled state reports `'refunded'` and is tested FIRST, because
+ * PrestaShop leaves `paid` set on a refunded order - the money did arrive, and
+ * then went back.
+ */
+export function derivePaymentStatusFromState(state: PrestashopOrderState): PaymentStatus {
+  if (isRefundedOrderState(state)) {
+    return PAYMENT_STATUS.Refunded;
+  }
+  if (isTruthyStateFlag(state.paid)) {
+    return PAYMENT_STATUS.Paid;
+  }
+  return PAYMENT_STATUS.Awaiting;
 }
 
 /**

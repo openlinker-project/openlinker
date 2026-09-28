@@ -540,6 +540,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     // cancelled state is no longer swept into it.
     const orderStates = await this.orderStates.load();
     const status = orderStates.statusOf(prestashopOrder.current_state) ?? 'pending';
+    // Read from the SAME state row (#3365). Before this the adapter reported no
+    // payment status at all, and an `auto-on-paid` connection reads exactly
+    // that field - so a PrestaShop sale never issued a document, never produced
+    // a warehouse release, and never moved stock, with nothing anywhere saying
+    // why. An unknown state id stays `undefined` rather than claiming
+    // `'awaiting'`: a missing row is not evidence about somebody's money.
+    const paymentStatus = orderStates.paymentStatusOf(prestashopOrder.current_state) ?? undefined;
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
     // Resolved BEFORE the hydration reads below, and awaited rather than raced
@@ -622,6 +629,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       externalOrderId,
       orderNumber: mapped.orderNumber,
       status,
+      ...(paymentStatus !== undefined && { paymentStatus }),
       customerExternalId:
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
       customerEmail: await customerEmailPromise,

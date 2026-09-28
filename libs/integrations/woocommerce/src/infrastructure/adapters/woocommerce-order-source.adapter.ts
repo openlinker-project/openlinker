@@ -19,8 +19,9 @@ import type {
   IncomingOrderAddress,
   IncomingOrderTotals,
   OrderFeedEventType,
+  PaymentStatus,
 } from '@openlinker/core/orders';
-import { readSourceBuyerTaxId } from '@openlinker/core/orders';
+import { readSourceBuyerTaxId, PAYMENT_STATUS } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
@@ -157,6 +158,10 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       externalOrderId,
       orderNumber: order.number,
       status: order.status,
+      ...(() => {
+        const paymentStatus = deriveWooCommercePaymentStatus(order);
+        return paymentStatus === undefined ? {} : { paymentStatus };
+      })(),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),
@@ -206,6 +211,65 @@ function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEvent
   if (s === 'processing') return 'paid';
   if (isNew) return 'created';
   return 'updated';
+}
+
+/**
+ * What this WooCommerce order says about the MONEY.
+ *
+ * ## Why it exists
+ *
+ * This adapter reported no `paymentStatus` at all, and an `auto-on-paid`
+ * connection reads exactly that field - so a WooCommerce sale never issued an
+ * invoice or a receipt, never produced a warehouse release, and never moved
+ * stock, silently and with no block reason, because "not paid yet" is
+ * legitimately not a block. The same gap was found and fixed on the PrestaShop
+ * source in the same change (#3365).
+ *
+ * ## `date_paid` is the evidence; the status is the fallback
+ *
+ * WooCommerce stamps `date_paid` when a gateway confirms payment, so its
+ * presence is the store's own answer rather than a reading of a label. It is
+ * not universal - a store settling orders by hand, or a plugin that skips the
+ * stamp, leaves it null on an order the merchant considers paid - so the two
+ * core statuses that mean money arrived stand in for it.
+ *
+ * ## An unrecognised status answers NOTHING rather than guessing
+ *
+ * WooCommerce lets a plugin register its own statuses. Reading one as
+ * `'awaiting'` would state that somebody has not paid on the strength of a word
+ * this adapter has never seen; reading it as paid would be worse. Such a store
+ * keeps exactly the behaviour it had before this function existed, and the
+ * remedy is to teach the adapter that status rather than to let it assume.
+ *
+ * `'cod'` is never returned: WooCommerce carries the payment METHOD as
+ * `payment_method`, a free-text slug a plugin chooses, and mapping it would be
+ * guesswork. An unpaid cash-on-delivery order reads `'awaiting'`, which is
+ * true.
+ */
+export function deriveWooCommercePaymentStatus(
+  order: Pick<WooCommerceOrder, 'status' | 'date_paid' | 'date_paid_gmt'>,
+): PaymentStatus | undefined {
+  const status = order.status.toLowerCase();
+  if (status === 'refunded') {
+    return PAYMENT_STATUS.Refunded;
+  }
+  const paidAt = order.date_paid_gmt ?? order.date_paid;
+  if (typeof paidAt === 'string' && paidAt.trim().length > 0) {
+    return PAYMENT_STATUS.Paid;
+  }
+  if (status === 'processing' || status === 'completed') {
+    return PAYMENT_STATUS.Paid;
+  }
+  if (
+    status === 'pending' ||
+    status === 'on-hold' ||
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'checkout-draft'
+  ) {
+    return PAYMENT_STATUS.Awaiting;
+  }
+  return undefined;
 }
 
 function mapLineItem(item: WooCommerceLineItem): IncomingOrderItem {

@@ -16,6 +16,15 @@ export interface WooCommerceOrder {
   date_created_gmt: string;
   date_modified: string;
   date_modified_gmt: string;
+  /**
+   * When WooCommerce recorded the payment, in UTC. `null` on an unpaid order,
+   * and absent on a store or plugin that does not report it - which is why
+   * `deriveWooCommercePaymentStatus` treats it as the strongest evidence when
+   * present and falls back to the status when it is not.
+   */
+  date_paid_gmt?: string | null;
+  /** Site-local twin of `date_paid_gmt`. Read only as a presence signal. */
+  date_paid?: string | null;
   customer_id: number; // 0 = guest
   billing: WooCommerceBillingAddress;
   shipping: WooCommerceShippingAddress;
