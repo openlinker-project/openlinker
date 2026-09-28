@@ -35,6 +35,7 @@
  *
  * @module apps/web/src/features/fulfillment/api
  */
+import type { ShipmentStatus } from '../../shipments';
 
 /** One line's quantity counters. Counters, never a per-line status. */
 export interface FulfillmentTaskLine {
@@ -136,6 +137,19 @@ export interface FulfillmentTask {
   externalWorkId: string | null;
   acceptedAt: string | null;
   cancelledAt: string | null;
+  /**
+   * When someone pushed this task ahead of ordinary deadline order (#2416),
+   * `null` when nobody did. `null` means NOT expedited, never "unknown".
+   * Optional against an API that predates it, the `orderReference` precedent
+   * above — `.nullish()` in the schema normalises an absent value to `null`.
+   *
+   * DISPLAY ONLY (#3247). Which of `expedite` / `release_expedite` is
+   * offered is read from `supportedActions` and from nothing else — a
+   * control derived from this field would be offered on a task the server
+   * would then refuse (the rule `features/bench` pinned first, in
+   * `bench-work-presentation.ts`).
+   */
+  expeditedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   lines: FulfillmentTaskLine[];
@@ -155,6 +169,31 @@ export interface FulfillmentTaskPage {
   total: number;
   limit: number;
   offset: number;
+}
+
+/**
+ * One shipment dispatched for a fulfilment task (#3292).
+ *
+ * Outbound only — `GET /fulfillment/works/:workId/shipments` never surfaces a
+ * `'return'`-direction row (#2373), so this shape carries no `direction`
+ * field to read the wrong way.
+ *
+ * `status` reuses `ShipmentStatus` from `features/shipments` — a stable,
+ * already-mirrored vocabulary with its own guard script and its own
+ * `ShipmentStatusBadge`, unlike the fulfilment-task axes this file's own
+ * docblock forbids mirroring. Reusing it is what lets this panel render
+ * status with the shipments feature's existing badge rather than a second
+ * copy of the same six colours.
+ */
+export interface FulfillmentTaskShipment {
+  id: string;
+  status: ShipmentStatus;
+  carrier: string | null;
+  trackingNumber: string | null;
+  hasLabel: boolean;
+  createdAt: string;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
 }
 
 /** Body of `POST /fulfillment/works/:workId/actions/:action`. */
