@@ -909,6 +909,14 @@ describe('OrderSyncService', () => {
         expect(adapter.createOrder).toHaveBeenCalledTimes(1);
         expect(adapter.createOrder.mock.calls[0][0]).toStrictEqual({
           orderNumber: 'ORDER-001',
+          // #3365: the one identifier that is always present. `orderNumber` is
+          // optional and Erli's order source never sets it, which left the
+          // Subiekt adapter sending an EMPTY idempotency key - the bridge then
+          // ran the create unlocked and undeduped, so a timeout retry wrote a
+          // second sales order for one sale. Added to this characterisation
+          // expectation deliberately, which is what the whole-object assertion
+          // is for.
+          internalOrderId: 'ol_order_123',
           status: 'processing',
           customerId: 'ol_customer_456',
           items: [

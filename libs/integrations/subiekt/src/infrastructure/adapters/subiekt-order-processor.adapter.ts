@@ -73,6 +73,7 @@ import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-brid
 import type { BridgeOrderLine, BridgeOrderBuyer } from '../../bridge/subiekt-bridge-orders.types';
 import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
 import { SubiektNetPricedOrderException } from '../../domain/exceptions/subiekt-net-priced-order.exception';
+import { SubiektOrderKeyMissingException } from '../../domain/exceptions/subiekt-order-key-missing.exception';
 import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
@@ -282,7 +283,7 @@ export class SubiektOrderProcessorAdapter
     }
     return lines.map((line, index) => ({
       ...line,
-      wartoscBruttoPoRabacie: split[index]!.grossTotalAfterDiscount,
+      wartoscBruttoPoRabacie: split[index].grossTotalAfterDiscount,
     }));
   }
 
@@ -317,12 +318,39 @@ export class SubiektOrderProcessorAdapter
       );
     }
 
+    // THE IDEMPOTENCY KEY, and it must not be empty.
+    //
+    // The bridge uses `orderRef` for two things: it serializes the whole
+    // check-then-create sequence on it, and it looks for an already-created ZK
+    // by it. Its own comment records what an empty one costs - "an empty
+    // OrderRef has no natural key to serialize on and runs unlocked" - so an
+    // empty key means an UNLOCKED, UNDEDUPED create. OpenLinker gives up on a
+    // create at 30s while the bridge's COM call can run to 120s and commit
+    // afterwards, so a retry on such an order writes a SECOND sales order for
+    // one sale.
+    //
+    // This used to be `order.orderNumber ?? ''`, and `orderNumber` is optional:
+    // Erli's order source never sets it (zero occurrences in the package), so
+    // every Erli order reaching a Subiekt destination took that path.
+    // `internalOrderId` is always present, and it is the FALLBACK rather than
+    // the primary because `orderRef` is stamped onto `dok_NrPelnyOryg`, which
+    // an operator reads - the source's own number is the better thing to show
+    // them, and an OL id is strictly better than the blank they saw before.
+    //
+    // Neither present is refused rather than written. A create with no key is
+    // the one failure no retry can recover from safely, and a caller that
+    // reached here without one has a defect this cannot paper over.
+    const orderRef = order.orderNumber ?? order.internalOrderId ?? '';
+    if (orderRef === '') {
+      throw new SubiektOrderKeyMissingException();
+    }
+
     let response;
     try {
       response = await this.bridge.createOrder({
         buyer,
         lines,
-        orderRef: order.orderNumber ?? '',
+        orderRef,
         uwagi: order.orderNumber ? `OpenLinker order ${order.orderNumber}` : undefined,
         // The line amounts below are the buyer-paid figures in the SOURCE's
         // currency (ADR-014). Sending it keeps the ZK denominated in what the

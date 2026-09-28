@@ -2,6 +2,7 @@ import { SubiektOrderProcessorAdapter } from '../subiekt-order-processor.adapter
 import { SubiektOrdersBridgeClient } from '../../../bridge/subiekt-orders-bridge.client';
 import { SubiektOrderProductMappingException } from '../../../domain/exceptions/subiekt-order-product-mapping.exception';
 import { SubiektBridgeTransportError } from '../../../domain/exceptions/subiekt-bridge-transport.exception';
+import { SubiektOrderKeyMissingException } from '../../../domain/exceptions/subiekt-order-key-missing.exception';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { OrderCreate } from '@openlinker/core/orders';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -50,6 +51,7 @@ describe('SubiektOrderProcessorAdapter', () => {
     function modelOrder(variantId?: string): OrderCreate {
       return {
         status: 'pending',
+        internalOrderId: 'ol_order_model_fixture',
         items: [
           {
             id: '1',
@@ -317,6 +319,7 @@ describe('SubiektOrderProcessorAdapter', () => {
 
     const order: OrderCreate = {
       status: 'pending',
+      internalOrderId: 'ol_order_fixture',
       items: [{ id: '1', productId: 'ol_product_x', quantity: 1, price: 10 }],
       totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
       shippingAddress: {
@@ -367,6 +370,7 @@ describe('SubiektOrderProcessorAdapter', () => {
 
     const order: OrderCreate = {
       status: 'pending',
+      internalOrderId: 'ol_order_fixture',
       items: [{ id: '1', productId: 'ol_product_x', quantity: 1, price: 10 }],
       totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
     };
@@ -547,6 +551,11 @@ describe('SubiektOrderProcessorAdapter — an order-level discount', () => {
     );
     await adapter.createOrder({
       status: 'pending',
+      // Required since #3365: a create with no order key is refused, because
+      // the bridge cannot serialize or dedupe it. `OrderSyncService` always
+      // populates this, so a fixture without it is not a shape the product
+      // produces.
+      internalOrderId: 'ol_order_fixture',
       items,
       totals,
       billingAddress: {
@@ -596,8 +605,8 @@ describe('SubiektOrderProcessorAdapter — an order-level discount', () => {
         { id: 'l1', productId: 'ol_product_1', quantity: 2, price: 100, unitPriceGross: 100 },
       ] as OrderCreate['items'],
     );
-    expect(lines[0]!.wartoscBruttoPoRabacie).toBeUndefined();
-    expect(lines[0]!.wartoscBrutto).toBe(200);
+    expect(lines[0].wartoscBruttoPoRabacie).toBeUndefined();
+    expect(lines[0].wartoscBrutto).toBe(200);
   });
 
   // A discount the split refuses - here as large as the whole order - bills the
@@ -620,9 +629,91 @@ describe('SubiektOrderProcessorAdapter — an order-level discount', () => {
       ] as OrderCreate['items'],
       logger,
     );
-    expect(lines[0]!.wartoscBruttoPoRabacie).toBeUndefined();
+    expect(lines[0].wartoscBruttoPoRabacie).toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('subiekt_order_discount_not_distributable'),
     );
+  });
+
+  // The bridge serializes its check-then-create on `orderRef` AND looks up an
+  // already-created ZK by it, and its own comment records that "an empty
+  // OrderRef has no natural key to serialize on and runs unlocked". So an
+  // empty key is an unlocked, undeduped create - and because OpenLinker gives
+  // up at 30s while the bridge's COM call can run to 120s and commit after,
+  // the retry that follows writes a SECOND sales order for one sale.
+  //
+  // This used to be `order.orderNumber ?? ''`, and Erli's order source sets no
+  // `orderNumber` at all, so every Erli order reaching Subiekt took that path.
+  describe('the order key the bridge dedupes on (#3365)', () => {
+    function keylessAdapterOrder(overrides: Partial<OrderCreate>): OrderCreate {
+      return {
+        status: 'pending',
+        items: [{ id: '1', productId: 'ol_product_x', quantity: 1, price: 10, sku: 'SKU-1' }],
+        totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Warszawa',
+          postalCode: '00-001',
+          country: 'PL',
+        },
+        ...overrides,
+      };
+    }
+
+    function build(capture: { body?: unknown }): SubiektOrderProcessorAdapter {
+      const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
+        capture.body = JSON.parse(init!.body as string);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ success: true, data: { id: 3, numer: 'ZK 3/2026' }, error: null }),
+            { status: 200 },
+          ),
+        );
+      }) as unknown as typeof fetch;
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'SYM-1',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_product_x',
+      });
+      return new SubiektOrderProcessorAdapter(
+        new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl }),
+        idMapping,
+        CONNECTION_ID,
+        noopLogger,
+      );
+    }
+
+    it('falls back to the internal order id when the source reported no order number', async () => {
+      const capture: { body?: unknown } = {};
+      await build(capture).createOrder(
+        keylessAdapterOrder({ internalOrderId: 'ol_order_abc123' }),
+      );
+      expect(capture.body).toMatchObject({ orderRef: 'ol_order_abc123' });
+    });
+
+    it('prefers the source order number, which is what an operator reads', async () => {
+      // `orderRef` is stamped onto `dok_NrPelnyOryg`. The internal id is the
+      // fallback, never the primary - it is strictly better than the blank the
+      // operator saw before, and strictly worse than the real number.
+      const capture: { body?: unknown } = {};
+      await build(capture).createOrder(
+        keylessAdapterOrder({ orderNumber: 'OL-500', internalOrderId: 'ol_order_abc123' }),
+      );
+      expect(capture.body).toMatchObject({ orderRef: 'OL-500' });
+    });
+
+    it('REFUSES rather than creating when neither is present', async () => {
+      // A missing document is recoverable by the operator; two sales orders for
+      // one sale are two real documents in somebody's books.
+      const capture: { body?: unknown } = {};
+      await expect(build(capture).createOrder(keylessAdapterOrder({}))).rejects.toBeInstanceOf(
+        SubiektOrderKeyMissingException,
+      );
+      expect(capture.body).toBeUndefined();
+    });
   });
 });

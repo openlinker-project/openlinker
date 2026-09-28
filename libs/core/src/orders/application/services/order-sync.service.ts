@@ -220,6 +220,9 @@ export class OrderSyncService implements IOrderSyncService {
 
     const orderCreate: OrderCreate = {
       orderNumber: order.orderNumber,
+      // Always present, unlike `orderNumber` - see the field's own docblock for
+      // why a destination needs an identifier it can count on.
+      internalOrderId: order.id,
       status: orderStatus,
       customerId: order.customerId,
       // This projection is an ALLOWLIST, and it is the one that actually feeds

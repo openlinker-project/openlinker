@@ -30,6 +30,8 @@
  *   - `SubiektOrderProductMappingException` — the product has no Subiekt
  *     catalogue mapping on this connection; retrying re-reads the same
  *     `identifier_mappings` row and gets the same answer.
+ *   - `SubiektOrderKeyMissingException` — the request carried no order key, so
+ *     the create cannot be serialized or deduped and is refused.
  *   - `SubiektNetPricedOrderException` — the order's source reports net line
  *     prices, which is a property of the order; every retry refuses again.
  *   - `SubiektBridgeAuthError` — TERMINAL bridge auth/config failure (401/403);
@@ -57,6 +59,7 @@ import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/sub
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
 import { SubiektNetPricedOrderException } from '../../domain/exceptions/subiekt-net-priced-order.exception';
+import { SubiektOrderKeyMissingException } from '../../domain/exceptions/subiekt-order-key-missing.exception';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
 
@@ -84,7 +87,12 @@ export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof SubiektOrderProductMappingException ||
       // The source's tax treatment is a property of the order itself, so every
       // retry re-reads the same value and reaches the same refusal.
-      cause instanceof SubiektNetPricedOrderException
+      cause instanceof SubiektNetPricedOrderException ||
+      // A request that arrived with no order key will arrive with none on
+      // every retry, and creating without one is what the refusal exists to
+      // prevent - so spending the ladder here would end in a dead job having
+      // risked nothing and proved nothing.
+      cause instanceof SubiektOrderKeyMissingException
     ) {
       return true;
     }
