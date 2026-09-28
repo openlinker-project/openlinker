@@ -51,7 +51,7 @@ import type {
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
-import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+import type { IOrderNoteService, IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
@@ -172,6 +172,10 @@ function harness() {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
   } as unknown as IUserManagementService;
 
+  const notes = {
+    getPackerVisibleForOrders: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as IOrderNoteService;
+
   return {
     service: new BenchParcelService(
       executors,
@@ -181,7 +185,8 @@ function harness() {
       products,
       shipments,
       inventory,
-      users
+      users,
+      notes
     ),
     verification,
     // `claimParcel`'s write target lives here rather than on the verification
