@@ -1895,3 +1895,36 @@ record file — currently `startSharedPrestashopContainer()` in
 `apps/api/test/integration/helpers/prestashop-container.helper.ts`.
 
 **Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+---
+
+## A default-install status fixture can be ambiguous for a status your test doesn't already cover
+
+**Context**: #3526 added `delivered` and `in-progress` to `OrderLifecycleEvent`, and the
+PrestaShop adapter maps `in-progress` onto its native `OrderStatus` `'processing'` through the
+same shop-catalogue-derivation seam `dispatched`/`cancelled` already use (`deriveOrderState` in
+`prestashop-order-state-semantics.ts`).
+
+**Problem**: `DEFAULT_INSTALL_ORDER_STATES` (`libs/integrations/prestashop/src/__tests__/fixtures/`),
+the shared fixture every existing PrestaShop status-writeback spec builds on, carries TWO rows —
+id 2 ("Payment accepted") and id 3 ("Processing in progress") — that both derive to `'processing'`
+(`paid=1, shipped=0, delivered=0`, matched by `deriveOrderState`'s `paid-flag` basis; `stateIdFor`
+resolves the ambiguity silently by returning the lowest matching id). Every status the *existing*
+tests exercised (`shipped`/`delivered`/`cancelled`) happens to resolve uniquely against that
+fixture, so the ambiguity was invisible until a test needed `'processing'` specifically — writing
+an assertion against `id_order_state: 2` (or 3) would have been asserting an implementation detail
+of `stateIdFor`'s iteration order rather than a real requirement.
+
+**Rule**: before writing a status-writeback test against a shared default-install fixture, check
+whether the TARGET status resolves to more than one row in that fixture — grep the fixture for the
+flag combination (`paid`/`shipped`/`delivered`) your target status derives from. If it's ambiguous,
+build a small unambiguous fixture (one row per status, the `CUSTOM_STATES` shape in
+`order-state-mapping.spec.ts`) rather than asserting against whichever id the default install
+happens to resolve first — a passing assertion against an ambiguous fixture proves nothing about
+the mapping logic and can silently start asserting a different id the day `stateIdFor`'s iteration
+or the fixture's row order changes.
+
+**Applies to**: any PrestaShop test asserting a specific `id_order_state` against
+`DEFAULT_INSTALL_ORDER_STATES` for a status that isn't `shipped`/`delivered`/`cancelled`.
+
+**Source**: #3526 (epic #3506), 2026-09-28.

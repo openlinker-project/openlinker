@@ -983,6 +983,32 @@ describe('WooCommerceOrderProcessorAdapter — OrderStatusWriteback', () => {
     expect(httpClient.put).not.toHaveBeenCalled();
   });
 
+  // ── delivered / in-progress (#3526) ──
+
+  it('should DECLINE a delivered event — WC has no status distinct from completed', async () => {
+    const httpClient = makeHttpClient();
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'delivered', externalOrderId: '55' });
+
+    expect(result.outcome).toBe('unsupported');
+    expect(httpClient.get).not.toHaveBeenCalled();
+    expect(httpClient.put).not.toHaveBeenCalled();
+  });
+
+  it('should PUT status processing for an in-progress event', async () => {
+    const httpClient = makeHttpClient();
+    httpClient.put.mockResolvedValue({ id: 55, status: 'processing' });
+    const adapter = makeAdapter(httpClient, makeIdentifierMapping());
+
+    const result = await adapter.write({ type: 'in-progress', externalOrderId: '55' });
+
+    expect(httpClient.put).toHaveBeenCalledWith('/wp-json/wc/v3/orders/55', {
+      status: 'processing',
+    });
+    expect(result).toEqual({ outcome: 'applied' });
+  });
+
   // ── failure / validation ──
 
   it.each(['1/refunds', 'abc', '', '-1'])(

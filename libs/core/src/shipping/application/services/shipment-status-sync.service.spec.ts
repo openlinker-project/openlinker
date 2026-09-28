@@ -216,6 +216,83 @@ describe('ShipmentStatusSyncService', () => {
     });
   });
 
+  describe('delivered lifecycle relay (#3526)', () => {
+    it('relays `delivered` with the carrier instant on the delivered transition', async () => {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: 'ALREADY-KNOWN' });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      const deliveredAt = new Date('2026-05-28T12:00:00.000Z');
+      // No NEW tracking number in this snapshot — the delivered relay must
+      // fire independent of whatever the waybill logic decides, unlike the
+      // waybill relay above which needs a null→value transition to run at
+      // all.
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', trackingNumber: 'ALREADY-KNOWN', deliveredAt }),
+      );
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: s.orderId,
+        originConnectionId: CARRIER,
+        event: { type: 'delivered', deliveredAt },
+      });
+    });
+
+    it('does NOT relay delivered for a non-delivered transition', async () => {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'cancelled' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(relay.relay).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: expect.objectContaining({ type: 'delivered' }) }),
+      );
+    });
+
+    it('does NOT re-relay delivered when the shipment already reads delivered (redelivered webhook)', async () => {
+      // The guard is the SAME status comparison that already gates
+      // `patch.status` — once the row is `delivered`, a redelivered webhook
+      // observes `snapshot.status === shipment.status` and fires nothing.
+      const s = makeShipment({ status: 'delivered', deliveredAt: new Date('2026-05-28') });
+      shipments.findByProviderShipmentId.mockResolvedValue(s);
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', deliveredAt: new Date('2026-05-28') }),
+      );
+
+      await service.syncOneByProviderShipmentId(CARRIER, 'prov-abc');
+
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(shipments.update).not.toHaveBeenCalled();
+    });
+
+    it('fires from the webhook-triggered path too', async () => {
+      const s = makeShipment({ status: 'in-transit' });
+      shipments.findByProviderShipmentId.mockResolvedValue(s);
+      const deliveredAt = new Date('2026-05-28T12:00:00.000Z');
+      getTracking.mockResolvedValue(snapshot({ status: 'delivered', deliveredAt }));
+
+      await service.syncOneByProviderShipmentId(CARRIER, 'prov-abc');
+
+      expect(relay.relay).toHaveBeenCalledWith(
+        expect.objectContaining({ event: { type: 'delivered', deliveredAt } }),
+      );
+    });
+
+    it('never throws when the relay itself throws — the rest of the patch still applies', async () => {
+      relay.relay.mockRejectedValue(new Error('identifier resolution exploded'));
+      const s = makeShipment({ status: 'dispatched', trackingNumber: 'KNOWN' });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', trackingNumber: 'KNOWN', deliveredAt: new Date('2026-05-28') }),
+      );
+
+      await expect(service.sync(CARRIER, { limit: 50 })).resolves.toBeDefined();
+      const patch = shipments.update.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(patch.status).toBe('delivered');
+    });
+  });
+
   describe('waybill relay (#1947)', () => {
     it('backfills tracking on a generated shipment WITHOUT relaying to anyone', async () => {
       // #837's notifyDispatched owns the generated → dispatched transition and
