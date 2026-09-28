@@ -242,7 +242,7 @@ describe('PriceChangeApplyService', () => {
       );
     });
 
-    it('returns business_failure when OfferManager is enabled but the adapter does not implement OfferFieldUpdater', async () => {
+    it('returns business_failure when OfferManager is enabled but the adapter does not implement OfferFieldUpdater, and ProductPublisher is not enabled', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue({
         // no updateOfferFields — e.g. WooCommerceOfferManagerAdapter, which
         // implements only updateOfferQuantity.
@@ -251,6 +251,69 @@ describe('PriceChangeApplyService', () => {
       const result = await service.applyPriceChange(validInput);
 
       expect(result.outcome).toBe('business_failure');
+    });
+
+    it('falls through to ProductPublisher when OfferManager is not an OfferFieldUpdater but ProductPublisher IS enabled (#3524)', async () => {
+      // WooCommerce shape: OfferManager (stock write-back only, no
+      // OfferFieldUpdater) AND ProductPublisher both enabled on one
+      // connection — the only documented exclusivity is with InventoryMaster.
+      connections.get.mockResolvedValue(
+        buildConnection({ enabledCapabilities: ['OfferManager', 'ProductPublisher'] })
+      );
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'woocommerce.restapi.v3',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['OfferManager', 'ProductPublisher'],
+      });
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        // no updateOfferFields — the stock-only WooCommerce OfferManager shape.
+      });
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, availableToPromise: 9 },
+      ]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
+      ]);
+      productPublishExecution.executePublish.mockResolvedValue({
+        outcome: 'ok',
+        listingCreationRecord: new ListingCreationRecord(
+          'rec-1',
+          'ol_variant_1',
+          'dest-1',
+          'ext-shop-1',
+          'published',
+          null,
+          new Date(),
+          new Date()
+        ),
+      });
+
+      const result = await service.applyPriceChange(validInput);
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(productPublishExecution.executePublish).toHaveBeenCalledWith(
+        expect.objectContaining({ price: { amount: 399, currency: 'PLN' } })
+      );
+      expect(marketplaceAdapter.updateOfferFields).not.toHaveBeenCalled();
+    });
+
+    it('is unaffected when the OfferManager adapter IS an OfferFieldUpdater, even with ProductPublisher also enabled (Allegro/Erli shape)', async () => {
+      connections.get.mockResolvedValue(
+        buildConnection({ enabledCapabilities: ['OfferManager', 'ProductPublisher'] })
+      );
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'allegro.publicapi.v1',
+        platformType: 'allegro',
+        supportedCapabilities: ['OfferManager', 'ProductPublisher'],
+      });
+      // marketplaceAdapter (the default getCapabilityAdapter resolution) DOES
+      // implement updateOfferFields — the Allegro/Erli shape.
+
+      const result = await service.applyPriceChange(validInput);
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(marketplaceAdapter.updateOfferFields).toHaveBeenCalled();
+      expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
     });
 
     it('returns business_failure when neither capability is enabled', async () => {

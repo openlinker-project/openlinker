@@ -308,16 +308,26 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
       // The adapter supporting/enabling `OfferManager` does not by itself
       // guarantee it implements the `OfferFieldUpdater` sub-capability
       // (WooCommerce's `OfferManager` adapter implements ONLY
-      // `updateOfferQuantity`, no field updates at all) — a structural,
-      // permanent mismatch, never retryable.
-      if (!isOfferFieldUpdater(adapter)) {
-        throw new PriceChangeApplyPermanentError(
-          `Adapter for connection ${input.destinationConnectionId} supports OfferManager but ` +
-            `not the OfferFieldUpdater sub-capability (no updateOfferFields)`
-        );
+      // `updateOfferQuantity`, no field updates at all). That used to be a
+      // permanent throw here, but a connection may ALSO have `ProductPublisher`
+      // enabled (#3524) — WooCommerce's manifest advertises both, and nothing
+      // stops an operator enabling them together (the only documented
+      // exclusivity is with `InventoryMaster`). Fall through to the
+      // `ProductPublisher` branch instead of throwing immediately; only
+      // refuse permanently once NEITHER path can apply the price.
+      if (isOfferFieldUpdater(adapter)) {
+        await this.publishToMarketplace(adapter, input);
+        return;
       }
-      await this.publishToMarketplace(adapter, input);
-      return;
+      if (hasProductPublisher) {
+        await this.publishToShop(input);
+        return;
+      }
+      throw new PriceChangeApplyPermanentError(
+        `Adapter for connection ${input.destinationConnectionId} supports OfferManager but ` +
+          `not the OfferFieldUpdater sub-capability (no updateOfferFields), and ProductPublisher ` +
+          `is not enabled on this connection either`
+      );
     }
 
     if (hasProductPublisher) {
