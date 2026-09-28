@@ -54,6 +54,7 @@ import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-a
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from './subiekt-url-safety';
 import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../../bridge/subiekt-bridge-timeout';
+import { redactBridgeToken } from '../../bridge/subiekt-auth-reason';
 import {
   classifyRetryability,
   extractErrorCode,
@@ -124,17 +125,6 @@ export interface SubiektBridgeHttpClientOptions {
    * constructor note for why this stays optional for now.
    */
   fetchImpl?: FetchLike;
-}
-
-/**
- * Escapes a literal for use inside a `RegExp`. The bridge token is operator-
- * chosen, so it may legitimately contain `.`, `+`, `$` or any other
- * metacharacter; interpolating it unescaped would either throw or match the
- * wrong thing, and the one place it is used is a redaction that must not fail
- * open.
- */
-function escapeRegExp(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export class SubiektBridgeHttpClient implements SubiektBridgeClient {
@@ -314,7 +304,15 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     } catch (error: unknown) {
       // Transport-level failure — never reached Subiekt's business layer.
       const code = extractErrorCode(error);
-      const retryability = classifyRetryability(code);
+      // #3365 review: a READ is safe to retry whatever the transport did.
+      //
+      // The fiscal-safety pivot exists so an ambiguous WRITE is not re-sent and
+      // does not double-issue a document. A GET has nothing to double - it
+      // creates no document, moves no stock and changes nothing - so an
+      // ambiguous read was being classified non-retryable for a hazard it
+      // cannot have, and a status poll or a catalogue enumeration that hit one
+      // slow moment died on its first attempt.
+      const retryability = method === 'GET' ? 'safe' : classifyRetryability(code);
       this.logger.warn('Subiekt bridge request failed at transport layer', {
         method,
         path,
@@ -344,15 +342,17 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
       // ambiguity — fiscal-safe `'indeterminate'`.
       throw new SubiektBridgeUnreachableWithPhaseError(
         `Subiekt bridge returned an unfollowed redirect (HTTP ${response.status})`,
-        'indeterminate',
+        method === 'GET' ? 'safe' : 'indeterminate',
       );
     }
 
     if (response.status >= 500) {
-      // The POST may have been received and acted on — `'indeterminate'`.
+      // The POST may have been received and acted on — `'indeterminate'`. A GET
+      // cannot have been "acted on" in any sense that matters, so it stays
+      // retryable (#3365 review).
       throw new SubiektBridgeUnreachableWithPhaseError(
         `Subiekt bridge returned a server error (HTTP ${response.status})`,
-        'indeterminate',
+        method === 'GET' ? 'safe' : 'indeterminate',
       );
     }
 
@@ -500,31 +500,13 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
    * length bounds the same risk for anything else a hostile or broken bridge
    * might put there.
    */
+  /**
+   * Delegates so the redaction rule lives in exactly ONE place (#3365 review).
+   * Three clients in this package can be handed a 401 and all three now read the
+   * body; three copies of this rule would be three chances for one of them to
+   * miss a form of the token, and what leaks then is a credential.
+   */
   private redactToken(text: string): string {
-    const MAX = 300;
-    // Below this, `split/join` would shred unrelated body text rather than
-    // redact a credential - a two-character token would turn the bridge's own
-    // sentence into noise, and the redaction would be the thing that made the
-    // message unreadable. A secret that short is not one worth protecting.
-    // `subiekt-credentials.types.ts` states the guarantee this floor leaves
-    // bounded, and why the gap is not closed by bounding the field instead.
-    const MIN_REDACTABLE = 8;
-    let out = text;
-    const token = this.token;
-    if (token !== undefined && token.length >= MIN_REDACTABLE) {
-      // The argument for reading the body at all is that "our bridge does not
-      // echo the token" is not a property this client may rely on. The same
-      // reasoning forbids assuming the echo is byte-identical, so the forms a
-      // bridge realistically produces are all replaced: the token verbatim, a
-      // percent-encoded copy (a `WWW-Authenticate` challenge or a URL it was
-      // interpolated into), and either in a different case.
-      const forms = [token, encodeURIComponent(token)].filter(
-        (f, i, all) => f.length > 0 && all.indexOf(f) === i,
-      );
-      for (const form of forms) {
-        out = out.replace(new RegExp(escapeRegExp(form), 'gi'), '[redacted]');
-      }
-    }
-    return out.length > MAX ? `${out.slice(0, MAX)}…` : out;
+    return redactBridgeToken(text, this.token);
   }
 }

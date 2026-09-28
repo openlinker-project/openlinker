@@ -34,6 +34,10 @@
  *     the create cannot be serialized or deduped and is refused.
  *   - `SubiektNetPricedOrderException` — the order's source reports net line
  *     prices, which is a property of the order; every retry refuses again.
+ *   - `SubiektRejectedError` — the bridge's own business refusal, raw. It
+ *     reaches the runner unwrapped from every adapter that does not translate
+ *     it, and a retry re-asks a question whose answer lives in the Subiekt
+ *     database.
  *   - `SubiektBridgeAuthError` — TERMINAL bridge auth/config failure (401/403);
  *     a retry with the same bad credentials fails identically, and re-issuing
  *     on a credential fix is a human action, not an auto-retry.
@@ -62,6 +66,7 @@ import { SubiektNetPricedOrderException } from '../../domain/exceptions/subiekt-
 import { SubiektOrderKeyMissingException } from '../../domain/exceptions/subiekt-order-key-missing.exception';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
+import { SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 
 export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
@@ -92,7 +97,18 @@ export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
       // every retry, and creating without one is what the refusal exists to
       // prevent - so spending the ladder here would end in a dead job having
       // risked nothing and proved nothing.
-      cause instanceof SubiektOrderKeyMissingException
+      cause instanceof SubiektOrderKeyMissingException ||
+      // #3365 review: the RAW bridge refusal, which reaches the runner
+      // unwrapped from every path that does not translate it. The invoicing
+      // adapter maps it to `SubiektInvoiceRejectedError` (listed above) and is
+      // therefore covered, but the product, inventory and order-processor
+      // adapters catch it only to test for specific conditions and let anything
+      // else propagate as-is - so a plain business refusal ("towar nie
+      // istnieje", "dokument zablokowany") spent the full ladder, ~10 attempts
+      // backing off to 6h, re-asking a question whose answer is a property of
+      // the Subiekt database. It is terminal by definition: the bridge answered,
+      // and it answered no.
+      cause instanceof SubiektRejectedError
     ) {
       return true;
     }

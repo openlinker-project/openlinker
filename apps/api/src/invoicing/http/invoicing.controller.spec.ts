@@ -668,6 +668,59 @@ describe('InvoicingController', () => {
       );
     });
 
+    // #3365 review: the service returns the EXISTING record unchanged on two
+    // resume arms, and answering 201 Created for either states something that did
+    // not happen. The sibling issue route already draws this line (#1200); this
+    // one simply never applied it.
+    it('409 CORRECTION_IN_PROGRESS when another attempt is still in flight', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({
+          status: 'issuing',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          isIssued: false,
+        }),
+      );
+
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('409 CORRECTION_NEEDS_RECONCILIATION for a record that ended in doubt', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({
+          status: 'failed',
+          failureMode: 'in-doubt',
+          leaseExpiresAt: null,
+          isIssued: false,
+        }),
+      );
+
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('still answers 201 for a same-key REPLAY of an already-issued correction', async () => {
+      // Deliberately unlike the issue route's 409 on an existing document: that
+      // route keys on (order, connection), where a second one is a real conflict,
+      // while this keys on the caller's idempotency key, where returning the
+      // original result IS the contract.
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected', status: 'issued' }),
+      );
+
+      const result = await controller.issueCorrection(invoiceId, dto);
+
+      expect(result.documentType).toBe('corrected');
+    });
+
     it('passes originalDocument (rebuilt from the order snapshot) when the order is available', async () => {
       invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());

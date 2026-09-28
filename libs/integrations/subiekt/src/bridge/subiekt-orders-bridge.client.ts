@@ -31,6 +31,7 @@ import type {
   BridgeWriteShippingResponse,
 } from './subiekt-bridge-orders.types';
 import { SUBIEKT_BRIDGE_TIMEOUT_MS } from './subiekt-bridge-timeout';
+import { readBridgeAuthReason } from './subiekt-auth-reason';
 
 export interface SubiektOrdersBridgeClientOptions {
   token?: string;
@@ -129,7 +130,14 @@ export class SubiektOrdersBridgeClient {
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new SubiektBridgeAuthError(response.status);
+      // #3365 review: carry WHAT the bridge said, redacted. Three clients in
+      // this package can be handed a 401 and only the invoicing one read the
+      // body, so one rotated token produced a named cause on one path and a bare
+      // status on the other two.
+      throw new SubiektBridgeAuthError(
+        response.status,
+        await readBridgeAuthReason(response, this.token),
+      );
     }
 
     let envelope: { success: boolean; data: T | null; error: { code: string; reason: string } | null };

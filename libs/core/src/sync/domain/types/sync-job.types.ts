@@ -300,6 +300,24 @@ export const JobTypeValues = [
   // (the same seam the "Test connection" button uses) and error-logs a
   // structured, greppable token on failure. Scoped narrowly to what already
   // exists in the product — no external alert channel is wired here.
+  //
+  // #3365 review: this is the ONLY vendor-named member of this union, and that
+  // is a genuine deviation rather than an oversight. It is KEPT, and the reason
+  // is the cost of changing it rather than a defence of the name.
+  //
+  // A job type is a PERSISTED value. Renaming it strands every queued row
+  // carrying the old string: the boot coverage assertion ranges over this union,
+  // so a type that leaves it has no registered handler and its rows are killed
+  // rather than run. The repo's own answer to that (#2594's split) is to
+  // register BOTH names against one handler - which trades a vendor name for a
+  // permanent second union member plus an alias nobody will ever remove, for a
+  // job whose behaviour does not change either way.
+  //
+  // What a neutral name would genuinely buy is reuse by the next integration
+  // that runs against a local bridge (Subiekt nexo, or any future on-premise
+  // agent). When one of those actually needs this sweep, that is the moment to
+  // mint `connection.reachability.sweep` and register this one as its alias -
+  // with a real second consumer to justify the alias, rather than for tidiness.
   'subiekt.bridge.reachabilitySweep',
 ] as const;
 

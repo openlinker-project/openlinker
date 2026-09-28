@@ -32,6 +32,8 @@ import type { BridgeResponseEnvelope } from '../../bridge/subiekt-bridge.types';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from './subiekt-url-safety';
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../../bridge/subiekt-bridge-timeout';
+import { readBridgeAuthReason } from '../../bridge/subiekt-auth-reason';
 
 export interface SubiektInventoryBridgeClientOptions {
   /** Optional bridge token — never logged. */
@@ -46,7 +48,11 @@ export interface SubiektInventoryBridgeClientOptions {
   fetchImpl: FetchLike;
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+// #3365 review: the SHARED bridge timeout - see the constant's own docblock for
+// why a client deadline shorter than the bridge's server-side wait manufactures
+// failures out of slow successes. A stock adjustment is a WRITE, so a spurious
+// timeout here is the expensive kind.
+const DEFAULT_TIMEOUT_MS = SUBIEKT_BRIDGE_TIMEOUT_MS;
 
 export class SubiektInventoryBridgeClient {
   private readonly baseUrl: string;
@@ -136,7 +142,14 @@ export class SubiektInventoryBridgeClient {
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new SubiektBridgeAuthError(response.status);
+      // #3365 review: carry WHAT the bridge said, redacted. Three clients in
+      // this package can be handed a 401 and only the invoicing one read the
+      // body, so one rotated token produced a named cause on one path and a bare
+      // status on the other two.
+      throw new SubiektBridgeAuthError(
+        response.status,
+        await readBridgeAuthReason(response, this.token),
+      );
     }
 
     let envelope: BridgeResponseEnvelope<T>;

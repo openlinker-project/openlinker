@@ -110,6 +110,7 @@ import { SubiektProductNotSupportedException } from '../../domain/exceptions/sub
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
 import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
 import { isBridgeUrlSafe } from '../http/subiekt-url-safety';
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../../bridge/subiekt-bridge-timeout';
 
 /** Read the retryability phase, defaulting to the fiscal-safe `'indeterminate'` (mirrors the Inventory/Invoicing adapters' identical helper). */
 /**
@@ -207,7 +208,17 @@ interface BridgeEnvelope<T> {
   error: { code: string; reason: string; correlationId: string | null; failureMode?: string } | null;
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+// #3365 review: the SHARED bridge timeout, not a local 15s.
+//
+// Every write on this bridge queues behind one dedicated STA COM worker whose
+// own server-side waits run to 60-120s, and that wait is not tied to the HTTP
+// request - a call OL gives up on keeps running and commits later. A client
+// timeout shorter than the server's turns a slow-but-succeeding call into a
+// reported failure, which on a catalogue read is a spurious "bridge
+// unreachable" and on a queued write is worse. Three clients already shared
+// `SUBIEKT_BRIDGE_TIMEOUT_MS`; these two did not, so the same bridge was given
+// two different deadlines depending on which route reached it.
+const DEFAULT_TIMEOUT_MS = SUBIEKT_BRIDGE_TIMEOUT_MS;
 
 /**
  * How many models one `/api/models` page asks for, and how many pages the

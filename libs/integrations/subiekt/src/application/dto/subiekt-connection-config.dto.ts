@@ -54,7 +54,7 @@ export class SubiektConnectionConfigDto {
   @IsOptional()
   @IsInt()
   @Min(1000)
-  @Max(120000)
+  @Max(150000)
   timeoutMs?: number;
 
   // Payment / bank-account / cash-register defaults (#1324). No cross-field

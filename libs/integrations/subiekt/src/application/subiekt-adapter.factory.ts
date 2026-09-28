@@ -31,6 +31,7 @@ import { SubiektOrderSourceAdapter } from '../infrastructure/adapters/subiekt-or
 import { SubiektOrderProcessorAdapter } from '../infrastructure/adapters/subiekt-order-processor.adapter';
 import { SubiektOrdersBridgeClient } from '../bridge/subiekt-orders-bridge.client';
 import { SubiektFiscalizationAdapter } from '../infrastructure/adapters/subiekt-fiscalization.adapter';
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../bridge/subiekt-bridge-timeout';
 
 /**
  * The capability adapters this factory builds for a connection.
@@ -167,9 +168,18 @@ export class SubiektAdapterFactory {
     let timeoutMs: number | undefined;
     if (config.timeoutMs !== undefined) {
       const raw = config.timeoutMs;
-      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1000 || raw > 120000) {
+      // #3365 review: the ceiling has to admit the shared default. It was
+      // 120000 while `SUBIEKT_BRIDGE_TIMEOUT_MS` is 150000, so an operator could
+      // not configure the value the clients already use by default - the knob
+      // refused the very number it was meant to let them tune around.
+      if (
+        typeof raw !== 'number' ||
+        !Number.isInteger(raw) ||
+        raw < 1000 ||
+        raw > SUBIEKT_BRIDGE_TIMEOUT_MS
+      ) {
         throw new SubiektConfigException(
-          'timeoutMs must be an integer between 1000 and 120000',
+          `timeoutMs must be an integer between 1000 and ${SUBIEKT_BRIDGE_TIMEOUT_MS}`,
           'timeoutMs',
           raw,
         );

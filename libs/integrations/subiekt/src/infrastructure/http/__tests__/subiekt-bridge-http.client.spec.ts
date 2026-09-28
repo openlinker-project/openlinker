@@ -626,3 +626,28 @@ describe('SubiektBridgeHttpClient — the bridge says whether an outcome is in d
     expect(error).toBeInstanceOf(SubiektBridgeUnreachableWithPhaseError);
   });
 });
+
+describe('read retryability (#3365 review)', () => {
+  it('classifies a GET transport failure as safe to retry, not indeterminate', async () => {
+    // The fiscal-safety pivot protects WRITES from double-issuing. A read
+    // creates nothing, so an ambiguous GET was being killed on its first
+    // attempt for a hazard it cannot have.
+    const client = new SubiektBridgeHttpClient('http://127.0.0.1:5000', {
+      fetchImpl: () => Promise.reject(Object.assign(new Error('boom'), { code: 'ETIMEDOUT' })),
+    });
+
+    await expect(client.getInvoiceStatus({ providerInvoiceId: '1' })).rejects.toMatchObject({
+      retryability: 'safe',
+    });
+  });
+
+  it('keeps a POST transport failure indeterminate', async () => {
+    const client = new SubiektBridgeHttpClient('http://127.0.0.1:5000', {
+      fetchImpl: () => Promise.reject(Object.assign(new Error('boom'), { code: 'ETIMEDOUT' })),
+    });
+
+    await expect(
+      client.upsertCustomer({ name: 'X' } as never),
+    ).rejects.toMatchObject({ retryability: 'indeterminate' });
+  });
+});
