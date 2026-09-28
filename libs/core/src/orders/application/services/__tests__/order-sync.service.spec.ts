@@ -22,6 +22,7 @@ import type { IOrderRecordService } from '../../interfaces/order-record.service.
 import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderHold } from '../../../domain/entities/order-hold.entity';
+import { ORDER_CREATE_LOCK_TTL_MS } from '../order-create-lock';
 import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
@@ -495,7 +496,15 @@ describe('OrderSyncService', () => {
 
       await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
 
-      expect(syncLock.acquire).toHaveBeenCalledWith('order:create:dest-a:ol_order_123', 120000);
+      // Reads the constant rather than restating it. The literal was 120000 and
+      // had to move to 180000 when Subiekt's client timeout became 150s - a TTL
+      // below the slowest destination's worst case inverts the lock's own
+      // stated precondition, and a test pinned to the number would have made
+      // that a two-file edit with no reason recorded in either.
+      expect(syncLock.acquire).toHaveBeenCalledWith(
+        'order:create:dest-a:ol_order_123',
+        ORDER_CREATE_LOCK_TTL_MS,
+      );
       expect(adapter.createOrder).toHaveBeenCalledTimes(1);
       expect(syncLock.release).toHaveBeenCalledWith(
         'order:create:dest-a:ol_order_123',

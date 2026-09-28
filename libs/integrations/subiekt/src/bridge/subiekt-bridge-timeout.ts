@@ -19,10 +19,34 @@
  * retry could write a second document.
  *
  * 150s is the bridge's own outer bound, so a timeout here now really does mean
- * the far end stopped too. The cost is that a hung bridge holds a worker lane
- * slot for 150s rather than 30s, which is the right trade against a duplicated
- * fiscal document, and it is bounded because the bridge raises its own
- * TimeoutException first.
+ * the far end stopped too, and it is bounded anyway because the bridge raises
+ * its own TimeoutException first.
+ *
+ * ## Two other numbers this one has to be compared against
+ *
+ * **The order-create lock TTL.** `order-create-lock.ts` serialises one
+ * `(order, destination)` create and its docblock requires the TTL to comfortably
+ * EXCEED the worst-case `createOrder` duration - which for Subiekt is this
+ * value. It is 180s for that reason. Raising this constant past 180s without
+ * raising that one inverts the lock's stated precondition: a create outliving
+ * its own lock lets a peer attempt in, and exactly-once then rests entirely on
+ * the bridge-side `orderRef` dedup rather than on OpenLinker's lock. That
+ * fallback works - it is what the mandatory non-empty key exists for - but it
+ * must be a deliberate arrangement rather than an accident of two files.
+ *
+ * **The `realtime` lane's per-scope cap.** `marketplace.order.sync` runs on
+ * `realtime`, whose defaults are `{total: 4, perScope: 2}` (ADR-050, still
+ * marked illustrative pending #1134). So TWO concurrent slow Subiekt creates
+ * hold that connection's ENTIRE realtime allowance for two and a half minutes -
+ * not one slot of several - and everything else on that connection waits behind
+ * them, including webhook-driven product syncs and OMS dispatch. #2613's
+ * penalty-free deferral does not help: a client-side timeout is neither a 429
+ * nor a 503, so it spends a real retry attempt. An operator watching a Subiekt
+ * connection go quiet for minutes is looking at this paragraph.
+ *
+ * The trade is still the right one - a duplicated fiscal document is worse than
+ * a stalled lane - but the cost is two slots for 150s, and that is worth
+ * writing down rather than implying.
  *
  * @module libs/integrations/subiekt/src/bridge
  */

@@ -38,8 +38,6 @@ export interface SubiektOrdersBridgeClientOptions {
   fetchImpl?: FetchLike;
 }
 
-
-
 export class SubiektOrdersBridgeClient {
   private readonly baseUrl: string;
   private readonly token?: string;
