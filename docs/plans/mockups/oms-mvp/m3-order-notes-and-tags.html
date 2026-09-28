@@ -1,0 +1,1037 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Order notes and tags</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="ol.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific only. Everything else is ol.css.
+     PROPOSED tokens: tag swatches. They do not exist in index.css today and are
+     deliberately NOT the status hues (those are reserved for status meaning).
+     A tag colour only ever paints a small dot on a neutral pill, the
+     .channel-pill precedent. */
+  :root {
+    --tag-grey: oklch(62% 0.01 270);
+    --tag-blue: oklch(58% 0.15 255);
+    --tag-teal: oklch(60% 0.10 195);
+    --tag-green: oklch(60% 0.14 150);
+    --tag-amber: oklch(74% 0.15 80);
+    --tag-orange: oklch(66% 0.16 50);
+    --tag-pink: oklch(64% 0.17 350);
+    --tag-violet: oklch(58% 0.17 300);
+  }
+  html[data-theme='dark'] {
+    --tag-grey: oklch(70% 0.01 270);
+    --tag-blue: oklch(70% 0.14 255);
+    --tag-teal: oklch(72% 0.10 195);
+    --tag-green: oklch(72% 0.14 150);
+    --tag-amber: oklch(80% 0.14 80);
+    --tag-orange: oklch(74% 0.15 50);
+    --tag-pink: oklch(74% 0.15 350);
+    --tag-violet: oklch(72% 0.15 300);
+  }
+  [data-tag-color='grey']   { --tag-c: var(--tag-grey); }
+  [data-tag-color='blue']   { --tag-c: var(--tag-blue); }
+  [data-tag-color='teal']   { --tag-c: var(--tag-teal); }
+  [data-tag-color='green']  { --tag-c: var(--tag-green); }
+  [data-tag-color='amber']  { --tag-c: var(--tag-amber); }
+  [data-tag-color='orange'] { --tag-c: var(--tag-orange); }
+  [data-tag-color='pink']   { --tag-c: var(--tag-pink); }
+  [data-tag-color='violet'] { --tag-c: var(--tag-violet); }
+
+  .order-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 22px; padding: 0 var(--space-2);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+    background: var(--bg-surface-muted); color: var(--text-secondary);
+    font-size: 0.75rem; font-weight: 500; line-height: 1; white-space: nowrap;
+  }
+  .order-tag__dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--tag-c, var(--tag-grey)); }
+  .order-tag--sm { height: 18px; padding: 0 6px; gap: 4px; font-size: 0.6875rem; }
+  .order-tag--sm .order-tag__dot { width: 6px; height: 6px; }
+  .order-tag__remove {
+    appearance: none; border: 0; background: none; padding: 0 0 0 2px; margin-right: -3px;
+    color: var(--text-muted); cursor: pointer; font-size: 0.875rem; line-height: 1;
+  }
+  .order-tag__remove:hover { color: var(--text-primary); }
+  .order-tag__remove:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+
+  .order-header__title { overflow-wrap: anywhere; }
+  .order-header__tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.8125rem; }
+  .order-header__tags-label { color: var(--text-muted); }
+
+  .mk-anchor { position: relative; display: inline-flex; }
+  .tag-picker {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 30;
+    width: min(300px, 86vw); padding: var(--space-2);
+    display: grid; gap: var(--space-1);
+  }
+  .tag-picker__search { width: 100%; }
+  .tag-picker__list { display: grid; gap: 1px; max-height: 240px; overflow-y: auto; }
+  .tag-picker__item { justify-content: flex-start; }
+  .tag-picker__item input { margin: 0; }
+  .tag-picker__item .order-tag { margin-right: auto; }
+  .tag-picker__hint { font-size: 0.6875rem; color: var(--text-muted); font-family: var(--font-mono); }
+  .tag-picker__foot { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2) 0; border-top: 1px solid var(--border-subtle); font-size: 0.75rem; }
+  .dropdown-menu__item:hover { background: var(--bg-surface-hover); }
+
+  .order-note-pinned {
+    display: grid; gap: var(--space-1);
+    margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-subtle); border-left: 3px solid var(--border-strong);
+    border-radius: var(--radius-lg); background: var(--bg-surface);
+  }
+  .order-note-pinned__label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+  .order-note-pinned__label svg { color: var(--text-muted); }
+
+  .order-notes { list-style: none; margin: 0; padding: 0; display: grid; }
+  .order-note { display: grid; gap: var(--space-1); padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle); }
+  .order-note:first-child { border-top: 0; padding-top: 0; }
+  .order-note__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.75rem; color: var(--text-muted); }
+  .order-note__author { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+  .order-note__body { margin: 0; max-width: 72ch; font-size: 0.875rem; line-height: 1.5; color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .order-note__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-left: auto; }
+  .order-note__editor { display: grid; gap: var(--space-2); }
+  .order-note__editor-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+  .order-notes__composer { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); }
+  .order-notes__composer textarea { resize: vertical; min-height: 4.5rem; }
+  .order-notes__composer-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+  .order-notes__composer-foot .ack-row { margin: 0; }
+  .order-notes__counter { margin-left: auto; font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+  .order-notes__packer-warning { margin: 0; font-size: 0.75rem; color: var(--text-secondary); }
+
+  .orders-tags-line { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+
+  .tag-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); border: 0; margin: 0; padding: 0; min-width: 0; }
+  .tag-swatches legend { padding: 0; margin-bottom: var(--space-2); font-size: 0.8125rem; font-weight: 500; color: var(--text-primary); }
+  .tag-swatch {
+    position: relative; display: inline-flex; align-items: center; gap: 6px;
+    height: 28px; padding: 0 var(--space-2);
+    border: 1px solid var(--border-default); border-radius: var(--radius-pill);
+    font-size: 0.75rem; color: var(--text-secondary); cursor: pointer;
+  }
+  .tag-swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+  .tag-swatch:has(input:checked) { border-color: var(--text-primary); color: var(--text-primary); background: var(--bg-surface-muted); }
+  .tag-swatch:has(input:focus-visible) { box-shadow: var(--shadow-focus); }
+  .tag-new { display: grid; gap: var(--space-4); margin-bottom: var(--space-5); }
+  .tag-new__row { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); align-items: start; }
+  .tag-new__foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+  @media (max-width: 720px) { .tag-new__row { grid-template-columns: minmax(0, 1fr); } }
+
+  .bulk-menu { position: absolute; bottom: calc(100% + 6px); right: 0; width: min(300px, 86vw); }
+  .bulk-menu .dropdown-menu__item { justify-content: flex-start; }
+  .bulk-menu .order-tag { margin-right: auto; }
+  .bulk-menu__hint { font-size: 0.6875rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+  /* Author display rules (grid/flex) would otherwise beat the UA [hidden] rule. */
+  [hidden] { display: none !important; }
+
+  @media (max-width: 640px) { .mk-hide-sm { display: none; } }
+
+  /* The real /bench is bench-owned and renders no AppShell. */
+  body.mk-bench .shell-sidebar, body.mk-bench .shell-topbar { display: none; }
+  body.mk-bench .shell-content { padding: 0; }
+  body.mk-bench .shell { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'main'; }
+  .bench-office-note { margin: 0; }
+  .bench-office-note__meta { display: block; margin-top: var(--space-1); font-size: 0.75rem; color: var(--text-muted); }
+</style>
+
+<div data-ol-page data-active="Orders" data-crumb-group="Operations" data-crumb="Orders">
+
+  <!-- ============================================================ -->
+  <!-- 1. ORDER DETAIL: default with notes and tags                  -->
+  <!-- ============================================================ -->
+  <div data-mk-state="default" data-mk-label="Z notatkami">
+  <section class="page-section">
+    <div class="page-header">
+      <div class="page-header__content">
+        <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Orders</span></a>
+        <p class="eyebrow">Orders</p>
+        <h2 class="page-title">Order detail</h2>
+      </div>
+    </div>
+
+    <header class="order-header">
+      <div class="order-header__top">
+        <h1 class="order-header__title">Order 3f9c2a1e-5b7d-11f0-9a3c-0242ac7b41d0</h1>
+        <span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span><span>Healthy</span></span>
+        <span class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span><span>Ready</span></span>
+        <span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span><span>Paid</span></span>
+      </div>
+      <p class="order-header__phase-note text-muted">Waiting for the parcel to be packed and handed to the carrier.</p>
+      <div class="order-header__sub">
+        <span class="copyable-id"><code class="copyable-id__value mono-text">ol_order_8c21…e0f4</code></span>
+        <span class="order-route">
+          <span class="order-route__node"><span class="order-route__dot" aria-hidden="true"></span>Allegro · Sklep Kuchnia<span class="order-route__role">source</span></span>
+          <span class="order-route__arrow" aria-hidden="true">→</span>
+          <span class="order-route__node"><span class="order-route__dot order-route__dot--accent" aria-hidden="true"></span>PrestaShop Main<span class="order-route__role">destination</span></span>
+        </span>
+        <span class="order-header__received">Placed <time class="mono-text tabular">25 Sep 2026, 08:14</time> <span class="text-muted">· 6h ago</span></span>
+      </div>
+      <!-- NEW: tags row -->
+      <div class="order-header__tags" id="detail-tags">
+        <span class="order-header__tags-label">Tags <span class="mk-pin">1</span></span>
+        <span class="order-tag" data-tag-color="violet" data-tag="VIP"><span class="order-tag__dot" aria-hidden="true"></span>VIP<button type="button" class="order-tag__remove" aria-label="Remove tag VIP">×</button></span>
+        <span class="order-tag" data-tag-color="pink" data-tag="Gift wrap"><span class="order-tag__dot" aria-hidden="true"></span>Gift wrap<button type="button" class="order-tag__remove" aria-label="Remove tag Gift wrap">×</button></span>
+        <span class="mk-anchor">
+          <button type="button" class="button button--ghost button--xs" data-toggle="tag-picker" aria-expanded="false" aria-haspopup="dialog">+ Add tag</button>
+          <div class="popover__content tag-picker" id="tag-picker" role="dialog" aria-label="Add tag" hidden>
+            <input class="control tag-picker__search" type="text" placeholder="Find or create a tag" aria-label="Find or create a tag" id="tag-picker-search">
+            <div class="tag-picker__list" role="group" aria-label="Tags">
+              <label class="dropdown-menu__item tag-picker__item"><input type="checkbox" checked data-pick="VIP"> <span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="tag-picker__hint">42</span></label>
+              <label class="dropdown-menu__item tag-picker__item"><input type="checkbox" checked data-pick="Gift wrap"> <span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span>Gift wrap</span><span class="tag-picker__hint">17</span></label>
+              <label class="dropdown-menu__item tag-picker__item"><input type="checkbox" data-pick="Fragile"> <span class="order-tag order-tag--sm" data-tag-color="amber"><span class="order-tag__dot"></span>Fragile</span><span class="tag-picker__hint">63</span></label>
+              <label class="dropdown-menu__item tag-picker__item"><input type="checkbox" data-pick="B2B"> <span class="order-tag order-tag--sm" data-tag-color="blue"><span class="order-tag__dot"></span>B2B</span><span class="tag-picker__hint">28</span></label>
+              <label class="dropdown-menu__item tag-picker__item"><input type="checkbox" data-pick="Free gift"> <span class="order-tag order-tag--sm" data-tag-color="green"><span class="order-tag__dot"></span>Free gift</span><span class="tag-picker__hint">38</span></label>
+              <label class="dropdown-menu__item tag-picker__item"><input type="checkbox" data-pick="Resend"> <span class="order-tag order-tag--sm" data-tag-color="teal"><span class="order-tag__dot"></span>Resend</span><span class="tag-picker__hint">9</span></label>
+              <label class="dropdown-menu__item tag-picker__item"><input type="checkbox" data-pick="Complaint"> <span class="order-tag order-tag--sm" data-tag-color="orange"><span class="order-tag__dot"></span>Complaint</span><span class="tag-picker__hint">5</span></label>
+            </div>
+            <div class="tag-picker__foot"><a href="#" data-goto="tags">Manage tags</a><span class="text-muted">Saved as you tick</span></div>
+          </div>
+        </span>
+      </div>
+      <div class="order-header__summary-line">
+        <span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>K</span></span>
+        <strong>3 items · 4 units</strong>
+        <span class="order-header__summary-sep">—</span>
+        <a class="order-product-link" href="#">Kubek ceramiczny 350 ml, grafitowy</a>
+        <span class="text-muted">+2 more</span>
+        <span class="order-header__summary-sep">·</span>
+        <span class="mono-text tabular">347.00 PLN</span>
+      </div>
+    </header>
+
+    <!-- NEW: pinned note, full-width slot under the header -->
+    <div class="order-note-pinned" role="note" aria-label="Pinned note">
+      <span class="order-note-pinned__label"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 1.5 14.5 6.5 11 8 8 11l-1.5 3.5-5-5L5 8l3-3z"/><line x1="4" y1="12" x2="1.5" y2="14.5"/></svg>Pinned note <span class="mk-pin">2</span></span>
+      <p class="order-note__body">Buyer asked for the paper invoice to go inside the parcel, not by email. Put the printed invoice on top, under the flap.</p>
+      <span class="order-note__head"><span class="order-note__author">marta.nowak</span><span>2h ago</span><span class="status-badge status-badge--neutral status-badge--compact"><span>Shown to packer</span></span><a href="#notes-default">All notes (3)</a></span>
+    </div>
+
+    <div class="order-health" role="group" aria-label="Order health">
+      <div class="order-health__cell"><div class="order-health__k">Sync</div><div class="order-health__v">Synced</div><div class="order-health__hint">1 of 1 destination</div></div>
+      <div class="order-health__cell"><div class="order-health__k">Fulfillment</div><div class="order-health__v">Awaiting label</div><div class="order-health__hint">Ship by tomorrow 14:00</div></div>
+      <div class="order-health__cell"><div class="order-health__k">Total</div><div class="order-health__v mono-text tabular">347.00 PLN</div><div class="order-health__hint">Paid · PayU</div></div>
+    </div>
+
+    <div class="order-detail__primary-grid order-detail__primary-grid--split" style="margin-top: var(--space-5)">
+      <div class="order-detail__stack">
+        <section class="detail-section">
+          <h3 class="detail-section__title">Summary</h3>
+          <dl class="key-value-list">
+            <dt class="key-value-list__label">Order #</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">3f9c2a1e…7b41d0</dd>
+            <dt class="key-value-list__label">Source</dt><dd class="key-value-list__value">Allegro · Sklep Kuchnia</dd>
+            <dt class="key-value-list__label">Placed</dt><dd class="key-value-list__value"><time class="mono-text">25 Sep 2026, 08:14</time></dd>
+            <dt class="key-value-list__label">Ship by</dt><dd class="key-value-list__value"><time class="mono-text">26 Sep 2026, 14:00</time> <span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>in 23h</span></span></dd>
+          </dl>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Hold</h3>
+          <div class="ds-row order-hold-panel"><span class="text-muted">Not on hold.</span><button type="button" class="button button--secondary button--sm">Put on hold</button></div>
+        </section>
+
+        <!-- NEW: Notes section -->
+        <section class="detail-section" id="notes-default">
+          <div class="detail-section__title-row">
+            <h3 class="detail-section__title">Notes (3) <span class="mk-pin">3</span></h3>
+            <span class="detail-section__muted" style="font-size:0.75rem">Only your team sees these. Never sent to Allegro or PrestaShop.</span>
+          </div>
+
+          <form class="order-notes__composer" data-composer onsubmit="return false">
+            <label class="sr-only" for="note-new-default">New note</label>
+            <textarea class="control" id="note-new-default" rows="2" maxlength="2000" placeholder="Add a note for your team"></textarea>
+            <div class="order-notes__composer-foot">
+              <label class="ack-row ack-row--inline"><input type="checkbox"> <span>Show to packer on the pack bench</span></label>
+              <label class="ack-row ack-row--inline"><input type="checkbox"> <span>Pin to the top</span></label>
+              <span class="order-notes__counter" data-counter>0 / 2000</span>
+              <button type="submit" class="button button--primary button--sm" disabled data-add>Add note</button>
+            </div>
+          </form>
+
+          <ol class="order-notes" aria-label="Notes">
+            <li class="order-note" data-note>
+              <div class="order-note__head">
+                <span class="order-note__author">marta.nowak</span><time class="mono-text">25 Sep 2026, 12:40</time>
+                <span class="status-badge status-badge--neutral status-badge--compact"><span>Pinned</span></span>
+                <span class="status-badge status-badge--neutral status-badge--compact"><span>Shown to packer</span></span>
+                <span class="order-note__actions"><button type="button" class="button button--ghost button--xs" data-edit>Edit</button><button type="button" class="button button--ghost button--xs" data-pin>Unpin</button><button type="button" class="button button--ghost button--xs" data-delete>Delete</button></span>
+              </div>
+              <p class="order-note__body">Buyer asked for the paper invoice to go inside the parcel, not by email. Put the printed invoice on top, under the flap.</p>
+            </li>
+            <li class="order-note" data-note>
+              <div class="order-note__head">
+                <span class="order-note__author">tomasz.zielinski</span><time class="mono-text">24 Sep 2026, 16:05</time>
+                <span class="order-note__actions"><button type="button" class="button button--ghost button--xs" data-edit>Edit</button><button type="button" class="button button--ghost button--xs" data-pin>Pin</button><button type="button" class="button button--ghost button--xs" data-delete>Delete</button></span>
+              </div>
+              <p class="order-note__body">Called the buyer: Paczkomat KRA12M is full until Friday. She agreed to KRA08A instead. Changed on Allegro, waiting for the order to update here.</p>
+            </li>
+            <li class="order-note" data-note>
+              <div class="order-note__head">
+                <span class="order-note__author">marta.nowak</span><time class="mono-text">24 Sep 2026, 11:20</time><span>edited 11:31</span>
+                <span class="status-badge status-badge--neutral status-badge--compact"><span>Shown to packer</span></span>
+                <span class="order-note__actions"><button type="button" class="button button--ghost button--xs" data-edit>Edit</button><button type="button" class="button button--ghost button--xs" data-pin>Pin</button><button type="button" class="button button--ghost button--xs" data-delete>Delete</button></span>
+              </div>
+              <p class="order-note__body">The last supplier batch of the grafitowy mug had chipped glaze. Check both mugs before they go in.</p>
+            </li>
+          </ol>
+        </section>
+      </div>
+
+      <div class="order-detail__stack">
+        <section class="detail-section">
+          <h3 class="detail-section__title">Delivery</h3>
+          <dl class="key-value-list">
+            <dt class="key-value-list__label">Method</dt><dd class="key-value-list__value">Allegro Paczkomaty InPost</dd>
+            <dt class="key-value-list__label">Pickup point</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">KRA12M</dd>
+            <dt class="key-value-list__label">Recipient</dt><dd class="key-value-list__value">Katarzyna Wiśniewska, Kraków</dd>
+          </dl>
+        </section>
+        <section class="detail-section">
+          <h3 class="detail-section__title">Shipment</h3>
+          <div class="ds-row"><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Awaiting label</span></span><button type="button" class="button button--secondary button--sm">Generate label</button></div>
+        </section>
+        <section class="detail-section">
+          <h3 class="detail-section__title">Customer</h3>
+          <dl class="key-value-list">
+            <dt class="key-value-list__label">Name</dt><dd class="key-value-list__value">Katarzyna Wiśniewska</dd>
+            <dt class="key-value-list__label">Orders</dt><dd class="key-value-list__value">4 since Mar 2025</dd>
+          </dl>
+        </section>
+      </div>
+    </div>
+
+    <section class="detail-section" style="margin-top: var(--space-6)">
+      <h3 class="detail-section__title">Activity <span class="mk-pin">4</span></h3>
+      <ol class="order-activity" aria-label="Order activity timeline">
+        <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order received<span class="order-activity__by">system · ingest</span></p><p class="order-activity__description">Ingested and ready for sync.</p></div><time class="order-activity__time">25 Sep 2026, 08:15</time></li>
+        <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order synced to PrestaShop Main<span class="order-activity__by">system · attempt 1</span></p><p class="order-activity__description">External order <span class="mono-text">KXQMZPTRA</span> <span class="mono-text text-muted">(18832)</span></p></div><time class="order-activity__time">25 Sep 2026, 08:15</time></li>
+        <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Tag added — VIP<span class="order-activity__by">tomasz.zielinski</span></p></div><time class="order-activity__time">25 Sep 2026, 09:02</time></li>
+        <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Tag added — Gift wrap<span class="order-activity__by">marta.nowak</span></p><p class="order-activity__description">Added to 12 orders at once from the order list.</p></div><time class="order-activity__time">25 Sep 2026, 11:47</time></li>
+        <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Note added and pinned<span class="order-activity__by">marta.nowak</span></p><p class="order-activity__description">“Buyer asked for the paper invoice to go inside the parcel, not by email. Put the printed invoice on top, under the flap.”</p><p class="order-activity__footer text-muted">Shown to packer on the pack bench</p></div><time class="order-activity__time">25 Sep 2026, 12:40</time></li>
+      </ol>
+      <p class="order-activity__caption">Showing 5 of 5 events · attempts capped at 10 per destination.</p>
+    </section>
+  </section>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 2. ORDER DETAIL: empty (no notes, no tags)                    -->
+  <!-- ============================================================ -->
+  <div data-mk-state="empty" data-mk-label="Brak notatek" hidden>
+  <section class="page-section">
+    <div class="page-header"><div class="page-header__content">
+      <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Orders</span></a>
+      <p class="eyebrow">Orders</p><h2 class="page-title">Order detail</h2>
+    </div></div>
+    <header class="order-header">
+      <div class="order-header__top">
+        <h1 class="order-header__title">Order KXQMZPTRA</h1>
+        <span class="status-badge status-badge--warning status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span><span>Pending</span></span>
+        <span class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span><span>Ready</span></span>
+        <span class="status-badge status-badge--info"><span class="status-badge__dot" aria-hidden="true"></span><span>Cash on delivery</span></span>
+      </div>
+      <div class="order-header__sub">
+        <span class="copyable-id"><code class="copyable-id__value mono-text">ol_order_41b7…93ac</code></span>
+        <span class="order-route"><span class="order-route__node"><span class="order-route__dot" aria-hidden="true"></span>PrestaShop Main<span class="order-route__role">source</span></span></span>
+        <span class="order-header__received">Placed <time class="mono-text tabular">25 Sep 2026, 13:52</time> <span class="text-muted">· 22m ago</span></span>
+      </div>
+      <div class="order-header__tags">
+        <span class="order-header__tags-label">Tags</span>
+        <span class="text-muted">No tags</span>
+        <button type="button" class="button button--ghost button--xs">+ Add tag</button>
+      </div>
+      <div class="order-header__summary-line">
+        <span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>Z</span></span>
+        <strong>2 items · 2 units</strong><span class="order-header__summary-sep">—</span><a class="order-product-link" href="#">Zestaw noży kuchennych, 5 szt.</a><span class="text-muted">+1 more</span><span class="order-header__summary-sep">·</span><span class="mono-text tabular">529.90 PLN</span>
+      </div>
+    </header>
+
+    <div class="order-detail__primary-grid order-detail__primary-grid--split">
+      <div class="order-detail__stack">
+        <section class="detail-section">
+          <div class="detail-section__title-row">
+            <h3 class="detail-section__title">Notes <span class="mk-pin">5</span></h3>
+            <span class="detail-section__muted" style="font-size:0.75rem">Only your team sees these. Never sent to your sales channels.</span>
+          </div>
+          <div class="state-card empty-state" role="status">
+            <div class="state-card__header"><h2 class="state-card__title">No notes yet</h2></div>
+            <p class="state-card__message">Write down anything the next person handling this order should know: a buyer's request, a phone call, a packing instruction.</p>
+          </div>
+          <form class="order-notes__composer" data-composer onsubmit="return false">
+            <label class="sr-only" for="note-new-empty">New note</label>
+            <textarea class="control" id="note-new-empty" rows="2" maxlength="2000" placeholder="Add a note for your team"></textarea>
+            <div class="order-notes__composer-foot">
+              <label class="ack-row ack-row--inline"><input type="checkbox"> <span>Show to packer on the pack bench</span></label>
+              <label class="ack-row ack-row--inline"><input type="checkbox"> <span>Pin to the top</span></label>
+              <span class="order-notes__counter" data-counter>0 / 2000</span>
+              <button type="submit" class="button button--primary button--sm" disabled data-add>Add note</button>
+            </div>
+          </form>
+        </section>
+      </div>
+      <div class="order-detail__stack">
+        <section class="detail-section">
+          <h3 class="detail-section__title">Activity</h3>
+          <ol class="order-activity" aria-label="Order activity timeline">
+            <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order received<span class="order-activity__by">system · ingest</span></p><p class="order-activity__description">Ingested and ready for sync.</p></div><time class="order-activity__time">25 Sep 2026, 13:53</time></li>
+          </ol>
+          <p class="order-activity__caption">Showing 1 of 1 event · attempts capped at 10 per destination.</p>
+        </section>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 3. ADD NOTE: composer filled, packer flag on                  -->
+  <!-- ============================================================ -->
+  <div data-mk-state="add" data-mk-label="Dodawanie notatki" hidden>
+  <section class="page-section">
+    <div class="page-header"><div class="page-header__content">
+      <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Orders</span></a>
+      <p class="eyebrow">Orders</p><h2 class="page-title">Order detail</h2>
+    </div></div>
+    <header class="order-header">
+      <div class="order-header__top">
+        <h1 class="order-header__title">Order 58213904</h1>
+        <span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span><span>Healthy</span></span>
+        <span class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span><span>Ready</span></span>
+      </div>
+      <div class="order-header__sub">
+        <span class="copyable-id"><code class="copyable-id__value mono-text">ol_order_d02e…17b9</code></span>
+        <span class="order-route"><span class="order-route__node"><span class="order-route__dot" aria-hidden="true"></span>Erli<span class="order-route__role">source</span></span><span class="order-route__arrow" aria-hidden="true">→</span><span class="order-route__node"><span class="order-route__dot order-route__dot--accent" aria-hidden="true"></span>PrestaShop Main<span class="order-route__role">destination</span></span></span>
+      </div>
+      <div class="order-header__tags">
+        <span class="order-header__tags-label">Tags</span>
+        <span class="order-tag" data-tag-color="blue"><span class="order-tag__dot" aria-hidden="true"></span>B2B<button type="button" class="order-tag__remove" aria-label="Remove tag B2B">×</button></span>
+        <button type="button" class="button button--ghost button--xs">+ Add tag</button>
+      </div>
+    </header>
+
+    <section class="detail-section" style="max-width: 46rem">
+      <div class="detail-section__title-row">
+        <h3 class="detail-section__title">Notes (1)</h3>
+        <span class="detail-section__muted" style="font-size:0.75rem">Only your team sees these. Never sent to Erli or PrestaShop.</span>
+      </div>
+      <form class="order-notes__composer" data-composer onsubmit="return false">
+        <label class="sr-only" for="note-new-add">New note</label>
+        <textarea class="control" id="note-new-add" rows="3" maxlength="2000">Invoice for the company goes in the box. Pack the lamp in the double carton, the buyer returned the last one cracked.</textarea>
+        <div class="order-notes__composer-foot">
+          <label class="ack-row ack-row--inline"><input type="checkbox" checked data-packer-flag> <span>Show to packer on the pack bench <span class="mk-pin">6</span></span></label>
+          <label class="ack-row ack-row--inline"><input type="checkbox"> <span>Pin to the top</span></label>
+          <span class="order-notes__counter" data-counter>115 / 2000</span>
+          <button type="submit" class="button button--primary button--sm" data-add>Add note</button>
+        </div>
+        <p class="order-notes__packer-warning" data-packer-warning>Packers see this text on the pack bench. Leave out phone numbers, emails and addresses.</p>
+      </form>
+      <div class="alert alert--error" role="alert">
+      <div class="alert__content"><strong class="alert__title">Note not saved</strong><div class="alert__description">OpenLinker could not reach the server. Your text is still in the box above. Try again. <span class="mk-pin">7</span></div></div>
+      <div class="alert__actions"><button type="button" class="button button--secondary button--sm">Try again</button></div>
+      </div>
+      <ol class="order-notes" aria-label="Notes">
+        <li class="order-note">
+          <div class="order-note__head"><span class="order-note__author">ewa.kaczmarek</span><time class="mono-text">23 Sep 2026, 10:05</time><span class="order-note__actions"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs">Pin</button><button type="button" class="button button--ghost button--xs">Delete</button></span></div>
+          <p class="order-note__body">Company buyer, NIP on the order. Their accounts team wants the invoice number in the email subject.</p>
+        </li>
+      </ol>
+    </section>
+  </section>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 4. TAG MANAGER (settings)                                      -->
+  <!-- ============================================================ -->
+  <div data-mk-state="tags" data-mk-label="Menedżer tagów" hidden data-nav="Settings" data-crumb-g="Platform" data-crumb-c="Settings / Order tags">
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Settings</span></a>
+        <p class="eyebrow">Platform</p>
+        <h2 class="page-title">Order tags</h2>
+        <p class="page-description">Labels your team puts on orders. Use them to filter the order list and to mark orders in bulk. Tags stay in OpenLinker and are never sent to your sales channels.</p>
+      </div>
+      <div class="page-header__actions"><div class="toolbar__group"><button type="button" class="button button--primary">New tag</button></div></div>
+    </div>
+
+    <form class="panel tag-new" onsubmit="return false" aria-label="New tag">
+      <div class="panel__header"><h3>New tag <span class="mk-pin">8</span></h3><span class="panel__meta">Admins only</span></div>
+      <div class="tag-new__row">
+        <label class="form-field"><span class="form-field__label">Name</span>
+          <input class="control" type="text" value="Courier 12:00" maxlength="32" id="tag-name">
+          <span class="form-field__description">Up to 32 characters. Must be unique.</span></label>
+        <fieldset class="tag-swatches" id="tag-swatches">
+          <legend>Colour</legend>
+          <label class="tag-swatch" data-tag-color="grey"><input type="radio" name="tag-colour" value="grey"><span class="order-tag__dot" aria-hidden="true"></span>Grey</label>
+          <label class="tag-swatch" data-tag-color="blue"><input type="radio" name="tag-colour" value="blue"><span class="order-tag__dot" aria-hidden="true"></span>Blue</label>
+          <label class="tag-swatch" data-tag-color="teal"><input type="radio" name="tag-colour" value="teal" checked><span class="order-tag__dot" aria-hidden="true"></span>Teal</label>
+          <label class="tag-swatch" data-tag-color="green"><input type="radio" name="tag-colour" value="green"><span class="order-tag__dot" aria-hidden="true"></span>Green</label>
+          <label class="tag-swatch" data-tag-color="amber"><input type="radio" name="tag-colour" value="amber"><span class="order-tag__dot" aria-hidden="true"></span>Amber</label>
+          <label class="tag-swatch" data-tag-color="orange"><input type="radio" name="tag-colour" value="orange"><span class="order-tag__dot" aria-hidden="true"></span>Orange</label>
+          <label class="tag-swatch" data-tag-color="pink"><input type="radio" name="tag-colour" value="pink"><span class="order-tag__dot" aria-hidden="true"></span>Pink</label>
+          <label class="tag-swatch" data-tag-color="violet"><input type="radio" name="tag-colour" value="violet"><span class="order-tag__dot" aria-hidden="true"></span>Violet</label>
+        </fieldset>
+      </div>
+      <div class="tag-new__foot">
+        <span class="text-muted" style="font-size:0.8125rem">Preview</span>
+        <span class="order-tag" data-tag-color="teal" id="tag-preview"><span class="order-tag__dot" aria-hidden="true"></span><span id="tag-preview-name">Courier 12:00</span></span>
+        <span style="margin-left:auto" class="toolbar__group"><button type="button" class="button button--ghost">Cancel</button><button type="submit" class="button button--primary">Create tag</button></span>
+      </div>
+    </form>
+
+    <div class="data-table__container">
+      <table class="data-table">
+        <caption class="sr-only">Order tags</caption>
+        <thead><tr><th>Tag</th><th class="mk-hide-sm">Colour</th><th class="data-table__cell--right">Orders</th><th class="mk-hide-sm">Created</th><th class="data-table__cell--right"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          <tr><td><span class="order-tag" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span></td><td class="mk-hide-sm">Violet</td><td class="data-table__cell--right"><a class="mono-text tabular" href="#" data-goto="filtered">42</a></td><td class="mk-hide-sm"><span class="mono-text">12 Mar 2026</span></td><td class="data-table__cell--right"><span class="toolbar__group" style="justify-content:flex-end"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs" data-delete-tag="VIP" data-count="42">Delete</button></span></td></tr>
+          <tr><td><span class="order-tag" data-tag-color="amber"><span class="order-tag__dot"></span>Fragile</span></td><td class="mk-hide-sm">Amber</td><td class="data-table__cell--right"><a class="mono-text tabular" href="#">63</a></td><td class="mk-hide-sm"><span class="mono-text">12 Mar 2026</span></td><td class="data-table__cell--right"><span class="toolbar__group" style="justify-content:flex-end"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs" data-delete-tag="Fragile" data-count="63">Delete</button></span></td></tr>
+          <tr><td><span class="order-tag" data-tag-color="green"><span class="order-tag__dot"></span>Free gift</span></td><td class="mk-hide-sm">Green</td><td class="data-table__cell--right"><a class="mono-text tabular" href="#">38</a></td><td class="mk-hide-sm"><span class="mono-text">2 Jun 2026</span></td><td class="data-table__cell--right"><span class="toolbar__group" style="justify-content:flex-end"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs" data-delete-tag="Free gift" data-count="38">Delete</button></span></td></tr>
+          <tr><td><span class="order-tag" data-tag-color="blue"><span class="order-tag__dot"></span>B2B</span></td><td class="mk-hide-sm">Blue</td><td class="data-table__cell--right"><a class="mono-text tabular" href="#">28</a></td><td class="mk-hide-sm"><span class="mono-text">20 Apr 2026</span></td><td class="data-table__cell--right"><span class="toolbar__group" style="justify-content:flex-end"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs" data-delete-tag="B2B" data-count="28">Delete</button></span></td></tr>
+          <tr><td><span class="order-tag" data-tag-color="pink"><span class="order-tag__dot"></span>Gift wrap</span></td><td class="mk-hide-sm">Pink</td><td class="data-table__cell--right"><a class="mono-text tabular" href="#">17</a></td><td class="mk-hide-sm"><span class="mono-text">1 Sep 2026</span></td><td class="data-table__cell--right"><span class="toolbar__group" style="justify-content:flex-end"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs" data-delete-tag="Gift wrap" data-count="17">Delete</button></span></td></tr>
+          <tr><td><span class="order-tag" data-tag-color="teal"><span class="order-tag__dot"></span>Resend</span></td><td class="mk-hide-sm">Teal</td><td class="data-table__cell--right"><a class="mono-text tabular" href="#">9</a></td><td class="mk-hide-sm"><span class="mono-text">7 Jul 2026</span></td><td class="data-table__cell--right"><span class="toolbar__group" style="justify-content:flex-end"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs" data-delete-tag="Resend" data-count="9">Delete</button></span></td></tr>
+          <tr><td><span class="order-tag" data-tag-color="orange"><span class="order-tag__dot"></span>Complaint</span></td><td class="mk-hide-sm">Orange</td><td class="data-table__cell--right"><a class="mono-text tabular" href="#">5</a></td><td class="mk-hide-sm"><span class="mono-text">7 Jul 2026</span></td><td class="data-table__cell--right"><span class="toolbar__group" style="justify-content:flex-end"><button type="button" class="button button--ghost button--xs">Edit</button><button type="button" class="button button--ghost button--xs" data-delete-tag="Complaint" data-count="5">Delete</button></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted-text" style="font-size:0.8125rem; margin-top: var(--space-3)">7 of 50 tags used. <span class="mk-pin">9</span></p>
+  </section>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 5. ORDERS LIST filtered by tag                                 -->
+  <!-- ============================================================ -->
+  <div data-mk-state="filtered" data-mk-label="Lista: filtr po tagu" hidden>
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content"><p class="eyebrow">Synced 14:12</p><h2 class="page-title">Orders</h2></div>
+      <div class="page-header__actions"><button type="button" class="button button--ghost button--sm">Refresh<span class="button__shortcut">R</span></button></div>
+    </div>
+
+    <div class="ds-grid ds-grid--5 orders-segments">
+      <button type="button" class="card-button-reset orders-segment orders-segment--active" aria-pressed="true"><div class="metric-card metric-card--neutral"><span class="metric-card__label">All orders</span><span class="metric-card__value">42</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--error"><span class="metric-card__label">Source deleted</span><span class="metric-card__value">0</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--error"><span class="metric-card__label">Needs attention</span><span class="metric-card__value">1</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--warning"><span class="metric-card__label">Awaiting mapping</span><span class="metric-card__value">0</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--info"><span class="metric-card__label">Awaiting dispatch</span><span class="metric-card__value">9</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--success"><span class="metric-card__label">Synced</span><span class="metric-card__value">32</span></div></button>
+    </div>
+
+    <div class="toolbar orders-toolbar"><div class="toolbar__group">
+      <select class="control" aria-label="Filter by source"><option>All sources</option></select>
+      <label class="orders-toolbar__field"><span class="orders-toolbar__label">From</span><input type="date" class="control" aria-label="Created from"></label>
+      <label class="orders-toolbar__field"><span class="orders-toolbar__label">To</span><input type="date" class="control" aria-label="Created to"></label>
+      <select class="control" aria-label="Filter by ship-by SLA"><option>Any SLA</option></select>
+      <select class="control" aria-label="Filter by fulfillment"><option>Any fulfillment</option></select>
+      <select class="control" aria-label="Filter by hold reason"><option>Any hold reason</option></select>
+      <select class="control" aria-label="Filter by tag">
+        <option value="">Any tag</option>
+        <option selected>VIP (42)</option>
+        <option>Fragile (63)</option>
+        <option>Free gift (38)</option>
+        <option>B2B (28)</option>
+        <option>Gift wrap (17)</option>
+        <option>Resend (9)</option>
+        <option>Complaint (5)</option>
+        <option>No tags</option>
+      </select>
+      <span class="mk-pin">10</span>
+    </div></div>
+
+    <div class="ds-row" style="gap: var(--space-2); flex-wrap: wrap; align-items: center">
+      <button type="button" class="chip chip--warning" aria-pressed="false">Ship-by ≤ 24h / overdue</button>
+      <a class="nav-link" href="#">Dispatch risk overview</a>
+      <span class="text-muted mono tabular" style="margin-left:auto; font-size:0.75rem">42 results</span>
+    </div>
+
+    <div class="data-table__container" style="margin-top: var(--space-3)">
+      <table class="data-table orders-table">
+        <caption class="sr-only">Orders</caption>
+        <thead><tr>
+          <th><input type="checkbox" aria-label="Select all visible orders"></th>
+          <th>Order</th><th>Customer</th><th class="mk-hide-sm">Channel</th><th>Status</th><th class="mk-hide-sm">Shipment</th><th class="data-table__cell--right">Total</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><input type="checkbox" aria-label="Select order 3f9c2a1e"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>K</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#" data-goto="default">3f9c2a1e…7b41d0</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Kubek ceramiczny 350 ml, grafitowy</span><span class="orders-more-count">+2</span></span><span class="orders-tags-line"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span>Gift wrap</span></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Katarzyna Wiśniewska</span><span class="text-muted orders-cell-sub">Kraków</span></span></td>
+            <td class="mk-hide-sm"><span class="orders-cell-stack"><span class="channel-pill" data-channel="allegro">Allegro</span><span class="text-muted orders-cell-sub">→ PrestaShop</span></span></td>
+            <td><span class="orders-cell-stack"><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Synced</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Ready</span></span></span></td>
+            <td class="mk-hide-sm"><span class="orders-cell-stack"><span class="status-badge status-badge--warning status-badge--compact"><span>Awaiting label</span></span><span class="text-muted orders-cell-sub mono tabular">due in 23h</span><span class="text-muted orders-cell-sub">InPost Paczkomat</span></span></td>
+            <td class="data-table__cell--right"><span class="orders-cell-stack orders-cell-stack--end"><span class="mono tabular orders-money-total">347.00 PLN</span><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Paid</span></span></span></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox" aria-label="Select order 58213904"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>L</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">58213904</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Lampka biurkowa LED, czarna</span></span><span class="orders-tags-line"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="order-tag order-tag--sm" data-tag-color="blue"><span class="order-tag__dot"></span>B2B</span></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Piotr Lewandowski</span><span class="text-muted orders-cell-sub">Poznań</span></span></td>
+            <td class="mk-hide-sm"><span class="orders-cell-stack"><span class="channel-pill" data-channel="erli">Erli</span><span class="text-muted orders-cell-sub">→ PrestaShop</span></span></td>
+            <td><span class="orders-cell-stack"><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Synced</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Shipped</span></span></span></td>
+            <td class="mk-hide-sm"><span class="orders-cell-stack"><span class="status-badge status-badge--success status-badge--compact"><span>Dispatched</span></span><span class="text-muted orders-cell-sub">DPD Polska</span></span></td>
+            <td class="data-table__cell--right"><span class="orders-cell-stack orders-cell-stack--end"><span class="mono tabular orders-money-total">1 289.00 PLN</span><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Paid</span></span></span></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox" aria-label="Select order KXQMZPTRA"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>Z</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">KXQMZPTRA</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Zestaw noży kuchennych, 5 szt.</span><span class="orders-more-count">+1</span></span><span class="orders-tags-line"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="order-tag order-tag--sm" data-tag-color="amber"><span class="order-tag__dot"></span>Fragile</span><span class="orders-more-count" title="1 more tag: Resend">+1</span></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Agnieszka Wójcik</span><span class="text-muted orders-cell-sub">Gdańsk</span></span></td>
+            <td class="mk-hide-sm"><span class="orders-cell-stack"><span class="channel-pill" data-channel="prestashop">PrestaShop</span></span></td>
+            <td><span class="orders-cell-stack"><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Needs attention</span></span><span class="orders-status-reason">Carrier not mapped</span></span></td>
+            <td class="mk-hide-sm"><span class="orders-cell-stack"><span class="status-badge status-badge--warning status-badge--compact"><span>Awaiting label</span></span><span class="text-muted orders-cell-sub mono tabular">overdue 2h</span><span class="text-muted orders-cell-sub">InPost Kurier</span></span></td>
+            <td class="data-table__cell--right"><span class="orders-cell-stack orders-cell-stack--end"><span class="mono tabular orders-money-total">529.90 PLN</span><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Cash on delivery</span></span></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <nav aria-label="Pagination" class="pagination"><span class="text-muted">Showing 1–3 of 42</span><div class="pagination__actions"><button type="button" class="button button--secondary" disabled>Previous</button><button type="button" class="button button--secondary">Next</button></div></nav>
+    <p class="muted-text" style="font-size:0.8125rem">Example: the first page of a VIP-filtered list, shortened to three rows for the mockup. <span class="mk-pin">11</span></p>
+  </section>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 6. BULK TAGGING                                                -->
+  <!-- ============================================================ -->
+  <div data-mk-state="bulk" data-mk-label="Tagowanie zbiorcze" hidden>
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content"><p class="eyebrow">Synced 14:12</p><h2 class="page-title">Orders</h2></div>
+      <div class="page-header__actions"><button type="button" class="button button--ghost button--sm">Refresh<span class="button__shortcut">R</span></button></div>
+    </div>
+    <div class="toolbar orders-toolbar"><div class="toolbar__group">
+      <select class="control" aria-label="Filter by source"><option>All sources</option></select>
+      <select class="control" aria-label="Filter by fulfillment"><option>Any fulfillment</option></select>
+      <select class="control" aria-label="Filter by tag"><option>Any tag</option></select>
+    </div></div>
+    <div class="data-table__container">
+      <table class="data-table orders-table" id="bulk-table">
+        <caption class="sr-only">Orders</caption>
+        <thead><tr>
+          <th><input type="checkbox" id="bulk-all" aria-label="Select all visible orders"></th>
+          <th>Order</th><th>Customer</th><th class="mk-hide-sm">Channel</th><th>Status</th><th class="data-table__cell--right">Total</th>
+        </tr></thead>
+        <tbody>
+          <tr data-row="1">
+            <td><input type="checkbox" checked data-sel aria-label="Select order 3f9c2a1e"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>K</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">3f9c2a1e…7b41d0</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Kubek ceramiczny 350 ml, grafitowy</span><span class="orders-more-count">+2</span></span><span class="orders-tags-line" data-tags><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span>Gift wrap</span></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Katarzyna Wiśniewska</span><span class="text-muted orders-cell-sub">Kraków</span></span></td>
+            <td class="mk-hide-sm"><span class="channel-pill" data-channel="allegro">Allegro</span></td>
+            <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Synced</span></span></td>
+            <td class="data-table__cell--right"><span class="mono tabular orders-money-total">347.00 PLN</span></td>
+          </tr>
+          <tr data-row="2">
+            <td><input type="checkbox" data-sel aria-label="Select order 58213904"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>L</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">58213904</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Lampka biurkowa LED, czarna</span></span><span class="orders-tags-line" data-tags><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="order-tag order-tag--sm" data-tag-color="blue"><span class="order-tag__dot"></span>B2B</span></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Piotr Lewandowski</span><span class="text-muted orders-cell-sub">Poznań</span></span></td>
+            <td class="mk-hide-sm"><span class="channel-pill" data-channel="erli">Erli</span></td>
+            <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Synced</span></span></td>
+            <td class="data-table__cell--right"><span class="mono tabular orders-money-total">1 289.00 PLN</span></td>
+          </tr>
+          <tr data-row="3">
+            <td><input type="checkbox" checked data-sel aria-label="Select order b81e04d7"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>R</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">b81e04d7…c2f915</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Ręcznik bawełniany 70×140, szary</span></span><span class="orders-tags-line" data-tags></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Michał Kamiński</span><span class="text-muted orders-cell-sub">Wrocław</span></span></td>
+            <td class="mk-hide-sm"><span class="channel-pill" data-channel="allegro">Allegro</span></td>
+            <td><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Awaiting dispatch</span></span></td>
+            <td class="data-table__cell--right"><span class="mono tabular orders-money-total">89.90 PLN</span></td>
+          </tr>
+          <tr data-row="4">
+            <td><input type="checkbox" checked data-sel aria-label="Select order 10423"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>Ś</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">10423</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Świeca sojowa, lawenda</span><span class="orders-more-count">+3</span></span><span class="orders-tags-line" data-tags><span class="order-tag order-tag--sm" data-tag-color="green"><span class="order-tag__dot"></span>Free gift</span></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Joanna Kowalczyk</span><span class="text-muted orders-cell-sub">Łódź</span></span></td>
+            <td class="mk-hide-sm"><span class="channel-pill" data-channel="woocommerce">WooCommerce</span></td>
+            <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Synced</span></span></td>
+            <td class="data-table__cell--right"><span class="mono tabular orders-money-total">156.00 PLN</span></td>
+          </tr>
+          <tr data-row="5">
+            <td><input type="checkbox" data-sel aria-label="Select order KXQMZPTRA"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>Z</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">KXQMZPTRA</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Zestaw noży kuchennych, 5 szt.</span><span class="orders-more-count">+1</span></span><span class="orders-tags-line" data-tags><span class="order-tag order-tag--sm" data-tag-color="amber"><span class="order-tag__dot"></span>Fragile</span></span></span></span></td>
+            <td><span class="orders-cell-stack"><span>Agnieszka Wójcik</span><span class="text-muted orders-cell-sub">Gdańsk</span></span></td>
+            <td class="mk-hide-sm"><span class="channel-pill" data-channel="prestashop">PrestaShop</span></td>
+            <td><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Needs attention</span></span></td>
+            <td class="data-table__cell--right"><span class="mono tabular orders-money-total">529.90 PLN</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bulk-action-bar" role="region" aria-label="3 orders selected" id="bulk-bar">
+      <div class="bulk-action-bar__count"><strong class="bulk-action-bar__num tabular" aria-live="polite" id="bulk-count">3</strong><span class="bulk-action-bar__label">selected</span></div>
+      <div class="bulk-action-bar__hint">Dispatch: max 50 per source</div>
+      <div class="bulk-action-bar__actions">
+        <button type="button" class="button button--ghost">Clear</button>
+        <span class="mk-anchor">
+          <button type="button" class="button button--secondary" data-toggle="bulk-menu" aria-haspopup="menu" aria-expanded="true">Tags ▾ <span class="mk-pin">12</span></button>
+          <div class="dropdown-menu__content bulk-menu" id="bulk-menu" role="menu" aria-label="Tags for selected orders">
+            <div class="dropdown-menu__label">Add tag to <span data-selcount>3</span> orders</div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="VIP" data-color="violet"><span class="order-tag order-tag--sm" data-tag-color="violet"><span class="order-tag__dot"></span>VIP</span><span class="bulk-menu__hint">1 of 3 has it</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="Fragile" data-color="amber"><span class="order-tag order-tag--sm" data-tag-color="amber"><span class="order-tag__dot"></span>Fragile</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="Free gift" data-color="green"><span class="order-tag order-tag--sm" data-tag-color="green"><span class="order-tag__dot"></span>Free gift</span><span class="bulk-menu__hint">1 of 3 has it</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="B2B" data-color="blue"><span class="order-tag order-tag--sm" data-tag-color="blue"><span class="order-tag__dot"></span>B2B</span></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-apply="Gift wrap" data-color="pink"><span class="order-tag order-tag--sm" data-tag-color="pink"><span class="order-tag__dot"></span>Gift wrap</span><span class="bulk-menu__hint">1 of 3 has it</span></div>
+            <div class="dropdown-menu__separator" role="separator"></div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0">Remove a tag from 3 orders…</div>
+            <div class="dropdown-menu__item" role="menuitem" tabindex="0" data-goto="tags">Manage tags</div>
+          </div>
+        </span>
+        <button type="button" class="button button--primary">Dispatch 3</button>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 7. READ-ONLY (viewer role)                                     -->
+  <!-- ============================================================ -->
+  <div data-mk-state="viewer" data-mk-label="Rola viewer (odczyt)" hidden data-user="viewer">
+  <section class="page-section">
+    <div class="page-header"><div class="page-header__content">
+      <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Orders</span></a>
+      <p class="eyebrow">Orders</p><h2 class="page-title">Order detail</h2>
+    </div></div>
+    <header class="order-header">
+      <div class="order-header__top">
+        <h1 class="order-header__title">Order 3f9c2a1e-5b7d-11f0-9a3c-0242ac7b41d0</h1>
+        <span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span><span>Healthy</span></span>
+        <span class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span><span>Ready</span></span>
+      </div>
+      <div class="order-header__sub">
+        <span class="copyable-id"><code class="copyable-id__value mono-text">ol_order_8c21…e0f4</code></span>
+        <span class="order-header__received">Placed <time class="mono-text tabular">25 Sep 2026, 08:14</time></span>
+      </div>
+      <div class="order-header__tags">
+        <span class="order-header__tags-label">Tags</span>
+        <span class="order-tag" data-tag-color="violet"><span class="order-tag__dot" aria-hidden="true"></span>VIP</span>
+        <span class="order-tag" data-tag-color="pink"><span class="order-tag__dot" aria-hidden="true"></span>Gift wrap</span>
+        <span class="mk-pin">13</span>
+      </div>
+    </header>
+    <div class="order-note-pinned" role="note" aria-label="Pinned note">
+      <span class="order-note-pinned__label"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 1.5 14.5 6.5 11 8 8 11l-1.5 3.5-5-5L5 8l3-3z"/><line x1="4" y1="12" x2="1.5" y2="14.5"/></svg>Pinned note</span>
+      <p class="order-note__body">Buyer asked for the paper invoice to go inside the parcel, not by email. Put the printed invoice on top, under the flap.</p>
+      <span class="order-note__head"><span class="order-note__author">marta.nowak</span><span>2h ago</span></span>
+    </div>
+    <section class="detail-section" style="max-width: 46rem">
+      <div class="detail-section__title-row">
+        <h3 class="detail-section__title">Notes (3)</h3>
+        <span class="detail-section__muted" style="font-size:0.75rem">Only your team sees these.</span>
+      </div>
+      <p class="muted-text" style="margin:0; font-size:0.8125rem">You can read notes. Adding or changing them needs the operator or admin role.</p>
+      <ol class="order-notes" aria-label="Notes">
+        <li class="order-note"><div class="order-note__head"><span class="order-note__author">marta.nowak</span><time class="mono-text">25 Sep 2026, 12:40</time><span class="status-badge status-badge--neutral status-badge--compact"><span>Pinned</span></span><span class="status-badge status-badge--neutral status-badge--compact"><span>Shown to packer</span></span></div><p class="order-note__body">Buyer asked for the paper invoice to go inside the parcel, not by email. Put the printed invoice on top, under the flap.</p></li>
+        <li class="order-note"><div class="order-note__head"><span class="order-note__author">tomasz.zielinski</span><time class="mono-text">24 Sep 2026, 16:05</time></div><p class="order-note__body">Called the buyer: Paczkomat KRA12M is full until Friday. She agreed to KRA08A instead. Changed on Allegro, waiting for the order to update here.</p></li>
+        <li class="order-note"><div class="order-note__head"><span class="order-note__author">marta.nowak</span><time class="mono-text">24 Sep 2026, 11:20</time><span>edited 11:31</span><span class="status-badge status-badge--neutral status-badge--compact"><span>Shown to packer</span></span></div><p class="order-note__body">The last supplier batch of the grafitowy mug had chipped glaze. Check both mugs before they go in.</p></li>
+      </ol>
+    </section>
+  </section>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- 8. PACK BENCH (packer, read-only)                              -->
+  <!-- ============================================================ -->
+  <div data-mk-state="bench" data-mk-label="Stanowisko pakowania" hidden data-bench="1">
+    <div class="bench">
+      <header class="bench-topbar">
+        <div class="bench-topbar__brand"><span class="bench-topbar__brand-mark" aria-hidden="true">OL</span><span class="bench-topbar__brand-name">OpenLinker</span></div>
+        <nav class="bench-topbar__crumbs" aria-label="Breadcrumb"><span>Operations</span> / <span class="bench-topbar__crumbs-current">Pack bench</span></nav>
+        <div class="bench-topbar__spacer"></div>
+        <span class="bench-topbar__conn bench-topbar__conn--ok"><span class="bench-topbar__conn-dot" aria-hidden="true"></span><span class="bench-topbar__conn-label">All systems</span></span>
+        <span class="bench-topbar__user-chip"><span class="bench-topbar__user-avatar" aria-hidden="true">AD</span><span class="bench-topbar__user-name">adam.dudek</span></span>
+      </header>
+      <section class="bench-parcel bench-parcel--desktop">
+        <header class="bench-parcel__header">
+          <div class="bench-parcel__identity"><span class="bench-parcel__field-label">Order</span><span class="bench-parcel__reference">3f9c2a1e…7b41d0</span></div>
+          <div class="bench-parcel__identity"><span class="bench-parcel__field-label">Buyer</span><span class="bench-parcel__buyer">Katarzyna Wiśniewska</span></div>
+          <div class="bench-parcel__identity"><span class="bench-parcel__field-label">Parcel</span><span>1 of 1</span></div>
+          <div class="bench-parcel__identity"><span class="bench-parcel__field-label">Carrier</span><span>InPost Paczkomat</span></div>
+          <div class="bench-parcel__identity"><span class="bench-parcel__field-label">Ship by</span><span class="bench-parcel__ship-by"><span class="mono">14:00</span> <span class="bench-parcel__ship-by-remaining bench-parcel__ship-by-remaining--ok">tomorrow</span></span></div>
+          <div class="bench-parcel__header-spacer"></div>
+          <div class="bench-parcel__header-trailing"><span class="status-badge status-badge--warning status-badge--pulse"><span class="status-badge__dot" aria-hidden="true"></span><span>In progress</span></span><button type="button" class="button button--ghost">Back to the list</button></div>
+        </header>
+        <p class="bench-parcel__scope">Everything below belongs in this box only. The other boxes of this order are being handled somewhere else.</p>
+
+        <!-- NEW: notes flagged "Show to packer", read-only -->
+        <div class="alert alert--info bench-office-note" role="note">
+          <div class="alert__content">
+            <strong class="alert__title">Notes from the office (2) <span class="mk-pin">14</span></strong>
+            <div class="alert__description">
+              Buyer asked for the paper invoice to go inside the parcel, not by email. Put the printed invoice on top, under the flap.
+              <span class="bench-office-note__meta">marta.nowak · today 12:40</span>
+            </div>
+            <div class="alert__description" style="margin-top: var(--space-3)">
+              The last supplier batch of the grafitowy mug had chipped glaze. Check both mugs before they go in.
+              <span class="bench-office-note__meta">marta.nowak · yesterday 11:31</span>
+            </div>
+          </div>
+        </div>
+
+        <section class="bench-hero">
+          <span class="bench-hero__swatch bench-hero__swatch--empty" aria-hidden="true">K</span>
+          <div class="bench-hero__body">
+            <p class="bench-hero__name">Kubek ceramiczny 350 ml, grafitowy</p>
+            <p class="bench-hero__ids">EAN 5901234123457 · SKU KUB-350-GRF · Bin A-04-2</p>
+            <form class="bench-hero__scan" onsubmit="return false"><label for="bench-scan" class="sr-only">Scan this item</label><input id="bench-scan" type="text" class="mono" autocomplete="off" placeholder="Scan or type SKU / EAN, then press Enter"><button type="button" class="button button--secondary">Confirm this item</button></form>
+          </div>
+        </section>
+        <div class="bench-parcel__progress-block">
+          <div class="bench-parcel__progress-top"><span>1 of 4 units scanned</span><span class="mono">25%</span></div>
+          <div class="bench-parcel__progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="1" aria-label="1 of 4 units scanned"><div class="bench-parcel__progress-fill" style="width:25%"></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+</div>
+
+<!-- Delete note dialog -->
+<div class="mk-dialog" id="dlg-note" hidden>
+  <div class="dialog__overlay" data-close></div>
+  <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="dlg-note-title">
+    <h2 class="dialog__title" id="dlg-note-title">Delete this note?</h2>
+    <p class="dialog__description">The text is removed for everyone, including the pack bench. The activity timeline keeps a line saying a note by <strong id="dlg-note-author">tomasz.zielinski</strong> was deleted, without its text.</p>
+    <div class="dialog__footer"><button type="button" class="button button--secondary" data-close>Keep note</button><button type="button" class="button button--danger" data-confirm-note>Delete note</button></div>
+  </div>
+</div>
+
+<!-- Delete tag dialog -->
+<div class="mk-dialog" id="dlg-tag" hidden>
+  <div class="dialog__overlay" data-close></div>
+  <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="dlg-tag-title">
+    <h2 class="dialog__title" id="dlg-tag-title">Delete tag “<span id="dlg-tag-name">VIP</span>”?</h2>
+    <p class="dialog__description">It is taken off <strong id="dlg-tag-count">42</strong> orders. The orders themselves do not change, and nothing is sent to your sales channels. This cannot be undone.</p>
+    <div class="dialog__footer"><button type="button" class="button button--secondary" data-close>Keep tag</button><button type="button" class="button button--danger" data-close>Delete tag</button></div>
+  </div>
+</div>
+
+<div class="toast-region mk-toast" id="toast" hidden>
+  <div class="toast toast--success" role="status">
+    <div class="toast__content"><div class="toast__title" id="toast-title">Tag added</div><div class="toast__description" id="toast-desc">VIP added to 2 orders. 1 already had it.</div></div>
+    <button type="button" class="toast__dismiss" aria-label="Dismiss" data-toast-close>×</button>
+  </div>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje</h3>
+  <ol>
+    <li>Wszystkie dane (zamówienia, klienci, notatki, użytkownicy) są przykładowe. Dziś w systemie nie ma ani notatek, ani tagów: żadnej kolumny, tabeli ani endpointu. Mockup opisuje nową funkcję.</li>
+    <li><span class="mk-pin">1</span> Tagi w nagłówku zamówienia, pod trasą źródło → cel. Tag to neutralna pigułka z kolorową kropką (wzór <code>.channel-pill</code>), bo w design systemie kolory statusów są zarezerwowane dla stanów. Kolor nigdy nie jest jedynym sygnałem: tag zawsze ma nazwę. „+ Add tag” otwiera picker (wyszukiwarka + lista z liczbą zamówień), zapis od razu po zaznaczeniu. Kliknij, żeby otworzyć. Tokeny <code>--tag-*</code> są propozycją, nie istnieją w index.css.</li>
+    <li><span class="mk-pin">2</span> Przypięta notatka w pełnej szerokości pod nagłówkiem (to samo miejsce co alerty „destination failed” i „stock at risk”), ale neutralna, bez tonu statusu: notatka to informacja, nie wyjątek. Maks. jedna przypięta notatka na zamówienie (propozycja).</li>
+    <li><span class="mk-pin">3</span> Sekcja „Notes” w lewej kolumnie, obok „Hold” i „Packing” (to fakty o każdym zamówieniu, niezależnie od integracji). Autor = <code>username</code> (tabela users nie ma imienia i nazwiska), czas, znacznik „edited”. Edit działa inline, Delete otwiera potwierdzenie, Pin/Unpin przełącza. Pisanie wymaga <code>orders:write</code> (admin + operator).</li>
+    <li><span class="mk-pin">4</span> Notatki i zmiany tagów trafiają na oś „Activity” jako zdarzenia autorskie, tak jak dziś zwroty (<code>extraEvents</code> / <code>DatedTimelineEvent</code>). Usunięta notatka zostawia wpis bez treści. Zmiana tagu zbiorczo jest opisana jako „Added to 12 orders at once”.</li>
+    <li><span class="mk-pin">5</span> Stan pusty: EmptyState mówi, do czego służą notatki, a pole do pisania jest od razu pod spodem. Brak tagów to zwykłe „No tags”, nie alarm.</li>
+    <li><span class="mk-pin">6</span> „Show to packer” pokazuje ostrzeżenie o danych osobowych: tekst trafi na współdzielony terminal pakowania, a rola packer jest celowo wąska (ADR-071). Przycisk „Add note” jest aktywny dopiero przy niepustym tekście; licznik 2000 znaków.</li>
+    <li><span class="mk-pin">7</span> Błąd zapisu: tekst zostaje w polu, alert mówi co się stało i co zrobić.</li>
+    <li><span class="mk-pin">8</span> Menedżer tagów w Ustawieniach (<code>/settings/order-tags</code>, kafelek obok „Inventory locations”). Tylko admin. Wybór koloru to radiogroup z nazwami kolorów, podgląd na żywo (zmień nazwę lub kolor). Liczba zamówień linkuje do listy z filtrem. Delete otwiera potwierdzenie z liczbą zamówień.</li>
+    <li><span class="mk-pin">9</span> Limit liczby tagów (tu 50) to propozycja, żeby filtr i picker zostały krótkie.</li>
+    <li><span class="mk-pin">10</span> Filtr po tagu jako kolejny Select w pasku filtrów (tak jak „Any hold reason”), stan w URL: <code>?tag=vip</code>. Musi być filtrem po stronie serwera: karty KPI, licznik wyników i paginacja liczą się w tym samym zakresie (zasada „filter-scoped summary”). Opcja „No tags” dla zamówień bez tagów.</li>
+    <li><span class="mk-pin">11</span> Na wierszu listy tagi są trzecią linią komórki „Order” (maks. 2 + „+N”). To zmienia wysokość wspólnego wiersza tożsamości (#2086), więc wymaga osobnego wpisu w style guide. Tagi nie są statusem, dlatego nie trafiają do grupy Status.</li>
+    <li><span class="mk-pin">12</span> Zbiorcze tagowanie w istniejącym <code>BulkActionBar</code>: obok „Dispatch N” dochodzi „Tags ▾” z menu. Przy tagu widać „1 of 3 has it”, a po kliknięciu toast mówi ilu zamówieniom dodano tag. Zaznacz inne wiersze i kliknij tag, żeby zobaczyć. Hint paska dotyczy teraz tylko Dispatch, więc przemianowany na „Dispatch: max 50 per source”.</li>
+    <li><span class="mk-pin">13</span> Rola viewer: wszystko widoczne, żadnych akcji (bez „Add tag”, bez „×”, bez pola notatki, bez Edit/Delete). Jedno zdanie wyjaśnia, jakiej roli trzeba. Tak samo działa dziś panel „Hold” dla nie-admina.</li>
+    <li><span class="mk-pin">14</span> Stanowisko pakowania (<code>/bench</code>, bez AppShell): tylko notatki oznaczone „Show to packer”, tylko do odczytu, nad kartą skanowania, w tonie info (jak komunikat o dwóch pakowaczach przy jednej paczce). Bez przycisku zamknięcia, bo pakowacz ma to przeczytać przed zamknięciem paczki. Tagów tu nie ma.</li>
+    <li><b>Otwarte pytania:</b> (a) Poszerzenie projekcji paczki na benchu o tekst notatki musi przejść przez <code>packer-exclusion.spec.ts</code>; czy wystarczy flaga i ostrzeżenie o PII, czy notatka dla pakowacza ma być osobnym, krótszym polem? (b) Kto może edytować i usuwać cudze notatki: autor i admin, czy każdy z <code>orders:write</code>? (c) Czy operator może tworzyć nowy tag z pickera, skoro menedżer jest tylko dla admina? (d) Czy „Add tag” ma zostać nową akcją automatyzacji (zamknięta lista 6 akcji) i czy tag ma być widoczny na benchu (np. „Fragile”)?</li>
+  </ol>
+</aside>
+
+<script>
+(function () {
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  /* --- context per state: nav item, crumbs, user chip, bench chrome ------- */
+  function applyContext() {
+    var st = $$('[data-mk-state]').filter(function (s) { return !s.hidden; })[0];
+    if (!st) return;
+    var nav = st.getAttribute('data-nav') || 'Orders';
+    $$('.shell-nav__link').forEach(function (a) {
+      var label = a.querySelector('.shell-nav__link-label');
+      a.classList.toggle('shell-nav__link--active', !!label && label.textContent === nav);
+    });
+    var g = $('.shell-crumbs__group'), c = $('.shell-crumbs__current');
+    if (g) g.textContent = st.getAttribute('data-crumb-g') || 'Operations';
+    if (c) c.textContent = st.getAttribute('data-crumb-c') || 'Orders';
+    var user = st.getAttribute('data-user') || 'admin';
+    var name = $('.shell-user-chip__name'), av = $('.shell-user-chip__avatar');
+    if (name) name.textContent = user;
+    if (av) av.textContent = user.charAt(0).toUpperCase();
+    document.body.classList.toggle('mk-bench', st.hasAttribute('data-bench'));
+  }
+  function goTo(name) {
+    var btn = $$('.mk-bar__states button').filter(function (b) { return b.dataset.s === name; })[0];
+    if (btn) { btn.click(); window.scrollTo(0, 0); }
+  }
+
+  function init() {
+    applyContext();
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('.mk-bar__states button')) setTimeout(applyContext, 0);
+      var go = e.target.closest('[data-goto]');
+      if (go) { e.preventDefault(); goTo(go.getAttribute('data-goto')); }
+    });
+
+    /* --- popovers / menus ------------------------------------------------- */
+    $$('[data-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var pop = document.getElementById(btn.getAttribute('data-toggle'));
+        var open = pop.hidden;
+        pop.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) { var s = pop.querySelector('input[type=text]'); if (s) s.focus(); }
+      });
+    });
+    document.addEventListener('click', function (e) {
+      var picker = $('#tag-picker');
+      if (picker && !picker.hidden && !e.target.closest('#tag-picker')) {
+        picker.hidden = true; $('[data-toggle="tag-picker"]').setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    /* --- tag picker on detail: tick = add/remove chip --------------------- */
+    var colours = { 'VIP': 'violet', 'Gift wrap': 'pink', 'Fragile': 'amber', 'B2B': 'blue', 'Free gift': 'green', 'Resend': 'teal', 'Complaint': 'orange' };
+    function chip(name) {
+      var s = document.createElement('span');
+      s.className = 'order-tag'; s.setAttribute('data-tag-color', colours[name] || 'grey'); s.setAttribute('data-tag', name);
+      s.innerHTML = '<span class="order-tag__dot" aria-hidden="true"></span>' + name + '<button type="button" class="order-tag__remove" aria-label="Remove tag ' + name + '">×</button>';
+      return s;
+    }
+    var row = $('#detail-tags');
+    $$('#tag-picker input[type=checkbox]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var name = cb.getAttribute('data-pick');
+        var existing = row.querySelector('[data-tag="' + name + '"]');
+        if (cb.checked && !existing) row.insertBefore(chip(name), row.querySelector('.mk-anchor'));
+        if (!cb.checked && existing) existing.remove();
+      });
+    });
+    row.addEventListener('click', function (e) {
+      var rm = e.target.closest('.order-tag__remove');
+      if (!rm) return;
+      var t = rm.closest('.order-tag'); var name = t.getAttribute('data-tag');
+      t.remove();
+      var cb = $('#tag-picker input[data-pick="' + name + '"]'); if (cb) cb.checked = false;
+    });
+    var search = $('#tag-picker-search');
+    search.addEventListener('input', function () {
+      var q = search.value.trim().toLowerCase();
+      $$('#tag-picker .tag-picker__item').forEach(function (it) {
+        it.hidden = q && it.textContent.toLowerCase().indexOf(q) === -1;
+      });
+    });
+
+    /* --- composers: counter + enable ------------------------------------- */
+    $$('[data-composer]').forEach(function (f) {
+      var ta = f.querySelector('textarea'), cnt = f.querySelector('[data-counter]'), add = f.querySelector('[data-add]');
+      var flag = f.querySelector('[data-packer-flag]'), warn = f.querySelector('[data-packer-warning]');
+      function upd() { cnt.textContent = ta.value.length + ' / 2000'; add.disabled = ta.value.trim().length === 0; }
+      ta.addEventListener('input', upd);
+      if (flag && warn) flag.addEventListener('change', function () { warn.hidden = !flag.checked; });
+      upd();
+    });
+
+    /* --- notes: edit inline, pin, delete --------------------------------- */
+    var pendingDelete = null;
+    $$('[data-note]').forEach(function (li) {
+      var body = li.querySelector('.order-note__body');
+      li.querySelector('[data-edit]').addEventListener('click', function () {
+        if (li.querySelector('.order-note__editor')) return;
+        var ed = document.createElement('div'); ed.className = 'order-note__editor';
+        ed.innerHTML = '<label class="sr-only">Edit note</label><textarea class="control" rows="3" maxlength="2000"></textarea>' +
+          '<div class="order-note__editor-foot"><button type="button" class="button button--primary button--sm" data-save>Save</button><button type="button" class="button button--ghost button--sm" data-cancel>Cancel</button><span class="text-muted" style="font-size:0.75rem">Everyone sees that it was edited.</span></div>';
+        ed.querySelector('textarea').value = body.textContent;
+        body.hidden = true; li.appendChild(ed); ed.querySelector('textarea').focus();
+        ed.querySelector('[data-cancel]').addEventListener('click', function () { ed.remove(); body.hidden = false; });
+        ed.querySelector('[data-save]').addEventListener('click', function () { body.textContent = ed.querySelector('textarea').value; ed.remove(); body.hidden = false; });
+      });
+      li.querySelector('[data-pin]').addEventListener('click', function (e) {
+        var b = e.currentTarget; b.textContent = b.textContent === 'Pin' ? 'Unpin' : 'Pin';
+      });
+      li.querySelector('[data-delete]').addEventListener('click', function () {
+        pendingDelete = li;
+        $('#dlg-note-author').textContent = li.querySelector('.order-note__author').textContent;
+        $('#dlg-note').hidden = false;
+      });
+    });
+    $('[data-confirm-note]').addEventListener('click', function () {
+      if (pendingDelete) pendingDelete.remove();
+      pendingDelete = null; $('#dlg-note').hidden = true;
+    });
+    $$('.mk-dialog [data-close]').forEach(function (el) {
+      el.addEventListener('click', function () { el.closest('.mk-dialog').hidden = true; });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') $$('.mk-dialog').forEach(function (d) { d.hidden = true; });
+    });
+
+    /* --- tag manager: preview + delete ------------------------------------ */
+    var nameIn = $('#tag-name'), prev = $('#tag-preview'), prevName = $('#tag-preview-name');
+    nameIn.addEventListener('input', function () { prevName.textContent = nameIn.value || 'Tag name'; });
+    $$('#tag-swatches input').forEach(function (r) {
+      r.addEventListener('change', function () { prev.setAttribute('data-tag-color', r.value); });
+    });
+    $$('[data-delete-tag]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        $('#dlg-tag-name').textContent = b.getAttribute('data-delete-tag');
+        $('#dlg-tag-count').textContent = b.getAttribute('data-count');
+        $('#dlg-tag').hidden = false;
+      });
+    });
+
+    /* --- bulk tagging ----------------------------------------------------- */
+    var all = $('#bulk-all');
+    function selected() { return $$('#bulk-table [data-sel]').filter(function (c) { return c.checked; }); }
+    function syncBulk() {
+      var n = selected().length, total = $$('#bulk-table [data-sel]').length;
+      $('#bulk-count').textContent = n;
+      $$('[data-selcount]').forEach(function (s) { s.textContent = n; });
+      $('#bulk-bar').classList.toggle('bulk-action-bar--hidden', n === 0);
+      $('#bulk-bar').setAttribute('aria-label', n + ' order' + (n === 1 ? '' : 's') + ' selected');
+      all.checked = n === total; all.indeterminate = n > 0 && n < total;
+      $$('#bulk-menu [data-apply]').forEach(function (item) {
+        var name = item.getAttribute('data-apply');
+        var has = selected().filter(function (c) {
+          return $$('[data-tags] .order-tag', c.closest('tr')).some(function (t) { return t.textContent === name; });
+        }).length;
+        var hint = item.querySelector('.bulk-menu__hint');
+        if (has > 0) {
+          if (!hint) { hint = document.createElement('span'); hint.className = 'bulk-menu__hint'; item.appendChild(hint); }
+          hint.textContent = has + ' of ' + n + (has === 1 ? ' has' : ' have') + ' it';
+        } else if (hint) { hint.remove(); }
+      });
+      var dispatch = $('#bulk-bar .button--primary'); if (dispatch) dispatch.textContent = 'Dispatch ' + n;
+    }
+    $$('#bulk-table [data-sel]').forEach(function (c) { c.addEventListener('change', syncBulk); });
+    all.addEventListener('change', function () {
+      $$('#bulk-table [data-sel]').forEach(function (c) { c.checked = all.checked; }); syncBulk();
+    });
+    $('#bulk-bar .button--ghost').addEventListener('click', function () {
+      $$('#bulk-table [data-sel]').forEach(function (c) { c.checked = false; }); syncBulk();
+    });
+    $$('#bulk-menu [data-apply]').forEach(function (item) {
+      function apply() {
+        var name = item.getAttribute('data-apply'), color = item.getAttribute('data-color');
+        var sel = selected(), added = 0;
+        sel.forEach(function (c) {
+          var line = c.closest('tr').querySelector('[data-tags]');
+          var has = $$('.order-tag', line).some(function (t) { return t.textContent === name; });
+          if (!has) {
+            var s = document.createElement('span'); s.className = 'order-tag order-tag--sm'; s.setAttribute('data-tag-color', color);
+            s.innerHTML = '<span class="order-tag__dot"></span>' + name; line.appendChild(s); added++;
+          }
+        });
+        $('#bulk-menu').hidden = true; $('[data-toggle="bulk-menu"]').setAttribute('aria-expanded', 'false');
+        var already = sel.length - added;
+        $('#toast-title').textContent = 'Tag added';
+        $('#toast-desc').textContent = name + ' added to ' + added + ' order' + (added === 1 ? '' : 's') + '.' + (already ? ' ' + already + ' already had it.' : '');
+        $('#toast').hidden = false;
+        clearTimeout(window.__mkToast); window.__mkToast = setTimeout(function () { $('#toast').hidden = true; }, 4000);
+        syncBulk();
+      }
+      item.addEventListener('click', apply);
+      item.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apply(); } });
+    });
+    $('[data-toast-close]').addEventListener('click', function () { $('#toast').hidden = true; });
+    syncBulk();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+</script>
+
+</body></html>
