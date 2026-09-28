@@ -552,10 +552,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
 
       // Once, on the crossing — a poison entry recurs by definition, so an
       // unguarded alarm per pass is alert fatigue. Auto-dead-lettering is
-      // deliberately NOT done: two of the three consumers cannot build their
-      // dead-letter payload from a raw pending entry (one needs a decoded
-      // webhook event, one a parsed job request), and discarding it would be
-      // unrecoverable loss. See ADR-049.
+      // deliberately NOT done: neither of the two remaining consumers can
+      // build its dead-letter payload from a raw pending entry (this one
+      // needs a parsed job request; the master-deletion handler needs a
+      // decoded event), and discarding it would be unrecoverable loss. See
+      // ADR-049 and its #2301 amendment (the poison-entry gate).
       if (this.recoveryAttempts.justCrossedThreshold(attempts)) {
         this.logger.error(
           `Stream entry ${entry.id} has now failed recovery ${attempts} times (${source}); it is stuck and needs manual intervention`
