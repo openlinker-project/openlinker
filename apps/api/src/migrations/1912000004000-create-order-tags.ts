@@ -1,6 +1,12 @@
 /**
  * Create `order_tags` + `order_tag_assignments` (#3532, D34)
  *
+ * `internalOrderId` on `order_tag_assignments` is `text`, never `uuid` — an
+ * internal order id has the shape `ol_order_{uuid}`
+ * (`docs/architecture-overview.md § Identifier Mapping Service`), matching
+ * every other reference to it in this context (`order_holds`,
+ * `order_changes`, `refund_records`).
+ *
  * Timestamp: this epic's synthetic block (#3507), one step after
  * `1912000003000-create-order-notes.ts`.
  */
@@ -28,7 +34,7 @@ export class CreateOrderTags1912000004000 implements MigrationInterface {
       CREATE TABLE "order_tag_assignments" (
         "id"               uuid NOT NULL DEFAULT uuid_generate_v4(),
         "tagId"            uuid NOT NULL,
-        "internalOrderId"  uuid NOT NULL,
+        "internalOrderId"  text NOT NULL,
         "assignedByUserId" uuid NOT NULL,
         "assignedAt"       TIMESTAMPTZ NOT NULL DEFAULT now(),
         CONSTRAINT "PK_order_tag_assignments" PRIMARY KEY ("id")
