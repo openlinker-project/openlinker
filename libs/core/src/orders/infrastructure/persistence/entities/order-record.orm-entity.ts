@@ -519,6 +519,34 @@ export class OrderRecordOrmEntity {
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockDetail!: string | null;
 
+  /**
+   * Denormalized, diacritic-folded free-text search corpus (#3527) — order
+   * number, buyer name, buyer email and every line SKU, space-joined.
+   * Recomputed on EVERY write by `OrderRecordRepository.toOrm` (via
+   * `deriveOrderSearchText`), never incrementally maintained: the snapshot it
+   * derives from is itself rewritten wholesale on every ingestion, so a
+   * separate write path would only be a second place to forget.
+   *
+   * `NOT NULL DEFAULT ''` rather than nullable — the `DestinationCategory.
+   * searchText` precedent — so the trigram index and the `LIKE` predicate
+   * never have to special-case a NULL. An order with no matchable text
+   * (no order number captured, no buyer stored, no SKUs) legitimately carries
+   * `''`, which no non-empty query can match.
+   *
+   * Backed by `IDX_order_records_searchText_trgm`, a GIN `gin_trgm_ops` index
+   * (`docs/architecture-overview.md § Listings, destination taxonomy read
+   * model` — the same precedent). The repository matches with `LIKE`, never
+   * the `%` similarity operator, so correctness never depends on `pg_trgm`
+   * being installed.
+   *
+   * Not domain data — deliberately absent from `OrderRecord` and from
+   * `toDomain`, exactly as `DestinationCategory` drops its own `searchText`:
+   * it is an index-serving derivation of fields the domain entity already
+   * carries inside `orderSnapshot`.
+   */
+  @Column({ type: 'text', default: '' })
+  searchText!: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

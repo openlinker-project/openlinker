@@ -130,6 +130,16 @@ import {
   DEFAULT_LIFECYCLE_AUTHORITY,
 } from '@openlinker/core/order-lifecycle';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import {
+  SHIPMENT_QUERY_SERVICE_TOKEN,
+  type IShipmentQueryService,
+} from '@openlinker/core/shipping';
+import {
+  RETURNS_SERVICE_TOKEN,
+  type IReturnsService,
+  type OpenReturnOrderSummary,
+} from '@openlinker/core/returns';
+import { ORDER_TAG_SERVICE_TOKEN, type IOrderTagService } from '@openlinker/core/orders';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { CountOrdersQueryDto } from './dto/count-orders-query.dto';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
@@ -155,6 +165,7 @@ import {
 } from './dto/order-hold-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 import type { OrderReservationShortfallDto } from './dto/order-reservation-shortfall.dto';
+import type { OrderOpenReturnDto } from './dto/order-open-return.dto';
 import {
   SalesDocumentViewResponseDto,
   toSalesDocumentViewDto,
@@ -202,6 +213,10 @@ function toOrderRecordFilters(
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
     activeHoldReason: query.hold,
+    packed: query.packed,
+    search: query.search,
+    tagId: query.tag,
+    untagged: query.untagged,
   };
 }
 
@@ -233,6 +248,65 @@ function assertCancelledPhaseAgree(
         'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
         '?cancelled=false.'
   );
+}
+
+/**
+ * Enriches the pure DTO-to-filters mapping with the two cross-context axes
+ * that `orders` cannot resolve on its own (#3528, #2998): both `shipping` and
+ * `returns` already depend on `orders`, so `orders` must not import either
+ * back — the resolution happens HERE, in the interface layer, and the result
+ * is a plain id list handed to `OrderRecordFilters`.
+ *
+ * Shared by `GET /orders` and `GET /orders/count`, for the same reason
+ * `toOrderRecordFilters` is shared: a filter resolved differently between the
+ * page and its count reads as a data bug rather than a query bug.
+ *
+ * Best-effort on both axes: a failed cross-context read must not fail the
+ * whole list — it degrades to "this widening did not apply this time" rather
+ * than a 500 on `/orders`.
+ */
+async function enrichCrossContextFilters(
+  filters: OrderRecordFilters,
+  query: { search?: string; openReturn?: boolean },
+  shipmentQuery: IShipmentQueryService,
+  returnsService: IReturnsService,
+  logger: Logger
+): Promise<OrderRecordFilters> {
+  const enriched: OrderRecordFilters = { ...filters };
+
+  if (query.search !== undefined && query.search.trim().length > 0) {
+    try {
+      const { items } = await shipmentQuery.list(
+        { trackingNumber: query.search.trim() },
+        { limit: 50, offset: 0 }
+      );
+      const ids = [...new Set(items.map((shipment) => shipment.orderId))];
+      if (ids.length > 0) {
+        enriched.searchTrackingOrderIds = ids;
+      }
+    } catch (error) {
+      logger.warn(
+        `Failed to resolve a tracking-number search widening; continuing with text search only: ${String(
+          (error as Error).message
+        )}`
+      );
+    }
+  }
+
+  if (query.openReturn !== undefined) {
+    enriched.hasOpenReturn = query.openReturn;
+    try {
+      enriched.openReturnOrderIds = await returnsService.listOpenReturnOrderIds();
+    } catch (error) {
+      logger.error(
+        'Failed to resolve open-return order ids for the ?openReturn= filter',
+        (error as Error).stack
+      );
+      enriched.openReturnOrderIds = [];
+    }
+  }
+
+  return enriched;
 }
 
 @ApiBearerAuth()
@@ -271,7 +345,18 @@ export class OrdersController {
     private readonly salesDocumentView: ISalesDocumentViewService,
     // #2855 — test-fixture-only writes, never called against real order data.
     @Inject(ORDER_TEST_FIXTURE_SERVICE_TOKEN)
-    private readonly testFixtureService: IOrderTestFixtureService
+    private readonly testFixtureService: IOrderTestFixtureService,
+    // #3528 — tracking-number search resolves a shipment's owning order
+    // BEFORE `orders` is asked; see `toOrderRecordFilters`'s docblock.
+    @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
+    private readonly shipmentQuery: IShipmentQueryService,
+    // #2998 — the "open return" badge + filter; `returns` may not import
+    // `orders` back, so the composition happens here.
+    @Inject(RETURNS_SERVICE_TOKEN)
+    private readonly returnsService: IReturnsService,
+    // #3532 — the tag ids rendered as the third line of the identity cell.
+    @Inject(ORDER_TAG_SERVICE_TOKEN)
+    private readonly tagService: IOrderTagService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -300,7 +385,13 @@ export class OrdersController {
 
     assertCancelledPhaseAgree(cancelled, phase);
 
-    const filters = toOrderRecordFilters(query);
+    const filters = await enrichCrossContextFilters(
+      toOrderRecordFilters(query),
+      { search: query.search, openReturn: query.openReturn },
+      this.shipmentQuery,
+      this.returnsService,
+      this.logger
+    );
 
     // `?withTotal=false` skips the COUNT entirely and the response OMITS
     // `total` rather than reporting 0 (#2944) - an absent total and a genuine
@@ -372,6 +463,21 @@ export class OrdersController {
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the open-return badge for the whole page (#2998), the identical
+    // shape and for the identical reason as the three batched reads above: one
+    // query across the page's order ids, never a per-row lookup. A FAILED read
+    // renders no badge and makes no "no returns" claim — never `{count: 0}` —
+    // matching #2350's rule for the reservation-shortfall projection this
+    // mirrors.
+    const openReturnByOrderId = await this.loadOpenReturnsForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
+    // Batch the tag ids for the whole page (#3532) — same shape, same reason.
+    const tagsByOrderId = await this.tagService.getForOrders(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order);
@@ -392,6 +498,11 @@ export class OrdersController {
         if (salesDocument) {
           dto.salesDocument = toSalesDocumentViewDto(salesDocument);
         }
+        const openReturn = openReturnByOrderId.get(order.internalOrderId);
+        if (openReturn) {
+          dto.openReturn = this.toOpenReturnDto(openReturn);
+        }
+        dto.tagIds = tagsByOrderId.get(order.internalOrderId) ?? [];
         return dto;
       }),
       ...(omitTotal ? {} : { total }),
@@ -422,8 +533,17 @@ export class OrdersController {
     // The SAME mapper the list uses. `OmitType` keeps the query surfaces from
     // drifting and `buildFilteredQuery` keeps the SQL from drifting; without
     // this, the DTO-to-filters step in between was a hand-copied second
-    // mapping - the identical drift class, one layer up.
-    const total = await this.orderRecordRepository.countMany(toOrderRecordFilters(query));
+    // mapping - the identical drift class, one layer up. The SAME enrichment
+    // too (#3528/#2998), or the count could disagree with the page it is the
+    // total for.
+    const filters = await enrichCrossContextFilters(
+      toOrderRecordFilters(query),
+      { search: query.search, openReturn: query.openReturn },
+      this.shipmentQuery,
+      this.returnsService,
+      this.logger
+    );
+    const total = await this.orderRecordRepository.countMany(filters);
     return { total };
   }
 
@@ -591,6 +711,17 @@ export class OrdersController {
     if (salesDocument) {
       dto.salesDocument = toSalesDocumentViewDto(salesDocument);
     }
+    // Open-return badge (#2998) — the same projection the list carries, one
+    // query for this one order. The dedicated returns panel (#2640/#2646)
+    // remains the detailed answer; this is the header-badge parity the list
+    // row and the detail header share.
+    const openReturn = (await this.loadOpenReturnsForPage([order.internalOrderId])).get(
+      order.internalOrderId
+    );
+    if (openReturn) {
+      dto.openReturn = this.toOpenReturnDto(openReturn);
+    }
+    dto.tagIds = await this.tagService.listForOrder(order.internalOrderId);
     return dto;
   }
 
@@ -728,6 +859,29 @@ export class OrdersController {
    * render an absent entry as "no shortfalls" — absence and failure look the
    * same here by design, so only the presence of an episode is a claim.
    */
+  /**
+   * Open-return summary for a page of order ids (#2998) — the Status-group
+   * badge. ONE query for the whole page, never a per-row lookup; a FAILED read
+   * returns an empty map rather than throwing, so a returns-context hiccup
+   * degrades to "no badge rendered" rather than taking `/orders` down.
+   */
+  private async loadOpenReturnsForPage(
+    internalOrderIds: string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.returnsService.getOpenReturnSummariesForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project open returns for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
   private async loadReservationShortfallsForPage(
     internalOrderIds: string[]
   ): Promise<Map<string, OrderReservationShortfallDto[]>> {
@@ -766,6 +920,10 @@ export class OrdersController {
       );
       return [];
     }
+  }
+
+  private toOpenReturnDto(summary: OpenReturnOrderSummary): OrderOpenReturnDto {
+    return { count: summary.openCount, stage: summary.latestStage };
   }
 
   private toReservationShortfallDto(
