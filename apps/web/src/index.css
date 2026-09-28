@@ -24401,6 +24401,340 @@ legend.analytics-settings-dialog__label {
   white-space: nowrap;
 }
 
+/* ── Fulfilment work detail (#3096) ───────────────────────────────────────
+   One block for the routed detail page. Declares no new custom properties —
+   every `var(--x)` here already exists, because `tokens.ts` is a second
+   shared file and `check-design-tokens.mjs` asserts the pair.
+
+   The block prefix is `fulfilment-work-detail` (British, like every other
+   class in this slice, while the folder and the route stay American), and it
+   is covered by `features/fulfillment/fulfilment-work-detail-styles.test.ts`. */
+
+/* ── #3098 detail page shell + hero ── */
+.fulfilment-work-detail__hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  margin-bottom: var(--space-5);
+}
+
+/* The two axis labels sit on one line and WRAP rather than truncate: each is a
+   separate fact about the task, and an ellipsis would hide whichever happens
+   to come second. */
+.fulfilment-work-detail__axes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The derived sentence. Body-weight and uncoloured on purpose - colour on this
+   page marks attention, and attention here is the hold banners. */
+.fulfilment-work-detail__summary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+/* One shell for every stacked section, shared with the holds/executor/lines/
+   facts sections and the actions region - one rule, nothing to drift. */
+.fulfilment-work-detail__section {
+  margin-bottom: var(--space-5);
+}
+
+.fulfilment-work-detail__section-title {
+  margin: 0 0 var(--space-3);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ── #3100 lines / holds / facts ── */
+
+/* Holds stack vertically; each banner is `alert--warning`, which is already the
+   mockup's `.hold-banner` (warning tint, bold title, muted body) - reusing it
+   keeps one rule for that shape rather than two that can drift. */
+.fulfilment-work-detail__holds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The note and the "since" line inside one banner. A wrapper rather than two
+   paragraphs, because `.alert__description p` is margin-zeroed, so stacked
+   paragraphs would touch. */
+.fulfilment-work-detail__hold-body {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+/* Rule between lines, not around them: the section shell already carries the
+   page's boundaries, so a second border would box a box. */
+.fulfilment-work-detail__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__line:last-child {
+  border-bottom: none;
+}
+
+.fulfilment-work-detail__line-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+/* Reinforcement only - the two equal numbers beside it already say the line is
+   complete, so colour is never the sole signal here. */
+.fulfilment-work-detail__line-done {
+  color: var(--status-success-fg);
+}
+
+.fulfilment-work-detail__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+}
+
+/* `auto-fit` + a minimum collapses to one column on a phone with no media
+   query - one rule rather than one per breakpoint, and nothing is ever hidden. */
+.fulfilment-work-detail__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  min-width: 0;
+}
+
+.fulfilment-work-detail__facts dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.fulfilment-work-detail__facts dd {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* ── #3291 who's handling this ── */
+
+/* The connection's name plus the in-house/partner line beneath it - a stack,
+   mirroring `.fulfilment-work-detail__hold-body`'s two-line shape. */
+.fulfilment-work-detail__executor {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.875rem;
+}
+
+.fulfilment-work-detail__executor-name {
+  font-weight: 600;
+}
+
+.fulfilment-work-detail__executor-partner {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+/* The failed-lookup fallback: the raw id and the sentence beside it sit in one
+   row, because they are one degraded fact rather than two separate ones. */
+.fulfilment-work-detail__executor-removed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+/* ── #3292 shipment panel ── */
+
+/* "Nothing dispatched yet" plus the OL-executed-only CTA - a column, not a
+   row: the sentence and the button read as two separate facts side by side
+   on a narrow screen, where wrapping the row would leave the button floating
+   beside a two-line sentence. */
+.fulfilment-work-detail__shipment-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* ── #3102 vs-Orders explainer ── */
+
+/* Why this screen is not a duplicate of Orders. ALWAYS VISIBLE - there is no
+   collapsed variant of this block and no rule here may introduce one, because
+   the reader who needs it is the one who does not know they need it. One
+   stack, one outer margin: neither part carries a margin of its own, so the
+   gap between them and the distance to the hero are each set in one place. */
+.fulfilment-work-detail__vs-orders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  /* The mockup's own measure. Two sentences side by side are unreadable at a
+     full-width container, and this block is context rather than content. */
+  max-width: 78ch;
+}
+
+/* Two columns that REFLOW to one below 640px rather than truncating: each half
+   is a whole sentence about a different thing, so an ellipsis would hide
+   whichever happens to be second and leave the comparison half-made. */
+.fulfilment-work-detail__compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  /* The columns paint to the edge; the radius has to clip them. */
+  overflow: hidden;
+}
+
+.fulfilment-work-detail__compare-col {
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+  border-right: 1px solid var(--border-default);
+}
+
+/* Positional, not semantic: the divider belongs BETWEEN the halves, so it is
+   the last column that drops it rather than the one that happens to be "this
+   task". Swapping the two would then still leave exactly one divider. */
+.fulfilment-work-detail__compare-col:last-child {
+  border-right: none;
+}
+
+/* The half the operator is actually on sits on the plain surface, so the pair
+   reads as "that one, then this one" with no second colour and no accent -
+   accent on this page marks attention, and attention here is the hold banners. */
+.fulfilment-work-detail__compare-col--this {
+  background: var(--bg-surface);
+}
+
+.fulfilment-work-detail__compare-label {
+  margin-bottom: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* `margin: 0` is load-bearing on a `dd`: the UA default indents it by 40px,
+   which would step the two sentences in from their own labels. */
+.fulfilment-work-detail__compare-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .fulfilment-work-detail__compare {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked, the divider is the one between the rows. Nothing is hidden - the
+     column that was beside the first is now beneath it. */
+  .fulfilment-work-detail__compare-col {
+    border-right: none;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .fulfilment-work-detail__compare-col:last-child {
+    border-bottom: none;
+  }
+}
+
+/* The worked example. Tinted because it is the one part an operator re-reads
+   to check they understood, not because it needs attention. */
+.fulfilment-work-detail__example {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-lg);
+  background: var(--accent-primary-soft);
+}
+
+/* The mockup's slot holds a two-character glyph; the copy table's prefix is a
+   word. So it wraps to its own line when the sentence no longer fits beside it,
+   rather than holding a fixed column open and squeezing the sentence to a
+   three-word ribbon on a phone. */
+.fulfilment-work-detail__example-glyph {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent-primary-hover);
+}
+
+/* `1 1 24ch` rather than `1 1 auto`: below that measure the sentence takes the
+   whole row and the prefix sits above it, which is the readable shape. */
+.fulfilment-work-detail__example-text {
+  flex: 1 1 24ch;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* ── #3101 detail actions ── */
+/* `FulfillmentTaskActions` brings its own `.fulfilment-task__actions` flex
+   row, so this wrapper exists for the two things that row cannot carry:
+   `aria-busy` for the whole write surface of a one-task page, and a home for
+   the "nothing left" sentence when the server offers no action at all.
+   Flex-wrap so a long action set falls to a second line rather than
+   overflowing - there is nothing here worth truncating. */
+.fulfilment-work-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Deliberately quiet: it reports an absence of work, not a problem. No
+   typography-scale token family exists in this stylesheet, so the size is a
+   literal - the shape `.fulfilment-work-detail__summary` above already
+   takes. */
+.fulfilment-work-detail__actions-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+/* ── end Fulfilment work detail (#3096) ── */
+
 /* ── Sales-document glyph + headline (#2535) ───────────────────────────
    The kind is an entity axis, so the glyph inherits `currentColor` and takes
    no tone of its own. On the headline, colour marks exceptions only: `done`

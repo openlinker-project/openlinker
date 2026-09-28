@@ -65,6 +65,7 @@ import {
 import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/inventory';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService, type OrderRecord } from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
+import { SHIPMENT_QUERY_SERVICE_TOKEN, type IShipmentQueryService } from '@openlinker/core/shipping';
 
 // Value imports (not `import type`): the @CurrentUser() param type feeds
 // decorator metadata, so erasing it breaks the emitted signature.
@@ -83,6 +84,7 @@ import {
   FulfillmentWorkPageResponseDto,
   FulfillmentWorkResponseDto,
 } from './dto/fulfillment-work-response.dto';
+import { FulfillmentWorkShipmentResponseDto } from './dto/fulfillment-work-shipment-response.dto';
 import { ListFulfillmentWorksQueryDto } from './dto/list-fulfillment-works-query.dto';
 import { UpdateFulfillmentWorkAssignmentDto } from './dto/update-fulfillment-work-assignment.dto';
 
@@ -110,7 +112,9 @@ export class FulfillmentWorkController {
     @Inject(LOCATION_SERVICE_TOKEN)
     private readonly locations: ILocationService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly products: IProductsService
+    private readonly products: IProductsService,
+    @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
+    private readonly shipments: IShipmentQueryService
   ) {}
 
   @Get()
@@ -202,6 +206,66 @@ export class FulfillmentWorkController {
     } catch (error) {
       throw this.toHttp(error);
     }
+  }
+
+  /**
+   * The shipment(s) dispatched for one fulfilment task (#3292).
+   *
+   * A SIBLING route rather than a field folded onto `GET :workId` — a work
+   * has zero, one, or (append-only across a cancel + re-issue) several
+   * shipments, and the main projection is a single-object DTO carried by the
+   * worklist read too, where an array field would be dead weight on every
+   * row. `IShipmentQueryService.findByFulfillmentWorkIds` is called with a
+   * single-element array rather than a bespoke single-id method — that read
+   * is already batched by design, and a second signature for the N=1 case
+   * would be a second thing to keep in sync with it.
+   *
+   * `'outbound'` is the only direction a work's own parcel can be: #2373
+   * gives the same `shipments` table a `'return'` row for an inbound label,
+   * which this route must never surface as if it were this task's own
+   * dispatch.
+   *
+   * Newest first, so a re-issued shipment (cancel + re-issue, §Shipment
+   * domain entity docblock) reads as the CURRENT attempt rather than the
+   * first one.
+   */
+  @Get(':workId/shipments')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'List the shipments dispatched for one fulfilment task',
+    description:
+      'Outbound only. Empty when nothing has been dispatched yet — that is a normal state, not ' +
+      'an error.',
+  })
+  @ApiResponse({ status: 200, type: [FulfillmentWorkShipmentResponseDto] })
+  @ApiResponse({ status: 404, description: 'No such fulfilment task' })
+  async listShipments(
+    @Param('workId') workId: string
+  ): Promise<FulfillmentWorkShipmentResponseDto[]> {
+    // A 404 on the task itself is a real answer here too — an operator
+    // pasting a stale work id should learn the task is gone, not read an
+    // empty shipment list as "nothing dispatched yet".
+    try {
+      await this.worklist.get(workId);
+    } catch (error) {
+      throw this.toHttp(error);
+    }
+
+    const byWork = await this.shipments.findByFulfillmentWorkIds([workId], 'outbound');
+    const shipments = byWork.get(workId) ?? [];
+
+    return [...shipments]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map((shipment) => ({
+        id: shipment.id,
+        status: shipment.status,
+        carrier: shipment.carrier,
+        trackingNumber: shipment.trackingNumber,
+        hasLabel: shipment.labelPdfRef !== null,
+        createdAt: shipment.createdAt,
+        dispatchedAt: shipment.dispatchedAt,
+        deliveredAt: shipment.deliveredAt,
+      }));
   }
 
   @Post(':workId/actions/:action')

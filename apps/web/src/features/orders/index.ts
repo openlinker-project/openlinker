@@ -27,6 +27,10 @@ export { ordersQueryKeys } from './api/orders.query-keys';
 // consumes; `features/automation` imports them from this barrel like any other
 // cross-feature consumer.
 export { useOrdersQuery } from './hooks/use-orders-query';
+// #3293 — the fulfilment work detail page's "Payment" panel resolves the
+// task's own order (`task.orderId`) through this SAME hook rather than a
+// second one, so there is exactly one read of "one order by id" in the app.
+export { useOrderQuery } from './hooks/use-order-query';
 // #2254 — the invoice panel needs the parsed lines to decide WHICH remedy a
 // missing rate calls for; the reason alone cannot say.
 export { parseOrderSnapshot } from './api/order-snapshot.schema';
@@ -36,7 +40,7 @@ export {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
 } from './api/orders.types';
-export type { ParsedOrderItem } from './api/order-snapshot.schema';
+export type { ParsedOrderItem, ParsedOrderTotals } from './api/order-snapshot.schema';
 export type {
   OrderRecord,
   OrderFilters,
