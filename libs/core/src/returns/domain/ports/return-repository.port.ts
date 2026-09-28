@@ -36,6 +36,7 @@ import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/retur
 import type { ReturnSourceSweepFilter, ReturnSweepCandidate } from '../types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnListFilter,
   ReturnStageCounts,
@@ -443,6 +444,34 @@ export interface ReturnRepositoryPort {
    * {@link countReturnsByStage} strips `stage`.
    */
   countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts>;
+
+  /**
+   * All internal order ids currently carrying an `all_open` return (#2998).
+   *
+   * Backs the `/orders?openReturn=` FILTER: `orders` cannot join `returns`
+   * (see this file's class docblock — the edge runs the other way), so the
+   * interface layer resolves this id list FIRST and hands it to
+   * `OrderRecordFilters.openReturnOrderIds`, exactly as the #3528
+   * tracking-number search resolves shipping's answer before asking `orders`.
+   *
+   * Orphan returns (`internalOrderId IS NULL`) are excluded by construction —
+   * `internalOrderId IS NOT NULL` is part of the query, not a caller-side
+   * filter, so an orphan can never badge or count an order it isn't attributed
+   * to.
+   */
+  findOpenReturnOrderIds(): Promise<string[]>;
+
+  /**
+   * Per-order open-return summary for a PAGE of order ids (#2998) — the badge.
+   *
+   * ONE query across the whole page, never a per-row lookup — the
+   * `getLatestInvoicesForOrders` (#1713) / reservation-shortfall (#2350)
+   * precedent. An order absent from the returned map has no open return; an
+   * order present always has `openCount >= 1`.
+   */
+  findOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>>;
 
   /**
    * One line plus its parent return, WITHOUT a row lock (#2370).

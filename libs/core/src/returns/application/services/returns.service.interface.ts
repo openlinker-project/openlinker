@@ -17,6 +17,7 @@ import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { IncomingReturn } from '../../domain/types/incoming-return.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnDeclineAvailability,
   ReturnIngestionAvailability,
@@ -274,6 +275,24 @@ export interface IReturnsService {
    * already selected.
    */
   countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts>;
+
+  /**
+   * All internal order ids currently carrying an `all_open` return (#2998) —
+   * backs the `/orders?openReturn=` server-side filter. See
+   * `OpenReturnOrderSummary` for why "open" is the returns list's own
+   * `all_open` segment predicate, reused rather than redefined.
+   */
+  listOpenReturnOrderIds(): Promise<string[]>;
+
+  /**
+   * Per-order open-return summary for a PAGE of order ids (#2998) — the
+   * `/orders` Status-group badge. ONE query for the whole page, never a
+   * per-row lookup (the `getLatestInvoicesForOrders` precedent). An order
+   * absent from the map has no open return.
+   */
+  getOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>>;
 
   /**
    * Can anything in this deployment ingest returns at all? (#2334, for #2335.)

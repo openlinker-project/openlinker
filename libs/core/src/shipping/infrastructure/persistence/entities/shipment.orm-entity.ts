@@ -137,7 +137,15 @@ export class ShipmentOrmEntity {
   @Column({ type: 'text', nullable: true })
   sourceDeliveryMethodId!: string | null;
 
+  /**
+   * Backed by a partial index (#3528) — `WHERE "trackingNumber" IS NOT NULL`,
+   * since the overwhelming majority of rows carry no tracking number yet and a
+   * full index over them would index nothing useful. Serves the `/orders`
+   * search bar's exact-match "find by waybill number" path
+   * (`ShipmentFilters.trackingNumber`).
+   */
   @Column({ type: 'text', nullable: true })
+  @Index('IDX_shipments_trackingNumber', { where: '"trackingNumber" IS NOT NULL' })
   trackingNumber!: string | null;
 
   // Actual carrier-of-record (#769) — distinct from the dispatcher

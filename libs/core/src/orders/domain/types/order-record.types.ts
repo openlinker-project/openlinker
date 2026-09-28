@@ -375,6 +375,58 @@ export interface OrderRecordFilters {
    */
   activeHoldReason?: HoldReason;
   /**
+   * "Is it packed" filter (#2997, #2072's missing acceptance criterion).
+   * `true` -> `packedAt IS NOT NULL`, `false` -> `packedAt IS NULL`, absent ->
+   * no arm. ANDed with `health`, never folded into it — `OrderHealthValues` is
+   * a documented partition summing to the KPI cards, and packed is orthogonal
+   * (an order is routinely packed AND `needs_attention`), the same rule
+   * `salesDocumentBlocked` and `taxRateConflict` already follow.
+   */
+  packed?: boolean;
+  /**
+   * Free-text search (#3527). Matches order number, buyer name, buyer email
+   * and any line SKU via the denormalized, diacritic-folded `searchText`
+   * column (GIN trigram index). `undefined` means "don't filter"; a query
+   * that normalizes to nothing (blank, or stripped entirely by diacritic
+   * folding) is treated the same way rather than as "match nothing".
+   */
+  search?: string;
+  /**
+   * Internal order ids to ADDITIONALLY match when `search` is set (#3528).
+   * ORed with `search`'s `searchText LIKE` predicate — never ANDed, and never
+   * applied when `search` itself is absent, since there is then nothing to
+   * widen. Populated by the caller (the orders interface layer) from a
+   * tracking-number lookup against the shipping context, which `orders` may
+   * not import directly — see `docs/architecture-overview.md § Cross-context
+   * dependencies in core` ("shipping" already depends on "orders").
+   */
+  searchTrackingOrderIds?: string[];
+  /**
+   * "Has an open return" filter (#2998). `true` restricts to orders whose
+   * internal id appears in `openReturnOrderIds`; `false` excludes them;
+   * `undefined` means "don't filter". `openReturnOrderIds` is the id list the
+   * caller (the orders interface layer) resolved from `IReturnsService.
+   * listOpenReturnOrderIds()` BEFORE this filter runs — `orders` may not
+   * import `returns`, mirroring the tracking-number composition above. An
+   * EMPTY array is a legitimate "no orders currently have one", not "don't
+   * filter" — the caller supplies it whenever `hasOpenReturn` is set.
+   *
+   * ANDed with `health` like every other axis on this filter object, never a
+   * sixth `OrderHealthValues` member — the #2100 trap.
+   */
+  hasOpenReturn?: boolean;
+  openReturnOrderIds?: string[];
+  /**
+   * Tag filter (#3532, D34). `tagId` restricts to orders carrying that one
+   * tag; `untagged: true` restricts to orders carrying NONE (the "No tags"
+   * picker option). The two are mutually exclusive by convention — a caller
+   * sends one or the other, never both. `order_tags`/`order_tag_assignments`
+   * live in THIS context, so this is a plain same-context SQL join, unlike
+   * the tracking-number / open-return axes above.
+   */
+  tagId?: string;
+  untagged?: boolean;
+  /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
    * last) is the list's triage default; the JSONB-derived keys (`customer`,
