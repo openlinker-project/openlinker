@@ -37,6 +37,8 @@ const view = (overrides: Partial<OperationalSettingsView> = {}): OperationalSett
   inventorySweepBudget: number(100, 2000, 20_000),
   sweepPageSize: number(100, 100, 500),
   deletionAuditBudget: number(100, 2000, 20_000),
+  syncJobRetentionDays: number(30, 365, 365),
+  syncJobDeadRetentionDays: number(90, 365, 365),
   deletionAuditCadence: { value: '0 * * * *', source: 'default', workerMayDiffer: true },
   catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
   inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },

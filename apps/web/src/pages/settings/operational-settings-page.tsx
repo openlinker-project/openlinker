@@ -73,8 +73,19 @@ import type {
  */
 const HOST_LIMIT_STORAGE_KEY = 'ol.syncPacing.hostProcessLimitSeconds';
 
-/** The numeric fields, in the order the page lays them out. */
-const NUMERIC_FIELDS: readonly OperationalSettingKey[] = [
+/**
+ * The sweep-pacing form's own numeric fields, in the order the page lays
+ * them out — a NARROWER type than `OperationalSettingKey` on purpose
+ * (#2946 widened that union with `syncJobRetentionDays` /
+ * `syncJobDeadRetentionDays`, which have no place in `SyncPacingValues`'s
+ * catalogue-size projection and are rendered by their own self-contained
+ * `SyncJobRetentionSection` instead): the intersection of both unions is
+ * exactly this form's 4 numeric fields, so `draft[key]` below stays sound
+ * without widening `SyncPacingValues` itself.
+ */
+type SyncPacingNumericField = Extract<OperationalSettingKey, keyof SyncPacingValues>;
+
+const NUMERIC_FIELDS: readonly SyncPacingNumericField[] = [
   'catalogueSweepBudget',
   'sweepPageSize',
   'inventorySweepBudget',
