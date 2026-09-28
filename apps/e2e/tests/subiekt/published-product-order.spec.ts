@@ -37,71 +37,19 @@
  * @module apps/e2e/tests/subiekt
  */
 import { expect, test } from '../../src/fixtures/test';
-import type { ApiClient } from '../../src/api/api-client';
 import type { Connection, Product, ProductVariant } from '../../src/api/api.types';
 import { PlatformType } from '../../src/world/world';
 import {
   synthesizeOrder,
   buildPrestashopWebserviceClient,
 } from '../../src/support/order-synthesis';
-
-/** A publish is a job; the mapping it writes appears only once that job ran. */
-const PUBLISH_TIMEOUT_MS = 180_000;
-
-/** The external id this product carries on `connectionId`, or null. */
-function externalIdOn(product: Product, connectionId: string): string | null {
-  return product.externalIds?.find((m) => m.connectionId === connectionId)?.externalId ?? null;
-}
-
-/**
- * The first catalogue product carrying a Subiekt mapping and a sellable
- * variant, or null.
- *
- * Scoped to the Subiekt connection for the same reason `pickDriverProduct` is
- * scoped to PrestaShop: OpenLinker's catalogue is global and carries other
- * masters' products, so an unscoped page decides the outcome by whatever sorts
- * first.
- */
-async function pickSubiektProduct(
-  api: ApiClient,
-  subiektConnectionId: string
-): Promise<{ product: Product; variant: ProductVariant; symbol: string } | null> {
-  const page = await api.products.list({ limit: 50, connectionId: subiektConnectionId });
-  for (const summary of page.items) {
-    const detail = await api.products.getById(summary.id);
-    const symbol = externalIdOn(detail, subiektConnectionId);
-    if (!symbol) continue;
-    const variants =
-      detail.variants && detail.variants.length > 0
-        ? detail.variants
-        : (await api.products.listVariants(summary.id)).items;
-    // A price is required to sell it. The SKU is the towar symbol, which is
-    // what makes the variant resolvable back to Subiekt at all - the shop-side
-    // lookup uses the internal variant id instead (see the reference note
-    // below).
-    const variant = variants.find(
-      (v) => (v.price ?? detail.price ?? 0) > 0 && !!(v.sku ?? detail.sku)
-    );
-    if (variant) return { product: detail, variant, symbol };
-  }
-  return null;
-}
-
-/** Poll until the variant reports a listing on `connectionId`. */
-async function waitForPublishedMapping(
-  api: ApiClient,
-  connectionId: string,
-  variantId: string,
-  timeoutMs: number
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const published = await api.listings.publishedVariants(connectionId, [variantId]);
-    if (published.includes(variantId)) return true;
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
-  }
-  return false;
-}
+// Shared with `order-to-documents.spec.ts`, which needs the same product for
+// the same reason: Subiekt refuses an order line for a towar it does not know.
+// Idempotent, so two specs in one serial project publish it once between them.
+import {
+  ensureSubiektProductOnShop,
+  externalIdOn,
+} from '../../src/support/subiekt-shop-driver';
 
 test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => {
   // Serial: the second test sells what the first published. Publishing per
@@ -146,69 +94,27 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
         `and never retro-filled (#2085).`
     );
 
-    publishConnection = prestashop ?? null;
-
-    driver = await pickSubiektProduct(api, subiekt!.id);
+    // ONE helper, shared with `order-to-documents.spec.ts`, and idempotent: two
+    // specs in one serial project would otherwise publish the same towar twice
+    // and leave a second product in somebody's real shop on every run.
+    const resolved = await ensureSubiektProductOnShop(api, ps!, subiekt!.id, prestashop!);
     test.skip(
-      driver === null,
+      resolved === null,
       'no catalogue product carries a Subiekt mapping AND a priced, SKU-bearing variant. Run the ' +
         'Subiekt ProductMaster sweep first — without a towar in the catalogue there is nothing ' +
         'this spec can publish.'
     );
 
-    const alreadyPublished = await api.listings.publishedVariants(prestashop!.id, [
-      driver!.variant.id,
-    ]);
-    if (!alreadyPublished.includes(driver!.variant.id)) {
-      await api.listings.shopPublish(prestashop!.id, {
-        internalVariantId: driver!.variant.id,
-        status: 'published',
-        // Deliberately not the master's own figure: this spec sells ONE unit
-        // and then asserts the drop, so it only needs enough to sell, and a
-        // large number here would be a claim about stock it did not check.
-        stock: 10,
-        // A money object, not a number. The currency is the product's own, so
-        // publishing never restates what the master priced in.
-        ...(driver!.variant.price !== null && driver!.variant.price !== undefined
-          ? {
-              price: {
-                amount: driver!.variant.price,
-                currency: driver!.product.currency ?? 'PLN',
-              },
-            }
-          : {}),
-      });
-
-      const mapped = await waitForPublishedMapping(
-        api,
-        prestashop!.id,
-        driver!.variant.id,
-        PUBLISH_TIMEOUT_MS
-      );
-      expect(
-        mapped,
-        `variant ${driver!.variant.id} never reported a listing on the shop — the publish job did ` +
-          `not write its ShopProduct mapping (check ProductPublisher is enabled on the connection)`
-      ).toBe(true);
-    }
+    driver = { product: resolved!.product, variant: resolved!.variant, symbol: resolved!.symbol };
+    publishConnection = resolved!.publishConnection;
+    shopProductId = resolved!.shopProductId;
 
     // The shop's own side is the only place the published id can be read back
     // from: `GET /products/:id` returns `Product` mappings only, and a publish
-    // writes `ShopProduct`.
-    //
-    // The lookup key is the INTERNAL VARIANT ID, not the SKU.
-    // `PrestashopProductPublisherAdapter` sets `body.reference =
-    // cmd.internalVariantId` deliberately - it is the stable server-side key
-    // its own create-idempotency guard adopts an orphan by (#1107) - so a
-    // lookup by SKU finds nothing and would fail this test for the wrong
-    // reason.
-    const reference = driver!.variant.id;
-    shopProductId = await ps!.getProductIdByReference(reference);
-    expect(
-      shopProductId,
-      `no shop product carries reference "${reference}" — the publish reported a mapping but the ` +
-        `product is not findable by the reference it was published under`
-    ).not.toBeNull();
+    // writes `ShopProduct`. The helper asserts that lookup succeeded, so
+    // reaching here means the product really is findable in the shop under the
+    // reference it was published with.
+    expect(shopProductId, 'the publish reported no shop product id').not.toBeNull();
   });
 
   test('an order for the published product resolves back to the SAME Subiekt product', async ({

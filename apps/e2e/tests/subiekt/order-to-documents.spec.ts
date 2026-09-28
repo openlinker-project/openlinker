@@ -39,6 +39,7 @@ import type { ApiClient } from '../../src/api/api-client';
 import type { InvoiceRecord, OrderRecord, Product } from '../../src/api/api.types';
 import { PlatformType } from '../../src/world/world';
 import { synthesizeOrder, buildPrestashopWebserviceClient } from '../../src/support/order-synthesis';
+import { ensureSubiektProductOnShop } from '../../src/support/subiekt-shop-driver';
 
 /** How long a destination fan-out and an auto-issue may take on a shared stack. */
 const DESTINATION_TIMEOUT_MS = 180_000;
@@ -141,16 +142,54 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       'no PrestaShop webservice credentials — set OL_PS_WEBSERVICE_KEY to mint a real order',
     );
 
-    const synthesized = await synthesizeOrder({ api, world, jobs, poll }, { quantity: 1 });
+    // Sell a towar SUBIEKT KNOWS, not merely one the shop carries (#3365
+    // audit). `pickDriverProduct` inside the synthesiser requires only a
+    // PrestaShop mapping, and on a real stack that is a shop-native product
+    // Subiekt has never seen - the order then reaches the Subiekt destination
+    // and is refused there with "the product must be synced from this Subiekt
+    // connection (ProductMaster) before an order referencing it can be created
+    // here", which is how this test failed against a perfectly healthy bridge.
+    const publishConnection = world
+      .connectionsFor(PlatformType.prestashop)
+      .find((c) => c.status === 'active' && c.enabledCapabilities.includes('ProductPublisher'));
+    test.skip(
+      !publishConnection,
+      `no ACTIVE PrestaShop connection has ProductPublisher enabled, so no Subiekt towar can be ` +
+        `put on the shop to sell. enabledCapabilities is stamped at create and never ` +
+        `retro-filled (#2085), so enable it on the store.`,
+    );
+    const shopDriver = await ensureSubiektProductOnShop(
+      api,
+      buildPrestashopWebserviceClient(world)!,
+      subiekt!.id,
+      publishConnection!,
+    );
+    test.skip(
+      shopDriver === null,
+      'no catalogue product carries a Subiekt mapping AND a priced, SKU-bearing variant. Run ' +
+        'the Subiekt ProductMaster sweep first.',
+    );
+
+    const synthesized = await synthesizeOrder(
+      { api, world, jobs, poll },
+      {
+        quantity: 1,
+        driver: { product: shopDriver!.product, variant: shopDriver!.variant },
+        // The shop's own id for what OpenLinker published: a `ShopProduct`
+        // mapping is invisible to the products API, so the synthesiser's own
+        // lookup would find nothing.
+        externalProductId: shopDriver!.shopProductId,
+        // Wait on the connection that PUBLISHED. Two PrestaShop connections can
+        // poll one store and only this one holds the mapping that resolves the
+        // line; the other ingests the same order as `awaiting_mapping`, which
+        // is correct, so waiting there can only time out.
+        ingestConnection: shopDriver!.publishConnection,
+      },
+    );
     // Which source actually ingested it - read from the order rather than
     // assumed, because two connections can poll one shop and either may win.
     const ingestedFromPrestashop =
-      world.connectionFor(PlatformType.prestashop)?.id === synthesized.order.sourceConnectionId ||
-      (await api.connections.list()).some(
-        (c) =>
-          c.id === synthesized.order.sourceConnectionId &&
-          c.platformType === PlatformType.prestashop,
-      );
+      shopDriver!.publishConnection.id === synthesized.order.sourceConnectionId;
     internalOrderId = synthesized.order.internalOrderId;
     soldProduct = synthesized.product;
     soldVariantId = synthesized.variant.id;
