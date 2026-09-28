@@ -56,10 +56,24 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoiceWarehouseRelease1904000000000 implements MigrationInterface {
-  name = 'AddInvoiceWarehouseRelease1904000000000';
+export class AddInvoiceWarehouseRelease1907000000000 implements MigrationInterface {
+  name = 'AddInvoiceWarehouseRelease1907000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // RENUMBERED 1904 -> 1907. `1904` was already claimed by
+    // `add-order-fulfillment-routing-skip-reason` on three branches of the
+    // routed-order stack - a collision the review that caught the `1902` one
+    // did not yet know about, found by scanning every remote branch rather
+    // than by reading `origin/main`.
+    //
+    // Same rule as the sibling renumber: a renamed class is a NEW migration to
+    // TypeORM, so `up()` re-runs on any database that applied `1904`. The DDL
+    // below is `IF NOT EXISTS`-guarded and would converge on its own, but the
+    // `migrations` table would carry both names; the DELETE keeps one row per
+    // migration.
+    await queryRunner.query(`DELETE FROM "migrations" WHERE "name" = ANY($1)`, [
+      ['AddInvoiceWarehouseRelease1904000000000'],
+    ]);
     await queryRunner.query(
       `ALTER TABLE "invoice_records" ADD COLUMN IF NOT EXISTS "warehouseReleaseOutcome" character varying(20)`,
     );

@@ -100,8 +100,20 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * what is pending by CLASS NAME, so a duplicate timestamp runs both; it is a
  * RENAME that re-runs a migration.
  *
- * RENUMBERED `1898000000000` -> `1902000000000`, and the reason is the hazard
- * that paragraph above names rather than a collision. `1898` was picked while
+ * RENUMBERED TWICE: `1898000000000` -> `1902000000000` -> `1905000000000`, and
+ * the two hops have different causes.
+ *
+ * The SECOND hop is a genuine collision. `1902` was claimed by two unmerged
+ * branches at once - this one and `create-inventory-sale-decrements`, which
+ * nine branches of the routed-order stack carry - so whichever merged second
+ * would have failed `pnpm lint`. Moving this file rather than that chain is
+ * arithmetic: one branch against nine. `check-migration-timestamps.mjs` cannot
+ * see such a clash, because it compares one tree against `origin/main` and
+ * never two branches against each other, which is also why a prefix cannot be
+ * reserved by agreement.
+ *
+ * The FIRST hop's reason is the hazard that paragraph above names rather than a
+ * collision. `1898` was picked while
  * it sat in a genuine gap between two UNMERGED siblings (`1897` and `1899` of
  * the pack-bench stack); that stack has since landed, so `main`'s tail moved to
  * `1899` and this file fell BELOW it, breaking rule 3 of
@@ -113,7 +125,7 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * has, on the demo stand. It is because every statement in `up()` converges: the
  * collision guard is a read, and each UPDATE is scoped by a WHERE that selects
  * nothing once the rows already carry `subiekt-nexo`. So TypeORM treating
- * `SplitSubiektProductLines1902000000000` as a new migration re-runs a clean
+ * `SplitSubiektProductLines1905000000000` as a new migration re-runs a clean
  * no-op rather than the `42701 column already exists` that forced
  * `add-invoice-unlinked-catalogue-lines` to write a self-healing DELETE. A stand that applied the
  * `1898` name keeps that row in `migrations` as a harmless orphan; nothing
@@ -125,8 +137,21 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * `identifier_mappings` / `connections` / `integration_credentials`, that one
  * adds a column to `invoice_records`.
  */
-export class SplitSubiektProductLines1902000000000 implements MigrationInterface {
-  name = 'SplitSubiektProductLines1902000000000';
+/**
+ * Every class name this migration has already been recorded under.
+ *
+ * Read off the live demo database rather than inferred: it holds
+ * `SplitSubiektProductLines1898000000000` AND `...1902000000000`, because the
+ * first renumber moved the file without deleting its old row. Missing either
+ * one leaves a stale entry claiming a migration that no longer exists.
+ */
+const SUPERSEDED_MIGRATION_NAMES = [
+  'SplitSubiektProductLines1898000000000',
+  'SplitSubiektProductLines1902000000000',
+];
+
+export class SplitSubiektProductLines1905000000000 implements MigrationInterface {
+  name = 'SplitSubiektProductLines1905000000000';
 
   /**
    * The connections this migration is about, resolved by EITHER identity axis
@@ -144,7 +169,30 @@ export class SplitSubiektProductLines1902000000000 implements MigrationInterface
         OR lower("platformType") = 'subiekt-nexo'`;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    const set = SplitSubiektProductLines1902000000000.LEGACY_CONNECTIONS;
+    // RENUMBERED 1902 -> 1905, and the DELETE below is what makes that safe.
+    //
+    // `1902` was claimed by two unmerged branches at once: this one and
+    // `create-inventory-sale-decrements`, which nine branches of the
+    // routed-order stack carry. Moving this one is arithmetic rather than
+    // precedence - it is one branch with two migrations against a nine-branch
+    // chain. `check-migration-timestamps.mjs` cannot see the clash, because it
+    // compares one tree against `origin/main` and never two branches against
+    // each other, so whichever merged second would have failed `pnpm lint`.
+    //
+    // A rename is the dangerous operation here, not the collision: TypeORM
+    // decides what is pending by CLASS NAME (`typeorm@0.3.17`,
+    // `MigrationExecutor.js:79`), so a renamed class is a NEW migration and
+    // `up()` runs again on every database that applied the old one. This body
+    // happens to be idempotent - every statement is an `UPDATE ... WHERE
+    // lower("platformType") = 'subiekt'`, which matches nothing on a second
+    // pass - but the `migrations` table would carry both names, and the next
+    // reader would have to work out which ran. Deleting the superseded row is
+    // the `docs/migrations.md` section 6 shape and costs one statement.
+    await queryRunner.query(`DELETE FROM "migrations" WHERE "name" = ANY($1)`, [
+      SUPERSEDED_MIGRATION_NAMES,
+    ]);
+
+    const set = SplitSubiektProductLines1905000000000.LEGACY_CONNECTIONS;
 
     // Collision guard, FIRST and before any write. Projects the rows that WILL
     // carry `subiekt-nexo` and refuses if two of them would share the unique
@@ -266,7 +314,7 @@ export class SplitSubiektProductLines1902000000000 implements MigrationInterface
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const set = SplitSubiektProductLines1902000000000.NEXO_CONNECTIONS;
+    const set = SplitSubiektProductLines1905000000000.NEXO_CONNECTIONS;
 
     await queryRunner.query(`
       DO $$
