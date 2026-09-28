@@ -13,6 +13,7 @@ import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings'
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { ShippingModule as CoreShippingModule } from '@openlinker/core/shipping';
 import { ReturnsModule as CoreReturnsModule } from '@openlinker/core/returns';
+import { SyncModule as CoreSyncModule } from '@openlinker/core/sync';
 import { OrdersController } from './http/orders.controller';
 import { RefundsController } from './http/refunds.controller';
 import { SalesDocumentsController } from './http/sales-documents.controller';
@@ -20,6 +21,7 @@ import { OrderColumnPresetsController } from './http/order-column-presets.contro
 import { OrderNotesController } from './http/order-notes.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
+import { OrderExportsController } from './http/order-exports.controller';
 
 @Module({
   // CoreMappingsModule (#1791) provides FULFILLMENT_ROUTING_SERVICE_TOKEN —
@@ -45,6 +47,10 @@ import { OrderTagAssignmentsController } from './http/order-tag-assignments.cont
     CoreInventoryModule,
     CoreShippingModule,
     CoreReturnsModule,
+    // CoreSyncModule (#3534) provides JOB_ENQUEUE_TOKEN — the export
+    // controller enqueues its own `orders.export` driver job, the
+    // `AnalyticsRemediationController` precedent.
+    CoreSyncModule,
   ],
   controllers: [
     OrdersController,
@@ -54,6 +60,7 @@ import { OrderTagAssignmentsController } from './http/order-tag-assignments.cont
     OrderNotesController,
     OrderTagsController,
     OrderTagAssignmentsController,
+    OrderExportsController,
   ],
 })
 export class OrdersModule {}

@@ -427,6 +427,18 @@ export interface OrderRecordFilters {
   tagId?: string;
   untagged?: boolean;
   /**
+   * Order-placement date range (#3534, D35) — filters `placedAt`, the
+   * buyer's true order time, as OPPOSED to `createdFrom`/`createdTo` which
+   * filter `createdAt` (when OpenLinker received the order). Added for the
+   * export feature, whose default date field is `placedAt` while the list's
+   * own filter stays `createdAt` (unchanged, D35's own "backend gaps" note:
+   * "the list filters by createdAt... while accounting wants placedAt").
+   * An order with no `placedAt` (a source that reports none) never matches
+   * either bound.
+   */
+  placedFrom?: Date;
+  placedTo?: Date;
+  /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
    * last) is the list's triage default; the JSONB-derived keys (`customer`,

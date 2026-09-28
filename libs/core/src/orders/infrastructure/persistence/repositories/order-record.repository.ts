@@ -279,6 +279,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       });
     }
 
+    // #3534, D35 — the export's own date axis, `placedAt` rather than
+    // `createdAt`. An order with a NULL `placedAt` never matches either bound
+    // (the ordinary SQL comparison-with-NULL behaviour), which is correct:
+    // "placed within this range" cannot be answered for an order with no
+    // known placement instant.
+    if (filters.placedFrom) {
+      qb.andWhere('rec."placedAt" >= :placedFrom', {
+        placedFrom: filters.placedFrom,
+      });
+    }
+
+    if (filters.placedTo) {
+      qb.andWhere('rec."placedAt" <= :placedTo', {
+        placedTo: filters.placedTo,
+      });
+    }
+
     if (filters.syncStatus) {
       // JSONB containment: find orders where any destination has this status
       // 'order' is a reserved word in PostgreSQL so the alias is 'rec'

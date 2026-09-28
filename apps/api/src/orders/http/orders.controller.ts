@@ -191,7 +191,7 @@ import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
  * repository takes them on the same object; `countMany` ignores them, which is
  * why `CountOrdersQueryDto` may accept them harmlessly.
  */
-function toOrderRecordFilters(
+export function toOrderRecordFilters(
   query: CountOrdersQueryDto & Partial<Pick<ListOrdersQueryDto, 'sort' | 'dir'>>
 ): OrderRecordFilters {
   return {
@@ -265,7 +265,7 @@ function assertCancelledPhaseAgree(
  * whole list — it degrades to "this widening did not apply this time" rather
  * than a 500 on `/orders`.
  */
-async function enrichCrossContextFilters(
+export async function enrichCrossContextFilters(
   filters: OrderRecordFilters,
   query: { search?: string; openReturn?: boolean },
   shipmentQuery: IShipmentQueryService,

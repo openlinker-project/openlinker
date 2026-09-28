@@ -41,6 +41,9 @@ import { OrderTagRepository } from './infrastructure/persistence/repositories/or
 import { OrderTagOrmEntity } from './infrastructure/persistence/entities/order-tag.orm-entity';
 import { OrderTagAssignmentOrmEntity } from './infrastructure/persistence/entities/order-tag-assignment.orm-entity';
 import { OrderTagService } from './application/services/order-tag.service';
+import { OrderExportRepository } from './infrastructure/persistence/repositories/order-export-run.repository';
+import { OrderExportRunOrmEntity } from './infrastructure/persistence/entities/order-export-run.orm-entity';
+import { OrderExportService } from './application/services/order-export.service';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
@@ -73,6 +76,8 @@ import {
   ORDER_NOTE_SERVICE_TOKEN,
   ORDER_TAG_REPOSITORY_TOKEN,
   ORDER_TAG_SERVICE_TOKEN,
+  ORDER_EXPORT_REPOSITORY_TOKEN,
+  ORDER_EXPORT_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -115,6 +120,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       OrderNoteRevisionOrmEntity,
       OrderTagOrmEntity,
       OrderTagAssignmentOrmEntity,
+      OrderExportRunOrmEntity,
     ]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
@@ -185,6 +191,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderNoteService,
     OrderTagRepository,
     OrderTagService,
+    OrderExportRepository,
+    OrderExportService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -298,6 +306,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_TAG_SERVICE_TOKEN,
       useExisting: OrderTagService,
     },
+    {
+      provide: ORDER_EXPORT_REPOSITORY_TOKEN,
+      useExisting: OrderExportRepository,
+    },
+    {
+      provide: ORDER_EXPORT_SERVICE_TOKEN,
+      useExisting: OrderExportService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -345,6 +361,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_NOTE_SERVICE_TOKEN,
     // Exported so the API's orders controller can inject the tag seam (#3532).
     ORDER_TAG_SERVICE_TOKEN,
+    // Exported so the API's export controller AND the worker's job handler
+    // can inject the export seam (#3534).
+    ORDER_EXPORT_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
