@@ -12,7 +12,7 @@
  * an order is minted at a real source, ingested by OpenLinker, and then
  * asserted on the DESTINATION side through the same `syncStatus` poll.
  *
- * TWO HONEST LIMITS, both stated here rather than discovered in a failure:
+ * THREE THINGS STATED HERE rather than discovered in a failure:
  *
  * 1. The source is PrestaShop, not Allegro. An Allegro sandbox order needs a
  *    human to buy something, so it cannot be driven unattended. The document
@@ -20,7 +20,14 @@
  *    same way whatever the order came from - so this proves the mechanism, not
  *    specifically "an order from Allegro".
  *
- * 2. Stock moves ONLY for a line whose product resolves to a Subiekt towar
+ * 2. The sale is priced BELOW the catalogue figure, deliberately. Priced at
+ *    list price, every amount assertion here passes whether the ZK carried the
+ *    buyer's price or looked one up in Subiekt, because the two numbers are
+ *    equal - so the amount tests would prove nothing about promise 4. The
+ *    fixture charges 61% instead, and asserts the gap is real before asserting
+ *    Subiekt honoured it.
+ *
+ * 3. Stock moves ONLY for a line whose product resolves to a Subiekt towar
  *    symbol. `subiekt-line.mapper.ts` degrades an unresolved product to
  *    `DodajUslugeJednorazowa` - a one-off SERVICE position that Subiekt stores
  *    with `ob_TowId = NULL` and that no warehouse document can release. That
@@ -128,6 +135,14 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
   let soldVariantId: string | null = null;
   const soldQuantity = 1;
   /**
+   * What the buyer was charged per unit, and what the catalogue says the same
+   * variant costs. Held apart on purpose: the ZK test below asserts BOTH that
+   * Subiekt recorded the first figure and that the two genuinely differ, so it
+   * cannot pass by a catalogue lookup happening to return the right number.
+   */
+  let soldUnitPriceGross: number | null = null;
+  let catalogueUnitPriceGross: number | null = null;
+  /**
    * Set when the source reports net line prices AND no gross figure at all,
    * which is still refused.
    *
@@ -184,10 +199,38 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
         'the Subiekt ProductMaster sweep first.',
     );
 
+    // PRICE THE SALE BELOW THE CATALOGUE, which is what makes promise 4
+    // ("the real sale price from the marketplace") askable at all (#3365).
+    //
+    // Priced at the catalogue figure, every downstream amount assertion passes
+    // whether the ZK carried the buyer's price or looked one up in Subiekt -
+    // the two numbers are equal, so the test proves nothing about which of them
+    // was used. A real marketplace sale almost never matches the catalogue: a
+    // coupon, a campaign price or a marketplace-funded discount all send a
+    // LOWER figure, and ADR-014 is explicit that OpenLinker carries what the
+    // buyer paid and never recomputes it. So the fixture charges 61% of the
+    // catalogue price - not a half or a quarter, so a substitution cannot match
+    // through an arithmetic coincidence - and the ZK test asserts the gap is
+    // real before asserting Subiekt honoured it.
+    const cataloguePrice = shopDriver!.variant.price ?? shopDriver!.product.price ?? 0;
+    expect(
+      cataloguePrice,
+      'the driver variant carries no positive catalogue price, so no discount can be expressed',
+    ).toBeGreaterThan(0);
+    const discountedPrice = Math.round(cataloguePrice * 61) / 100;
+    expect(
+      discountedPrice,
+      `a 61% price of ${cataloguePrice} rounded to ${discountedPrice}, which is not strictly ` +
+        `below the catalogue figure - pick a driver product priced above 0.02`,
+    ).toBeLessThan(cataloguePrice);
+    catalogueUnitPriceGross = cataloguePrice;
+    soldUnitPriceGross = discountedPrice;
+
     const synthesized = await synthesizeOrder(
       { api, world, jobs, poll },
       {
         quantity: 1,
+        unitPriceTaxIncl: discountedPrice,
         driver: { product: shopDriver!.product, variant: shopDriver!.variant },
         // The shop's own id for what OpenLinker published: a `ShopProduct`
         // mapping is invisible to the products API, so the synthesiser's own
@@ -333,11 +376,26 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     ).toBeTruthy();
 
     // THE MONEY. Promise 4 is "the real sale price from the marketplace", and
-    // this is the first assertion anywhere that compares an amount in Subiekt
-    // with what the buyer was charged. The fixture prices at the catalogue
-    // figure, so this cannot yet catch a catalogue-lookup substitution - but it
-    // does catch the ZK being written for a different number than the order
-    // carries, which is what an ignored discount produced.
+    // this is the only assertion anywhere that compares an amount in Subiekt
+    // with what the buyer was actually charged.
+    //
+    // It is load-bearing because the fixture charged 61% of the catalogue
+    // price. A Subiekt that priced the ZK from its own `tc_CenaBrutto1` rather
+    // than from the order would land on `catalogueUnitPriceGross` and fail
+    // here - the case that is invisible when the fixture pays list price. The
+    // gap is asserted FIRST, so a fixture that silently stopped discounting
+    // reports that rather than passing green on a test that checks nothing.
+    expect(
+      soldUnitPriceGross,
+      'the fixture recorded no sale price, so the comparison below would be vacuous',
+    ).not.toBeNull();
+    expect(
+      soldUnitPriceGross!,
+      `the fixture was supposed to charge BELOW the catalogue price and charged ` +
+        `${soldUnitPriceGross} against a catalogue ${catalogueUnitPriceGross}. Without a gap ` +
+        `this test cannot tell a carried price from a looked-up one.`,
+    ).toBeLessThan(catalogueUnitPriceGross!);
+
     const snapshot = order.orderSnapshot as { totals?: { total?: number } };
     const buyerPaid = snapshot.totals?.total;
     expect(buyerPaid, 'the order snapshot carries no total to compare against').toBeTruthy();
@@ -352,7 +410,9 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       type: 'subiekt',
       description:
         `verified in Subiekt: ${zk!.numer}, kontrahent "${zk!.kontrahentNazwa}", ` +
-        `${zk!.wartoscBrutto} ${zk!.waluta}, ${zk!.lines.length} position(s)`,
+        `${zk!.wartoscBrutto} ${zk!.waluta}, ${zk!.lines.length} position(s). Sold at ` +
+        `${soldUnitPriceGross} against a catalogue ${catalogueUnitPriceGross}, so the ZK ` +
+        `carried the buyer's price rather than the catalogue's.`,
     });
   });
 
