@@ -357,6 +357,32 @@ export type {
 export { OrderTagColorValues, ORDER_TAG_WORKSPACE_LIMIT } from './domain/types/order-tag.types';
 export { OrderTagLimitReachedError } from './domain/exceptions/order-tag-limit-reached.error';
 export { OrderTagNotFoundError } from './domain/exceptions/order-tag-not-found.error';
+// Orders CSV/XLSX export (#3534, D35).
+export type { IOrderExportService } from './application/services/order-export.service.interface';
+export { OrderExportRun } from './domain/entities/order-export-run.entity';
+export type {
+  OrderExportFile,
+  OrderExportFormat,
+  OrderExportScope,
+  OrderExportStatus,
+  CreateOrderExportRunInput,
+} from './domain/types/order-export.types';
+export {
+  OrderExportFormatValues,
+  OrderExportScopeValues,
+  OrderExportStatusValues,
+  ORDER_EXPORT_BACKGROUND_THRESHOLD,
+  ORDER_EXPORT_TTL_DAYS,
+} from './domain/types/order-export.types';
+export {
+  ORDER_EXPORT_COLUMN_IDS,
+  ORDER_EXPORT_COLUMN_LABELS,
+  ORDER_EXPORT_DEFAULT_COLUMNS,
+  narrowOrderExportColumns,
+  resolveOrderExportCell,
+} from './domain/order-export-columns';
+export type { OrderExportColumnId, OrderExportCellValue } from './domain/order-export-columns';
+export { buildOrderExportCsv } from './domain/order-export-csv';
 export * from './orders.tokens';
 
 // Domain entities

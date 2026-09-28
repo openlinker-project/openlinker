@@ -48,6 +48,9 @@ export const ORDER_TAG_REPOSITORY_TOKEN = Symbol('OrderTagRepositoryPort');
 export const ORDER_TAG_SERVICE_TOKEN = Symbol('IOrderTagService');
 // Test-fixture-only writes unreachable via any real ingestion flow (#2855).
 export const ORDER_TEST_FIXTURE_SERVICE_TOKEN = Symbol('IOrderTestFixtureService');
+// Orders CSV/XLSX export runs (#3534, D35).
+export const ORDER_EXPORT_REPOSITORY_TOKEN = Symbol('OrderExportRepositoryPort');
+export const ORDER_EXPORT_SERVICE_TOKEN = Symbol('IOrderExportService');
 
 
 

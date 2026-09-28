@@ -196,14 +196,16 @@ const harness = createIntegrationTestHarness({
     // (sourceConnectionId, externalOrderId) slot in the next.
     'order_cancellation_signals',
     // order_column_presets (#3530), order_notes / order_note_revisions
-    // (#3531), order_tags / order_tag_assignments (#3532) — no FK to
-    // order_records or users (the same indexed-reference-by-value precedent
-    // as order_cancellation_signals above), so nothing cascades in.
+    // (#3531), order_tags / order_tag_assignments (#3532), order_exports
+    // (#3534) — no FK to order_records or users (the same
+    // indexed-reference-by-value precedent as order_cancellation_signals
+    // above), so nothing cascades in.
     'order_column_presets',
     'order_note_revisions',
     'order_notes',
     'order_tag_assignments',
     'order_tags',
+    'order_exports',
     // automation_* (#2358) — the OMS automation v1 storage. NOTHING here
     // carries an FK: not runs/firings -> automation_rules (a deleted rule must
     // neither destroy its history nor be blocked by it), and not subjectId ->
