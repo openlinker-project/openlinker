@@ -71,7 +71,7 @@ function routed(
       return Promise.resolve(
         modelBody
           ? jsonResponse(200, envelope(modelBody))
-          : jsonResponse(404, { success: false, data: null, error: 'no such model' }),
+          : jsonResponse(404, { success: false, data: null, error: { code: 'not_found', reason: 'No model with id 5.', correlationId: null } }),
       );
     }
     if (path.includes('/api/models')) {
@@ -81,7 +81,7 @@ function routed(
       return Promise.resolve(
         productBody
           ? jsonResponse(200, envelope(productBody))
-          : jsonResponse(404, { success: false, data: null, error: 'no such towar' }),
+          : jsonResponse(404, { success: false, data: null, error: { code: 'not_found', reason: 'No product with symbol X.', correlationId: null } }),
       );
     }
     return Promise.resolve(jsonResponse(200, envelope({ symbols: [], ...symbolsBody })));
@@ -180,11 +180,57 @@ describe('SubiektProductMasterAdapter', () => {
     await idMapping.createMapping('Product', 'GONE-1', 'conn-1', 'ol_product_1');
     const fetchImpl: FetchLike = (() =>
       Promise.resolve(
-        jsonResponse(200, { success: false, data: null, error: 'No such towar' }),
+        jsonResponse(200, { success: false, data: null, error: { code: 'not_found', reason: 'No product with symbol GONE-1.', correlationId: null } }),
       )) as FetchLike;
 
     const adapter = buildAdapter(fetchImpl);
     await expect(adapter.getProduct('ol_product_1')).rejects.toBeInstanceOf(MasterProductNotFoundError);
+  });
+
+  // The other half of that rule, and the one that takes a catalogue off sale
+  // when it is missing: the bridge answers the SAME `{success:false}` envelope
+  // when it is up and Subiekt is not. Reading those as a deletion runs the
+  // #1599 chain - variants staled, `master.product.stale` emitted, offer
+  // quantity zeroed on every marketplace - and none of it self-heals.
+  it('getProduct does NOT report a deletion when the bridge answers a 500 wearing the business envelope', async () => {
+    await idMapping.createMapping('Product', 'ALIVE-1', 'conn-1', 'ol_product_2');
+    const fetchImpl: FetchLike = (() =>
+      Promise.resolve(
+        jsonResponse(500, {
+          success: false,
+          data: null,
+          error: { code: 'sfera_error', reason: 'COM session could not attach', correlationId: null },
+        }),
+      )) as FetchLike;
+
+    const adapter = buildAdapter(fetchImpl);
+    const error = await adapter.getProduct('ol_product_2').catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
+    // It surfaces as a TRANSPORT fault, classified `indeterminate`. Note what
+    // that does and does not buy: `retryable` is false, because the phase is
+    // shared with the fiscal write path where an in-doubt POST must not be
+    // re-sent. So this child still ends, and recovery comes from the next
+    // catalogue sweep re-enqueuing the product 20 minutes later - which is
+    // ordinary catch-up, not the unrecoverable staling a deletion verdict
+    // would have caused.
+    expect(error).toBeInstanceOf(SubiektBridgeTransportError);
+    expect((error as SubiektBridgeTransportError).retryability).toBe('indeterminate');
+  });
+
+  it('getProduct does NOT report a deletion for a business rejection that is not not_found', async () => {
+    await idMapping.createMapping('Product', 'ALIVE-2', 'conn-1', 'ol_product_3');
+    const fetchImpl: FetchLike = (() =>
+      Promise.resolve(
+        jsonResponse(422, {
+          success: false,
+          data: null,
+          error: { code: 'sfera_error', reason: 'Subiekt GT client is open', correlationId: null },
+        }),
+      )) as FetchLike;
+
+    const adapter = buildAdapter(fetchImpl);
+    const error = await adapter.getProduct('ol_product_3').catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
   });
 
   it('listExternalIds returns the bridge-reported symbols verbatim when no towar is modelled', async () => {
@@ -240,7 +286,7 @@ describe('SubiektProductMasterAdapter', () => {
     // modelled" - the pre-model behaviour - never as a failed enumeration.
     const fetchImpl: FetchLike = ((url: string) =>
       url.includes('/api/models')
-        ? Promise.resolve(jsonResponse(404, { success: false, data: null, error: 'no such route' }))
+        ? Promise.resolve(jsonResponse(404, { success: false, data: null, error: { code: 'not_found', reason: 'no such route', correlationId: null } }))
         : Promise.resolve(jsonResponse(200, envelope({ symbols: ['A-1', 'B-2'] })))) as unknown as FetchLike;
     const adapter = buildAdapter(fetchImpl);
     await expect(adapter.listExternalIds({ limit: 50 })).resolves.toEqual(['A-1', 'B-2']);
@@ -741,7 +787,7 @@ describe('SubiektProductMasterAdapter', () => {
       const adapter = buildAdapter(
         (() =>
           Promise.resolve(
-            jsonResponse(404, { success: false, data: null, error: 'No product with symbol DZSO100.' }),
+            jsonResponse(404, { success: false, data: null, error: { code: 'not_found', reason: 'No product with symbol DZSO100.', correlationId: null } }),
           )) as FetchLike,
       );
 

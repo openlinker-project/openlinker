@@ -28,6 +28,8 @@
  */
 import { test, expect } from '../../src/fixtures/test';
 import type { ApiClient } from '../../src/api/api-client';
+import type { Shipment } from '../../src/api/api.types';
+import { PlatformType } from '../../src/world/world';
 import {
   SYNTHETIC_COURIER_PARCEL,
   buildCourierRecipient,
@@ -60,6 +62,30 @@ async function waitForSelfDispatch(
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
   return status;
+}
+
+/**
+ * The newest Allegro order on this stack whose active shipment matches.
+ *
+ * Reads shipments per order rather than filtering the order list, because
+ * `OrderRecord` carries no fulfilment state on the wire - the rollup is
+ * derived for the UI and is not part of this list response. Bounded to one
+ * page: the question is whether a matching sale exists to observe, not how
+ * many there are.
+ */
+async function findAllegroShipment(
+  api: ApiClient,
+  sourceConnectionId: string,
+  matches: (shipment: Shipment) => boolean,
+): Promise<{ orderId: string; shipment: Shipment } | null> {
+  const orders = await api.orders.list({ sourceConnectionId, limit: 25 });
+  for (const order of orders.items) {
+    const shipment = await api.shipments.active(order.internalOrderId);
+    if (shipment !== null && matches(shipment)) {
+      return { orderId: order.internalOrderId, shipment };
+    }
+  }
+  return null;
 }
 
 test.describe('shipping — automatic dispatch notification (#3365)', () => {
@@ -105,12 +131,108 @@ test.describe('shipping — automatic dispatch notification (#3365)', () => {
     // reason it exists to rule out.
     const status = await waitForSelfDispatch(api, shipment.id, 120_000);
 
+    // An ALLOW-LIST, not `not.toBe('generated')` (#3365 review). That negation
+    // also passes for `failed` and `cancelled` - a shipment that went wrong
+    // leaves 'generated' too, so the weaker assertion reports a broken dispatch
+    // as a successful one. These three are the states that mean the shipment
+    // really did advance under its own steam.
     expect(
-      status,
-      `shipment ${shipment.id} was still "${status}" two minutes after the label was bought. ` +
-        `Nothing advanced it, so no waybill relay fired and the marketplace was never told - ` +
-        `which is the exact state before #3365, when only the "Mark dispatched" button could ` +
-        `move it. Check that shipping.shipment.notifyDispatched was enqueued and ran.`,
-    ).not.toBe('generated');
+      ['dispatched', 'in-transit', 'delivered'],
+      `shipment ${shipment.id} was "${status}" two minutes after the label was bought. ` +
+        `Nothing advanced it under its own steam, so no waybill relay fired and the ` +
+        `marketplace was never told - the exact state before #3365, when only the "Mark ` +
+        `dispatched" button could move it. Check that shipping.shipment.notifyDispatched ` +
+        `was enqueued and ran.`,
+    ).toContain(status);
+  });
+
+  // THE ASSERTION THIS SUITE HAS NEVER BEEN ABLE TO MAKE (#3365).
+  //
+  // The header above says this file does not assert that Allegro received the
+  // waybill, because until now nothing could: `OrderStatusWriteback` is
+  // fire-and-forget by ADR-027, so every "the marketplace was told" check in
+  // this repository asserts an OpenLinker row or a mock, and the marketplace
+  // side was a human's word in a project CI cannot select.
+  //
+  // `GET /orders/:id/source-fulfillment` asks the marketplace. It was PROBED
+  // live before being built - `GET /order/checkout-forms/{id}/shipments`
+  // answered 200 with the tracking numbers OpenLinker had attached - so this
+  // reads a route that is known to exist rather than one assumed to.
+  //
+  // Both tests below observe a sale this stack ALREADY carries rather than
+  // producing one: the claim under test is about what the marketplace says,
+  // and buying a second order would not make it any truer.
+  test('the SOURCE marketplace confirms the dispatch OpenLinker relayed', async ({
+    api,
+    world,
+  }) => {
+    const source = world.connectionFor(PlatformType.allegro);
+    test.skip(!source, 'no Allegro connection on this stack');
+
+    const dispatched = await findAllegroShipment(
+      api,
+      source!.id,
+      (shipment) => shipment.status === 'dispatched',
+    );
+    test.skip(
+      dispatched === null,
+      'no dispatched Allegro shipment on this stack - buy an order and dispatch it first',
+    );
+
+    const view = await api.orders.sourceFulfillment(dispatched!.orderId);
+
+    // `unsupported` would mean the source reports nothing back, `unavailable`
+    // that it could not be reached. Both are states, and neither is evidence.
+    expect(
+      view.readback?.outcome,
+      `the source did not answer for ${dispatched!.orderId}: ` +
+        `${view.readback?.detail ?? view.unmappedReason ?? 'no reason given'}`,
+    ).toBe('read');
+
+    // What the MARKETPLACE says, not what OpenLinker recorded.
+    expect(
+      view.readback?.dispatched,
+      `OpenLinker recorded this order as dispatched, but ${view.sourceConnectionName} reports ` +
+        `"${view.readback?.rawStatus}" - the relay did not land, or landed as something else.`,
+    ).toBe(true);
+  });
+
+  // The waybill half, kept SEPARATE because a source may report a status and
+  // not its shipments, and `null` there means "not reported" rather than "none
+  // attached". Asserting both in one test would make an honest `null` look
+  // like a missing waybill.
+  test('the SOURCE marketplace reports back the waybill OpenLinker attached', async ({
+    api,
+    world,
+  }) => {
+    const source = world.connectionFor(PlatformType.allegro);
+    test.skip(!source, 'no Allegro connection on this stack');
+
+    const relayed = await findAllegroShipment(
+      api,
+      source!.id,
+      (shipment) =>
+        typeof shipment.trackingNumber === 'string' && shipment.trackingNumber.length > 0,
+    );
+    test.skip(
+      relayed === null,
+      'no Allegro order on this stack carries a shipment with a tracking number',
+    );
+
+    const waybill = relayed!.shipment.trackingNumber as string;
+    const view = await api.orders.sourceFulfillment(relayed!.orderId);
+
+    // `null` is "this source does not report waybills" and would make the
+    // assertion below vacuous, so it is called out separately.
+    expect(
+      view.readback?.waybills,
+      `${view.sourceConnectionName} reported no waybill list at all for ${relayed!.orderId}`,
+    ).not.toBeNull();
+
+    expect(
+      (view.readback?.waybills ?? []).map((entry) => entry.waybill),
+      `OpenLinker relayed ${waybill} to ${view.sourceConnectionName}, and the ` +
+        `marketplace does not list it among the waybills attached to this order.`,
+    ).toContain(waybill);
   });
 });

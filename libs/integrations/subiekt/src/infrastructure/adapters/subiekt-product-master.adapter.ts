@@ -87,6 +87,7 @@ import type {
 } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { resolveTowarVariantId } from './subiekt-variant-identity';
+import { looksLikeSubiektNotFound } from './subiekt-not-found';
 import type {
   BridgeCreateProductRequest,
   BridgeListCategoriesResponse,
@@ -187,10 +188,23 @@ function readRetryability(error: SubiektBridgeUnreachableError): SubiektTranspor
 }
 
 /** Same generic envelope every Subiekt bridge route uses. */
+/**
+ * The bridge's failure envelope is an OBJECT, not a string. This interface
+ * declared `error: string | null` and the transport interpolated it straight
+ * into a message, so every catalogue rejection an operator ever read said
+ * `[object Object]` - and, worse, the regex that was supposed to recognise a
+ * deletion tested that same coercion and could never match. Verified on the
+ * live bridge, 2026-09-28: `{"code":"not_found","reason":"No product with
+ * symbol X.","correlationId":null,"failureMode":"rejected"}`.
+ *
+ * `failureMode` is what the bridge says about retryability. It is read by no
+ * caller here yet, so it is declared optional rather than invented into a
+ * meaning this transport does not act on.
+ */
 interface BridgeEnvelope<T> {
   success: boolean;
   data: T | null;
-  error: string | null;
+  error: { code: string; reason: string; correlationId: string | null; failureMode?: string } | null;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -247,10 +261,18 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
       // untouched or the wrapper below would turn a deliberate deletion signal
       // into a retryable transport error and the offers would never pause.
       if (error instanceof MasterProductNotFoundError) throw error;
-      if (error instanceof SubiektRejectedError) {
+      if (error instanceof SubiektRejectedError && looksLikeSubiektNotFound(error)) {
         // The bridge reports "no such towar" (and "no such model") via the
-        // rejected-request shape — that IS a master-side deletion for this
-        // adapter's purposes.
+        // rejected-request shape — that IS a master-side deletion.
+        //
+        // The reason text is INSPECTED, and that guard is the whole point.
+        // Without it every rejection became a deletion, including the ones a
+        // bridge raises when it is up and Subiekt is not - so a maintenance
+        // window walked the catalogue into `marketplace.offer.pauseStale` and
+        // zeroed the offers on every marketplace, labelled as the seller's own
+        // deletion. `SubiektInventoryMasterAdapter` has always tested this;
+        // this adapter did not, and the shared predicate is what stops the two
+        // drifting again.
         throw new MasterProductNotFoundError(productId, this.connection.id, error);
       }
       throw this.translateBridgeError(error);
@@ -1043,7 +1065,20 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     }
 
     if (!envelope.success || envelope.data === null) {
-      throw new SubiektRejectedError(envelope.error ?? `HTTP ${response.status}`);
+      if (response.status >= 500) {
+        // A SERVER fault, even when it arrives wearing the business envelope.
+        // The invoicing client already draws this line; the catalogue,
+        // inventory and order transports did not, so a bridge 500 reached
+        // `getProduct` as a business answer and was adjudicated a deletion.
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt bridge answered HTTP ${response.status}: ${envelope.error?.reason ?? 'no reason given'}`,
+          'indeterminate',
+        );
+      }
+      throw new SubiektRejectedError(
+        envelope.error?.reason ?? `HTTP ${response.status}`,
+        envelope.error?.code,
+      );
     }
     return envelope.data;
   }

@@ -25,6 +25,17 @@
  * instead of skipping honestly. The line it draws is narrower and harder to
  * argue with - a run where nothing at all ran proves nothing at all.
  *
+ * ## The `setup` project does not count, and that is the whole mechanism
+ *
+ * Every browser project declares `dependencies: ['setup']`, and the workflow
+ * additionally passes `--project=setup` explicitly - so `auth.setup.ts` runs on
+ * every invocation and always passes. Counting it makes `executed >= 1` on any
+ * green run whatsoever, which is precisely how the first version of this
+ * reporter shipped INERT: it could not fire for the project it was written for.
+ *
+ * So the count is scoped to the projects the operator actually chose. A run in
+ * which only the scaffolding ran executed nothing that asserts anything.
+ *
  * ## Opt-in, and why
  *
  * Active only under `E2E_REQUIRE_EXECUTED`. A developer running one project
@@ -36,6 +47,17 @@
  */
 import type { Reporter, TestCase, TestResult, FullResult } from '@playwright/test/reporter';
 
+/**
+ * Projects that exist to make other projects runnable and assert nothing about
+ * the product. A run consisting only of these has proved nothing.
+ */
+const SCAFFOLDING_PROJECTS = new Set(['setup']);
+
+/** The project a test belongs to, or '' when Playwright cannot say. */
+export function projectNameOf(test: Pick<TestCase, 'parent'>): string {
+  return test.parent?.project()?.name ?? '';
+}
+
 export default class RequireExecutedReporter implements Reporter {
   private executed = 0;
   private skipped = 0;
@@ -44,7 +66,10 @@ export default class RequireExecutedReporter implements Reporter {
     return process.env['E2E_REQUIRE_EXECUTED']?.trim() === 'true';
   }
 
-  onTestEnd(_test: TestCase, result: TestResult): void {
+  onTestEnd(test: TestCase, result: TestResult): void {
+    // Scaffolding is not evidence. See the header: counting it is what made the
+    // first version of this reporter unable to fire at all.
+    if (SCAFFOLDING_PROJECTS.has(projectNameOf(test))) return;
     if (result.status === 'skipped') {
       this.skipped += 1;
       return;

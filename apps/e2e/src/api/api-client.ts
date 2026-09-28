@@ -15,6 +15,7 @@
  */
 import { ApiError } from './api-error';
 import type {
+  SourceFulfillmentView,
   AnalyticsCoverageView,
   AnalyticsRangeQuery,
   AnalyticsRemediationRun,
@@ -678,6 +679,15 @@ export class ApiClient {
 
   // ── Orders ──────────────────────────────────────────────────────────────
   orders = {
+    /**
+     * Ask the SOURCE marketplace what it says about the order (#3365).
+     *
+     * The only read in this client that reaches an external system's own view
+     * of an order. Every other order assertion in the suite reads an
+     * OpenLinker row.
+     */
+    sourceFulfillment: (internalOrderId: string): Promise<SourceFulfillmentView> =>
+      this.request<SourceFulfillmentView>(`/orders/${internalOrderId}/source-fulfillment`),
     list: (query?: ListOrdersQuery): Promise<Paginated<OrderRecord>> =>
       this.request<Paginated<OrderRecord>>(
         `/orders${buildQuery({

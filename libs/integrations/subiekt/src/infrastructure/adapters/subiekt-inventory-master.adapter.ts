@@ -47,6 +47,7 @@ import {
 } from './subiekt-variant-identity';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { modelIdFromProductKey } from './subiekt-model-key';
+import { looksLikeSubiektNotFound } from './subiekt-not-found';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { SubiektInventoryBridgeClient } from '../http/subiekt-inventory-bridge.client';
 import {
@@ -524,7 +525,7 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
         domyslnyMagazynId: response.domyslnyMagazynId,
       };
     } catch (error: unknown) {
-      if (error instanceof SubiektRejectedError && this.looksLikeNotFound(error.reason)) {
+      if (error instanceof SubiektRejectedError && looksLikeSubiektNotFound(error)) {
         // The INTERNAL product id, not `towarSymbol`. Under a model this
         // method is called once per member, so the symbol at hand is a
         // variant's - and `MasterProductNotFoundError.productId` is documented
@@ -536,9 +537,7 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     }
   }
 
-  private looksLikeNotFound(reason: string): boolean {
-    return /nie znaleziono|not found|nie istnieje/i.test(reason);
-  }
+
 
   private async resolveTowarSymbol(productId: string): Promise<string> {
     const externalIds = await this.identifierMapping.getExternalIds(

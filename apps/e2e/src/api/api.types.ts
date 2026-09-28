@@ -1059,3 +1059,29 @@ export interface FiscalRegistrationRecordSummary {
   documentReference: string | null;
   registeredAt: string | null;
 }
+
+/**
+ * What the SOURCE marketplace says about an order (#3365).
+ *
+ * The read that finally lets a spec assert something about the marketplace
+ * rather than about an OpenLinker row. `waybills: null` means the source does
+ * not report them - a DIFFERENT claim from `[]`, which means it answered and
+ * listed none.
+ */
+export interface SourceFulfillmentReadback {
+  outcome: 'read' | 'unsupported' | 'unavailable';
+  rawStatus: string | null;
+  dispatched: boolean | null;
+  waybills: { waybill: string; carrierId?: string; carrierName?: string }[] | null;
+  detail?: string;
+}
+
+export interface SourceFulfillmentView {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  sourceConnectionName: string | null;
+  externalOrderId: string | null;
+  readback: SourceFulfillmentReadback | null;
+  unmappedReason: 'no-source-mapping' | null;
+  readAt: string;
+}

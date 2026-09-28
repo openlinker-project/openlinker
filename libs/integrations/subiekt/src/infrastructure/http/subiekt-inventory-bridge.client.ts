@@ -155,7 +155,20 @@ export class SubiektInventoryBridgeClient {
     }
 
     if (!envelope.success) {
-      throw new SubiektRejectedError(envelope.error?.reason ?? `HTTP ${response.status}`);
+      if (response.status >= 500) {
+        // A SERVER fault wearing the business envelope. Without this branch a
+        // bridge 500 reaches the adapter as a business rejection, and a
+        // rejection on this path is one `looksLikeSubiektNotFound` away from
+        // being adjudicated a master-side deletion.
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt bridge answered HTTP ${response.status}: ${envelope.error?.reason ?? 'no reason given'}`,
+          'indeterminate',
+        );
+      }
+      throw new SubiektRejectedError(
+        envelope.error?.reason ?? `HTTP ${response.status}`,
+        envelope.error?.code,
+      );
     }
 
     return envelope.data as T;
