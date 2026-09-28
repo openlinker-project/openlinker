@@ -263,28 +263,22 @@ describe('AllegroHttpClient', () => {
       expect(headers.authorization).toBe('Bearer test-access-token-12345');
     });
 
-    it('inherits 5xx retry from the request loop', async () => {
-      const responseData = { location: 'https://images.allegrostatic.com/ok.jpg' };
-      (global.fetch as jest.Mock)
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          headers: new Headers(),
-          text: () => Promise.resolve('Internal Server Error'),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 201,
-          headers: new Headers({ 'content-type': 'application/json' }),
-          text: () => Promise.resolve(JSON.stringify(responseData)),
-        });
+    it('does NOT retry an ambiguous 5xx — postBinary is a non-idempotent POST (#3469)', async () => {
+      // A committed-but-lost 5xx on an image upload may have already created
+      // the image; blindly retrying is exactly the duplicate-write class
+      // #3469 closes. Only `idempotent: true` (not exercised by any current
+      // call site) would opt back in.
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: new Headers(),
+        text: () => Promise.resolve('Internal Server Error'),
+      });
 
-      const promise = client.postBinary('/sale/images', 'image/jpeg', new Uint8Array([0xff]));
-      await jest.advanceTimersByTimeAsync(1_000);
-      const response = await promise;
-
-      expect(response.data).toEqual(responseData);
-      expect(global.fetch).toHaveBeenCalledTimes(2);
+      await expect(
+        client.postBinary('/sale/images', 'image/jpeg', new Uint8Array([0xff])),
+      ).rejects.toThrow(AllegroApiException);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
     it('inherits 401 reactive token-refresh from the request loop', async () => {
@@ -867,6 +861,93 @@ describe('AllegroHttpClient', () => {
       const response = await promise;
 
       expect(response.data).toEqual(mockData);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('non-idempotent POST/PATCH retry gating (#3469 — guards duplicate offers)', () => {
+    it('should NOT retry an ambiguous 5xx on POST /sale/product-offers (exactly one request)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: new Headers(),
+        text: () => Promise.resolve('Internal Server Error'),
+      });
+
+      await expect(client.post('/sale/product-offers', { id: 'offer-1' })).rejects.toThrow(
+        AllegroApiException,
+      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT retry a network error on POST (exactly one request)', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNRESET'));
+
+      await expect(client.post('/sale/product-offers', { id: 'offer-1' })).rejects.toThrow(
+        AllegroApiException,
+      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still retry a 429 on POST (Allegro never processed the request)', async () => {
+      const headers = new Headers();
+      headers.set('Retry-After', '1');
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          headers,
+          text: () => Promise.resolve('Rate Limit Exceeded'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{"id":"offer-1"}'),
+        });
+
+      const promise = client.post('/sale/product-offers', { id: 'offer-1' });
+      await jest.advanceTimersByTimeAsync(1_000);
+      const response = await promise;
+
+      expect(response.data).toEqual({ id: 'offer-1' });
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should NOT retry an ambiguous 5xx on PATCH without an idempotent opt-in', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 502,
+        headers: new Headers(),
+        text: () => Promise.resolve('Bad Gateway'),
+      });
+
+      await expect(client.patch('/sale/offers/1', { price: '10.00' })).rejects.toThrow(
+        AllegroApiException,
+      );
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry an ambiguous 5xx on POST when the caller opts in via idempotent: true', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          text: () => Promise.resolve('Internal Server Error'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve('{"ok":true}'),
+        });
+
+      const promise = client.post('/some/safe-op', {}, { idempotent: true });
+      await jest.advanceTimersByTimeAsync(1_000);
+      const response = await promise;
+
+      expect(response.data).toEqual({ ok: true });
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
   });

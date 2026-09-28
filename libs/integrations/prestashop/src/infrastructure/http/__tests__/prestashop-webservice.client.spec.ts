@@ -740,6 +740,119 @@ describe('PrestashopWebserviceClient', () => {
         jest.useFakeTimers();
       }
     });
+
+    describe('non-idempotent POST (createResource) retry gating (#3469 — guards duplicate rows)', () => {
+      it('should NOT retry an ambiguous 5xx on createResource (exactly one request)', async () => {
+        (global.fetch as jest.Mock).mockResolvedValue({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          text: () => Promise.resolve('Server Error'),
+        });
+
+        await expect(client.createResource('customers', { email: 'a@b.com' })).rejects.toThrow(
+          PrestashopApiException,
+        );
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('should NOT retry a network error on createResource (exactly one request)', async () => {
+        (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNRESET'));
+
+        await expect(client.createResource('customers', { email: 'a@b.com' })).rejects.toThrow(
+          PrestashopApiException,
+        );
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still retry a 429 on createResource (the shop never processed the request)', async () => {
+        const mockResponse = { prestashop: { customer: { id: '1' } } };
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 429,
+            headers: new Headers(),
+            text: () => Promise.resolve('Too Many Requests'),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve(JSON.stringify(mockResponse)),
+          });
+
+        jest.useRealTimers();
+        const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+          retryConfig: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 1000, backoffMultiplier: 2 },
+        });
+        try {
+          await clientWithFastRetry.createResource('customers', { email: 'a@b.com' });
+          expect(global.fetch).toHaveBeenCalledTimes(2);
+        } finally {
+          jest.useFakeTimers();
+        }
+      });
+
+      it('should retry an ambiguous 5xx on createResource when the caller opts in via idempotent: true', async () => {
+        const mockResponse = { prestashop: { customer: { id: '1' } } };
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            headers: new Headers(),
+            text: () => Promise.resolve('Server Error'),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve(JSON.stringify(mockResponse)),
+          });
+
+        jest.useRealTimers();
+        const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+          retryConfig: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 1000, backoffMultiplier: 2 },
+        });
+        try {
+          await clientWithFastRetry.createResource(
+            'customers',
+            { email: 'a@b.com' },
+            { idempotent: true },
+          );
+          expect(global.fetch).toHaveBeenCalledTimes(2);
+        } finally {
+          jest.useFakeTimers();
+        }
+      });
+
+      it('should still retry an ambiguous 5xx on updateResource (PUT is idempotent by HTTP semantics)', async () => {
+        const mockResponse = { prestashop: { customer: { id: '1' } } };
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            headers: new Headers(),
+            text: () => Promise.resolve('Server Error'),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve(JSON.stringify(mockResponse)),
+          });
+
+        jest.useRealTimers();
+        const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+          retryConfig: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 1000, backoffMultiplier: 2 },
+        });
+        try {
+          await clientWithFastRetry.updateResource('customers', '1', { id: '1' });
+          expect(global.fetch).toHaveBeenCalledTimes(2);
+        } finally {
+          jest.useFakeTimers();
+        }
+      });
+    });
   });
 
   describe('timeout handling', () => {

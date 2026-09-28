@@ -357,6 +357,63 @@ describe('InpostHttpClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  describe('non-idempotent POST retry gating (#3469 — guards double-label)', () => {
+    it('should NOT retry an ambiguous 5xx on a POST with no idempotent flag (exactly one request)', async () => {
+      fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 500, body: '{}' }));
+
+      await expect(
+        client.request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} }),
+      ).rejects.toBeInstanceOf(InpostNetworkException);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT retry a network error on a POST with no idempotent flag (exactly one request)', async () => {
+      fetchMock.mockRejectedValue(new Error('ECONNRESET'));
+
+      await expect(
+        client.request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} }),
+      ).rejects.toBeInstanceOf(InpostNetworkException);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still retry a 429 on POST (ShipX never processed the request)', async () => {
+      fetchMock
+        .mockResolvedValueOnce(fakeResponse({ ok: false, status: 429, retryAfter: '0', body: '{}' }))
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"id":"s1"}' }));
+
+      await expect(
+        client.request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} }),
+      ).resolves.toEqual({ id: 's1' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('should generate exactly one request for generateLabel-shaped POST on a persistent 5xx (no duplicate label)', async () => {
+      // Mirrors what InpostShippingAdapter.generateLabel actually sends —
+      // asserted at the client level since the adapter is a thin pass-through.
+      fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 502, body: '{}' }));
+
+      await expect(
+        client.request({
+          method: 'POST',
+          path: '/v1/organizations/org-1/shipments',
+          body: { receiver: {}, parcels: [] },
+        }),
+      ).rejects.toBeInstanceOf(InpostNetworkException);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry an ambiguous 5xx on a POST explicitly marked idempotent', async () => {
+      fetchMock
+        .mockResolvedValueOnce(fakeResponse({ ok: false, status: 500, body: '{}' }))
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"ok":true}' }));
+
+      await expect(
+        client.request({ method: 'POST', path: '/v1/x', idempotent: true }),
+      ).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('requestBinary', () => {
     it('should read a 2xx response as raw bytes and surface the content type', async () => {
       const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF

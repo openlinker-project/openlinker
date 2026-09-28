@@ -260,6 +260,18 @@ export class AllegroHttpClient implements IAllegroHttpClient {
           ) {
             throw error; // Don't retry client errors (except 429)
           }
+
+          // The remaining AllegroApiException shapes are all AMBIGUOUS —
+          // an ambiguous 5xx, a network/timeout error (statusCode
+          // undefined), or a malformed body after a 2xx — any of which may
+          // have already committed server-side. Auto-retrying one on a
+          // non-idempotent call (an unmarked POST/PATCH — e.g.
+          // `POST /sale/product-offers`) mints a duplicate; the caller must
+          // opt in via `idempotent: true` (#3469). 429 is handled above and
+          // is unaffected — Allegro did not process that request at all.
+          if (!isRetryableAttempt(method, options)) {
+            throw error;
+          }
         }
 
         // Retry on server errors (5xx) or network errors
@@ -600,6 +612,20 @@ export class AllegroHttpClient implements IAllegroHttpClient {
  * (e.g. a UUID) to avoid colliding with anything that could appear in
  * the bytes payload.
  */
+/**
+ * Whether an ambiguous failure (network/timeout, ambiguous 5xx, malformed
+ * body after a 2xx) is safe to auto-retry for this call. `GET`/`PUT`/`DELETE`
+ * are idempotent by HTTP semantics; `POST`/`PATCH` need an explicit
+ * `options.idempotent` opt-in (#3469 — DPD/KSeF precedent). `429` is handled
+ * separately and is always retryable.
+ */
+function isRetryableAttempt(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  options?: Pick<AllegroHttpRequestOptions, 'idempotent'>
+): boolean {
+  return method === 'GET' || method === 'PUT' || method === 'DELETE' || options?.idempotent === true;
+}
+
 function buildMultipartBody(parts: AllegroMultipartPart[], boundary: string): Uint8Array {
   const CRLF = '\r\n';
   const chunks: Uint8Array[] = [];

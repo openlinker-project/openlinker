@@ -3,11 +3,21 @@
  *
  * Native-`fetch` transport for the ShipX REST API (mirrors `AllegroHttpClient`
  * — the established in-tree precedent; no axios). Attaches the static Bearer
- * API token, applies a jittered retry loop for `429` / `5xx` / network errors
- * (respecting `Retry-After`), enforces a request timeout, and maps ShipX error
- * bodies to domain exceptions. Non-retryable `4xx` (401/403 → unauthorized,
- * other → `ShippingProviderRejectionException`) throw immediately; retryable
- * failures that exhaust the budget surface as `InpostNetworkException`.
+ * API token, applies a jittered retry loop, enforces a request timeout, and
+ * maps ShipX error bodies to domain exceptions. Non-retryable `4xx` (401/403
+ * → unauthorized, other → `ShippingProviderRejectionException`) throw
+ * immediately; retryable failures that exhaust the budget surface as
+ * `InpostNetworkException`.
+ *
+ * **Retry asymmetry (guards double-label, #3469).** `429` always retries —
+ * ShipX did NOT process the request. An ambiguous `5xx` or a network/timeout
+ * error retries only when the call is idempotent: `GET`/`DELETE` always are;
+ * `POST` is only when the caller opts in via `options.idempotent` (true for
+ * no call site today — `generateLabel`'s `POST /shipments` never opts in,
+ * since ShipX has no idempotency key and a blind retry after a
+ * committed-but-lost response would mint a second paid label; the job layer's
+ * `ShipmentReferenceReconciler.findShipmentByReference` is the lost-response
+ * recovery path instead, #1917).
  *
  * @module libs/integrations/inpost/src/infrastructure/http
  */
@@ -167,7 +177,14 @@ export class InpostHttpClient implements IInpostHttpClient {
         signal: controller.signal,
       });
     } catch (error) {
-      throw new RetryableHttpError(`ShipX network error: ${(error as Error).message}`);
+      const message = `ShipX network error: ${(error as Error).message}`;
+      // A committed-but-lost response is indistinguishable from a real
+      // failure here, so a non-idempotent call (an unmarked POST) must not
+      // retry — see the class-level docblock (#3469).
+      if (isRetryableAttempt(options)) {
+        throw new RetryableHttpError(message);
+      }
+      throw new InpostNetworkException(message, error);
     } finally {
       clearTimeout(timeout);
     }
@@ -187,6 +204,8 @@ export class InpostHttpClient implements IInpostHttpClient {
       throw new InpostUnauthorizedException(message);
     }
     if (response.status === 429) {
+      // ShipX rejected the request without processing it — always retryable,
+      // regardless of method or idempotency.
       throw new RetryableHttpError(
         message,
         response.status,
@@ -194,7 +213,12 @@ export class InpostHttpClient implements IInpostHttpClient {
       );
     }
     if (response.status >= 500) {
-      throw new RetryableHttpError(message, response.status);
+      // Ambiguous — the request may have committed server-side. Retry only
+      // when the call is idempotent (#3469).
+      if (isRetryableAttempt(options)) {
+        throw new RetryableHttpError(message, response.status);
+      }
+      throw new InpostNetworkException(message);
     }
     const flatDetails = flattenShipXFieldErrors(errorBody?.details);
     // ShipX's `details` map is the primary classifier (it names the offending
@@ -284,6 +308,16 @@ function parseRetryAfterMs(header: string | null): number | undefined {
   }
   const seconds = Number(header);
   return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+}
+
+/**
+ * Whether an ambiguous failure (network/timeout, ambiguous 5xx) is safe to
+ * auto-retry for this call. `GET`/`DELETE` are idempotent by HTTP semantics;
+ * `POST` needs an explicit `options.idempotent` opt-in (#3469 — DPD/KSeF
+ * precedent). `429` is handled separately and is always retryable.
+ */
+function isRetryableAttempt(options: InpostRequestOptions): boolean {
+  return options.method === 'GET' || options.method === 'DELETE' || options.idempotent === true;
 }
 
 /**

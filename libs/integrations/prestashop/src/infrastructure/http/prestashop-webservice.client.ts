@@ -5,6 +5,15 @@
  * (Node 18+) for framework-agnostic HTTP requests. Handles authentication,
  * request building, response parsing, retries, and error handling.
  *
+ * **Retry asymmetry (guards duplicate rows, #3469).** `429` always retries —
+ * PrestaShop did not process the request. An ambiguous `5xx` or a network
+ * error retries only when the call is idempotent: `GET`/`PUT`/`DELETE`
+ * always are; `POST` (`createResource`) is non-idempotent by default and
+ * needs an explicit `PrestashopWriteOptions.idempotent: true` opt-in — no
+ * current caller sets it, since every `createResource` call site (customers,
+ * addresses, carts, `order_histories`, …) is a genuine create. `uploadImage`
+ * is unaffected — it has never used this retry loop (#1164).
+ *
  * @module libs/integrations/prestashop/src/infrastructure/http
  * @implements {IPrestashopWebserviceClient}
  */
@@ -137,9 +146,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
 
     this.logger.debug(`Fetching resource: ${resource}/${id}`);
 
-    const response = await this.requestWithRetry(url, {
-      method: 'GET',
-    });
+    const response = await this.requestWithRetry(
+      url,
+      {
+        method: 'GET',
+      },
+      true // GET is idempotent by HTTP semantics
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- prestashop webservice response is dynamically shaped; narrowed by the surrounding mapper / parser
     const configResponseFormat = this.config.responseFormat;
@@ -206,9 +219,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
       `Listing resources: ${resource} (limit: ${limit ?? pageSize}, offset: ${offset ?? 0})`
     );
 
-    const response = await this.requestWithRetry(url, {
-      method: 'GET',
-    });
+    const response = await this.requestWithRetry(
+      url,
+      {
+        method: 'GET',
+      },
+      true // GET is idempotent by HTTP semantics
+    );
 
     const configResponseFormat = this.config.responseFormat;
     const responseFormat: 'auto' | 'json' | 'xml' = configResponseFormat ?? 'auto';
@@ -244,7 +261,7 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const path = PrestashopQueryBuilder.buildResourcePath(resource, id);
     const url = `${this.baseUrl}${path}`;
     this.logger.debug(`Deleting resource: ${resource}/${id}`);
-    await this.requestWithRetry(url, { method: 'DELETE' });
+    await this.requestWithRetry(url, { method: 'DELETE' }, true); // DELETE is idempotent by HTTP semantics
   }
 
   async uploadImage(
@@ -379,13 +396,23 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     const body = this.convertToXml(wrappedData);
     const contentType = 'application/xml';
 
-    const response = await this.requestWithRetry(url, {
-      method: isUpdate ? 'PUT' : 'POST',
-      body,
-      headers: {
-        'Content-Type': contentType,
+    const response = await this.requestWithRetry(
+      url,
+      {
+        method: isUpdate ? 'PUT' : 'POST',
+        body,
+        headers: {
+          'Content-Type': contentType,
+        },
       },
-    });
+      // PUT (update) is idempotent by HTTP semantics — always safe to retry.
+      // POST (create) defaults to non-idempotent (#3469): every current
+      // caller (customers, addresses, carts, order_histories, …) is a
+      // genuine create, and a blind retry after a committed-but-lost
+      // response risks a duplicate row. `options?.idempotent` lets a future
+      // caller opt a specific create in.
+      isUpdate || options?.idempotent === true
+    );
 
     const parsed = PrestashopResponseParser.parse(
       response.body,
@@ -490,9 +517,19 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
    * @param options - Fetch options
    * @returns Response with body and content type
    */
+  /**
+   * @param idempotent - Whether an ambiguous 5xx or network error is safe to
+   *   auto-retry (#3469). `GET`/`PUT`/`DELETE` callers always pass `true`
+   *   (idempotent by HTTP semantics); a `POST` write passes `options?.idempotent
+   *   === true` — `false` by default, since every current `createResource`
+   *   call site is a genuine create and a blind retry after a
+   *   committed-but-lost response risks a duplicate row. `429` is retried
+   *   regardless — PrestaShop did not process the request.
+   */
   private async requestWithRetry(
     url: string,
-    options: RequestInit
+    options: RequestInit,
+    idempotent: boolean
   ): Promise<{ body: string; contentType?: string }> {
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
@@ -521,6 +558,16 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
           ) {
             throw error; // Don't retry client errors (except 429)
           }
+          // Ambiguous — a 5xx or a network error (statusCode undefined) may
+          // have already committed server-side. Non-idempotent calls (an
+          // unmarked POST) must not retry (#3469).
+          if (!idempotent && (statusCode === undefined || statusCode >= 500)) {
+            throw error;
+          }
+        } else if (!idempotent) {
+          // A non-PrestashopApiException failure on a non-idempotent call —
+          // still ambiguous, still not retried.
+          throw lastError;
         }
 
         // Honour the shop's own Retry-After for the in-client retry too, not
