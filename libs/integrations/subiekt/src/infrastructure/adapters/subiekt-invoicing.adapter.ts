@@ -38,7 +38,12 @@ import type {
   IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssueInvoiceResult,
+  PaymentStatusReader,
+  PaymentStatusResult,
   RegulatoryClearanceResult,
+  RegulatoryLocateCriteria,
+  RegulatoryLocateResult,
+  RegulatoryRecordLocator,
   RegulatoryStatusReader,
   UpsertCustomerCommand,
   UpsertCustomerResult,
@@ -115,7 +120,9 @@ export class SubiektInvoicingAdapter
     RegulatoryStatusReader,
     CorrectionIssuer,
     BankAccountsReader,
-    BankAccountDefaultSetter
+    BankAccountDefaultSetter,
+    RegulatoryRecordLocator,
+    PaymentStatusReader
 {
   /**
    * Connection-level defaults (#1324). All OPTIONAL — an unset field means the
@@ -352,6 +359,72 @@ export class SubiektInvoicingAdapter
         // any reference already captured on the record.
         clearanceReference: record.clearanceReference,
       };
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Last-resort crash-recovery lookup (#3389, ADR-035): find a document on
+   * Subiekt's own side after a process died mid-submit and OL no longer knows
+   * whether the request landed. Subiekt is a SELF-NUMBERING provider (the GT
+   * document number is assigned only in the response, unlike a
+   * `DocumentNumberConsumer` such as KSeF, where core allocates the number
+   * BEFORE the request) — so `criteria.documentNumber` is structurally unknown
+   * for exactly the crash this method exists to recover from, and
+   * `criteria.idempotencyKey` (#3389) is the only reliable locate key: it is the
+   * value stamped onto `dok_NrPelnyOryg` at write time, which the bridge already
+   * uses for its own create-time dedup (#3369). A missing `idempotencyKey`
+   * (a keyless issuance) means this adapter has nothing to search by — returns
+   * `null` rather than guessing from `documentNumber`, which for Subiekt was
+   * never populated pre-crash in the first place.
+   */
+  async locateByQuery(criteria: RegulatoryLocateCriteria): Promise<RegulatoryLocateResult | null> {
+    if (criteria.idempotencyKey === undefined) {
+      this.logger.debug(
+        'Subiekt locateByQuery called with no idempotencyKey (the only key this self-numbering provider can search by); returning null',
+        { connectionId: this.connectionId },
+      );
+      return null;
+    }
+
+    try {
+      const located = await this.bridge.locateByOriginalKey(criteria.idempotencyKey);
+      if (!located.found) {
+        return null;
+      }
+      return {
+        providerInvoiceId: String(located.providerInvoiceId),
+        regulatoryStatus: toNeutralRegulatoryStatus(located.regulatoryStatus),
+        clearanceReference: located.clearanceReference,
+      };
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Read Subiekt's own settled/paid flag (#3390, `dok_Rozliczony`) for an
+   * already-issued document — the READ half of the payment-status seam
+   * (`PaymentStatusReader`). A single boolean, no partial-payment concept, so
+   * the neutral mapping is exhaustively `paid` / `unpaid` — never
+   * `'partially-paid'` or `'unknown'` for a record that resolves at all. A
+   * record with no `providerInvoiceId` cannot be read back — mirrors
+   * `getClearanceStatus`'s same no-transport-call rule for the identical reason.
+   */
+  async getPaymentStatus(record: InvoiceRecord): Promise<PaymentStatusResult> {
+    if (record.providerInvoiceId === null || record.providerInvoiceId.length === 0) {
+      this.logger.debug(
+        'Subiekt getPaymentStatus called for a record without a providerInvoiceId; returning unknown',
+        { connectionId: this.connectionId, recordId: record.id },
+      );
+      return { paymentStatus: 'unknown' };
+    }
+    try {
+      const status = await this.bridge.getInvoiceStatus({
+        providerInvoiceId: record.providerInvoiceId,
+      });
+      return { paymentStatus: status.paid ? 'paid' : 'unpaid' };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
