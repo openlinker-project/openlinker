@@ -42,6 +42,27 @@ shipped decisions were **sized against P-A's volume** and are now serving a pers
 **live technical debt against a stated persona** rather than a hypothetical, and it should be tracked
 as such rather than rediscovered when something is slow.
 
+**Audited under #2886, and the answers live in the documents that made the claims** — not here, and
+not in a new document. Summarised, so this section is not read as an open question after it was
+closed:
+
+- **ADR-039** — decision unchanged, **argument replaced**. The live aggregate is cheap because every
+  analytics read is a bounded date-range aggregate over indexed columns, not because the corpus is
+  small; the corpus is no longer small. See ADR-039 § Amendment (#2886), which also names the one
+  analytics read that is genuinely unbounded (`findEarliestOrderDateByConnection`) and marks it
+  *needs measurement* rather than broken.
+- **`sync_jobs` retention** — premise no longer holds. Owned by **#2946**.
+- **`automation_runs` 90-day sweep** — owned by **#2948** (it was owned by nobody).
+- **`webhook_deliveries` compaction** — a fourth instance this section did not name; ADR-005
+  deferred it in 2025 to a follow-up never filed. Owned by **#2949**.
+- **Lane caps, sweep budgets and page sizes** — the third bullet above overstates the debt. ADR-050
+  decision 6 already declares its caps illustrative-until-measured with #1134 owning the
+  measurement, and ADR-069 has since made the sweep budgets and page size operator-settable at
+  runtime. This is a known, owned and partly mitigated gap, not an unrecorded one.
+- **ADR-036 / ADR-065** — checked, unaffected. ADR-036's tables grow by catalogue, not by orders;
+  ADR-065's read is one order or one page. Both carry amendments saying so, because a reader who
+  sees ADR-039's premise fall should not transfer the finding by association.
+
 P-A is not abandoned: the desktop worklist (#2410) and the order-grain packed toggle (§ 1.4) remain,
 and nothing here removes or degrades them.
 
