@@ -20,7 +20,7 @@ import type {
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
-import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+import type { IOrderNoteService, IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
@@ -185,6 +185,10 @@ function harness(options: {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
   } as unknown as IUserManagementService;
 
+  const notes = {
+    getPackerVisibleForOrders: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as IOrderNoteService;
+
   return {
     service: new BenchParcelService(
       executors,
@@ -194,7 +198,8 @@ function harness(options: {
       products,
       shipments,
       inventory,
-      users
+      users,
+      notes
     ),
     verification,
     orders,
@@ -524,6 +529,9 @@ describe('BenchParcelService (#2418)', () => {
           'lines',
           'orderReference',
           'packedByUserId',
+          // D12 (#3531) — notes flagged "Show to packer" only, read only.
+          // Never a tag, and never an unflagged note's body.
+          'packerNotes',
           'parcelIndex',
           'parcelTotal',
           'refusal',
