@@ -186,11 +186,36 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
       'OpenLinker holds no availability for the sold variant, so there is no figure to compare'
     );
 
-    // Re-read the master so the mirror reflects the release the document made.
-    await jobs.triggerAndWait({ connectionId: subiekt.id, jobType: 'master.inventory.syncAll' });
+    // Re-read THIS towar, not the whole catalogue (#3365 audit).
+    //
+    // `master.inventory.syncAll` is budgeted and cursor-resumed (#2219): it
+    // enqueues at most a page of children per tick, starting wherever the
+    // cursor happens to sit, and `triggerAndWait` waits for the PARENT - whose
+    // whole job is to enqueue. So the sold towar may not be read at all in that
+    // tick, and the assertion measured a mirror nothing had refreshed. The same
+    // trap is already written down two tests up, for the VAT rate.
+    //
+    // Measured while this failed: OpenLinker held 515 and the bridge answered
+    // 513 for the same towar - Subiekt HAD released the stock and the mirror
+    // had simply not been told.
+    await jobs.triggerAndWait({
+      connectionId: subiekt.id,
+      jobType: 'master.inventory.syncByExternalId',
+      payload: { objectType: 'Product', externalId: driver!.symbol },
+    });
 
-    const after = await api.inventory.availability([driver!.variant.id]);
-    const afterAvailable = after[0]?.totalAvailable ?? null;
+    // Polled rather than read once: the per-product sync writes
+    // `inventory_items`, and the availability read is a separate query that can
+    // observe the row a beat later.
+    const deadline = Date.now() + 90_000;
+    let afterAvailable: number | null = null;
+    for (;;) {
+      const after = await api.inventory.availability([driver!.variant.id]);
+      afterAvailable = after[0]?.totalAvailable ?? null;
+      if (afterAvailable !== null && afterAvailable <= beforeAvailable - soldQuantity) break;
+      if (Date.now() >= deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    }
 
     expect(
       afterAvailable,

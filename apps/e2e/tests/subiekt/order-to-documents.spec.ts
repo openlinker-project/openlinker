@@ -82,17 +82,30 @@ async function waitForDocument(
   timeoutMs: number,
 ): Promise<InvoiceRecord | null> {
   const deadline = Date.now() + timeoutMs;
+  // Waits for a TERMINAL status, listed positively rather than by excluding the
+  // in-flight ones (#3365 audit). `InvoiceStatusValues` is
+  // `pending | issuing | issued | failed`, and this used to exclude `pending`
+  // alone - so it returned an `issuing` row, which is OpenLinker mid-call
+  // across the provider boundary, and the caller failed it as "not issued".
+  // Measured against the live bridge: the document that produced that failure
+  // was `PA 34/2026`, issued ten seconds later.
+  const terminal = new Set(['issued', 'failed']);
+  let last: InvoiceRecord | null = null;
   while (Date.now() < deadline) {
     try {
       const record = await api.invoices.getForOrder(internalOrderId, connectionId);
-      // A `pending` row is an attempt in flight, not an answer. Keep waiting.
-      if (record && record.status !== 'pending') return record;
+      if (record) {
+        last = record;
+        if (terminal.has(record.status)) return record;
+      }
     } catch {
       // 404 until the gate fires - an expected state, not a failure.
     }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
-  return null;
+  // The last non-terminal row rather than null, so a caller can say WHICH state
+  // it was stuck in instead of reporting "no document" about one that exists.
+  return last;
 }
 
 /** The Subiekt towar symbol this product maps to, or `null` if it maps to none. */
@@ -341,14 +354,29 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       'OpenLinker holds no availability for the sold variant, so there is no figure to compare',
     );
 
-    // Re-read the master so the mirror reflects the release the document made.
+    // Re-read THIS towar, not the whole catalogue - the same trap as in
+    // `published-product-order.spec.ts` (#3365 audit).
+    // `master.inventory.syncAll` is budgeted and cursor-resumed (#2219), so it
+    // enqueues a page of children from wherever the cursor sits, and
+    // `triggerAndWait` waits for the parent that did the enqueuing. The sold
+    // towar may not be read at all in that tick.
     await jobs.triggerAndWait({
       connectionId: subiekt!.id,
-      jobType: 'master.inventory.syncAll',
+      jobType: 'master.inventory.syncByExternalId',
+      payload: { objectType: 'Product', externalId: symbol! },
     });
 
-    const after = await api.inventory.availability([soldVariantId!]);
-    const afterAvailable = after[0]?.totalAvailable ?? null;
+    // Polled: the per-product sync writes `inventory_items`, and the
+    // availability read is a separate query that can observe it a beat later.
+    const deadline = Date.now() + 90_000;
+    let afterAvailable: number | null = null;
+    for (;;) {
+      const after = await api.inventory.availability([soldVariantId!]);
+      afterAvailable = after[0]?.totalAvailable ?? null;
+      if (afterAvailable !== null && afterAvailable <= beforeAvailable - soldQuantity) break;
+      if (Date.now() >= deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    }
 
     expect(
       afterAvailable,
