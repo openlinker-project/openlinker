@@ -166,6 +166,17 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(result.detail).toContain('conflict');
     });
 
+    it.each(['delivered', 'in-progress'] as const)(
+      '%s: declines rather than writing to an unverified endpoint (#3526)',
+      async (type) => {
+        const result = await adapter.write({ type, externalOrderId: 'cf-1' });
+
+        expect(result.outcome).toBe('unsupported');
+        expect(httpClient.put).not.toHaveBeenCalled();
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }
+    );
+
     // #2286 — the runtime half of the exhaustiveness guard. Before the switch
     // conversion an unrecognised member fell through to the cancel path and was
     // reported `applied`; the regression to defend against is someone "fixing"
