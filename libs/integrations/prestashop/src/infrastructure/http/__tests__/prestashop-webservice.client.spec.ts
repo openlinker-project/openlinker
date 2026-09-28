@@ -15,6 +15,7 @@ import {
   PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
   PrestashopApiException,
+  PrestashopAmbiguousWriteException,
 } from '@openlinker/integrations-prestashop';
 
 // Mock fetch globally
@@ -750,18 +751,33 @@ describe('PrestashopWebserviceClient', () => {
           text: () => Promise.resolve('Server Error'),
         });
 
-        await expect(client.createResource('customers', { email: 'a@b.com' })).rejects.toThrow(
-          PrestashopApiException,
-        );
+        const error = await client
+          .createResource('customers', { email: 'a@b.com' })
+          .then(() => null)
+          .catch((e: unknown) => e);
+
+        // #3469 IMPORTANT-1 review: raised as the distinguishable
+        // PrestashopAmbiguousWriteException (a subclass of
+        // PrestashopApiException, so every existing `instanceof
+        // PrestashopApiException` consumer still matches it) —
+        // PrestashopRetryClassifierAdapter keys on this type so a job-level
+        // retry does not re-send the same POST.
+        expect(error).toBeInstanceOf(PrestashopApiException);
+        expect(error).toBeInstanceOf(PrestashopAmbiguousWriteException);
+        expect(error).toMatchObject({ statusCode: 500 });
         expect(global.fetch).toHaveBeenCalledTimes(1);
       });
 
       it('should NOT retry a network error on createResource (exactly one request)', async () => {
         (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNRESET'));
 
-        await expect(client.createResource('customers', { email: 'a@b.com' })).rejects.toThrow(
-          PrestashopApiException,
-        );
+        const error = await client
+          .createResource('customers', { email: 'a@b.com' })
+          .then(() => null)
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(PrestashopAmbiguousWriteException);
+        expect((error as PrestashopAmbiguousWriteException).statusCode).toBeUndefined();
         expect(global.fetch).toHaveBeenCalledTimes(1);
       });
 

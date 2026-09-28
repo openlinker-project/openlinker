@@ -11,6 +11,7 @@ import { WooCommerceHttpClient } from '../woocommerce-http-client';
 import { WooCommerceUnauthorizedException } from '../../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from '../woocommerce-http-response.exception';
+import { WooCommerceAmbiguousWriteException } from '../../../domain/exceptions/woocommerce-ambiguous-write.exception';
 
 // Mock fetch globally
 global.fetch = jest.fn();
@@ -341,9 +342,15 @@ describe('WooCommerceHttpClient', () => {
           backoffMultiplier: 1,
           maxDelayMs: 0,
         });
-        await expect(client.post('/wp-json/wc/v3/orders', {})).rejects.toBeInstanceOf(
-          WooCommerceHttpResponseException,
-        );
+        // #3469 IMPORTANT-1 review: raised as the distinguishable
+        // WooCommerceAmbiguousWriteException — WooCommerceRetryClassifierAdapter
+        // keys on this type so a job-level retry does not re-send the same POST.
+        const error = await client
+          .post('/wp-json/wc/v3/orders', {})
+          .then(() => null)
+          .catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(WooCommerceAmbiguousWriteException);
+        expect(error).toMatchObject({ method: 'POST', url: expect.stringContaining('/wp-json/wc/v3/orders'), statusCode: 500 });
         expect(stub).toHaveBeenCalledTimes(1);
       });
 
@@ -356,9 +363,12 @@ describe('WooCommerceHttpClient', () => {
           backoffMultiplier: 1,
           maxDelayMs: 0,
         });
-        await expect(client.post('/wp-json/wc/v3/orders', {})).rejects.toBeInstanceOf(
-          WooCommerceNetworkException,
-        );
+        const error = await client
+          .post('/wp-json/wc/v3/orders', {})
+          .then(() => null)
+          .catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(WooCommerceAmbiguousWriteException);
+        expect((error as WooCommerceAmbiguousWriteException).statusCode).toBeUndefined();
         expect(stub).toHaveBeenCalledTimes(1);
       });
 

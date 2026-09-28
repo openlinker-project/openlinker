@@ -67,10 +67,32 @@ import { toPrestashopProductAttributeId } from '../mappers/prestashop-variant-id
 import { derivePrestashopOrderReference } from '../mappers/prestashop-order-reference';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
-import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
+import {
+  PrestashopOlCarrierMissingException,
+  PrestashopOlModuleException,
+} from '../../domain/exceptions/prestashop-ol-module.exception';
+import { PrestashopAmbiguousWriteException } from '../../domain/exceptions/prestashop-ambiguous-write.exception';
 import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
 import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
 import { hashEmail } from '@openlinker/shared/config';
+
+/**
+ * Whether a caught `importOrder` failure is AMBIGUOUS — a network-level
+ * failure (`PrestashopOpenLinkerModuleClient.signedPost` stamps `status: 0`
+ * with a `'network: ...'` reason) or a `5xx`-shaped module response — either
+ * of which may mean PrestaShop already committed the order despite the
+ * client-side failure (#3469 IMPORTANT-1 review). A deterministic 4xx-shaped
+ * refusal (bad signature, invalid body, payment module unavailable, …) is
+ * NOT ambiguous — PrestaShop's own answer says nothing was created, so no
+ * recovery lookup is warranted and the original error should propagate
+ * unchanged.
+ */
+function isAmbiguousModuleFailure(error: unknown): error is PrestashopOlModuleException {
+  if (!(error instanceof PrestashopOlModuleException)) {
+    return false;
+  }
+  return error.status === 0 || error.status >= 500;
+}
 
 /**
  * Subset of PS `/api/carriers` row fields used by `discoverDynamicCarrierId`.
@@ -605,7 +627,48 @@ export class PrestashopOrderProcessorManagerAdapter
           this.logger.error(
             `Failed to create order via OL module importOrder: ${formatBodyForLog(msg)}`
           );
-          throw createError;
+
+          // #3469 IMPORTANT-1 review — importOrder is a non-idempotent write
+          // with no internal retry (PrestashopOpenLinkerModuleClient.signedPost
+          // makes exactly one attempt). An AMBIGUOUS failure (network, or a
+          // 5xx-shaped module response) may mean PrestaShop already
+          // committed the order — the same condition #3473's recovery
+          // lookup exists to resolve, just discovered a moment later than
+          // the pre-cart-creation check. Try it again, once, before giving
+          // up: this call's own importOrder may be the one that actually
+          // created the order, not merely a retry of an earlier attempt.
+          if (isAmbiguousModuleFailure(createError) && referenceKey) {
+            const recovered = await this.findExistingOrderByReference(referenceKey);
+            if (recovered) {
+              this.logger.log(
+                `Recovered PrestaShop order after an ambiguous importOrder failure: ` +
+                  `reference=${referenceKey} externalOrderId=${recovered.id}`
+              );
+              externalOrderId = String(recovered.id);
+              resolvedReference = recovered.reference || referenceKey || externalOrderId;
+              // Deliberately does NOT throw — falls through past this
+              // try/catch to the post-creation cleanup + return below,
+              // exactly as the pre-existing `if (preexistingOrder)` branch
+              // does.
+            } else {
+              // Recovery failed too — raised non-retryable (not the bare
+              // createError) so a job-level retry does not re-send the same
+              // importOrder call: it already tried to recover once here, and
+              // a blind repeat can only either duplicate the order (if it DID
+              // commit and the lookup missed it — e.g. a transient read
+              // failure) or fail identically (if it genuinely never
+              // committed). Either way this needs an operator, not another
+              // attempt.
+              throw new PrestashopAmbiguousWriteException(
+                msg,
+                'POST',
+                'importorder',
+                createError instanceof PrestashopOlModuleException ? createError.status : undefined
+              );
+            }
+          } else {
+            throw createError;
+          }
         }
       }
 

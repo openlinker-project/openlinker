@@ -11,6 +11,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostNetworkException } from '../../../domain/exceptions/inpost-network.exception';
+import { InpostAmbiguousWriteException } from '../../../domain/exceptions/inpost-ambiguous-write.exception';
 import { InpostHttpClient } from '../inpost-http-client';
 
 interface FakeResponseInit {
@@ -361,18 +362,36 @@ describe('InpostHttpClient', () => {
     it('should NOT retry an ambiguous 5xx on a POST with no idempotent flag (exactly one request)', async () => {
       fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 500, body: '{}' }));
 
-      await expect(
-        client.request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} }),
-      ).rejects.toBeInstanceOf(InpostNetworkException);
+      const error = await client
+        .request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} })
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      // #3469 IMPORTANT-1 review: raised as the distinguishable
+      // InpostAmbiguousWriteException (a subclass of InpostNetworkException,
+      // so every pre-existing consumer still matches it) —
+      // InpostRetryClassifierAdapter keys on this type so a job-level retry
+      // does not re-send the same POST.
+      expect(error).toBeInstanceOf(InpostNetworkException);
+      expect(error).toBeInstanceOf(InpostAmbiguousWriteException);
+      expect(error).toMatchObject({
+        method: 'POST',
+        path: '/v1/organizations/org-1/shipments',
+        statusCode: 500,
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it('should NOT retry a network error on a POST with no idempotent flag (exactly one request)', async () => {
       fetchMock.mockRejectedValue(new Error('ECONNRESET'));
 
-      await expect(
-        client.request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} }),
-      ).rejects.toBeInstanceOf(InpostNetworkException);
+      const error = await client
+        .request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} })
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(InpostAmbiguousWriteException);
+      expect((error as InpostAmbiguousWriteException).statusCode).toBeUndefined();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 

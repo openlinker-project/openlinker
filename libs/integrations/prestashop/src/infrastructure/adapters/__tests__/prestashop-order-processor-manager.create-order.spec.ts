@@ -21,6 +21,8 @@ import {
   PrestashopTaxRateUnknownException,
   PrestashopCurrencyUnknownException,
 } from '@openlinker/integrations-prestashop';
+import { PrestashopOlModuleException } from '../../../domain/exceptions/prestashop-ol-module.exception';
+import { PrestashopAmbiguousWriteException } from '../../../domain/exceptions/prestashop-ambiguous-write.exception';
 import type { OrderCreate } from '@openlinker/core/orders';
 import type { PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
 import { derivePrestashopOrderReference } from '../../mappers/prestashop-order-reference';
@@ -1192,6 +1194,101 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           .mockRejectedValueOnce(new Error('boom'));
 
         await expect(adapter.createOrder(order)).rejects.toThrow(PrestashopApiException);
+      });
+
+      describe('ambiguous importOrder failure recovery (#3469 IMPORTANT-1 review)', () => {
+        it('recovers the order by reference when importOrder fails with an ambiguous 5xx', async () => {
+          const order = createTestOrder();
+          wireResolution();
+          setCreateResourceDispatch({ id: '123' }, {
+            id: '999',
+            reference: order.orderNumber,
+          } as PrestashopOrder);
+          mockOpenLinkerModuleClient.importOrder = jest
+            .fn()
+            .mockRejectedValueOnce(new PrestashopOlModuleException('conn-1', 123, 502, 'http-502'));
+          // The pre-cart-creation lookup (#3473) finds nothing — this is the
+          // FIRST time the order actually gets created — but the recovery
+          // lookup fired from inside the catch block DOES find it, because
+          // PrestaShop committed the order despite the ambiguous response.
+          let ordersLookupCalls = 0;
+          mockHttpClient.listResources = jest
+            .fn()
+            .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+              if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
+                return Promise.resolve([{ id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' }]);
+              }
+              if (resource === 'orders') {
+                ordersLookupCalls += 1;
+                if (ordersLookupCalls === 1) {
+                  return Promise.resolve([]); // pre-cart-creation lookup: nothing yet
+                }
+                return Promise.resolve([{ id: '555', reference: 'TEST-ORDER-001' }]); // post-failure recovery
+              }
+              return Promise.resolve([]);
+            });
+
+          const result = await adapter.createOrder(order);
+
+          expect(result.orderId).toBe('555');
+          expect(ordersLookupCalls).toBe(2);
+        });
+
+        it('throws PrestashopAmbiguousWriteException when importOrder fails ambiguously and recovery finds nothing', async () => {
+          const order = createTestOrder();
+          wireResolution();
+          setCreateResourceDispatch({ id: '123' }, {
+            id: '999',
+            reference: order.orderNumber,
+          } as PrestashopOrder);
+          mockOpenLinkerModuleClient.importOrder = jest
+            .fn()
+            .mockRejectedValueOnce(new PrestashopOlModuleException('conn-1', 123, 0, 'network: ECONNRESET'));
+          // listResources('orders', …) defaults to [] in the harness — every
+          // recovery attempt (pre-cart-creation AND post-failure) finds nothing.
+
+          const error = await adapter.createOrder(order).then(
+            () => null,
+            (e: unknown) => e,
+          );
+
+          expect(error).toBeInstanceOf(PrestashopAmbiguousWriteException);
+        });
+
+        it('does NOT attempt recovery for a deterministic (non-ambiguous) importOrder refusal', async () => {
+          const order = createTestOrder();
+          wireResolution();
+          setCreateResourceDispatch({ id: '123' }, {
+            id: '999',
+            reference: order.orderNumber,
+          } as PrestashopOrder);
+          mockOpenLinkerModuleClient.importOrder = jest
+            .fn()
+            .mockRejectedValueOnce(
+              new PrestashopOlModuleException('conn-1', 123, 400, 'invalid-signature'),
+            );
+          const listResourcesSpy = jest.fn().mockImplementation(
+            (resource: string, params?: { custom?: Record<string, unknown> }) => {
+              if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
+                return Promise.resolve([{ id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' }]);
+              }
+              return Promise.resolve([]);
+            },
+          );
+          mockHttpClient.listResources = listResourcesSpy;
+
+          const error = await adapter.createOrder(order).then(
+            () => null,
+            (e: unknown) => e,
+          );
+
+          expect(error).toBeInstanceOf(PrestashopApiException);
+          expect(error).not.toBeInstanceOf(PrestashopAmbiguousWriteException);
+          // Exactly one 'orders' lookup — the pre-cart-creation one (#3473) —
+          // never a second, since a deterministic refusal needs no recovery.
+          const ordersLookups = listResourcesSpy.mock.calls.filter(([r]) => r === 'orders');
+          expect(ordersLookups.length).toBe(1);
+        });
       });
 
       it('should handle alreadyExisted=true from importOrder', async () => {

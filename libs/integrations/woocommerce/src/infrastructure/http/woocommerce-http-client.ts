@@ -32,6 +32,7 @@ import type { FetchLike } from '@openlinker/shared/http';
 import { WooCommerceUnauthorizedException } from '../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from './woocommerce-http-response.exception';
+import { WooCommerceAmbiguousWriteException } from '../../domain/exceptions/woocommerce-ambiguous-write.exception';
 import { isUrlSsrfSafe } from './woocommerce-url-safety';
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -194,12 +195,26 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
         const message = isRetryable
           ? `WooCommerce returned HTTP ${response.status} after ${this.retryConfig.maxRetries} retries`
           : `WooCommerce returned HTTP ${response.status}: ${url}`;
+
+        // An ambiguous (>=500, non-idempotent) failure is raised as
+        // WooCommerceAmbiguousWriteException, not the bare
+        // WooCommerceHttpResponseException (#3469 IMPORTANT-1 review):
+        // refusing to retry HERE only stops this client from re-sending the
+        // request — the failure still propagates out of whatever job called
+        // it, and SyncJobRunner retries a job-level failure by default
+        // unless a registered classifier says otherwise. A deterministic
+        // 4xx (never ambiguous — WooCommerce's own answer says nothing was
+        // created) keeps the plain WooCommerceHttpResponseException.
+        if (!idempotent && response.status >= 500) {
+          throw new WooCommerceAmbiguousWriteException(message, method, url, response.status);
+        }
         throw new WooCommerceHttpResponseException(response.status, message, errorCode);
       } catch (err) {
         if (
           err instanceof WooCommerceUnauthorizedException ||
           err instanceof WooCommerceHttpResponseException ||
-          err instanceof WooCommerceNetworkException
+          err instanceof WooCommerceNetworkException ||
+          err instanceof WooCommerceAmbiguousWriteException
         ) {
           throw err;
         }
@@ -218,10 +233,20 @@ export class WooCommerceHttpClient implements IWooCommerceHttpClient {
           continue;
         }
 
+        // Raised as WooCommerceAmbiguousWriteException for a non-idempotent
+        // call (#3469 IMPORTANT-1 review) — see the 5xx branch above for why.
+        if (!idempotent) {
+          throw new WooCommerceAmbiguousWriteException(
+            `WooCommerce network error (not retried — non-idempotent call): ${(err as Error).message}`,
+            method,
+            url,
+            undefined,
+            err,
+          );
+        }
+
         throw new WooCommerceNetworkException(
-          idempotent
-            ? `WooCommerce network error after ${this.retryConfig.maxRetries} retries`
-            : `WooCommerce network error (not retried — non-idempotent call): ${(err as Error).message}`,
+          `WooCommerce network error after ${this.retryConfig.maxRetries} retries`,
           err as Error,
         );
       } finally {

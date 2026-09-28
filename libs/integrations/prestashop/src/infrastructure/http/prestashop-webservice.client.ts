@@ -32,6 +32,7 @@ import {
   PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
   PrestashopApiException,
+  PrestashopAmbiguousWriteException,
 } from '@openlinker/integrations-prestashop';
 import { PrestashopQueryBuilder } from './prestashop-query.builder';
 import { PrestashopResponseParser } from './prestashop-response.parser';
@@ -561,13 +562,30 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
           // Ambiguous — a 5xx or a network error (statusCode undefined) may
           // have already committed server-side. Non-idempotent calls (an
           // unmarked POST) must not retry (#3469).
+          //
+          // Raised as PrestashopAmbiguousWriteException, not the bare error
+          // (#3469 IMPORTANT-1 review): refusing to retry HERE only stops
+          // this client from re-sending the request — the failure still
+          // propagates out of whatever job called it, and SyncJobRunner
+          // retries a job-level failure by default unless a registered
+          // classifier says otherwise. A plain PrestashopApiException reads
+          // as an ordinary retryable transport failure to
+          // PrestashopRetryClassifierAdapter, so the runner would re-run the
+          // whole job and re-send the same non-idempotent POST — the
+          // duplicate row this exists to stop, one layer up.
           if (!idempotent && (statusCode === undefined || statusCode >= 500)) {
-            throw error;
+            throw new PrestashopAmbiguousWriteException(
+              error.message,
+              options.method ?? 'POST',
+              url,
+              statusCode,
+              error.responseBody
+            );
           }
         } else if (!idempotent) {
           // A non-PrestashopApiException failure on a non-idempotent call —
           // still ambiguous, still not retried.
-          throw lastError;
+          throw new PrestashopAmbiguousWriteException(lastError.message, options.method ?? 'POST', url);
         }
 
         // Honour the shop's own Retry-After for the in-client retry too, not
