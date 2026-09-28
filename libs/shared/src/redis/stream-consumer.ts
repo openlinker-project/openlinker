@@ -45,6 +45,13 @@ import { hostname } from 'os';
  *
  * Structural rather than `RedisClientType` so the file stays dependency-free;
  * callers pass their existing injected client unchanged.
+ *
+ * `incr` / `expire` / `del` back {@link RecoveryAttemptTracker} (#2301, D48) —
+ * plain key-value primitives, not stream commands, but kept on this one
+ * structural interface rather than a second one: every caller of this module
+ * already passes its injected Redis client cast to `StreamConsumerClient`,
+ * and a second interface would just be a second cast at every call site for
+ * the exact same underlying client.
  */
 export interface StreamConsumerClient {
   xPendingRange(
@@ -64,6 +71,11 @@ export interface StreamConsumerClient {
     id: string | string[]
   ): Promise<unknown>;
   xAck(key: string, group: string, id: string): Promise<number>;
+  /** Atomically increments the key (creating it at 1 if absent) and returns the new value. */
+  incr(key: string): Promise<number>;
+  /** Sets (or refreshes) the key's TTL, in seconds. */
+  expire(key: string, seconds: number): Promise<boolean>;
+  del(key: string): Promise<number>;
 }
 
 /**
@@ -209,13 +221,6 @@ export interface PendingRow {
  */
 export const MAX_RECOVERY_ATTEMPTS = 10;
 
-/**
- * Upper bound on tracked entry ids, so a large poisoned PEL cannot grow the map
- * without limit. Far above any plausible simultaneous-poison count; on overflow
- * the oldest tracked id is dropped, which at worst re-arms its alarm.
- */
-export const MAX_TRACKED_ATTEMPTS = 10_000;
-
 /** The minimal logger shape the recovery helpers need. */
 export interface RecoveryLogger {
   warn(message: string): void;
@@ -223,62 +228,92 @@ export interface RecoveryLogger {
 }
 
 /**
- * Per-consumer count of *failed* recovery attempts, keyed by stream entry id.
+ * TTL applied to (and refreshed on every write of) a poison-tracking key.
  *
- * Exists because Redis cannot answer this question on the drain path (see
- * {@link MAX_RECOVERY_ATTEMPTS}), and because the alarm must fire exactly once
- * per entry rather than on every pass: a poison entry recurs by definition, so
- * an unguarded `error` line per pass is alert fatigue on the channel meant to
- * carry real incidents.
+ * Must comfortably exceed the WORST-CASE time a genuinely poisoned entry
+ * takes to reach `MAX_RECOVERY_ATTEMPTS`, or the counter can expire and
+ * silently reset before the alarm ever fires — reintroducing exactly the
+ * gap #2301 (D48) closes. Recovery passes are throttled to once per
+ * `RECLAIM_INTERVAL_MS` (5 minutes) per process, so ten consecutive
+ * failures take at least ~50 minutes even with no restarts in between; a
+ * restart (the whole reason this counter moved to Redis) only ever
+ * LENGTHENS that, since a fresh process still waits out the same 5-minute
+ * throttle before its first attempt. Seven days is generous relative to
+ * that horizon and reuses the SAME number already established for
+ * `jobdedup:*` (#2280) rather than inventing a new one.
+ */
+export const POISON_COUNTER_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * Per-`(stream, group, entry)` count of *failed* recovery attempts, backed by
+ * Redis rather than process memory (#2301, D48).
  *
- * **Observability caveat (#2301), load-bearing for reading the alarm's
- * silence.** This counter is an in-memory `Map` on ONE process's instance of
- * the owning consumer service — it holds no state across a worker restart.
- * An entry stuck failing for, say, 8 consecutive attempts that then survives
- * a deploy resets to 0 in the new process and starts counting again; ten
- * consecutive FAILURES WITHIN ONE PROCESS LIFETIME is what the alarm
- * requires, not ten failures total. On a worker that restarts more often
- * than a poison entry's drain cadence produces ten attempts, this alarm can
- * structurally never fire even for a genuinely stuck entry. So "the alarm
- * has never fired" is NOT sound evidence that no poison entry has ever
- * existed — ADR-049's stated reversal-gate check ("confirm whether
- * `MAX_RECOVERY_ATTEMPTS` has ever been crossed in a real deployment", #2301)
- * needs to account for this before treating a silent alarm as a clean
- * answer. Making the counter durable (e.g. a Redis-backed count keyed by
- * entry id) is exactly the kind of change #2301 explicitly defers to a
- * decision made once the gate fires, so it is deliberately NOT done here.
+ * **Why Redis, not an in-memory `Map` (the pre-D48 design).** The counter
+ * used to live on one process's instance of the owning consumer service, so
+ * it reset to zero on every worker restart. Ten CONSECUTIVE failures within
+ * one process's lifetime was what the alarm required, not ten failures
+ * across an entry's whole poisoned history — on a worker restarting more
+ * often than a poison entry's drain cadence produces ten attempts, the
+ * alarm could structurally never fire even for a genuinely stuck entry.
+ * Keying the count on `INCR key-per-entry` with a sliding TTL (refreshed on
+ * every failure) removes that blind spot: the count survives a restart, and
+ * only genuinely stops accumulating once the entry stops failing for
+ * {@link POISON_COUNTER_TTL_SECONDS}.
+ *
+ * **Two threshold questions, deliberately answered by two different
+ * methods.** {@link justCrossedThreshold} is `attempts === MAX_RECOVERY_ATTEMPTS`
+ * — the ONE-TIME alarm log line, unchanged behaviour from before D48.
+ * {@link hasReachedThreshold} is `attempts >= MAX_RECOVERY_ATTEMPTS` — the
+ * TERMINAL-WRITE trigger, which a caller re-checks on every subsequent
+ * failure past the threshold, not just the first. The two cannot share a
+ * predicate: writing the `stream_dead_letters` row and then `XACK`ing the
+ * entry are two separate operations (see that table's own migration
+ * docblock), and a crash between them leaves the entry pending — Redis
+ * redelivers it, it fails again, and `attempts` climbs to 11, 12, ... A
+ * caller gating the terminal write on `=== MAX_RECOVERY_ATTEMPTS` would
+ * never retry that write, silently abandoning an entry whose ack never
+ * landed; gating the ONE-TIME LOG the same way would instead re-alarm on
+ * every such retry, which is the alert-fatigue problem the one-time alarm
+ * exists to prevent. `succeeded()` clears the key once the terminal write
+ * AND its ack both land, so in the ordinary case `attempts` never exceeds
+ * `MAX_RECOVERY_ATTEMPTS` by more than the rare crash-and-retry window.
  */
 export class RecoveryAttemptTracker {
-  private readonly failures = new Map<string, number>();
+  constructor(private readonly client: StreamConsumerClient) {}
 
-  /** Record a failure and report the new count for that entry. */
-  recordFailure(id: string): number {
-    const next = (this.failures.get(id) ?? 0) + 1;
-
-    if (!this.failures.has(id) && this.failures.size >= MAX_TRACKED_ATTEMPTS) {
-      const stalest = this.failures.keys().next();
-      if (!stalest.done) {
-        this.failures.delete(stalest.value);
-      }
-    }
-
-    // Delete-then-set so a repeat failure moves the id to the tail, making the
-    // eviction above least-recently-failed. A plain `set` on an existing key
-    // does not reorder a Map, which would evict the entry that has been stuck
-    // LONGEST — precisely the one whose alarm is worth keeping.
-    this.failures.delete(id);
-    this.failures.set(id, next);
-    return next;
+  private key(stream: string, group: string, id: string): string {
+    return `poison:${stream}:${group}:${id}`;
   }
 
-  /** Forget an entry that finally succeeded, so a later failure starts fresh. */
-  succeeded(id: string): void {
-    this.failures.delete(id);
+  /** Record a failure and report the new (persisted) count for that entry. */
+  async recordFailure(stream: string, group: string, id: string): Promise<number> {
+    const key = this.key(stream, group, id);
+    const attempts = await this.client.incr(key);
+    // Refreshed on every failure so the window keeps sliding while the entry
+    // keeps failing — see POISON_COUNTER_TTL_SECONDS.
+    await this.client.expire(key, POISON_COUNTER_TTL_SECONDS);
+    return attempts;
   }
 
-  /** True exactly once — on the pass that reaches the threshold. */
+  /**
+   * Forget an entry that is fully resolved — either it finally succeeded, or
+   * its terminal `stream_dead_letters` write AND the `XACK` that follows it
+   * both landed. Either way, a later occurrence of the same
+   * `(stream, group, id)` (extremely unlikely — Redis stream ids are
+   * monotonic and never reused) starts counting from zero.
+   */
+  async succeeded(stream: string, group: string, id: string): Promise<void> {
+    await this.client.del(this.key(stream, group, id));
+  }
+
+  /** True exactly once — on the pass that reaches the threshold. Gates the one-time alarm log. */
   justCrossedThreshold(attempts: number): boolean {
     return attempts === MAX_RECOVERY_ATTEMPTS;
+  }
+
+  /** True from the threshold onward — gates the (retriable) terminal write + ack. */
+  hasReachedThreshold(attempts: number): boolean {
+    return attempts >= MAX_RECOVERY_ATTEMPTS;
   }
 }
 
