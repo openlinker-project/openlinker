@@ -27,21 +27,37 @@
  *
  * ## `rootProps` is a generic passthrough, never drag-specific (#3426)
  *
- * Same seam and same reason as `FulfillmentWorklistRow`'s own docblock — see
+ * Same seam and same reason as the assign board's own card docblock — see
  * there for why nesting a wrapper `<li>` is not the right shape.
+ *
+ * ## The expedited badge decides nothing (#3247)
+ *
+ * `expeditedAt` says a task was pushed ahead of deadline order (#2416). It is
+ * rendered and never read for a decision: which expedite verb is offered
+ * comes from `supportedActions` alone.
+ *
+ * ## The id is a LINK to the detail page (#3096/#3259)
+ *
+ * This card is only ever mounted inside `order-fulfillment-tasks-panel.tsx`,
+ * which has no worklist position of its own to carry forward — an order page
+ * is not a filtered list — so the link carries no query string, unlike the
+ * assign board's own reference link (`fulfilmentWorkDetailPath`).
  *
  * @module apps/web/src/features/fulfillment/components
  */
 import type { LiHTMLAttributes, ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import {
+  FULFILLMENT_EXPEDITED_BADGE,
   fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
 } from '../lib/fulfillment-task.copy';
+import { fulfillmentWorkDetailPath } from '../lib/fulfillment-filters';
 
 export interface FulfillmentTaskCardProps {
   task: FulfillmentTask;
@@ -77,10 +93,21 @@ export function FulfillmentTaskCard({
               {fulfillmentStatusLabel(task.status)}
             </StatusBadge>
           )}
+          {/* After the hold/state badge, never before it — the badge above
+              leads. Display only; see the module docblock. */}
+          {(task.expeditedAt ?? null) !== null ? (
+            <StatusBadge tone="warning" withDot compact>
+              {FULFILLMENT_EXPEDITED_BADGE}
+            </StatusBadge>
+          ) : null}
         </div>
-        <span className="fulfilment-task__id mono-text" title={task.id}>
+        <Link
+          to={fulfillmentWorkDetailPath(task.id, new URLSearchParams())}
+          className="fulfilment-task__id link mono-text"
+          title={task.id}
+        >
           {task.id}
-        </span>
+        </Link>
       </div>
 
       {held ? (

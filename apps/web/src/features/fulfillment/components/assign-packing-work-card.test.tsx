@@ -8,10 +8,16 @@
  * landed above rather than below `formatShipBy`.
  */
 import { cleanup, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssignPackingWorkCard } from './assign-packing-work-card';
 import type { FulfillmentTask } from '../api/fulfillment.types';
+
+// The card's reference is a `<Link>` since #3096/#3259 — every render below
+// needs a router in scope, and the href is fixed rather than varied per case
+// because this suite is about the badge, not the link.
+const DETAIL_HREF = '/fulfillment/works/ol_work_1';
 
 const NOW_ISO = '2026-06-01T12:00:00.000Z';
 
@@ -59,11 +65,14 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
 describe('AssignPackingWorkCard — "Sat unassigned" badge', () => {
   it('renders nothing when unassignedSince is null, even in the unassigned lane', () => {
     render(
-      <AssignPackingWorkCard
-        task={task({ unassignedSince: null })}
-        actions={null}
-        inUnassignedLane
-      />
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ unassignedSince: null })}
+          actions={null}
+          inUnassignedLane
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
     );
 
     expect(screen.queryByText(/Sat unassigned/)).not.toBeInTheDocument();
@@ -71,11 +80,14 @@ describe('AssignPackingWorkCard — "Sat unassigned" badge', () => {
 
   it('renders nothing when unassignedSince is undefined (API predates the column)', () => {
     render(
-      <AssignPackingWorkCard
-        task={task({ unassignedSince: undefined })}
-        actions={null}
-        inUnassignedLane
-      />
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ unassignedSince: undefined })}
+          actions={null}
+          inUnassignedLane
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
     );
 
     expect(screen.queryByText(/Sat unassigned/)).not.toBeInTheDocument();
@@ -83,11 +95,14 @@ describe('AssignPackingWorkCard — "Sat unassigned" badge', () => {
 
   it('renders the compact age when unassignedSince is set and the card is in the unassigned lane', () => {
     render(
-      <AssignPackingWorkCard
-        task={task({ unassignedSince: '2026-06-01T11:08:00.000Z' })}
-        actions={null}
-        inUnassignedLane
-      />
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ unassignedSince: '2026-06-01T11:08:00.000Z' })}
+          actions={null}
+          inUnassignedLane
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
     );
 
     expect(screen.getByText('Sat unassigned 52m')).toBeInTheDocument();
@@ -95,11 +110,14 @@ describe('AssignPackingWorkCard — "Sat unassigned" badge', () => {
 
   it('never renders outside the unassigned lane, whatever unassignedSince says', () => {
     render(
-      <AssignPackingWorkCard
-        task={task({ unassignedSince: '2026-06-01T11:08:00.000Z' })}
-        actions={null}
-        inUnassignedLane={false}
-      />
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ unassignedSince: '2026-06-01T11:08:00.000Z' })}
+          actions={null}
+          inUnassignedLane={false}
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
     );
 
     expect(screen.queryByText(/Sat unassigned/)).not.toBeInTheDocument();
@@ -107,14 +125,17 @@ describe('AssignPackingWorkCard — "Sat unassigned" badge', () => {
 
   it('yields to a hold badge', () => {
     render(
-      <AssignPackingWorkCard
-        task={task({
-          unassignedSince: '2026-06-01T11:08:00.000Z',
-          activeHolds: [{ id: 'hold_1', reason: 'fraud-review', note: null, placedAt: NOW_ISO }],
-        })}
-        actions={null}
-        inUnassignedLane
-      />
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({
+            unassignedSince: '2026-06-01T11:08:00.000Z',
+            activeHolds: [{ id: 'hold_1', reason: 'fraud-review', note: null, placedAt: NOW_ISO }],
+          })}
+          actions={null}
+          inUnassignedLane
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
     );
 
     expect(screen.getByText('On hold')).toBeInTheDocument();
@@ -123,19 +144,50 @@ describe('AssignPackingWorkCard — "Sat unassigned" badge', () => {
 
   it('yields to a ship-by deadline badge', () => {
     render(
-      <AssignPackingWorkCard
-        task={task({
-          unassignedSince: '2026-06-01T11:08:00.000Z',
-          dispatchByAt: '2026-06-01T13:00:00.000Z',
-        })}
-        actions={null}
-        inUnassignedLane
-      />
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({
+            unassignedSince: '2026-06-01T11:08:00.000Z',
+            dispatchByAt: '2026-06-01T13:00:00.000Z',
+          })}
+          actions={null}
+          inUnassignedLane
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
     );
 
     // `formatShipBy` reads a real Date under the hood, so this only proves
     // precedence rather than a specific label — the deadline text is
     // whatever `formatShipBy` renders relative to the real "now".
     expect(screen.queryByText(/Sat unassigned/)).not.toBeInTheDocument();
+  });
+});
+
+describe('AssignPackingWorkCard — reference link (#3096/#3259)', () => {
+  it('renders the reference as a link to the task detail page', () => {
+    render(
+      <MemoryRouter>
+        <AssignPackingWorkCard task={task()} actions={null} detailHref={DETAIL_HREF} />
+      </MemoryRouter>
+    );
+
+    const link = screen.getByRole('link', { name: task().id });
+    expect(link).toHaveAttribute('href', DETAIL_HREF);
+  });
+
+  it('prefers the order reference over the raw id when one is known', () => {
+    render(
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ orderReference: 'PS-4471' })}
+          actions={null}
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
+    );
+
+    const link = screen.getByRole('link', { name: 'PS-4471' });
+    expect(link).toHaveAttribute('href', DETAIL_HREF);
   });
 });
