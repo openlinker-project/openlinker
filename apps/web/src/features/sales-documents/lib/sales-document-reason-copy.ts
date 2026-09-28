@@ -142,17 +142,6 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
     keepsAction: false,
   },
   /**
-   * The one reason where the absent action is a server-side refusal rather than
-   * a presentation choice (#2248, ADR-063): issuing by hand would make a
-   * provider guess a rate onto a real fiscal document, so the backend closes the
-   * manual paths too.
-   *
-   * Subject-neutral on purpose (#2260 review): the gate blocks both on a
-   * rate-less product line and on a delivery charge that cannot be attributed to
-   * any rate. A surface holding the order's lines can name the subject; this
-   * copy must not, because a row does not hold them.
-   */
-  /**
    * #3365. The refusal is upstream of any provider: the order's own lines do
    * not add up to the total it reports, so no document could state an amount
    * without contradicting itself.
@@ -179,6 +168,17 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
     tone: 'error',
     keepsAction: false,
   },
+  /**
+   * The one reason where the absent action is a server-side refusal rather than
+   * a presentation choice (#2248, ADR-063): issuing by hand would make a
+   * provider guess a rate onto a real fiscal document, so the backend closes the
+   * manual paths too.
+   *
+   * Subject-neutral on purpose (#2260 review): the gate blocks both on a
+   * rate-less product line and on a delivery charge that cannot be attributed to
+   * any rate. A surface holding the order's lines can name the subject; this
+   * copy must not, because a row does not hold them.
+   */
   'missing-tax-rate': {
     short: 'Tax rate missing',
     detail:

@@ -223,7 +223,8 @@ export interface AdapterMetadata {
    * verbatim (still filtered against `supportedCapabilities`) as the
    * default; when absent, `ConnectionService` applies only the generic
    * `InventoryMaster`-present-drops-`OfferManager` carve-out and no longer
-   * the blanket Invoicing-strip rule. eparagony sets this to `['Fiscalization']`
+   * the blanket Invoicing-strip rule. eparagony sets this to
+   * `['Fiscalization', 'FiscalRegistrationLocator', 'RegulatoryStatusReader']`
    * (preserving its exact prior behaviour); every other adapter leaves it
    * unset and falls through to the sane, capability-driven default.
    */

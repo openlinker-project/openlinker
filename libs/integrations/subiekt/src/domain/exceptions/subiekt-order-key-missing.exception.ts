@@ -35,5 +35,6 @@ export class SubiektOrderKeyMissingException extends Error {
         'sales order for the same sale, so the create is refused instead.',
     );
     this.name = 'SubiektOrderKeyMissingException';
+    Error.captureStackTrace(this, this.constructor);
   }
 }

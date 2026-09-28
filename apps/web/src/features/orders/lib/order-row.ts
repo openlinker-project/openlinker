@@ -230,28 +230,6 @@ export function unlinkedCatalogueLineCount(invoice?: ParsedOrderInvoice | null):
 }
 
 /**
- * The unlinked-catalogue-lines badge.
- *
- * Its OWN resolver, for the same reason `taxRateConflictBadge` is: it must NOT
- * pass through `invoiceSupersedesBlock`. An issued document is the ordinary
- * case here - the document is precisely what went out carrying free-text lines
- * - so routing this through the sales-document block machinery would suppress
- * the badge for every order it is about.
- *
- * The count is in the label because the operator is looking at a document
- * whose lines they can count, and the hint names the consequence rather than
- * the mechanism: "did not reach the warehouse" is what they can act on,
- * "ob_TowId is NULL" is not.
- *
- * It is a BADGE only - no chip, no aggregate count. The value lives on the
- * invoice projection rather than on a queryable `order_records` column, so
- * there is nothing to filter or count on. If operators ever need a worklist of
- * affected orders, the answer is to promote it to an independently-filterable
- * order-level axis (the `taxRateConflict` shape), not to scan this projection.
- *
- * Returns `null` when nothing is unlinked, so the caller is a plain render.
- */
-/**
  * The warehouse-release badge: "this document billed for goods that never left
  * the warehouse".
  *
@@ -284,6 +262,28 @@ export function warehouseReleaseBadge(
   };
 }
 
+/**
+ * The unlinked-catalogue-lines badge.
+ *
+ * Its OWN resolver, for the same reason `taxRateConflictBadge` is: it must NOT
+ * pass through `invoiceSupersedesBlock`. An issued document is the ordinary
+ * case here - the document is precisely what went out carrying free-text lines
+ * - so routing this through the sales-document block machinery would suppress
+ * the badge for every order it is about.
+ *
+ * The count is in the label because the operator is looking at a document
+ * whose lines they can count, and the hint names the consequence rather than
+ * the mechanism: "did not reach the warehouse" is what they can act on,
+ * "ob_TowId is NULL" is not.
+ *
+ * It is a BADGE only - no chip, no aggregate count. The value lives on the
+ * invoice projection rather than on a queryable `order_records` column, so
+ * there is nothing to filter or count on. If operators ever need a worklist of
+ * affected orders, the answer is to promote it to an independently-filterable
+ * order-level axis (the `taxRateConflict` shape), not to scan this projection.
+ *
+ * Returns `null` when nothing is unlinked, so the caller is a plain render.
+ */
 export function unlinkedCatalogueLinesBadge(
   invoice?: ParsedOrderInvoice | null,
 ): { label: string; hint: string } | null {

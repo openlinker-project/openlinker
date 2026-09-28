@@ -25,9 +25,9 @@ import { describe, expect, it } from 'vitest';
 import { plugins } from './index';
 
 /**
- * The identity the bare `'subiekt'` was split into. A future nexo plugin adds
- * its own value here (e.g. `'subiekt-nexo'`) - it does NOT get added to the
- * legacy list below, and it does not reuse this one.
+ * The identity the bare `'subiekt'` was split into. The nexo plugin registers
+ * its own value (`'subiekt-nexo'`) rather than sharing this one - it does NOT
+ * get added to the legacy list below either.
  */
 const SUBIEKT_GT_PLATFORM_TYPE = 'subiekt-gt';
 
@@ -40,10 +40,10 @@ const RETIRED_IDENTITIES = ['subiekt', 'subiekt.invoicing.v1'];
 describe('Subiekt identity is split (GT vs nexo)', () => {
   it('registers Subiekt GT under its own platformType', () => {
     // Deliberately a `find`, not a count. An earlier version asserted that
-    // exactly ONE Subiekt-family plugin exists, which would have failed the
-    // day somebody added the nexo plugin - the very future this file's header
-    // promises to allow. Uniqueness of the platformType is a separate
-    // question, and the third test below is the one that asks it.
+    // exactly ONE Subiekt-family plugin exists, which would have failed once
+    // the nexo plugin was added - and it now is registered too. Uniqueness of
+    // the platformType is a separate question, and the third test below is
+    // the one that asks it.
     const subiektGt = plugins.find(
       (plugin) => plugin.platformType === SUBIEKT_GT_PLATFORM_TYPE
     );

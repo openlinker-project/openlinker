@@ -9,7 +9,7 @@
  *
  * SUBIEKT GT AND SUBIEKT nexo ARE TWO SEPARATE ENTITIES and must never be
  * joined anywhere in this application. They are different InsERT products
- * reached through different bridges with different wire contracts: four of the
+ * reached through different bridges with different wire contracts: five of the
  * routes this adapter calls (`/api/orders`, `/api/orders/feed`,
  * `/api/inventory/adjust`, `/api/products/categories`, `/api/fiscalize`) do
  * not exist on the nexo bridge at all, and where the routes do overlap the

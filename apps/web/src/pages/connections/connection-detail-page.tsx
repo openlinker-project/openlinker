@@ -199,8 +199,8 @@ export function ConnectionDetailPage(): ReactElement {
   // The plugin registry is what turns a `platformType` slug into the product
   // name an operator recognises. Rendering the raw slug was tolerable while
   // one slug meant one product; it stopped being so when two products can
-  // share a prefix (`subiekt-gt` vs a future `subiekt-nexo`), where the slug
-  // is exactly the part a reader has to squint at.
+  // share a prefix (`subiekt-gt` vs `subiekt-nexo`), where the slug is
+  // exactly the part a reader has to squint at.
   const platforms = usePlatforms();
   const {
     productMasterConnections,

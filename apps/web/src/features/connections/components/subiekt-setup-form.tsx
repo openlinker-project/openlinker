@@ -31,7 +31,7 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import type { ConnectionTestResult } from '../api/connections.types';
@@ -241,7 +241,7 @@ export function SubiektSetupForm({
               ? 'automatically once an order is paid'
               : 'only when you issue them by hand'}
             . Change that, or switch it off entirely, in{' '}
-            <a href="/settings/sales-documents">Settings → Sales documents</a>.
+            <Link to="/settings/sales-documents">Settings → Sales documents</Link>.
           </Alert>
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>

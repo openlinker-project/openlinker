@@ -48,7 +48,7 @@ function buildColumns(
   // Passed in for the same reason `attentionFor` is: a module-level const
   // cannot call a hook. `platforms` turns the `platformType` slug into the
   // product name an operator recognises - load-bearing now that two products
-  // can share a slug prefix (`subiekt-gt` vs a future `subiekt-nexo`).
+  // can share a slug prefix (`subiekt-gt` vs `subiekt-nexo`).
   platforms: readonly { platformType: string; displayName: string }[]
 ): DataTableColumn<Connection>[] {
   return [
