@@ -22,7 +22,7 @@ describe('distributeOrderDiscount', () => {
     const split = distributeOrderDiscount([100, 0.02], 0.01, 2)!;
     const paid = split.reduce((sum, line) => sum + line.grossTotalAfterDiscount, 0);
     expect(Math.round(paid * 100)).toBe(Math.round(100.01 * 100));
-    expect(split[1]!.grossTotalAfterDiscount).toBe(0.02);
+    expect(split[1].grossTotalAfterDiscount).toBe(0.02);
   });
 
   it('keeps each line as listed in grossTotal', () => {
@@ -42,7 +42,7 @@ describe('distributeOrderDiscount', () => {
     ['a discount equal to the whole order', [100], 100],
     ['a discount larger than the order', [100], 150],
   ])('answers nothing for %s', (_label, totals, discount) => {
-    expect(distributeOrderDiscount(totals as number[], discount as number, 2)).toBeNull();
+    expect(distributeOrderDiscount(totals, discount, 2)).toBeNull();
   });
 
   // Two decimals is false for JPY and for KWD, and the only property this

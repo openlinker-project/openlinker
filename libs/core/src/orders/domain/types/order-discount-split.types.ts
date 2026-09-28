@@ -66,14 +66,14 @@ export function distributeOrderDiscount(
   if (remainder > 0) {
     let largest = 0;
     for (let i = 1; i < minorTotals.length; i += 1) {
-      if (minorTotals[i]! > minorTotals[largest]!) largest = i;
+      if (minorTotals[i] > minorTotals[largest]) largest = i;
     }
-    shares[largest] = shares[largest]! + remainder;
+    shares[largest] = shares[largest] + remainder;
     remainder = 0;
   }
 
   return minorTotals.map((value, index) => ({
     grossTotal: value / factor,
-    grossTotalAfterDiscount: Math.max(0, value - shares[index]!) / factor,
+    grossTotalAfterDiscount: Math.max(0, value - shares[index]) / factor,
   }));
 }
