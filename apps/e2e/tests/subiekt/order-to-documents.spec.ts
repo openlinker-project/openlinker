@@ -40,6 +40,7 @@ import type { InvoiceRecord, OrderRecord, Product } from '../../src/api/api.type
 import { PlatformType } from '../../src/world/world';
 import { synthesizeOrder, buildPrestashopWebserviceClient } from '../../src/support/order-synthesis';
 import { ensureSubiektProductOnShop } from '../../src/support/subiekt-shop-driver';
+import { buildSubiektBridgeClient } from '../../src/api/subiekt-bridge';
 
 /** How long a destination fan-out and an auto-issue may take on a shared stack. */
 const DESTINATION_TIMEOUT_MS = 180_000;
@@ -279,7 +280,83 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     ).toBe('synced');
   });
 
-  test('the sale becomes a document on the Subiekt connection', async ({ api, world, env }) => {
+  // THE ASSERTION NO TEST IN THIS REPOSITORY HAS EVER MADE (#3365 audit).
+  //
+  // Everything else about promise 2 reads an OpenLinker row: a `syncStatus`
+  // entry saying `synced` proves what OpenLinker BELIEVES, not that a ZK
+  // exists in Subiekt with the buyer's name on it and the money the buyer
+  // paid. The bridge has answered that all along - `GET /api/orders/{id}`
+  // reads `dok__Dokument` and `dok_Pozycja` directly - and nothing called it.
+  //
+  // It also covers the two halves of promise 3 the suite could not see:
+  // `grep -ri 'WZ|kontrahent' apps/e2e` returned nothing before this.
+  test('the ZK exists in SUBIEKT, with the buyer and the amount they paid', async ({
+    api,
+    world,
+    env,
+  }, testInfo) => {
+    test.skip(!env.testSubiekt, 'opt-in — set E2E_TEST_SUBIEKT=true');
+    const subiekt = world.connectionFor(PlatformType.subiektGt);
+    test.skip(!subiekt, 'no Subiekt GT connection on this stack');
+    test.skip(internalOrderId === null, 'the ZK test did not produce an order');
+    test.skip(sourceIsNetPriced, 'the source reports net prices, so no ZK exists to read');
+
+    const order = await api.orders.getById(internalOrderId!);
+    const row = (order.syncStatus ?? []).find((s) => s.destinationConnectionId === subiekt!.id);
+    expect(row?.externalOrderId, 'OpenLinker recorded no Subiekt document id').toBeTruthy();
+
+    const bridge = buildSubiektBridgeClient();
+    if (bridge === null) {
+      // ANNOTATED, never skipped: the run says exactly which claim went
+      // unverified, which is the whole complaint against the old shape.
+      testInfo.annotations.push({
+        type: 'subiekt',
+        description:
+          `NOT VERIFIED IN SUBIEKT: OpenLinker recorded ZK id ${row!.externalOrderId}, but ` +
+          `E2E_SUBIEKT_BRIDGE_URL / E2E_SUBIEKT_BRIDGE_TOKEN are unset so the document was not ` +
+          `read back. Everything asserted here is OpenLinker's own record.`,
+      });
+      return;
+    }
+
+    const zk = await bridge.getOrder(row!.externalOrderId!);
+    expect(
+      zk,
+      `OpenLinker recorded ZK id ${row!.externalOrderId} as synced, and Subiekt does not have it`,
+    ).not.toBeNull();
+
+    // The KONTRAHENT half of promise 3. Subiekt created or reused a contractor
+    // for this sale, and the document carries their name.
+    expect(
+      zk!.kontrahentNazwa,
+      `ZK ${zk!.numer} carries no kontrahent at all`,
+    ).toBeTruthy();
+
+    // THE MONEY. Promise 4 is "the real sale price from the marketplace", and
+    // this is the first assertion anywhere that compares an amount in Subiekt
+    // with what the buyer was charged. The fixture prices at the catalogue
+    // figure, so this cannot yet catch a catalogue-lookup substitution - but it
+    // does catch the ZK being written for a different number than the order
+    // carries, which is what an ignored discount produced.
+    const snapshot = order.orderSnapshot as { totals?: { total?: number } };
+    const buyerPaid = snapshot.totals?.total;
+    expect(buyerPaid, 'the order snapshot carries no total to compare against').toBeTruthy();
+    expect(
+      Math.round(zk!.wartoscBrutto * 100),
+      `ZK ${zk!.numer} is written for ${zk!.wartoscBrutto} ${zk!.waluta} while the buyer paid ` +
+        `${buyerPaid}. A difference here is the ERP recording a different sale than happened.`,
+    ).toBe(Math.round(buyerPaid! * 100));
+
+    expect(zk!.lines.length, `ZK ${zk!.numer} has no positions`).toBeGreaterThan(0);
+    testInfo.annotations.push({
+      type: 'subiekt',
+      description:
+        `verified in Subiekt: ${zk!.numer}, kontrahent "${zk!.kontrahentNazwa}", ` +
+        `${zk!.wartoscBrutto} ${zk!.waluta}, ${zk!.lines.length} position(s)`,
+    });
+  });
+
+  test('the sale becomes a document on the Subiekt connection', async ({ api, world, env }, testInfo) => {
     test.skip(!env.testSubiekt, 'opt-in — set E2E_TEST_SUBIEKT=true');
     const subiekt = world.connectionFor(PlatformType.subiektGt);
     test.skip(!subiekt, 'no Subiekt GT connection on this stack');
@@ -320,6 +397,36 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       record.providerInvoiceNumber,
       'an issued Subiekt document carries the number Subiekt itself assigned',
     ).toBeTruthy();
+
+    // WHICH document, not merely "a document" (#3365 audit). The suite could
+    // not tell a faktura from a paragon, so a routing rule that produced the
+    // wrong kind would have passed.
+    expect(
+      ['invoice', 'receipt'],
+      `document kind for ${internalOrderId} is ${record.documentType}`,
+    ).toContain(record.documentType);
+
+    // THE WAREHOUSE RELEASE - the third thing promise 3 names, and the one no
+    // assertion in this suite ever touched. It was inferred from a stock drop,
+    // which cannot tell a real WZ apart from the invoice carrying the movement
+    // itself. The four-state answer is persisted now, and only one of them is
+    // the alarm: `not-released` means the client is billed and the goods have
+    // not left.
+    const release = record as unknown as {
+      warehouseReleaseOutcome?: string | null;
+      warehouseReleaseNumber?: string | null;
+    };
+    expect(
+      release.warehouseReleaseOutcome,
+      `the goods this document billed for were reported as NOT released from the warehouse ` +
+        `(order ${internalOrderId}). The client is billed and the stock has not moved.`,
+    ).not.toBe('not-released');
+    testInfo.annotations.push({
+      type: 'subiekt',
+      description:
+        `warehouse release: ${release.warehouseReleaseOutcome ?? 'not reported by this provider'}` +
+        (release.warehouseReleaseNumber ? ` (${release.warehouseReleaseNumber})` : ''),
+    });
   });
 
   // The promise is "synchronizacja stanów magazynowych": a sale in a channel

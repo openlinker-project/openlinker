@@ -333,7 +333,14 @@ export function resolveEnv(): E2eEnv {
       .split('|')
       .map((s) => s.trim())
       .filter((s) => s.length > 0),
-    paczkomatId: optional(process.env.E2E_PACZKOMAT_ID),
+    // Defaulted rather than left optional (#3365 audit). Unset, every spec that
+    // must buy a REAL label skipped - and because the ShipX sandbox enrolls no
+    // courier carrier, a locker is the only way to buy one at all. The single
+    // assertion that the marketplace relay fires without an operator click had
+    // therefore never executed on any run, while the project reported green.
+    // `BIK01M` is a real InPost-sandbox APM this suite has used successfully;
+    // a stack whose organization serves a different set overrides it.
+    paczkomatId: optional(process.env.E2E_PACZKOMAT_ID) ?? 'BIK01M',
     resumeDir: process.env.E2E_RESUME_DIR?.trim() || DEFAULTS.resumeDir,
     psWebserviceKey: optional(process.env.OL_PS_WEBSERVICE_KEY),
     psAdminUrl: optional(process.env.OL_PS_ADMIN_URL)
