@@ -127,8 +127,11 @@ export class ReturnCorrectionProposalService implements IReturnCorrectionProposa
       `Proposed a correction of invoice ${proposal.invoiceRecordId} for return ` +
         `${proposal.returnId}: ` +
         `${proposal.lines.filter((line) => line.status === 'matched').length} matched, ` +
-        `${proposal.lines.filter((line) => line.status === 'ambiguous').length} ambiguous, ` +
-        `${proposal.lines.filter((line) => line.status === 'no-match').length} excluded ` +
+        // `status: 'ambiguous'` is retired as a live matcher outcome (#3312) —
+        // the residual case now arrives as `no-match` / `ambiguous-invoice-line`
+        // and is counted here so the log line does not silently under-report it.
+        `${proposal.lines.filter((line) => line.noMatchReason === 'ambiguous-invoice-line').length} ambiguous, ` +
+        `${proposal.lines.filter((line) => line.status === 'no-match' && line.noMatchReason !== 'ambiguous-invoice-line').length} excluded ` +
         `(change ${changeId}). Nothing has been issued.`
     );
 
@@ -301,11 +304,24 @@ function toMatcherInput(line: ReturnLine, hasUnconfirmedDisposition: boolean): C
     sku: line.sku,
     quantityDisposed: disposedQuantityOf(line),
     hasUnconfirmedDisposition,
+    resolvedOrderLineId: line.resolvedOrderLineId,
   };
 }
 
 function isCorrectable(line: ReturnCorrectionProposalLine): boolean {
-  return line.status === 'matched' || line.status === 'ambiguous';
+  // `status === 'ambiguous'` is retired as a live matcher outcome (#3312) — the
+  // same underlying condition now arrives as `status: 'no-match',
+  // noMatchReason: 'ambiguous-invoice-line'`, and it must stay just as
+  // correctable as the old `'ambiguous'` status was: a proposal is still
+  // opened, the operator still resolves it by hand on the invoice's own
+  // correction flow. Only the UI shape changed (#3091 retired the
+  // candidate-picker), never whether the line counts toward "is there
+  // anything here for the operator to act on".
+  return (
+    line.status === 'matched' ||
+    line.status === 'ambiguous' ||
+    line.noMatchReason === 'ambiguous-invoice-line'
+  );
 }
 
 /**

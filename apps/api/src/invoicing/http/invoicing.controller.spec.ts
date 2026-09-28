@@ -688,9 +688,21 @@ describe('InvoicingController', () => {
             issueDate: '2026-06-23',
             // Rebuilt from the ORDER, so the line carries `productId` (see the
             // sibling assertion below, which reads the persisted issuedLineSnapshot
-            // instead and therefore does not). `objectContaining` does not recurse
-            // into this array - it is compared field for field.
-            lines: [{ name: 'Widget', productId: 'p_1', quantity: 1, unitPriceGross: 100, taxRate: '' }],
+            // instead and therefore does not) and `orderLineId` - #3312's stamp of
+            // the originating `OrderItem.id`, put on every line built from an order
+            // snapshot and never onto a synthesized one such as shipping.
+            // `objectContaining` does not recurse into this array - it is compared
+            // field for field.
+            lines: [
+              {
+                name: 'Widget',
+                productId: 'p_1',
+                quantity: 1,
+                unitPriceGross: 100,
+                taxRate: '',
+                orderLineId: 'li_1',
+              },
+            ],
           }),
         }),
       );

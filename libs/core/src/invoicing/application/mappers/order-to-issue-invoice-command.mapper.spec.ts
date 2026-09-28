@@ -383,12 +383,15 @@ describe('toIssueInvoiceCommand', () => {
     // the line to a real product instead of emitting free text - a free-text
     // line moves no stock, so no warehouse release can be issued for it
     // (#3445). It is carried, never invented: a line without one omits it.
+    // `orderLineId` (#3312) is the other half of the same idea one grain down -
+    // which ORDER line this document line was built from.
     expect(cmd.lines[0]).toEqual({
       name: 'Named',
       productId: 'prod-1',
       quantity: 2,
       unitPriceGross: 10,
       taxRate: '',
+      orderLineId: 'a',
     });
     expect(cmd.lines[1].name).toBe('SKU-9');
     expect(cmd.lines[2].name).toBe('PID-5');
@@ -624,10 +627,29 @@ describe('toIssueInvoiceCommand', () => {
       unitPriceGross: 10.49,
       taxRate: '',
     });
+    // Deliberately no `orderLineId` (#3312) - no single `OrderItem` backs a
+    // shipping line, so there is no id to carry. Crediting it is #3290's
+    // concern, not this mapper's.
+    expect(cmd.lines[1]).not.toHaveProperty('orderLineId');
     // Invoice gross (summed by InvoiceService.buildContent over cmd.lines) now
     // equals the order total.
     const gross = cmd.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceGross, 0);
     expect(gross).toBeCloseTo(order.totals.total, 2);
+  });
+
+  it('should carry item.id onto InvoiceLine.orderLineId, the exact join ReturnLine.resolvedOrderLineId points at (#3312)', () => {
+    // Totals stated rather than left at the helper's default, because
+    // `assertLinesSumToTotal` refuses a command whose lines contradict the
+    // order's own total - a guard this branch added after #3312 was written.
+    // The fixture's one line is 10, so the order is worth 10.
+    const order = makeOrder({
+      items: [makeItem({ id: 'order-item-42', name: 'Widget', price: 10, quantity: 1 })],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    expect(cmd.lines[0].orderLineId).toBe('order-item-42');
   });
 
   it('shipping: an empty line rate leaves the shipping rate empty rather than guessing (#2257)', () => {

@@ -241,12 +241,24 @@ export interface OfflineResubmitResult {
  * optional — an adapter uses the subset its provider's query surface supports.
  * Country/regulatory-agnostic: `sellerTaxId` is a scheme-tagged identifier value
  * the adapter interprets, never a named national id.
+ *
+ * `idempotencyKey` (#3389) is additive: `documentNumber` reliably survives a
+ * mid-submit crash only for a `DocumentNumberConsumer` provider (KSeF — core
+ * allocates the number BEFORE the request, so it is persisted before the crash
+ * can happen). A self-numbering provider (Subiekt — the authority assigns its
+ * own number only in the response) has no `documentNumber` to give for exactly
+ * the crash this capability exists to recover from, so its only reliable locate
+ * key is the OL-supplied idempotency key it stamped on the request. Optional so
+ * a caller/adapter written before this field existed is unaffected — `undefined`
+ * simply means "not available for this record" (a keyless issuance), never
+ * "excluded from the query" for an adapter that reads it.
  */
 export interface RegulatoryLocateCriteria {
   sellerTaxId?: string;
   documentNumber?: string;
   issuedFrom?: Date;
   issuedTo?: Date;
+  idempotencyKey?: string;
 }
 
 /**
@@ -428,6 +440,16 @@ export interface InvoiceLine {
    * `productId`, exactly as before.
    */
   variantId?: string;
+  /**
+   * The order line (`OrderItem.id`) this invoice line was built from (#3312).
+   * Present only for a line minted from an `OrderItem` (`toInvoiceLine`) -
+   * absent for a synthesized line such as shipping (`toShippingLines`), since
+   * no single order item backs a delivery cost. Optional and additive: a
+   * snapshot issued before this field existed simply carries it as `undefined`
+   * on every line, which every reader must treat as "not resolvable this way",
+   * never as a guess.
+   */
+  orderLineId?: string;
 }
 
 /**

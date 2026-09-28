@@ -43,6 +43,7 @@ import type {
   BridgeKorektaResponse,
   BridgeListBankAccountsResponse,
   BridgeListCashRegistersResponse,
+  BridgeLocateResponse,
   BridgeRegulatoryStatus,
   BridgeResponseEnvelope,
   BridgeSetDefaultBankAccountResponse,
@@ -85,6 +86,11 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
    */
   setDefaultBankAccount: (id: number): string => `/api/bank-accounts/${id}/default`,
   /**
+   * Crash-recovery lookup by original idempotency key (#3389). The bridge route
+   * is `GET /api/invoices/locate?key=...`.
+   */
+  locate: (key: string): string => `/api/invoices/locate?key=${encodeURIComponent(key)}`,
+  /**
    * Stanowisko Kasowe (cash register) discovery. The bridge route is
    * `GET /api/cash-registers` (#1324).
    */
@@ -95,13 +101,15 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
 /**
  * The `data` payload the bridge's `GET /api/invoices/{id}/status` returns (a
  * superset of what we project): the KSeF `regulatoryStatus` + `clearanceReference`
- * (#3352) plus a Polish document `status`. We read `regulatoryStatus` and
- * `clearanceReference`; the rest is ignored.
+ * (#3352), a Polish document `status`, and (#3390) the settled/paid flag. We read
+ * `regulatoryStatus`, `clearanceReference` and `paid`; `status` (the Polish
+ * document label) is ignored.
  */
 interface BridgeInvoiceStatusData {
   regulatoryStatus: BridgeRegulatoryStatus;
   clearanceReference?: string | null;
   status?: string;
+  paid?: boolean;
 }
 
 /** Options for the HTTP client. */
@@ -195,6 +203,9 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
       state: 'issued',
       regulatoryStatus: data.regulatoryStatus ?? 'none',
       clearanceReference: data.clearanceReference ?? null,
+      // #3390: dok_Rozliczony, absent only on a bridge build predating this
+      // field — default `false` rather than fabricate a paid state.
+      paid: data.paid ?? false,
     };
   }
 
@@ -213,6 +224,10 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
 
   async listCashRegisters(): Promise<BridgeListCashRegistersResponse> {
     return this.getJson<BridgeListCashRegistersResponse>(SUBIEKT_BRIDGE_ENDPOINTS.cashRegisters);
+  }
+
+  async locateByOriginalKey(key: string): Promise<BridgeLocateResponse> {
+    return this.getJson<BridgeLocateResponse>(SUBIEKT_BRIDGE_ENDPOINTS.locate(key));
   }
 
   /**

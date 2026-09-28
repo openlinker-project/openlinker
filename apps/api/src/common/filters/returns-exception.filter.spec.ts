@@ -24,6 +24,7 @@ import {
   ReturnRefundBlockedError,
   ReturnRefundContendedError,
   ReturnRefundObservationInvalidError,
+  ReturnRestockAlreadyBlockedError,
   ReturnRestockAttestationInvalidError,
 } from '@openlinker/core/returns';
 import { ReturnsExceptionFilter } from './returns-exception.filter';
@@ -169,6 +170,12 @@ describe('ReturnsExceptionFilter — the #2376 write-API refusals', () => {
       null,
     ],
     [
+      'ReturnRestockAlreadyBlockedError',
+      new ReturnRestockAlreadyBlockedError('line-1'),
+      409,
+      'restock-already-blocked',
+    ],
+    [
       'ReturnAuthorizeRefusedError',
       new ReturnAuthorizeRefusedError('ret-1', 'source-ingested'),
       409,
@@ -245,6 +252,7 @@ describe('ReturnsExceptionFilter — the #2376 write-API refusals', () => {
         'ReturnRefundBlockedError',
         'ReturnRefundContendedError',
         'ReturnRefundObservationInvalidError',
+        'ReturnRestockAlreadyBlockedError',
         'ReturnRestockAttestationInvalidError',
       ].sort()
     );

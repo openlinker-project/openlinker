@@ -45,6 +45,21 @@ describe('resolveReturnLineOrderLine', () => {
       expect(result).toEqual({ status: 'resolved', orderLineId: 'oi_1', matchedOn: 'sku' });
     });
 
+    it('should carry the winning order line\'s already-resolved catalogue identity through (#3450)', () => {
+      const result = resolveReturnLineOrderLine(line(), [
+        order({ id: 'oi_1', productId: 'ol_product_1', variantId: 'ol_variant_1' }),
+        order({ id: 'oi_2', sku: 'CBL-1' }),
+      ]);
+
+      expect(result).toEqual({
+        status: 'resolved',
+        orderLineId: 'oi_1',
+        matchedOn: 'sku',
+        productId: 'ol_product_1',
+        variantId: 'ol_variant_1',
+      });
+    });
+
     it('should resolve a same-sku tie on the reported unit price', () => {
       const result = resolveReturnLineOrderLine(line({ unitPrice: 179 }), [
         order({ id: 'oi_1', price: 189 }),

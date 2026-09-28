@@ -36,7 +36,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { RefundConfirmationForm, describeRefundReason } from '../../orders';
 import { RETURN_MONEY_COPY } from '../lib/return-money.copy';
 import { RETURN_RECEIVE_COPY } from '../lib/return-custody.copy';
-import { describeCustodyError } from '../lib/custody-error';
+import { describeRefundError } from '../lib/refund-error';
 import { useConfirmReturnRefundMutation } from '../hooks/use-return-custody-mutations';
 import type { ReturnDetail } from '../api/returns.types';
 
@@ -106,7 +106,7 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
                       );
                     },
                     onError: (mutationError) =>
-                      setError(describeCustodyError(mutationError)),
+                      setError(describeRefundError(mutationError)),
                   }
                 );
               }}

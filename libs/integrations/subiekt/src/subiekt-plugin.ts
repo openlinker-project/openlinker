@@ -111,6 +111,11 @@ export const subiektAdapterManifest: AdapterMetadata = {
   // bridge's queue. Revisit only once the bridge gets its own idempotency
   // and/or a queue-depth signal OL could back off on.
   defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 1 },
+  // #3391: two active Subiekt connections pointed at the identical bridge
+  // process would each get their own independent rate limiter against the
+  // SAME underlying single-threaded Sfera COM queue, defeating the
+  // maxConcurrent protection above per-connection rather than per-bridge.
+  uniqueConfigKeys: ['bridgeBaseUrl'],
 };
 
 /** Short brand label for domain-exception / dispatch error prefixes. */

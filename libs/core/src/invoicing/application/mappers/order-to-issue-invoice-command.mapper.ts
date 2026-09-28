@@ -352,6 +352,7 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     // destination whose catalogue item is the VARIANT rather than the product
     // cannot name the goods without it - see `InvoiceLine.variantId`.
     ...(item.variantId !== undefined && { variantId: item.variantId }),
+    orderLineId: item.id,
   };
 }
 
@@ -375,6 +376,10 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
  * an EMPTY rate is returned rather than nothing. Dropping the shipping would
  * understate the document total; the gate refuses the order before it reaches
  * a provider.
+ *
+ * Deliberately never sets {@link InvoiceLine.orderLineId} (#3312): no single
+ * `OrderItem` backs a shipping line, so there is no id to carry. Crediting a
+ * return against this line is #3290's, not this matcher's, concern.
  */
 function toShippingLines(
   shipping: number,
