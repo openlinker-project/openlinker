@@ -486,6 +486,108 @@ jobs:
         # containers anyway — the next run's pre-flight sweep picks up anything
         # this run itself failed to clean up.
 
+  backup-restore:
+    name: Backup / Restore (#3618)
+    # Deliberately UNGATED by `needs: changes`, matching `Type Check`'s own
+    # precedent above ("intentionally NOT gated, so it always reports") — the
+    # path filter above explicitly EXCLUDES `docker-compose.yml`, so a
+    # PR touching only the backup service or its scripts would otherwise never
+    # run this job at all, silently. A pilot-readiness gate that can be
+    # skipped by editing exactly the files it exists to verify is not a gate.
+    timeout-minutes: 20
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      # A throwaway Postgres this job fully owns, published to an
+      # OS-assigned host port (never a fixed one, so a concurrent run on this
+      # persistent self-hosted runner can't collide) — plain `docker run -p`
+      # port publishing, not the Testcontainers reaper callback the
+      # `Integration Tests` job's TESTCONTAINERS_RYUK_DISABLED comment
+      # describes as broken under this runner's Docker-in-Docker network; an
+      # ordinary published port works exactly as it does for any other
+      # `docker run -p` container here.
+      - name: Start a throwaway Postgres
+        run: |
+          docker rm -f ol-backup-restore-ci-pg >/dev/null 2>&1 || true
+          docker run -d --name ol-backup-restore-ci-pg \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=openlinker \
+            -p 127.0.0.1::5432 \
+            postgres:17-alpine
+          PG_HOST_PORT="$(docker inspect -f '{{ (index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort }}' ol-backup-restore-ci-pg)"
+          echo "PG_HOST_PORT=$PG_HOST_PORT" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            docker exec ol-backup-restore-ci-pg pg_isready -U postgres >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec ol-backup-restore-ci-pg pg_isready -U postgres
+      # Seeds a REAL database via the actual migration chain, which is also
+      # #2684's own from-empty proof: this Postgres container has never run
+      # `CREATE EXTENSION "uuid-ossp"` at all until BootstrappedDataSource
+      # does it as part of this very command.
+      - name: Seed a database via the real migration chain
+        working-directory: apps/api
+        env:
+          DB_HOST: localhost
+          DB_PORT: ${{ env.PG_HOST_PORT }}
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          DB_DATABASE: openlinker
+        run: pnpm run migration:run
+      - name: Insert a marker row (so the restore assertion below is not vacuous)
+        run: |
+          docker exec ol-backup-restore-ci-pg psql -U postgres -d openlinker -c \
+            "INSERT INTO connections (id, \"platformType\", name, status, config, \"credentialsRef\") VALUES (uuid_generate_v4(), 'ci-backup-restore-marker', 'backup-restore-ci-marker', 'disabled', '{}'::jsonb, '');"
+      # The SAME script the `backup` compose service runs nightly (#3618) —
+      # never a CI-only reimplementation, or this job would prove nothing
+      # about what actually runs in production.
+      - name: Produce a dump with the real backup script
+        run: |
+          docker cp scripts/backup ol-backup-restore-ci-pg:/scripts
+          docker exec \
+            -e PGHOST=localhost -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres -e PGDATABASE=openlinker \
+            -e OL_BACKUP_DIR=/tmp/ci-backups \
+            ol-backup-restore-ci-pg bash /scripts/pg-backup-once.sh
+      - name: Restore the dump into a genuinely empty database
+        run: |
+          DUMP_FILE="$(docker exec ol-backup-restore-ci-pg sh -c 'ls -1t /tmp/ci-backups/daily/*.dump | head -1')"
+          docker exec ol-backup-restore-ci-pg psql -U postgres -c 'CREATE DATABASE restore_check;'
+          docker exec \
+            -e PGHOST=localhost -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres \
+            ol-backup-restore-ci-pg bash /scripts/pg-restore.sh "$DUMP_FILE" restore_check
+      # Covers #2684's own acceptance criterion too: `migration:show` always
+      # exits 0 regardless of pending status (MigrationShowCommand discards
+      # DataSource#showMigrations()'s return value), so a dedicated script
+      # reads that return value directly — see
+      # apps/api/scripts/assert-no-pending-migrations.ts's own docblock.
+      - name: Assert 0 pending migrations against the restored database
+        working-directory: apps/api
+        env:
+          DB_HOST: localhost
+          DB_PORT: ${{ env.PG_HOST_PORT }}
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          DB_DATABASE: restore_check
+        run: pnpm run migration:assert-clean
+      - name: Assert the seeded marker row survived the restore
+        run: |
+          COUNT="$(docker exec ol-backup-restore-ci-pg psql -U postgres -d restore_check -tAc "SELECT count(*) FROM connections WHERE \"platformType\" = 'ci-backup-restore-marker';")"
+          if [ "$COUNT" != "1" ]; then
+            echo "expected 1 seeded marker row to survive the restore, found $COUNT" >&2
+            exit 1
+          fi
+          echo "restored database carries the seeded marker row."
+      - name: Clean up
+        if: always()
+        run: docker rm -f ol-backup-restore-ci-pg >/dev/null 2>&1 || true
+
   test-php:
     name: PHP Unit Tests
     timeout-minutes: 10
