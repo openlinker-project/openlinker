@@ -27,6 +27,12 @@ export class OrderNoteResponseDto {
   @ApiPropertyOptional({ nullable: true, description: '"edited" marker — null until first edit.' })
   editedAt!: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'null = not pinned. At most one note per order carries a value.',
+  })
+  pinnedAt!: string | null;
+
   @ApiProperty()
   createdAt!: string;
 

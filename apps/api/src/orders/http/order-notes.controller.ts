@@ -150,6 +150,47 @@ export class OrderNotesController {
     }
   }
 
+  @Roles('admin', 'operator')
+  @Post(':noteId/pin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Pin a note (author or admin). Unpins whichever note previously held the order's pin, if any.",
+  })
+  @ApiResponse({ status: 200, type: OrderNoteResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is neither the author nor an admin.' })
+  @ApiResponse({ status: 404, description: 'No such note.' })
+  async pin(
+    @Param('noteId') noteId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderNoteResponseDto> {
+    try {
+      const note = await this.service.pin(noteId, user.id, user.role === 'admin');
+      return this.toDto(note);
+    } catch (error) {
+      throw this.mapError(error, noteId);
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Delete(':noteId/pin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unpin a note (author or admin).' })
+  @ApiResponse({ status: 200, type: OrderNoteResponseDto })
+  @ApiResponse({ status: 403, description: 'Caller is neither the author nor an admin.' })
+  @ApiResponse({ status: 404, description: 'No such note.' })
+  async unpin(
+    @Param('noteId') noteId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderNoteResponseDto> {
+    try {
+      const note = await this.service.unpin(noteId, user.id, user.role === 'admin');
+      return this.toDto(note);
+    } catch (error) {
+      throw this.mapError(error, noteId);
+    }
+  }
+
   private mapError(error: unknown, noteId: string): Error {
     if (error instanceof OrderNoteNotFoundError) {
       return new NotFoundException(`Order note not found: ${noteId}`);
@@ -169,6 +210,7 @@ export class OrderNotesController {
       body: note.body,
       showToPacker: note.showToPacker,
       editedAt: note.editedAt?.toISOString() ?? null,
+      pinnedAt: note.pinnedAt?.toISOString() ?? null,
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
     };

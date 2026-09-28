@@ -30,6 +30,19 @@ export interface OrderNoteRepositoryPort {
   softDelete(id: string, deletedAt: Date): Promise<OrderNote>;
 
   /**
+   * Pin one note, unpinning whichever note previously held the order's pin
+   * (if any) in the SAME transaction — "at most one pinned note per order"
+   * is an invariant of the ROW SET, not of the note being pinned, so the
+   * previous holder must be cleared atomically with the new one being set or
+   * the partial unique index (`UQ_order_notes_pinned_per_order`) would
+   * refuse the write.
+   */
+  pin(id: string, internalOrderId: string, pinnedAt: Date): Promise<OrderNote>;
+
+  /** Unpin one note. A no-op (idempotent) if it was not pinned. */
+  unpin(id: string): Promise<OrderNote>;
+
+  /**
    * Every note flagged `showToPacker` for a PAGE of order ids — the pack
    * bench's own read. Absent from the map means no packer-visible note for
    * that order.

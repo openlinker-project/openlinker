@@ -35,6 +35,13 @@ export interface OrderNote {
   editedAt: Date | null;
   /** `null` unless the note was deleted (soft-delete). */
   deletedAt: Date | null;
+  /**
+   * `null` = not pinned. At most one non-deleted note per order carries a
+   * non-null value (mockup M3: one pinned note, full width under the order
+   * header) — the invariant lives on the partial unique index, and `pin`
+   * unpins the order's previous pinned note in the same transaction.
+   */
+  pinnedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

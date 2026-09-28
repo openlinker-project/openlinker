@@ -22,6 +22,7 @@ describe('OrderNoteService', () => {
     showToPacker: true,
     editedAt: null,
     deletedAt: null,
+    pinnedAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -33,6 +34,8 @@ describe('OrderNoteService', () => {
       create: jest.fn(),
       applyEdit: jest.fn(),
       softDelete: jest.fn(),
+      pin: jest.fn(),
+      unpin: jest.fn(),
       findPackerVisibleForOrders: jest.fn(),
       findTimelineForOrder: jest.fn(),
     };
@@ -115,6 +118,60 @@ describe('OrderNoteService', () => {
         OrderNoteNotAuthoredError,
       );
       expect(repository.softDelete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pin/unpin (author-or-admin, mirroring D33 delete)', () => {
+    it('should allow the author to pin their own note', async () => {
+      repository.findById.mockResolvedValue(authoredByAlice);
+      repository.pin.mockResolvedValue({ ...authoredByAlice, pinnedAt: now });
+
+      await service.pin('note-1', 'alice', false);
+
+      expect(repository.pin).toHaveBeenCalledWith('note-1', 'ol_order_1', expect.any(Date));
+    });
+
+    it('should allow an admin to pin a note they did not author', async () => {
+      repository.findById.mockResolvedValue(authoredByAlice);
+      repository.pin.mockResolvedValue({ ...authoredByAlice, pinnedAt: now });
+
+      await service.pin('note-1', 'bob-the-admin', true);
+
+      expect(repository.pin).toHaveBeenCalled();
+    });
+
+    it('should refuse a non-author, non-admin pin', async () => {
+      repository.findById.mockResolvedValue(authoredByAlice);
+
+      await expect(service.pin('note-1', 'mallory', false)).rejects.toThrow(
+        OrderNoteNotAuthoredError,
+      );
+      expect(repository.pin).not.toHaveBeenCalled();
+    });
+
+    it('should refuse to pin a soft-deleted note', async () => {
+      repository.findById.mockResolvedValue({ ...authoredByAlice, deletedAt: now, body: '' });
+
+      await expect(service.pin('note-1', 'alice', false)).rejects.toThrow(OrderNoteNotFoundError);
+      expect(repository.pin).not.toHaveBeenCalled();
+    });
+
+    it('should allow the author to unpin their own note', async () => {
+      repository.findById.mockResolvedValue({ ...authoredByAlice, pinnedAt: now });
+      repository.unpin.mockResolvedValue(authoredByAlice);
+
+      await service.unpin('note-1', 'alice', false);
+
+      expect(repository.unpin).toHaveBeenCalledWith('note-1');
+    });
+
+    it('should refuse a non-author, non-admin unpin', async () => {
+      repository.findById.mockResolvedValue({ ...authoredByAlice, pinnedAt: now });
+
+      await expect(service.unpin('note-1', 'mallory', false)).rejects.toThrow(
+        OrderNoteNotAuthoredError,
+      );
+      expect(repository.unpin).not.toHaveBeenCalled();
     });
   });
 

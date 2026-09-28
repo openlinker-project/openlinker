@@ -53,3 +53,32 @@ export function useDeleteOrderNoteMutation(
     },
   });
 }
+
+/** Pin a note (author or admin) — unpins the order's previous pin server-side. */
+export function usePinOrderNoteMutation(
+  internalOrderId: string,
+): UseMutationResult<OrderNote, Error, string> {
+  const apiClient = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (noteId) => apiClient.orders.pinNote(internalOrderId, noteId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ordersQueryKeys.notes(internalOrderId) });
+    },
+  });
+}
+
+export function useUnpinOrderNoteMutation(
+  internalOrderId: string,
+): UseMutationResult<OrderNote, Error, string> {
+  const apiClient = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (noteId) => apiClient.orders.unpinNote(internalOrderId, noteId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ordersQueryKeys.notes(internalOrderId) });
+    },
+  });
+}

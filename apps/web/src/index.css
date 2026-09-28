@@ -312,6 +312,24 @@
   --status-disabled-fg: oklch(38% 0.010 80);
   --status-disabled-strong: oklch(38% 0.010 80);
 
+  /* ── Tags (#3533) ─────────────────────────────────────────────────────
+   * A closed vocabulary of eight dot colours for the order-tag picker
+   * (`OrderTagPicker`) and the Settings tag manager. NOT status hues — a
+   * tag colour paints a small dot on a neutral pill (the `.channel-pill`
+   * precedent) and a tag always carries its name; colour is never the
+   * only signal. `[data-tag-color]` resolves one of these onto `--tag-c`,
+   * which `.order-tag__dot` reads. Single closed set, no per-tag custom
+   * hex — this is what "the design system's token set" means in #3532's
+   * AC. */
+  --tag-grey: oklch(62% 0.01 270);
+  --tag-blue: oklch(58% 0.15 255);
+  --tag-teal: oklch(60% 0.10 195);
+  --tag-green: oklch(60% 0.14 150);
+  --tag-amber: oklch(74% 0.15 80);
+  --tag-orange: oklch(66% 0.16 50);
+  --tag-pink: oklch(64% 0.17 350);
+  --tag-violet: oklch(58% 0.17 300);
+
   /* ── Elevation ────────────────────────────────────────────────────── */
   --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
   --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
@@ -490,6 +508,16 @@ html[data-theme='dark'] {
   --status-disabled-border: oklch(34% 0.012 270);
   --status-disabled-fg: oklch(82% 0.010 270);
   --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Tags (#3533) — lighter/brighter variants for dark surfaces. */
+  --tag-grey: oklch(70% 0.01 270);
+  --tag-blue: oklch(70% 0.14 255);
+  --tag-teal: oklch(72% 0.10 195);
+  --tag-green: oklch(72% 0.14 150);
+  --tag-amber: oklch(80% 0.14 80);
+  --tag-orange: oklch(74% 0.15 50);
+  --tag-pink: oklch(74% 0.15 350);
+  --tag-violet: oklch(72% 0.15 300);
 
   /* Elevation */
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
@@ -11438,6 +11466,142 @@ a.kpi-card:focus-visible {
    the grey fallback dot on every surface using the pill (#2028). */
 .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
 .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
+
+/* ── Patterns: order tag pill (#3532/#3533) ───────────────────────
+ * The `.channel-pill` shape, applied to an operator-defined workspace tag: a
+ * neutral pill (never a coloured background — colour is never the only
+ * signal for a tag, which always shows its name) with a coloured dot from
+ * the closed `--tag-*` set via `[data-tag-color]`. */
+.order-tag {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.order-tag__dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--tag-c, var(--tag-grey));
+}
+.order-tag__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-tag--sm { height: 18px; padding: 0 6px; gap: 4px; font-size: 0.6875rem; }
+.order-tag--sm .order-tag__dot { width: 6px; height: 6px; }
+.order-tag__remove {
+  appearance: none; border: 0; background: none; padding: 0 0 0 2px; margin-right: -3px;
+  color: var(--text-muted); cursor: pointer; font-size: 0.875rem; line-height: 1;
+}
+.order-tag__remove:hover { color: var(--text-primary); }
+.order-tag__remove:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+.order-tag__remove:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.order-header__tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.8125rem; }
+.order-header__tags-label { color: var(--text-muted); }
+
+.tag-picker { display: grid; gap: var(--space-1); width: min(300px, 86vw); padding: var(--space-2); }
+.tag-picker__search { width: 100%; }
+.tag-picker__list { display: grid; gap: 1px; max-height: 240px; overflow-y: auto; }
+.tag-picker__item { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer; }
+.tag-picker__item:hover { background: var(--bg-surface-hover); }
+.tag-picker__item input { margin: 0; }
+.tag-picker__item .order-tag { margin-right: auto; }
+.tag-picker__hint { font-size: 0.6875rem; color: var(--text-muted); font-family: var(--font-mono); }
+.tag-picker__foot { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2) 0; border-top: 1px solid var(--border-subtle); font-size: 0.75rem; }
+.tag-picker__empty { padding: var(--space-2); color: var(--text-muted); font-size: 0.8125rem; }
+
+.bulk-menu__hint { font-size: 0.6875rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+.tag-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); border: 0; margin: 0; padding: 0; min-width: 0; }
+.tag-swatch {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 var(--space-2);
+  border: 1px solid var(--border-default); border-radius: var(--radius-pill);
+  font-size: 0.75rem; color: var(--text-secondary); cursor: pointer;
+}
+.tag-swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.tag-swatch:has(input:checked) { border-color: var(--text-primary); color: var(--text-primary); background: var(--bg-surface-muted); }
+.tag-swatch:has(input:focus-visible) { box-shadow: var(--shadow-focus); }
+
+.bulk-menu { display: grid; gap: 1px; width: min(300px, 86vw); }
+.bulk-menu .dropdown-menu__item { display: flex; align-items: center; gap: var(--space-2); justify-content: flex-start; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer; }
+.bulk-menu .dropdown-menu__item:hover { background: var(--bg-surface-hover); }
+.bulk-menu .order-tag { margin-right: auto; }
+
+[data-tag-color='grey']   { --tag-c: var(--tag-grey); }
+[data-tag-color='blue']   { --tag-c: var(--tag-blue); }
+[data-tag-color='teal']   { --tag-c: var(--tag-teal); }
+[data-tag-color='green']  { --tag-c: var(--tag-green); }
+[data-tag-color='amber']  { --tag-c: var(--tag-amber); }
+[data-tag-color='orange'] { --tag-c: var(--tag-orange); }
+[data-tag-color='pink']   { --tag-c: var(--tag-pink); }
+[data-tag-color='violet'] { --tag-c: var(--tag-violet); }
+
+/* ── Patterns: order tags line on a list row (#3533) ──────────────
+ * Third line of the shared identity row's "Order" cell (mockup M3): tags
+ * beneath the item preview line, wrapping, max 2 + "+N" (rendered by the
+ * consumer, not this rule). */
+.orders-tags-line { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+
+/* ── Patterns: order notes (#3531/#3533, mockup M3) ────────────────
+ * `.order-note-row` is one note in the thread; `.order-note-pinned` is the
+ * full-width slot under the order header for the order's single pinned
+ * note (`PinnedOrderNoteBanner`). */
+.order-note-pinned {
+  display: grid; gap: var(--space-1);
+  margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle); border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-lg); background: var(--bg-surface);
+}
+.order-note-pinned__label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
+}
+
+.order-notes-panel__list { list-style: none; margin: 0; padding: 0; display: grid; }
+.order-note-row {
+  display: grid; gap: var(--space-1);
+  padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle);
+}
+.order-note-row:first-child { border-top: 0; padding-top: 0; }
+.order-note-row__meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  font-size: 0.75rem; color: var(--text-muted);
+}
+.order-note-row__edited { font-style: italic; }
+.order-note-row__flag {
+  padding: 1px var(--space-1); border-radius: var(--radius-xs);
+  background: var(--bg-surface-muted); font-size: 0.6875rem;
+}
+.order-note-row__body,
+.order-note__body {
+  margin: 0; max-width: 72ch; font-size: 0.875rem; line-height: 1.5;
+  color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.order-note-row__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-left: auto; }
+.order-note-row__edit { display: grid; gap: var(--space-2); }
+.order-note-row__packer-toggle {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem;
+}
+
+.order-notes-panel__form {
+  display: grid; gap: var(--space-2); margin-top: var(--space-3);
+  padding: var(--space-3); border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg); background: var(--bg-surface);
+}
+.order-notes-panel__form textarea { resize: vertical; min-height: 4.5rem; }
+.order-notes-panel__form-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
+}
+.order-notes-panel__pii-warning { margin: 0; font-size: 0.75rem; }
 
 /* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
 .entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
