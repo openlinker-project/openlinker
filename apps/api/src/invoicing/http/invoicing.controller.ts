@@ -1541,6 +1541,8 @@ export class InvoicingController {
       status: record.status,
       providerInvoiceId: record.providerInvoiceId,
       providerInvoiceNumber: record.providerInvoiceNumber,
+      warehouseReleaseOutcome: record.warehouseReleaseOutcome,
+      warehouseReleaseNumber: record.warehouseReleaseNumber,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
       // W1 failure semantics (errorMessage stays omitted — PII).

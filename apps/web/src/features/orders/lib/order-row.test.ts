@@ -9,6 +9,7 @@ import {
   invoicingBlockedBadge,
   unlinkedCatalogueLineCount,
   unlinkedCatalogueLinesBadge,
+  warehouseReleaseBadge,
 } from './order-row';
 import { SalesDocumentGateBlockReasonValues } from '../api/orders.types';
 import type { SalesDocumentGateBlockReasonValue } from '../api/orders.types';
@@ -223,5 +224,50 @@ describe('unlinkedCatalogueLines (Subiekt free-text lines)', () => {
     // The whole point: an issued document is the ordinary case here, so
     // anything keyed on "a document exists" would suppress it every time.
     expect(unlinkedCatalogueLinesBadge(invoice(2))).not.toBeNull();
+  });
+});
+
+describe('warehouseRelease (the WZ half of "invoice and warehouse release")', () => {
+  const invoice = (
+    warehouseReleaseOutcome?: 'released' | 'not-released' | 'not-applicable' | null,
+    warehouseReleaseNumber?: string | null,
+  ): ParsedOrderInvoice => ({
+    invoiceId: 'inv-1',
+    status: 'issued',
+    regulatoryStatus: 'not-applicable',
+    blocksIssuanceElsewhere: true,
+    ...(warehouseReleaseOutcome === undefined ? {} : { warehouseReleaseOutcome }),
+    ...(warehouseReleaseNumber === undefined ? {} : { warehouseReleaseNumber }),
+  });
+
+  it('badges ONLY the state that is a claim', () => {
+    expect(warehouseReleaseBadge(invoice('not-released'))).not.toBeNull();
+    expect(warehouseReleaseBadge(invoice('released', 'WZ 12/2026'))).toBeNull();
+    expect(warehouseReleaseBadge(invoice('not-applicable'))).toBeNull();
+  });
+
+  it('says nothing for a provider that has no warehouse', () => {
+    // inFakt / KSeF / eparagony leave the column null forever. A badge there
+    // would accuse every one of their documents of a release they never owed.
+    expect(warehouseReleaseBadge(invoice(null))).toBeNull();
+    expect(warehouseReleaseBadge(invoice(undefined))).toBeNull();
+    expect(warehouseReleaseBadge(undefined)).toBeNull();
+  });
+
+  it('reads the OUTCOME, never the number - the number is absent on three of four', () => {
+    // A `not-released` document carries no number, and so does a
+    // `not-applicable` one and one from a provider nobody asked. Deciding on
+    // the number would badge all three identically, which is the failure this
+    // rule exists to avoid.
+    expect(warehouseReleaseBadge(invoice('not-applicable', null))).toBeNull();
+    expect(warehouseReleaseBadge(invoice('not-released', null))).not.toBeNull();
+  });
+
+  it('states the consequence and the remedy, not the mechanism', () => {
+    const hint = warehouseReleaseBadge(invoice('not-released'))?.hint ?? '';
+    expect(hint).toContain('still on the books as in stock');
+    expect(hint).toContain('release it there');
+    // 'WZ' is Subiekt's own vocabulary; the badge serves every provider.
+    expect(hint).not.toContain('WZ');
   });
 });

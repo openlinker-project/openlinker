@@ -178,6 +178,23 @@ const orderInvoiceSchema = z.object({
    *  truthiness test, which reports false for `0` and for `null` alike while
    *  meaning two different things. */
   unlinkedCatalogueLines: z.number().int().nullish(),
+  /** Whether the goods this document billed for left the warehouse in the
+   *  provider's own books. FOUR states and only one of them is a claim:
+   *  `'not-released'` means a release was expected and none was made - the
+   *  badge. `'released'` is the ordinary success (its number is below),
+   *  `'not-applicable'` means there was nothing to release, and absent /
+   *  `null` means this provider has no warehouse and never reports (inFakt,
+   *  KSeF and eparagony never will). Read the OUTCOME, never the number's
+   *  nullability: the number is legitimately absent on three of the four, so a
+   *  test on it reports "nothing released" for a service-only document and for
+   *  a provider that was never asked. */
+  warehouseReleaseOutcome: z
+    .enum(['released', 'not-released', 'not-applicable'])
+    .nullish()
+    .catch(null),
+  /** The release document number the provider created or detected (Subiekt:
+   *  the WZ). Present only when the outcome is `'released'`. */
+  warehouseReleaseNumber: z.string().nullish(),
 });
 export type ParsedOrderInvoice = z.infer<typeof orderInvoiceSchema>;
 

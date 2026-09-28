@@ -1181,6 +1181,8 @@ export class OrdersController {
       confirmationDocumentAvailable,
       blocksIssuanceElsewhere: record.blocksIssuanceElsewhere,
       unlinkedCatalogueLines: record.unlinkedCatalogueLines,
+      warehouseReleaseOutcome: record.warehouseReleaseOutcome,
+      warehouseReleaseNumber: record.warehouseReleaseNumber,
     };
   }
 

@@ -251,6 +251,39 @@ export function unlinkedCatalogueLineCount(invoice?: ParsedOrderInvoice | null):
  *
  * Returns `null` when nothing is unlinked, so the caller is a plain render.
  */
+/**
+ * The warehouse-release badge: "this document billed for goods that never left
+ * the warehouse".
+ *
+ * ONE of the four states is a claim, and the other three are not, which is the
+ * whole reason this reads the OUTCOME rather than the number. `'released'` is
+ * the ordinary success; `'not-applicable'` says there was nothing to release,
+ * which is correct for a service-only document; and absent means the provider
+ * has no warehouse and was never asked (inFakt, KSeF and eparagony never
+ * report). Only `'not-released'` says a release was expected and none happened.
+ *
+ * Testing `warehouseReleaseNumber` instead would badge all three of those, and
+ * would badge them identically - a document nobody asked about would read the
+ * same as one that was asked and came back short. That is the same failure
+ * `unlinkedCatalogueLineCount` above exists to avoid, one field over.
+ *
+ * Its own resolver, NOT routed through `invoiceSupersedesBlock`, for the reason
+ * the unlinked-lines badge records: an issued document is the ordinary case
+ * here, so suppressing on "a document exists" would hide the badge on every
+ * order it is about.
+ *
+ * Returns `null` when there is nothing to say, so the caller is a plain render.
+ */
+export function warehouseReleaseBadge(
+  invoice?: ParsedOrderInvoice | null,
+): { label: string; hint: string } | null {
+  if (invoice?.warehouseReleaseOutcome !== 'not-released') return null;
+  return {
+    label: 'not released from warehouse',
+    hint: 'The document was issued, but the accounting system made no warehouse release for it, so the goods are still on the books as in stock. Check the document in the accounting system and release it there.',
+  };
+}
+
 export function unlinkedCatalogueLinesBadge(
   invoice?: ParsedOrderInvoice | null,
 ): { label: string; hint: string } | null {
