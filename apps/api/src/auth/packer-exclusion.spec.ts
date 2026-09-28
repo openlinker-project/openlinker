@@ -67,6 +67,10 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   // signed-in name, visible without opening a menu. Excluding it breaks A4.
   'AuthController.getMe',
   'AuthController.updateAnalyticsConsent',
+  // Replacing the one-time password an admin issued (#3456). The account that
+  // flow creates is typically a packer's, and the session is gated on the
+  // change until it happens, so excluding the role would lock that user out.
+  'AuthController.changePassword',
 
   // Item identity — what a packer scans against.
   'ProductsController.listProducts',
