@@ -36,6 +36,8 @@ import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { Chip, type ChipTone } from '../../shared/ui/chip';
 import { Select } from '../../shared/ui/select';
+import { Input } from '../../shared/ui/input';
+import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
@@ -77,6 +79,7 @@ import { OrderIdentityCell } from '../../features/orders';
 import { SalesDocumentCell } from '../../features/orders/components/sales-document-cell';
 import { TaxRateConflictBadge } from '../../features/orders/components/tax-rate-conflict-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
+import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
@@ -109,6 +112,8 @@ import { usePlatforms } from '../../shared/plugins';
 import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
 
 const PAGE_SIZE = 20;
+/** #3529 — same debounce window as `/customers` and `/products`. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * Status segments — partition the order set (#929). The "All" card carries the
@@ -288,6 +293,11 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   taxRateConflict: 'taxRate',
   holdReason: 'hold',
   attention: 'attention',
+  packed: 'packed',
+  search: 'search',
+  openReturn: 'openReturn',
+  tag: 'tag',
+  untagged: 'untagged',
 };
 
 /**
@@ -427,7 +437,32 @@ export function OrdersListPage(): ReactElement {
   // the set, this means OpenLinker stopped deciding, and an order is routinely
   // both.
   const omsAttention = searchParams.get('attention') === 'true';
+  // #2997 — present-only, like its neighbours: the URL never carries
+  // `packed=false` (there is no UI control for "hide packed orders" on this
+  // page), only `packed=true`.
+  const packedOnly = searchParams.get('packed') === 'true';
+  // #2998 — same present-only shape.
+  const openReturnOnly = searchParams.get('openReturn') === 'true';
+  // #3532 — the tag axis. No picker UI ships in this pass (#3533); the URL
+  // param and the filter wiring are ready for it.
+  const tag = searchParams.get('tag') || undefined;
+  const untagged = searchParams.get('untagged') === 'true';
   const offset = Number(searchParams.get('offset') ?? '0');
+
+  // #3527/#3528/#3529 — free-text search, debounced client-side (300 ms, the
+  // `/customers` and `/products` precedent) before it lands in the URL and the
+  // query. `searchInput` is the CONTROLLED input value (updates every
+  // keystroke); `debouncedSearch` is what actually drives the request.
+  const urlSearch = searchParams.get('search') ?? '';
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
+  // Keeps the controlled input in sync when the URL changes from somewhere
+  // OTHER than this input's own `onChange` — `clearAllFilters`, browser
+  // back/forward, or a bookmarked link. `handleSearchChange` already sets
+  // both in the same tick, so this is a no-op on every keystroke it causes.
+  useEffect(() => {
+    setSearchInput(urlSearch);
+  }, [urlSearch]);
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
   // render) so the query key doesn't churn. `now + 24h` catches overdue too.
@@ -459,6 +494,16 @@ export function OrdersListPage(): ReactElement {
     holdReason,
     // Present-only (#2353): `true` when the chip is on, `undefined` otherwise.
     attention: omsAttention ? true : undefined,
+    // #2997 — present-only, no UI control for the inverse.
+    packed: packedOnly ? true : undefined,
+    // #3527/#3528 — the debounced value, never `searchInput` directly: the
+    // request must not re-fire on every keystroke.
+    search: debouncedSearch || undefined,
+    // #2998 — present-only, no UI control for the inverse.
+    openReturn: openReturnOnly ? true : undefined,
+    // #3532 — mutually exclusive by convention; no picker UI ships yet (#3533).
+    tag,
+    untagged: untagged ? true : undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -935,6 +980,9 @@ export function OrdersListPage(): ReactElement {
                   sync failure behind a stock one. Shared verbatim with the
                   mobile card. */}
               <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
+              {/* #2998 — the same STATUS group, beside health. Neutral tone: a
+                  return is routine, not a failure. */}
+              <OrderOpenReturnBadge openReturn={order.openReturn} />
               {/* #2342 — the STATUS group: an exception is a badge and belongs
                   beside the failure reasons (style guide § Order-row signal
                   placement rule 2), never in Shipment or Money. */}
@@ -1285,6 +1333,59 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /** #2997 — present-only, same shape as `toggleOmsAttention`. */
+  function togglePacked(): void {
+    captureDemoEvent('demo_orders_filtered', { filter: 'packed', value: String(!packedOnly) });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (packedOnly) {
+        p.delete('packed');
+      } else {
+        p.set('packed', 'true');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /** #2998 — present-only, same shape as `toggleOmsAttention`. */
+  function toggleOpenReturn(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'open_return',
+      value: String(!openReturnOnly),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (openReturnOnly) {
+        p.delete('openReturn');
+      } else {
+        p.set('openReturn', 'true');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /**
+   * #3527/#3528/#3529 — updates the URL on EVERY keystroke (so the search box
+   * is bookmarkable/shareable immediately), while the query itself only fires
+   * once `debouncedSearch` catches up. Mirrors `/customers`'
+   * `handleFilterChange('search', …)`.
+   */
+  function handleSearchChange(value: string): void {
+    setSearchInput(value);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (value) {
+        p.set('search', value);
+      } else {
+        p.delete('search');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
   /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
   function toggleInvoicingBlocked(): void {
     captureDemoEvent('demo_orders_filtered', {
@@ -1430,6 +1531,19 @@ export function OrdersListPage(): ReactElement {
           column headers (#944). */}
       <div className="toolbar orders-toolbar">
         <div className="toolbar__group">
+          {/*
+            #3529 — order number, buyer, email, SKU or tracking number.
+            Debounced (300 ms); ANDed with every other filter on this toolbar.
+            No PII placeholder promise when the install does not store it —
+            the placeholder stays generic on purpose, since this page cannot
+            see `OL_STORE_PII` and a wrong promise is worse than a vague one.
+          */}
+          <Input
+            aria-label="Search orders"
+            placeholder="Search order #, buyer, SKU, tracking…"
+            value={searchInput}
+            onChange={(e) => { handleSearchChange(e.target.value); }}
+          />
           <Select
             aria-label="Filter by source"
             value={sourceConnectionId ?? ''}
@@ -1594,6 +1708,18 @@ export function OrdersListPage(): ReactElement {
             {summary?.omsAttention === undefined ? '' : ` ${summary.omsAttention}`}
           </Chip>
         ) : null}
+        {/* #2997 — "is it packed" as an operator-facing scan axis. No count is
+            fetched for this chip in this pass; it is a plain toggle, like
+            `rateConflict` before its own count landed. */}
+        <Chip active={packedOnly} onClick={togglePacked}>
+          Packed
+        </Chip>
+        {/* #2998 — "has an open return". Neutral tone: a return is routine, not
+            an alarm — the badge on the row it filters to carries the same
+            neutral reading. */}
+        <Chip active={openReturnOnly} onClick={toggleOpenReturn}>
+          Open return
+        </Chip>
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts.
             The BADGES stay conditional (a zero-count badge is a dead signal),
             but the LINK below is not: see its comment. */}
@@ -1754,6 +1880,24 @@ export function OrdersListPage(): ReactElement {
             action={
               <Button onClick={() => { clearAllFilters(setSearchParams); }}>
                 View all orders
+              </Button>
+            }
+          />
+        ) : debouncedSearch ? (
+          /*
+            #3529 (mockup M4 `noresults`) — its own arm, ahead of the generic
+            `hasActiveFilters` one below: "no orders match the current
+            filters" is technically true but does not quote the query back,
+            which the mockup's no-results state does. "Clear search" clears
+            ONLY the search param — other filters stay, unlike every other
+            arm's "clear filters" action.
+          */
+          <EmptyState
+            title={`No orders match "${debouncedSearch}"`}
+            message="Try a different order number, buyer name, email, SKU or tracking number."
+            action={
+              <Button onClick={() => { handleSearchChange(''); }}>
+                Clear search
               </Button>
             }
           />
@@ -1972,6 +2116,17 @@ export function OrdersListPage(): ReactElement {
                               claim — see `stock-at-risk-copy.ts`. */}
                           <StockAtRiskBadge
                             shortfalls={order.reservationShortfalls}
+                            layout="row"
+                            emptyFallback="—"
+                          />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Return</dt>
+                        <dd>
+                          {/* SAME component as the desktop status cell (#2998). */}
+                          <OrderOpenReturnBadge
+                            openReturn={order.openReturn}
                             layout="row"
                             emptyFallback="—"
                           />

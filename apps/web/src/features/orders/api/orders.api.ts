@@ -122,6 +122,22 @@ function buildQuery(
   if (filters?.attention !== undefined) {
     params.set('attention', String(filters.attention));
   }
+  // #2997 — boolean, same `!== undefined` guard: `false` ("exclude packed
+  // orders") is a real predicate.
+  if (filters?.packed !== undefined) {
+    params.set('packed', String(filters.packed));
+  }
+  // #3527/#3528 — free text, debounced client-side before landing here.
+  if (filters?.search) params.set('search', filters.search);
+  // #2998 — boolean, same `!== undefined` guard as its neighbours.
+  if (filters?.openReturn !== undefined) {
+    params.set('openReturn', String(filters.openReturn));
+  }
+  // #3532 — `tag` and `untagged` are mutually exclusive by convention.
+  if (filters?.tag) params.set('tag', filters.tag);
+  if (filters?.untagged !== undefined) {
+    params.set('untagged', String(filters.untagged));
+  }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   if (options?.withTotal === false) params.set('withTotal', 'false');
