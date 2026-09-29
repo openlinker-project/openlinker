@@ -1,0 +1,79 @@
+// BridgeKeys.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/BridgeKeys.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// afterwards so a reviewer can read what is actually running without leaving
+// the PR.
+//
+using System.Globalization;
+
+/// <summary>
+/// The bridge's pure decision functions, in one file with NO COM and NO SQL.
+///
+/// They live here so they can be unit-tested (PR #7 second review, finding 4).
+/// Every one of them has already produced a defect in review - a truncated key
+/// that deduplicated two different operations onto one, a cursor that walked
+/// past a whole day of orders, an address comparison that matched any buyer
+/// against a blank record - and each is a few lines of string handling that
+/// needs no Subiekt to exercise. The callers keep their names and delegate
+/// here, so no call site moved and there is exactly one implementation of each.
+/// </summary>
+public static class BridgeKeys
+{
+    /// <summary>Cut to what `dok_NrPelnyOryg` holds. TRUNCATES; see the callers'
+    /// docblocks for when that is safe and why it has not moved to the hash.</summary>
+    public static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+
+    /// <summary>Reduce a long, structured key to something the column can hold
+    /// WITHOUT discarding the part that varies. A hash, because these keys lead
+    /// with a fixed prefix and end with the id that tells them apart.</summary>
+    public static string ReduceIdempotencyKey(string key)
+    {
+        if (key.Length <= 30) return key;
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(hash).Substring(0, 30);
+    }
+
+    /// <summary>Parse a feed cursor. A bare date is accepted DELIBERATELY: that
+    /// is the format cursors stored before the pair existed carry, and refusing
+    /// them would restart every connection's feed from the beginning.</summary>
+    public static bool TryParseCursor(string cursor, out DateTime watermark, out int lastId)
+    {
+        watermark = default;
+        lastId = 0;
+        var bar = cursor.LastIndexOf('|');
+        if (bar < 0)
+            return DateTime.TryParse(cursor, CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark);
+
+        return DateTime.TryParse(cursor[..bar], CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark)
+            && int.TryParse(cursor[(bar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out lastId);
+    }
+
+    /// <summary>Render the pair. Round-trips through TryParseCursor.</summary>
+    public static string FormatCursor(DateTime watermark, int lastId) =>
+        watermark.ToString("o", CultureInfo.InvariantCulture) + "|" + lastId.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The address truth table: at least one field CONFIRMED equal on
+    /// both sides, and no field CONTRADICTED. A false negative mints a duplicate
+    /// kontrahent; a false positive bills one person's document to another.</summary>
+    public static bool AddressesMatch(string wantKod, string wantMiasto, string storedKod, string storedMiasto)
+    {
+        var confirmed = false;
+        if (wantKod != "" && storedKod != "")
+        {
+            if (!string.Equals(wantKod, storedKod, StringComparison.OrdinalIgnoreCase)) return false;
+            confirmed = true;
+        }
+        if (wantMiasto != "" && storedMiasto != "")
+        {
+            if (!string.Equals(wantMiasto, storedMiasto, StringComparison.OrdinalIgnoreCase)) return false;
+            confirmed = true;
+        }
+        return confirmed;
+    }
+}

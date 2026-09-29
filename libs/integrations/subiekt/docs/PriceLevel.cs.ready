@@ -1,0 +1,69 @@
+// PriceLevel.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/PriceLevel.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// afterwards so a reviewer can read what is actually running without leaving
+// the PR.
+//
+// PriceLevel - which of Subiekt's sale price levels this bridge reads and
+// writes (#3365).
+//
+// Subiekt GT carries up to ten operator-NAMED sale price levels per towar, and
+// shops routinely keep the e-commerce price on a dedicated one ("Internet",
+// "Allegro", ...) while level 1 stays the shop-floor or wholesale price. Every
+// query here was hardcoded to `tc_CenaNetto1`/`tc_CenaBrutto1` and the writer to
+// the Sfera level whose `Id == 0`, so on such an install OpenLinker published
+// the WRONG price to the marketplace and said nothing about it.
+//
+// Two numbering systems meet here and getting them confused is the whole
+// hazard, so it is stated once:
+//
+//   * the OPERATOR and SQL count from 1 - "Poziom 1" is tc_CenaBrutto1;
+//   * the Sfera object model counts from 0 - Ceny.Element(i).Id == 0 is that
+//     same first level (confirmed live: writing Element with Id 0 moved
+//     tc_CenaBrutto1 and triggered Subiekt's own recalculation of the others).
+//
+// So `PriceLevel.Configured` is the operator's 1-based number and
+// `SferaLevelId` is that minus one. Anything that reports a level to an
+// operator uses the first; anything that talks to Sfera uses the second.
+//
+// REPORTED EQUALS ENFORCED, structurally: both the read columns and the write
+// target come from this one place, so they cannot drift into reading one level
+// and writing another - which would be a price that means a different thing
+// depending on which column you look at.
+public static class PriceLevel
+{
+    /// <summary>Subiekt GT's own ceiling. Values outside 1..10 are refused at
+    /// config-read time rather than interpolated into SQL.</summary>
+    public const int Max = 10;
+
+    /// <summary>The operator's 1-based level. Default 1 keeps every existing
+    /// install byte-identical.</summary>
+    public static int Configured => BridgeConfig.PriceLevel;
+
+    /// <summary>The Sfera object-model id for the configured level.</summary>
+    public static int SferaLevelId => Configured - 1;
+
+    /// <summary>`tc_CenaNetto{n}` for the configured level.</summary>
+    public static string NettoColumn => $"tc_CenaNetto{Configured}";
+
+    /// <summary>`tc_CenaBrutto{n}` for the configured level.</summary>
+    public static string BruttoColumn => $"tc_CenaBrutto{Configured}";
+
+    /// <summary>`tc_IdWaluta{n}` for the configured level.</summary>
+    public static string CurrencyColumn => $"tc_IdWaluta{Configured}";
+
+    /// <summary>
+    /// Both price columns as a SELECT fragment.
+    ///
+    /// Interpolated into SQL rather than parameterised because a COLUMN NAME
+    /// cannot be a parameter. That is safe here and only here because the value
+    /// is an int validated to 1..10 at config-read time and never touches a
+    /// request - it can only ever render one of ten fixed strings.
+    /// </summary>
+    public static string SelectColumns => $"c.{NettoColumn}, c.{BruttoColumn}";
+}

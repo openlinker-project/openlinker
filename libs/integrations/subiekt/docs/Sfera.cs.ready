@@ -375,8 +375,16 @@ public static class Sfera
         return (docId, numer);
     }
 
-    /// <summary>dok_NrPelnyOryg is varchar(30) — a longer value is refused outright.</summary>
-    public static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+    /// <summary>dok_NrPelnyOryg is varchar(30). This TRUNCATES - it does not refuse (PR #7 review:
+    /// the summary used to say "refused outright"). Truncation collides where a hash does not, so it is
+    /// only safe for a key whose first 30 characters already identify it. The ZK key is the OL internal
+    /// order id, `ol_order_` plus a 32-hex uuid, so 21 hex characters (84 bits) survive; do NOT feed it a
+    /// key with a shared prefix and a trailing distinguishing id (use Sfera.ReduceIdempotencyKey). The
+    /// lookup and the COM write both reduce through the same function, so store and lookup agree. It has NOT moved to ReduceIdempotencyKey, deliberately: every ZK already in a
+    /// customer's Subiekt carries the truncated form, so switching the write without a probe that
+    /// reads BOTH shapes would stop finding them and mint a duplicate sales order for every retried
+    /// order. Moving it is a migration, not an edit (PR #7 second review, finding 5).</summary>
+    public static string Trim30(string s) => BridgeKeys.Trim30(s);
 
     /// <summary>#3440: reduce a long, semantically-structured OL idempotency key to
     /// something dok_NrPelnyOryg (varchar(30)) can hold, WITHOUT discarding the part
@@ -405,13 +413,7 @@ public static class Sfera
     /// upgrade; a retry of one of those can create a second document. That window is
     /// the price of no longer collapsing unrelated operations onto each other, which
     /// is a permanent, silent loss rather than a one-off one.</summary>
-    public static string ReduceIdempotencyKey(string key)
-    {
-        if (key.Length <= 30) return key;
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key));
-        return Convert.ToHexString(hash).Substring(0, 30);
-    }
+    public static string ReduceIdempotencyKey(string key) => BridgeKeys.ReduceIdempotencyKey(key);
 
     /// <summary>kh_Nazwa (short name) is nvarchar(50).</summary>
     public static string Trim50(string s) => s.Length <= 50 ? s : s.Substring(0, 50);

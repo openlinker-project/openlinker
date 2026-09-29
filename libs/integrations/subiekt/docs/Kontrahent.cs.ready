@@ -165,6 +165,21 @@ public static class Kontrahent
     /// match - that half is closed, and it is the half the original finding
     /// named.
     /// </summary>
+
+    /// <summary>The address truth table, as a PURE function so it can be tested
+    /// without a database (PR #7 second review, finding 4).
+    ///
+    /// A match needs at least one field CONFIRMED equal on both sides and no
+    /// field CONTRADICTED. A false negative mints a duplicate kontrahent, which
+    /// is untidy; a false POSITIVE bills one person's document to another's name
+    /// and address, which the operator cannot see from Subiekt - so the
+    /// asymmetry is deliberate and this is where it is pinned.
+    ///
+    /// The address-less BUYER carve-out is NOT here: it is decided by the caller
+    /// before any row is read, because there is nothing to compare against.</summary>
+    public static bool AddressesMatch(string wantKod, string wantMiasto, string storedKod, string storedMiasto)
+        => BridgeKeys.AddressesMatch(wantKod, wantMiasto, storedKod, storedMiasto);
+
     public static async Task<bool> MatchesAddress(int kontrahentId, string? kod, string? miasto)
     {
         var wantKod = (kod ?? "").Trim();
@@ -218,22 +233,7 @@ public static class Kontrahent
             var storedKod = r.GetString(0).Trim();
             var storedMiasto = r.GetString(1).Trim();
 
-            var confirmed = false;
-            if (wantKod != "" && storedKod != "")
-            {
-                if (!string.Equals(wantKod, storedKod, StringComparison.OrdinalIgnoreCase)) return false;
-                confirmed = true;
-            }
-            if (wantMiasto != "" && storedMiasto != "")
-            {
-                if (!string.Equals(wantMiasto, storedMiasto, StringComparison.OrdinalIgnoreCase)) return false;
-                confirmed = true;
-            }
-            // Neither field could be checked on both sides (e.g. the buyer
-            // supplied a postcode but this candidate's stored address has
-            // none) - insufficient evidence to confirm this is the same
-            // buyer. Reject rather than accept it by default.
-            return confirmed;
+            return AddressesMatch(wantKod, wantMiasto, storedKod, storedMiasto);
         }
         catch (Exception e)
         {

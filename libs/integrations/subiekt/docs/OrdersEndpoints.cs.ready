@@ -313,6 +313,9 @@ public static class OrdersEndpoints
             var zkReq = new ZkRequest
             {
                 KontrahentId = kontrahentId,
+                // Passed raw ON PURPOSE: Sfera.CreateZk applies Trim30 before the COM write, and
+                // FindExistingZk looks up with the same Trim30, so store and lookup reduce
+                // identically. Keep it that way if either side is refactored (PR #7 review).
                 NumerOryginalny = req.OrderRef,
                 Uwagi = req.Uwagi ?? "",
                 Rezerwacja = false,
@@ -335,7 +338,12 @@ public static class OrdersEndpoints
         });
     }
 
-    private static async Task<(int Id, string Numer, decimal Gross)?> FindExistingZk(string orderRef)
+    /// <summary>Public so the WooCommerce shim's order-create can share the ONE
+    /// lookup rather than carrying a second, unguarded copy of it. The shim used
+    /// to call `Sfera.CreateZk` straight, with no pre-check and no lock, so a
+    /// client retry after a timeout minted a second sales order - the defect
+    /// this method exists to prevent on `/api/orders`.</summary>
+    public static async Task<(int Id, string Numer, decimal Gross)?> FindExistingZk(string orderRef)
     {
         await using var c = new SqlConnection(ConnStr);
         await c.OpenAsync();
@@ -347,8 +355,16 @@ public static class OrdersEndpoints
         return (r.GetInt32(0), r.GetString(1).Trim(), r.IsDBNull(2) ? 0m : r.GetDecimal(2));
     }
 
-    /// <summary>dok_NrPelnyOryg is varchar(30) - refused outright past that length.</summary>
-    private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+    /// <summary>dok_NrPelnyOryg is varchar(30). This TRUNCATES - it does not refuse (PR #7 review:
+    /// the summary used to say "refused outright"). Truncation collides where a hash does not, so it is
+    /// only safe for a key whose first 30 characters already identify it. The ZK key is the OL internal
+    /// order id, `ol_order_` plus a 32-hex uuid, so 21 hex characters (84 bits) survive; do NOT feed it a
+    /// key with a shared prefix and a trailing distinguishing id (use Sfera.ReduceIdempotencyKey). The
+    /// lookup and the COM write both reduce through the same function, so store and lookup agree. It has NOT moved to ReduceIdempotencyKey, deliberately: every ZK already in a
+    /// customer's Subiekt carries the truncated form, so switching the write without a probe that
+    /// reads BOTH shapes would stop finding them and mint a duplicate sales order for every retried
+    /// order. Moving it is a migration, not an edit (PR #7 second review, finding 5).</summary>
+    public static string Trim30(string s) => BridgeKeys.Trim30(s);
 
     /// <summary>#3365 review: parse a feed cursor in EITHER form.
     ///
@@ -363,20 +379,15 @@ public static class OrdersEndpoints
     /// strict `>` those rows were skipped, so re-reading them is the repair, not a
     /// cost. Re-delivery is free - OL's `syncOrderFromSource` is an idempotent
     /// update-or-create under a per-order lock.</summary>
-    private static bool TryParseCursor(string cursor, out DateTime watermark, out int lastId)
-    {
-        watermark = default;
-        lastId = 0;
-        var bar = cursor.LastIndexOf('|');
-        if (bar < 0)
-            return DateTime.TryParse(cursor, CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark);
+    /// <summary>Public for the unit tests: the cursor is the thing that decides
+    /// whether an order is ever read again, and a round-trip it gets wrong loses
+    /// sales silently (PR #7 second review, finding 4).</summary>
+    public static bool TryParseCursor(string cursor, out DateTime watermark, out int lastId)
+        => BridgeKeys.TryParseCursor(cursor, out watermark, out lastId);
 
-        return DateTime.TryParse(cursor[..bar], CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark)
-            && int.TryParse(cursor[(bar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out lastId);
-    }
-
-    private static string FormatCursor(DateTime watermark, int lastId) =>
-        watermark.ToString("o", CultureInfo.InvariantCulture) + "|" + lastId.ToString(CultureInfo.InvariantCulture);
+    /// <summary>Public for the unit tests - see TryParseCursor.</summary>
+    public static string FormatCursor(DateTime watermark, int lastId)
+        => BridgeKeys.FormatCursor(watermark, lastId);
 
     /// <summary>
     /// Keyset page over ZK documents, ordered by (issue date, document id).
@@ -390,6 +401,19 @@ public static class OrdersEndpoints
     /// LOST, with nothing anywhere to say so. Ordering by (date, id) and
     /// comparing the pair is what makes the page boundary land between two rows
     /// instead of in the middle of a group of equals.
+    ///
+    /// TWO LIMITS FOLLOW FROM THE SAME DATE-ONLY COLUMN, and neither is visible
+    /// from the query (PR #7 second review). A ZK BACK-DATED to an earlier day
+    /// carries a higher id and an earlier date, so it sorts behind a cursor that
+    /// has already passed that day and is never picked up. And a later EDIT to
+    /// an already-seen ZK moves neither half of the pair, so the feed does not
+    /// re-surface it.
+    ///
+    /// Cursoring on `dok_Id` alone would close the first, and needs that column's
+    /// monotonicity confirmed on a real install before anything may rely on it.
+    /// Both limits are tolerable because this feed is the RECONCILIATION
+    /// backstop rather than the primary route: OpenLinker learns about an order
+    /// from the shop it was placed in, and reads this to catch what it missed.
     ///
     /// 'since' is null for the beginning; nextCursor is the last row of the page,
     /// or null when the page was empty.

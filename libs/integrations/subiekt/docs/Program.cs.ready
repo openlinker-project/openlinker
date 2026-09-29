@@ -69,6 +69,20 @@ builder.WebHost.ConfigureKestrel(k =>
     // OpenLinker actually uses.
     if (BridgeConfig.HttpsConfigured)
     {
+        // Checked before binding, and named in the message. `appsettings.example.json`
+        // used to ship a stand-in path, so an operator who copied the file got
+        // neither of the two documented behaviours - not the HTTPS listener, and
+        // not the "unset skips it" fallback either, but a process that died on a
+        // file that does not exist. The stand-in is treated as unset now
+        // (BridgeConfig.IsUnsetOrPlaceholder); this covers a real path that was
+        // simply typed wrong, where the operator needs to be told which key.
+        if (!File.Exists(BridgeConfig.CertificatePath))
+        {
+            throw new InvalidOperationException(
+                $"CertificatePath points at '{BridgeConfig.CertificatePath}', which does not " +
+                "exist. Correct the path, or clear CertificatePath to skip the HTTPS listener " +
+                "and serve the plain-HTTP port only - which is the port OpenLinker uses.");
+        }
         k.ListenAnyIP(BridgeConfig.HttpsPort,
             o => o.UseHttps(BridgeConfig.CertificatePath, BridgeConfig.CertificatePassword));
     }
@@ -81,6 +95,25 @@ var app = builder.Build();
 // variable and sees no effect must be able to tell "not read" from
 // "read and overridden". Secrets are deliberately NOT echoed.
 app.Logger.LogInformation("{Config}", BridgeConfig.Describe());
+// A credential left at the example file's stand-in reads as UNSET, so the routes
+// it guards stay closed - which is safe, and silent, and looks from the outside
+// exactly like a bridge somebody deliberately left unconfigured. The operator
+// who copied the file believes they configured it, so the mistake is named here
+// rather than left to be discovered as a 401 with no explanation.
+foreach (var (key, value) in new[]
+         {
+             ("ApiUser", BridgeConfig.ApiUser),
+             ("ApiPassword", BridgeConfig.ApiPassword),
+             ("InvoiceToken", BridgeConfig.InvoiceToken),
+         })
+{
+    if (value.Trim().Length > 0 && BridgeConfig.IsUnsetOrPlaceholder(value))
+    {
+        app.Logger.LogWarning(
+            "{Key} is still the placeholder from appsettings.example.json, so it counts as " +
+            "UNSET and the routes it guards stay closed. Choose a real value.", key);
+    }
+}
 // Said once, loudly, at startup: an image URL nobody can dereference shows up as a
 // broken thumbnail, which an operator's screen renders exactly like a product that
 // has no photo - so nothing on the surface ever reports it.
@@ -127,7 +160,16 @@ DialogWatcher.Start();
 // --- request log: shows exactly what OpenLinker asks for -------------------
 app.Use(async (ctx, next) =>
 {
-    var q = ctx.Request.QueryString.HasValue ? ctx.Request.QueryString.Value : "";
+    // Query VALUES are redacted, keys kept. Nothing secret rides in a query
+    // string today, but this is the line a future `?token=` would leak through,
+    // and a log is read long after the request that wrote it (PR #7 second
+    // review). Keys alone still answer "what did OpenLinker ask for".
+    var q = "";
+    if (ctx.Request.QueryString.HasValue)
+    {
+        var keys = ctx.Request.Query.Keys.OrderBy(k => k, StringComparer.Ordinal);
+        q = "?" + string.Join("&", keys.Select(k => k + "=<redacted>"));
+    }
     app.Logger.LogInformation("--> {M} {P}{Q}", ctx.Request.Method, ctx.Request.Path, q);
     await next();
     app.Logger.LogInformation("<-- {S} {P}", ctx.Response.StatusCode, ctx.Request.Path);
@@ -148,7 +190,22 @@ app.Use(async (ctx, next) =>
         var h = ctx.Request.Headers.Authorization.ToString();
         if (h.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
         {
-            var raw = Encoding.UTF8.GetString(Convert.FromBase64String(h[6..].Trim()));
+            // TRY, not Convert: `Convert.FromBase64String` THROWS on a malformed
+            // header, which surfaces as a 500. A client sending rubbish
+            // credentials must be told 401, not handed an internal error that
+            // reads like the bridge is broken (PR #7 second review).
+            var buffer = new byte[h.Length];
+            if (!Convert.TryFromBase64String(h[6..].Trim(), buffer, out var written))
+            {
+                ctx.Response.StatusCode = 401;
+                await ctx.Response.WriteAsJsonAsync(new
+                {
+                    code = "woocommerce_rest_authentication_error",
+                    message = "Malformed Basic credentials.",
+                });
+                return;
+            }
+            var raw = Encoding.UTF8.GetString(buffer, 0, written);
             var i = raw.IndexOf(':');
             if (i > 0 && ConstantTimeEquals(raw[..i], User) && ConstantTimeEquals(raw[(i + 1)..], Pass)) { await next(); return; }
         }
@@ -660,6 +717,18 @@ app.MapGet("/wp-json/wc/v3/system_status", () => Results.Ok(new
 
 app.MapPut("/wp-json/wc/v3/orders/{id:int}", async (int id, HttpRequest req) =>
 {
+    // The shim's writes are OFF unless an installation deliberately turns them
+    // on (BridgeConfig.EnableShimWrites). The native Subiekt adapter replaced
+    // this spike, and these three routes create a ZK, write shipping onto one
+    // and upsert a kontrahent - real documents, reachable the moment the Basic
+    // credentials exist. Refused by name rather than 404'd, so an operator on a
+    // stack still using them is told which knob to set.
+    if (!BridgeConfig.EnableShimWrites)
+        return Results.Json(new { code = "ol_shim_writes_disabled", message =
+            "The WooCommerce shim's write routes are disabled. Use the native /api/* routes, " +
+            "or set EnableShimWrites=true if this installation still depends on the shim." },
+            statusCode: 403);
+
     using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
     var root = doc.RootElement;
 
@@ -803,6 +872,18 @@ app.MapGet("/wp-json/wc/v3/customers/{id:int}", async (int id) =>
 
 app.MapPost("/wp-json/wc/v3/customers", async (HttpRequest req) =>
 {
+    // The shim's writes are OFF unless an installation deliberately turns them
+    // on (BridgeConfig.EnableShimWrites). The native Subiekt adapter replaced
+    // this spike, and these three routes create a ZK, write shipping onto one
+    // and upsert a kontrahent - real documents, reachable the moment the Basic
+    // credentials exist. Refused by name rather than 404'd, so an operator on a
+    // stack still using them is told which knob to set.
+    if (!BridgeConfig.EnableShimWrites)
+        return Results.Json(new { code = "ol_shim_writes_disabled", message =
+            "The WooCommerce shim's write routes are disabled. Use the native /api/* routes, " +
+            "or set EnableShimWrites=true if this installation still depends on the shim." },
+            statusCode: 403);
+
     using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
     var root = doc.RootElement;
 
@@ -881,6 +962,18 @@ async Task<string?> SymbolOfTowar(int towarId)
 
 app.MapPost("/wp-json/wc/v3/orders", async (HttpRequest req) =>
 {
+    // The shim's writes are OFF unless an installation deliberately turns them
+    // on (BridgeConfig.EnableShimWrites). The native Subiekt adapter replaced
+    // this spike, and these three routes create a ZK, write shipping onto one
+    // and upsert a kontrahent - real documents, reachable the moment the Basic
+    // credentials exist. Refused by name rather than 404'd, so an operator on a
+    // stack still using them is told which knob to set.
+    if (!BridgeConfig.EnableShimWrites)
+        return Results.Json(new { code = "ol_shim_writes_disabled", message =
+            "The WooCommerce shim's write routes are disabled. Use the native /api/* routes, " +
+            "or set EnableShimWrites=true if this installation still depends on the shim." },
+            statusCode: 403);
+
     using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
     var root = doc.RootElement;
 
@@ -953,7 +1046,32 @@ app.MapPost("/wp-json/wc/v3/orders", async (HttpRequest req) =>
     if (shipping > 0 && shipTitle != "")
         uwagi = (uwagi + " | " + shipTitle).Trim();
 
+    // SERIALIZED and pre-checked, exactly as `/api/orders` is. Before this the
+    // shim called `Sfera.CreateZk` straight: a client retry after a timeout - and
+    // a COM write OpenLinker gave up on can still commit afterwards - minted a
+    // SECOND sales order for the same sale. Same lock key and same lookup as the
+    // native route, so the two paths cannot dedupe differently against one order.
+    var shimLockKey = olOrderId != "" ? OrdersEndpoints.Trim30(olOrderId) : "";
     try
+    {
+        return await IdempotencyLock.RunExclusive(shimLockKey, async () =>
+        {
+            if (olOrderId != "")
+            {
+                var existing = await OrdersEndpoints.FindExistingZk(olOrderId);
+                if (existing is not null)
+                    return Results.Ok(new { id = existing.Value.Id, number = existing.Value.Numer });
+            }
+            return ShimCreateZk();
+        });
+    }
+    catch (Exception e)
+    {
+        app.Logger.LogError("CreateZk failed: {Msg}", e.Message);
+        return Results.Json(new { code = "ol_sfera_order_failed", message = e.Message }, statusCode: 502);
+    }
+
+    IResult ShimCreateZk()
     {
         var (id, numer) = Sfera.CreateZk(new ZkRequest
         {
@@ -964,11 +1082,6 @@ app.MapPost("/wp-json/wc/v3/orders", async (HttpRequest req) =>
         });
         app.Logger.LogInformation("Subiekt {Nr} (id {Id}) <- zamowienie OL {Ol}", numer, id, olOrderId);
         return Results.Ok(new { id, number = numer, status = "processing" });
-    }
-    catch (Exception e)
-    {
-        app.Logger.LogError("CreateZk failed: {Msg}", e.Message);
-        return Results.Json(new { code = "ol_sfera_order_failed", message = e.Message }, statusCode: 502);
     }
 });
 
