@@ -31,6 +31,16 @@ export interface SynthesizeOrderOptions {
   /** Quantity of the driver variant to sell. Defaults to 1. */
   quantity?: number;
   /**
+   * The buyer's tax number, written onto the PrestaShop address the order is
+   * placed against.
+   *
+   * Absent means the buyer asserted none, which is the ordinary consumer case
+   * and the one that must stay the default. Supplying it is how a caller
+   * exercises the invoice-versus-receipt decision, which reads exactly this
+   * field (#2599/#2822) rather than any flag OpenLinker holds.
+   */
+  buyerVatNumber?: string;
+  /**
    * PrestaShop currency id to denominate the order in. Defaults to the
    * webservice client's own default, which is the shop's first currency.
    *
@@ -302,6 +312,7 @@ export async function synthesizeOrder(
     city: 'Warszawa',
     postcode: '00-001',
     idCountry: countryId,
+    vatNumber: options.buyerVatNumber,
   });
 
   const externalProductId = options.externalProductId ?? externalIdFor(product, prestashop.id);

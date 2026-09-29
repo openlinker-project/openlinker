@@ -209,6 +209,15 @@ export interface CreateAddressInput {
   /** PrestaShop country id (numeric). Resolve via `getCountryIdByIso`. */
   idCountry: string;
   phone?: string;
+  /**
+   * The buyer's tax number, as `ps_address.vat_number`.
+   *
+   * Optional and blank on essentially every consumer order, which is exactly
+   * why it has to be settable here: it is the field OpenLinker reads to decide
+   * whether an order gets an invoice or a receipt (#2599/#2822), and a suite
+   * that cannot set it cannot exercise either branch of that decision.
+   */
+  vatNumber?: string;
 }
 
 /**
@@ -854,6 +863,7 @@ export class PrestashopWebserviceClient {
       `    <postcode>${escapeXml(input.postcode)}</postcode>`,
       `    <id_country>${escapeXml(input.idCountry)}</id_country>`,
       input.phone ? `    <phone>${escapeXml(input.phone)}</phone>` : '',
+      input.vatNumber ? `    <vat_number>${escapeXml(input.vatNumber)}</vat_number>` : '',
       '  </address>',
       '</prestashop>',
     ]
