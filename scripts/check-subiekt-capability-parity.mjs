@@ -155,11 +155,31 @@ async function main() {
   const gt = parseImplementsClause(gtAdapter, 'SubiektInvoicingAdapter');
   const nexo = parseImplementsClause(nexoAdapter, 'SubiektInvoicingAdapter');
 
-  if (gt === null || nexo === null) {
+  // Floored at zero as well as null-checked, and the two are different faults.
+  // `parseImplementsClause` answers `null` when it cannot find the class or the
+  // keyword, but a clause it DOES find whose members it cannot read answers `[]`
+  // - and `[] !== null`, so a null-only guard passes, `diffCapabilities([], [])`
+  // reports nothing, and the run prints OK having compared zero capabilities.
+  // That is reachable by ordinary refactors: moving the interface list onto a
+  // base class or a type alias, or commenting the members out while leaving the
+  // keyword. Those are exactly when this guard should be loudest, so an empty
+  // parse is a PARSER failure here and never "the adapter legitimately
+  // implements nothing" - an adapter that implements nothing would not be one.
+  // The #3002 `check-permission-mirror.mjs` precedent floors both sides the same
+  // way and for the same stated reason.
+  const unreadable = [
+    gt === null ? `${GT_ADAPTER} (no class or no \`implements\` keyword)` : null,
+    gt !== null && gt.length === 0 ? `${GT_ADAPTER} (clause found, no members read)` : null,
+    nexo === null ? `${NEXO_ADAPTER} (no class or no \`implements\` keyword)` : null,
+    nexo !== null && nexo.length === 0 ? `${NEXO_ADAPTER} (clause found, no members read)` : null,
+  ].filter((entry) => entry !== null);
+
+  if (unreadable.length > 0) {
     console.error(
       'check-subiekt-capability-parity: could not read an `implements` clause from ' +
-        `${gt === null ? GT_ADAPTER : NEXO_ADAPTER}. That clause is what this invariant ` +
-        'compares, so the check fails closed rather than passing on an empty set.'
+        `${unreadable.join(' and ')}. That clause is what this invariant compares, so the ` +
+        'check fails closed rather than passing on an empty set. An empty parse means the ' +
+        'PARSER stopped working, not that the adapter stopped implementing anything.'
     );
     process.exit(1);
   }
@@ -213,6 +233,22 @@ function selfCheck() {
   );
   assert(parseImplementsClause(`class Bar implements A {}`, 'Foo') === null, 'unknown class is null');
   assert(parseImplementsClause(`class Foo {}`, 'Foo') === null, 'a class with no clause is null');
+  // The case the guard above exists for, and the one this self-check did not
+  // cover before: a clause that IS found and yields no members. It must be
+  // distinguishable from `null`, because the runner treats both as fatal but
+  // reports them differently, and it must never be mistaken for a valid answer.
+  assert(
+    Array.isArray(parseImplementsClause(`class Foo implements {}`, 'Foo')),
+    'a found-but-empty clause parses to an array, not null'
+  );
+  assert(
+    parseImplementsClause(`class Foo implements {}`, 'Foo').length === 0,
+    'a found-but-empty clause parses to an EMPTY array'
+  );
+  assert(
+    diffCapabilities([], [], {}).length === 0,
+    'the differ reports nothing for two empty sets, which is why the runner must floor them'
+  );
   assert(
     parseImplementsClause(`/* implements Ghost { */\nclass Foo implements A {}`, 'Foo')[0] === 'A',
     'a clause quoted in a comment is not read'
