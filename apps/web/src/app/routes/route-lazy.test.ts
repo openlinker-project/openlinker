@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import { plugins } from '../../plugins';
 import { guestRoutes, standaloneRoutes } from '../router';
-import { coreChildren } from './root.route';
+import { buildCoreChildren } from './root.route';
 
 /**
  * Walk the route tree depth-first and collect every node that defines a
@@ -37,7 +37,9 @@ function collectLazyRoutes(routes: RouteObject[]): RouteObject[] {
 }
 
 const lazyRoutes = collectLazyRoutes([
-  ...coreChildren,
+  // Flag ON (#3634): the contract covers every route the build can register,
+  // including the OMS routing pages the default build withholds.
+  ...buildCoreChildren(true),
   ...guestRoutes,
   // #2413: `/bench` renders outside `AuthenticatedAppLayout` (its idle lock
   // clears the session, which that layout answers with a redirect), so it is

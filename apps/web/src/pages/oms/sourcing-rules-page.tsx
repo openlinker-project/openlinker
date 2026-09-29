@@ -29,7 +29,7 @@
  * every rule would decide nothing. The gate reads the `listActiveLocations`
  * probe (`status=active&limit=1`, where only `total` is meaningful) rather than
  * counting active rows inside the picker's capped page: an install whose first
- * 200 rows are all retired would otherwise be refused while active locations
+ * 100 rows are all retired would otherwise be refused while active locations
  * exist. The picker keeps the full-status page, because an inactive location is
  * still a legitimate priority entry.
  *

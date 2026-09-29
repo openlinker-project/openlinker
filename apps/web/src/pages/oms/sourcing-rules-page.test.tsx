@@ -21,6 +21,7 @@ import {
   renderWithProviders,
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
+import { SOURCING_RULE_LOCATION_PAGE_SIZE } from '../../features/oms';
 import { SourcingRulesPage } from './sourcing-rules-page';
 
 interface ConnectionLike {
@@ -78,6 +79,12 @@ function renderPage(options: {
 }
 
 describe('SourcingRulesPage (#3060)', () => {
+  it('should request a location page the API accepts (limit <= 100, #3634)', () => {
+    // `ListLocationsQueryDto` caps `limit` at 100; a larger page is a 400 and
+    // the whole screen fails to open.
+    expect(SOURCING_RULE_LOCATION_PAGE_SIZE).toBeLessThanOrEqual(100);
+  });
+
   it('reports neither gate while the reads are in flight', () => {
     renderPage({});
 

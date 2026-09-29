@@ -230,6 +230,16 @@ describe('StockAndPricingSection', () => {
       expect(screen.queryByLabelText('Location')).not.toBeInTheDocument();
     });
 
+    it('should request a location page the API accepts (limit <= 100, #3634)', async () => {
+      const listLocations = vi.fn().mockResolvedValue(ONE_ACTIVE_LOCATION);
+      const apiClient = createMockApiClient({ inventory: { listLocations } });
+      renderWithProviders(<Harness />, { apiClient });
+
+      await screen.findByLabelText("Assign a location to this connection's stock");
+      const [, pagination] = listLocations.mock.calls[0] as [unknown, { limit: number }];
+      expect(pagination.limit).toBeLessThanOrEqual(100);
+    });
+
     it('hydrates the group open with the stored location selected', async () => {
       const apiClient = createMockApiClient({
         inventory: { listLocations: vi.fn().mockResolvedValue(ONE_ACTIVE_LOCATION) },
