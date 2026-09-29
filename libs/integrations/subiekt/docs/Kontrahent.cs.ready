@@ -112,7 +112,7 @@ public static class Kontrahent
     /// as a single-character wildcard, so `JAN_KOWAL` would match `JANXKOWAL`.
     /// The prefix test below has no wildcard semantics at all.
     /// </summary>
-    public static async Task<int?> FindBySymbol(string symbol, string? kod, string? miasto)
+    public static async Task<int?> FindBySymbol(string symbol, string? kod, string? miasto, string? telefon = null)
     {
         if (string.IsNullOrWhiteSpace(symbol)) return null;
 
@@ -133,7 +133,7 @@ public static class Kontrahent
         }
 
         foreach (var id in candidates)
-            if (await MatchesAddress(id, kod, miasto))
+            if (await MatchesAddress(id, kod, miasto, telefon))
                 return id;
 
         return null;
@@ -161,6 +161,49 @@ public static class Kontrahent
     /// named.
     /// </summary>
 
+
+    /// <summary>Which column on `kh__Kontrahent` holds the buyer's telephone,
+    /// or null when this install has none under a name we recognise.
+    ///
+    /// DISCOVERED rather than assumed. The bridge writes the phone through
+    /// Sfera (`kh.Telefon`), which does not tell us the underlying column, and
+    /// guessing wrong would throw on every address-less buyer - turning the
+    /// phone axis from a dedupe improvement into a duplicate per order, which
+    /// is the opposite of what it is for. Looked up once and cached; an install
+    /// where nothing matches simply does not get the axis.</summary>
+    private static string? _phoneColumn;
+    private static bool _phoneColumnResolved;
+
+    private static async Task<string?> PhoneColumn()
+    {
+        if (_phoneColumnResolved) return _phoneColumn;
+        try
+        {
+            await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                @"SELECT TOP 1 COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_NAME = 'kh__Kontrahent'
+                     AND COLUMN_NAME IN ('kh_Telefon','kh_Telefon1','kh_TelefonKom')
+                   ORDER BY CASE COLUMN_NAME
+                              WHEN 'kh_Telefon' THEN 0 WHEN 'kh_Telefon1' THEN 1 ELSE 2 END", c);
+            var r = await cmd.ExecuteScalarAsync();
+            _phoneColumn = r is null || r is DBNull ? null : Convert.ToString(r);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Kontrahent.PhoneColumn: {e.Message} - phone axis disabled.");
+            _phoneColumn = null;
+        }
+        _phoneColumnResolved = true;
+        if (_phoneColumn is null)
+            Console.Error.WriteLine(
+                "Kontrahent: no recognised telephone column on kh__Kontrahent, so an address-less " +
+                "buyer cannot be told apart by phone and will get its own kontrahent rather than " +
+                "being merged on name alone.");
+        return _phoneColumn;
+    }
+
     /// <summary>The address truth table, as a PURE function so it can be tested
     /// without a database (PR #7 second review, finding 4).
     ///
@@ -175,7 +218,7 @@ public static class Kontrahent
     public static bool AddressesMatch(string wantKod, string wantMiasto, string storedKod, string storedMiasto)
         => BridgeKeys.AddressesMatch(wantKod, wantMiasto, storedKod, storedMiasto);
 
-    public static async Task<bool> MatchesAddress(int kontrahentId, string? kod, string? miasto)
+    public static async Task<bool> MatchesAddress(int kontrahentId, string? kod, string? miasto, string? telefon = null)
     {
         var wantKod = (kod ?? "").Trim();
         var wantMiasto = (miasto ?? "").Trim();
@@ -211,7 +254,35 @@ public static class Kontrahent
         // no invoice address - the common case, not the exceptional one. A NIP,
         // when the buyer supplies one, is matched first and is not affected by
         // this at all.
-        if (wantKod == "" && wantMiasto == "") return true;
+        var wantTelefon = (telefon ?? "").Trim();
+        // NO LONGER accepted on the symbol alone (PR #7 second review, finding
+        // 6). A buyer who supplied no address is told apart by PHONE, the one
+        // discriminating field OpenLinker sends, and when there is none on
+        // either side this refuses - so the caller creates its own kontrahent
+        // rather than billing a document to whoever shares the name.
+        if (wantKod == "" && wantMiasto == "")
+        {
+            var phoneColumn = await PhoneColumn();
+            if (phoneColumn is null || wantTelefon == "") return false;
+            try
+            {
+                await using var pc = new SqlConnection(BridgeConfig.ConnectionString);
+                await pc.OpenAsync();
+                await using var pcmd = new SqlCommand(
+                    $"SELECT ISNULL({phoneColumn},'') FROM kh__Kontrahent WHERE kh_Id = @id", pc);
+                pcmd.Parameters.AddWithValue("@id", kontrahentId);
+                var stored = await pcmd.ExecuteScalarAsync();
+                return BridgeKeys.AddresslessBuyerMatches(
+                    wantTelefon, stored is null || stored is DBNull ? "" : Convert.ToString(stored)!);
+            }
+            catch (Exception e)
+            {
+                // Fails CLOSED, like the address read below: a duplicate
+                // kontrahent is recoverable, a misattributed document is not.
+                Console.Error.WriteLine($"Kontrahent.MatchesAddress({kontrahentId}) phone: {e.Message} - no match.");
+                return false;
+            }
+        }
 
         try
         {
@@ -245,10 +316,10 @@ public static class Kontrahent
     /// The whole rule in one call: NIP, else address-verified symbol, else
     /// null for "create a new one".
     /// </summary>
-    public static async Task<int?> Resolve(string? nip, string symbol, string? kod, string? miasto)
+    public static async Task<int?> Resolve(string? nip, string symbol, string? kod, string? miasto, string? telefon = null)
     {
         var byNip = await FindByNip(nip);
         if (byNip is not null) return byNip;
-        return await FindBySymbol(symbol, kod, miasto);
+        return await FindBySymbol(symbol, kod, miasto, telefon);
     }
 }

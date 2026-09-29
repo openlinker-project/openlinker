@@ -215,7 +215,7 @@ public static class OrdersEndpoints
         // client saw a timeout; that document is returned verbatim rather
         // than creating a new one. An empty OrderRef has no natural key to
         // serialize on and runs unlocked, same as before.
-        var lockKey = req.OrderRef != "" ? Trim30(req.OrderRef) : "";
+        var lockKey = req.OrderRef != "" ? Sfera.ReduceIdempotencyKey(req.OrderRef) : "";
         return await IdempotencyLock.RunExclusive(lockKey, async () =>
         {
             if (req.OrderRef != "")
@@ -285,7 +285,8 @@ public static class OrdersEndpoints
             // kontrahenci. `Kontrahent.FindBySymbol` sees the `(n)` variants.
             var symbol = Kontrahent.MakeSymbol(req.Buyer.Nazwa);
             var existingKontrahentId = await Kontrahent.Resolve(
-                req.Buyer.Nip, symbol, req.Buyer.KodPocztowy, req.Buyer.Miejscowosc) ?? 0;
+                req.Buyer.Nip, symbol, req.Buyer.KodPocztowy, req.Buyer.Miejscowosc,
+                req.Buyer.Telefon) ?? 0;
 
             // Resolved BEFORE EnsureKontrahent, which is synchronous and runs on
             // the COM apartment thread. One shared resolver with the invoice path,
@@ -349,10 +350,34 @@ public static class OrdersEndpoints
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             $"SELECT TOP 1 dok_Id, dok_NrPelny, dok_WartBrutto FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = {DocumentTypes.Zk}", c);
-        cmd.Parameters.AddWithValue("@k", Trim30(orderRef));
-        await using var r = await cmd.ExecuteReaderAsync();
-        if (!await r.ReadAsync()) return null;
-        return (r.GetInt32(0), r.GetString(1).Trim(), r.IsDBNull(2) ? 0m : r.GetDecimal(2));
+        cmd.Parameters.AddWithValue("@k", Sfera.ReduceIdempotencyKey(orderRef));
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            if (await r.ReadAsync())
+                return (r.GetInt32(0), r.GetString(1).Trim(), r.IsDBNull(2) ? 0m : r.GetDecimal(2));
+        }
+
+        // LEGACY SHAPE (PR #7 second review, finding 5). The key moved from
+        // `Trim30` to the SHA-256 reduction, and every ZK written before that
+        // carries the truncated form in `dok_NrPelnyOryg`. Looking up only the
+        // new shape would stop finding them, and a retried order would mint a
+        // SECOND sales order - the exact defect this lookup exists to prevent,
+        // introduced by the fix for it.
+        //
+        // Probed only when the reduction actually changed the string, so a key
+        // short enough to fit costs no second query. REMOVABLE once no customer
+        // holds a ZK written under the truncated form, which is a data question
+        // rather than a release one.
+        var truncated = Trim30(orderRef);
+        if (truncated == Sfera.ReduceIdempotencyKey(orderRef)) return null;
+
+        await using var legacyCmd = new SqlCommand(
+            $"SELECT TOP 1 dok_Id, dok_NrPelny, dok_WartBrutto FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = {DocumentTypes.Zk} ORDER BY dok_Id DESC", c);
+        legacyCmd.Parameters.AddWithValue("@k", truncated);
+        await using var legacyReader = await legacyCmd.ExecuteReaderAsync();
+        if (!await legacyReader.ReadAsync()) return null;
+        return (legacyReader.GetInt32(0), legacyReader.GetString(1).Trim(),
+                legacyReader.IsDBNull(2) ? 0m : legacyReader.GetDecimal(2));
     }
 
     /// <summary>dok_NrPelnyOryg is varchar(30). This TRUNCATES - it does not refuse (PR #7 review:
@@ -360,10 +385,10 @@ public static class OrdersEndpoints
     /// only safe for a key whose first 30 characters already identify it. The ZK key is the OL internal
     /// order id, `ol_order_` plus a 32-hex uuid, so 21 hex characters (84 bits) survive; do NOT feed it a
     /// key with a shared prefix and a trailing distinguishing id (use Sfera.ReduceIdempotencyKey). The
-    /// lookup and the COM write both reduce through the same function, so store and lookup agree. It has NOT moved to ReduceIdempotencyKey, deliberately: every ZK already in a
-    /// customer's Subiekt carries the truncated form, so switching the write without a probe that
-    /// reads BOTH shapes would stop finding them and mint a duplicate sales order for every retried
-    /// order. Moving it is a migration, not an edit (PR #7 second review, finding 5).</summary>
+    /// lookup and the COM write both reduce through the same function, so store and lookup agree. The ZK key HAS since moved to ReduceIdempotencyKey (PR #7 second review,
+    /// finding 5); this remains only as the LEGACY shape both ZK lookups probe after the hashed
+    /// one misses, so a document written before the switch is still found and a retried order does
+    /// not mint a second one. Removable once no customer holds a ZK written under it.</summary>
     public static string Trim30(string s) => BridgeKeys.Trim30(s);
 
     /// <summary>#3365 review: parse a feed cursor in EITHER form.

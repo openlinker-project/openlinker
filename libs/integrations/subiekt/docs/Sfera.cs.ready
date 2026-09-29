@@ -362,7 +362,13 @@ public static class Sfera
                 }
 
                 if (req.NumerOryginalny != "")
-                    d.NumerOryginalny = Trim30(req.NumerOryginalny);
+                    // The SHA-256 reduction, not the truncation (PR #7 second
+                    // review, finding 5): the ZK key is the only remaining place
+                    // where the part that tells two orders apart could be cut
+                    // off, and it is safe today only while the internal id stays
+                    // a random uuid. FindExistingZk probes the truncated shape
+                    // afterwards, so ZKs already written are still found.
+                    d.NumerOryginalny = ReduceIdempotencyKey(req.NumerOryginalny);
                 if (req.Uwagi != "")
                     d.Uwagi = req.Uwagi;
 
@@ -380,10 +386,10 @@ public static class Sfera
     /// only safe for a key whose first 30 characters already identify it. The ZK key is the OL internal
     /// order id, `ol_order_` plus a 32-hex uuid, so 21 hex characters (84 bits) survive; do NOT feed it a
     /// key with a shared prefix and a trailing distinguishing id (use Sfera.ReduceIdempotencyKey). The
-    /// lookup and the COM write both reduce through the same function, so store and lookup agree. It has NOT moved to ReduceIdempotencyKey, deliberately: every ZK already in a
-    /// customer's Subiekt carries the truncated form, so switching the write without a probe that
-    /// reads BOTH shapes would stop finding them and mint a duplicate sales order for every retried
-    /// order. Moving it is a migration, not an edit (PR #7 second review, finding 5).</summary>
+    /// lookup and the COM write both reduce through the same function, so store and lookup agree. The ZK key HAS since moved to ReduceIdempotencyKey (PR #7 second review,
+    /// finding 5); this remains only as the LEGACY shape both ZK lookups probe after the hashed
+    /// one misses, so a document written before the switch is still found and a retried order does
+    /// not mint a second one. Removable once no customer holds a ZK written under it.</summary>
     public static string Trim30(string s) => BridgeKeys.Trim30(s);
 
     /// <summary>#3440: reduce a long, semantically-structured OL idempotency key to

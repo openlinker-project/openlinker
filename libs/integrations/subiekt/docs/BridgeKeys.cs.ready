@@ -100,4 +100,77 @@ public static class BridgeKeys
     /// clean - the stored one is whatever an operator typed years ago.</summary>
     public static string DigitsOnly(string? value) =>
         new string((value ?? "").Where(char.IsDigit).ToArray());
+
+    /// <summary>The identity truth table for a buyer who supplied NO address.
+    ///
+    /// PR #7 second review, finding 6. Accepting such a buyer on the symbol
+    /// alone merges every "Jan Kowalski" onto one kontrahent, and the harm
+    /// lands on a fiscal document billed to the wrong person - which the
+    /// operator cannot see from Subiekt. Refusing outright mints a fresh
+    /// kontrahent on every marketplace order that carries no invoice address,
+    /// which is the common case, not the exceptional one.
+    ///
+    /// So the phone decides, when there is one on BOTH sides: it is the only
+    /// discriminating field OpenLinker actually sends (`BridgeBuyer.telefon`).
+    /// Compared digits-only, because the stored side is whatever an operator
+    /// typed years ago. With no phone to compare, this returns FALSE and the
+    /// caller creates a new record - the reviewer's stated preference, and the
+    /// direction the carve-out's own comment already called the lesser harm.</summary>
+    public static bool AddresslessBuyerMatches(string wantTelefon, string storedTelefon)
+    {
+        var want = NationalPhoneDigits(wantTelefon);
+        var stored = NationalPhoneDigits(storedTelefon);
+        if (want == "" || stored == "") return false;
+        return want == stored;
+    }
+
+    /// <summary>A telephone reduced to the digits that identify the subscriber.
+    ///
+    /// The LAST NINE, because a Polish number is nine digits and what varies in
+    /// front of them is the country prefix: `+48 601 234 567` and `601234567`
+    /// are the same person, and comparing all the digits made them two buyers -
+    /// caught by this function's own test before it shipped. Anything shorter
+    /// than nine is compared whole rather than padded, since a short string is
+    /// more likely a partial entry than a national number.</summary>
+    public static string NationalPhoneDigits(string? value)
+    {
+        var digits = DigitsOnly(value);
+        return digits.Length <= 9 ? digits : digits.Substring(digits.Length - 9);
+    }
+
+    /// <summary>What a Basic header authorises, as a PURE decision.
+    ///
+    /// Extracted so the ordering can be tested (PR #7 second review, finding 4).
+    /// `Program.cs` is a file of top-level statements with COM behind it, so it
+    /// cannot be hosted by `WebApplicationFactory` - but the property that
+    /// matters is not the pipeline, it is that UNCONFIGURED is decided BEFORE
+    /// the comparison. With blank credentials an equality check would happily
+    /// match a request that also sent blanks, so an unconfigured bridge would
+    /// be an OPEN one: the direction a missing credential must never fail in.
+    ///
+    /// Returns the reason rather than a bool, so a caller can tell a malformed
+    /// header (401, but a different message) from a wrong password.</summary>
+    public enum BasicAuthOutcome { NotConfigured, Missing, Malformed, WrongCredentials, Allowed }
+
+    public static BasicAuthOutcome DecideBasicAuth(
+        bool configured, string? header, string user, string pass,
+        Func<string, string, bool> equals)
+    {
+        // FIRST, before anything is compared.
+        if (!configured) return BasicAuthOutcome.NotConfigured;
+        var h = header ?? "";
+        if (!h.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase)) return BasicAuthOutcome.Missing;
+
+        var payload = h.Substring(6).Trim();
+        var buffer = new byte[h.Length];
+        if (!Convert.TryFromBase64String(payload, buffer, out var written))
+            return BasicAuthOutcome.Malformed;
+
+        var raw = System.Text.Encoding.UTF8.GetString(buffer, 0, written);
+        var i = raw.IndexOf(':');
+        if (i <= 0) return BasicAuthOutcome.Malformed;
+        return equals(raw.Substring(0, i), user) && equals(raw.Substring(i + 1), pass)
+            ? BasicAuthOutcome.Allowed
+            : BasicAuthOutcome.WrongCredentials;
+    }
 }

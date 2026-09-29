@@ -225,9 +225,22 @@ public static class Invoicing
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             $"SELECT TOP 1 dok_Id FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = {DocumentTypes.Zk} ORDER BY dok_Id DESC", c);
-        cmd.Parameters.AddWithValue("@k", Trim30(orderRef));
-        var r = await cmd.ExecuteScalarAsync();
-        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+        cmd.Parameters.AddWithValue("@k", ReduceIdempotencyKey(orderRef));
+        var found = await cmd.ExecuteScalarAsync();
+        if (found is not null && found is not DBNull) return Convert.ToInt32(found);
+
+        // LEGACY SHAPE, same reason as FindExistingZk (PR #7 second review,
+        // finding 5): a ZK written before the key moved to the hash carries the
+        // truncated form, and an invoice that cannot find its ZK releases no
+        // stock - the client is billed and the goods never leave.
+        var truncated = Trim30(orderRef);
+        if (truncated == ReduceIdempotencyKey(orderRef)) return null;
+        await using var legacyCmd = new SqlCommand(
+            $"SELECT TOP 1 dok_Id FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = {DocumentTypes.Zk} ORDER BY dok_Id DESC", c);
+        legacyCmd.Parameters.AddWithValue("@k", truncated);
+        var legacy = await legacyCmd.ExecuteScalarAsync();
+        return legacy is null || legacy is DBNull ? null : Convert.ToInt32(legacy);
+
     }
 
     /// <summary>#3431 idempotency pre-check for the warehouse-release
@@ -956,7 +969,7 @@ public static class Invoicing
             // gained a fresh kontrahent on every single order.
             if (!symbol.StartsWith("INV", StringComparison.Ordinal))
                 existingId = await Kontrahent.FindBySymbol(
-                    symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc) ?? 0;
+                    symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc, req.Telefon) ?? 0;
             if (existingId > 0) return existingId;
 
             // Resolved BEFORE Sfera.Run, which is synchronous and runs on the COM

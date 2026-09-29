@@ -185,30 +185,23 @@ app.Use(async (ctx, next) =>
     // after it. With blank credentials the equality below would happily match
     // a request that also sent blanks, so an unconfigured bridge would be an
     // open one - the failure direction a missing credential must never take.
-    if (BridgeConfig.ShimAuthConfigured)
+    // ONE decision, shared with the unit tests (PR #7 second review, finding 4).
+    // The ordering - unconfigured decided BEFORE any comparison - lives in
+    // BridgeKeys.DecideBasicAuth where it can be asserted without hosting the app.
+    var decision = BridgeKeys.DecideBasicAuth(
+        BridgeConfig.ShimAuthConfigured,
+        ctx.Request.Headers.Authorization.ToString(),
+        User, Pass, ConstantTimeEquals);
+    if (decision == BridgeKeys.BasicAuthOutcome.Allowed) { await next(); return; }
+    if (decision == BridgeKeys.BasicAuthOutcome.Malformed)
     {
-        var h = ctx.Request.Headers.Authorization.ToString();
-        if (h.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+        ctx.Response.StatusCode = 401;
+        await ctx.Response.WriteAsJsonAsync(new
         {
-            // TRY, not Convert: `Convert.FromBase64String` THROWS on a malformed
-            // header, which surfaces as a 500. A client sending rubbish
-            // credentials must be told 401, not handed an internal error that
-            // reads like the bridge is broken (PR #7 second review).
-            var buffer = new byte[h.Length];
-            if (!Convert.TryFromBase64String(h[6..].Trim(), buffer, out var written))
-            {
-                ctx.Response.StatusCode = 401;
-                await ctx.Response.WriteAsJsonAsync(new
-                {
-                    code = "woocommerce_rest_authentication_error",
-                    message = "Malformed Basic credentials.",
-                });
-                return;
-            }
-            var raw = Encoding.UTF8.GetString(buffer, 0, written);
-            var i = raw.IndexOf(':');
-            if (i > 0 && ConstantTimeEquals(raw[..i], User) && ConstantTimeEquals(raw[(i + 1)..], Pass)) { await next(); return; }
-        }
+            code = "woocommerce_rest_authentication_error",
+            message = "Malformed Basic credentials.",
+        });
+        return;
     }
     ctx.Response.StatusCode = 401;
     await ctx.Response.WriteAsJsonAsync(new { code = "woocommerce_rest_authentication_error", message = "bad credentials" });
@@ -908,7 +901,8 @@ app.MapPost("/wp-json/wc/v3/customers", async (HttpRequest req) =>
         ?? (await Kontrahent.FindBySymbol(
                 sym,
                 JStr(root, "billing", "postcode"),
-                JStr(root, "billing", "city")));
+                JStr(root, "billing", "city"),
+                JStr(root, "billing", "phone")));
 
     var info = new KontrahentInfo
     {
@@ -1051,7 +1045,7 @@ app.MapPost("/wp-json/wc/v3/orders", async (HttpRequest req) =>
     // a COM write OpenLinker gave up on can still commit afterwards - minted a
     // SECOND sales order for the same sale. Same lock key and same lookup as the
     // native route, so the two paths cannot dedupe differently against one order.
-    var shimLockKey = olOrderId != "" ? OrdersEndpoints.Trim30(olOrderId) : "";
+    var shimLockKey = olOrderId != "" ? Sfera.ReduceIdempotencyKey(olOrderId) : "";
     try
     {
         return await IdempotencyLock.RunExclusive(shimLockKey, async () =>
