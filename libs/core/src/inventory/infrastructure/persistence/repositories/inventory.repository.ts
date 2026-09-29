@@ -302,6 +302,11 @@ export class InventoryRepository implements InventoryRepositoryPort {
     if (filters.sourceConnectionId) {
       where.sourceConnectionId = filters.sourceConnectionId;
     }
+    // #3481 — opt-in: the operator-facing list keeps showing stale rows, while a
+    // caller acting on the quantity must not count units that no longer exist.
+    if (filters.excludeStale === true) {
+      where.isStale = false;
+    }
 
     const [entities, total] = await this.repository.findAndCount({
       where,
