@@ -2497,13 +2497,14 @@ describe('OrderIngestionService', () => {
         expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
       });
 
-      it('should still route an order whose fulfilment routing cannot be resolved', async () => {
+      // Unknown is not an answer: routing on it could ship a parcel twice.
+      it('should NOT route an order whose fulfilment routing cannot be resolved', async () => {
         fulfillmentRouting.resolve.mockRejectedValue(new Error('routing store unreachable'));
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
-        expect(routingCommit.route).toHaveBeenCalledTimes(1);
-        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
       });
 
       // The reservation's atpEffect and the routing skip share one resolution.

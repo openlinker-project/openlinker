@@ -914,12 +914,29 @@ export class OrderIngestionService implements IOrderIngestionService {
       // another system (`omp_fulfilled` by an ADR-012 rule) is shipped there, so
       // putting it on the pack bench too would ship it twice. Only a matched
       // rule counts — see `isOrderShippedElsewhere` for why the default does
-      // not — and a failed routing read keeps routing. Here, not in the
+      // not — and a failed routing read does NOT route (#3496 review). Skipping
+      // is today's path: the order is mirrored to its destinations and handled
+      // exactly as on any pre-OMS install, so nothing is lost. Routing on an
+      // unknown answer could put a parcel on the bench that the marketplace also
+      // ships — a physical, unrecoverable double shipment — so this resolves
+      // toward the action that cannot duplicate, like #3489 (declining beats a
+      // blind retry), #3493 (never reverse an unconfirmed write) and #2346
+      // (fail closed on an indeterminate obligation). Here, not in the
       // intercept, for the same reason as #3487: the hold's `atpEffect` is
       // decided from this answer. Resolved after the cheaper own-shop check and
       // shared with the reservation, so it is never resolved twice.
-      if (isOrderShippedElsewhere(await fulfillmentRouting())) {
-        this.logger.debug(
+      const routing = await fulfillmentRouting();
+      if (routing === null) {
+        this.logger.warn(
+          `Not routing order ${orderId}: its fulfilment routing could not be read, so ` +
+            `whether another system ships it is unknown; following today's path.`
+        );
+        return null;
+      }
+      if (isOrderShippedElsewhere(routing)) {
+        // `log`, not `debug`: the answer to "why is this order not on the pack
+        // bench?", invisible at `debug` on a normal deployment (#3496 review).
+        this.logger.log(
           `Not routing order ${orderId}: its delivery method is routed to ` +
             `omp_fulfilled by a fulfilment routing rule; following today's path.`
         );
@@ -1926,7 +1943,7 @@ export class OrderIngestionService implements IOrderIngestionService {
    *
    * **Never rejects.** A failed read answers `null`, which each reader treats as
    * "unknown": the reservation takes the `diagnostic` arm and the #3488 routing
-   * skip keeps routing. The failed promise is cached like a successful one, so a
+   * skip does not route (fail closed, #3496 review). The failed promise is cached like a successful one, so a
    * store outage costs one warning per order, not one per reader.
    */
   private memoizeFulfillmentRouting(

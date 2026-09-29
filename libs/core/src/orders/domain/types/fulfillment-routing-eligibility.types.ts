@@ -88,8 +88,14 @@ export type RoutingEligibilityResolution = Pick<
  * testing the kind alone would stop routing every order on an install that
  * never configured a rule - i.e. switch the OMS off while it reports itself on.
  *
- * `null` - the routing read failed - is not a positive answer, so the order is
- * still routed: the operator then sees it on the bench rather than losing it.
+ * `null` - the routing read failed - is not a positive answer here (this returns
+ * `false`), but the CALLER must not route on it: `OrderIngestionService` skips
+ * routing when the read failed, because routing on an unknown could ship a parcel
+ * twice (#3496 review).
+ *
+ * Coverage is incidental for the headline case (a marketplace fulfilling its own
+ * order): no neutral order field says so yet, so it is detected only when an
+ * operator has mapped that delivery method to an `omp_fulfilled` rule (#3636).
  *
  * `processorAvailable` is deliberately not consulted. It reports whether OL can
  * drive the named processor, which says nothing about who ships the parcel; a
