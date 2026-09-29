@@ -105,6 +105,7 @@ import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
 import type { IOfferStockRestoreService } from '../interfaces/offer-stock-restore.service.interface';
 import type { OfferStockRestoreResult } from '../types/offer-stock-restore.types';
 import { OfferStockRestoreReleaseIncompleteError } from '../../domain/exceptions/offer-stock-restore-release-incomplete.error';
+import { OfferStockRestoreReversalIncompleteError } from '../../domain/exceptions/offer-stock-restore-reversal-incomplete.error';
 
 /**
  * Offer-mapping lookups are scoped per-variant (`internalId` filter), so a
@@ -184,39 +185,50 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
    * Raise every one of the order's `order_sale` decrements back into their
    * owning product master.
    *
-   * Never throws — a per-line failure is ERROR-LOGGED here and nowhere else.
-   * It is **not** reported on the order's `stock-decrement-blocked` attention
-   * state: `InventorySaleDecrementService`'s attention fold deliberately
-   * excludes every `sale-reversal:`-prefixed row from `#3453`'s own decrement
-   * rows, so a failed reversal is invisible on the order and the error log is
-   * the only signal (#3491 review — a prior version of this comment claimed
-   * the opposite). Failing the whole cancellation sequence over it would
-   * re-run the release and the offer restore for no reason — both of which
-   * are unrelated to whether the reversal landed.
+   * A failure a retry can change FAILS THE JOB (#3491 review), the way an
+   * incomplete release does: a `retryable` line (adapter not built, position
+   * lock held) or a thrown reversal raises
+   * {@link OfferStockRestoreReversalIncompleteError}, because returning `ok`
+   * would retire the work for good with the master's stock still lowered for a
+   * cancelled sale and no reconcile sweep to heal it. The sequence is
+   * idempotent, so the retry ladder is safe.
+   *
+   * An `in_doubt` or `blocked` line does NOT throw: no retry can change it, and
+   * a blind retry could move stock twice. It is ERROR-LOGGED here and is not on
+   * the order's `stock-decrement-blocked` attention state, because
+   * `InventorySaleDecrementService`'s attention fold deliberately excludes every
+   * `sale-reversal:`-prefixed row — so for that residual case the error log is
+   * the only signal (an attention reason of its own is a follow-up).
    */
   private async reverseSaleDecrements(
     connectionId: string,
     internalOrderId: string,
   ): Promise<ReverseSaleForOrderResult> {
+    let result: ReverseSaleForOrderResult;
     try {
-      const result = await this.saleReversal.reverseForOrder(internalOrderId);
-      const failed = result.lines.filter(
-        (line) => line.status !== 'applied' && line.status !== 'deduplicated',
-      );
-      if (failed.length > 0) {
-        this.logger.error(
-          `Stock-reversal did not raise the product master for ${failed.length} line(s) ` +
-            `[connectionId=${connectionId}, orderId=${internalOrderId}]`,
-        );
-      }
-      return result;
+      result = await this.saleReversal.reverseForOrder(internalOrderId);
     } catch (error) {
       this.logger.error(
         `Stock-reversal threw while cancelling the order [connectionId=${connectionId}, ` +
           `orderId=${internalOrderId}]: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { lines: [] };
+      throw new OfferStockRestoreReversalIncompleteError(internalOrderId, 1);
     }
+
+    const unreversed = result.lines.filter(
+      (line) => line.status !== 'applied' && line.status !== 'deduplicated',
+    );
+    if (unreversed.length > 0) {
+      this.logger.error(
+        `Stock-reversal did not raise the product master for ${unreversed.length} line(s) ` +
+          `[connectionId=${connectionId}, orderId=${internalOrderId}]`,
+      );
+    }
+    const retryable = unreversed.filter((line) => line.status === 'retryable');
+    if (retryable.length > 0) {
+      throw new OfferStockRestoreReversalIncompleteError(internalOrderId, retryable.length);
+    }
+    return result;
   }
 
   /**

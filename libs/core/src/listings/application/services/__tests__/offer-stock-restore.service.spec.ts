@@ -27,7 +27,10 @@ import type {
   IAvailabilityService,
 } from '@openlinker/core/inventory';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
-import { OfferStockRestoreReleaseIncompleteError } from '@openlinker/core/listings';
+import {
+  OfferStockRestoreReleaseIncompleteError,
+  OfferStockRestoreReversalIncompleteError,
+} from '@openlinker/core/listings';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import type {
   OfferManagerPort,
@@ -511,7 +514,7 @@ describe('OfferStockRestoreService', () => {
       expect(saleReversal.reverseForOrder).not.toHaveBeenCalled();
     });
 
-    it('should still restore the offer when the reversal reports a failed line', async () => {
+    it('should still restore the offer when the reversal line is in doubt (no retry can change it)', async () => {
       readyToRestore();
       saleReversal.reverseForOrder.mockResolvedValue({
         lines: [
@@ -531,14 +534,33 @@ describe('OfferStockRestoreService', () => {
       expect(restorer.restoreStockOnCancellation).toHaveBeenCalled();
     });
 
-    it('should still restore the offer when the reversal throws', async () => {
+    it('should fail the job when the reversal throws, so the retry ladder re-runs it', async () => {
       readyToRestore();
       saleReversal.reverseForOrder.mockRejectedValue(new Error('reversal blew up'));
 
-      const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+      await expect(service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)).rejects.toThrow(
+        OfferStockRestoreReversalIncompleteError,
+      );
+      expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    });
 
-      expect(result.outcome).toBe('restored');
-      expect(restorer.restoreStockOnCancellation).toHaveBeenCalled();
+    it('should fail the job when a reversal line is retryable', async () => {
+      readyToRestore();
+      saleReversal.reverseForOrder.mockResolvedValue({
+        lines: [
+          {
+            orderLineId: 'line-1',
+            status: 'retryable',
+            reason: 'adapter-unresolved',
+            ownerConnectionId: 'conn-shop',
+            attempted: false,
+          },
+        ],
+      });
+
+      await expect(service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)).rejects.toThrow(
+        OfferStockRestoreReversalIncompleteError,
+      );
     });
   });
 
