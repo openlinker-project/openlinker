@@ -263,7 +263,17 @@ public static class Kontrahent
         if (wantKod == "" && wantMiasto == "")
         {
             var phoneColumn = await PhoneColumn();
-            if (phoneColumn is null || wantTelefon == "") return false;
+            // NO PHONE TO COMPARE falls back to accepting the symbol match,
+            // which is the pre-review behaviour. Measured live on the reference
+            // install and it overturned the first version of this: that Subiekt
+            // build has no `Telefon` property AND no telephone column, so
+            // refusing here minted a kontrahent on EVERY call - 102 and 103 for
+            // one buyer, upserted twice. That is the unbounded-duplicates
+            // defect arriving by way of the fix for a rarer one.
+            //
+            // The phone therefore TIGHTENS the match where the data exists and
+            // never replaces it.
+            if (phoneColumn is null || wantTelefon == "") return true;
             try
             {
                 await using var pc = new SqlConnection(BridgeConfig.ConnectionString);

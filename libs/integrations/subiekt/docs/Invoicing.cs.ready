@@ -992,7 +992,25 @@ public static class Invoicing
                     if (req.Address?.Ulica is string ul && ul != "") kh.Ulica = ul;
                     if (req.Address?.KodPocztowy is string kod && kod != "") kh.KodPocztowy = kod;
                     if (req.Address?.Miejscowosc is string m && m != "") kh.Miejscowosc = m;
-                    if (req.Telefon != null && req.Telefon != "") kh.Telefon = req.Telefon;
+                    // GUARDED, because not every Subiekt GT build exposes it.
+                    // Measured live on the reference install: setting it raises
+                    // "'System.__ComObject' does not contain a definition for
+                    // 'Telefon'", which took the whole kontrahent creation down -
+                    // and OpenLinker DOES send a phone (the order processor maps
+                    // the shipping address's), so the first NEW buyer carrying one
+                    // got no kontrahent, therefore no ZK and no document. A phone
+                    // is a nice-to-have on a contractor card; losing the card is
+                    // not, so an absent property is logged and stepped over.
+                    if (req.Telefon != null && req.Telefon != "")
+                    {
+                        try { kh.Telefon = req.Telefon; }
+                        catch (Exception e)
+                        {
+                            Console.Error.WriteLine(
+                                $"Kontrahent: this Subiekt build has no Telefon property ({e.Message}) - " +
+                                "the kontrahent is created without it.");
+                        }
+                    }
                     // Best-effort for the same reason as the order path's twin in
                     // Sfera.EnsureKontrahent - see the comment there.
                     if (panstwoId > 0)

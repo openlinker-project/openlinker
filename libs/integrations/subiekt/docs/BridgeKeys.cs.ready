@@ -120,7 +120,18 @@ public static class BridgeKeys
     {
         var want = NationalPhoneDigits(wantTelefon);
         var stored = NationalPhoneDigits(storedTelefon);
-        if (want == "" || stored == "") return false;
+        // NO PHONE ON EITHER SIDE falls back to accepting the symbol match,
+        // which is the pre-review behaviour - and the live evidence says it has
+        // to. This Subiekt build has no `Telefon` property at all (setting it
+        // raises "'System.__ComObject' does not contain a definition for
+        // 'Telefon'"), so no phone can be STORED, so requiring one would refuse
+        // every address-less buyer and mint a kontrahent per order: the
+        // unbounded-duplicates defect, introduced by the fix for a rarer one.
+        //
+        // So the phone TIGHTENS the match where the data exists and never
+        // loosens or replaces it. Where both sides have one they must agree;
+        // where one side has none there is nothing to contradict.
+        if (want == "" || stored == "") return true;
         return want == stored;
     }
 
