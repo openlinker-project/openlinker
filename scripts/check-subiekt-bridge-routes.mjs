@@ -35,6 +35,10 @@
  * Compiling the bridge in CI is the fuller answer and a different decision - a
  * `dotnet` job for a COM-dependent Windows service. This needs no toolchain.
  *
+ * BOTH SIDES ARE FLOORED. Zero mirrors, zero declared routes and zero scanned
+ * client files each exit 1 with a named reason, because a comparison that read
+ * nothing on either half would otherwise report OK over an unasked question.
+ *
  * DIRECTION IS DELIBERATE. It fails on a path the CLIENTS call that the bridge
  * does not declare. A route the bridge declares and nobody calls is NOT a
  * failure: the bridge serves more than this repository (the WooCommerce-dialect
@@ -176,6 +180,36 @@ function run() {
     }
   }
 
+  if (scanned === 0) {
+    // The CLIENT half of the same asymmetry the declared side is floored
+    // against. `CLIENT_DIRS` is a hardcoded root: move the package, restructure
+    // `src/`, split GT and nexo one step further, and `walk()` returns nothing,
+    // `problems` stays empty, and this prints OK having compared zero client
+    // paths against routes it parsed perfectly well. Green over an unasked
+    // question, which for a contract that otherwise fails only on an operator's
+    // machine is the one outcome worth making impossible.
+    //
+    // TWO SHAPES, TWO MECHANISMS, and only one of them is this floor. A root
+    // that no longer EXISTS throws ENOENT out of `readdirSync` - loud, and
+    // deliberately not caught, the same way a moved `CLIENT_FILES` entry throws
+    // out of `readFileSync`. This floor is for the root that still exists and
+    // yields nothing: sources moved into a skipped subdirectory, renamed off
+    // `.ts`, or a package that now holds only tests. That one is silent without
+    // it.
+    //
+    // WHAT THE FLOOR REACHES, stated because `> 0` is a weaker bound than the
+    // number beside it suggests: `scanned` is every `.ts` under the roots, a
+    // figure in the hundreds today, so this catches a root that MOVED and not a
+    // root that NARROWED to a subdirectory still holding one client. A
+    // hardcoded expected count would catch that too and would be wrong on the
+    // first legitimate file added, so the bound stops here deliberately.
+    console.error(
+      'check-subiekt-bridge-routes: no client files scanned - has a path in CLIENT_DIRS moved?'
+    );
+    console.error(`  roots: ${CLIENT_DIRS.join(', ')}`);
+    process.exit(1);
+  }
+
   if (problems.length > 0) {
     console.error('check-subiekt-bridge-routes FAILED\n');
     console.error('These paths are called by a TypeScript client and declared by no bridge route:\n');
@@ -242,6 +276,13 @@ function selfCheck() {
     'a docblock path is not a call'
   );
   assert(calledRoutes("const g = '/api/*';").size === 0, 'a bare glob names no route');
+
+  // THE CLIENT-SIDE ZERO-FLOOR, the mirror of the declared-side one. Asserted
+  // on the parser rather than on `run()` - which reads the real tree and calls
+  // `process.exit` - so what is pinned is the property the floor rests on: an
+  // empty file set yields an empty called-route set, which without the floor is
+  // indistinguishable from "every client path matched".
+  assert(calledRoutes('').size === 0, 'no source means no called routes, which a floor must catch');
 
   // THE BUG THAT MADE THIS GUARD UNDER-READ ON ITS FIRST RUN: a line comment
   // ending in a glob opens a block comment if blocks are stripped first.
