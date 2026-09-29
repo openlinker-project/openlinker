@@ -15,8 +15,23 @@
  *
  * @module tests/oms-mvp/g03
  */
+import type { Page } from '@playwright/test';
 import { test, expect } from '../../../src/fixtures/test';
 import { provisionPacker, seedPackerBrowserSession } from '../../../src/support/provision-packer';
+
+/**
+ * The order row's identity cell (`OrderIdentityCell` → `EntityLabel`) renders
+ * its `<Link>`'s VISIBLE text from the source order number (shortened past 18
+ * chars) or, absent one, a heavily-truncated id — never the raw internal id.
+ * `internalOrderId.slice(-6)` therefore never appears in the link's accessible
+ * name and `getByRole('link', { name: … })` can never match it (confirmed by
+ * source inspection, #3536 review). The link's `href` carries the untruncated
+ * `/orders/{internalOrderId}` regardless of what is displayed, so select the
+ * row by that instead — exact, and immune to display-formatting changes.
+ */
+function orderRowLink(page: Page, internalOrderId: string) {
+  return page.locator(`a[href="/orders/${internalOrderId}"]`);
+}
 
 test.describe('G03 golden path 1 — search / notes / tags (#3536)', () => {
   test('search by SKU and tracking number, add a flagged note and a tag, filter by tag, verify on /bench', async ({
@@ -41,7 +56,7 @@ test.describe('G03 golden path 1 — search / notes / tags (#3536)', () => {
     await search.fill(sku!);
     // #3529 — 300 ms debounce before the request fires.
     await page.waitForTimeout(400);
-    await expect(page.getByRole('link', { name: new RegExp(order.internalOrderId.slice(-6)) })).toBeVisible();
+    await expect(orderRowLink(page, order.internalOrderId)).toBeVisible();
 
     // Tracking-number search (#3528) — best-effort: only asserted when this
     // order actually has a dispatched shipment to search for.
@@ -51,7 +66,7 @@ test.describe('G03 golden path 1 — search / notes / tags (#3536)', () => {
       await search.fill('');
       await search.fill(trackingNumber);
       await page.waitForTimeout(400);
-      await expect(page.getByRole('link', { name: new RegExp(order.internalOrderId.slice(-6)) })).toBeVisible();
+      await expect(orderRowLink(page, order.internalOrderId)).toBeVisible();
     }
 
     // 2. Open the order, add a packer-visible note and a tag.
@@ -77,7 +92,7 @@ test.describe('G03 golden path 1 — search / notes / tags (#3536)', () => {
       (count) => count >= 2, // header + >=1 data row
       { message: 'the tag-filtered orders list to render at least one row' },
     );
-    await expect(page.getByRole('link', { name: new RegExp(order.internalOrderId.slice(-6)) })).toBeVisible();
+    await expect(orderRowLink(page, order.internalOrderId)).toBeVisible();
 
     // 4. As a packer on /bench: the flagged note is visible, the tag is not (D12).
     const packer = await provisionPacker(env, api);
