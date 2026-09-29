@@ -9,7 +9,7 @@
 // from the same source in the same commit, so drift between the three is a
 // review finding rather than something to discover at runtime.
 
-/*
+﻿/*
  * Invoicing bridge for @openlinker/integrations-subiekt (subiekt.invoicing.v1).
  *
  * Speaks the FROZEN contract in libs/integrations/subiekt/src/bridge/*.ts -
@@ -852,6 +852,46 @@ public static class Invoicing
                 r.IsDBNull(1) ? null : r.GetString(1).Trim(),
                 r.IsDBNull(2) ? null : r.GetString(2).Trim()));
         return list;
+    }
+
+    /// <summary>
+    /// The kontrahent a document is already billed to.
+    ///
+    /// This is how an invoice for an order gets the RIGHT buyer. The order path
+    /// has already done the hard identification work - NIP, then OpenLinker's
+    /// customer id, then an address-verified symbol nobody else has claimed
+    /// (Kontrahent.cs) - and the answer is sitting on the ZK. Re-deriving it
+    /// here from the buyer's NAME, which is what happens when this returns
+    /// nothing, can only ever be a worse answer to the same question, and for
+    /// two customers sharing a surname it is a wrong one: the invoice is billed
+    /// to somebody else's card while its own ZK names the correct one.
+    ///
+    /// Null means "no document, or no payer on it" - a manual, order-less
+    /// invoice has neither, and falls through to the inline buyer exactly as
+    /// before.
+    /// </summary>
+    public static async Task<int?> FindKontrahentIdByDocument(int docId)
+    {
+        if (docId <= 0) return null;
+        try
+        {
+            await using var c = new SqlConnection(ConnStr);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT dok_PlatnikId FROM dok__Dokument WHERE dok_Id = @id", c);
+            cmd.Parameters.AddWithValue("@id", docId);
+            var r = await cmd.ExecuteScalarAsync();
+            if (r is null || r is DBNull) return null;
+            var id = Convert.ToInt32(r);
+            return id > 0 ? id : null;
+        }
+        catch (Exception e)
+        {
+            // Degrades to the inline-buyer upsert, which is what every invoice
+            // did before this existed. An unreadable ZK must not fail a sale.
+            Console.Error.WriteLine($"Invoicing.FindKontrahentIdByDocument({docId}): {e.Message} - falling back to the inline buyer.");
+            return null;
+        }
     }
 
     /// <summary>kh__Kontrahent carries no NIP column of its own - it lives on the

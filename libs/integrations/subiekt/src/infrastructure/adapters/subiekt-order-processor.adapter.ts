@@ -108,6 +108,18 @@ function resolveBuyer(order: OrderCreate): BridgeOrderBuyer {
   return {
     nazwa: name,
     nip: addr?.taxId ?? null,
+    // The buyer's IDENTITY, as opposed to every other field here, which only
+    // describes them. Without it the bridge tells two buyers apart by the
+    // symbol it derives from `nazwa`, so two unrelated people sharing a name
+    // and carrying no NIP share one kontrahent and the second one's document
+    // is billed to the first one's card - see `BridgeOrderBuyer.olBuyerId`.
+    //
+    // Omitted rather than sent blank when absent, the `countryCode` discipline
+    // below: an empty string is not an identity, and the bridge must be able
+    // to tell "this buyer has no id" from "this buyer's id is nothing".
+    ...(order.customerId !== undefined && order.customerId.trim() !== ''
+      ? { olBuyerId: order.customerId.trim() }
+      : {}),
     telefon: addr?.phone,
     ulica: addr?.address1,
     kodPocztowy: addr?.postalCode,

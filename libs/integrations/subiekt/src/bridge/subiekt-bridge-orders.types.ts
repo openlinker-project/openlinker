@@ -48,6 +48,27 @@ export interface BridgeOrderLine {
 export interface BridgeOrderBuyer {
   nazwa: string;
   nip: string | null;
+  /**
+   * OpenLinker's own customer id (`ol_customer_*`), and the only field here
+   * that identifies the BUYER rather than describing them.
+   *
+   * Subiekt has no customer identifier of its own that OpenLinker may set, so
+   * the bridge derived one from the buyer's NAME - `MakeSymbol` uppercases it
+   * and keeps the first 16 alphanumerics. Two unrelated people called Jan
+   * Kowalski, neither carrying a NIP, therefore resolve to ONE kontrahent and
+   * the second one's document is billed to the first one's card. Silently:
+   * the match succeeds, nothing throws, and the wrong name is on the paper.
+   *
+   * This value is what tells them apart. The bridge matches on it before it
+   * falls back to the symbol, and stamps it onto a card it matched the old way
+   * so an existing install adopts it on first touch rather than at a migration.
+   *
+   * OPTIONAL, and its absence is never read as a claim: a source exposing
+   * neither a buyer id nor an e-mail yields no customer id at all
+   * (`OrderIngestionService.resolveCustomerId`), and such an order resolves
+   * exactly as it did before this field existed.
+   */
+  olBuyerId?: string;
   telefon?: string;
   ulica?: string;
   kodPocztowy?: string;

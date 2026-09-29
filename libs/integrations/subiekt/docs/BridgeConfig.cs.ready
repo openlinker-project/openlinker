@@ -9,7 +9,7 @@
 // from the same source in the same commit, so drift between the three is a
 // review finding rather than something to discover at runtime.
 
-// BridgeConfig.cs - the bridge's one source of deployment configuration.
+﻿// BridgeConfig.cs - the bridge's one source of deployment configuration.
 //
 // Every value below used to be a `const` compiled into the binary, and the SQL
 // connection string was a `const` in SIX different files. A second Subiekt
@@ -62,6 +62,37 @@ public static class BridgeConfig
         "SqlConnectionString",
         $"Server={SqlServer};Database={SqlDatabase};Integrated Security=True;"
         + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10");
+
+    /// <summary>
+    /// Which `kh__Kontrahent` custom field stores OpenLinker's own customer id,
+    /// so two buyers sharing a name are not billed to one card.
+    ///
+    /// CONFIGURABLE because the eight `kh_PoleN` columns belong to the
+    /// OPERATOR, not to us. On the install this was measured against
+    /// (2026-09-29, 104 kontrahentów) `Pole1` already held operator codes like
+    /// `DW 1732Y` on 43 rows while `Pole2`..`Pole8` were empty on every row -
+    /// but that is one install, and compiling a column name in would quietly
+    /// claim a field somebody else is using.
+    ///
+    /// An unrecognised value DISABLES the feature and says so at startup. It
+    /// deliberately does not fall back to `Pole2`: an operator naming another
+    /// column is most likely doing it BECAUSE `Pole2` is taken, so a fallback
+    /// would write into exactly the data they were steering away from. It is
+    /// equally deliberately not fatal - this is an optional dedupe improvement,
+    /// and taking a whole Subiekt integration down over a typo in it would stop
+    /// orders and documents to fix something that merely degrades to the
+    /// behaviour every install had before this existed.
+    ///
+    /// The allowlist is ALSO the injection defence. A column name cannot be a
+    /// SQL parameter, so this value is interpolated into the statement text;
+    /// `KontrahentOlIdColumn` returns null for anything not on the list, and no
+    /// statement is built at all.
+    /// </summary>
+    public static readonly string KontrahentOlIdField = Read("KontrahentOlIdField", "Pole2");
+
+    /// <summary>The validated column name (`kh_Pole2`), or null when the
+    /// configured field is not one of `Pole1`..`Pole8`.</summary>
+    public static string? KontrahentOlIdColumn => BridgeKeys.ResolveKontrahentOlIdColumn(KontrahentOlIdField);
 
     /// <summary>Subiekt operator the Sfera session logs in as.</summary>
     public static readonly string SferaOperator = Read("SferaOperator", "Szef");
@@ -238,10 +269,12 @@ public static class BridgeConfig
     public static string Describe()
     {
         var file = FileValues.Count == 0 ? "none" : $"{FileName} ({FileValues.Count} key(s))";
+        var olIdCol = KontrahentOlIdColumn ?? ("<disabled: " + KontrahentOlIdField + " is not Pole1..Pole8>");
         return $"config: file={file}; sqlServer={SqlServer}; sqlDatabase={SqlDatabase}; "
              + $"sferaOperator={SferaOperator}; httpsPort={HttpsPort}; httpPort={HttpPort}; "
              + $"publicBase={(PublicBase.Length > 0 ? PublicBase : "<derived from request>")}; httpsConfigured={HttpsConfigured}; shimAuthConfigured={ShimAuthConfigured}; "
-             + $"tokenAuthConfigured={TokenAuthConfigured}; shimWrites={EnableShimWrites}";
+             + $"tokenAuthConfigured={TokenAuthConfigured}; shimWrites={EnableShimWrites}; "
+             + $"kontrahentOlIdColumn={olIdCol}";
     }
 
     /// <summary>`SqlServer` -> `OL_BRIDGE_SQL_SERVER`.</summary>

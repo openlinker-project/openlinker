@@ -500,6 +500,87 @@ describe('SubiektOrderProcessorAdapter', () => {
       expect(await captureBuyer('   ')).not.toHaveProperty('countryCode');
     });
   });
+
+  /**
+   * The buyer's IDENTITY reaches the bridge (#3365).
+   *
+   * Subiekt identifies a customer card by a symbol the bridge derives from the
+   * buyer's NAME, so two unrelated people called Jan Kowalski, neither carrying
+   * a NIP, resolved to ONE kontrahent - and the second one's document was
+   * billed to the first one's card, silently. `customerId` is the identity the
+   * name never was, and it was already ON the command and simply not read.
+   */
+  describe('the OpenLinker customer id (kontrahent identity)', () => {
+    const captureBuyer = async (
+      customerId: string | undefined,
+    ): Promise<Record<string, unknown>> => {
+      let captured: { buyer: Record<string, unknown> } | undefined;
+      const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
+        captured = JSON.parse(init!.body as string) as { buyer: Record<string, unknown> };
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ success: true, data: { id: 9, numer: 'ZK 9/2026' }, error: null }),
+            { status: 200 },
+          ),
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl });
+      const identifierMapping = new InMemoryIdentifierMappingAdapter();
+      identifierMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'SYM-1',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_product_x',
+      });
+      const adapter = new SubiektOrderProcessorAdapter(
+        client,
+        identifierMapping,
+        CONNECTION_ID,
+        noopLogger,
+      );
+
+      await adapter.createOrder({
+        status: 'pending',
+        customerId: customerId as string,
+        items: [{ id: '1', productId: 'ol_product_x', quantity: 1, price: 10, sku: 'SKU-1' }],
+        totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'Testowa 1',
+          city: 'Warszawa',
+          postalCode: '00-001',
+        },
+        orderNumber: 'OL-101',
+      } as OrderCreate);
+
+      return captured!.buyer;
+    };
+
+    it('travels to the bridge, so two buyers of one name are two kontrahenci', async () => {
+      expect(await captureBuyer('ol_customer_fce2df4d853f4499b955a6bb1a212bd1')).toMatchObject({
+        olBuyerId: 'ol_customer_fce2df4d853f4499b955a6bb1a212bd1',
+      });
+    });
+
+    it('is OMITTED, never blank, when the order carries none', async () => {
+      // A source exposing neither a buyer id nor an e-mail yields no customer
+      // id at all, and such an order must resolve by exactly the rule it did
+      // before this field existed. An empty string is not an identity, and the
+      // bridge has to be able to tell "no id" from "an id that is nothing".
+      expect(await captureBuyer(undefined)).not.toHaveProperty('olBuyerId');
+      expect(await captureBuyer('   ')).not.toHaveProperty('olBuyerId');
+    });
+
+    it('is trimmed rather than sent with whitespace that would never match back', async () => {
+      // It is compared for exact equality bridge-side, so a padded value would
+      // match nothing on the next order and mint a duplicate card every time.
+      expect(await captureBuyer('  ol_customer_abc  ')).toMatchObject({
+        olBuyerId: 'ol_customer_abc',
+      });
+    });
+  });
 });
 
 /**

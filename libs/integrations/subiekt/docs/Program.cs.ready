@@ -9,7 +9,7 @@
 // from the same source in the same commit, so drift between the three is a
 // review finding rather than something to discover at runtime.
 
-// OpenLinker <- Subiekt GT spike bridge.
+﻿// OpenLinker <- Subiekt GT spike bridge.
 // Speaks a READ-ONLY subset of the WooCommerce REST v3 dialect so the shipped
 // OpenLinker WooCommerce ProductMaster/InventoryMaster adapters can consume
 // Subiekt GT without any change to OpenLinker itself.
@@ -1118,6 +1118,25 @@ app.MapPost("/api/invoices", async (HttpRequest req) =>
         // see IssueRequest.ZkId's docblock.
         ZkId = root.TryGetProperty("zkId", out var zk) && zk.TryGetInt32(out var zkv) ? zkv : null,
     };
+
+    // An invoice for an order bills the card its ORDER billed.
+    //
+    // The ZK's kontrahent was chosen by the full identification rule - NIP,
+    // then OpenLinker's own customer id, then an address-verified symbol that
+    // nobody else had claimed (Kontrahent.cs). The inline-buyer upsert below
+    // knows none of that: it starts again from the buyer's NAME, so for two
+    // customers sharing a surname it can bill this invoice to the other one's
+    // card while the ZK it names points at the right one - a contradiction
+    // inside one sale, and invisible from Subiekt.
+    //
+    // Taken BEFORE the upsert rather than instead of it: a manual, order-less
+    // invoice carries no `zkId`, and one whose ZK cannot be read falls straight
+    // through to the inline buyer, which is what every invoice did before this.
+    if (ir.KontrahentId <= 0 && ir.ZkId is { } zkForBuyer)
+    {
+        var fromZk = await Invoicing.FindKontrahentIdByDocument(zkForBuyer);
+        if (fromZk is int zkKh && zkKh > 0) ir.KontrahentId = zkKh;
+    }
 
     // No kontrahentId - self-sufficient mode: upsert the inline buyer first.
     if (ir.KontrahentId <= 0 && root.TryGetProperty("buyer", out var buyer) && buyer.ValueKind == System.Text.Json.JsonValueKind.Object)

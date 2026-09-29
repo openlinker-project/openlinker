@@ -11,6 +11,8 @@
 //
 using System.Globalization;
 
+using System.Globalization;
+
 /// <summary>
 /// The bridge's pure decision functions, in one file with NO COM and NO SQL.
 ///
@@ -183,5 +185,48 @@ public static class BridgeKeys
         return equals(raw.Substring(0, i), user) && equals(raw.Substring(i + 1), pass)
             ? BasicAuthOutcome.Allowed
             : BasicAuthOutcome.WrongCredentials;
+    }
+
+    /// <summary>
+    /// The OpenLinker customer-id prefix. Anything else found in the custom
+    /// field the bridge shares with the operator is THEIR data and is never
+    /// read as a claim.
+    /// </summary>
+    public const string OlBuyerIdPrefix = "ol_customer_";
+
+    /// <summary>
+    /// Could this value be an OpenLinker customer id at all?
+    ///
+    /// The one guard that makes a shared column safe. It has to answer false
+    /// for an operator's own note in BOTH directions: such a value must not
+    /// MATCH a buyer, and - the half that actually bites - must not read as a
+    /// RIVAL claim either, which would refuse a card the buyer legitimately
+    /// owns and mint a duplicate on every order.
+    /// </summary>
+    public static bool LooksLikeOlBuyerId(string? value)
+        => value is not null
+           && value.Length > OlBuyerIdPrefix.Length
+           && value.StartsWith(OlBuyerIdPrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// The `kh__Kontrahent` column an operator-configured field name refers to,
+    /// or null when it is not one of `Pole1`..`Pole8`.
+    ///
+    /// THIS IS ALSO THE INJECTION DEFENCE. A column name cannot be a SQL
+    /// parameter, so the value is interpolated into the statement text; null
+    /// means no statement is built at all. Nothing else may widen it.
+    ///
+    /// Null deliberately does not degrade to a default column. An operator
+    /// naming another field is most likely doing it BECAUSE the default is
+    /// occupied, so a fallback would write into exactly the data they were
+    /// steering away from.
+    /// </summary>
+    public static string? ResolveKontrahentOlIdColumn(string? configuredField)
+    {
+        var f = (configuredField ?? "").Trim();
+        for (var n = 1; n <= 8; n++)
+            if (string.Equals(f, "Pole" + n, StringComparison.OrdinalIgnoreCase))
+                return "kh_Pole" + n;
+        return null;
     }
 }

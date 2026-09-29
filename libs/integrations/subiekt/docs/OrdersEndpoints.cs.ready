@@ -9,7 +9,7 @@
 // from the same source in the same commit, so drift between the three is a
 // review finding rather than something to discover at runtime.
 
-// OrdersEndpoints - OrderSource + OrderProcessorManager capability.
+﻿// OrdersEndpoints - OrderSource + OrderProcessorManager capability.
 //
 // Speaks the contract in libs/integrations/subiekt/src/bridge/subiekt-bridge-orders.types.ts
 // (English /api/orders* routes, {success,data,error} envelope, Polish field names
@@ -284,9 +284,13 @@ public static class OrdersEndpoints
             // `(6)`. Observed live on 2026-09-23: two purchases by one buyer, two
             // kontrahenci. `Kontrahent.FindBySymbol` sees the `(n)` variants.
             var symbol = Kontrahent.MakeSymbol(req.Buyer.Nazwa);
+            //
+            // `OlBuyerId` is what demotes the symbol from an identity to a
+            // fallback. Passed LAST and optional, so an order that carries none
+            // resolves by exactly the rule it did before.
             var existingKontrahentId = await Kontrahent.Resolve(
                 req.Buyer.Nip, symbol, req.Buyer.KodPocztowy, req.Buyer.Miejscowosc,
-                req.Buyer.Telefon) ?? 0;
+                req.Buyer.Telefon, req.Buyer.OlBuyerId) ?? 0;
 
             // Resolved BEFORE EnsureKontrahent, which is synchronous and runs on
             // the COM apartment thread. One shared resolver with the invoice path,
@@ -310,6 +314,20 @@ public static class OrdersEndpoints
                 Miejscowosc = req.Buyer.Miejscowosc ?? "",
                 PanstwoId = panstwoId,
             }, existingId: existingKontrahentId);
+
+            // A card WE JUST CREATED must be claimed immediately, and this is
+            // the one place that can do it: EnsureKontrahent goes through Sfera,
+            // which does not expose the custom fields, so the claim is a
+            // separate SQL write and there is nothing to fold it into.
+            //
+            // Leaving it for the buyer's NEXT order is not merely untidy, it
+            // reopens the defect from the other side: an unclaimed card is
+            // adoptable, so a DIFFERENT customer sharing the surname and town
+            // could reach it first and this buyer would be the one who ends up
+            // on somebody else's kontrahent. Only the create branch stamps -
+            // every resolve branch has already claimed what it returned.
+            if (existingKontrahentId == 0 && kontrahentId > 0 && req.Buyer.OlBuyerId is { } newOlId)
+                await Kontrahent.StampOlBuyerId(kontrahentId, newOlId);
 
             var zkReq = new ZkRequest
             {
@@ -499,7 +517,8 @@ public static class OrdersEndpoints
         // lives on the kontrahent's primary address row (adr_TypAdresu = 1),
         // exactly like NIP already does in Invoicing.cs's FindKontrahentIdByNip.
         var headerSql = $@"SELECT d.dok_Id, d.dok_NrPelny, d.{DokDataKolumna}, d.dok_Waluta,
-                                   d.dok_WartBrutto, a.adr_NazwaPelna, a.adr_NIP, kh.kh_EMail
+                                   d.dok_WartBrutto, a.adr_NazwaPelna, a.adr_NIP, kh.kh_EMail,
+                                   d.dok_PlatnikId
                             FROM dok__Dokument d
                             LEFT JOIN kh__Kontrahent kh ON kh.kh_Id = d.dok_PlatnikId
                             LEFT JOIN adr__Ewid a ON a.adr_IdObiektu = d.dok_PlatnikId AND a.adr_TypAdresu = 1
@@ -510,6 +529,16 @@ public static class OrdersEndpoints
         int docId;
         string numer, waluta;
         string? kontrahentNazwa, kontrahentNip, kontrahentEmail;
+        // WHICH card this document is billed to, as opposed to what that card is
+        // called. Two buyers sharing a surname produce identical Nazwa/NIP/EMail,
+        // so the id is the ONLY field that can tell "these two orders went to one
+        // kontrahent" from "they went to two" - which is the whole question
+        // Kontrahent.cs exists to get right, and until now it left the reader.
+        //
+        // Read from `dok_PlatnikId`, the document's own column, rather than from
+        // the joined `kh.kh_Id`: it is what the DOCUMENT says, and it still
+        // answers if the card behind it was later removed.
+        int? kontrahentId;
         string dataWyst;
         decimal wartoscBrutto;
 
@@ -524,6 +553,7 @@ public static class OrdersEndpoints
             kontrahentNazwa = r.IsDBNull(5) ? null : r.GetString(5).Trim();
             kontrahentNip = r.IsDBNull(6) ? null : r.GetString(6).Trim();
             kontrahentEmail = r.IsDBNull(7) ? null : r.GetString(7).Trim();
+            kontrahentId = r.IsDBNull(8) ? null : r.GetInt32(8);
         }
 
         // Lines: confirmed live this session. The real positions table is
@@ -553,7 +583,7 @@ public static class OrdersEndpoints
         }
 
         return new OrderDetailResponse(docId, numer, dataWyst, kontrahentNazwa, kontrahentNip,
-            kontrahentEmail, waluta, wartoscBrutto, lines);
+            kontrahentEmail, waluta, wartoscBrutto, lines, kontrahentId);
     }
 }
 
@@ -565,6 +595,13 @@ public sealed class OrderBuyerDto
 {
     public string Nazwa { get; set; } = "";
     public string? Nip { get; set; }
+    /// <summary>OpenLinker's own customer id (`ol_customer_*`) - the only field
+    /// here that identifies the buyer rather than describing them, and what
+    /// keeps two people sharing a surname off one kontrahent. Optional: a
+    /// source exposing neither a buyer id nor an e-mail supplies none, and such
+    /// an order resolves exactly as it did before this existed. See
+    /// Kontrahent.cs for the rule it feeds.</summary>
+    public string? OlBuyerId { get; set; }
     public string? Telefon { get; set; }
     public string? Ulica { get; set; }
     public string? KodPocztowy { get; set; }
@@ -624,7 +661,8 @@ public sealed record OrderDetailLine(string Symbol, string? Nazwa, decimal Ilosc
 public sealed record OrderDetailResponse(
     int Id, string Numer, string DataWystawienia,
     string? KontrahentNazwa, string? KontrahentNip, string? KontrahentEmail,
-    string Waluta, decimal WartoscBrutto, List<OrderDetailLine> Lines);
+    string Waluta, decimal WartoscBrutto, List<OrderDetailLine> Lines,
+    int? KontrahentId);
 
 public sealed class WriteShippingRequest
 {

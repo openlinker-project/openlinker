@@ -46,6 +46,18 @@ export interface SubiektOrderDetail {
   readonly kontrahentNazwa: string | null;
   readonly kontrahentNip: string | null;
   readonly kontrahentEmail: string | null;
+  /**
+   * WHICH kontrahent this ZK is billed to - `dok_PlatnikId`, the document's own
+   * column.
+   *
+   * The only field here that can tell two buyers apart. Two customers sharing a
+   * surname produce identical `kontrahentNazwa` / `kontrahentNip` /
+   * `kontrahentEmail` whether they landed on one card or two, so an assertion
+   * about kontrahent IDENTITY has to read this one.
+   *
+   * `null` only for a document with no payer at all.
+   */
+  readonly kontrahentId: number | null;
   readonly waluta: string;
   readonly wartoscBrutto: number;
   readonly lines: readonly SubiektOrderLine[];
