@@ -12,6 +12,7 @@ import {
   CannotSelfModifyException,
   LastAdminException,
   UserNotFoundException,
+  UserNotAwaitingFirstSignInException,
   UserNotActiveException,
   UserNotDeactivatedException,
   UserNotPendingException,
@@ -64,6 +65,45 @@ describe('UserManagementService', () => {
 
       expect(repo.findAll).toHaveBeenCalledWith({ status: 'active', page: 0, pageSize: 10 });
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('reissueTemporaryPassword (#3456 review)', () => {
+    const owing = (): User => {
+      const user = makeUser('u1', 'active');
+      return Object.assign(user, { mustChangePassword: true });
+    };
+
+    it('should write a fresh hash and set the forced-change flag in one call', async () => {
+      repo.findById.mockResolvedValue(owing());
+
+      const result = await service.reissueTemporaryPassword('u1');
+
+      expect(result.id).toBe('u1');
+      const [userId, hash, opts] = repo.updatePasswordHash.mock.calls[0];
+      expect(userId).toBe('u1');
+      expect(opts).toEqual({ forceMustChangePassword: true });
+      expect(hash).not.toBe(result.temporaryPassword);
+      expect(await bcrypt.compare(result.temporaryPassword, hash)).toBe(true);
+    });
+
+    it('should refuse an account that has already set its own password', async () => {
+      repo.findById.mockResolvedValue(
+        Object.assign(makeUser('u1', 'active'), { mustChangePassword: false })
+      );
+
+      await expect(service.reissueTemporaryPassword('u1')).rejects.toThrow(
+        UserNotAwaitingFirstSignInException
+      );
+      expect(repo.updatePasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('should throw UserNotFoundException for an unknown user', async () => {
+      repo.findById.mockResolvedValue(null);
+
+      await expect(service.reissueTemporaryPassword('ghost')).rejects.toThrow(
+        UserNotFoundException
+      );
     });
   });
 

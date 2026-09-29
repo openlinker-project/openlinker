@@ -23,6 +23,7 @@ export {
   type UserIdentifierField,
 } from './domain/exceptions/user-already-exists.exception';
 export { UserNotPendingException } from './domain/exceptions/user-not-pending.exception';
+export { UserNotAwaitingFirstSignInException } from './domain/exceptions/user-not-awaiting-first-sign-in.exception';
 export { UserNotActiveException } from './domain/exceptions/user-not-active.exception';
 export { UserNotDeactivatedException } from './domain/exceptions/user-not-deactivated.exception';
 export { UserNotPendingConfirmationException } from './domain/exceptions/user-not-pending-confirmation.exception';
