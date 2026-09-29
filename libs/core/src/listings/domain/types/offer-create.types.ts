@@ -97,6 +97,17 @@ export interface CreateOfferOverrides {
    */
   ean?: string;
   /**
+   * Operator confirmation that `ean` above is correct despite failing
+   * OpenLinker's own GS1 check-digit validation (#3492). Lets
+   * `BulkListingSubmitService.enforceIdentifierRules` skip the checksum-only
+   * exclusion for this one job and forward the barcode unchanged, so the
+   * destination is the real judge rather than OpenLinker guessing. Never
+   * rescues a length-invalid EAN (rejected earlier, at the DTO boundary) and
+   * is control-plane only - stripped before it can reach a real
+   * `CreateOfferCommand`, since it has no meaning to an adapter.
+   */
+  eanOverrideAcknowledged?: boolean;
+  /**
    * Image URLs in display order. Falls back to variant images. `null` or
    * `undefined` both mean "no override".
    */

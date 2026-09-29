@@ -171,6 +171,14 @@ export class CreateOfferOverridesDto {
   ean?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Operator confirmation that the `ean` above is correct despite failing the GS1 check digit (#3492). BulkListingSubmitService skips the checksum-only exclusion for this job when true and lets the destination judge it; ignored/no-op for a length-invalid EAN, which is already rejected above.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  eanOverrideAcknowledged?: boolean;
+
+  @ApiPropertyOptional({
     nullable: true,
     isArray: true,
     type: String,
