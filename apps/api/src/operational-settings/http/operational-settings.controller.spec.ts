@@ -16,6 +16,7 @@ import {
 } from '@openlinker/core/operational-settings';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import { OperationalSettingsController } from './operational-settings.controller';
+import type { UpdateOperationalSettingsDto } from './dto/update-operational-settings.dto';
 
 const number = (
   value: number,
@@ -171,6 +172,39 @@ describe('OperationalSettingsController', () => {
         },
         'user-1'
       );
+    });
+
+    it('should forward every field of the update DTO to the service, so a field cannot be silently dropped', async () => {
+      // `update()` builds the service input by naming each field individually
+      // rather than spreading the DTO, which is exactly what let
+      // syncJobRetentionDays / syncJobDeadRetentionDays reach production
+      // silently un-forwarded (#2946): the DTO validated the value, the
+      // controller returned 204, and nothing was ever persisted.
+      //
+      // `Required<UpdateOperationalSettingsDto>` is the guard against a
+      // REPEAT of exactly that: it forces this literal to name every field
+      // the DTO currently declares, so a future field added to the DTO
+      // without a matching entry here fails `pnpm type-check` (a missing
+      // property on a `Required<...>` literal) rather than compiling clean
+      // and quietly not reaching the service.
+      const allFieldsSet: Required<UpdateOperationalSettingsDto> = {
+        catalogueSweepBudget: 111,
+        inventorySweepBudget: 222,
+        sweepPageSize: 333,
+        deletionAuditBudget: 444,
+        syncJobRetentionDays: 555,
+        syncJobDeadRetentionDays: 666,
+        deletionAuditCadence: '*/7 * * * *',
+        acknowledgeAboveRecommended: true,
+      };
+
+      await controller.update(allFieldsSet, { id: 'user-1' } as AuthenticatedUser, res);
+
+      expect(settings.updateSettings).toHaveBeenCalledTimes(1);
+      const [forwarded] = settings.updateSettings.mock.calls[0];
+      for (const [field, value] of Object.entries(allFieldsSet)) {
+        expect(forwarded).toHaveProperty(field, value);
+      }
     });
 
     it('should forward the acknowledgement so the service can weigh it', async () => {
