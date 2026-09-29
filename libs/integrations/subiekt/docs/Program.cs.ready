@@ -40,7 +40,9 @@
 //
 // Route paths on the `/api/*` family are compared against their TypeScript
 // callers at lint time by `scripts/check-subiekt-bridge-routes.mjs` in the
-// OpenLinker repository. The WooCommerce family is deliberately outside that
+// OpenLinker repository - which lives on the openlinker#3365 branch and reaches
+// `main` only when that merges, so until then this is a statement about that
+// branch rather than about every checkout. The WooCommerce family is deliberately outside that
 // comparison: its callers are the WooCommerce adapters pointed at a WC base
 // url, not the Subiekt clients, so holding them to this bridge's declarations
 // would compare two unrelated things.
@@ -125,6 +127,34 @@ var app = builder.Build();
 // variable and sees no effect must be able to tell "not read" from
 // "read and overridden". Secrets are deliberately NOT echoed.
 app.Logger.LogInformation("{Config}", BridgeConfig.Describe());
+
+// A LINE OF ITS OWN for the custom field this bridge writes into, because it is
+// the one setting that claims something the OPERATOR owns. `kh_Pole1`..`kh_Pole8`
+// are theirs, the default picks `Pole2` without being asked, and while the write
+// is guarded so it can only ever FILL an empty field, an operator who keeps data
+// there deserves to read the name at boot rather than find it in a config dump
+// beside nine unrelated values (PR #7 third review).
+//
+// Not made opt-in: off by default would leave every install matching customers
+// by NAME, which is the defect the field exists to fix, and an operator who has
+// to discover a setting before two people called Jan Kowalski stop sharing one
+// card is an operator who finds out from a wrong invoice.
+if (BridgeConfig.KontrahentOlIdColumn is { } olIdCol)
+{
+    app.Logger.LogInformation(
+        "kontrahent identity: OpenLinker customer ids are stored in kh__Kontrahent.{Column} "
+        + "(set KontrahentOlIdField / OL_BRIDGE_KONTRAHENT_OL_ID_FIELD to move it). "
+        + "Only EMPTY fields are ever written; existing values are never changed.",
+        olIdCol);
+}
+else
+{
+    app.Logger.LogWarning(
+        "kontrahent identity: DISABLED - KontrahentOlIdField is '{Field}', which is not Pole1..Pole8. "
+        + "Customers will be matched by name-derived symbol alone, so two buyers sharing a name "
+        + "and carrying no tax id can resolve to one kontrahent.",
+        BridgeConfig.KontrahentOlIdField);
+}
 // A credential left at the example file's stand-in reads as UNSET, so the routes
 // it guards stay closed - which is safe, and silent, and looks from the outside
 // exactly like a bridge somebody deliberately left unconfigured. The operator
@@ -1445,7 +1475,17 @@ app.MapGet("/api/cash-registers", async () =>
 
 app.MapFallback((HttpContext ctx) =>
 {
-    app.Logger.LogWarning("!!! UNHANDLED {M} {P}{Q}", ctx.Request.Method, ctx.Request.Path, ctx.Request.QueryString);
+    // Keys only, values redacted - the same rule the request log above applies,
+    // which this line had been missing. An unhandled request is exactly the one
+    // most likely to carry something malformed or unexpected in its query, and
+    // a log is read long after the request that wrote it.
+    var unhandledQ = "";
+    if (ctx.Request.QueryString.HasValue)
+    {
+        var unhandledKeys = ctx.Request.Query.Keys.OrderBy(k => k, StringComparer.Ordinal);
+        unhandledQ = "?" + string.Join("&", unhandledKeys.Select(k => k + "=<redacted>"));
+    }
+    app.Logger.LogWarning("!!! UNHANDLED {M} {P}{Q}", ctx.Request.Method, ctx.Request.Path, unhandledQ);
     return Results.NotFound(new { code = "rest_no_route", message = "no route: " + ctx.Request.Path });
 });
 

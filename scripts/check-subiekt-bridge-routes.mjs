@@ -35,9 +35,12 @@
  * Compiling the bridge in CI is the fuller answer and a different decision - a
  * `dotnet` job for a COM-dependent Windows service. This needs no toolchain.
  *
- * BOTH SIDES ARE FLOORED. Zero mirrors, zero declared routes and zero scanned
- * client files each exit 1 with a named reason, because a comparison that read
- * nothing on either half would otherwise report OK over an unasked question.
+ * BOTH SIDES ARE FLOORED, EACH ON A SINGLE SOURCE. Zero mirrors, zero declared
+ * routes, and any `CLIENT_DIRS` root that yields nothing, each exit 1 with a
+ * named reason - because a comparison that read nothing on either half would
+ * otherwise report OK over an unasked question. The client floor is applied per
+ * root rather than over a total, since a total is exactly what a non-empty
+ * constant can hold off zero; see `collectClientFiles`.
  *
  * DIRECTION IS DELIBERATE. It fails on a path the CLIENTS call that the bridge
  * does not declare. A route the bridge declares and nobody calls is NOT a
@@ -144,6 +147,50 @@ function walk(dir, out = []) {
   return out;
 }
 
+/** Raised when a `CLIENT_DIRS` root yields no client files. Thrown rather than
+ * exited so the self-check can exercise the floor - the previous version put
+ * the check inside `run()`, where the only way to reach it was to run the whole
+ * guard against the real tree. */
+export class EmptyClientRootError extends Error {}
+
+/**
+ * Every client file to scan, with the floor applied PER ROOT.
+ *
+ * PER ROOT, not over the combined total, and that distinction is the entire
+ * finding this replaces. The previous floor tested `scanned === 0` over
+ * `CLIENT_DIRS` walked AND `CLIENT_FILES` concatenated - and `CLIENT_FILES` is
+ * a non-empty constant, so it contributed 1 unconditionally and the check was
+ * UNREACHABLE. Emptying the real client root left the guard reporting
+ * `OK (... 1 client files scanned)`: zero of the 31 client files compared,
+ * exit 0. A floor on an aggregate that a constant holds off zero cannot observe
+ * the half it was added to watch.
+ *
+ * It stays per root rather than becoming one `walked.length === 0` for the same
+ * reason at the next size up: `CLIENT_DIRS` is written to grow, and the moment
+ * it holds two entries an aggregate floor lets an emptied root hide behind a
+ * populated sibling - the identical defect one level out.
+ *
+ * `CLIENT_FILES` needs no floor: every entry is read with `readFileSync`, which
+ * throws on a moved file. A root that no longer EXISTS likewise throws ENOENT
+ * out of `readdirSync`. This floor is only for the root that still exists and
+ * yields nothing - sources moved into a skipped subdirectory, renamed off
+ * `.ts`, or a package left holding only tests - which is the one shape that is
+ * otherwise silent.
+ */
+export function collectClientFiles(dirs = CLIENT_DIRS, files = CLIENT_FILES, root = ROOT) {
+  const out = [];
+  for (const dir of dirs) {
+    const found = walk(join(root, dir));
+    if (found.length === 0) {
+      throw new EmptyClientRootError(
+        `no client files under ${dir} - has it moved or been restructured?`
+      );
+    }
+    out.push(...found);
+  }
+  return out.concat(files.map((f) => join(root, f)));
+}
+
 function run() {
   const mirrors = readdirSync(MIRROR_DIR).filter((f) => f.endsWith('.cs.ready'));
   if (mirrors.length === 0) {
@@ -165,49 +212,23 @@ function run() {
     process.exit(1);
   }
 
-  const problems = [];
-  let scanned = 0;
-  const files = CLIENT_DIRS.flatMap((dir) => walk(join(ROOT, dir)))
-    .concat(CLIENT_FILES.map((f) => join(ROOT, f)));
-  {
-    for (const file of files) {
-      scanned += 1;
-      for (const route of calledRoutes(readFileSync(file, 'utf8'))) {
-        if (!declared.has(route)) {
-          problems.push({ file: relative(ROOT, file), route });
-        }
-      }
-    }
+  let files;
+  try {
+    files = collectClientFiles();
+  } catch (e) {
+    if (!(e instanceof EmptyClientRootError)) throw e;
+    console.error(`check-subiekt-bridge-routes: ${e.message}`);
+    process.exit(1);
   }
 
-  if (scanned === 0) {
-    // The CLIENT half of the same asymmetry the declared side is floored
-    // against. `CLIENT_DIRS` is a hardcoded root: move the package, restructure
-    // `src/`, split GT and nexo one step further, and `walk()` returns nothing,
-    // `problems` stays empty, and this prints OK having compared zero client
-    // paths against routes it parsed perfectly well. Green over an unasked
-    // question, which for a contract that otherwise fails only on an operator's
-    // machine is the one outcome worth making impossible.
-    //
-    // TWO SHAPES, TWO MECHANISMS, and only one of them is this floor. A root
-    // that no longer EXISTS throws ENOENT out of `readdirSync` - loud, and
-    // deliberately not caught, the same way a moved `CLIENT_FILES` entry throws
-    // out of `readFileSync`. This floor is for the root that still exists and
-    // yields nothing: sources moved into a skipped subdirectory, renamed off
-    // `.ts`, or a package that now holds only tests. That one is silent without
-    // it.
-    //
-    // WHAT THE FLOOR REACHES, stated because `> 0` is a weaker bound than the
-    // number beside it suggests: `scanned` is every `.ts` under the roots, a
-    // figure in the hundreds today, so this catches a root that MOVED and not a
-    // root that NARROWED to a subdirectory still holding one client. A
-    // hardcoded expected count would catch that too and would be wrong on the
-    // first legitimate file added, so the bound stops here deliberately.
-    console.error(
-      'check-subiekt-bridge-routes: no client files scanned - has a path in CLIENT_DIRS moved?'
-    );
-    console.error(`  roots: ${CLIENT_DIRS.join(', ')}`);
-    process.exit(1);
+  const problems = [];
+  const scanned = files.length;
+  for (const file of files) {
+    for (const route of calledRoutes(readFileSync(file, 'utf8'))) {
+      if (!declared.has(route)) {
+        problems.push({ file: relative(ROOT, file), route });
+      }
+    }
   }
 
   if (problems.length > 0) {
@@ -277,12 +298,55 @@ function selfCheck() {
   );
   assert(calledRoutes("const g = '/api/*';").size === 0, 'a bare glob names no route');
 
-  // THE CLIENT-SIDE ZERO-FLOOR, the mirror of the declared-side one. Asserted
-  // on the parser rather than on `run()` - which reads the real tree and calls
-  // `process.exit` - so what is pinned is the property the floor rests on: an
-  // empty file set yields an empty called-route set, which without the floor is
-  // indistinguishable from "every client path matched".
-  assert(calledRoutes('').size === 0, 'no source means no called routes, which a floor must catch');
+  // THE CLIENT-SIDE FLOOR, exercised rather than approximated.
+  //
+  // Its predecessor asserted only `calledRoutes('').size === 0` - the PROPERTY
+  // the floor rests on - and was honest about that. It was also why the floor
+  // could be entirely unreachable and still leave this passing: the parser
+  // property held, the floor was never run. `collectClientFiles` is factored
+  // out of `run()` and throws instead of exiting precisely so this can call it.
+  const emptyRootRefused = (() => {
+    try {
+      // A real directory that exists and holds no `.ts`: the exact shape the
+      // floor exists for, and the one the previous version reported OK on.
+      collectClientFiles(['libs/integrations/subiekt/docs'], []);
+      return false;
+    } catch (e) {
+      return e instanceof EmptyClientRootError;
+    }
+  })();
+  assert(emptyRootRefused, 'a client root that exists and yields no .ts is REFUSED, not counted as clean');
+
+  // And the bug that made the old floor unreachable: a non-empty `CLIENT_FILES`
+  // must not be able to hold an emptied root off the floor.
+  const constantCannotMaskIt = (() => {
+    try {
+      collectClientFiles(['libs/integrations/subiekt/docs'], ['apps/e2e/src/api/subiekt-bridge.ts']);
+      return false;
+    } catch (e) {
+      return e instanceof EmptyClientRootError;
+    }
+  })();
+  assert(
+    constantCannotMaskIt,
+    'CLIENT_FILES entries cannot hold an emptied CLIENT_DIRS root off the floor'
+  );
+
+  // Per root, not in aggregate: a populated sibling must not cover an empty one.
+  const siblingCannotMaskIt = (() => {
+    try {
+      collectClientFiles(['libs/integrations/subiekt/src', 'libs/integrations/subiekt/docs'], []);
+      return false;
+    } catch (e) {
+      return e instanceof EmptyClientRootError;
+    }
+  })();
+  assert(siblingCannotMaskIt, 'a populated root does not cover an emptied sibling root');
+
+  assert(
+    collectClientFiles(['libs/integrations/subiekt/src'], []).length > 0,
+    'the real client root still collects files - the floor does not fire on a healthy tree'
+  );
 
   // THE BUG THAT MADE THIS GUARD UNDER-READ ON ITS FIRST RUN: a line comment
   // ending in a glob opens a block comment if blocks are stripped first.

@@ -1007,9 +1007,18 @@ public static class Invoicing
             // address before trusting a match. Without the first half, a buyer
             // whose record Subiekt once suffixed could never be found again and
             // gained a fresh kontrahent on every single order.
+            // `refuseSymbolOnly: true` - see the carve-out in Kontrahent.cs.
+            // This path carries NO discriminating identifier: `IssueInvoiceCommand`
+            // has no customer id, so unlike the order path there is no
+            // `olBuyerId` to match on before the symbol. An address-less,
+            // phone-less buyer would therefore match on the NAME alone, and two
+            // Jan Kowalskis would share one card on a fiscal document. We take
+            // the duplicate instead, which an operator can merge; a document
+            // billed to the wrong person is not something they can see.
             if (!symbol.StartsWith("INV", StringComparison.Ordinal))
                 existingId = await Kontrahent.FindBySymbol(
-                    symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc, req.Telefon) ?? 0;
+                    symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc, req.Telefon,
+                    refuseSymbolOnly: true) ?? 0;
             if (existingId > 0) return existingId;
 
             // Resolved BEFORE Sfera.Run, which is synchronous and runs on the COM

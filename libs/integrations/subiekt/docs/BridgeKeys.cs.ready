@@ -229,4 +229,34 @@ public static class BridgeKeys
                 return "kh_Pole" + n;
         return null;
     }
+
+    /// <summary>
+    /// May a candidate be accepted on the NAME-DERIVED SYMBOL ALONE, when the
+    /// buyer supplied no address and no phone can be compared?
+    ///
+    /// The symbol is not an identity - it is the buyer's name uppercased and
+    /// cut to 16 characters - so accepting on it alone means every Jan Kowalski
+    /// resolves to one kontrahent. Both answers cost something and the caller
+    /// picks which cost it takes:
+    ///
+    ///   ACCEPT (refuseSymbolOnly = false) is the ORDER path. Refusing there
+    ///   mints a kontrahent on every marketplace order that carries no invoice
+    ///   address - the common case, not the exception - which is the unbounded
+    ///   duplicates defect. Measured live: kontrahent 102 then 103 for one
+    ///   buyer upserted twice. That path also has `olBuyerId` now, consulted
+    ///   before any symbol is reached, so the carve-out is the last resort
+    ///   rather than the only rule.
+    ///
+    ///   REFUSE (refuseSymbolOnly = true) is the INVOICE path, which carries no
+    ///   such identifier: `IssueInvoiceCommand` has no customer id, so a symbol
+    ///   match is all there would be. The document is FISCAL and a buyer with
+    ///   no address at all is unusual on one, so the arithmetic flips - a
+    ///   duplicate an operator can merge beats a document billed to whoever
+    ///   shares the name.
+    ///
+    /// A phone on BOTH sides removes the question entirely; this is only the
+    /// fallback for when there is nothing left to compare.
+    /// </summary>
+    public static bool AcceptsSymbolOnlyMatch(bool phoneComparable, bool refuseSymbolOnly)
+        => phoneComparable ? true : !refuseSymbolOnly;
 }

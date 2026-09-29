@@ -136,10 +136,11 @@ public static class Kontrahent
     /// as a single-character wildcard, so `JAN_KOWAL` would match `JANXKOWAL`.
     /// The prefix test below has no wildcard semantics at all.
     /// </summary>
-    public static async Task<int?> FindBySymbol(string symbol, string? kod, string? miasto, string? telefon = null)
+    public static async Task<int?> FindBySymbol(
+        string symbol, string? kod, string? miasto, string? telefon = null, bool refuseSymbolOnly = false)
     {
         foreach (var id in await SymbolCandidates(symbol))
-            if (await MatchesAddress(id, kod, miasto, telefon))
+            if (await MatchesAddress(id, kod, miasto, telefon, refuseSymbolOnly))
                 return id;
 
         return null;
@@ -254,7 +255,8 @@ public static class Kontrahent
     public static bool AddressesMatch(string wantKod, string wantMiasto, string storedKod, string storedMiasto)
         => BridgeKeys.AddressesMatch(wantKod, wantMiasto, storedKod, storedMiasto);
 
-    public static async Task<bool> MatchesAddress(int kontrahentId, string? kod, string? miasto, string? telefon = null)
+    public static async Task<bool> MatchesAddress(
+        int kontrahentId, string? kod, string? miasto, string? telefon = null, bool refuseSymbolOnly = false)
     {
         var wantKod = (kod ?? "").Trim();
         var wantMiasto = (miasto ?? "").Trim();
@@ -290,6 +292,14 @@ public static class Kontrahent
         // no invoice address - the common case, not the exceptional one. A NIP,
         // when the buyer supplies one, is matched first and is not affected by
         // this at all.
+        //
+        // #7 THIRD REVIEW: the real fix named above now EXISTS for the order
+        // path - `olBuyerId` is in the payload and `Resolve` consults it before
+        // it ever reaches a symbol. What is left is the path that carries no
+        // such identifier: an invoice issued with no `zkId`, whose buyer goes
+        // through `Invoicing.UpsertCustomer` from `IssueInvoiceCommand`, which
+        // has no customer id on it at all. That caller passes
+        // `refuseSymbolOnly: true` below and takes the duplicate instead.
         var wantTelefon = (telefon ?? "").Trim();
         // NO LONGER accepted on the symbol alone (PR #7 second review, finding
         // 6). A buyer who supplied no address is told apart by PHONE, the one
@@ -309,7 +319,17 @@ public static class Kontrahent
             //
             // The phone therefore TIGHTENS the match where the data exists and
             // never replaces it.
-            if (phoneColumn is null || wantTelefon == "") return true;
+            //
+            // ... UNLESS the caller asked us not to. `refuseSymbolOnly` is the
+            // invoice path, where the two costs are not the ones weighed above:
+            // the document is FISCAL, so billing it to whoever shares the name
+            // is not untidy but wrong on paper somebody files, and a buyer with
+            // no address at all is unusual on an invoice rather than the common
+            // case a marketplace order presents. Same rule the file already
+            // states - a false negative is a duplicate, a false positive is
+            // somebody else's document - applied where the arithmetic flips.
+            if (phoneColumn is null || wantTelefon == "")
+                return BridgeKeys.AcceptsSymbolOnlyMatch(phoneComparable: false, refuseSymbolOnly);
             try
             {
                 await using var pc = new SqlConnection(BridgeConfig.ConnectionString);

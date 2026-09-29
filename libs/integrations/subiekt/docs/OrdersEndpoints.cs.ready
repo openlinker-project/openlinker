@@ -332,9 +332,16 @@ public static class OrdersEndpoints
             var zkReq = new ZkRequest
             {
                 KontrahentId = kontrahentId,
-                // Passed raw ON PURPOSE: Sfera.CreateZk applies Trim30 before the COM write, and
-                // FindExistingZk looks up with the same Trim30, so store and lookup reduce
-                // identically. Keep it that way if either side is refactored (PR #7 review).
+                // Passed raw ON PURPOSE: Sfera.CreateZk applies `ReduceIdempotencyKey`
+                // before the COM write and FindExistingZk looks up with the same
+                // reduction, so store and lookup reduce identically. Keep it that
+                // way if either side is refactored.
+                //
+                // It said `Trim30` until the third review caught it: both sides
+                // moved onto the hash when the 30-character cut was found to be
+                // able to slice off the part that tells two orders apart, and this
+                // comment did not follow. A comment naming the wrong reduction is
+                // worse than none on a pair that must agree.
                 NumerOryginalny = req.OrderRef,
                 Uwagi = req.Uwagi ?? "",
                 Rezerwacja = false,
