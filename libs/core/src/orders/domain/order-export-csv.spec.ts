@@ -42,8 +42,8 @@ describe('buildOrderExportCsv', () => {
       null,
       {
         orderNumber: 'PL-9001',
-        billingAddress: { firstName: 'Norbert', lastName: 'Kulus' },
-        customerEmail: 'norbert@example.com',
+        billingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+        customerEmail: 'anna@example.com',
         items: [],
       },
       [],
@@ -53,12 +53,12 @@ describe('buildOrderExportCsv', () => {
     );
 
     const csvWithPii = buildOrderExportCsv([order], ['customerName', 'customerEmail'], true);
-    expect(csvWithPii).toContain('Norbert Kulus');
-    expect(csvWithPii).toContain('norbert@example.com');
+    expect(csvWithPii).toContain('Anna Nowak');
+    expect(csvWithPii).toContain('anna@example.com');
 
     const csvWithoutPii = buildOrderExportCsv([order], ['orderNumber', 'customerName', 'customerEmail'], false);
-    expect(csvWithoutPii).not.toContain('Norbert');
-    expect(csvWithoutPii).not.toContain('norbert@example.com');
+    expect(csvWithoutPii).not.toContain('Anna');
+    expect(csvWithoutPii).not.toContain('anna@example.com');
     // The row is still written — only the two PII cells are blank.
     expect(csvWithoutPii.split('\r\n')[1]).toBe('PL-9001;;');
   });
