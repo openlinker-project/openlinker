@@ -184,10 +184,11 @@ describe('deriveSaleDecrementAttention', () => {
     ).toMatchObject({ kind: 'blocked' });
   });
 
-  it('should raise attention for a clamped decrement', () => {
+  // OUR inference from a possibly-stale mirror only warns (#2243); it is logged,
+  // never an operator-facing block.
+  it('should not raise attention for a clamped decrement that succeeded', () => {
     expect(deriveSaleDecrementAttention([{ status: 'applied', clamped: true }])).toEqual({
-      kind: 'blocked',
-      detail: '1 line(s) sold more than the stock OpenLinker saw',
+      kind: 'none',
     });
   });
 

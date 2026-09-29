@@ -513,7 +513,7 @@ describe('InventorySaleDecrementService', () => {
     expect(result.attention).toMatchObject({ kind: 'blocked' });
   });
 
-  it('should flag a sale larger than the stock OpenLinker mirrored as clamped', async () => {
+  it('should record, but not raise attention for, a sale larger than the mirrored stock', async () => {
     positions = [position({ availableQuantity: 1 })];
     shop().adjustInventory.mockResolvedValue(adjusted(0, HONOURED));
 
@@ -526,10 +526,7 @@ describe('InventorySaleDecrementService', () => {
     );
 
     expect(repository.rows.get('sale:conn-shop:w-1:line-1')).toMatchObject({ clamped: true });
-    expect(result.attention).toEqual({
-      kind: 'blocked',
-      detail: '1 line(s) sold more than the stock OpenLinker saw',
-    });
+    expect(result.attention).toEqual({ kind: 'none' });
   });
 
   // The issue's regression: the last unit sells on Allegro with the OMS on.

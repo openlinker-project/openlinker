@@ -96,8 +96,10 @@ export type InventorySaleDecrementReason = (typeof InventorySaleDecrementReasonV
  *
  * `retryable` is included deliberately: until the retry succeeds the stock has
  * NOT been lowered, which is exactly the oversell window an operator must see.
- * An `applied` row counts too when it was clamped — see
- * {@link deriveSaleDecrementAttention}.
+ * A clamped `applied` row does NOT count: `clamped` is OpenLinker's inference
+ * from a mirror it knows may be stale, while the write itself succeeded, so it is
+ * only logged (#2243: a destination's declaration is a fact and blocks; OUR
+ * inference only warns).
  */
 const ATTENTION_STATUSES: readonly InventorySaleDecrementStatus[] = [
   'blocked',
@@ -309,20 +311,14 @@ export function deriveSaleDecrementAttention(
       ATTENTION_STATUSES.includes(row.status) &&
       !(row.reason != null && NON_ATTENTION_REASONS.includes(row.reason))
   ).length;
-  const clamped = rows.filter(
-    (row) => (row.status === 'applied' || row.status === 'deduplicated') && row.clamped
-  ).length;
 
-  if (failed === 0 && clamped === 0) {
+  if (failed === 0) {
     return { kind: 'none' };
   }
 
   const parts: string[] = [];
   if (failed > 0) {
     parts.push(`${String(failed)} line(s) not lowered or in doubt`);
-  }
-  if (clamped > 0) {
-    parts.push(`${String(clamped)} line(s) sold more than the stock OpenLinker saw`);
   }
   return { kind: 'blocked', detail: parts.join('; ') };
 }

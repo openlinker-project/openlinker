@@ -336,13 +336,23 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
       );
     }
 
+    // The master clamps at 0 rather than refusing, so selling more than OL had
+    // mirrored is the only way to see a clamp from here. It is an INFERENCE from a
+    // mirror that may be stale, and the write itself succeeded, so it is logged
+    // and persisted on the row but never raised as an operator-facing block.
+    const clamped = line.quantity > availableBefore;
+    if (clamped) {
+      this.logger.warn(
+        `Sale decrement for line ${line.orderLineId} exceeded the stock OpenLinker had mirrored ` +
+          `(${String(line.quantity)} > ${String(availableBefore)}); the master's own answer stands`
+      );
+    }
+
     return {
       status: disposition,
       reason: null,
       detail: null,
-      // The master clamps at 0 rather than refusing, so selling more than OL had
-      // mirrored is the only way to see a clamp from here.
-      clamped: line.quantity > availableBefore,
+      clamped,
       idempotencyUnsupported,
       resultingQuantity: Number.isFinite(result.available) ? result.available : null,
     };

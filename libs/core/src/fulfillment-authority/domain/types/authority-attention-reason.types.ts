@@ -93,7 +93,8 @@ export const AuthorityAttentionReasonValues = [
   'return-unmatched',
   /**
    * SD-B (#3453) — a routed order's stock was not lowered in its product master,
-   * or the outcome is unknown, or the line sold more than OL saw. Not a §4.2 row:
+   * or the outcome is unknown. (A sale larger than the mirrored stock is only
+   * logged: it is an inference.) Not a §4.2 row:
    * it exists because, with the OMS on, OpenLinker is the one lowering that stock.
    */
   'stock-decrement-blocked',
