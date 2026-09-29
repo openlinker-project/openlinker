@@ -10,8 +10,8 @@ function makeOrder(): OrderRecord {
     null,
     {
       orderNumber: 'PL-9002',
-      billingAddress: { firstName: 'Norbert', lastName: 'Kulus' },
-      customerEmail: 'norbert@example.com',
+      billingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+      customerEmail: 'anna@example.com',
       items: [],
     },
     [],
@@ -38,8 +38,8 @@ describe('buildOrderExportXlsx', () => {
     const rows = await readSheetRows(buffer);
     const dataRow = rows[1];
 
-    expect(dataRow).toContain('Norbert Kulus');
-    expect(dataRow).toContain('norbert@example.com');
+    expect(dataRow).toContain('Anna Nowak');
+    expect(dataRow).toContain('anna@example.com');
   });
 
   it('blanks every PII column unconditionally when storePii is false, even over a raw snapshot', async () => {
@@ -52,8 +52,8 @@ describe('buildOrderExportXlsx', () => {
     const dataRow = rows[1];
     const flattened = dataRow.filter((v) => v !== undefined && v !== null).join(' ');
 
-    expect(flattened).not.toContain('Norbert');
-    expect(flattened).not.toContain('norbert@example.com');
+    expect(flattened).not.toContain('Anna');
+    expect(flattened).not.toContain('anna@example.com');
     expect(flattened).toContain('PL-9002');
   });
 });

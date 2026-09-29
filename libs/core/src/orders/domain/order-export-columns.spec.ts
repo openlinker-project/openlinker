@@ -70,13 +70,13 @@ describe('resolveOrderExportCell', () => {
 
   it('blanks a PII column unconditionally when storePii is false, even over a raw, unredacted snapshot', () => {
     const order = makeOrder({
-      billingAddress: { firstName: 'Norbert', lastName: 'Kulus' },
-      customerEmail: 'norbert@example.com',
+      billingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+      customerEmail: 'anna@example.com',
     });
 
     // With the flag on (default), the raw values pass through untouched.
-    expect(resolveOrderExportCell(order, 'customerName')).toBe('Norbert Kulus');
-    expect(resolveOrderExportCell(order, 'customerEmail')).toBe('norbert@example.com');
+    expect(resolveOrderExportCell(order, 'customerName')).toBe('Anna Nowak');
+    expect(resolveOrderExportCell(order, 'customerEmail')).toBe('anna@example.com');
 
     // A row ingested while PII storage was ON still carries the buyer's real
     // data — flipping the flag at export time must still blank it.
