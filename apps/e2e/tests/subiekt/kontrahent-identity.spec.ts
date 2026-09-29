@@ -208,10 +208,10 @@ test.describe('Subiekt GT: kontrahent identity (#3365)', () => {
 
     first = await sellOnce({ api, world, jobs, poll }, driver!, subiekt!.id);
 
-    expect(first.kontrahentId, `ZK ${first.zkNumer} is billed to no kontrahent at all`).not.toBeNull();
+    expect(first.kontrahentId, `${first.zkNumer} is billed to no kontrahent at all`).not.toBeNull();
     testInfo.annotations.push({
       type: 'subiekt',
-      description: `ZK ${first.zkNumer}: OL customer ${first.olCustomerId ?? '(none)'} -> kontrahent ${first.kontrahentId} "${first.kontrahentNazwa}"`,
+      description: `${first.zkNumer}: OL customer ${first.olCustomerId ?? '(none)'} -> kontrahent ${first.kontrahentId} "${first.kontrahentNazwa}"`,
     });
   });
 
@@ -234,10 +234,10 @@ test.describe('Subiekt GT: kontrahent identity (#3365)', () => {
 
     second = await sellOnce({ api, world, jobs, poll }, driver!, subiekt!.id);
 
-    expect(second.kontrahentId, `ZK ${second.zkNumer} is billed to no kontrahent at all`).not.toBeNull();
+    expect(second.kontrahentId, `${second.zkNumer} is billed to no kontrahent at all`).not.toBeNull();
     testInfo.annotations.push({
       type: 'subiekt',
-      description: `ZK ${second.zkNumer}: OL customer ${second.olCustomerId ?? '(none)'} -> kontrahent ${second.kontrahentId} "${second.kontrahentNazwa}"`,
+      description: `${second.zkNumer}: OL customer ${second.olCustomerId ?? '(none)'} -> kontrahent ${second.kontrahentId} "${second.kontrahentNazwa}"`,
     });
   });
 
@@ -280,7 +280,7 @@ test.describe('Subiekt GT: kontrahent identity (#3365)', () => {
       second!.kontrahentId,
       `two different OpenLinker customers (${first!.olCustomerId} and ${second!.olCustomerId}) ` +
         `were both billed to kontrahent ${first!.kontrahentId} "${first!.kontrahentNazwa}" - ` +
-        `ZK ${first!.zkNumer} and ZK ${second!.zkNumer}. One of them is looking at somebody ` +
+        `${first!.zkNumer} and ${second!.zkNumer}. One of them is looking at somebody ` +
         `else's customer card.`
     ).not.toBe(first!.kontrahentId);
   });
