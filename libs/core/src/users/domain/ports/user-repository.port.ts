@@ -33,11 +33,16 @@ export interface UserRepositoryPort {
    * Write a new password hash. With `clearMustChangePassword` the forced-change
    * flag is cleared IN THE SAME STATEMENT (#3456), so a crash cannot leave a
    * changed password still flagged, nor a cleared flag on the old password.
+   * `forceMustChangePassword` is the mirror for an admin re-issuing a one-time
+   * password: the flag is SET in the same statement as the new hash.
    */
   updatePasswordHash(
     userId: string,
     passwordHash: string,
-    opts?: { readonly clearMustChangePassword?: boolean }
+    opts?: {
+      readonly clearMustChangePassword?: boolean;
+      readonly forceMustChangePassword?: boolean;
+    }
   ): Promise<void>;
   updateStatus(userId: string, status: UserStatus): Promise<void>;
   updateRole(userId: string, role: UserRole): Promise<void>;

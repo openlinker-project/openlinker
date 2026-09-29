@@ -16,6 +16,7 @@ import {
   CannotSelfModifyException,
   LastAdminException,
   UserNotFoundException,
+  UserNotAwaitingFirstSignInException,
   UserNotActiveException,
   UserNotDeactivatedException,
   UserNotPendingException,
@@ -44,6 +45,7 @@ const makeService = (): jest.Mocked<IUserManagementService> => ({
   setPackStationLabel: jest.fn(),
   recordBenchActivity: jest.fn(),
   createUser: jest.fn(),
+  reissueTemporaryPassword: jest.fn(),
 });
 
 describe('UsersController', () => {
@@ -135,6 +137,34 @@ describe('UsersController', () => {
       const result = await controller.listPackers();
 
       expect(result.packers).toEqual([]);
+    });
+  });
+
+  describe('reissueTemporaryPassword (#3456 review)', () => {
+    it('should return the new one-time password', async () => {
+      service.reissueTemporaryPassword.mockResolvedValue({ id: 'u1', temporaryPassword: 'Tmp-2' });
+
+      const result = await controller.reissueTemporaryPassword('u1');
+
+      expect(result).toEqual({ id: 'u1', temporaryPassword: 'Tmp-2' });
+    });
+
+    it('should answer 409 for an account that already set its own password', async () => {
+      service.reissueTemporaryPassword.mockRejectedValue(
+        new UserNotAwaitingFirstSignInException('u1')
+      );
+
+      await expect(controller.reissueTemporaryPassword('u1')).rejects.toBeInstanceOf(
+        ConflictException
+      );
+    });
+
+    it('should answer 404 for an unknown user', async () => {
+      service.reissueTemporaryPassword.mockRejectedValue(new UserNotFoundException('ghost'));
+
+      await expect(controller.reissueTemporaryPassword('ghost')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
     });
   });
 

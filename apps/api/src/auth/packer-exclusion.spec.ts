@@ -4,7 +4,7 @@
  * #2413 reviewed all 76 `@AnyRole()` routes against the new `packer` role and
  * narrowed 45 of them to `@Roles('admin', 'operator', 'viewer')` — the same
  * audience they had, named explicitly so the fourth role is excluded by
- * construction. The 31 that remain are listed below, one per line.
+ * construction. The 32 that remain are listed below, one per line.
  *
  * ## Why an ALLOW-LIST and not a list of excluded controllers
  *

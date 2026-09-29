@@ -8,6 +8,7 @@
  * GET    /users                — list all users (optional ?status filter)
  * GET    /users/packers        — minimal active-packer roster (admin+operator, #3340)
  * POST   /users                — create an active account with a one-time password (#3456)
+ * POST   /users/:id/temporary-password — re-issue a one-time password (#3456)
  * POST   /users/:id/approve    — approve a pending registration with a role
  * POST   /users/:id/reject     — reject and delete a pending registration
  * PATCH  /users/:id/role       — change a user's role
@@ -40,6 +41,7 @@ import {
   UserAlreadyExistsException,
   UserNotFoundException,
   UserNotActiveException,
+  UserNotAwaitingFirstSignInException,
   UserNotDeactivatedException,
   UserNotPendingException,
 } from '@openlinker/core/users';
@@ -139,6 +141,34 @@ export class UsersController {
       pageSize: 500,
     });
     return PackerListResponseDto.fromDomain(result.users);
+  }
+
+  @Post(':id/temporary-password')
+  @Roles('admin')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Re-issue the one-time password of an account that has not set its own yet (admin only)',
+  })
+  @ApiResponse({ status: 201, description: 'New one-time password', type: CreateUserResponseDto })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 409, description: 'The account has already set its own password' })
+  async reissueTemporaryPassword(@Param('id') id: string): Promise<CreateUserResponseDto> {
+    try {
+      const issued = await this.userManagement.reissueTemporaryPassword(id);
+      const response = new CreateUserResponseDto();
+      response.id = issued.id;
+      response.temporaryPassword = issued.temporaryPassword;
+      return response;
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof UserNotAwaitingFirstSignInException) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
   }
 
   @Post(':id/approve')

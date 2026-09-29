@@ -25,6 +25,7 @@ import {
   UserNotDeactivatedException,
   UserNotPendingException,
   UserNotPendingConfirmationException,
+  UserNotAwaitingFirstSignInException,
   UserAlreadyExistsException,
   UserRepositoryPort,
   USER_REPOSITORY_TOKEN,
@@ -91,6 +92,23 @@ export class UserManagementService implements IUserManagementService {
     // trace the act.
     this.logger.log(`User created by admin: ${user.id} with role ${user.role}`);
     return { id: user.id, temporaryPassword };
+  }
+
+  async reissueTemporaryPassword(userId: string): Promise<CreatedUser> {
+    const user = await this.requireUser(userId);
+    // Only an account still owing its first sign-in: re-issuing for one that
+    // has set its own password would overwrite a credential the person chose.
+    if (!user.mustChangePassword) {
+      throw new UserNotAwaitingFirstSignInException(userId);
+    }
+    const temporaryPassword = randomBytes(TEMPORARY_PASSWORD_BYTES).toString('base64url');
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
+    // Hash and flag in ONE statement, like the create path.
+    await this.userRepository.updatePasswordHash(userId, passwordHash, {
+      forceMustChangePassword: true,
+    });
+    this.logger.log(`One-time password re-issued by admin: ${userId}`);
+    return { id: userId, temporaryPassword };
   }
 
   async approveUser(userId: string, role: UserRole): Promise<void> {

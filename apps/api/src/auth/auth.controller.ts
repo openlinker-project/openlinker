@@ -342,12 +342,13 @@ export class AuthController {
   // is what a demo signup gets — must be able to change it (#1882).
   // Exempt from the demo consent gate (#1938) — gating the route that grants
   // consent would make the missing consent unresolvable.
-  // Also exempt from the forced password change (#3456). Paired with the
-  // password route's consent exemption below: a demo viewer created by an
-  // admin owes BOTH, and each gate must let the other one be resolved.
+  // Deliberately NOT exempt from the forced password change (#3456 review): the
+  // password route skips the consent gate, so there is no deadlock, and the
+  // order is the one we want - granting consent is a legally meaningful act
+  // that must be attributable to the account holder, not performable while an
+  // admin-issued credential a second party has read is still live.
   @AnyRole()
   @SkipAnalyticsConsent()
-  @AllowPasswordChangeRequired()
   @Patch('me/analytics-consent')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
@@ -367,6 +368,12 @@ export class AuthController {
   // clears a forced change, so it is exempt from that gate, and from the demo
   // consent gate for the reason given on the consent route above. Afterwards
   // the client calls /auth/refresh for a token without the claim.
+  //
+  // Limitation (#3456 review): changing the password does NOT revoke the
+  // account's other sessions. That is true of every account, not only a freshly
+  // created one - a long-standing admin with sessions on other machines keeps
+  // them - and matches `PasswordResetService`, which does not revoke either. A
+  // revoke-all primitive is tracked in #3637.
   @AnyRole()
   @SkipAnalyticsConsent()
   @AllowPasswordChangeRequired()

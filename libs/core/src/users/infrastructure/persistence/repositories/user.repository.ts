@@ -69,13 +69,18 @@ export class UserRepository implements UserRepositoryPort {
   async updatePasswordHash(
     userId: string,
     passwordHash: string,
-    opts?: { readonly clearMustChangePassword?: boolean }
+    opts?: {
+      readonly clearMustChangePassword?: boolean;
+      readonly forceMustChangePassword?: boolean;
+    }
   ): Promise<void> {
-    // One UPDATE either way: the flag clear rides with the hash (#3456).
-    await this.ormRepository.update(
-      { id: userId },
-      opts?.clearMustChangePassword ? { passwordHash, mustChangePassword: false } : { passwordHash }
-    );
+    // One UPDATE either way: the flag change rides with the hash (#3456).
+    const flag = opts?.clearMustChangePassword
+      ? { mustChangePassword: false }
+      : opts?.forceMustChangePassword
+        ? { mustChangePassword: true }
+        : {};
+    await this.ormRepository.update({ id: userId }, { passwordHash, ...flag });
   }
 
   async updateStatus(userId: string, status: UserStatus): Promise<void> {

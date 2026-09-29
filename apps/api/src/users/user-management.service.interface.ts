@@ -47,6 +47,16 @@ export interface IUserManagementService {
    * email is taken — including by a concurrent create that won the race.
    */
   createUser(input: CreateUserInput): Promise<CreatedUser>;
+  /**
+   * Re-issue the one-time password of an account that has not yet replaced its
+   * first one (#3456 review) - the remedy for a lost slip or a packer who never
+   * signed in, without delete-and-recreate (which would leave
+   * `fulfillment_works.assignedToUserId` pointing at nobody).
+   *
+   * Throws `UserNotFoundException`, or `UserNotAwaitingFirstSignInException`
+   * when the person has already set their own password.
+   */
+  reissueTemporaryPassword(userId: string): Promise<CreatedUser>;
   approveUser(userId: string, role: UserRole): Promise<void>;
   rejectUser(userId: string): Promise<void>;
   updateRole(userId: string, role: UserRole, actorId: string): Promise<void>;
