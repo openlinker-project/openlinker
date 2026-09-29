@@ -17,20 +17,35 @@ import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { IStreamDeadLettersService } from '@openlinker/core/events';
+import { STREAM_DEAD_LETTERS_SERVICE_TOKEN } from '@openlinker/core/events';
+import { MAX_RECOVERY_ATTEMPTS } from '@openlinker/shared/redis';
 import { randomUUID } from 'crypto';
 
 describe('JobIntakeConsumer', () => {
   let consumer: JobIntakeConsumer;
   let redisClient: jest.Mocked<RedisClientType>;
   let jobRepository: jest.Mocked<SyncJobRepositoryPort>;
+  let streamDeadLetters: jest.Mocked<IStreamDeadLettersService>;
   let module: TestingModule;
 
   beforeEach(async () => {
-    // Mock Redis client
+    // Mock Redis client. incr/expire/del back RecoveryAttemptTracker's
+    // Redis-persisted poison counter (#2301, D48) — a bare {} would make the
+    // consumer's own `new RecoveryAttemptTracker(this.redisClient)` call
+    // real methods on an object that has none of them.
+    const counterStore = new Map<string, number>();
     const mockRedisClient = {
       xGroupCreate: jest.fn(),
       xReadGroup: jest.fn(),
       xAck: jest.fn(),
+      incr: jest.fn((key: string) => {
+        const next = (counterStore.get(key) ?? 0) + 1;
+        counterStore.set(key, next);
+        return Promise.resolve(next);
+      }),
+      expire: jest.fn().mockResolvedValue(true),
+      del: jest.fn((key: string) => Promise.resolve(counterStore.delete(key) ? 1 : 0)),
     } as unknown as jest.Mocked<RedisClientType>;
 
     // Mock repository
@@ -38,6 +53,12 @@ describe('JobIntakeConsumer', () => {
       createIfNotExistsByIdempotencyKey: jest.fn(),
       markDead: jest.fn(),
     } as unknown as jest.Mocked<SyncJobRepositoryPort>;
+
+    const mockStreamDeadLetters = {
+      record: jest.fn(),
+      list: jest.fn(),
+      count: jest.fn(),
+    } as unknown as jest.Mocked<IStreamDeadLettersService>;
 
     module = await Test.createTestingModule({
       providers: [
@@ -49,6 +70,10 @@ describe('JobIntakeConsumer', () => {
         {
           provide: SYNC_JOB_REPOSITORY_TOKEN,
           useValue: mockRepository,
+        },
+        {
+          provide: STREAM_DEAD_LETTERS_SERVICE_TOKEN,
+          useValue: mockStreamDeadLetters,
         },
         {
           provide: ConfigService,
@@ -65,6 +90,7 @@ describe('JobIntakeConsumer', () => {
     consumer = module.get<JobIntakeConsumer>(JobIntakeConsumer);
     redisClient = module.get('REDIS_CLIENT');
     jobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
+    streamDeadLetters = module.get(STREAM_DEAD_LETTERS_SERVICE_TOKEN);
   });
 
   afterEach(async () => {
@@ -770,6 +796,75 @@ describe('JobIntakeConsumer', () => {
       await expect(
         runRecovery({ kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 1 })
       ).rejects.toThrow('Socket closed');
+    });
+  });
+
+  describe('poison-entry terminal write (#2301, D48)', () => {
+    // A handler that keeps rejecting the same entry, exactly as it would for
+    // a genuinely poisoned message.
+    const poisonEntry = { kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 1 };
+
+    const runRecovery = async (): Promise<string> =>
+      await (consumer as any).recoverEntrySafely(poisonEntry, 'startup-drain');
+
+    const failUntilThreshold = async (attempts: number): Promise<void> => {
+      jest
+        .spyOn(consumer as any, 'handleRecoveredEntry')
+        .mockRejectedValue(new Error('handler blew up'));
+      for (let i = 0; i < attempts; i += 1) {
+        await runRecovery();
+      }
+    };
+
+    it('should write the durable row and only then XACK the entry', async () => {
+      streamDeadLetters.record.mockResolvedValue({} as any);
+
+      await failUntilThreshold(MAX_RECOVERY_ATTEMPTS);
+
+      expect(streamDeadLetters.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stream: 'jobs.sync',
+          consumerGroup: 'job-intake',
+          entryId: '1-0',
+          attempts: MAX_RECOVERY_ATTEMPTS,
+          lastError: 'handler blew up',
+        })
+      );
+      expect(redisClient.xAck).toHaveBeenCalledWith('jobs.sync', 'job-intake', '1-0');
+
+      // The write happened before the ack, not merely alongside it.
+      const recordOrder = streamDeadLetters.record.mock.invocationCallOrder[0];
+      const ackOrder = (redisClient.xAck as jest.Mock).mock.invocationCallOrder[0];
+      expect(recordOrder).toBeLessThan(ackOrder);
+    });
+
+    it('should leave the entry pending — never ack — when the durable write fails', async () => {
+      streamDeadLetters.record.mockRejectedValue(new Error('db unavailable'));
+
+      await failUntilThreshold(MAX_RECOVERY_ATTEMPTS);
+
+      expect(streamDeadLetters.record).toHaveBeenCalled();
+      expect(redisClient.xAck).not.toHaveBeenCalled();
+    });
+
+    it('should retry the terminal write on the next pass after a failed insert', async () => {
+      // "leaves the entry pending" means retried, not abandoned: attempts
+      // keeps climbing past the threshold (hasReachedThreshold is >=, not
+      // ===), so the next recovery pass tries the write again.
+      streamDeadLetters.record.mockRejectedValueOnce(new Error('db unavailable'));
+      streamDeadLetters.record.mockResolvedValueOnce({} as any);
+
+      await failUntilThreshold(MAX_RECOVERY_ATTEMPTS + 1);
+
+      expect(streamDeadLetters.record).toHaveBeenCalledTimes(2);
+      expect(redisClient.xAck).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not attempt the durable write below the threshold', async () => {
+      await failUntilThreshold(MAX_RECOVERY_ATTEMPTS - 1);
+
+      expect(streamDeadLetters.record).not.toHaveBeenCalled();
+      expect(redisClient.xAck).not.toHaveBeenCalled();
     });
   });
 });

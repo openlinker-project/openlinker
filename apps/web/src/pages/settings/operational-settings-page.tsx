@@ -35,6 +35,7 @@ import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { PacingValueField } from '../../features/settings/components/pacing-value-field';
+import { SyncJobRetentionSection } from '../../features/settings/components/sync-job-retention-section';
 import { SyncPacingConfirmDialog } from '../../features/settings/components/sync-pacing-confirm-dialog';
 import { SyncPacingImpact } from '../../features/settings/components/sync-pacing-impact';
 import { useCatalogueSizeQuery } from '../../features/settings/hooks/use-catalogue-size-query';
@@ -72,8 +73,19 @@ import type {
  */
 const HOST_LIMIT_STORAGE_KEY = 'ol.syncPacing.hostProcessLimitSeconds';
 
-/** The numeric fields, in the order the page lays them out. */
-const NUMERIC_FIELDS: readonly OperationalSettingKey[] = [
+/**
+ * The sweep-pacing form's own numeric fields, in the order the page lays
+ * them out — a NARROWER type than `OperationalSettingKey` on purpose
+ * (#2946 widened that union with `syncJobRetentionDays` /
+ * `syncJobDeadRetentionDays`, which have no place in `SyncPacingValues`'s
+ * catalogue-size projection and are rendered by their own self-contained
+ * `SyncJobRetentionSection` instead): the intersection of both unions is
+ * exactly this form's 4 numeric fields, so `draft[key]` below stays sound
+ * without widening `SyncPacingValues` itself.
+ */
+type SyncPacingNumericField = Extract<OperationalSettingKey, keyof SyncPacingValues>;
+
+const NUMERIC_FIELDS: readonly SyncPacingNumericField[] = [
   'catalogueSweepBudget',
   'sweepPageSize',
   'inventorySweepBudget',
@@ -661,6 +673,13 @@ export function OperationalSettingsPage(): ReactElement {
           />
         </div>
       ) : null}
+
+      {/* Self-contained: its own query/mutation, its own loading and error
+          states, and its own immediate save — a retention window in days has
+          no catalogue-size projection the way the sweep budgets above do, so
+          it deliberately does not share SyncPacingValues / the confirm
+          dialog. */}
+      <SyncJobRetentionSection />
     </PageLayout>
   );
 }

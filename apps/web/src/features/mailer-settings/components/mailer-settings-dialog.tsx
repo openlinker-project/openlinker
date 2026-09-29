@@ -26,6 +26,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
+import { HelpLink } from '../../../shared/ui/help-link';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -155,7 +156,10 @@ export function MailerSettingsDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Edit mailer settings</DialogTitle>
+        <div className="page-title__with-help">
+          <DialogTitle>Edit mailer settings</DialogTitle>
+          <HelpLink surfaceKey="mailer-settings" />
+        </div>
         <DialogDescription>
           Choose how outbound mail is sent. The SMTP password is write-only — it is never returned by
           the API.

@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -11,6 +12,8 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { formatDurationMs } from '../../shared/format/format-duration-ms';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
+import { useStreamDeadLettersQuery } from '../../features/sync-jobs/hooks/use-stream-dead-letters-query';
+import { useStreamDeadLettersCountQuery } from '../../features/sync-jobs/hooks/use-stream-dead-letters-count-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
 import type {
@@ -26,6 +29,7 @@ import {
   JOB_TYPE_VALUES,
   SYNC_JOBS_MAX_LIMIT,
 } from '../../features/sync-jobs/api/sync-jobs.types';
+import type { StreamDeadLetter } from '../../features/sync-jobs/api/stream-dead-letters.types';
 
 // Capped by the backend validator on GET /sync/jobs (@Max(100)).
 const PAGE_SIZE = SYNC_JOBS_MAX_LIMIT;
@@ -119,6 +123,128 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
     sortable: true,
   },
 ];
+
+// Poison stream entries are rare (they only exist after MAX_RECOVERY_ATTEMPTS
+// consecutive failures); a small fixed page is plenty and keeps this
+// secondary table lightweight relative to the primary sync-jobs one.
+const DEAD_LETTER_PAGE_SIZE = 20;
+
+const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
+  {
+    id: 'stream',
+    header: 'Stream',
+    cell: (entry) => <span className="mono-text">{entry.stream}</span>,
+    accessor: (entry) => entry.stream,
+    sortable: true,
+  },
+  {
+    id: 'consumerGroup',
+    header: 'Consumer group',
+    cell: (entry) => <span className="mono-text">{entry.consumerGroup}</span>,
+    hideBelow: 1024,
+  },
+  {
+    id: 'entryId',
+    header: 'Entry ID',
+    cell: (entry) => <span className="mono-text">{entry.entryId}</span>,
+    hideBelow: 768,
+  },
+  {
+    id: 'attempts',
+    header: 'Attempts',
+    align: 'right',
+    cell: (entry) => entry.attempts,
+    accessor: (entry) => entry.attempts,
+    sortable: true,
+  },
+  {
+    id: 'lastError',
+    header: 'Last error',
+    cell: (entry) => (
+      <span className="mono-text" title={entry.lastError}>
+        {entry.lastError.length > 60 ? `${entry.lastError.slice(0, 60)}…` : entry.lastError}
+      </span>
+    ),
+  },
+  {
+    id: 'lastSeenAt',
+    header: 'Last seen',
+    cell: (entry) => <TimeDisplay iso={entry.lastSeenAt} />,
+    accessor: (entry) => entry.lastSeenAt,
+    sortable: true,
+  },
+];
+
+/**
+ * Poison Redis Stream entries that exhausted recovery (#2301, D48) — a
+ * durable terminal state, so an entry whose handler always throws is a row
+ * here rather than an infinitely-retried PEL entry. Read-only: no replay
+ * action in this pass.
+ */
+function StreamDeadLettersSection(): ReactElement {
+  const [offset, setOffset] = useState(0);
+  const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
+
+  const countQuery = useStreamDeadLettersCountQuery();
+  const listQuery = useStreamDeadLettersQuery(undefined, {
+    limit: DEAD_LETTER_PAGE_SIZE,
+    offset,
+  });
+
+  const total = listQuery.data?.total ?? 0;
+  const hasPrev = offset > 0;
+  const hasNext = offset + DEAD_LETTER_PAGE_SIZE < total;
+
+  return (
+    <div className="page-section" aria-labelledby="stream-dead-letters-heading">
+      <h2 id="stream-dead-letters-heading" className="section-title">
+        Poison stream entries
+        {countQuery.data ? <span className="text-muted"> ({countQuery.data.count})</span> : null}
+      </h2>
+      <p className="text-muted">
+        Redis Stream entries that failed recovery repeatedly and were durably recorded here
+        instead of being retried forever. No replay action yet — investigate the raw fields
+        below.
+      </p>
+
+      {listQuery.isLoading ? (
+        <DataTableSkeleton columns={DEAD_LETTER_COLUMNS} />
+      ) : listQuery.error ? (
+        <ErrorState
+          title="Unable to load poison stream entries"
+          message={listQuery.error.message}
+          action={<Button onClick={() => { void listQuery.refetch(); }}>Retry</Button>}
+        />
+      ) : (listQuery.data?.items.length ?? 0) === 0 ? (
+        <EmptyState liveRegion="off" title="No poison entries" message="Nothing dead-lettered." />
+      ) : (
+        <>
+          <DataTable
+            caption="Poison stream entries"
+            columns={DEAD_LETTER_COLUMNS}
+            rows={listQuery.data?.items ?? []}
+            rowKey={(entry) => entry.id}
+            sort={sort}
+            onSortChange={setSort}
+          />
+          <div className="pagination">
+            <span className="text-muted">
+              Showing {offset + 1}–{Math.min(offset + DEAD_LETTER_PAGE_SIZE, total)} of {total}
+            </span>
+            <div className="pagination__actions">
+              <Button disabled={!hasPrev} onClick={() => { setOffset(offset - DEAD_LETTER_PAGE_SIZE); }}>
+                Previous
+              </Button>
+              <Button disabled={!hasNext} onClick={() => { setOffset(offset + DEAD_LETTER_PAGE_SIZE); }}>
+                Next
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function SyncJobsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -313,6 +439,8 @@ export function SyncJobsPage(): ReactElement {
           </div>
         </>
       )}
+
+      <StreamDeadLettersSection />
     </PageLayout>
   );
 }

@@ -766,6 +766,33 @@ button:disabled,
 .button--icon.button--sm { width: 1.75rem; }
 .button--icon.button--lg { width: 2.375rem; }
 
+/* ── Contextual help link (#81) ───────────────────────────────────── */
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.help-link:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.help-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.help-link__glyph {
+  font-size: 0.6875rem;
+  line-height: 1;
+  font-weight: 600;
+}
+
 /* ── Keyboard shortcut affordance inside a button (#775) ─────────── */
 .button__shortcut {
   display: inline-flex;
@@ -1704,6 +1731,15 @@ textarea,
 .state-card__title {
   margin: 0;
   color: var(--text-primary);
+}
+
+/* A page/section title carrying an inline HelpLink (#81) — same title
+   styling, plus a small gap so the "?" badge doesn't crowd the text. */
+.page-title__with-help,
+.section-title__with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .page-description,

@@ -22,6 +22,7 @@
 import type { ReactElement } from 'react';
 import { useSession } from '../../shared/auth/use-session';
 import { ErrorState } from '../../shared/ui/feedback-state';
+import { HelpLink } from '../../shared/ui/help-link';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { SalesDocumentRuleEnginePanel, SalesDocumentsPanel } from '../../features/sales-documents';
 
@@ -45,6 +46,7 @@ export function SalesDocumentsPage(): ReactElement {
       title="Document routing"
       description="Choose what each market issues, per country, and what each connected provider may issue. OpenLinker never decides which document an order legally needs."
       backTo={{ to: '/settings', label: 'Settings' }}
+      actions={<HelpLink surfaceKey="sales-documents-routing" />}
     >
       <SalesDocumentRuleEnginePanel />
       <SalesDocumentsPanel />
