@@ -252,7 +252,7 @@ describe('UserRepository', () => {
     // One statement: a crash cannot leave a changed password still flagged.
     it('should clear the forced-change flag in the same update when asked', async () => {
       await repository.updatePasswordHash('user-uuid', 'new-hash', {
-        clearMustChangePassword: true,
+        mustChangePassword: 'clear',
       });
 
       expect(ormRepository.update).toHaveBeenCalledTimes(1);

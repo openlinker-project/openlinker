@@ -123,7 +123,7 @@ export class AuthService implements IAuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, AuthService.BCRYPT_COST);
     await this.userRepository.updatePasswordHash(userId, passwordHash, {
-      clearMustChangePassword: true,
+      mustChangePassword: 'clear',
     });
     return 'changed';
   }

@@ -154,9 +154,14 @@ describe('UsersController', () => {
         new UserNotAwaitingFirstSignInException('u1')
       );
 
-      await expect(controller.reissueTemporaryPassword('u1')).rejects.toBeInstanceOf(
-        ConflictException
-      );
+      const error = await controller
+        .reissueTemporaryPassword('u1')
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'ALREADY_SET_OWN_PASSWORD',
+      });
     });
 
     it('should answer 404 for an unknown user', async () => {

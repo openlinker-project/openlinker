@@ -165,7 +165,12 @@ export class UsersController {
         throw new NotFoundException(error.message);
       }
       if (error instanceof UserNotAwaitingFirstSignInException) {
-        throw new ConflictException(error.message);
+        // Machine-readable, like the create route's { field, message }: the
+        // wizard tells this conflict apart by `code`, never by prose.
+        throw new ConflictException({
+          code: 'ALREADY_SET_OWN_PASSWORD',
+          message: error.message,
+        });
       }
       throw error;
     }

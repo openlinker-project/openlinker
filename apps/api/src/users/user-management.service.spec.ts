@@ -82,7 +82,7 @@ describe('UserManagementService', () => {
       expect(result.id).toBe('u1');
       const [userId, hash, opts] = repo.updatePasswordHash.mock.calls[0];
       expect(userId).toBe('u1');
-      expect(opts).toEqual({ forceMustChangePassword: true });
+      expect(opts).toEqual({ mustChangePassword: 'force' });
       expect(hash).not.toBe(result.temporaryPassword);
       expect(await bcrypt.compare(result.temporaryPassword, hash)).toBe(true);
     });
