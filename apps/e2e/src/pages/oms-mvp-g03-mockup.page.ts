@@ -9,6 +9,16 @@
  * is visible (`ol-kit.js`'s own `bar()` function) — so navigating straight
  * to `file://…#<state>` selects it with no extra click.
  *
+ * `gotoState` is called once per state in a loop (`mockup-baselines.spec.ts`),
+ * all against the SAME file. Only the FIRST call is a real document load —
+ * `ol-kit.js` reads `location.hash` exactly once, in its `DOMContentLoaded`
+ * handler, so a later `page.goto()` differing only by fragment must not be
+ * relied on to re-run that handler. `ol-kit.js` now also listens for
+ * `hashchange` (#3536), and assigning `location.hash` directly is what the
+ * spec guarantees fires that event — so every call after the first sets the
+ * hash in-page instead of re-navigating, which is both the reliable path and
+ * a plain document reload avoided for free.
+ *
  * @module pages
  */
 import { fileURLToPath } from 'node:url';
@@ -64,10 +74,29 @@ export class OmsMvpG03MockupPage {
 
   /** Navigate straight to the named state via the URL hash `ol-kit.js` reads at load. */
   async gotoState(file: string, state: string): Promise<void> {
-    await this.page.goto(`file://${file}#${state}`, { waitUntil: 'networkidle' });
-    // ol-kit.js reads location.hash synchronously in its own DOMContentLoaded
-    // handler, so no extra click/wait is needed once the load event settles.
-    await expect(this.visibleStateRegion()).toBeVisible();
+    const fileUrl = `file://${file}`;
+    const sameDocumentAlreadyOpen = this.page.url().split('#')[0] === fileUrl;
+    if (!sameDocumentAlreadyOpen) {
+      // First visit to this file: a real load, so ol-kit.js's own
+      // DOMContentLoaded handler reads the initial hash.
+      await this.page.goto(`${fileUrl}#${state}`, { waitUntil: 'networkidle' });
+    } else {
+      // Same document already open (a later state in the same loop): assign
+      // `location.hash` directly rather than `page.goto` a fragment-only
+      // URL difference — the spec guarantees a `hashchange` fires, which is
+      // what ol-kit.js's own listener now reacts to (#3536); relying on
+      // `page.goto` here would depend on the browser treating that
+      // navigation as same-document, which this does not need to assume.
+      await this.page.evaluate((s) => {
+        window.location.hash = s;
+      }, state);
+    }
+    await expect(this.stateRegion(state)).toBeVisible();
+  }
+
+  /** The named state's own section, only matched while it is the visible one. */
+  stateRegion(state: string): Locator {
+    return this.page.locator(`[data-mk-state="${state}"]:not([hidden])`);
   }
 
   /** The one `[data-mk-state]` section that is not `hidden` right now. */
