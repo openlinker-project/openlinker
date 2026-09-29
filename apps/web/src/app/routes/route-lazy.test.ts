@@ -111,8 +111,12 @@ const lazyRoutes = collectLazyRoutes([
  * two lazy routes over two pages and are now one lazy route plus an inline
  * `<Navigate>` shim on the old path. A redirect loads nothing, so it joins
  * the eager list above rather than this count — net −1, from 70 to 69.
+ *
+ * The task detail page (#3098): `/fulfillment` became an INDEX child so
+ * `/fulfillment/works/:workId` could sit beside it — one node became two,
+ * net +1, from 69 to 70.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 69;
+const EXPECTED_LAZY_ROUTE_COUNT = 70;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

@@ -29,6 +29,7 @@ import {
   type FulfillmentWorkView,
   type IFulfillmentWorklistService,
 } from '@openlinker/core/fulfillment';
+import { Shipment } from '@openlinker/core/shipping';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import { FulfillmentWorkController } from './fulfillment-work.controller';
@@ -86,10 +87,12 @@ const collaborators = (): {
   orders: { findByIds: BatchedRead };
   locations: { getLocationsByIds: BatchedRead };
   products: { getVariantsByIds: BatchedRead; getProductsByIds: BatchedRead };
+  shipments: { findByFulfillmentWorkIds: jest.Mock };
 } => ({
   orders: { findByIds: batchedRead() },
   locations: { getLocationsByIds: batchedRead() },
   products: { getVariantsByIds: batchedRead(), getProductsByIds: batchedRead() },
+  shipments: { findByFulfillmentWorkIds: jest.fn().mockResolvedValue(new Map()) },
 });
 
 type Collaborators = ReturnType<typeof collaborators>;
@@ -102,7 +105,8 @@ const build = (
     worklist,
     deps.orders as never,
     deps.locations as never,
-    deps.products as never
+    deps.products as never,
+    deps.shipments as never
   ),
   ...deps,
 });
@@ -495,6 +499,113 @@ describe('FulfillmentWorkController', () => {
       expect(locations.getLocationsByIds).not.toHaveBeenCalled();
       expect(products.getVariantsByIds).not.toHaveBeenCalled();
       expect(products.getProductsByIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listShipments', () => {
+    /** Mirrors `shipment-query.service.spec.ts`'s own factory, field for field. */
+    function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
+      return new Shipment(
+        overrides.id ?? 'ol_shipment_1',
+        overrides.orderId ?? 'ol_order_1',
+        overrides.connectionId ?? 'conn-inpost',
+        overrides.shippingMethod ?? 'paczkomat',
+        overrides.status ?? 'generated',
+        overrides.providerShipmentId ?? 'shipx-1',
+        overrides.paczkomatId ?? 'POZ08A',
+        overrides.trackingNumber ?? '6800000001',
+        overrides.labelPdfRef ?? 'shipx:label:1',
+        overrides.dispatchedAt ?? null,
+        overrides.deliveredAt ?? null,
+        overrides.cancelledAt ?? null,
+        overrides.failedAt ?? null,
+        overrides.errorMessage ?? null,
+        overrides.createdAt ?? new Date('2026-09-01T00:00:00Z'),
+        overrides.updatedAt ?? new Date('2026-09-01T00:00:00Z'),
+        overrides.sourceDeliveryMethodId ?? null,
+        overrides.carrier ?? null,
+        overrides.deliveryIntent ?? null,
+        overrides.providerCode ?? null,
+        overrides.waybillRelayedAt ?? null,
+        overrides.direction ?? 'outbound',
+        overrides.reservationConsumedAt ?? null,
+        overrides.fulfillmentWorkId ?? 'work-1',
+        overrides.waybillRelayFailure ?? null
+      );
+    }
+
+    it('reads outbound shipments for the named work only, newest first', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const older = makeShipment({
+        id: 'ol_shipment_older',
+        createdAt: new Date('2026-09-01T08:00:00Z'),
+      });
+      const newer = makeShipment({
+        id: 'ol_shipment_newer',
+        createdAt: new Date('2026-09-01T09:00:00Z'),
+      });
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(
+        new Map([['work-1', [older, newer]]])
+      );
+
+      const result = await c.listShipments('work-1');
+
+      expect(shipments.findByFulfillmentWorkIds).toHaveBeenCalledWith(['work-1'], 'outbound');
+      expect(result.map((s) => s.id)).toEqual(['ol_shipment_newer', 'ol_shipment_older']);
+    });
+
+    it('projects a narrow shape — never the domain entity wholesale', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const shipment = makeShipment({
+        id: 'ol_shipment_1',
+        status: 'dispatched',
+        carrier: 'inpost',
+        trackingNumber: '6800000001',
+        labelPdfRef: 'shipx:label:1',
+      });
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map([['work-1', [shipment]]]));
+
+      const [dto] = await c.listShipments('work-1');
+
+      expect(dto).toEqual({
+        id: 'ol_shipment_1',
+        status: 'dispatched',
+        carrier: 'inpost',
+        trackingNumber: '6800000001',
+        hasLabel: true,
+        createdAt: shipment.createdAt,
+        dispatchedAt: shipment.dispatchedAt,
+        deliveredAt: shipment.deliveredAt,
+      });
+    });
+
+    it('reports no label rather than throwing when none has been generated', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const shipment = makeShipment({ status: 'draft', labelPdfRef: null });
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map([['work-1', [shipment]]]));
+
+      const [dto] = await c.listShipments('work-1');
+
+      expect(dto.hasLabel).toBe(false);
+    });
+
+    it('answers an empty array — not an error — when nothing has been dispatched yet', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map());
+
+      await expect(c.listShipments('work-1')).resolves.toEqual([]);
+    });
+
+    it('answers 404 for a task that does not exist, never a false empty list', async () => {
+      worklist.get.mockRejectedValue(new FulfillmentWorkNotFoundError('work-missing'));
+      const { controller: c, shipments } = build(worklist);
+
+      await expect(c.listShipments('work-missing')).rejects.toBeInstanceOf(NotFoundException);
+      expect(shipments.findByFulfillmentWorkIds).not.toHaveBeenCalled();
     });
   });
 });

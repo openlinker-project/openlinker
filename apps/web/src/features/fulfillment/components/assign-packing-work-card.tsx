@@ -28,9 +28,21 @@
  * about a buyer at all — an em-dash placeholder in a buyer slot reads as "no
  * buyer", which is a different and false claim.
  *
+ * ## The reference is a LINK to the task detail page (#3096/#3259)
+ *
+ * A click handler on the `<li>` would not be focusable, not middle-clickable,
+ * have no href for "open in new tab", and announce nothing to a screen
+ * reader — and it cannot be promoted to a `<button>` either, because the
+ * actions slot already nests interactive controls, and controls cannot nest.
+ * `detailHref` is threaded from the page rather than built here, the same
+ * reason `renderActions` is: the page owns the URL state (filters, paging,
+ * `?groupBy=`) this link must carry forward, and building it locally would
+ * let the card and the page disagree about what that state is.
+ *
  * @module apps/web/src/features/fulfillment/components
  */
 import type { LiHTMLAttributes, ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { formatShipBy, type ShipByLevel } from '../../../shared/format/format-ship-by';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
@@ -73,6 +85,8 @@ export interface AssignPackingWorkCardProps {
    * knows which lane it placed the card in.
    */
   readonly inUnassignedLane?: boolean;
+  /** The task's own detail-page address, carrying the page's URL state (#3259). */
+  readonly detailHref: string;
 }
 
 /**
@@ -130,6 +144,7 @@ export function AssignPackingWorkCard({
   rootProps = {},
   dragEnabled = false,
   inUnassignedLane = false,
+  detailHref,
 }: AssignPackingWorkCardProps): ReactElement {
   const badge = badgeFor(task, inUnassignedLane);
   const units = task.lines.reduce((sum, line) => sum + line.totalQuantity, 0);
@@ -167,12 +182,13 @@ export function AssignPackingWorkCard({
           here is often a 36-char internal id where the order carries no
           source reference, and `title` gives a desk surface's hover the tail
           that truncation takes. */}
-      <span
-        className="assign-packing-work-card__ref"
+      <Link
+        to={detailHref}
+        className="assign-packing-work-card__ref link"
         title={task.orderReference ?? task.id}
       >
         {task.orderReference ?? task.id}
-      </span>
+      </Link>
       {/* A WRAPPER holds the column width, never the badge itself. Sizing the
           badge to the slot stretched its pill to twice the width its words
           need, which reads as a progress bar rather than a chip. The wrapper
