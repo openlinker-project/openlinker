@@ -45,12 +45,14 @@ import type {
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
 
 /**
- * A held order and when OpenLinker first ingested it (#3485 review). The age
- * bounds how often the reroute sweep re-drives an order that stays refused.
+ * A held order and when its CURRENT hold began (#3485 review). The age bounds
+ * how often the reroute sweep re-drives an order that stays refused.
+ * `blockedAt` is `null` for a row held before the column existed: "not asserted",
+ * never a guess.
  */
 export interface HeldOrderRef {
   readonly orderId: string;
-  readonly createdAt: Date;
+  readonly blockedAt: Date | null;
 }
 
 export interface OrderRecordRepositoryPort {

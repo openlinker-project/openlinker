@@ -45,8 +45,8 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
   /** Held orders ingested an hour before the tick - inside the fast window. */
   const held = (
     ...ids: string[]
-  ): { orderId: string; createdAt: Date }[] =>
-    ids.map((orderId) => ({ orderId, createdAt: new Date('2026-09-25T09:07:00.000Z') }));
+  ): { orderId: string; blockedAt: Date | null }[] =>
+    ids.map((orderId) => ({ orderId, blockedAt: new Date('2026-09-25T09:07:00.000Z') }));
 
   const enqueuedOrderIds = (): string[] =>
     jobEnqueue.enqueueJob.mock.calls.map(
@@ -211,7 +211,7 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
 
     it('should key an order past the fast window per UTC day, not per tick', async () => {
       orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
-        { orderId: 'ol_order_old', createdAt: new Date(tickMs - 5 * DAY_MS) },
+        { orderId: 'ol_order_old', blockedAt: new Date(tickMs - 5 * DAY_MS) },
       ]);
 
       await handler.execute(job());
@@ -227,13 +227,34 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
       );
     });
 
+    // A hold from before the column existed has no known age: not "stuck", but
+    // still bounded to one re-route a day.
+    it('should put a hold of unknown age in the slow lane without calling it stuck', async () => {
+      const errorSpy = jest.spyOn(
+        (handler as unknown as { logger: { error: (m: string) => void } }).logger,
+        'error'
+      );
+      orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
+        { orderId: 'ol_order_legacy', blockedAt: null },
+      ]);
+
+      await handler.execute(job());
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: buildSlowRerouteRouteJobKey('ol_order_legacy', TICK),
+        })
+      );
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
     it('should still re-drive, but error-log, an order past the stuck horizon', async () => {
       const errorSpy = jest.spyOn(
         (handler as unknown as { logger: { error: (m: string) => void } }).logger,
         'error'
       );
       orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
-        { orderId: 'ol_order_ancient', createdAt: new Date(tickMs - 30 * DAY_MS) },
+        { orderId: 'ol_order_ancient', blockedAt: new Date(tickMs - 30 * DAY_MS) },
       ]);
 
       await handler.execute(job());

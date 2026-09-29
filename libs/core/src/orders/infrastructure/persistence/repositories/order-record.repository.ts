@@ -2222,6 +2222,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       `UPDATE "order_records"
           SET "fulfillmentBlockReason" = $1,
               "fulfillmentBlockDetail" = $2,
+              "fulfillmentBlockedAt" = CASE
+                WHEN $1::text IS NULL THEN NULL
+                WHEN "fulfillmentBlockReason" IS NULL THEN now()
+                ELSE "fulfillmentBlockedAt"
+              END,
               "updatedAt" = now()
         WHERE "internalOrderId" = $3
           AND ("fulfillmentBlockReason" IS DISTINCT FROM $1
@@ -2244,7 +2249,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const query = this.repository
       .createQueryBuilder('rec')
       .select('rec.internalOrderId', 'internalOrderId')
-      .addSelect('rec.createdAt', 'createdAt')
+      .addSelect('rec.fulfillmentBlockedAt', 'fulfillmentBlockedAt')
       .where('rec.fulfillmentBlockReason IN (:...reasons)', { reasons: [...reasons] })
       .orderBy('rec.internalOrderId', 'ASC')
       .limit(page.limit);
@@ -2253,10 +2258,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       query.andWhere('rec.internalOrderId > :after', { after: page.afterOrderId });
     }
 
-    const rows = await query.getRawMany<{ internalOrderId: string; createdAt: Date | string }>();
+    const rows = await query.getRawMany<{
+      internalOrderId: string;
+      fulfillmentBlockedAt: Date | string | null;
+    }>();
     return rows.map((row) => ({
       orderId: row.internalOrderId,
-      createdAt: new Date(row.createdAt),
+      blockedAt: row.fulfillmentBlockedAt === null ? null : new Date(row.fulfillmentBlockedAt),
     }));
   }
 

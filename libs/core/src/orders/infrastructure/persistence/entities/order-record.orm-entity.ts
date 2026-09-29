@@ -513,6 +513,15 @@ export class OrderRecordOrmEntity {
   fulfillmentBlockReason!: string | null;
 
   /**
+   * When the current fulfilment hold began (#3485 review). Stamped only on
+   * none -> held by `updateFulfillmentBlock`, so it survives a change of reason.
+   * `null` for a row held before the column existed. Not round-tripped through
+   * `toOrm` (single writer).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  fulfillmentBlockedAt!: Date | null;
+
+  /**
    * PII-free elaboration of the reason above (ids and causes only). Free text,
    * rendered verbatim to the operator, never filtered on — so no index, the
    * same call as `salesDocumentBlockDetail`.

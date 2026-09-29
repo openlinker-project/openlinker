@@ -34,6 +34,12 @@
  *
  * ## Bounded by AGE (#3503 review)
  *
+ * The age is how long the CURRENT hold has lasted (`fulfillmentBlockedAt`), not
+ * how long ago the order was ingested: an operator adopting the OMS has months-old
+ * orders that are only now being held, and they deserve the fast window.
+ * The day-scoped key adds one `sync_jobs` row per stuck order per day; retention
+ * for that table is #3631.
+ *
  * Every attempt calls `route()`, which mints a durable `routing_decisions` row
  * that nothing prunes. An order refused for a condition that never clears (a
  * discontinued product) would otherwise mint ~96 rows a day at `*\/15`, for ever.
@@ -226,9 +232,12 @@ export class FulfillmentWorkRerouteSweepHandler implements SyncJobHandler {
       FULFILLMENT_REROUTE_STUCK_AFTER_MS_DEFAULT
     );
     let stuck = 0;
-    for (const { orderId, createdAt } of held) {
-      const ageMs = tickDate.getTime() - createdAt.getTime();
-      if (ageMs > stuckAfterMs) {
+    for (const { orderId, blockedAt } of held) {
+      // A hold from before the column existed has no known age: slow lane (at
+      // most once a day, so row growth stays bounded) but never "stuck" - an
+      // unknown age is not evidence of a long one.
+      const ageMs = blockedAt === null ? null : tickDate.getTime() - blockedAt.getTime();
+      if (ageMs !== null && ageMs > stuckAfterMs) {
         stuck += 1;
         this.logger.error(
           `fulfillment_reroute_stuck order=${orderId} heldForMs=${String(ageMs)} - still ` +
@@ -240,7 +249,7 @@ export class FulfillmentWorkRerouteSweepHandler implements SyncJobHandler {
         connectionId: selection.holder,
         payload: { schemaVersion: 1, orderId },
         idempotencyKey:
-          ageMs > fastWindowMs
+          ageMs === null || ageMs > fastWindowMs
             ? buildSlowRerouteRouteJobKey(orderId, tick)
             : buildRerouteRouteJobKey(orderId, tick),
       });
