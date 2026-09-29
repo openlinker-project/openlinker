@@ -39,6 +39,10 @@ export const PermissionValues = [
   // docblock on the backend for why.
   'inventory-locations:write',
   'analytics:write',
+  // D35 (#3534/#3535): the Export button + row checkboxes on the export
+  // dialog. Admin and operator only — an export takes buyer data out of the
+  // system, so read access to /orders does not imply it.
+  'orders:export',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];

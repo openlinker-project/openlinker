@@ -10,6 +10,7 @@ import { WhoDecidesTile } from '../../features/fulfillment-authority';
 import { SourcingRulesTile } from '../../features/oms';
 import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
+import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -34,6 +35,7 @@ export function SettingsPage(): ReactElement {
           <span className="toolbar-chip">Who decides what</span>
           {isAdmin ? <span className="toolbar-chip">Sourcing rules</span> : null}
           {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Order tags</span> : null}
           {/* Ungated — see `InventoryLocationsTile`'s docblock. */}
           <span className="toolbar-chip">Inventory locations</span>
           <span className="toolbar-chip">Upcoming</span>
@@ -122,6 +124,9 @@ export function SettingsPage(): ReactElement {
 
         {/* ── Sync pacing (admin-only, #2653) ───────────────────────── */}
         {isAdmin ? <SyncPacingTile /> : null}
+
+        {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
+        {isAdmin ? <OrderTagsSettingsTile /> : null}
 
         {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
         <InventoryLocationsTile />

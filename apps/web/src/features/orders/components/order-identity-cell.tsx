@@ -55,6 +55,11 @@ import type { ReactElement } from 'react';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { EntityLabel, shortenId } from '../../../shared/ui/entity-label';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
+import { OrderTagChip } from './order-tag-chip';
+import type { OrderTag } from '../api/orders.types';
+
+/** How many tags a list row renders before folding the rest into "+N" (#3533). */
+const TAGS_LINE_MAX_VISIBLE = 2;
 
 export interface OrderIdentityCellProps {
   /**
@@ -87,6 +92,13 @@ export interface OrderIdentityCellProps {
    */
   onNavigate?: () => void;
   className?: string;
+  /**
+   * This row's assigned tags, resolved against the workspace vocabulary
+   * (#3532/#3533) — the third line of the Order cell, max 2 + "+N". Absent
+   * or empty renders no third line at all; tags are NOT a status and never
+   * belong in the Status group.
+   */
+  tags?: readonly Pick<OrderTag, 'id' | 'name' | 'color'>[];
 }
 
 export function OrderIdentityCell({
@@ -97,6 +109,7 @@ export function OrderIdentityCell({
   itemCount,
   onNavigate,
   className = '',
+  tags,
 }: OrderIdentityCellProps): ReactElement {
   if (!orderId) return <EmptyValue />;
 
@@ -169,6 +182,16 @@ export function OrderIdentityCell({
              — a SINGLE unnamed item still renders no second line, deliberately,
              since there is no count worth stating. */
           <span className="text-muted orders-cell-sub">{totalItems} line items</span>
+        ) : null}
+        {tags && tags.length > 0 ? (
+          <span className="orders-tags-line">
+            {tags.slice(0, TAGS_LINE_MAX_VISIBLE).map((tag) => (
+              <OrderTagChip key={tag.id} tag={tag} small />
+            ))}
+            {tags.length > TAGS_LINE_MAX_VISIBLE ? (
+              <span className="orders-more-count">+{tags.length - TAGS_LINE_MAX_VISIBLE}</span>
+            ) : null}
+          </span>
         ) : null}
       </span>
     </span>

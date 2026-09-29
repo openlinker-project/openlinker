@@ -48,6 +48,10 @@ export { useCancelShipmentMutation } from './hooks/use-cancel-shipment-mutation'
 export { useNotifyDispatchedMutation } from './hooks/use-notify-dispatched-mutation';
 export { useLabelDownload } from './hooks/use-label-download';
 export type { LabelDownloadResult } from './hooks/use-label-download';
+// Shared blob-download trigger (#3534) — orders' export dialog downloads a
+// generated CSV/XLSX the same way a label is downloaded: an authenticated
+// `requestBlob` fetch, then this in-memory object-URL + `<a download>` click.
+export { triggerBlobDownload, extensionForBlob } from './lib/label-download';
 export { resolveLabelDownloadError } from './lib/label-download-error';
 export type { LabelDownloadError } from './lib/label-download-error';
 export { useBulkGenerateLabelsMutation } from './hooks/use-bulk-generate-labels-mutation';

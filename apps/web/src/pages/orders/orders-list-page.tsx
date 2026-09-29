@@ -36,6 +36,8 @@ import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { Chip, type ChipTone } from '../../shared/ui/chip';
 import { Select } from '../../shared/ui/select';
+import { Input } from '../../shared/ui/input';
+import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
@@ -74,15 +76,20 @@ import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.sch
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
+import { useOrderTagsQuery } from '../../features/orders/hooks/use-order-tags-query';
 import { SalesDocumentCell } from '../../features/orders/components/sales-document-cell';
 import { TaxRateConflictBadge } from '../../features/orders/components/tax-rate-conflict-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
+import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
 import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
+import { BulkTagPopover } from '../../features/orders/components/bulk-tag-popover';
+import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
+import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
@@ -95,6 +102,7 @@ import type {
   SlaStateValue,
   FulfillmentRollupStateValue,
   OrderLifecyclePhaseSummary,
+  OrderTag,
 } from '../../features/orders/api/orders.types';
 import {
   OrderHealthValues,
@@ -102,6 +110,7 @@ import {
   OrderSortDirectionValues,
   SlaStateValues,
   FulfillmentRollupStateValues,
+  ORDER_LIST_COLUMN_IDS,
 } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
@@ -109,6 +118,10 @@ import { usePlatforms } from '../../shared/plugins';
 import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
 
 const PAGE_SIZE = 20;
+/** #3529 — same debounce window as `/customers` and `/products`. */
+const SEARCH_DEBOUNCE_MS = 300;
+/** #3532 — the tag-filter `<Select>`'s sentinel for `untagged=true`, so one control can express both axes without colliding with any real tag id. */
+const UNTAGGED_TAG_SELECT_VALUE = '__untagged__';
 
 /**
  * Status segments — partition the order set (#929). The "All" card carries the
@@ -288,6 +301,11 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   taxRateConflict: 'taxRate',
   holdReason: 'hold',
   attention: 'attention',
+  packed: 'packed',
+  search: 'search',
+  openReturn: 'openReturn',
+  tag: 'tag',
+  untagged: 'untagged',
 };
 
 /**
@@ -427,7 +445,32 @@ export function OrdersListPage(): ReactElement {
   // the set, this means OpenLinker stopped deciding, and an order is routinely
   // both.
   const omsAttention = searchParams.get('attention') === 'true';
+  // #2997 — present-only, like its neighbours: the URL never carries
+  // `packed=false` (there is no UI control for "hide packed orders" on this
+  // page), only `packed=true`.
+  const packedOnly = searchParams.get('packed') === 'true';
+  // #2998 — same present-only shape.
+  const openReturnOnly = searchParams.get('openReturn') === 'true';
+  // #3532 — the tag axis. No picker UI ships in this pass (#3533); the URL
+  // param and the filter wiring are ready for it.
+  const tag = searchParams.get('tag') || undefined;
+  const untagged = searchParams.get('untagged') === 'true';
   const offset = Number(searchParams.get('offset') ?? '0');
+
+  // #3527/#3528/#3529 — free-text search, debounced client-side (300 ms, the
+  // `/customers` and `/products` precedent) before it lands in the URL and the
+  // query. `searchInput` is the CONTROLLED input value (updates every
+  // keystroke); `debouncedSearch` is what actually drives the request.
+  const urlSearch = searchParams.get('search') ?? '';
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
+  // Keeps the controlled input in sync when the URL changes from somewhere
+  // OTHER than this input's own `onChange` — `clearAllFilters`, browser
+  // back/forward, or a bookmarked link. `handleSearchChange` already sets
+  // both in the same tick, so this is a no-op on every keystroke it causes.
+  useEffect(() => {
+    setSearchInput(urlSearch);
+  }, [urlSearch]);
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
   // render) so the query key doesn't churn. `now + 24h` catches overdue too.
@@ -459,6 +502,16 @@ export function OrdersListPage(): ReactElement {
     holdReason,
     // Present-only (#2353): `true` when the chip is on, `undefined` otherwise.
     attention: omsAttention ? true : undefined,
+    // #2997 — present-only, no UI control for the inverse.
+    packed: packedOnly ? true : undefined,
+    // #3527/#3528 — the debounced value, never `searchInput` directly: the
+    // request must not re-fire on every keystroke.
+    search: debouncedSearch || undefined,
+    // #2998 — present-only, no UI control for the inverse.
+    openReturn: openReturnOnly ? true : undefined,
+    // #3532 — mutually exclusive by convention; no picker UI ships yet (#3533).
+    tag,
+    untagged: untagged ? true : undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -495,6 +548,17 @@ export function OrdersListPage(): ReactElement {
   // action, no intermediate form) - visible-but-disabled with a read-only
   // tooltip for a demo viewer, per the #1615 precedent.
   const retryWrite = useWriteAccess('orders:write', demoMode);
+
+  // The workspace tag vocabulary (#3532/#3533) — the filter select and the
+  // row tags line both resolve a `tagIds` array against this one map.
+  const tagsQuery = useOrderTagsQuery();
+  const tagById = useMemo(() => {
+    const map = new Map<string, OrderTag>();
+    for (const t of tagsQuery.data ?? []) {
+      map.set(t.id, t);
+    }
+    return map;
+  }, [tagsQuery.data]);
 
   // Channel lookup: connectionId → platformType, cached app-wide via TanStack.
   const connectionsQuery = useConnectionsQuery();
@@ -546,6 +610,14 @@ export function OrdersListPage(): ReactElement {
   const items = query.data?.items ?? [];
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  // D35: admin and operator only — a viewer never sees the Export button.
+  const exportAccess = useWriteAccess('orders:export', demoMode);
+  // #3530 recovery pass — the list's own column visibility/order. Starts at
+  // every optional column shown (the pre-existing behaviour) until
+  // `OrderColumnVisibilityControl` resolves the viewer's remembered
+  // arrangement or the workspace default, one effect tick after mount.
+  const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>([...ORDER_LIST_COLUMN_IDS]);
 
   // Fire once per successful list load, not on every filter/page refetch —
   // demo-mode analytics only (#1788), no-op elsewhere.
@@ -603,6 +675,9 @@ export function OrdersListPage(): ReactElement {
     (order: OrderRecord): ReactElement => {
       const parsed = parsedFor(order);
       const firstItem = parsed.items[0];
+      const tags = (order.tagIds ?? [])
+        .map((id) => tagById.get(id))
+        .filter((t): t is OrderTag => t !== undefined);
       return (
         <OrderIdentityCell
           orderId={order.internalOrderId}
@@ -611,10 +686,11 @@ export function OrdersListPage(): ReactElement {
           firstItemImageUrl={firstItem?.imageUrl}
           itemCount={parsed.items.length}
           onNavigate={() => captureDemoEvent('demo_order_opened', {})}
+          tags={tags}
         />
       );
     },
-    [parsedFor],
+    [parsedFor, tagById],
   );
 
   // Whether ANY connection exposes a sales-document-issuing capability
@@ -935,6 +1011,9 @@ export function OrdersListPage(): ReactElement {
                   sync failure behind a stock one. Shared verbatim with the
                   mobile card. */}
               <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
+              {/* #2998 — the same STATUS group, beside health. Neutral tone: a
+                  return is routine, not a failure. */}
+              <OrderOpenReturnBadge openReturn={order.openReturn} />
               {/* #2342 — the STATUS group: an exception is a badge and belongs
                   beside the failure reasons (style guide § Order-row signal
                   placement rule 2), never in Shipment or Money. */}
@@ -1183,6 +1262,23 @@ export function OrdersListPage(): ReactElement {
     ],
   );
 
+  // #3530 recovery pass — the column-visibility control filters/reorders the
+  // OPTIONAL columns only. `select` (bulk-action checkbox) and `order` (row
+  // identity) are structural, always first, and never offered as hideable —
+  // hiding either would break bulk dispatch and the row's whole reason for
+  // being, respectively. Mobile cards are untouched: `cardView` below reads
+  // its own `title`/`subtitle` functions, never this `columns` array.
+  const visibleColumns = useMemo(() => {
+    const byId = new Map(columns.map((c) => [c.id, c] as const));
+    const structural = [byId.get('select'), byId.get('order')].filter(
+      (c): c is DataTableColumn<OrderRecord> => c !== undefined,
+    );
+    const optional = visibleColumnIds
+      .map((id) => byId.get(id))
+      .filter((c): c is DataTableColumn<OrderRecord> => c !== undefined);
+    return [...structural, ...optional];
+  }, [columns, visibleColumnIds]);
+
   function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
     retryMutation.mutate(
       { internalOrderId, destinationConnectionId },
@@ -1279,6 +1375,59 @@ export function OrdersListPage(): ReactElement {
         p.delete('attention');
       } else {
         p.set('attention', 'true');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /** #2997 — present-only, same shape as `toggleOmsAttention`. */
+  function togglePacked(): void {
+    captureDemoEvent('demo_orders_filtered', { filter: 'packed', value: String(!packedOnly) });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (packedOnly) {
+        p.delete('packed');
+      } else {
+        p.set('packed', 'true');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /** #2998 — present-only, same shape as `toggleOmsAttention`. */
+  function toggleOpenReturn(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'open_return',
+      value: String(!openReturnOnly),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (openReturnOnly) {
+        p.delete('openReturn');
+      } else {
+        p.set('openReturn', 'true');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /**
+   * #3527/#3528/#3529 — updates the URL on EVERY keystroke (so the search box
+   * is bookmarkable/shareable immediately), while the query itself only fires
+   * once `debouncedSearch` catches up. Mirrors `/customers`'
+   * `handleFilterChange('search', …)`.
+   */
+  function handleSearchChange(value: string): void {
+    setSearchInput(value);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (value) {
+        p.set('search', value);
+      } else {
+        p.delete('search');
       }
       p.delete('offset');
       return p;
@@ -1386,10 +1535,28 @@ export function OrdersListPage(): ReactElement {
       eyebrow={freshness ?? 'Operations'}
       title="Orders"
       actions={
-        <Button tone="ghost" className="button--sm" onClick={refreshAll}>
-          Refresh
-          <span className="button__shortcut">R</span>
-        </Button>
+        <>
+          {exportAccess.canWrite || exportAccess.demoReadOnly ? (
+            <ReadOnlyLock active={exportAccess.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="secondary"
+                className="button--sm"
+                disabled={exportAccess.demoReadOnly}
+                onClick={() => { setExportOpen(true); }}
+              >
+                Export
+              </Button>
+            </ReadOnlyLock>
+          ) : null}
+          <OrderColumnVisibilityControl
+            visibleColumnIds={visibleColumnIds}
+            onVisibleColumnIdsChange={setVisibleColumnIds}
+          />
+          <Button tone="ghost" className="button--sm" onClick={refreshAll}>
+            Refresh
+            <span className="button__shortcut">R</span>
+          </Button>
+        </>
       }
     >
       {/* Status segments — partition the set; click to filter by `health`. */}
@@ -1430,6 +1597,19 @@ export function OrdersListPage(): ReactElement {
           column headers (#944). */}
       <div className="toolbar orders-toolbar">
         <div className="toolbar__group">
+          {/*
+            #3529 — order number, buyer, email, SKU or tracking number.
+            Debounced (300 ms); ANDed with every other filter on this toolbar.
+            No PII placeholder promise when the install does not store it —
+            the placeholder stays generic on purpose, since this page cannot
+            see `OL_STORE_PII` and a wrong promise is worse than a vague one.
+          */}
+          <Input
+            aria-label="Search orders"
+            placeholder="Search order #, buyer, SKU, tracking…"
+            value={searchInput}
+            onChange={(e) => { handleSearchChange(e.target.value); }}
+          />
           <Select
             aria-label="Filter by source"
             value={sourceConnectionId ?? ''}
@@ -1507,6 +1687,40 @@ export function OrdersListPage(): ReactElement {
             {HoldReasonValues.map((value) => (
               <option key={value} value={value}>
                 {HOLD_REASON_COPY[value].label}
+              </option>
+            ))}
+          </Select>
+          {/*
+            #3532 — `tag` and `untagged` are mutually exclusive by convention
+            (the backend never reads them together); a single select over the
+            union of "any", the workspace vocabulary and "No tags" is the whole
+            of that contract, and the server-side filter is what makes the KPI
+            counts, the row count and this select's own choice agree.
+          */}
+          <Select
+            aria-label="Filter by tag"
+            value={untagged ? UNTAGGED_TAG_SELECT_VALUE : (tag ?? '')}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSearchParams((prev) => {
+                const p = new URLSearchParams(prev);
+                p.delete('tag');
+                p.delete('untagged');
+                if (value === UNTAGGED_TAG_SELECT_VALUE) {
+                  p.set('untagged', 'true');
+                } else if (value) {
+                  p.set('tag', value);
+                }
+                p.delete('offset');
+                return p;
+              });
+            }}
+          >
+            <option value="">Any tag</option>
+            <option value={UNTAGGED_TAG_SELECT_VALUE}>No tags</option>
+            {(tagsQuery.data ?? []).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
               </option>
             ))}
           </Select>
@@ -1594,6 +1808,18 @@ export function OrdersListPage(): ReactElement {
             {summary?.omsAttention === undefined ? '' : ` ${summary.omsAttention}`}
           </Chip>
         ) : null}
+        {/* #2997 — "is it packed" as an operator-facing scan axis. No count is
+            fetched for this chip in this pass; it is a plain toggle, like
+            `rateConflict` before its own count landed. */}
+        <Chip active={packedOnly} onClick={togglePacked}>
+          Packed
+        </Chip>
+        {/* #2998 — "has an open return". Neutral tone: a return is routine, not
+            an alarm — the badge on the row it filters to carries the same
+            neutral reading. */}
+        <Chip active={openReturnOnly} onClick={toggleOpenReturn}>
+          Open return
+        </Chip>
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts.
             The BADGES stay conditional (a zero-count badge is a dead signal),
             but the LINK below is not: see its comment. */}
@@ -1694,7 +1920,7 @@ export function OrdersListPage(): ReactElement {
       </div>
 
       {query.isLoading ? (
-        <DataTableSkeleton columns={columns} rowAction label="Loading orders…" />
+        <DataTableSkeleton columns={visibleColumns} rowAction label="Loading orders…" />
       ) : query.error ? (
         <ErrorState
           title="Unable to load orders"
@@ -1757,6 +1983,24 @@ export function OrdersListPage(): ReactElement {
               </Button>
             }
           />
+        ) : debouncedSearch ? (
+          /*
+            #3529 (mockup M4 `noresults`) — its own arm, ahead of the generic
+            `hasActiveFilters` one below: "no orders match the current
+            filters" is technically true but does not quote the query back,
+            which the mockup's no-results state does. "Clear search" clears
+            ONLY the search param — other filters stay, unlike every other
+            arm's "clear filters" action.
+          */
+          <EmptyState
+            title={`No orders match "${debouncedSearch}"`}
+            message="Try a different order number, buyer name, email, SKU or tracking number."
+            action={
+              <Button onClick={() => { handleSearchChange(''); }}>
+                Clear search
+              </Button>
+            }
+          />
         ) : hasActiveFilters ? (
           /*
             #2148 — one arm for every narrowing filter, not one arm per param.
@@ -1801,7 +2045,7 @@ export function OrdersListPage(): ReactElement {
         <>
           <DataTable
             caption="Orders"
-            columns={columns}
+            columns={visibleColumns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             // Top-aligns every cell in the row (#2091, `.orders-table td`). Row
@@ -1816,14 +2060,15 @@ export function OrdersListPage(): ReactElement {
                 itemNoun="order"
                 hint={
                   distinctSelectedSources > 1
-                    ? `${distinctSelectedSources} sources · max ${BULK_DISPATCH_MAX_ITEMS} per source`
-                    : `Max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                    ? `${distinctSelectedSources} sources · Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                    : `Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
                 }
                 actions={
                   <>
                     <Button tone="ghost" onClick={clearSelection}>
                       Clear
                     </Button>
+                    <BulkTagPopover selectedOrders={selectedOrders} />
                     <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
                       Dispatch {selectedOrders.length}
                     </Button>
@@ -1972,6 +2217,17 @@ export function OrdersListPage(): ReactElement {
                               claim — see `stock-at-risk-copy.ts`. */}
                           <StockAtRiskBadge
                             shortfalls={order.reservationShortfalls}
+                            layout="row"
+                            emptyFallback="—"
+                          />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Return</dt>
+                        <dd>
+                          {/* SAME component as the desktop status cell (#2998). */}
+                          <OrderOpenReturnBadge
+                            openReturn={order.openReturn}
                             layout="row"
                             emptyFallback="—"
                           />
@@ -2139,6 +2395,14 @@ export function OrdersListPage(): ReactElement {
         orders={selectedOrders}
         channelLabelFor={channelLabelForBulk}
         onComplete={clearSelection}
+      />
+
+      <OrderExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        filters={filters}
+        filteredCount={totalStage.total}
+        selectedOrders={selectedOrders}
       />
     </PageLayout>
   );

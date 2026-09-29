@@ -153,4 +153,12 @@ describe('ROLE_PERMISSIONS', () => {
       expect(ROLE_PERMISSIONS.viewer).not.toContain('shipments:write');
     });
   });
+
+  describe('orders:export (D35, #3534/#3535)', () => {
+    it('should be held by admin and operator, but NOT viewer — an export takes buyer data out of the system', () => {
+      expect(ROLE_PERMISSIONS.admin).toContain('orders:export');
+      expect(ROLE_PERMISSIONS.operator).toContain('orders:export');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('orders:export');
+    });
+  });
 });
