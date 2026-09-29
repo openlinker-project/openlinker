@@ -43,6 +43,17 @@ export interface RoutingEligibilityConnection {
  *
  * A source connection absent from `connections` is not a product master, so the
  * order keeps today's routing behaviour.
+ *
+ * **The boundary of this rule (#3490 review):** it covers every shop order for
+ * which OpenLinker owns the catalogue, not every shop order. A PrestaShop or
+ * WooCommerce connection used as an `OrderSource` with `ProductMaster` NOT
+ * enabled (the catalogue lives in another shop) still runs its own order flow
+ * and lowers its own stock, yet is routed here — and #3489's `source-is-owner`
+ * skip does not catch it either, because that compares the line OWNER's
+ * connection to the order's source and the owner resolves to the other master.
+ * `enabledCapabilities` is also stamped at create and never retro-filled, so a
+ * connection that predates `ProductMaster` in its manifest falls into the same
+ * gap. `ProductMaster` is a deliberate proxy; widening it needs its own decision.
  */
 export function isOrderFromOwnProductMaster(
   connections: readonly RoutingEligibilityConnection[],

@@ -884,7 +884,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       const connections = await this.connections.list();
 
       if (isOrderFromOwnProductMaster(connections, orderSourceConnectionId)) {
-        this.logger.debug(
+        // `log`, not `debug`: this is the answer to "why is this order not on the
+        // pack bench?", the first question after enabling the OMS, and `debug`
+        // is off on a normal deployment (#3490 review).
+        this.logger.log(
           `Not routing order ${orderId}: its source connection ${orderSourceConnectionId} ` +
             `is a product master (the operator's own shop); following today's path.`
         );
