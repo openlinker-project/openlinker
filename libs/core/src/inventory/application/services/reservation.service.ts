@@ -235,10 +235,9 @@ export class ReservationService implements IReservationService {
   }
 
   async closeForOrder(input: CloseForOrderInput): Promise<CloseForOrderResult> {
-    const lineFilter =
-      input.orderLineIds === undefined ? null : new Set<string>(input.orderLineIds);
-    const held = (await this.reservations.listHeldByOrderRecordId(input.orderRecordId)).filter(
-      (reservation) => lineFilter === null || lineFilter.has(reservation.orderLineId)
+    const held = await this.reservations.listHeldByOrderRecordId(
+      input.orderRecordId,
+      input.orderLineIds
     );
     if (held.length === 0) {
       // Not a warning, in EITHER of the two things this can mean: an order

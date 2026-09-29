@@ -166,7 +166,7 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         .filter((outcome) => outcome.status === 'retryable')
         .map((outcome) => outcome.orderLineId),
       holdCloseFailedLineIds,
-      attention: deriveSaleDecrementAttention(rows),
+      attention: deriveSaleDecrementAttention(rows, holdCloseFailedLineIds.length),
     };
   }
 

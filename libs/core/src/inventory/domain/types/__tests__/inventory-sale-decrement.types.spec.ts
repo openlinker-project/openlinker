@@ -184,6 +184,13 @@ describe('deriveSaleDecrementAttention', () => {
     ).toMatchObject({ kind: 'blocked' });
   });
 
+  it('should raise a distinct attention when a hold close failed on an applied line', () => {
+    expect(deriveSaleDecrementAttention([{ status: 'applied', clamped: false }], 1)).toEqual({
+      kind: 'blocked',
+      detail: '1 line(s) lowered in the product master but their hold is still counting',
+    });
+  });
+
   // OUR inference from a possibly-stale mirror only warns (#2243); it is logged,
   // never an operator-facing block.
   it('should not raise attention for a clamped decrement that succeeded', () => {

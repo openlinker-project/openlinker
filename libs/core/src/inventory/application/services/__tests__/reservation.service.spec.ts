@@ -522,8 +522,9 @@ describe('ReservationService', () => {
     // #3480 — the sale decrement confirms per LINE; a line whose decrement failed
     // must keep its hold.
     it('should close only the named lines when orderLineIds is given', async () => {
+      // The line filter is pushed into the repository read (#3491 review), so
+      // the repository answers only the named line.
       reservations.listHeldByOrderRecordId.mockResolvedValue([
-        reservation({ orderLineId: 'line-1', inventoryItemId: 'inv-1' }),
         reservation({ orderLineId: 'line-2', inventoryItemId: 'inv-2' }),
       ]);
       reservations.releaseHeld.mockResolvedValue(reservation({ status: 'consumed' }));
@@ -534,6 +535,8 @@ describe('ReservationService', () => {
         orderLineIds: ['line-2'],
       });
 
+      expect(reservations.listHeldByOrderRecordId).toHaveBeenCalledWith(ORDER_ID, ['line-2']);
+
       expect(result).toEqual({ closed: 1, alreadyTerminal: 0, failed: 0 });
       expect(reservations.releaseHeld).toHaveBeenCalledTimes(1);
       expect(reservations.releaseHeld).toHaveBeenCalledWith(
@@ -542,9 +545,7 @@ describe('ReservationService', () => {
     });
 
     it('should close nothing when orderLineIds is empty', async () => {
-      reservations.listHeldByOrderRecordId.mockResolvedValue([
-        reservation({ orderLineId: 'line-1' }),
-      ]);
+      reservations.listHeldByOrderRecordId.mockResolvedValue([]);
 
       const result = await service.closeForOrder({
         orderRecordId: ORDER_ID,
