@@ -38,6 +38,11 @@ export interface SaleDecrementEnqueueIntent {
  * work's stock?"; the per-LINE at-most-once guarantee is the Postgres claim the
  * job takes, keyed `sale:{owner}:{workId}:{lineId}`, so a swallowed duplicate
  * enqueue can never cost a decrement and a duplicate job can never repeat one.
+ *
+ * No generation component: `sync_jobs.idempotencyKey` is globally unique and
+ * TTL-less, so a second enqueue for one work is swallowed for ever. Correct
+ * while nothing re-requests; the day a re-route or re-request path lands, this
+ * key needs a generation segment (same constraint as `fulfillment:dispatch:*`).
  */
 export function buildSaleDecrementJobDedupeKey(workId: string): string {
   return `inventory:sale-decrement:${workId}`;

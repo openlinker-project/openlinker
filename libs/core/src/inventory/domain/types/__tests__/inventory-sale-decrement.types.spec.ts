@@ -168,6 +168,22 @@ describe('deriveSaleDecrementAttention', () => {
     }
   );
 
+  it('should not raise attention for a position-contended retryable line', () => {
+    expect(
+      deriveSaleDecrementAttention([
+        { status: 'retryable', clamped: false, reason: 'position-contended' },
+      ])
+    ).toEqual({ kind: 'none' });
+  });
+
+  it('should still raise attention for an adapter-unresolved retryable line', () => {
+    expect(
+      deriveSaleDecrementAttention([
+        { status: 'retryable', clamped: false, reason: 'adapter-unresolved' },
+      ])
+    ).toMatchObject({ kind: 'blocked' });
+  });
+
   it('should raise attention for a clamped decrement', () => {
     expect(deriveSaleDecrementAttention([{ status: 'applied', clamped: true }])).toEqual({
       kind: 'blocked',

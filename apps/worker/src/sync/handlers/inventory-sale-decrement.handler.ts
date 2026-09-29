@@ -17,7 +17,7 @@
  * | Result | Outcome |
  * |---|---|
  * | every line settled, skipped, blocked or in doubt | `ok` — each is durable on its row, and a blocked or in-doubt line is surfaced on the order, never retried |
- * | a line is `retryable` (the owner's adapter could not be built) | **throws** (retryable) — nothing crossed the boundary, so a retry is safe and re-claims exactly that line |
+ * | a line is `retryable` (the owner's adapter could not be built, or a peer decrement held the position lock) | **throws** (retryable) — nothing crossed the boundary, so a retry is safe and re-claims exactly that line |
  * | the order record is missing | **throws** (retryable) — a read race with ingestion |
  * | the work does not exist, or the payload is malformed | `business_failure` — no retry can change it |
  * | the order was cancelled before the job ran | `ok`, nothing lowered — there is no sale to account for |

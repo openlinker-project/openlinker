@@ -106,6 +106,17 @@ const ATTENTION_STATUSES: readonly InventorySaleDecrementStatus[] = [
 ];
 
 /**
+ * Reasons that never raise attention, whatever the status.
+ *
+ * `position-contended` is OpenLinker's own ordering lock working: two orders
+ * for one product in the same tick is the normal case it exists for, it clears
+ * on the job's retry and nobody can act on it (#2615: an alert that fires on a
+ * healthy install is worse than no alert). Keyed on the REASON, not the status,
+ * so `adapter-unresolved` — operator-actionable — stays visible.
+ */
+const NON_ATTENTION_REASONS: readonly InventorySaleDecrementReason[] = ['position-contended'];
+
+/**
  * The per-owner idempotency key, exactly as #3453 specifies it.
  *
  * Deterministic and never wall-clock, so a job retry recomputes it byte for byte
@@ -275,6 +286,7 @@ export function resolveSaleDecrementOwner(
 export interface SaleDecrementAttentionRow {
   readonly status: InventorySaleDecrementStatus;
   readonly clamped: boolean;
+  readonly reason?: InventorySaleDecrementReason | null;
 }
 
 /** What the order's attention entry should say, from ALL its decrement rows. */
@@ -292,7 +304,11 @@ export type SaleDecrementAttention =
 export function deriveSaleDecrementAttention(
   rows: readonly SaleDecrementAttentionRow[]
 ): SaleDecrementAttention {
-  const failed = rows.filter((row) => ATTENTION_STATUSES.includes(row.status)).length;
+  const failed = rows.filter(
+    (row) =>
+      ATTENTION_STATUSES.includes(row.status) &&
+      !(row.reason != null && NON_ATTENTION_REASONS.includes(row.reason))
+  ).length;
   const clamped = rows.filter(
     (row) => (row.status === 'applied' || row.status === 'deduplicated') && row.clamped
   ).length;
