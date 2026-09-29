@@ -51,6 +51,29 @@ export interface SubiektOrderDetail {
   readonly lines: readonly SubiektOrderLine[];
 }
 
+/** One warehouse's figures for a towar, as `GET /api/inventory/{symbol}/stock` reports them. */
+export interface SubiektStockPosition {
+  magazynId: number;
+  magazynSymbol: string;
+  stan: number;
+  stanRez: number;
+}
+
+/** A towar's stock across every warehouse, plus which one Subiekt treats as default. */
+export interface SubiektStock {
+  towarSymbol: string;
+  positions: SubiektStockPosition[];
+  domyslnyMagazynId: number | null;
+}
+
+/** What the bridge answers after moving stock. `stanAfter` is Subiekt's own post-write figure. */
+export interface SubiektStockAdjustment {
+  deduplicated: boolean;
+  documentId: number | null;
+  documentNumber: string | null;
+  stanAfter: number;
+}
+
 export class SubiektBridgeClient {
   constructor(
     private readonly baseUrl: string,
@@ -79,6 +102,73 @@ export class SubiektBridgeClient {
       data: SubiektOrderDetail | null;
     };
     return envelope.success ? envelope.data : null;
+  }
+
+  /**
+   * Subiekt's OWN stock figure for a towar, per warehouse.
+   *
+   * This is the reading a stock assertion must start and end on: OpenLinker's
+   * `inventory_items` is a mirror, so comparing the mirror against itself
+   * proves nothing about whether Subiekt and the channel agree.
+   *
+   * `null` when the bridge does not know the symbol, which is a real answer and
+   * the one a caller asserting "this towar exists" must be able to fail on.
+   */
+  async getStock(towarSymbol: string): Promise<SubiektStock | null> {
+    const response = await fetch(
+      `${this.baseUrl}/api/inventory/${encodeURIComponent(towarSymbol)}/stock`,
+      { headers: { Authorization: `Bearer ${this.token}` } },
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw new Error(
+        `Subiekt bridge answered HTTP ${response.status} reading stock for ${towarSymbol}`,
+      );
+    }
+    const envelope = (await response.json()) as { success: boolean; data: SubiektStock | null };
+    return envelope.success ? envelope.data : null;
+  }
+
+  /**
+   * Move a towar's stock by `delta`, which Subiekt records as a real document
+   * (a PW for a positive delta). A zero delta is refused by the bridge.
+   *
+   * `idempotencyKey` is mandatory here even though the bridge treats it as
+   * optional: a retried adjustment without one moves the stock twice, and a
+   * spec that re-runs is exactly the caller that would.
+   */
+  async adjustStock(input: {
+    towarSymbol: string;
+    delta: number;
+    magazynId?: number;
+    uwagi?: string;
+    idempotencyKey: string;
+  }): Promise<SubiektStockAdjustment> {
+    const response = await fetch(`${this.baseUrl}/api/inventory/adjust`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `Subiekt bridge answered HTTP ${response.status} adjusting ${input.towarSymbol} ` +
+          `by ${input.delta}`,
+      );
+    }
+    const envelope = (await response.json()) as {
+      success: boolean;
+      data: SubiektStockAdjustment | null;
+      error: unknown;
+    };
+    if (!envelope.success || envelope.data === null) {
+      throw new Error(
+        `Subiekt bridge refused to adjust ${input.towarSymbol}: ${JSON.stringify(envelope.error)}`,
+      );
+    }
+    return envelope.data;
   }
 
   /** The bridge's own liveness, so a spec can tell "not configured" from "down". */

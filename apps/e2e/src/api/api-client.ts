@@ -546,6 +546,25 @@ export class ApiClient {
   // ── Listings (offers) ───────────────────────────────────────────────────
   listings = {
     /**
+     * Force a live read of one offer's status from the channel, which also
+     * refreshes its commercial snapshot (#1760/#2024).
+     *
+     * Without this a caller reads whatever the hourly rolling scan last wrote,
+     * so a freshly propagated quantity would not be visible for up to an hour.
+     */
+    refreshOfferStatus: (
+      connectionId: string,
+      externalOfferId: string,
+      internalVariantId: string,
+    ): Promise<{ publicationStatus: string | null }> =>
+      this.request<{ publicationStatus: string | null }>(
+        `/listings/connections/${connectionId}/offers/${encodeURIComponent(
+          externalOfferId,
+        )}/refresh-status`,
+        { method: 'POST', body: JSON.stringify({ internalVariantId }) },
+      ),
+
+    /**
      * A bulk offer-creation batch and its per-record failure reasons.
      *
      * A batch whose every job is rejected still exists and reports its reason

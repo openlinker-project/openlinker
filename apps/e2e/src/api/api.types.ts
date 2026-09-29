@@ -192,6 +192,13 @@ export interface InventoryAvailability {
   productVariantId: string;
   totalAvailable: number;
   locationCount: number;
+  /**
+   * What OpenLinker is willing to PROMISE (#2321): stock net of outstanding
+   * holds, clamped at zero. `null` means OpenLinker does not know, which a
+   * caller must never read as `0` - an absent number written as zero is how a
+   * healthy catalogue stops selling.
+   */
+  availableToPromise?: number | null;
 }
 
 export interface InventoryAvailabilityResponse {
@@ -279,6 +286,10 @@ export interface OfferMapping {
   context: Record<string, unknown> | null;
   offerCreation?: OfferCreationSummary;
   linkedProductId?: string;
+  /** Present on the `GET /listings` projection (#2023/#2024), absent elsewhere. */
+  identity?: ListingIdentity | null;
+  channelStatus?: ListingChannelStatus | null;
+  commercial?: ListingCommercial | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1095,4 +1106,36 @@ export interface SourceFulfillmentView {
   readback: SourceFulfillmentReadback | null;
   unmappedReason: 'no-source-mapping' | null;
   readAt: string;
+}
+
+/** Who a listing row is about, as `GET /listings` projects it (#2023). */
+export interface ListingIdentity {
+  productId: string | null;
+  productName: string | null;
+  variantLabel: string | null;
+  sku: string | null;
+  ean: string | null;
+  imageUrl: string | null;
+  isStale: boolean;
+}
+
+/** The channel's own publication state for a listing row (#816). */
+export interface ListingChannelStatus {
+  publicationStatus: string | null;
+  lifecycle: string | null;
+  lastStatusSyncedAt: string | null;
+}
+
+/**
+ * What the CHANNEL reports the listing is selling at, and how many (#2024).
+ *
+ * Every field is independently nullable and `null` never means zero: a sparse
+ * response records "not reported", which an operator cannot tell from a
+ * sell-out if it is written as `0`.
+ */
+export interface ListingCommercial {
+  price: string | null;
+  currency: string | null;
+  availableQuantity: number | null;
+  lastCommercialSyncedAt: string | null;
 }
