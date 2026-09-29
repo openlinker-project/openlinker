@@ -34,6 +34,20 @@ function ConsentSentinel(): React.ReactElement {
   return <div>Consent page next: {location.search}</div>;
 }
 
+function BenchSentinel(): React.ReactElement {
+  return <div>Bench page</div>;
+}
+
+function packer(): SessionUser {
+  return {
+    id: 'user_3',
+    username: 'packer_1',
+    email: 'packer@example.com',
+    role: 'packer',
+    permissions: [],
+  };
+}
+
 function demoViewer(analyticsConsent: boolean): SessionUser {
   return {
     id: 'user_2',
@@ -73,6 +87,7 @@ function renderLayout(
       },
       { path: '/login', element: options?.loginElement ?? <LoginSentinel /> },
       { path: '/consent', element: <ConsentSentinel /> },
+      { path: '/bench', element: <BenchSentinel /> },
     ],
     { initialEntries: [options?.initialEntry ?? '/'] }
   );
@@ -152,6 +167,13 @@ describe('AuthenticatedAppLayout', () => {
     });
 
     expect(await screen.findByText('Authenticated content')).toBeInTheDocument();
+  });
+
+  it('should redirect a packer session to /bench unconditionally, even at the root route (#3221 follow-up)', async () => {
+    renderLayout(createAuthenticatedSessionAdapter(packer()));
+
+    expect(await screen.findByText('Bench page')).toBeInTheDocument();
+    expect(screen.queryByText('Authenticated content')).not.toBeInTheDocument();
   });
 
   it('should not render app routes while the demo-mode config is still loading (#1938)', async () => {

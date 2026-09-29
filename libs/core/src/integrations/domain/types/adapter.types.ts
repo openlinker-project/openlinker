@@ -204,6 +204,24 @@ export interface AdapterMetadata {
    * rather than directly, so the safe default is always applied.
    */
   requiresCredentials?: boolean;
+
+  /**
+   * Config keys that must be unique across every ACTIVE connection sharing
+   * this `adapterKey` (#3391). Absent means no such constraint — same
+   * declared-field, safe-default posture as `variantGrouping?` /
+   * `requiresCredentials?` above, never a `platformType === '...'` check in
+   * `ConnectionService`.
+   *
+   * Exists for a connection config value that names a shared PHYSICAL
+   * resource rather than a per-connection credential: Subiekt declares
+   * `['bridgeBaseUrl']` because two connections pointed at the identical
+   * bridge process would each get their own independent per-connection rate
+   * limiter against the SAME underlying single-threaded Sfera COM queue,
+   * silently defeating the `maxConcurrent:1` protection #3369 relies on — a
+   * failure mode invisible at connection-create time and only surfaced later
+   * as unexplained duplicate-write races.
+   */
+  uniqueConfigKeys?: readonly string[];
 }
 
 /**

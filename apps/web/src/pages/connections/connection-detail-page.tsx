@@ -18,6 +18,7 @@ import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
 import { usePlatform, usePlatforms } from '../../shared/plugins';
@@ -370,8 +371,9 @@ export function ConnectionDetailPage(): ReactElement {
                 where routing gets switched on. Deliberately not capability-gated:
                 the claim lives in config, and `enabledCapabilities` is stamped at
                 create and never retro-filled (#2085), so gating on it would hide
-                the panel from exactly the connections that need it. */}
-            <RouterReadinessPanel />
+                the panel from exactly the connections that need it. Withheld
+                entirely unless the build opts into the OMS routing UI (#3634). */}
+            {isOmsRoutingUiEnabled() ? <RouterReadinessPanel /> : null}
           </TabsContent>
 
           <TabsContent value="actions">

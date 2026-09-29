@@ -18,6 +18,9 @@
 # is what makes a demo deployment's links visually distinguishable from
 # production's. All three default to empty, which yields the plain
 # production card — see apps/web/.env.example.
+#
+# VITE_OL_OMS_ROUTING_UI_ENABLED=true exposes the OMS routing configuration
+# screens (inventory locations, sourcing rules); unset keeps them hidden (#3634).
 FROM node:22.23.1-alpine3.24 AS build
 
 # Pinned to match the repo's packageManager field (package.json).
@@ -49,6 +52,8 @@ ARG VITE_OG_BADGE_TEXT=
 ENV VITE_OG_BADGE_TEXT=$VITE_OG_BADGE_TEXT
 ARG VITE_OG_SITE_URL=
 ENV VITE_OG_SITE_URL=$VITE_OG_SITE_URL
+ARG VITE_OL_OMS_ROUTING_UI_ENABLED=
+ENV VITE_OL_OMS_ROUTING_UI_ENABLED=$VITE_OL_OMS_ROUTING_UI_ENABLED
 
 RUN pnpm --filter @openlinker/web build
 

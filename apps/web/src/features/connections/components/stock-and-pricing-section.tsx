@@ -90,8 +90,11 @@ import {
   type PricingRule,
 } from '../lib/stock-and-pricing-preview';
 
-/** One page is enough for a picker; an install with hundreds of warehouses is not this control's shape. */
-const LOCATION_OPTIONS_PAGE_SIZE = 200;
+/**
+ * One page is enough for a picker; an install with hundreds of warehouses is not this control's shape.
+ * Must not exceed `ListLocationsQueryDto`'s `@Max(100)`, or every read is a 400 (#3634).
+ */
+const LOCATION_OPTIONS_PAGE_SIZE = 100;
 
 /** Catalogue figures the worked examples are stated against. */
 const EXAMPLE_STOCK = 10;

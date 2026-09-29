@@ -37,6 +37,7 @@ import type {
   BridgeKorektaResponse,
   BridgeListBankAccountsResponse,
   BridgeListCashRegistersResponse,
+  BridgeLocateResponse,
   BridgeSetDefaultBankAccountResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
@@ -113,13 +114,21 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   // Keyed by the STRING form of the numeric providerInvoiceId (matches how the
   // status read keys its lookup).
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
+  // Keyed by the caller-supplied idempotencyKey (#3389) — mirrors the real
+  // bridge's dok_NrPelnyOryg lookup, which is never keyed by providerInvoiceId.
+  private readonly issuedByKey = new Map<string, BridgeIssueInvoiceResponse>();
+  // Provider invoice ids (string form) marked paid via `seedPaid()` (#3390) —
+  // mirrors dok_Rozliczony, which no shipped write path sets (no PaymentMarker
+  // yet, #3392), so the only way to produce a `paid: true` fake response is
+  // seeding this set directly.
+  private readonly paidIds = new Set<string>();
   /** The most recent korekta request body (for passthrough assertions in tests). */
   private lastKorektaRequest: BridgeKorektaRequest | null = null;
   /** Discovery state (bank accounts / cash registers), #1324. */
   private bankAccounts: BridgeBankAccount[] = defaultBankAccounts();
   private cashRegisters: BridgeCashRegister[] = defaultCashRegisters();
 
-  issueInvoice(_req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
+  issueInvoice(req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
     const failure = this.failureError();
     if (failure) {
       return Promise.reject(failure);
@@ -135,6 +144,12 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       ...this.issueOverride,
     };
     this.issuedById.set(String(response.providerInvoiceId), response);
+    // #3389: also index by the caller's idempotency key (never a dedup
+    // decision here — that's the real bridge's job, verified separately for
+    // #3369 — this is purely so `locateByOriginalKey` has something to find).
+    if (req.idempotencyKey !== undefined) {
+      this.issuedByKey.set(req.idempotencyKey, response);
+    }
     return Promise.resolve(response);
   }
 
@@ -159,13 +174,17 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     };
     // Remember a status-shaped entry so a subsequent status read-back resolves
     // (the korekta response itself carries no regulatoryStatus).
-    this.issuedById.set(String(response.providerInvoiceId), {
+    const statusEntry: BridgeIssueInvoiceResponse = {
       providerInvoiceId: response.providerInvoiceId,
       providerInvoiceNumber: response.providerInvoiceNumber,
       state,
       regulatoryStatus: this.issueOverride?.regulatoryStatus ?? 'sent',
       pdfUrl: null,
-    });
+    };
+    this.issuedById.set(String(response.providerInvoiceId), statusEntry);
+    if (req.idempotencyKey !== undefined) {
+      this.issuedByKey.set(req.idempotencyKey, statusEntry);
+    }
     return Promise.resolve(response);
   }
 
@@ -192,8 +211,12 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     const known = this.issuedById.get(req.providerInvoiceId);
     return Promise.resolve(
       known
-        ? { state: known.state, regulatoryStatus: known.regulatoryStatus }
-        : { state: 'failed', regulatoryStatus: 'none' },
+        ? {
+            state: known.state,
+            regulatoryStatus: known.regulatoryStatus,
+            paid: this.paidIds.has(req.providerInvoiceId),
+          }
+        : { state: 'failed', regulatoryStatus: 'none', paid: false },
     );
   }
 
@@ -232,6 +255,24 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     return Promise.resolve({ count: cashRegisters.length, cashRegisters });
   }
 
+  locateByOriginalKey(key: string): Promise<BridgeLocateResponse> {
+    const failure = this.failureError();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    const found = this.issuedByKey.get(key);
+    if (!found) {
+      return Promise.resolve({ found: false });
+    }
+    return Promise.resolve({
+      found: true,
+      providerInvoiceId: found.providerInvoiceId,
+      numer: found.providerInvoiceNumber,
+      regulatoryStatus: found.regulatoryStatus,
+      clearanceReference: null,
+    });
+  }
+
   // --- test helpers -----------------------------------------------------------
 
   /**
@@ -256,6 +297,11 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   /** The body passed to the most recent `issueCorrection` call (passthrough assertions). */
   getLastKorektaRequest(): BridgeKorektaRequest | null {
     return this.lastKorektaRequest;
+  }
+
+  /** Mark a provider invoice id as paid (#3390) for a subsequent `getInvoiceStatus` read. */
+  seedPaid(providerInvoiceId: number): void {
+    this.paidIds.add(String(providerInvoiceId));
   }
 
   /** Replace the seeded bank accounts (deep-copied) for `listBankAccounts`/`setDefaultBankAccount`. */
