@@ -65,17 +65,13 @@ import type { NavCounts } from './hooks/use-nav-counts';
  * `app-shell.tsx`'s own `isViewerOnly` check against `session.user.role`
  * directly).
  *
- * As of #3221 this union IS a full copy of the backend's `UserRoleValues`
- * (same four members, only the declaration order differs) - it is not scoped
- * to a subset any more, and nothing enforces that the two stay aligned.
- * `scripts/check-permission-mirror.mjs` mirrors `PermissionValues` between
- * `role.types.ts` and `session.types.ts` only; `RoleValues` here is a second,
- * unguarded hand-maintained copy. If the backend gains a fifth role, add it
- * here too - a role missing from this array fails **closed** for the nav (the
- * item just stays hidden, never a 403), so the failure mode is silent rather
- * than loud.
+ * As of #3221 this union IS a full copy of the backend's `UserRoleValues`,
+ * in the same order. `scripts/check-permission-mirror.mjs` (under
+ * `pnpm check:invariants`) fails the build if the two drift: a role missing
+ * from this array fails **closed** for the nav (the item just stays hidden,
+ * never a 403), so without that check the failure would be silent.
  */
-export const RoleValues = ['admin', 'operator', 'packer', 'viewer'] as const;
+export const RoleValues = ['admin', 'operator', 'viewer', 'packer'] as const;
 export type Role = (typeof RoleValues)[number];
 
 /**
