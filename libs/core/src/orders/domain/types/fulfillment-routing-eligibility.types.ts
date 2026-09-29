@@ -155,7 +155,14 @@ export function isOrderShippedElsewhere(
  *
  * A routed order is never mirrored - the intercept holds it and no destination
  * row is written - so a `synced` row can only come from the path the order took
- * before routing applied to it. Routing it now would put a parcel the product
+ * before routing applied to it. That invariant is enforced in
+ * `OrderIngestionService.interceptFulfillmentRouting`, not here, and it is only
+ * COMPLETE once #3503 holds every routing outcome (an unplaceable plan). Before
+ * that, a refused plan falls through to the mirror, so a later re-poll would be
+ * skipped with a reason ("mirrored before routing") that is false for it:
+ * **#3503 is a merge prerequisite of this rule** (#3497 review). Note also that
+ * #2397 permits a narrowed, non-empty fan-out that writes `syncStatus` rows, so
+ * a future caller must not assume `synced` always means pre-routing. Routing it now would put a parcel the product
  * master already has (and may already have packed) on the pack bench as well,
  * and lower its stock a second time through #3453's decrement.
  *

@@ -22,7 +22,7 @@
  * issue (#3482) adds one against its own data.
  *
  * Generated: 2026-09-25 (synthetic sequential prefix per docs/migrations.md
- * rule 3; above `origin/main`'s 1899000000000 and the stack's 1893000000000).
+ * rule 3; above `origin/main`'s 1901000000000 and the stack's 1902000000000).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
