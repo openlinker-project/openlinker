@@ -20,11 +20,77 @@ import type { NavCounts } from './hooks/use-nav-counts';
  * Roles that the FE chrome gates against. Runtime array + derived union
  * follows the `as const` pattern from engineering standards § "Union Types".
  *
- * `'operator'` is included so nav groups can declare `requiresRole: 'operator'`
- * for operator-only sections without any further type changes.
+ * `'packer'` (#3107, ADR-071/#2413) is narrower than `'operator'` and
+ * deliberately carries an EMPTY `ROLE_PERMISSIONS` grant on the backend — a
+ * packer's access is enforced purely route-by-route via `@Roles(...)`, not
+ * via any `Permission`. That is exactly why the item-level
+ * `LiveNavItem.requiresRole` gate exists (#3108): `requiresPermission` has
+ * nothing to check a packer session against, so "packer may see this item"
+ * can only be expressed as a role check.
+ *
+ * ## This union is NOT what the group and contribution gates accept
+ *
+ * An earlier version of this docblock said `'operator'` was included "so nav
+ * groups can declare `requiresRole: 'operator'` … without any further type
+ * changes". That was false, and falsest in the worst direction: both gates that
+ * read a declared role compare for EQUALITY against `'admin'` and nothing else
+ * —
+ *
+ * - `nav-registry.ts` — `group.requiresRole === 'admin' && !isAdmin`
+ * - `plugins/merge-nav-contributions.ts` — `contribution.requiresRole === 'admin' && !isAdmin`
+ *
+ * — so a group or contribution declaring any OTHER member of this union was an
+ * inert gate that stayed visible to everyone. On a field whose only purpose is
+ * access gating, that fails **open**. `docs/frontend-architecture.md §
+ * Access Control And UI Visibility` names the inverse hazard ("a typo
+ * type-checks and silently evaluates false") as the reason a role is never
+ * compared inline; this is the same defect pointing the other way.
+ *
+ * Rather than restate the limit in prose and leave the wider type standing, the
+ * two gate fields are typed {@link GroupRoleGate} — so the state the comment
+ * used to describe wrongly is now one the compiler refuses. See that type for
+ * what to do when a second role genuinely needs group-level gating.
+ *
+ * The backend's `UserRoleValues` also carries `'viewer'` (#3221) — added here
+ * because the per-item `requiresRole` gate (#3108) needed to name it: `packer`
+ * appears in `@Roles(...)` on exactly the three bench controllers, so a packer
+ * sees every other entry in the ungated `Operations` group and 403s on the
+ * ones whose primary read excludes it (Analytics, Insights, Orders,
+ * Customers, Sales documents — see `nav-registry.ts`'s `requiresRole:
+ * ['admin', 'operator', 'viewer']` declarations). `Fulfilment` 403s a packer
+ * too, but it's gated on `requiresPermission: 'orders:write'` instead — that
+ * permission-proxy gate (#3340/#3368) already excludes `packer` as a side
+ * effect, so it needed no `requiresRole` of its own. `viewer`-only UI
+ * behaviour that is NOT a nav-item gate is still resolved elsewhere (e.g.
+ * `app-shell.tsx`'s own `isViewerOnly` check against `session.user.role`
+ * directly).
+ *
+ * As of #3221 this union IS a full copy of the backend's `UserRoleValues`,
+ * in the same order. `scripts/check-permission-mirror.mjs` (under
+ * `pnpm check:invariants`) fails the build if the two drift: a role missing
+ * from this array fails **closed** for the nav (the item just stays hidden,
+ * never a 403), so without that check the failure would be silent.
  */
-export const RoleValues = ['admin', 'operator'] as const;
+export const RoleValues = ['admin', 'operator', 'viewer', 'packer'] as const;
 export type Role = (typeof RoleValues)[number];
+
+/**
+ * The only role a GROUP-level or CONTRIBUTION-level gate actually honours.
+ *
+ * Deliberately narrower than {@link Role}: both consumers test
+ * `requiresRole === 'admin'`, so `'admin'` is the whole of what those two
+ * fields can mean. Typing them as the full union let a declaration type-check
+ * and then silently do nothing — see the {@link RoleValues} docblock.
+ *
+ * **Widening this is a two-file change, never a one-file one.** Add the value
+ * here only together with the gate that reads it, in `nav-registry.ts` and
+ * `plugins/merge-nav-contributions.ts` — both of which must then compare
+ * against the SESSION role rather than the `isAdmin` boolean they take today.
+ * The item-level `LiveNavItem.requiresRole` (#3108) is the worked example of
+ * that shape and is typed `readonly Role[]`, because it really is honoured for
+ * every member.
+ */
+export type GroupRoleGate = 'admin';
 
 export type NavCountKey = keyof NavCounts;
 
@@ -53,28 +119,31 @@ export interface LiveNavItem {
    */
   requiresPermission?: Permission;
   /**
-   * Declarative ROLE gate for a single item (#3076 review IMPORTANT finding).
+   * Declarative ROLE gate for a single item (#3076 review IMPORTANT finding;
+   * widened to an array by #3108).
    *
-   * Deliberately narrower than `LiveNavGroup.requiresRole` — `'admin'` only,
-   * NOT `Role` — for a group whose *other* items are open to every role:
-   * `Diagnostics` is otherwise admin+operator+viewer, while
-   * `/duplicate-positions`'s backing endpoints are `@Roles('admin')`. Minting
-   * a whole-group gate would hide the three siblings from operators/viewers
-   * too; minting a new `Permission` for one read-only diagnostic page would
-   * widen that vocabulary for a population of one.
+   * An array, not a single `Role`, because two different items need to admit
+   * more than one role at once: `/duplicate-positions` is
+   * admin-only (`@Roles('admin')`), while "Pack bench" needs to admit every
+   * role its own API accepts (`@Roles('admin', 'operator', 'packer')` on
+   * `BenchWorkController` et al.) — i.e. everyone except `viewer` — which a
+   * single-value gate can't express. `packer` (#3107, ADR-071/#2413) also
+   * carries a deliberately EMPTY `ROLE_PERMISSIONS` grant on the backend, so
+   * no `Permission` exists to gate on for a packer-inclusive item — the only
+   * axis is the role itself.
    *
-   * `buildNavGroups`'s item filter (`nav-registry.ts`) only ever tests
-   * `requiresRole === 'admin'`, so a `LiveNavGroup`-style `Role` value here
-   * would silently type-check and then be filtered out for EVERY session,
-   * including admins — the opposite of what the group-level gate does with
-   * the same value. Narrowing the type to `'admin'` turns that mismatch into
-   * a compile error instead of an invisible one; widen it to `Role` only once
-   * the filter is taught to resolve `'operator'` too.
+   * Deliberately narrower than nothing else needs to be true here any more:
+   * `isNavItemVisible` (`nav-registry.ts`) tests membership against this
+   * array directly, so a value that type-checks is honoured for every
+   * session it names — unlike `LiveNavGroup.requiresRole` below, which stays
+   * an equality test against `'admin'` and is typed {@link GroupRoleGate}
+   * accordingly.
    *
-   * An item declaring nothing is visible to every authenticated session, the
-   * pre-existing behaviour.
+   * An item declaring nothing is visible to every authenticated session
+   * (unchanged pre-existing behaviour); an item declaring both
+   * `requiresPermission` and `requiresRole` must satisfy both.
    */
-  requiresRole?: 'admin';
+  requiresRole?: readonly Role[];
   to: string;
 }
 
@@ -87,8 +156,13 @@ export interface LiveNavGroup {
   items: LiveNavItem[];
   kind: 'live';
   label: string;
-  /** Declarative role gate — admin-only groups are filtered out for non-admin sessions. */
-  requiresRole?: Role;
+  /**
+   * Declarative role gate — admin-only groups are filtered out for non-admin
+   * sessions. {@link GroupRoleGate}, not {@link Role}: `nav-registry.ts`
+   * compares this for equality against `'admin'`, so any other value would be
+   * an inert, fail-open gate rather than a narrower one.
+   */
+  requiresRole?: GroupRoleGate;
 }
 
 export interface PlannedNavGroup {
