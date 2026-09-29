@@ -9,11 +9,41 @@
 // from the same source in the same commit, so drift between the three is a
 // review finding rather than something to discover at runtime.
 
-﻿// OpenLinker <- Subiekt GT spike bridge.
-// Speaks a READ-ONLY subset of the WooCommerce REST v3 dialect so the shipped
-// OpenLinker WooCommerce ProductMaster/InventoryMaster adapters can consume
-// Subiekt GT without any change to OpenLinker itself.
-// This is a SPIKE SHIM, not the production design.
+﻿// OpenLinker <- Subiekt GT bridge.
+//
+// TWO ROUTE FAMILIES, AND THEY ARE NOT ALTERNATIVES IN THE SAME SENSE.
+//
+// `/api/*` is the NATIVE surface, and the one OpenLinker's Subiekt GT adapters
+// call. Orders, products, models, inventory, invoices, corrections, warehouse
+// releases, bank accounts, cash registers, fiscalization. Everything the
+// `subiekt.gt.v1` adapter key resolves to speaks this.
+//
+// `/wp-json/wc/v3/*` is the WooCommerce-DIALECT surface. It came first: before
+// any native adapter existed, the way to get a Subiekt catalogue into
+// OpenLinker was to point a `woocommerce` connection at this bridge and let the
+// SHIPPED WooCommerce ProductMaster/InventoryMaster adapters consume it, with
+// no change to OpenLinker at all. It still works and is deliberately retained -
+// it is not dead code and it is not the recommended path either.
+//
+// WHAT THAT COSTS, stated because it is not obvious from either side. A
+// connection consuming this family IS a `woocommerce` connection: its
+// `platformType` is `woocommerce`, so capability resolution, `getBorrowedTaxonomy`
+// and every other `platformType`-keyed behaviour treat the install as
+// WooCommerce. The `subiekt-gt` / `subiekt-nexo` identity split, and the mirror
+// guard holding it, say nothing about this door - by construction, since
+// nothing about the connection identifies Subiekt. That is the price of reusing
+// a whole adapter unchanged, and it is the reason the native family exists.
+//
+// WRITES ON THIS FAMILY ARE OFF unless an installation turns them on
+// (`EnableShimWrites`), so the default posture is read-only and the surface an
+// unconfigured bridge exposes here cannot change Subiekt.
+//
+// Route paths on the `/api/*` family are compared against their TypeScript
+// callers at lint time by `scripts/check-subiekt-bridge-routes.mjs` in the
+// OpenLinker repository. The WooCommerce family is deliberately outside that
+// comparison: its callers are the WooCommerce adapters pointed at a WC base
+// url, not the Subiekt clients, so holding them to this bridge's declarations
+// would compare two unrelated things.
 
 using System.Data;
 using System.Globalization;
