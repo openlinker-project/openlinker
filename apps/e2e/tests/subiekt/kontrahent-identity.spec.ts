@@ -241,7 +241,9 @@ test.describe('Subiekt GT: kontrahent identity (#3365)', () => {
     });
   });
 
-  test('they share a NAME and do not share a CARD', async ({ env }) => {
+  // Not async: this test awaits nothing. It compares what the two preceding
+  // sales captured, which is the whole reason they run in serial.
+  test('they share a NAME and do not share a CARD', ({ env }) => {
     test.skip(!env.testSubiekt, 'opt-in — set E2E_TEST_SUBIEKT=true');
     test.skip(first === null || second === null, 'a preceding sale did not complete');
 
