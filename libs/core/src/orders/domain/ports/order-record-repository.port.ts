@@ -44,6 +44,15 @@ import type {
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
 
+/**
+ * A held order and when OpenLinker first ingested it (#3485 review). The age
+ * bounds how often the reroute sweep re-drives an order that stays refused.
+ */
+export interface HeldOrderRef {
+  readonly orderId: string;
+  readonly createdAt: Date;
+}
+
 export interface OrderRecordRepositoryPort {
   /**
    * Find order record by internal order ID
@@ -593,7 +602,7 @@ export interface OrderRecordRepositoryPort {
   listOrderIdsByFulfillmentBlockReasons(
     reasons: readonly FulfillmentBlockReason[],
     page: { readonly afterOrderId: string | null; readonly limit: number }
-  ): Promise<string[]>;
+  ): Promise<HeldOrderRef[]>;
 
   /**
    * #3455 — record why the ingestion intercept deliberately did NOT route the
