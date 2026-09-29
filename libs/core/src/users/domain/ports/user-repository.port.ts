@@ -30,19 +30,18 @@ export interface UserRepositoryPort {
       Partial<Pick<User, 'analyticsConsent' | 'displayName' | 'mustChangePassword'>>
   ): Promise<User>;
   /**
-   * Write a new password hash. With `clearMustChangePassword` the forced-change
-   * flag is cleared IN THE SAME STATEMENT (#3456), so a crash cannot leave a
+   * Write a new password hash. `mustChangePassword: 'clear'` clears the
+   * forced-change flag IN THE SAME STATEMENT (#3456), so a crash cannot leave a
    * changed password still flagged, nor a cleared flag on the old password.
-   * `forceMustChangePassword` is the mirror for an admin re-issuing a one-time
-   * password: the flag is SET in the same statement as the new hash.
+   * `'force'` is the mirror for an admin re-issuing a one-time password: the flag
+   * is SET in the same statement as the new hash. One three-valued option rather
+   * than two booleans, so the contradictory call is unrepresentable (#3504
+   * review). Omitted leaves the flag alone.
    */
   updatePasswordHash(
     userId: string,
     passwordHash: string,
-    opts?: {
-      readonly clearMustChangePassword?: boolean;
-      readonly forceMustChangePassword?: boolean;
-    }
+    opts?: { readonly mustChangePassword?: 'clear' | 'force' }
   ): Promise<void>;
   updateStatus(userId: string, status: UserStatus): Promise<void>;
   updateRole(userId: string, role: UserRole): Promise<void>;

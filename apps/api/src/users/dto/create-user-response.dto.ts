@@ -1,7 +1,9 @@
 /**
  * Create User Response DTO (#3456)
  *
- * Response body for `POST /users`. `temporaryPassword` exists ONLY here: it is
+ * Response body for `POST /users` and `POST /users/:id/temporary-password`
+ * (the re-issue route reuses it: identical shape, identical secrecy rule).
+ * `temporaryPassword` exists ONLY in these two responses: it is
  * generated server-side, stored solely as a bcrypt hash, never logged, and no
  * later response can return it. The admin hands it to the person, who must
  * replace it at first sign-in (`mustChangePassword`).

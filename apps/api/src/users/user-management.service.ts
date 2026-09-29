@@ -105,7 +105,7 @@ export class UserManagementService implements IUserManagementService {
     const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
     // Hash and flag in ONE statement, like the create path.
     await this.userRepository.updatePasswordHash(userId, passwordHash, {
-      forceMustChangePassword: true,
+      mustChangePassword: 'force',
     });
     this.logger.log(`One-time password re-issued by admin: ${userId}`);
     return { id: userId, temporaryPassword };

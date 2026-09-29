@@ -214,7 +214,7 @@ describe('AuthService', () => {
       expect(userRepository.updatePasswordHash).toHaveBeenCalledTimes(1);
       const [userId, hash, opts] = userRepository.updatePasswordHash.mock.calls[0];
       expect(userId).toBe('user-uuid-123');
-      expect(opts).toEqual({ clearMustChangePassword: true });
+      expect(opts).toEqual({ mustChangePassword: 'clear' });
       expect(await bcrypt.compare('a-brand-new-pass', hash)).toBe(true);
     });
 
