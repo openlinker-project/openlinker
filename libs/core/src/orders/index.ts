@@ -378,6 +378,7 @@ export {
   ORDER_EXPORT_COLUMN_IDS,
   ORDER_EXPORT_COLUMN_LABELS,
   ORDER_EXPORT_DEFAULT_COLUMNS,
+  ORDER_EXPORT_PII_COLUMNS,
   narrowOrderExportColumns,
   resolveOrderExportCell,
 } from './domain/order-export-columns';

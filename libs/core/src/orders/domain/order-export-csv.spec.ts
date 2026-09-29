@@ -34,6 +34,35 @@ describe('buildOrderExportCsv', () => {
     expect(csv).toContain("'=SUM(A1:A2)");
   });
 
+  it('writes a PII column as an empty cell when storePii is false, even over a raw snapshot', () => {
+    const order = new OrderRecord(
+      'ol_order_pii',
+      null,
+      '11111111-1111-4111-8111-111111111111',
+      null,
+      {
+        orderNumber: 'PL-9001',
+        billingAddress: { firstName: 'Norbert', lastName: 'Kulus' },
+        customerEmail: 'norbert@example.com',
+        items: [],
+      },
+      [],
+      'ready',
+      new Date('2026-05-01T10:00:00Z'),
+      new Date('2026-05-01T10:00:00Z'),
+    );
+
+    const csvWithPii = buildOrderExportCsv([order], ['customerName', 'customerEmail'], true);
+    expect(csvWithPii).toContain('Norbert Kulus');
+    expect(csvWithPii).toContain('norbert@example.com');
+
+    const csvWithoutPii = buildOrderExportCsv([order], ['orderNumber', 'customerName', 'customerEmail'], false);
+    expect(csvWithoutPii).not.toContain('Norbert');
+    expect(csvWithoutPii).not.toContain('norbert@example.com');
+    // The row is still written — only the two PII cells are blank.
+    expect(csvWithoutPii.split('\r\n')[1]).toBe('PL-9001;;');
+  });
+
   it('never prefixes a numeric cell even when negative', () => {
     const order = new OrderRecord(
       'ol_order_neg',

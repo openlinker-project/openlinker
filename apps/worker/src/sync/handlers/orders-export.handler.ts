@@ -19,6 +19,15 @@
  * regardless of the flag, which would fail every export on an install that
  * never set a salt.
  *
+ * The resolved flag is also threaded into the row-projection layer
+ * (`buildOrderExportCsv`/`buildOrderExportXlsx` → `resolveOrderExportCell`),
+ * which blanks every PII column unconditionally when it is off — a
+ * PII-storage flip is not retroactive, so an already-ingested row's
+ * `orderSnapshot` may still carry a buyer's real name/email from a time
+ * when the flag was on, and the file must never surface it just because the
+ * database still does. `containsPii` on the run row reports what the FILE
+ * actually carries, not merely the flag.
+ *
  * @module apps/worker/src/sync/handlers
  */
 import { Inject, Injectable } from '@nestjs/common';
@@ -30,6 +39,7 @@ import {
   narrowOrderExportColumns,
   buildOrderExportCsv,
   ORDER_EXPORT_DEFAULT_COLUMNS,
+  ORDER_EXPORT_PII_COLUMNS,
 
   IOrderExportService,
   IOrderRecordService} from '@openlinker/core/orders';
@@ -113,20 +123,33 @@ export class OrdersExportHandler implements SyncJobHandler {
           ? {
               contentType:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-              contentBase64: (await buildOrderExportXlsx(orders, columns)).toString('base64'),
+              contentBase64: (
+                await buildOrderExportXlsx(orders, columns, storePii)
+              ).toString('base64'),
               filename: this.filename(run.id, 'xlsx'),
             }
           : {
               contentType: 'text/csv; charset=utf-8',
-              contentBase64: Buffer.from(buildOrderExportCsv(orders, columns), 'utf-8').toString(
-                'base64'
-              ),
+              contentBase64: Buffer.from(
+                buildOrderExportCsv(orders, columns, storePii),
+                'utf-8'
+              ).toString('base64'),
               filename: this.filename(run.id, 'csv'),
             };
 
+      // Derived from what was actually WRITTEN, not merely the flag: a
+      // column set carrying no PII column reports `false` even with
+      // `storePii` on, and `storePii` off always reports `false` since
+      // `resolveOrderExportCell` blanks every PII column unconditionally
+      // (see that function's docblock — a stored snapshot may still carry
+      // real PII from a time when `OL_STORE_PII` was on, so the flag alone
+      // cannot answer "does this FILE carry PII").
+      const containsPii =
+        storePii && columns.some((c) => (ORDER_EXPORT_PII_COLUMNS as readonly string[]).includes(c));
+
       await this.exports.markReady(run.id, {
         rowCount: orders.length,
-        containsPii: storePii,
+        containsPii,
         file,
       });
       return { outcome: 'ok' };

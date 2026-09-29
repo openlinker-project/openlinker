@@ -46,6 +46,20 @@ export const ORDER_EXPORT_COLUMN_IDS = [
 ] as const;
 export type OrderExportColumnId = (typeof ORDER_EXPORT_COLUMN_IDS)[number];
 
+/**
+ * Columns carrying buyer PII. Under `OL_STORE_PII=false` these are written
+ * EMPTY unconditionally (#3534 fix, live-verified discrepancy) — never
+ * derived from what happens to sit in `order.orderSnapshot`, because a row
+ * ingested while PII storage was still on carries the buyer's real name/
+ * email in the snapshot verbatim; flipping the flag later does not
+ * retroactively redact already-stored rows. `country` is not PII (kept by
+ * `redactAddress` itself) and stays out of this set.
+ */
+export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnId[] = [
+  'customerName',
+  'customerEmail',
+];
+
 export const ORDER_EXPORT_COLUMN_LABELS: Record<OrderExportColumnId, string> = {
   internalOrderId: 'Order ID',
   orderNumber: 'Order #',
@@ -116,11 +130,24 @@ function readTotals(snapshot: Record<string, unknown>): { currency: string | nul
 
 /**
  * Resolve ONE cell for ONE column against an already-loaded `OrderRecord`.
- * Pure — no I/O, no PII-mode branching of its own (the caller already
- * decided whether it may include the raw snapshot; this function only
- * translates what is already in `order.orderSnapshot`).
+ *
+ * `storePii` (default `true`, preserving every pre-existing call site) is the
+ * CURRENT `OL_STORE_PII` setting at generation time, never a property of the
+ * snapshot itself: with it `false`, a PII column ({@link ORDER_EXPORT_PII_COLUMNS})
+ * is blanked unconditionally, before the snapshot is even read, because a row
+ * ingested while PII storage was on still carries the buyer's real data
+ * verbatim — the `[REDACTED]`-sentinel checks below only ever catch a row
+ * that was ALSO redacted at ingestion time, which is a different (and, for
+ * an existing install, usually empty) set.
  */
-export function resolveOrderExportCell(order: OrderRecord, column: OrderExportColumnId): OrderExportCellValue {
+export function resolveOrderExportCell(
+  order: OrderRecord,
+  column: OrderExportColumnId,
+  storePii = true,
+): OrderExportCellValue {
+  if (!storePii && (ORDER_EXPORT_PII_COLUMNS as readonly string[]).includes(column)) {
+    return null;
+  }
   const snapshot = order.orderSnapshot;
   switch (column) {
     case 'internalOrderId':
