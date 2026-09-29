@@ -95,6 +95,9 @@ export const ReturnRestockTargetStatusValues = [
   'ambiguous-inventory-master',
   'no-inventory-master',
   'adapter-unresolved',
+  'no-position',
+  'unattributed-owner',
+  'ambiguous-owner',
 ] as const;
 
 export type ReturnRestockTargetStatus = (typeof ReturnRestockTargetStatusValues)[number];
@@ -103,7 +106,10 @@ export type ReturnRestockTarget =
   | { status: 'resolved'; connectionId: string; connectionName: string }
   | { status: 'ambiguous-inventory-master'; candidateCount: number }
   | { status: 'no-inventory-master' }
-  | { status: 'adapter-unresolved' };
+  | { status: 'adapter-unresolved' }
+  | { status: 'no-position' }
+  | { status: 'unattributed-owner' }
+  | { status: 'ambiguous-owner'; ownerCount: number };
 
 /**
  * A recorded operator attestation that a refused restock was handled by hand
@@ -240,7 +246,7 @@ export interface IReturnCustodyService {
    * line's stock through position provenance (#3486), exactly as the write
    * does; a return-level answer that stopped at "several connections claim
    * the capability" would report `ambiguous-inventory-master` on a line the
-   * write resolves cleanly (#3491 review) — that is why `lineId` is required
+   * write resolves cleanly (#3498 review) — that is why `lineId` is required
    * rather than optional.
    *
    * Never throws: every failure is one of the three non-resolved arms.

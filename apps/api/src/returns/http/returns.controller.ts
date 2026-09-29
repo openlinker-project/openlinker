@@ -373,7 +373,7 @@ export class ReturnsController {
 
     const declineAvailability = await this.returnsService.getDeclineAvailability(record);
     // The custody reads the detail renders, fanned out together with the
-    // per-line restock targets (#3491 review — `getRestockTarget` now takes a
+    // per-line restock targets (#3498 review — `getRestockTarget` now takes a
     // `lineId`, so it is one call per line rather than one for the whole
     // return, both because a return-level answer could not resolve a
     // per-line owner and because two lines can legitimately restock into two
@@ -464,7 +464,11 @@ export class ReturnsController {
       connectionId: target.status === 'resolved' ? target.connectionId : null,
       connectionName: target.status === 'resolved' ? target.connectionName : null,
       candidateCount:
-        target.status === 'ambiguous-inventory-master' ? target.candidateCount : null,
+        target.status === 'ambiguous-inventory-master'
+          ? target.candidateCount
+          : target.status === 'ambiguous-owner'
+            ? target.ownerCount
+            : null,
     };
   }
 

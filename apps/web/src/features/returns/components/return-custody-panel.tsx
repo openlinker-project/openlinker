@@ -59,7 +59,7 @@ import {
 import type { ReturnDetail, ReturnLine, ReturnRestockTarget } from '../api/returns.types';
 
 /**
- * Defensive only (#3491 review): `parseReturnDetail` guarantees a
+ * Defensive only (#3498 review): `parseReturnDetail` guarantees a
  * `restockTargets` entry for every line it parsed, so this is never reached
  * on a well-formed detail — it exists so a mismatched id degrades to "cannot
  * tell" rather than throwing while rendering a line's dispose form.
@@ -313,7 +313,7 @@ export function ReturnCustodyPanel({
               onCancel={() => setError(line.id, null)}
               onSubmit={(input) => runDispose(line, input)}
               pending={dispose.isPending && pendingLineId === line.id}
-              // Keyed by THIS line's id (#3491 review) — several
+              // Keyed by THIS line's id (#3498 review) — several
               // `InventoryMaster` connections can resolve a different owner
               // per line, so the return-wide answer this used to read would
               // show the wrong destination for a sibling line's target.

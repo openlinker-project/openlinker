@@ -152,7 +152,7 @@ const returnDetailSchema = z.object({
   updatedAt: z.string(),
   lines: z.array(z.unknown()).nullish(),
   declineAvailability: declineAvailabilitySchema.nullish(),
-  // Keyed by return-line id (#3491 review) — several `InventoryMaster`
+  // Keyed by return-line id (#3498 review) — several `InventoryMaster`
   // connections can resolve a different owner per LINE, so one shared answer
   // for the whole return could not represent that. `z.record` rather than
   // `z.unknown()` per element: an unreadable individual target degrades to
@@ -366,7 +366,7 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
       occurredAt: attestation.occurredAt,
       note: orNull(attestation.note),
     })),
-    // Keyed by return-line id (#3491 review): built from EVERY line this
+    // Keyed by return-line id (#3498 review): built from EVERY line this
     // parse read, never only from the keys the server sent, so a line whose
     // target the server omitted (or that failed to parse) still gets the
     // unreadable fallback rather than leaving the dispose form with no entry

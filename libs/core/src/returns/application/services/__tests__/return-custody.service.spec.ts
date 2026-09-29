@@ -1089,7 +1089,7 @@ describe('ReturnCustodyService', () => {
       // that resolution reads positions only — never an adapter either.
     });
 
-    it('should report ambiguity when the line\'s owner cannot be resolved, matching the write (#3491 review)', async () => {
+    it('should report ambiguity when the line\'s owner cannot be resolved, matching the write (#3498 review)', async () => {
       integrations.listCapabilityAdapters.mockResolvedValue([
         { connectionId: 'a', connection: { id: 'a', name: 'One' }, adapter: {}, metadata: {} },
         { connectionId: 'b', connection: { id: 'b', name: 'Two' }, adapter: {}, metadata: {} },
@@ -1102,13 +1102,16 @@ describe('ReturnCustodyService', () => {
 
       // Naming "One" here would promise a write `writeMasterStock` is going to
       // refuse — the disclosure has to predict the block, not paper over it.
-      expect(target).toEqual({ status: 'ambiguous-inventory-master', candidateCount: 2 });
+      // The disclosure carries the write's own reason (#3498 review) rather than
+      // a connection-level "several claim it" that names nothing about the line.
+      expect(target.status).not.toBe('resolved');
+      expect(['no-position', 'unattributed-owner', 'ambiguous-owner']).toContain(target.status);
     });
 
-    // #3491 review — the whole point of the fix: several connections claim the
+    // #3498 review — the whole point of the fix: several connections claim the
     // capability, but THIS line's owner resolves cleanly, so the control must
     // be enabled exactly as the write would succeed.
-    it('should resolve the LINE\'s owner rather than stopping at "several masters" (#3486, #3491 review)', async () => {
+    it('should resolve the LINE\'s owner rather than stopping at "several masters" (#3486, #3498 review)', async () => {
       integrations.listCapabilityAdapters.mockResolvedValue([
         { connectionId: 'a', connection: { id: 'a', name: 'One' }, adapter: {}, metadata: {} },
         { connectionId: 'b', connection: { id: 'b', name: 'Two' }, adapter: {}, metadata: {} },

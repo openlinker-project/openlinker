@@ -285,7 +285,7 @@ export class ReturnDeclineAvailabilityDto {
  * touches — and a UI asserting a fact the backend never stated costs the
  * operator a manual reconciliation. With several `InventoryMaster`
  * connections this per-line owner resolution (#3486) is what makes the answer
- * genuinely per line rather than a single return-wide guess (#3491 review) —
+ * genuinely per line rather than a single return-wide guess (#3498 review) —
  * see {@link ReturnResponseDto.restockTargets}.
  *
  * `ambiguous-inventory-master` means the restock will be BLOCKED, not routed to
@@ -408,7 +408,7 @@ export class ReturnResponseDto extends ReturnListItemResponseDto {
     type: ReturnRestockTargetDto,
     additionalProperties: { $ref: '#/components/schemas/ReturnRestockTargetDto' },
     description:
-      'Keyed by return-line id — NOT one shared answer for the whole return (#3491 review). ' +
+      'Keyed by return-line id — NOT one shared answer for the whole return (#3498 review). ' +
       'With several `InventoryMaster` connections the owner is resolved per LINE from position ' +
       'provenance, so two lines of one return can legitimately restock into two different ' +
       "connections, or one may resolve while a sibling does not. A client keys off a line's own " +

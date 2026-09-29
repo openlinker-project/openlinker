@@ -328,7 +328,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
    * question `planRestock` answers, over a listing mode that costs nothing
    * until an adapter is actually about to be written to.
    *
-   * **Reported still equals enforced (#3491 review).** With zero or exactly
+   * **Reported still equals enforced (#3498 review).** With zero or exactly
    * one `InventoryMaster` connection, `classifyInventoryMasterCandidates` is
    * still the one selection rule both callers share. With SEVERAL, this now
    * resolves the line's OWNER through the same `resolveRestockTarget` +
@@ -406,13 +406,13 @@ export class ReturnCustodyService implements IReturnCustodyService {
     }
 
     if (owner.kind === 'blocked') {
-      // `no-position` / `unattributed-owner` / `ambiguous-owner` — none of
-      // these is "several connections claim the capability" any more, but the
-      // type has no arm for them yet (#3491 review, SUGGESTION); reporting
-      // `ambiguous-inventory-master` keeps the control correctly DISABLED,
-      // which is the property this fix exists to guarantee, even though the
-      // sentence a `curl` to `disposeLine` would receive is more precise.
-      return { status: 'ambiguous-inventory-master', candidateCount: classified.candidateCount };
+      // The same three reasons `ownerBlockOutcome` records on a blocked
+      // restock (#3498 review), so the disclosure and the write agree on the
+      // reason and not only on the verdict.
+      if (owner.reason === 'ambiguous-owner') {
+        return { status: 'ambiguous-owner', ownerCount: owner.ownerCount };
+      }
+      return { status: owner.reason };
     }
 
     const ownerCandidate = candidates.find(
@@ -440,7 +440,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
    * both use it.
    *
    * **`'ambiguous'` here answers a DIFFERENT question from an ambiguous LINE
-   * owner (#3491 review).** This classifies the CONNECTION SET — "does more
+   * owner (#3498 review).** This classifies the CONNECTION SET — "does more
    * than one connection claim `InventoryMaster`" — and says nothing about any
    * particular line. `resolveInventoryPositionOwner` classifies a LINE's
    * OWNER — "does more than one of those connections actually hold this

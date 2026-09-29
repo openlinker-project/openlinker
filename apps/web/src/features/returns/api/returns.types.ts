@@ -336,6 +336,9 @@ export const RETURN_RESTOCK_TARGET_STATUS_VALUES = [
   'ambiguous-inventory-master',
   'no-inventory-master',
   'adapter-unresolved',
+  'no-position',
+  'unattributed-owner',
+  'ambiguous-owner',
 ] as const;
 export type ReturnRestockTargetStatus = (typeof RETURN_RESTOCK_TARGET_STATUS_VALUES)[number];
 
@@ -344,7 +347,7 @@ export interface ReturnRestockTarget {
   /** Set only when `status` is `resolved`. `null` is "not reported", never a name. */
   connectionId: string | null;
   connectionName: string | null;
-  /** Set only on `ambiguous-inventory-master`. */
+  /** Set only on `ambiguous-inventory-master` (connections) or `ambiguous-owner` (owners). */
   candidateCount: number | null;
 }
 
@@ -454,7 +457,7 @@ export interface ReturnDetail extends ReturnListItem {
   lines: ReturnLine[];
   declineAvailability: ReturnDeclineAvailability;
   /**
-   * Where a restock would land, PER LINE (#2380, widened #3486/#3491 review).
+   * Where a restock would land, PER LINE (#2380, widened #3486/#3498 review).
    * Keyed by return-line id — never one shared answer for the whole return,
    * because with several `InventoryMaster` connections the owner is resolved
    * per line from position provenance, and two lines can legitimately
