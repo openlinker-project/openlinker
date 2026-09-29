@@ -910,9 +910,22 @@ function runSelfCheck() {
 // module that runs on import cannot be. Costs nothing today, since the
 // self-check lives in the same module; costs the next person who wants a real
 // one (PR #3365 review).
-const invokedDirectly =
-  process.argv[1] !== undefined &&
-  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+// `realpathSync` THROWS `ENOENT` when `argv[1]` is defined but absent from
+// disk. Unreachable through `node scripts/…` or a `.bin` symlink, both of which
+// resolve - but this module is now written to be IMPORTED, and an uncaught
+// throw at module load breaks the importer rather than the runner it was meant
+// to serve. Not a live defect; one line, and the failure it prevents is the one
+// this guard exists to avoid being the cause of (PR #3365 review).
+function isInvokedDirectly() {
+  if (process.argv[1] === undefined) return false;
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+const invokedDirectly = isInvokedDirectly();
 
 if (invokedDirectly) {
   if (process.argv.includes('--self-check')) {
