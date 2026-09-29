@@ -31,13 +31,22 @@ function csvCell(value: OrderExportCellValue): string {
 /** UTF-8 BOM, so Excel on a Polish locale opens the file with the right encoding rather than guessing. */
 const UTF8_BOM = '﻿';
 
+/**
+ * @param storePii the CURRENT `OL_STORE_PII` setting at generation time
+ *   (default `true`, preserving every pre-existing call site) — see
+ *   `resolveOrderExportCell`'s own docblock for why this is never inferred
+ *   from the snapshot.
+ */
 export function buildOrderExportCsv(
   orders: readonly OrderRecord[],
   columns: readonly OrderExportColumnId[],
+  storePii = true,
 ): string {
   const lines = [columns.map((c) => csvCell(ORDER_EXPORT_COLUMN_LABELS[c])).join(';')];
   for (const order of orders) {
-    lines.push(columns.map((c) => csvCell(resolveOrderExportCell(order, c))).join(';'));
+    lines.push(
+      columns.map((c) => csvCell(resolveOrderExportCell(order, c, storePii))).join(';'),
+    );
   }
   return UTF8_BOM + lines.join('\r\n');
 }

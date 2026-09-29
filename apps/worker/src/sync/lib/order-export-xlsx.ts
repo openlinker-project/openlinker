@@ -21,9 +21,17 @@ import {
 } from '@openlinker/core/orders';
 import type { OrderRecord } from '@openlinker/core/orders';
 
+/**
+ * @param storePii the CURRENT `OL_STORE_PII` setting at generation time
+ *   (default `true`, preserving every pre-existing call site) — threaded
+ *   into `resolveOrderExportCell` so a PII column is blanked unconditionally
+ *   rather than trusting whatever a previously-ingested row's snapshot
+ *   happens to carry. See that function's own docblock.
+ */
 export async function buildOrderExportXlsx(
   orders: readonly OrderRecord[],
-  columns: readonly OrderExportColumnId[]
+  columns: readonly OrderExportColumnId[],
+  storePii = true
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Orders');
@@ -37,7 +45,7 @@ export async function buildOrderExportXlsx(
   for (const order of orders) {
     const row: Record<string, string | number | boolean | null> = {};
     for (const column of columns) {
-      row[column] = resolveOrderExportCell(order, column);
+      row[column] = resolveOrderExportCell(order, column, storePii);
     }
     sheet.addRow(row);
   }
