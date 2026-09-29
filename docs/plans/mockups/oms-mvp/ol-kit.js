@@ -75,6 +75,19 @@
     if(states.length){
       var h = location.hash.replace('#',''); var ok = states.some(function(s){return s.getAttribute('data-mk-state')===h;});
       show(ok ? h : states[0].getAttribute('data-mk-state'));
+      // `location.hash` is only ever read here, at load — a caller that
+      // changes the hash on an already-open page (e.g. an e2e page object
+      // driving several states off one document without a full reload)
+      // otherwise leaves the FIRST state showing forever, silently, since
+      // nothing re-derives the hash afterwards. `history.replaceState` in
+      // `show()` does not itself fire `hashchange` (only a real navigation
+      // or a `location.hash` assignment does), so this listener and that
+      // call never re-trigger each other.
+      window.addEventListener('hashchange', function(){
+        var next = location.hash.replace('#','');
+        var known = states.some(function(s){return s.getAttribute('data-mk-state')===next;});
+        if(known) show(next);
+      });
     }
   }
   function init(){ build(); bar(); }
