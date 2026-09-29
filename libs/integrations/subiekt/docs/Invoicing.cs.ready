@@ -575,6 +575,44 @@ public static class Invoicing
         return (MapKsefStatus(status), string.IsNullOrEmpty(ksef) ? null : ksef);
     }
 
+    /// <summary>#3365 - confirm a warehouse release EXISTS in Subiekt, by the
+    /// number the issue response reported.
+    ///
+    /// The WZ number reached the wire only as part of the issue response, so
+    /// nothing could ask Subiekt whether that document is really there: a test
+    /// could only re-read the value OpenLinker had written down for itself.
+    /// This is the read that closes that, and it reports two things beyond mere
+    /// existence, both of which a WZ can lack while still being a row:
+    /// `dok_JestRuchMag`, which is what makes it a stock movement at all, and
+    /// the count of `dok_Pozycja` rows - a WZ written with no positions
+    /// releases nothing, which is the exact failure the NaPodstawie comment
+    /// above records having hit live. The position count keys on
+    /// `ob_DokMagId`, NOT `ob_DokHanId`: a `dok_Pozycja` row carries both, the
+    /// first naming the warehouse document and the second the commercial one,
+    /// and counting by the commercial id answered 0 for a WZ that had really
+    /// released stock - measured on WZ 96/2026 before this was corrected.</summary>
+    public static async Task<WarehouseReleaseDetail?> FindWarehouseReleaseByNumber(string numer)
+    {
+        if (string.IsNullOrWhiteSpace(numer)) return null;
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            $@"SELECT TOP 1 d.dok_Id, d.dok_NrPelny, d.dok_JestRuchMag, d.dok_MagId,
+                      (SELECT COUNT(*) FROM dok_Pozycja p WHERE p.ob_DokMagId = d.dok_Id)
+               FROM dok__Dokument d
+               WHERE d.dok_NrPelny = @n AND d.dok_Typ = {DocumentTypes.Wz}
+               ORDER BY d.dok_Id DESC", c);
+        cmd.Parameters.AddWithValue("@n", numer.Trim());
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        return new WarehouseReleaseDetail(
+            r.GetInt32(0),
+            r.GetString(1).Trim(),
+            !r.IsDBNull(2) && Convert.ToInt32(r.GetValue(2)) == 1,
+            r.IsDBNull(3) ? null : Convert.ToInt32(r.GetValue(3)),
+            Convert.ToInt32(r.GetValue(4)));
+    }
+
     public static async Task<StatusResult> GetStatus(int providerInvoiceId)
     {
         await using var c = new SqlConnection(ConnStr);
@@ -1070,6 +1108,9 @@ public sealed class IssueRequest
 }
 
 public sealed record IssueResult(int ProviderInvoiceId, string ProviderInvoiceNumber, string State, string RegulatoryStatus, string? PdfUrl, string? KsefNumer = null, string? WarehouseReleaseNumber = null);
+public sealed record WarehouseReleaseDetail(int Id, string Numer, bool CarriesStockMovement,
+    int? MagazynId, int PositionCount);
+
 public sealed record StatusResult(string Numer, string RegulatoryStatus, string? KsefNumer = null, bool Paid = false);
 public sealed record BankAccountRow(int Id, string? Name, string? Number, string? BankName, bool IsDefault, int OwnerPodmiotId);
 public sealed record CashRegisterRow(int Id, string? Name, string? Symbol);

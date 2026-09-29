@@ -74,6 +74,22 @@ export interface SubiektStockAdjustment {
   stanAfter: number;
 }
 
+/**
+ * A warehouse release as Subiekt itself holds it (#3365).
+ *
+ * `positionCount` is reported beside existence because a WZ can be a row and
+ * still release nothing - the bridge's own `EnsureWarehouseRelease` records
+ * hitting exactly that, where the document was linked to the ZK without the
+ * specification being copied onto it.
+ */
+export interface SubiektWarehouseRelease {
+  id: number;
+  numer: string;
+  carriesStockMovement: boolean;
+  magazynId: number | null;
+  positionCount: number;
+}
+
 export class SubiektBridgeClient {
   constructor(
     private readonly baseUrl: string,
@@ -169,6 +185,30 @@ export class SubiektBridgeClient {
       );
     }
     return envelope.data;
+  }
+
+  /**
+   * The warehouse release Subiekt holds under this number, or `null`.
+   *
+   * The counterpart to the number OpenLinker records at issue time: without
+   * this read a caller asserting "the goods left the warehouse" can only
+   * re-read OpenLinker's own field, which proves the value was written down
+   * rather than that the document exists.
+   */
+  async getWarehouseRelease(numer: string): Promise<SubiektWarehouseRelease | null> {
+    const url = `${this.baseUrl}/api/warehouse-releases?numer=${encodeURIComponent(numer)}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${this.token}` } });
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw new Error(
+        `Subiekt bridge answered HTTP ${response.status} reading warehouse release ${numer}`,
+      );
+    }
+    const envelope = (await response.json()) as {
+      success: boolean;
+      data: SubiektWarehouseRelease | null;
+    };
+    return envelope.success ? envelope.data : null;
   }
 
   /** The bridge's own liveness, so a spec can tell "not configured" from "down". */

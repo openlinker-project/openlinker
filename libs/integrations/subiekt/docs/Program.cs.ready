@@ -1199,6 +1199,33 @@ app.MapPost("/api/customers/upsert", async (HttpRequest req) =>
     }
 });
 
+app.MapGet("/api/warehouse-releases", async (string? numer) =>
+{
+    // #3365 - the WZ reached the wire only inside an issue response, so
+    // nothing could confirm the document independently of what OpenLinker had
+    // recorded for itself. A caller passes the number it holds and Subiekt
+    // answers whether that document is there, whether it is a stock movement,
+    // and how many positions it carries - a WZ with none releases nothing.
+    if (string.IsNullOrWhiteSpace(numer))
+        return Rejected("bad_request", "numer is required", 400);
+    try
+    {
+        var wz = await Invoicing.FindWarehouseReleaseByNumber(numer);
+        // 404 rather than an empty envelope: absence is the answer a caller
+        // asserting "the release exists" has to be able to fail on.
+        if (wz is null) return Rejected("not_found", $"no WZ numbered '{numer}'", 404);
+        return Envelope(new
+        {
+            id = wz.Id,
+            numer = wz.Numer,
+            carriesStockMovement = wz.CarriesStockMovement,
+            magazynId = wz.MagazynId,
+            positionCount = wz.PositionCount,
+        });
+    }
+    catch (Exception e) { return Rejected("sfera_error", e.Message, 500); }
+});
+
 app.MapGet("/api/invoices/{id:int}/status", async (int id) =>
 {
     try

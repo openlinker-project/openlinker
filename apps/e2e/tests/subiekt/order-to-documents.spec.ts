@@ -471,6 +471,63 @@ expect(
         `warehouse release: ${release.warehouseReleaseOutcome ?? 'not reported by this provider'}` +
         (release.warehouseReleaseNumber ? ` (${release.warehouseReleaseNumber})` : ''),
     });
+
+    // ASK SUBIEKT, rather than re-reading what OpenLinker wrote down (#3365).
+    //
+    // Everything above this point is OpenLinker's own record of the release:
+    // the outcome and the number are fields it persisted from the bridge's
+    // issue response, so asserting them proves the value was written down, not
+    // that the document exists. The bridge grew a read for exactly this, and
+    // without it the WZ was the one artefact of the three-document promise
+    // (kontrahent, faktura or paragon, wydanie magazynowe) that was confirmed
+    // only indirectly - inferred from a stock drop, which cannot tell a real WZ
+    // apart from the invoice carrying the movement itself.
+    const bridgeForWz = buildSubiektBridgeClient();
+    if (bridgeForWz === null) {
+      // ANNOTATED, never skipped - the same shape the ZK readback uses, and for
+      // the same reason: the run must say which claim went unverified.
+      testInfo.annotations.push({
+        type: 'subiekt',
+        description:
+          `NOT VERIFIED IN SUBIEKT: OpenLinker recorded ` +
+          `${release.warehouseReleaseNumber ?? 'no WZ number'}, but the bridge env vars are ` +
+          `unset so the document was not read back.`,
+      });
+    } else if (release.warehouseReleaseOutcome === 'released') {
+      expect(
+        release.warehouseReleaseNumber,
+        'OpenLinker reports the stock was released but recorded no WZ number, so nothing ' +
+          'identifies the document to look up',
+      ).toBeTruthy();
+
+      const wz = await bridgeForWz.getWarehouseRelease(release.warehouseReleaseNumber!);
+      expect(
+        wz,
+        `OpenLinker recorded warehouse release ${release.warehouseReleaseNumber}, and Subiekt ` +
+          `holds no document under that number. The client is billed for goods whose release ` +
+          `exists only in OpenLinker's own record.`,
+      ).not.toBeNull();
+
+      // A WZ can be a row and still release nothing: the bridge's own
+      // `EnsureWarehouseRelease` records hitting exactly that, where the
+      // document was linked to the ZK without its specification being copied
+      // onto it. Existence alone would pass over that.
+      expect(
+        wz!.carriesStockMovement,
+        `${wz!.numer} exists in Subiekt but is not a stock movement, so it released nothing`,
+      ).toBe(true);
+      expect(
+        wz!.positionCount,
+        `${wz!.numer} exists and carries no positions, so it took nothing off the shelf`,
+      ).toBeGreaterThan(0);
+
+      testInfo.annotations.push({
+        type: 'subiekt',
+        description:
+          `VERIFIED IN SUBIEKT: ${wz!.numer} (id ${wz!.id}, magazyn ${wz!.magazynId ?? '?'}, ` +
+          `${wz!.positionCount} position(s))`,
+      });
+    }
   });
 
   // The promise is "synchronizacja stanów magazynowych": a sale in a channel
