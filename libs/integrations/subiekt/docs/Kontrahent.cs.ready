@@ -66,11 +66,7 @@ public static class Kontrahent
     /// them afterwards.
     /// </summary>
     public static string MakeSymbol(string name, string fallbackPrefix = "ZAM")
-    {
-        var baseSym = (name ?? "").ToUpperInvariant();
-        var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
-        return sym == "" ? fallbackPrefix + "-ANON" : sym;
-    }
+        => BridgeKeys.MakeSymbol(name, fallbackPrefix);
 
     /// <summary>
     /// A tax id reduced to its digits, for comparison only (PR #7 review).
@@ -81,8 +77,7 @@ public static class Kontrahent
     /// side is whatever an operator typed years ago, so BOTH sides are reduced
     /// rather than assuming either is clean.
     /// </summary>
-    public static string DigitsOnly(string? value) =>
-        new string((value ?? "").Where(char.IsDigit).ToArray());
+    public static string DigitsOnly(string? value) => BridgeKeys.DigitsOnly(value);
 
     /// <summary>
     /// kh__Kontrahent carries no NIP column of its own - it lives on the

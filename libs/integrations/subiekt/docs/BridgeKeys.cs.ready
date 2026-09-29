@@ -76,4 +76,28 @@ public static class BridgeKeys
         }
         return confirmed;
     }
+
+    /// <summary>The kontrahent symbol derived from a buyer's name: uppercased,
+    /// non-alphanumerics dropped, cut to 16.
+    ///
+    /// NOT a hash, and the difference matters: two customers with the SAME NAME
+    /// derive the same symbol, which is common rather than exotic for Polish
+    /// surnames. That is why a symbol match is verified against the address
+    /// rather than trusted, and why the address-less carve-out is a stated risk
+    /// rather than a safe shortcut.</summary>
+    public static string MakeSymbol(string name, string fallbackPrefix = "ZAM")
+    {
+        var baseSym = (name ?? "").ToUpperInvariant();
+        var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
+        return sym == "" ? fallbackPrefix + "-ANON" : sym;
+    }
+
+    /// <summary>A tax id reduced to its digits, for comparison only.
+    ///
+    /// `123-456-78-90` and `1234567890` are the same NIP written two ways, and
+    /// matching on the raw string made them two buyers, each minting its own
+    /// kontrahent. BOTH sides are reduced rather than assuming either is
+    /// clean - the stored one is whatever an operator typed years ago.</summary>
+    public static string DigitsOnly(string? value) =>
+        new string((value ?? "").Where(char.IsDigit).ToArray());
 }
