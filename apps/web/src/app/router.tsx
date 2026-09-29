@@ -2,6 +2,7 @@ import { createBrowserRouter, type RouteObject } from 'react-router-dom';
 
 import { benchRoute } from './routes/bench.route';
 import { confirmEmailRoute } from './routes/confirm-email.route';
+import { changePasswordRoute } from './routes/change-password.route';
 import { consentRoute } from './routes/consent.route';
 import { forgotPasswordRoute } from './routes/forgot-password.route';
 import { loginRoute } from './routes/login.route';
@@ -50,6 +51,6 @@ export const guestRoutes: RouteObject[] = [
  * Exported so `route-lazy.test.ts` can iterate these alongside the other
  * three groups; not a runtime API.
  */
-export const standaloneRoutes: RouteObject[] = [consentRoute, benchRoute];
+export const standaloneRoutes: RouteObject[] = [changePasswordRoute, consentRoute, benchRoute];
 
 export const appRouter = createBrowserRouter([...guestRoutes, ...standaloneRoutes, rootRoute]);
