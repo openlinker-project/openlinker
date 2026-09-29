@@ -369,15 +369,22 @@ This means FE-001 intentionally preserves the adapter boundary while avoiding an
 
 ### Access Control And UI Visibility
 
-The session's `permissions[]` array (derived backend-side from `ROLE_PERMISSIONS`, `libs/core/src/users/domain/types/role.types.ts`) is the only authorization input the frontend reads. `session.user.role` is typed `string` and must never be compared inline — a typo type-checks and silently evaluates false. Backend endpoint authorization is a **separate** axis (`@Roles(...)` guards); a permission drives UI visibility only, and some permissions exist for exactly that purpose (`shipments:write` is documented display-only, #1826).
+The session's `permissions[]` array (derived backend-side from `ROLE_PERMISSIONS`, `libs/core/src/users/domain/types/role.types.ts`) is the authorization input the frontend reads **wherever a permission exists to read**. `session.user.role` is typed `string` and must never be compared inline — a typo type-checks and silently evaluates false. Backend endpoint authorization is a **separate** axis (`@Roles(...)` guards); a permission drives UI visibility only, and some permissions exist for exactly that purpose (`shipments:write` is documented display-only, #1826).
 
-Three primitives cover every case, chosen by **what** is being gated:
+Four primitives cover every case, chosen by **what** is being gated:
 
-| Gating | Primitive | Behaviour for a session lacking the permission |
+| Gating | Primitive | Behaviour for a session lacking it |
 |---|---|---|
 | Content — a banner, panel, section, table column, tooltip copy | `AccessGate` (`shared/ui/access-gate.tsx`) | renders `fallback`, or nothing when omitted |
 | A write affordance — button, checkbox, form, menu item | `useWriteAccess` (`shared/auth/use-permission.ts`) + `ReadOnlyLock` (`shared/ui/read-only-lock.tsx`) | in demo mode: rendered **disabled** with a tooltip; otherwise hidden |
 | Anything that is not a subtree — a query's `enabled:`, a computed `disabled`, derived copy | `usePermission` (`shared/auth/use-permission.ts`) | plain `false` |
+| A nav entry whose audience has **no permission to gate on** | `LiveNavItem.requiresRole` (`app/nav-registry.types.ts`), applied by `isNavItemVisible` | the item is hidden — from the sidebar *and* ⌘K, which read the same function |
+
+**The fourth row is the exception the first sentence now allows for, and it is narrow.** `packer` (ADR-071/#2413) holds an intentionally EMPTY `ROLE_PERMISSIONS` grant — its access is enforced route-by-route by `@Roles(...)` and nothing else — so there is no permission in existence that "a packer may open the pack bench" could be expressed as. `requiresPermission` is still the default and still correct everywhere a permission exists; reach for `requiresRole` only when none does.
+
+It does not breach the never-compare-inline rule, and the reason is worth stating because the rule's stated hazard is precisely what the typing removes: the role is declared as `readonly Role[]` **data** on the nav registry and compared in exactly one function, so a typo is a compile error rather than a silently-false expression. A hand-rolled `session.user.role === 'packer'` at a call site remains banned. Note also that this gate is one-directional — it hides an affordance and grants nothing; the API refuses the request either way.
+
+Two related gates are deliberately narrower than they look, and the type now says so (#3107 review): `LiveNavGroup.requiresRole` and `NavContribution.requiresRole` are typed `GroupRoleGate = 'admin'`, not `Role`, because both consumers test equality against `'admin'` alone. Typed as the full union they let a declaration type-check and then show the group or contribution to **everyone** — the same defect as a mistyped role, failing in the worse direction.
 
 **Demo mode inverts the policy between the first two rows, deliberately.** A public-demo viewer is *shown* write controls, disabled, because the point of the demo is to advertise that the capability exists (#1615). Informational content is the opposite: an explanation addressed to someone who cannot act is noise at best and misleading at worst — the MCP capabilities hint told a demo viewer to reconnect an agent it could not have, over a toggle it could not operate (#1993). So `AccessGate` does not read demo mode at all, and must not grow a prop to do so; a call site that wants the disabled-but-visible treatment is gating an affordance and belongs in row two.
 
@@ -679,7 +686,7 @@ Both bags are exported from one barrel (`apps/web/src/plugins/index.ts`) as a si
 
 A plugin author writes one file per plugin (`plugins/<name>/index.ts`) containing one `definePlugin({...})` call. Adding a new in-tree platform is a single edit point: drop a new directory under `plugins/` and append one entry to the `plugins` array.
 
-`build.navItems` accepts an optional `requiresRole?: Role` (today: `'admin'`) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
+`build.navItems` accepts an optional `requiresRole` typed `GroupRoleGate` (today: `'admin'` only, a single role) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Item-level gating on the in-tree registry (`LiveNavItem.requiresRole`, `ItemRequiresRole`) is different: it takes a plural `readonly Role[]` (e.g. `['admin', 'operator', 'viewer']`), not a single role. Group-level and contribution-level gates stay the singular admin-only form. Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlatform()`, `usePlatforms()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this. The same rule bans re-introduction of the old `WebPlugin` / `PlatformPlugin` / `IN_TREE_PLUGINS` identifiers (#702).
 

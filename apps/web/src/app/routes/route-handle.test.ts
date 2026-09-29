@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 
 import { plugins } from '../../plugins';
 import { isCrumbHandle } from '../nav-registry.types';
-import { coreChildren } from './root.route';
+import { buildCoreChildren } from './root.route';
 
 /**
  * Walk the route tree depth-first and collect every **lazy** leaf node —
@@ -56,7 +56,8 @@ function collectLazyAuthenticatedLeafRoutes(routes: RouteObject[]): RouteObject[
 }
 
 const leafRoutes = collectLazyAuthenticatedLeafRoutes([
-  ...coreChildren,
+  // Flag ON (#3634) so the OMS routing pages stay under the crumb contract.
+  ...buildCoreChildren(true),
   ...plugins.flatMap((plugin) => plugin.build?.routes ?? []),
 ]);
 

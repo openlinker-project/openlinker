@@ -92,7 +92,7 @@ const ONE_ACTIVE_LOCATION: PaginatedInventoryLocations = {
   ],
   total: 1,
   page: 1,
-  limit: 200,
+  limit: 100,
 };
 
 describe('StockAndPricingSection', () => {
@@ -228,6 +228,16 @@ describe('StockAndPricingSection', () => {
       const toggle = await screen.findByLabelText("Assign a location to this connection's stock");
       expect(toggle).not.toBeChecked();
       expect(screen.queryByLabelText('Location')).not.toBeInTheDocument();
+    });
+
+    it('should request a location page the API accepts (limit <= 100, #3634)', async () => {
+      const listLocations = vi.fn().mockResolvedValue(ONE_ACTIVE_LOCATION);
+      const apiClient = createMockApiClient({ inventory: { listLocations } });
+      renderWithProviders(<Harness />, { apiClient });
+
+      await screen.findByLabelText("Assign a location to this connection's stock");
+      const [, pagination] = listLocations.mock.calls[0] as [unknown, { limit: number }];
+      expect(pagination.limit).toBeLessThanOrEqual(100);
     });
 
     it('hydrates the group open with the stored location selected', async () => {
