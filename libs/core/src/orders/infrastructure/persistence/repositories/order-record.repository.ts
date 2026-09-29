@@ -23,7 +23,10 @@ import {
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
-import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type {
+  HeldOrderRef,
+  OrderRecordRepositoryPort,
+} from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
@@ -2235,12 +2238,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   async listOrderIdsByFulfillmentBlockReasons(
     reasons: readonly FulfillmentBlockReason[],
     page: { readonly afterOrderId: string | null; readonly limit: number }
-  ): Promise<string[]> {
+  ): Promise<HeldOrderRef[]> {
     if (reasons.length === 0 || page.limit <= 0) return [];
 
     const query = this.repository
       .createQueryBuilder('rec')
       .select('rec.internalOrderId', 'internalOrderId')
+      .addSelect('rec.createdAt', 'createdAt')
       .where('rec.fulfillmentBlockReason IN (:...reasons)', { reasons: [...reasons] })
       .orderBy('rec.internalOrderId', 'ASC')
       .limit(page.limit);
@@ -2249,8 +2253,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       query.andWhere('rec.internalOrderId > :after', { after: page.afterOrderId });
     }
 
-    const rows = await query.getRawMany<{ internalOrderId: string }>();
-    return rows.map((row) => row.internalOrderId);
+    const rows = await query.getRawMany<{ internalOrderId: string; createdAt: Date | string }>();
+    return rows.map((row) => ({
+      orderId: row.internalOrderId,
+      createdAt: new Date(row.createdAt),
+    }));
   }
 
   /**

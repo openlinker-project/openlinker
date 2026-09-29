@@ -9,6 +9,7 @@ import {
   FULFILLMENT_REROUTE_SWEEP_CURSOR_KEY,
   FulfillmentWorkRerouteSweepHandler,
   buildRerouteRouteJobKey,
+  buildSlowRerouteRouteJobKey,
   fulfillmentRerouteSweepLockKey,
 } from '../fulfillment-work-reroute-sweep.handler';
 
@@ -40,6 +41,12 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
       createdAt: new Date(TICK),
       payload,
     }) as unknown as SyncJob;
+
+  /** Held orders ingested an hour before the tick - inside the fast window. */
+  const held = (
+    ...ids: string[]
+  ): { orderId: string; createdAt: Date }[] =>
+    ids.map((orderId) => ({ orderId, createdAt: new Date('2026-09-25T09:07:00.000Z') }));
 
   const enqueuedOrderIds = (): string[] =>
     jobEnqueue.enqueueJob.mock.calls.map(
@@ -93,10 +100,8 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
   // #2609: the child route job must carry the ROUTER's connection, never the
   // synthetic system id the sweep itself runs under.
   it('should enqueue one route job per held order under the selected router', async () => {
-    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
-      'ol_order_a',
-      'ol_order_b',
-    ]);
+    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue(held('ol_order_a',
+      'ol_order_b',));
 
     await handler.execute(job());
 
@@ -111,10 +116,8 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
 
   it('should page after the stored cursor and advance it to the last id of a full page', async () => {
     cursors.getCursor.mockResolvedValue('ol_order_m');
-    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
-      'ol_order_n',
-      'ol_order_o',
-    ]);
+    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue(held('ol_order_n',
+      'ol_order_o',));
 
     await handler.execute(job({ schemaVersion: 1, pageLimit: 2 }));
 
@@ -133,7 +136,7 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
   // on the next pass rather than left behind the cursor for ever.
   it('should wrap the cursor to the start on a short page', async () => {
     cursors.getCursor.mockResolvedValue('ol_order_m');
-    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue(['ol_order_n']);
+    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue(held('ol_order_n'));
 
     await handler.execute(job({ schemaVersion: 1, pageLimit: 2 }));
 
@@ -162,7 +165,7 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
     ['an ambiguous claim', [routerConnection('conn-a'), routerConnection('conn-b')]],
   ])('should enqueue nothing and keep the cursor when there is %s', async (_label, list) => {
     connections.list.mockResolvedValue(list);
-    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue(['ol_order_a']);
+    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue(held('ol_order_a'));
 
     await handler.execute(job());
 
@@ -173,10 +176,8 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
   // The cursor moves only once every enqueue in the page landed, so a failed
   // run re-reads the same page instead of skipping the orders it lost.
   it('should not advance the cursor and should fail the job when an enqueue throws', async () => {
-    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
-      'ol_order_a',
-      'ol_order_b',
-    ]);
+    orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue(held('ol_order_a',
+      'ol_order_b',));
     jobEnqueue.enqueueJob
       .mockResolvedValueOnce({ jobId: 'j1', isExisting: false })
       .mockRejectedValueOnce(new Error('postgres down'));
@@ -200,5 +201,45 @@ describe('FulfillmentWorkRerouteSweepHandler (#3485)', () => {
   it('should report ok even when there is nothing to reroute', async () => {
     await expect(handler.execute(job())).resolves.toEqual({ outcome: 'ok' });
     expect(enqueuedOrderIds()).toEqual([]);
+  });
+
+  // #3503 review: an order that stays refused must stop minting a decision row
+  // per tick.
+  describe('the age bound', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const tickMs = new Date(TICK).getTime();
+
+    it('should key an order past the fast window per UTC day, not per tick', async () => {
+      orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
+        { orderId: 'ol_order_old', createdAt: new Date(tickMs - 5 * DAY_MS) },
+      ]);
+
+      await handler.execute(job());
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: buildSlowRerouteRouteJobKey('ol_order_old', TICK),
+        })
+      );
+      // Two ticks of one day mint the SAME key, so the second dedupes.
+      expect(buildSlowRerouteRouteJobKey('ol_order_old', TICK)).toBe(
+        buildSlowRerouteRouteJobKey('ol_order_old', '2026-09-25T23:52:00.000Z')
+      );
+    });
+
+    it('should still re-drive, but error-log, an order past the stuck horizon', async () => {
+      const errorSpy = jest.spyOn(
+        (handler as unknown as { logger: { error: (m: string) => void } }).logger,
+        'error'
+      );
+      orderRecords.listOrderIdsByFulfillmentBlockReasons.mockResolvedValue([
+        { orderId: 'ol_order_ancient', createdAt: new Date(tickMs - 30 * DAY_MS) },
+      ]);
+
+      await handler.execute(job());
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fulfillment_reroute_stuck'));
+    });
   });
 });

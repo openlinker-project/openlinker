@@ -68,6 +68,13 @@ const LINE_ATTENTION_UNTOUCHED: AuthorityAttentionOutcome<'routing'> = { kind: '
  * error here, and at runtime an unrecognised one THROWS rather than returning,
  * because a returned object with a falsy `held` would mirror an order the
  * router may already have committed.
+ *
+ * **Not the complete mapping (#3503 review):** this maps a `RoutingCommitOutcome`
+ * and therefore cannot produce `routing-failed`. That block is spelled at each
+ * call site's catch - an error AFTER selection means the commit may already have
+ * happened, so holding is right - so "one rule, two sites" covers four of the
+ * five reachable block reasons, and the fifth is written by the intercept and by
+ * `FulfillmentWorkRouteHandler` themselves.
  */
 export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): RoutingHoldOutcome {
   switch (outcome.status) {

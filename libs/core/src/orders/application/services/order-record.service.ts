@@ -14,6 +14,7 @@ import {
   encodeBuyerTaxIdColumn,
   readBuyerTaxId,
 } from '../../domain/types/buyer-tax-id.types';
+import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderCancellationSignalRepositoryPort } from '../../domain/ports/order-cancellation-signal-repository.port';
@@ -928,7 +929,7 @@ export class OrderRecordService implements IOrderRecordService {
   async listOrderIdsByFulfillmentBlockReasons(
     reasons: readonly FulfillmentBlockReason[],
     page: { readonly afterOrderId: string | null; readonly limit: number }
-  ): Promise<string[]> {
+  ): Promise<HeldOrderRef[]> {
     return this.repository.listOrderIdsByFulfillmentBlockReasons(reasons, page);
   }
 

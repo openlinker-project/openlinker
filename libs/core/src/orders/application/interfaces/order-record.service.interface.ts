@@ -22,6 +22,7 @@ import type {
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
 import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
+import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
@@ -316,7 +317,7 @@ export interface IOrderRecordService {
   listOrderIdsByFulfillmentBlockReasons(
     reasons: readonly FulfillmentBlockReason[],
     page: { readonly afterOrderId: string | null; readonly limit: number }
-  ): Promise<string[]>;
+  ): Promise<HeldOrderRef[]>;
 
   /**
    * #3455 — record why the fulfilment intercept deliberately did not route this

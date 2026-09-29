@@ -245,7 +245,7 @@ describe('OrderRecord fulfilment block (integration, #2396)', () => {
         { afterOrderId: null, limit: 10 }
       );
 
-      expect(ids).toEqual(['ol_order_a', 'ol_order_b', 'ol_order_c']);
+      expect(ids.map((held) => held.orderId)).toEqual(['ol_order_a', 'ol_order_b', 'ol_order_c']);
     });
 
     // Keyset: a page starts strictly after the cursor, so an order re-routed
@@ -258,7 +258,7 @@ describe('OrderRecord fulfilment block (integration, #2396)', () => {
         ['routing-refused'],
         { afterOrderId: null, limit: 2 }
       );
-      expect(first).toEqual(['ol_order_a', 'ol_order_b']);
+      expect(first.map((held) => held.orderId)).toEqual(['ol_order_a', 'ol_order_b']);
 
       await orderRecordService.markFulfillmentBlock('ol_order_a', null);
 
@@ -266,7 +266,7 @@ describe('OrderRecord fulfilment block (integration, #2396)', () => {
         ['routing-refused'],
         { afterOrderId: 'ol_order_b', limit: 2 }
       );
-      expect(second).toEqual(['ol_order_c']);
+      expect(second.map((held) => held.orderId)).toEqual(['ol_order_c']);
     });
   });
 });

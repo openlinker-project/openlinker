@@ -32,6 +32,21 @@
  * `connection_cursors`, and wraps to the start on a short page. Keyset over a
  * shrinking set never skips a row, which is the failure an offset would have.
  *
+ * ## Bounded by AGE (#3503 review)
+ *
+ * Every attempt calls `route()`, which mints a durable `routing_decisions` row
+ * that nothing prunes. An order refused for a condition that never clears (a
+ * discontinued product) would otherwise mint ~96 rows a day at `*\/15`, for ever.
+ * So an order is re-driven every tick only while it is young
+ * (`OL_REROUTE_FAST_WINDOW_MS`, default 72 h - the window in which stock
+ * plausibly arrives); older, it is re-driven at most ONCE PER UTC DAY, through
+ * a day-scoped idempotency key that dedupes against the globally unique
+ * `sync_jobs.idempotencyKey`. Past `OL_REROUTE_STUCK_AFTER_MS` (default 14 d) it
+ * is still re-driven at that slow cadence - a possibly-unblocked order is never
+ * abandoned, #2346's rule - but is counted and error-logged
+ * (`fulfillment_reroute_stuck`) so a permanently unroutable order is observable
+ * rather than merely expensive.
+ *
  * ## Scope and the router connection
  *
  * The job runs once for the deployment under the nil-UUID system connection id
@@ -86,6 +101,12 @@ type SyncJob = SyncJobEntity;
  */
 export const FULFILLMENT_REROUTE_SWEEP_PAGE_LIMIT_DEFAULT = 50;
 
+/** Younger than this, an order is re-driven on every tick. */
+export const FULFILLMENT_REROUTE_FAST_WINDOW_MS_DEFAULT = 72 * 60 * 60 * 1000;
+
+/** Older than this, a still-held order is counted and error-logged. */
+export const FULFILLMENT_REROUTE_STUCK_AFTER_MS_DEFAULT = 14 * 24 * 60 * 60 * 1000;
+
 /** Where the keyset cursor lives. Empty value = start from the beginning. */
 export const FULFILLMENT_REROUTE_SWEEP_CURSOR_KEY = 'fulfillment.reroute.after';
 
@@ -101,6 +122,14 @@ export function fulfillmentRerouteSweepLockKey(scopeId: string): string {
  */
 export function buildRerouteRouteJobKey(orderId: string, tick: string): string {
   return `fulfillment:work:route:reroute:${orderId}:${tick}`;
+}
+
+/**
+ * The child key for an order past the fast window: one per UTC day, so the
+ * global idempotency dedupe caps its re-routes at one a day.
+ */
+export function buildSlowRerouteRouteJobKey(orderId: string, tick: string): string {
+  return `fulfillment:work:route:reroute:${orderId}:day:${tick.slice(0, 10)}`;
 }
 
 @Injectable()
@@ -179,22 +208,44 @@ export class FulfillmentWorkRerouteSweepHandler implements SyncJobHandler {
     const stored = await this.cursors.getCursor(scopeId, FULFILLMENT_REROUTE_SWEEP_CURSOR_KEY);
     const afterOrderId = stored === null || stored === '' ? null : stored;
 
-    const orderIds = await this.orderRecords.listOrderIdsByFulfillmentBlockReasons(
+    const held = await this.orderRecords.listOrderIdsByFulfillmentBlockReasons(
       REROUTABLE_FULFILLMENT_BLOCK_REASONS,
       { afterOrderId, limit }
     );
 
     // The tick token scopes each child's key to THIS run; a retry of the run
     // reuses the job's own creation instant, so it re-mints identical keys.
-    const tick = new Date(job.createdAt).toISOString();
-    for (const orderId of orderIds) {
+    const tickDate = new Date(job.createdAt);
+    const tick = tickDate.toISOString();
+    const fastWindowMs = this.readMs(
+      'OL_REROUTE_FAST_WINDOW_MS',
+      FULFILLMENT_REROUTE_FAST_WINDOW_MS_DEFAULT
+    );
+    const stuckAfterMs = this.readMs(
+      'OL_REROUTE_STUCK_AFTER_MS',
+      FULFILLMENT_REROUTE_STUCK_AFTER_MS_DEFAULT
+    );
+    let stuck = 0;
+    for (const { orderId, createdAt } of held) {
+      const ageMs = tickDate.getTime() - createdAt.getTime();
+      if (ageMs > stuckAfterMs) {
+        stuck += 1;
+        this.logger.error(
+          `fulfillment_reroute_stuck order=${orderId} heldForMs=${String(ageMs)} - still ` +
+            `unroutable past the stuck horizon; re-driven at most once a day`
+        );
+      }
       await this.jobEnqueue.enqueueJob({
         jobType: 'fulfillment.work.route',
         connectionId: selection.holder,
         payload: { schemaVersion: 1, orderId },
-        idempotencyKey: buildRerouteRouteJobKey(orderId, tick),
+        idempotencyKey:
+          ageMs > fastWindowMs
+            ? buildSlowRerouteRouteJobKey(orderId, tick)
+            : buildRerouteRouteJobKey(orderId, tick),
       });
     }
+    const orderIds = held.map((entry) => entry.orderId);
 
     // A short page means the end of the set: wrap, so the next tick starts over
     // and an order that is still held is retried rather than left behind.
@@ -202,7 +253,7 @@ export class FulfillmentWorkRerouteSweepHandler implements SyncJobHandler {
     await this.cursors.advanceCursor(scopeId, FULFILLMENT_REROUTE_SWEEP_CURSOR_KEY, nextCursor);
 
     this.logger.log(
-      `fulfillment.work.rerouteSweep: enqueued=${String(orderIds.length)}, ` +
+      `fulfillment.work.rerouteSweep: enqueued=${String(orderIds.length)}, stuck=${String(stuck)}, ` +
         `after=${afterOrderId ?? '<start>'}, wrapped=${String(nextCursor === '')}`
     );
   }
@@ -220,6 +271,12 @@ export class FulfillmentWorkRerouteSweepHandler implements SyncJobHandler {
       enabledCapabilities: connection.enabledCapabilities,
       config: connection.config,
     }));
+  }
+
+  /** A positive millisecond setting, else the default. */
+  private readMs(name: string, fallback: number): number {
+    const raw = Number(this.configService.get<string>(name));
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
   }
 
   /** `pageLimit` off the payload when present; runtime-checked (jsonb). */
