@@ -254,9 +254,18 @@ public static class BridgeKeys
     ///   duplicate an operator can merge beats a document billed to whoever
     ///   shares the name.
     ///
-    /// A phone on BOTH sides removes the question entirely; this is only the
-    /// fallback for when there is nothing left to compare.
+    /// IT TAKES NO PHONE ARGUMENT, and that is a correction rather than an
+    /// omission (PR #3365 review). It had a `phoneComparable` parameter whose
+    /// only call site passed a hardcoded `false` - it sits inside the
+    /// `phoneColumn is null || wantTelefon == ""` branch - so the `true` arm was
+    /// unreachable, and it was the arm that would have bypassed
+    /// `refuseSymbolOnly` on the invoice path too. The name invited the wrong
+    /// reading as well: COMPARABLE is not MATCHED, and accepting because a phone
+    /// exists on both sides rather than because the two agreed is exactly the
+    /// false positive the invoice refusal exists to prevent. The real comparison
+    /// happens below this in `MatchesAddress` and never consults this function,
+    /// so a parameter that could only ever be satisfied by presence had no
+    /// honest caller and is gone.
     /// </summary>
-    public static bool AcceptsSymbolOnlyMatch(bool phoneComparable, bool refuseSymbolOnly)
-        => phoneComparable ? true : !refuseSymbolOnly;
+    public static bool AcceptsSymbolOnlyMatch(bool refuseSymbolOnly) => !refuseSymbolOnly;
 }

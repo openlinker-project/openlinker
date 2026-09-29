@@ -329,7 +329,7 @@ public static class Kontrahent
             // states - a false negative is a duplicate, a false positive is
             // somebody else's document - applied where the arithmetic flips.
             if (phoneColumn is null || wantTelefon == "")
-                return BridgeKeys.AcceptsSymbolOnlyMatch(phoneComparable: false, refuseSymbolOnly);
+                return BridgeKeys.AcceptsSymbolOnlyMatch(refuseSymbolOnly);
             try
             {
                 await using var pc = new SqlConnection(BridgeConfig.ConnectionString);
