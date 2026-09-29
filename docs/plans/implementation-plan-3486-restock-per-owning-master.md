@@ -41,7 +41,7 @@ stayed disabled on the exact two-master install this PR exists to unblock, so
   several → resolve product, then owner; blocked owner → named block; owner not an
   active `InventoryMaster` → `adapter-unresolved`.
 - New `ReturnRestockBlockReason` values: `no-position`, `unattributed-owner`,
-  `ambiguous-owner`. **Corrected (#3491 review): the frontend does NOT
+  `ambiguous-owner`. **Corrected (#3498 review): the frontend does NOT
   currently render `reason` or `detail` on the blocked-restock notice at all**
   (`return-restock-blocked-notice.tsx` renders one generic, connection-keyed
   sentence for every block reason) — the original claim that "nothing
