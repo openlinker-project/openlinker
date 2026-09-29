@@ -173,7 +173,7 @@ describe('EditConnectionForm', () => {
       ],
       total: 1,
       page: 1,
-      limit: 200,
+      limit: 100,
     };
     const fieldErrorMessage = 'config.stockLocationOverride names an unknown location: ol_location_1';
     const apiClient = createMockApiClient({
@@ -235,7 +235,7 @@ describe('EditConnectionForm', () => {
       ],
       total: 1,
       page: 1,
-      limit: 200,
+      limit: 100,
     });
     const apiClient = createMockApiClient({
       connections: { getById: vi.fn().mockResolvedValue(connectionWithoutInventoryMaster) },

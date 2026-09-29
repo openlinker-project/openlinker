@@ -92,7 +92,7 @@ const ONE_ACTIVE_LOCATION: PaginatedInventoryLocations = {
   ],
   total: 1,
   page: 1,
-  limit: 200,
+  limit: 100,
 };
 
 describe('StockAndPricingSection', () => {
