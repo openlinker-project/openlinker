@@ -324,6 +324,16 @@ export interface OrderRecord {
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
   /**
+   * The buyer's tax number as the SOURCE reported it (#2599/#2822), carried
+   * verbatim and never format-checked.
+   *
+   * Three states, and they are not the same: absent means the source asserted
+   * nothing, `''` means it positively asserted the buyer has none, and anything
+   * else is the number. Optional so the suite stays green against an API that
+   * predates the field.
+   */
+  buyerTaxId?: string | null;
+  /**
    * The batched per-order sales-document projection (#2516/#2552, ADR-065).
    * Optional/loosely-typed here — this suite only reads a handful of fields
    * off it and is not the FE-001 contract mirror for the full shape.

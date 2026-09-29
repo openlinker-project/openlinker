@@ -251,3 +251,103 @@ test.describe('Subiekt GT: which document a sale gets (#3365)', () => {
     ).not.toBe(invoiceKind);
   });
 });
+
+/**
+ * The same decision, on the channel the seller actually sells through.
+ *
+ * The block above drives it through PrestaShop, where the tax number is a field
+ * on the buyer's address and a test can set it. Allegro carries it by a
+ * different route entirely - the buyer requests a VAT invoice at checkout and
+ * Allegro reports the number on the order - and no test can produce either kind
+ * of Allegro order, because a sandbox purchase is a human act. So this block
+ * OBSERVES what the stack already carries rather than creating it, the same
+ * posture `shipping/auto-dispatch-notify.spec.ts` takes towards the marketplace
+ * readback for the same reason.
+ *
+ * Verified by hand on the reference stand while this was written, with two real
+ * sandbox purchases: the one carrying NIP 7393983663 produced FS 48/2026 with
+ * warehouse release WZ 96/2026, and the one carrying none produced PA 90/2026
+ * with WZ 103/2026. Both releases were then confirmed inside Subiekt itself.
+ * This block is what keeps that from being a one-off observation.
+ */
+test.describe('Subiekt GT: the same decision on a real Allegro sale (#3365)', () => {
+  /** Bounded like `findAllegroShipment`: a scan, not a full history read. */
+  const SCAN_LIMIT = 25;
+
+  test('every observed Allegro sale got the kind its tax number implies', async ({
+    api,
+    world,
+    env,
+  }, testInfo) => {
+    test.skip(!env.testSubiekt, 'opt-in — set E2E_TEST_SUBIEKT=true');
+    const subiekt = world.connectionFor(PlatformType.subiektGt);
+    test.skip(!subiekt, 'no Subiekt GT connection on this stack');
+    const allegro = world.connectionFor(PlatformType.allegro);
+    test.skip(!allegro, 'no Allegro connection on this stack');
+
+    const orders = await api.orders.list({ sourceConnectionId: allegro!.id, limit: SCAN_LIMIT });
+
+    const withTaxId: { order: string; kind: string; number: string | null }[] = [];
+    const withoutTaxId: { order: string; kind: string; number: string | null }[] = [];
+
+    for (const listed of orders.items) {
+      // The list projection does not carry the tax number, so the detail is
+      // read per candidate. Bounded by SCAN_LIMIT above.
+      const order = await api.orders.getById(listed.internalOrderId);
+      let record;
+      try {
+        record = await api.invoices.getForOrder(listed.internalOrderId, subiekt!.id);
+      } catch {
+        continue; // no document on this connection - nothing to judge
+      }
+      if (!record || record.status !== 'issued') continue;
+
+      // A non-empty value is the only state that means "the buyer gave a tax
+      // number". Absent and `''` are different facts about the SOURCE - it said
+      // nothing, versus it said there is none - but the rule under test treats
+      // both as no number, exactly as `readDomesticTaxId` does.
+      const hasTaxId = typeof order.buyerTaxId === 'string' && order.buyerTaxId.length > 0;
+      const entry = {
+        order: listed.internalOrderId,
+        kind: record.documentType,
+        number: record.providerInvoiceNumber,
+      };
+      (hasTaxId ? withTaxId : withoutTaxId).push(entry);
+    }
+
+    testInfo.annotations.push({
+      type: 'subiekt',
+      description:
+        `observed ${withTaxId.length} Allegro sale(s) with a tax number and ` +
+        `${withoutTaxId.length} without, out of the last ${SCAN_LIMIT}`,
+    });
+
+    // Skipped LOUDLY and separately, naming which half is missing: the two need
+    // different purchases, so one message covering both would not tell an
+    // operator what to do.
+    test.skip(
+      withTaxId.length === 0,
+      `no Allegro sale in the last ${SCAN_LIMIT} orders carries a buyer tax number AND an ` +
+        `issued Subiekt document. Buy one in the sandbox requesting a VAT invoice.`
+    );
+    test.skip(
+      withoutTaxId.length === 0,
+      `no Allegro sale in the last ${SCAN_LIMIT} orders is without a buyer tax number AND has ` +
+        `an issued Subiekt document. Buy an ordinary one in the sandbox.`
+    );
+
+    const wrongInvoice = withTaxId.filter((e) => e.kind !== 'invoice');
+    expect(
+      wrongInvoice,
+      `these Allegro buyers gave a tax number and were issued something other than a faktura: ` +
+        `${wrongInvoice.map((e) => `${e.order} -> ${e.kind} ${e.number ?? ''}`).join('; ')}`
+    ).toEqual([]);
+
+    const wrongReceipt = withoutTaxId.filter((e) => e.kind !== 'receipt');
+    expect(
+      wrongReceipt,
+      `these Allegro buyers gave no tax number and were issued something other than a paragon: ` +
+        `${wrongReceipt.map((e) => `${e.order} -> ${e.kind} ${e.number ?? ''}`).join('; ')}`
+    ).toEqual([]);
+  });
+});
