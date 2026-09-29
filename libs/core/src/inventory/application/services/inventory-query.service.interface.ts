@@ -145,7 +145,7 @@ export interface IInventoryQueryService {
    * condition — no position, unknown provenance and several owners are all
    * `blocked` results the caller names to the operator.
    *
-   * **Single-product by design (#3491 review)** — one query per call, unlike
+   * **Single-product by design (#3498 review)** — one query per call, unlike
    * the sale decrement's own `findLiveOwnerPositions`, which batches across a
    * work's lines. The returns write path is per line (`disposeLine`) so this
    * costs no N+1 there; a future caller that loops over several lines of one
