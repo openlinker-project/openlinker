@@ -213,7 +213,11 @@ describe('BenchDocumentsPanel (#2418)', () => {
   it('should say there is nothing to print when the document is not printable', async () => {
     mount({ invoice: invoice({ state: 'issued-not-printable' }) });
 
-    expect(await screen.findByText(/There is nothing to print for this one/i)).toBeInTheDocument();
+    // A neutral fact, not a warning: the invoice exists, it just cannot be
+    // printed here - so the card names it and its number.
+    expect(await screen.findByText('Issued, not printable')).toBeInTheDocument();
+    expect(screen.getByText('Invoice FV/2026/09/0412')).toBeInTheDocument();
+    expect(screen.getByText('Issued, but it cannot be printed here.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /print invoice/i })).toBeNull();
   });
 

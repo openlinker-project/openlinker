@@ -548,9 +548,10 @@ export const benchParcelCopy = {
     },
 
     /** F1's honest exception: the document exists but only as machine-readable source. */
-    notPrintableTitle: 'There is nothing to print for this one',
-    notPrintableBody:
-      'An invoice was made for this order, but it only exists in a form a printer cannot use. Send the box without it — the office will post it to the buyer.',
+    notPrintableBadge: 'Issued, not printable',
+    notPrintableTitle: (documentNumber: string | null): string =>
+      documentNumber === null ? 'Invoice issued' : `Invoice ${documentNumber}`,
+    notPrintableBody: 'Issued, but it cannot be printed here.',
 
     /** F2 — named, never silently skipped, and never blocking. */
     missingTitle: 'Carry on packing — one paper is not coming',

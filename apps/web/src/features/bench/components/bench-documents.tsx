@@ -400,10 +400,10 @@ function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardAction
     case 'invoice-not-printable':
       return (
         <CardFrame
-          tone="warning"
-          badge={copy.nothingToPrintBadge}
+          tone="neutral"
+          badge={copy.notPrintableBadge}
           slot={copy.insideLabel}
-          title={copy.notPrintableTitle}
+          title={copy.notPrintableTitle(card.documentNumber)}
         >
           <p>{copy.notPrintableBody}</p>
         </CardFrame>

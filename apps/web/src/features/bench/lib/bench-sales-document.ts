@@ -42,7 +42,7 @@ export function selectReceiptHandover(
 
 export type BenchDocumentCard =
   | { readonly kind: 'invoice-ready'; readonly documentNumber: string | null }
-  | { readonly kind: 'invoice-not-printable' }
+  | { readonly kind: 'invoice-not-printable'; readonly documentNumber: string | null }
   | { readonly kind: 'invoice-in-progress' }
   | { readonly kind: 'invoice-rejected' }
   | { readonly kind: 'invoice-not-confirmed' }
@@ -80,7 +80,9 @@ export function describeBenchDocumentCard(documents: BenchDocuments): BenchDocum
     if (invoice.state === 'ready') {
       return { kind: 'invoice-ready', documentNumber: invoice.documentNumber };
     }
-    if (invoice.state === 'issued-not-printable') return { kind: 'invoice-not-printable' };
+    if (invoice.state === 'issued-not-printable') {
+      return { kind: 'invoice-not-printable', documentNumber: invoice.documentNumber };
+    }
     if (invoice.state === 'missing') {
       return {
         kind: 'missing',
@@ -107,7 +109,7 @@ export function describeBenchDocumentCard(documents: BenchDocuments): BenchDocum
       case 'issued':
         return document.printable
           ? { kind: 'invoice-ready', documentNumber: document.documentNumber }
-          : { kind: 'invoice-not-printable' };
+          : { kind: 'invoice-not-printable', documentNumber: document.documentNumber };
       case 'failed':
         return isRejected(document.failureMode)
           ? { kind: 'invoice-rejected' }
