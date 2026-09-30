@@ -14,6 +14,7 @@ function baseProps(overrides: Partial<StepTurnOnProps> = {}): StepTurnOnProps {
     stockDetail: '100 of 100 products',
     stockComplete: true,
     packerNames: 'anna',
+    setup: null,
     otherSystemDecides: false,
     canWrite: true,
     demoReadOnly: false,

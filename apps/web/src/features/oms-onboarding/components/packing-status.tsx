@@ -23,7 +23,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { PackerSummary } from '../../users';
 import type { SetupStepsView } from '../hooks/use-setup-steps';
-import { SETUP_STEP_PATHS, SetupStepKeys, type SetupStepKey } from '../lib/setup-steps';
+import { SETUP_STEP_PATHS, SetupStepKeys, describeSetupStep, type SetupStepKey } from '../lib/setup-steps';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import { AddPackerDialog } from './add-packer-dialog';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
@@ -41,6 +41,7 @@ export interface PackingStatusProps {
   readonly packers: readonly PackerSummary[];
   /** The steps after packing; `null` for a role that cannot read them. */
   readonly setup: SetupStepsView | null;
+  readonly onContinueSetup: () => void;
   readonly onSetStepSkipped: (step: SetupStepKey, skipped: boolean) => void;
   readonly settingStep: boolean;
   /** Creating a user is admin-only; the page decides, this only renders it. */
@@ -115,19 +116,11 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
     const setup = props.setup;
     for (const key of SetupStepKeys) {
       const state = setup.states[key];
-      const copy = COPY.status.steps[key];
-      const detail =
-        state === 'done'
-          ? copy.done
-          : state === 'skipped'
-            ? COPY.status.steps.skipped
-            : state === 'unknown'
-              ? COPY.status.steps.unknown
-              : copy.pending;
+      const { title, detail } = describeSetupStep(key, state);
       rows.push({
         key,
         ok: state === 'done' || state === 'skipped',
-        title: copy.title,
+        title,
         detail,
         action: (
           <span className="oms-onboarding__actions">
@@ -181,6 +174,11 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
           </p>
         </div>
         <div className="oms-onboarding__actions">
+          {props.live && props.setup !== null && !props.setup.complete ? (
+            <Button type="button" tone="secondary" data-testid="btn-continue-setup" onClick={props.onContinueSetup}>
+              {COPY.status.continueSetup}
+            </Button>
+          ) : null}
           {props.live ? (
             <Link className="button button--primary" to="/fulfillment" data-testid="link-open-fulfilment">
               {COPY.status.openFulfilment}

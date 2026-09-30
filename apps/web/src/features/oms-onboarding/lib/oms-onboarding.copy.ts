@@ -40,9 +40,39 @@ export const omsOnboardingCopy = {
     { title: 'Your product master', meta: 'Products and stock' },
     { title: 'Add packers', meta: 'Optional' },
     { title: 'See what changes', meta: 'Read before turning on' },
-    { title: 'Turn it on', meta: '' },
+    { title: 'Sales documents', meta: 'Invoices and receipts' },
+    { title: 'Automations', meta: 'Optional' },
+    { title: 'Who decides what', meta: 'Review' },
+    { title: 'Turn it on', meta: 'Last step' },
   ],
   stepOf: (step: number, total: number): string => `Step ${String(step)} of ${String(total)}`,
+  setupSteps: {
+    finish: 'Finish',
+    review: 'Review',
+    notNeeded: 'Not needed',
+    undo: 'Undo',
+    state: {
+      done: 'Already set up',
+      pending: 'Not set up yet',
+      skipped: 'Marked as not needed',
+      unknown: 'Could not check this right now',
+    },
+    salesDocuments: {
+      why: 'Packing works. Next, decide which document each order gets: an invoice or a receipt, country by country.',
+      detail: 'Document routing is configured on its own page. You can come back here when you are done.',
+      open: 'Open document routing',
+    },
+    automations: {
+      why: 'Let OpenLinker act by itself when something happens, for example buy the shipping label as soon as an order is packed.',
+      detail: 'Automations are set up on their own page. Skip this if you do not need any.',
+      open: 'Open automations',
+    },
+    whoDecides: {
+      why: 'Check which system decides stock, packing and returns. Anything that needs your attention is listed there.',
+      detail: 'This is a review, not a form: nothing here changes until you choose an arrangement.',
+      open: 'Open who decides what',
+    },
+  },
   back: 'Back',
   continue: 'Continue',
   adminOnly: 'Only an admin can change the packing setup.',
@@ -222,6 +252,7 @@ export const omsOnboardingCopy = {
       count === 0
         ? 'Nothing on Fulfilment yet.'
         : `${String(count)} ${count === 1 ? 'parcel' : 'parcels'} on Fulfilment${ago === null ? '' : ` · last one arrived ${ago}`}`,
+    continueSetup: 'Continue setup',
     partialTitle: 'OMS is partially set up',
     setUpTitle: 'OMS is set up',
     stepsLeft: (count: number): string =>

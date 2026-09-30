@@ -25,7 +25,17 @@ import type { InventoryLocation } from '../../inventory';
 import { readSourcingClaim, readStockLocationOverride } from './config-merge';
 import { MAX_PRODUCT_MASTERS } from './product-masters';
 
-export const TOTAL_STEPS = 4;
+export const TOTAL_STEPS = 7;
+
+/**
+ * Turning packing on is the LAST step: everything it depends on, and the rest
+ * of the OMS with it, is set up before anything changes in how orders are
+ * handled, which is what the page's own description promises.
+ */
+export const TURN_ON_STEP = 7;
+
+/** The wizard step each decision after "See what changes" lives at (1-based). */
+export const SETUP_STEP_NUMBERS = { salesDocuments: 4, automations: 5, whoDecides: 6 } as const;
 
 /** The capability the packing connection needs for work to reach the bench (#3476). */
 export const PACKING_EXECUTOR_CAPABILITY = 'FulfillmentExecutor';
@@ -41,7 +51,10 @@ export type OnboardingDataState =
   | 'step-2-packers-empty'
   | 'step-2-packer-added'
   | 'step-3-what-changes'
-  | 'step-4-turn-on'
+  | 'step-4-sales-documents'
+  | 'step-5-automations'
+  | 'step-6-who-decides'
+  | 'step-7-turn-on'
   | 'waiting-first-order'
   | 'first-order-arrived'
   | 'status-on'
@@ -163,8 +176,14 @@ export function deriveDataState(input: DataStateInput): OnboardingDataState {
       return input.packerCount > 0 ? 'step-2-packer-added' : 'step-2-packers-empty';
     case 3:
       return 'step-3-what-changes';
+    case 4:
+      return 'step-4-sales-documents';
+    case 5:
+      return 'step-5-automations';
+    case 6:
+      return 'step-6-who-decides';
     default:
-      return 'step-4-turn-on';
+      return 'step-7-turn-on';
   }
 }
 
@@ -179,6 +198,6 @@ export function initialPosition(
   paused: boolean,
   step1Done: boolean
 ): { view: OnboardingView; step: number } {
-  if (live || paused) return { view: 'status', step: TOTAL_STEPS };
+  if (live || paused) return { view: 'status', step: TURN_ON_STEP };
   return { view: 'wizard', step: step1Done ? 2 : 1 };
 }
