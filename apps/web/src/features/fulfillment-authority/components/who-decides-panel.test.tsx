@@ -247,7 +247,7 @@ describe('WhoDecidesPanel', () => {
     expect(link).toHaveAttribute('href', '/settings/sales-documents');
     // It mirrors no state of its own — the answer is the link and nothing else.
     expect(documents.querySelector('.who-decides-row__answer')?.textContent).toBe(
-      'Set up under Sales documents',
+      'Set up under Document routing',
     );
   });
 

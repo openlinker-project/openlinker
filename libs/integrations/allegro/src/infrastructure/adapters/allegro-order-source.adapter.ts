@@ -44,7 +44,10 @@ import type {
   OrderPickupPoint,
   OrderPickupPointType,
   OrderDispatchWindow,
+  OrderFulfillmentReadback,
+  SourceFulfillmentReadback,
 } from '@openlinker/core/orders';
+import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { getAllegroSalesCenterOrderUrl } from '../http/allegro-hosts';
 import { Logger } from '@openlinker/shared/logging';
@@ -58,10 +61,16 @@ import type {
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
+import type {
+  AllegroOrderShipment,
+  AllegroOrderShipmentsResponse,
+} from '../../domain/types/allegro-order-fulfillment.types';
 import {
   ALLEGRO_CARRIER_BY_PLATFORM_TYPE,
   ALLEGRO_FULFILLMENT_STATUS_SENT,
   ALLEGRO_FULFILLMENT_STATUS_CANCELLED,
+  ALLEGRO_FULFILLMENT_DISPATCHED_STATUSES,
+  ALLEGRO_FULFILLMENT_UNDISPATCHED_STATUSES,
   ALLEGRO_OTHER_CARRIER_ID,
 } from '../../domain/types/allegro-order-fulfillment.types';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
@@ -112,6 +121,7 @@ export class AllegroOrderSourceAdapter
     OrderSourcePort,
     SourceOptionsReader,
     OrderStatusWriteback,
+    OrderFulfillmentReadback,
     ReturnSourceReader,
     ReturnDecliner
 {
@@ -245,6 +255,123 @@ export class AllegroOrderSourceAdapter
    */
   private async putFulfillment(externalOrderId: string, status: string): Promise<void> {
     await this.httpClient.put(`/order/checkout-forms/${externalOrderId}/fulfillment`, { status });
+  }
+
+  /**
+   * `OrderFulfillmentReadback` (#3365) - ask Allegro what IT says about this
+   * order's fulfilment.
+   *
+   * This is the read half of `markSent`. `PUT /order/checkout-forms/{id}/fulfillment`
+   * writes `fulfillment.status`, and `GET /order/checkout-forms/{id}` returns
+   * that same field - the adapter already fetches it in `getOrder` and reads it
+   * only to detect a cancellation. Nothing beyond that one GET is issued here.
+   *
+   * ## The waybill read, and why it costs a SECOND call
+   *
+   * `GET /order/checkout-forms/{id}/shipments` returns the waybills
+   * `POST .../shipments` attached - VERIFIED live on the sandbox on
+   * 2026-09-27 against two orders OpenLinker had dispatched itself, answering
+   * 200 with both tracking numbers under `carrierId: "INPOST"`. The repository
+   * had previously struck down assuming that endpoint exists, and rightly so;
+   * it is no longer assumed.
+   *
+   * It is a separate resource from the checkout form, so reading waybills
+   * genuinely costs one more request. That call is made BEST-EFFORT and never
+   * degrades the status half: a source that answers the status and not the
+   * shipments reports the status with `waybills: null`, which is the same
+   * "not reported" this shape has always meant. Reporting the whole read as
+   * `unavailable` because a supplementary call failed would lose the answer
+   * that did arrive.
+   *
+   * ## A failure is an OUTCOME, never a throw
+   *
+   * The caller is a read surface. A momentarily unreachable marketplace must
+   * reach an operator as "we could not ask", not as a 500 they cannot act on.
+   */
+  async readFulfillment(input: {
+    externalOrderId: string;
+  }): Promise<SourceFulfillmentReadback> {
+    const checkoutFormId = input.externalOrderId;
+    try {
+      const response = await this.httpClient.get<AllegroCheckoutForm>(
+        `/order/checkout-forms/${checkoutFormId}`
+      );
+      const rawStatus = response.data.fulfillment?.status ?? null;
+      return {
+        outcome: 'read',
+        rawStatus,
+        dispatched: this.readDispatchedFlag(rawStatus),
+        waybills: await this.readWaybills(checkoutFormId),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Allegro fulfillment readback failed for order ${checkoutFormId} (connection: ${this.connectionId}): ${message}`
+      );
+      return unavailableSourceFulfillmentReadback(
+        `Allegro did not answer for checkout form ${checkoutFormId}`
+      );
+    }
+  }
+
+  /**
+   * The waybills Allegro reports as attached to this order.
+   *
+   * `null` on ANY failure, which the neutral shape defines as "this source does
+   * not report them" - deliberately not `[]`, which would be the stronger claim
+   * that the source answered and listed none. A caller must not read a failed
+   * supplementary call as evidence that no waybill is attached.
+   *
+   * A shipment with no `waybill` field is skipped rather than carried as an
+   * empty string: Allegro's own model allows one, and a blank tracking number
+   * rendered on an operator's screen is worse than an absent one.
+   */
+  private async readWaybills(
+    checkoutFormId: string,
+  ): Promise<SourceFulfillmentReadback['waybills']> {
+    try {
+      const response = await this.httpClient.get<AllegroOrderShipmentsResponse>(
+        `/order/checkout-forms/${checkoutFormId}/shipments`
+      );
+      const shipments = response.data.shipments ?? [];
+      return shipments
+        .filter((s): s is AllegroOrderShipment & { waybill: string } =>
+          typeof s.waybill === 'string' && s.waybill.trim() !== ''
+        )
+        .map((s) => ({
+          waybill: s.waybill,
+          ...(s.carrierId !== undefined && { carrierId: s.carrierId }),
+          ...(s.carrierName !== undefined && { carrierName: s.carrierName }),
+        }));
+    } catch (error) {
+      this.logger.debug(
+        `Allegro reported no shipments for ${checkoutFormId} (connection: ${this.connectionId}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Map Allegro's own fulfilment status onto the neutral dispatched flag.
+   *
+   * An unrecognised value answers `null`, never `false`. Allegro's seller panel
+   * sets this field from a Polish vocabulary (`WYSLANE`, `ANULOWANE`, ...) while
+   * the write path sends `SENT`, and which spelling a READ returns is exactly
+   * what the sandbox probe settles - so a value this build has not learnt must
+   * read as "we do not know", or an operator is told a parcel is unsent on the
+   * strength of a vocabulary OpenLinker never verified.
+   */
+  private readDispatchedFlag(rawStatus: string | null): boolean | null {
+    if (rawStatus === null) return null;
+    const normalised = rawStatus.trim().toUpperCase();
+    if (ALLEGRO_FULFILLMENT_DISPATCHED_STATUSES.includes(normalised)) return true;
+    if (ALLEGRO_FULFILLMENT_UNDISPATCHED_STATUSES.includes(normalised)) return false;
+    this.logger.warn(
+      `allegro_fulfillment_status_unrecognised: Allegro answered "${rawStatus}", which this build does not map; reporting dispatched as unknown (connection: ${this.connectionId})`
+    );
+    return null;
   }
 
   /** Map the neutral carrier hint → Allegro's fixed carrier vocab (OTHER+name fallback). */
@@ -763,6 +890,22 @@ export class AllegroOrderSourceAdapter
       const shipping = checkoutForm.delivery?.cost
         ? Number.parseFloat(checkoutForm.delivery.cost.amount)
         : Math.max(0, total - subtotal);
+      // #3365 - carry the whole-order discount so a refusal can NAME its cause.
+      //
+      // Allegro composes `total` from `summary.totalToPay` while `subtotal` is
+      // summed from the line items and `shipping` comes from `delivery.cost` -
+      // three independently sourced numbers. Any coupon, promotion or seller
+      // discount moves `totalToPay` without moving the lines, so the invoicing
+      // mapper's line-vs-total check refuses the document (correctly: better no
+      // document than a wrong amount). `describeDiscountCause` already exists to
+      // say WHY, and could not, because nothing here ever populated the field -
+      // so the operator got a refusal that named no cause.
+      //
+      // Reported only when POSITIVE. A negative gap is a surcharge, not a
+      // discount, and filing it as one would be a false statement about the
+      // order rather than a missing one.
+      const discountGap = roundCurrency(subtotal + shipping - total);
+      const discountTotal = discountGap > 0 ? discountGap : undefined;
 
       // #1435 — for a cash-on-delivery order the buyer pays the full order total
       // on delivery, so the collectable amount is `summary.totalToPay` verbatim
@@ -814,6 +957,7 @@ export class AllegroOrderSourceAdapter
           tax: 0,
           shipping: roundCurrency(shipping),
           total: roundCurrency(total),
+          ...(discountTotal !== undefined && { discountTotal }),
           currency: checkoutForm.summary.totalToPay.currency,
           // Allegro reports buyer-paid GROSS prices (line `price.amount` and
           // `summary.totalToPay` include tax); it does not decompose tax.

@@ -44,6 +44,8 @@ function renderPage(options: {
   /** The gate's own probe — deliberately separate from the picker's page. */
   activeLocationTotal?: number;
   bootstrap?: ReturnType<typeof vi.fn>;
+  /** Lets a test inspect what the picker actually requested. */
+  listLocations?: ReturnType<typeof vi.fn>;
   search?: string;
   admin?: boolean;
 }): void {
@@ -56,12 +58,14 @@ function renderPage(options: {
           : vi.fn().mockRejectedValue(options.connectionsError),
     } as never,
     inventory: {
-      listLocations: vi.fn().mockResolvedValue({
-        items,
-        total: options.locationsTotal ?? items.length,
-        page: 1,
-        limit: 200,
-      }),
+      listLocations:
+        options.listLocations ??
+        vi.fn().mockResolvedValue({
+          items,
+          total: options.locationsTotal ?? items.length,
+          page: 1,
+          limit: 100,
+        }),
       listActiveLocations: vi
         .fn()
         .mockResolvedValue({ items: [], total: options.activeLocationTotal ?? 0, page: 1, limit: 1 }),
@@ -78,6 +82,19 @@ function renderPage(options: {
 }
 
 describe('SourcingRulesPage (#3060)', () => {
+  it('should request a location page the API accepts (limit <= 100, #3634)', async () => {
+    // `ListLocationsQueryDto` caps `limit` at 100; a larger page is a 400 and
+    // the whole screen fails to open. Asserts the REQUEST, not a constant.
+    const listLocations = vi
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 });
+    renderPage({ listLocations });
+
+    await waitFor(() => expect(listLocations).toHaveBeenCalled());
+    const [, pagination] = listLocations.mock.calls[0] as [unknown, { limit: number }];
+    expect(pagination.limit).toBeLessThanOrEqual(100);
+  });
+
   it('reports neither gate while the reads are in flight', () => {
     renderPage({});
 

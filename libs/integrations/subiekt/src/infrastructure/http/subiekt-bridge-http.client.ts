@@ -33,10 +33,7 @@
 import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
-import {
-  SubiektBridgeUnreachableError,
-  SubiektRejectedError,
-} from '../../bridge/subiekt-bridge.errors';
+import { SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 import type {
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
@@ -54,35 +51,15 @@ import type {
   BridgeUpsertCustomerResponse,
 } from '../../bridge/subiekt-bridge.types';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
-import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from './subiekt-url-safety';
-
-/**
- * Node error codes that PROVE the request never left the host (connect-refused
- * / DNS-failure). Only these are classified `'safe'` — auto-retry cannot
- * double-issue a fiscal document. Everything else is `'indeterminate'`.
- */
-const SAFE_RETRY_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
-
-/** Extract a `cause.code` string from an unknown thrown value, if present. */
-function extractErrorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const cause = (error as { cause?: unknown }).cause;
-  if (typeof cause === 'object' && cause !== null) {
-    const code = (cause as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-  }
-  // AbortError surfaces via `name` rather than a cause code.
-  const name = (error as { name?: unknown }).name;
-  if (name === 'AbortError') return 'ABORT';
-  return undefined;
-}
-
-/** Map a raw fetch error code to the fiscal-safety retryability phase. */
-function classifyRetryability(code: string | undefined): SubiektTransportRetryability {
-  return code !== undefined && SAFE_RETRY_CODES.has(code) ? 'safe' : 'indeterminate';
-}
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../../bridge/subiekt-bridge-timeout';
+import { redactBridgeToken } from '../../bridge/subiekt-auth-reason';
+import {
+  classifyRetryability,
+  extractErrorCode,
+  SubiektBridgeUnreachableWithPhaseError,
+} from '../../bridge/subiekt-transport-retryability';
 
 /**
  * Bridge REST surface, reconciled against the live bridge's minimal-API routes
@@ -124,12 +101,14 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
 
 /**
  * The `data` payload the bridge's `GET /api/invoices/{id}/status` returns (a
- * superset of what we project): the KSeF `regulatoryStatus`, a Polish document
- * `status`, and (#3390) the settled/paid flag. We read `regulatoryStatus` +
- * `paid`; `status` (the Polish document label) is ignored.
+ * superset of what we project): the KSeF `regulatoryStatus` + `clearanceReference`
+ * (#3352), a Polish document `status`, and (#3390) the settled/paid flag. We read
+ * `regulatoryStatus`, `clearanceReference` and `paid`; `status` (the Polish
+ * document label) is ignored.
  */
 interface BridgeInvoiceStatusData {
   regulatoryStatus: BridgeRegulatoryStatus;
+  clearanceReference?: string | null;
   status?: string;
   paid?: boolean;
 }
@@ -146,23 +125,6 @@ export interface SubiektBridgeHttpClientOptions {
    * constructor note for why this stays optional for now.
    */
   fetchImpl?: FetchLike;
-}
-
-/**
- * Client-private subclass of the frozen unreachable error that carries the
- * retryability phase across the frozen-error boundary. IS-A
- * `SubiektBridgeUnreachableError`, so contract-suite / `instanceof` checks and
- * the fake remain valid. NOT exported from the package barrel.
- */
-export class SubiektBridgeUnreachableWithPhaseError extends SubiektBridgeUnreachableError {
-  readonly retryability: SubiektTransportRetryability;
-
-  constructor(message: string, retryability: SubiektTransportRetryability) {
-    super(message);
-    this.name = 'SubiektBridgeUnreachableWithPhaseError';
-    this.retryability = retryability;
-    Error.captureStackTrace(this, this.constructor);
-  }
 }
 
 export class SubiektBridgeHttpClient implements SubiektBridgeClient {
@@ -185,7 +147,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     // Strip a single trailing slash so path concatenation stays canonical.
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
-    this.timeoutMs = opts.timeoutMs ?? 30000;
+    this.timeoutMs = opts.timeoutMs ?? SUBIEKT_BRIDGE_TIMEOUT_MS;
     // Pre-existing silent fallback, surfaced (not introduced) by the
     // strengthened `check-outbound-http.mjs` in #1968 — `no-restricted-globals`
     // never saw it, because it flags the bare identifier `fetch`, not a member
@@ -230,6 +192,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     return {
       state: 'issued',
       regulatoryStatus: data.regulatoryStatus ?? 'none',
+      clearanceReference: data.clearanceReference ?? null,
       // #3390: dok_Rozliczony, absent only on a bridge build predating this
       // field — default `false` rather than fabricate a paid state.
       paid: data.paid ?? false,
@@ -258,17 +221,34 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   }
 
   /**
-   * Connectivity probe for the connection tester. Issues `GET /health` and
-   * resolves when the bridge is reachable (any non-transport response, incl. a
-   * 4xx). Rejects with `SubiektBridgeUnreachableError` / `SubiektConfigException`
-   * only when the bridge could not be reached. Not part of the frozen
-   * `SubiektBridgeClient` surface.
+   * Probe for the connection tester and the reachability sweep: is the bridge
+   * reachable AND does it accept our credentials?
+   *
+   * It deliberately does NOT use `/health`. Both bridges exempt `/health` from
+   * their auth middleware, so a connection carrying no token at all passed the
+   * old probe and then failed 401 on its first real call — the operator was
+   * shown a green tick for a configuration that could never work, and the
+   * reachability sweep was blind to a rotated bridge token, the single most
+   * likely way a working connection stops working.
+   *
+   * `/api/bank-accounts` is the probe instead because the auth middleware sits
+   * in FRONT of every `/api/*` route on both bridges, so any answer other than
+   * 401/403 proves authorization passed — and it is a plain read with no side
+   * effects, which a probe that may run on a schedule has to be.
+   *
+   * Resolves when the bridge is reachable and authorized, including when it
+   * answers with a business rejection (that still proves both). Rejects with
+   * `SubiektBridgeAuthError` on 401/403, carrying the bridge's own reason, and
+   * with `SubiektBridgeUnreachableError` / `SubiektConfigException` when the
+   * bridge could not be reached. Not part of the frozen `SubiektBridgeClient`
+   * surface.
    */
-  async checkHealth(): Promise<void> {
+  async checkReachableAndAuthorized(): Promise<void> {
     try {
-      await this.getJson<unknown>(SUBIEKT_BRIDGE_ENDPOINTS.health);
+      await this.getJson<unknown>(SUBIEKT_BRIDGE_ENDPOINTS.bankAccounts);
     } catch (error: unknown) {
-      // A business rejection means the bridge IS reachable — a passing probe.
+      // A business rejection means the bridge IS reachable and DID accept our
+      // credentials — it got past the auth middleware to produce one.
       if (error instanceof SubiektRejectedError) {
         return;
       }
@@ -324,7 +304,15 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     } catch (error: unknown) {
       // Transport-level failure — never reached Subiekt's business layer.
       const code = extractErrorCode(error);
-      const retryability = classifyRetryability(code);
+      // #3365 review: a READ is safe to retry whatever the transport did.
+      //
+      // The fiscal-safety pivot exists so an ambiguous WRITE is not re-sent and
+      // does not double-issue a document. A GET has nothing to double - it
+      // creates no document, moves no stock and changes nothing - so an
+      // ambiguous read was being classified non-retryable for a hazard it
+      // cannot have, and a status poll or a catalogue enumeration that hit one
+      // slow moment died on its first attempt.
+      const retryability = method === 'GET' ? 'safe' : classifyRetryability(code);
       this.logger.warn('Subiekt bridge request failed at transport layer', {
         method,
         path,
@@ -354,28 +342,60 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
       // ambiguity — fiscal-safe `'indeterminate'`.
       throw new SubiektBridgeUnreachableWithPhaseError(
         `Subiekt bridge returned an unfollowed redirect (HTTP ${response.status})`,
-        'indeterminate',
+        method === 'GET' ? 'safe' : 'indeterminate',
       );
     }
 
     if (response.status >= 500) {
-      // The POST may have been received and acted on — `'indeterminate'`.
+      // The POST may have been received and acted on — `'indeterminate'`. A GET
+      // cannot have been "acted on" in any sense that matters, so it stays
+      // retryable (#3365 review).
       throw new SubiektBridgeUnreachableWithPhaseError(
         `Subiekt bridge returned a server error (HTTP ${response.status})`,
-        'indeterminate',
+        method === 'GET' ? 'safe' : 'indeterminate',
       );
     }
 
     if (response.status === 401 || response.status === 403) {
       // BRIDGE AUTH / CONFIG problem (bad/missing token or credentials) — NOT a
-      // fiscal rejection. Surface a clear, terminal auth error; never read or
-      // log the body/token.
-      throw new SubiektBridgeAuthError(response.status);
+      // fiscal rejection. Surface a clear, terminal auth error.
+      //
+      // The body IS read here, deliberately reversing the earlier "never read
+      // the body" rule. The bridge distinguishes two states the operator must
+      // act on differently — a wrong token versus a bridge where `InvoiceToken`
+      // was never set, which closes every `/api/*` route — and it says which in
+      // `error.reason`. Withholding that turned both into one generic sentence
+      // and sent the operator looking for a bad value when nothing was set.
+      //
+      // The rule the original comment was protecting (never surface the token)
+      // is kept by `redactToken`, which is stronger than not reading at all: it
+      // holds even for a bridge that echoes the credential, ours or anyone's.
+      throw new SubiektBridgeAuthError(response.status, await this.readAuthReason(response));
     }
 
     if (response.status >= 400) {
-      // Business rejection — terminal. Surface the bridge-native rejected error.
-      const reason = await this.readRejectionReason(response);
+      // A business answer - but NOT automatically a terminal one (bridge PR #7
+      // review).
+      //
+      // The bridge says which: `error.failureMode` is `'in-doubt'` when a
+      // `Sfera.Run` timed out and the document MAY have been committed, and
+      // every one of those arrives on a non-2xx. This branch mapped all of them
+      // to the terminal rejected class, and the discard lands exactly where
+      // ADR-041 §3a matters: `blocksIssuanceElsewhere` frees another connection
+      // to issue precisely when the mode is `rejected`, so a timeout that may
+      // already have written an FS released the one-document-per-order guard
+      // and a second fiscal document became possible for one sale.
+      const { reason, failureMode } = await this.readRejection(response);
+      if (failureMode === 'in-doubt') {
+        // Same class the transport-level ambiguities already raise, so nothing
+        // downstream needs to learn a new shape - `SubiektBridgeTransportError`
+        // maps `'indeterminate'` onto the neutral `'in-doubt'` the core guard
+        // reads.
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt bridge reported an in-doubt outcome (HTTP ${response.status}): ${reason}`,
+          'indeterminate',
+        );
+      }
       throw new SubiektRejectedError(reason);
     }
 
@@ -388,6 +408,15 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
         envelope.error?.reason !== undefined && envelope.error.reason.length > 0
           ? envelope.error.reason
           : `HTTP ${response.status}`;
+      // The same rule on the 2xx-enveloped arm: the bridge answers `200` with a
+      // `success: false` body on some paths, and an in-doubt outcome must not
+      // become terminal merely because it arrived with a success status code.
+      if (envelope.error?.failureMode === 'in-doubt') {
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt bridge reported an in-doubt outcome (HTTP ${response.status}): ${reason}`,
+          'indeterminate',
+        );
+      }
       throw new SubiektRejectedError(reason);
     }
     return envelope.data;
@@ -398,29 +427,86 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
    * inside the envelope's `error.reason`; fall back to a bare top-level `reason`
    * and finally to the status code.
    */
-  private async readRejectionReason(response: Response): Promise<string> {
+  private async readRejection(
+    response: Response,
+  ): Promise<{ reason: string; failureMode: string | undefined }> {
     try {
       const parsed: unknown = await response.json();
       if (typeof parsed === 'object' && parsed !== null) {
-        // Enveloped error: { success, data, error: { code, reason } }.
-        const envelopeError = (parsed as { error?: { reason?: unknown } }).error;
+        // Enveloped error: { success, data, error: { code, reason, failureMode } }.
+        const envelopeError = (parsed as {
+          error?: { reason?: unknown; failureMode?: unknown };
+        }).error;
+        // Read UNCONDITIONALLY on the enveloped shape, not only when a reason
+        // is present: a body carrying `failureMode` and a blank reason is still
+        // the bridge telling us the outcome is in doubt, and losing that would
+        // reinstate the very discard this exists to close.
+        const failureMode =
+          envelopeError !== undefined &&
+          envelopeError !== null &&
+          typeof envelopeError.failureMode === 'string'
+            ? envelopeError.failureMode
+            : undefined;
         if (
           envelopeError !== undefined &&
           envelopeError !== null &&
           typeof envelopeError.reason === 'string' &&
           envelopeError.reason.length > 0
         ) {
-          return envelopeError.reason;
+          return { reason: envelopeError.reason, failureMode };
         }
         // Legacy / bare `{ reason }` fallback.
         const reason = (parsed as { reason?: unknown }).reason;
         if (typeof reason === 'string' && reason.length > 0) {
-          return reason;
+          return { reason, failureMode };
+        }
+        if (failureMode !== undefined) {
+          return { reason: `HTTP ${response.status}`, failureMode };
         }
       }
     } catch {
       // Non-JSON / empty body — fall through to the status-based reason.
     }
-    return `HTTP ${response.status}`;
+    // An absent `failureMode` reads as terminal, which is the pre-existing
+    // behaviour: a bridge older than the field said nothing, and inferring
+    // in-doubt from silence would block issuance everywhere on every refusal.
+    return { reason: `HTTP ${response.status}`, failureMode: undefined };
+  }
+
+  /**
+   * The bridge's own explanation for a 401 / 403, safe to show an operator, or
+   * `undefined` when it gave none.
+   *
+   * `readRejectionReason` falls back to `HTTP <status>` when the body carries
+   * nothing readable. On the auth path that string adds nothing the error's own
+   * `status` does not already say, so it is mapped to `undefined` rather than
+   * padding the message with a number.
+   */
+  private async readAuthReason(response: Response): Promise<string | undefined> {
+    const { reason: raw } = await this.readRejection(response);
+    if (raw === `HTTP ${response.status}`) {
+      return undefined;
+    }
+    const safe = this.redactToken(raw);
+    return safe.length > 0 ? safe : undefined;
+  }
+
+  /**
+   * Removes the bridge token from a string taken off the wire.
+   *
+   * This is what lets the 401 path read the response body at all. The body
+   * comes from a service OpenLinker does not control, so "our bridge does not
+   * echo the token" is not a property this client may rely on. Capping the
+   * length bounds the same risk for anything else a hostile or broken bridge
+   * might put there.
+   */
+  /**
+   * Delegates so the redaction rule lives in exactly ONE place (#3365 review).
+   * Three clients in this package can be handed a 401 and all three now read the
+   * body; three copies of this rule would be three chances for one of them to
+   * miss a form of the token, and what leaks then is a credential.
+   */
+  private redactToken(text: string): string {
+    return redactBridgeToken(text, this.token);
   }
 }

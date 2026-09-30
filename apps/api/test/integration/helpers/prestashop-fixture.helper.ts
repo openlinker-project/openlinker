@@ -23,6 +23,9 @@
  * @module apps/api/test/integration/helpers
  */
 import { randomBytes } from 'crypto';
+import { closeSync, openSync, rmSync, statSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { createConnection, Connection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 
 export interface PrestashopFixtureSeed {
@@ -853,7 +856,76 @@ export interface DefaultPrestashopCarriers {
  *      with full delivery coverage — required for `total_shipping` to
  *      survive the #467 zone-zero wipe.
  */
+/**
+ * Cross-process mutex around the carrier-seeding critical section below.
+ *
+ * `getDefaultPsCarriers` is called from `beforeAll` in both
+ * `allegro-prestashop-carrier-mapping.int-spec.ts` and
+ * `prestashop-order-fulfillment-update.int-spec.ts`, and both target the
+ * SAME shared PS container (`startSharedPrestashopContainer`, #1920) and the
+ * SAME two carrier ids ("My carrier" / "My cheap carrier"). With
+ * `maxWorkers` now > 1 (#3263), Jest can run those two files concurrently in
+ * separate processes, and `ensureCarrierFullyDelivered`'s
+ * DELETE-then-INSERT into `ps_range_price`/`ps_range_weight` is not safe
+ * against a second process doing the same thing at the same time — one
+ * process's INSERT can land between a peer's DELETE and its own INSERT,
+ * producing a duplicate-key error on `ps_range_price` (or worse, silently
+ * losing a row). Locking keys on host:port so it scopes correctly whether
+ * the container is shared or per-file (the per-file case never contends and
+ * just pays a negligible lock/unlock round trip). Mirrors the atomic
+ * `wx`-create claim `tryClaimSharedBoot` uses in
+ * `prestashop-container.helper.ts` for the same reason.
+ */
+const CARRIER_SEED_LOCK_STALE_MS = 60_000;
+const CARRIER_SEED_LOCK_POLL_MS = 200;
+
+function carrierSeedLockFile(options: ApplyFixtureOptions): string {
+  return join(tmpdir(), `ol-ps-carrier-seed-${options.host}-${options.port}.lock`);
+}
+
+async function withCarrierSeedLock<T>(
+  options: ApplyFixtureOptions,
+  fn: () => Promise<T>
+): Promise<T> {
+  const lockFile = carrierSeedLockFile(options);
+  for (;;) {
+    try {
+      closeSync(openSync(lockFile, 'wx'));
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw error;
+      }
+      // Somebody else holds the claim. A fresh lock means keep polling; a
+      // stale one means its holder crashed mid-seed — reclaim rather than
+      // wedge every remaining spec that needs this lock.
+      try {
+        const age = Date.now() - statSync(lockFile).mtimeMs;
+        if (age < CARRIER_SEED_LOCK_STALE_MS) {
+          await new Promise((resolve) => setTimeout(resolve, CARRIER_SEED_LOCK_POLL_MS));
+          continue;
+        }
+      } catch {
+        // Lock vanished mid-check — a peer already released it; loop and retry the claim.
+        continue;
+      }
+      rmSync(lockFile, { force: true });
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    rmSync(lockFile, { force: true });
+  }
+}
+
 export async function getDefaultPsCarriers(
+  options: ApplyFixtureOptions
+): Promise<DefaultPrestashopCarriers> {
+  return withCarrierSeedLock(options, () => getDefaultPsCarriersUnlocked(options));
+}
+
+async function getDefaultPsCarriersUnlocked(
   options: ApplyFixtureOptions
 ): Promise<DefaultPrestashopCarriers> {
   const conn = await createConnection({

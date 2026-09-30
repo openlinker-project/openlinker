@@ -168,6 +168,33 @@ const orderInvoiceSchema = z.object({
    *  blocks are still worth explaining. Optional: a snapshot written before this
    *  field existed is treated as suppressing, matching the pre-#2100 behaviour. */
   blocksIssuanceElsewhere: z.boolean().optional(),
+  /** How many of the document's lines the provider could not link to its own
+   *  catalogue and issued as free text - on Subiekt such a line does not move
+   *  warehouse stock, so the document looks correct while the sale never
+   *  reaches the warehouse. TRI-STATE, and `nullish` is load-bearing: absent /
+   *  `null` means the provider does not report linkage (inFakt, KSeF and
+   *  eparagony never will), `0` means every line was linked, `> 0` is the
+   *  badge. Read it through `unlinkedCatalogueLineCount`, never as a
+   *  truthiness test, which reports false for `0` and for `null` alike while
+   *  meaning two different things. */
+  unlinkedCatalogueLines: z.number().int().nullish(),
+  /** Whether the goods this document billed for left the warehouse in the
+   *  provider's own books. FOUR states and only one of them is a claim:
+   *  `'not-released'` means a release was expected and none was made - the
+   *  badge. `'released'` is the ordinary success (its number is below),
+   *  `'not-applicable'` means there was nothing to release, and absent /
+   *  `null` means this provider has no warehouse and never reports (inFakt,
+   *  KSeF and eparagony never will). Read the OUTCOME, never the number's
+   *  nullability: the number is legitimately absent on three of the four, so a
+   *  test on it reports "nothing released" for a service-only document and for
+   *  a provider that was never asked. */
+  warehouseReleaseOutcome: z
+    .enum(['released', 'not-released', 'not-applicable'])
+    .nullish()
+    .catch(null),
+  /** The release document number the provider created or detected (Subiekt:
+   *  the WZ). Present only when the outcome is `'released'`. */
+  warehouseReleaseNumber: z.string().nullish(),
 });
 export type ParsedOrderInvoice = z.infer<typeof orderInvoiceSchema>;
 

@@ -105,7 +105,7 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.id ?? 'rec-1',
     overrides.connectionId ?? CONNECTION,
     overrides.orderId ?? ORDER,
-    overrides.providerType ?? 'subiekt',
+    overrides.providerType ?? 'subiekt-gt',
     overrides.documentType ?? '',
     (overrides.status ?? 'pending'),
     overrides.providerInvoiceId === undefined ? null : overrides.providerInvoiceId,
@@ -142,7 +142,7 @@ function makeIssuedFromAdapter(): IssueInvoiceResult {
       // documentType the keyless caller omitted. The service must backfill both
       // onto the projection (it created the pending row with providerType '' and
       // documentType '').
-      providerType: 'subiekt',
+      providerType: 'subiekt-gt',
       documentType: 'invoice',
       providerInvoiceId: 'PROV-123',
       providerInvoiceNumber: 'FV/2026/1',
@@ -324,7 +324,7 @@ describe('InvoiceService', () => {
       expect(adapter.issueInvoice).toHaveBeenCalledWith({ ...cmd, issuedAt: expect.any(Date) });
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', expect.objectContaining({
         status: 'issued',
-        providerType: 'subiekt',
+        providerType: 'subiekt-gt',
         documentType: 'invoice',
         providerInvoiceId: 'PROV-123',
         providerInvoiceNumber: 'FV/2026/1',
@@ -359,6 +359,59 @@ describe('InvoiceService', () => {
         expect.objectContaining({
           issuedLineSnapshot: { buyer: cmd.buyer, currency: cmd.currency, lines: cmd.lines },
         }),
+      );
+    });
+
+    it('persists a reported unlinked-catalogue-line count on the issued patch', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue({
+        ...makeIssuedFromAdapter(),
+        unlinkedCatalogueLines: 2,
+      });
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ unlinkedCatalogueLines: 2 }),
+      );
+    });
+
+    it('persists a reported ZERO as zero, not as "not reported"', async () => {
+      // The two are different facts and the badge reads `> 0`, so collapsing a
+      // reported 0 into null would throw away the only evidence that anything
+      // checked the document at all.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue({
+        ...makeIssuedFromAdapter(),
+        unlinkedCatalogueLines: 0,
+      });
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ unlinkedCatalogueLines: 0 }),
+      );
+    });
+
+    it('leaves the column null for an adapter that does not report linkage', async () => {
+      // inFakt / KSeF / eparagony have no catalogue to link to; `null` is the
+      // truthful "not reported", never a manufactured clean bill.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ unlinkedCatalogueLines: null }),
       );
     });
 
@@ -416,7 +469,7 @@ describe('InvoiceService', () => {
 
       expect(repo.updateOutcome).toHaveBeenCalledWith(
         'rec-1',
-        expect.objectContaining({ providerType: 'subiekt', documentType: 'invoice' }),
+        expect.objectContaining({ providerType: 'subiekt-gt', documentType: 'invoice' }),
       );
     });
 
@@ -1600,6 +1653,193 @@ describe('InvoiceService', () => {
         'corr-rec',
         expect.objectContaining({ documentContent: null }),
       );
+    });
+
+    // #3372: issueCorrection previously skipped the idempotency read-gate
+    // entirely, so a retried call with the same key called
+    // `adapter.issueCorrection` a second time — the identical bug class
+    // `issueInvoice`'s gate already closes, one method over.
+    describe('idempotency gate (#3372)', () => {
+      // #3365 review: UNLIKE issueInvoice's R1, a keyless issueCorrection call
+      // is NOT exempt from the gate — core derives a deterministic fallback
+      // key (deriveCorrectionFallbackKey) and runs the SAME read-gate/create
+      // path as a caller-supplied key would. See correction-fallback-key.ts
+      // for why (the FE "Issue correction" button never supplies a key).
+      it('keyless: derives a deterministic fallback key, runs the read-gate, creates with that key (not null)', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+        repo.create.mockResolvedValue(
+          makeRecord({ id: 'corr-rec', status: 'pending', idempotencyKey: null }),
+        );
+
+        await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        expect(repo.findByIdempotencyKey).toHaveBeenCalledWith(
+          CONNECTION,
+          expect.stringMatching(/^correction-fallback:[0-9a-f]{64}$/),
+        );
+        expect(repo.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            idempotencyKey: expect.stringMatching(/^correction-fallback:[0-9a-f]{64}$/),
+          }),
+        );
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+      });
+
+      it('keyless: two calls with byte-identical content dedupe — the SECOND never reaches the adapter', async () => {
+        const issued = makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' });
+        repo.findByIdempotencyKey.mockResolvedValueOnce(null).mockResolvedValueOnce(issued);
+        repo.create.mockResolvedValue(makeRecord({ id: 'corr-rec', status: 'pending' }));
+
+        await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+        const result = await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        expect(result).toBe(issued);
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+      });
+
+      it('keyless: two calls with DIFFERENT correction content do NOT dedupe — both reach the adapter as separate documents', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+        repo.create.mockResolvedValue(makeRecord({ id: 'corr-rec', status: 'pending' }));
+
+        await service.issueCorrection(
+          makeCorrectionCmd({
+            idempotencyKey: undefined,
+            lines: [{ originalLineNumber: 1, newUnitPriceGross: 90 }],
+          }),
+        );
+        await service.issueCorrection(
+          makeCorrectionCmd({
+            idempotencyKey: undefined,
+            lines: [{ originalLineNumber: 1, newUnitPriceGross: 50 }],
+          }),
+        );
+
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(2);
+        const [firstCall, secondCall] = repo.create.mock.calls;
+        expect((firstCall[0] as { idempotencyKey: string }).idempotencyKey).not.toBe(
+          (secondCall[0] as { idempotencyKey: string }).idempotencyKey,
+        );
+      });
+
+      it('passes the derived fallback key through to the adapter (so a self-deriving adapter uses the SUPPLIED key, not its own)', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+        repo.create.mockResolvedValue(makeRecord({ id: 'corr-rec', status: 'pending' }));
+
+        await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledWith(
+          expect.objectContaining({
+            idempotencyKey: expect.stringMatching(/^correction-fallback:[0-9a-f]{64}$/),
+          }),
+        );
+      });
+
+      it('idempotent replay (issued): returns the issued row as-is, adapter NEVER called, NO create', async () => {
+        const issued = makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' });
+        repo.findByIdempotencyKey.mockResolvedValue(issued);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(issued);
+        expect(repo.create).not.toHaveBeenCalled();
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
+
+      it('R2/R3: a row under a LIVE issuing lease is NOT re-attempted (no claim, no provider call)', async () => {
+        const liveLeaseHit = makeRecord({
+          id: 'corr-in-flight',
+          status: 'issuing',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+        });
+        repo.findByIdempotencyKey.mockResolvedValue(liveLeaseHit);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(liveLeaseHit);
+        expect(repo.claimForIssue).not.toHaveBeenCalled();
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
+
+      it('R3: an in-doubt failed hit is NOT re-attempted — surfaced for manual reconciliation, NO provider call', async () => {
+        const inDoubtHit = makeRecord({
+          id: 'corr-f',
+          status: 'failed',
+          failureMode: 'in-doubt',
+          errorMessage: 'transport timeout — document may exist',
+        });
+        repo.findByIdempotencyKey.mockResolvedValue(inDoubtHit);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(inDoubtHit);
+        expect(repo.claimForIssue).not.toHaveBeenCalled();
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+        expect(repo.updateOutcome).not.toHaveBeenCalled();
+      });
+
+      it("retry-after-terminal-rejection: a 'rejected' failed hit IS re-attempted (claim, re-call adapter, no second create)", async () => {
+        const failedHit = makeRecord({
+          id: 'corr-failed',
+          status: 'failed',
+          failureMode: 'rejected',
+          documentType: 'corrected',
+          errorMessage: 'stale boom',
+        });
+        repo.findByIdempotencyKey.mockResolvedValue(failedHit);
+        repo.updateOutcome.mockResolvedValue(
+          makeRecord({ id: 'corr-failed', status: 'issued', documentType: 'corrected' }),
+        );
+
+        await service.issueCorrection(makeCorrectionCmd());
+
+        expect(repo.create).not.toHaveBeenCalled();
+        expect(repo.claimForIssue).toHaveBeenCalledWith('corr-failed', expect.any(Date));
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+        expect(repo.updateOutcome).toHaveBeenCalledWith(
+          'corr-failed',
+          expect.objectContaining({ status: 'issued' }),
+        );
+      });
+
+      it('create-race: create throws Duplicate -> re-read returns the winner, issues on the winner row', async () => {
+        repo.findByIdempotencyKey
+          .mockResolvedValueOnce(null) // read-gate miss
+          .mockResolvedValueOnce(makeRecord({ id: 'corr-winner', status: 'pending' })); // re-read
+        repo.create.mockRejectedValue(new DuplicateInvoiceRecordException(CONNECTION, KEY));
+        const finalRecord = makeRecord({ id: 'corr-winner', status: 'issued' });
+        repo.updateOutcome.mockResolvedValue(finalRecord);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(repo.findByIdempotencyKey).toHaveBeenCalledTimes(2);
+        expect(repo.claimForIssue).toHaveBeenCalledWith('corr-winner', expect.any(Date));
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+        expect(result).toBe(finalRecord);
+      });
+
+      it('create-race where winner already issued -> returns winner, adapter NOT called', async () => {
+        repo.findByIdempotencyKey
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(makeRecord({ id: 'corr-winner', status: 'issued' }));
+        repo.create.mockRejectedValue(new DuplicateInvoiceRecordException(CONNECTION, KEY));
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result.status).toBe('issued');
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
+
+      it('R2 single-flight: a LOST claim backs off WITHOUT calling the provider', async () => {
+        const reattemptable = makeRecord({ id: 'corr-lost', status: 'pending' });
+        repo.findByIdempotencyKey.mockResolvedValue(reattemptable);
+        repo.claimForIssue.mockResolvedValue(null);
+        repo.findById.mockResolvedValue(reattemptable);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(reattemptable);
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
     });
   });
 

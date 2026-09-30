@@ -260,7 +260,7 @@ export function ConnectionCapabilitiesPanel({
           This connection becomes <em>eligible</em> to issue{' '}
           {salesDocumentNoun(supportsInvoicing, supportsFiscalization)}. Which orders
           actually get one is decided under{' '}
-          <Link to="/settings/sales-documents">Sales documents</Link>, per country.
+          <Link to="/settings/sales-documents">Document routing</Link>, per country.
         </Alert>
       ) : null}
 

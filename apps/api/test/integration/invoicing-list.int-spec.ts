@@ -48,7 +48,7 @@ async function seedInvoice(ds: DataSource, overrides: SeedOverrides = {}): Promi
   const entity = repo.create({
     connectionId: overrides.connectionId ?? CONN_A,
     orderId: overrides.orderId ?? `ol_order_${Math.random().toString(36).slice(2, 8)}`,
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: overrides.status ?? 'issued',
     providerInvoiceId: null,

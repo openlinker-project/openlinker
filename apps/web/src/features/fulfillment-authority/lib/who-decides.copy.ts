@@ -243,7 +243,7 @@ export const PRESET_CHANGE_MEANING_COPY = {
    * an operator ends up reading a confident description of a broken state.
    */
   cannotTell: 'Two of your systems would both be in charge, so OpenLinker would decide neither.',
-  configuredElsewhere: 'This stays set up on the Sales documents page.',
+  configuredElsewhere: 'This stays set up on the Document routing page.',
 } as const;
 
 /** The confirm dialog — everything it can say before an arrangement is saved. */
@@ -303,7 +303,7 @@ export const ANSWER_COPY = {
   nobodyToRoute: 'Each shop decides (nothing to route)',
   cannotTell: "OpenLinker can't tell",
   /** A7 renders this as a link out, and mirrors no state of its own. */
-  configuredElsewhere: 'Set up under Sales documents',
+  configuredElsewhere: 'Set up under Document routing',
   /**
    * Only for a connection with no id at all.
    *
@@ -341,7 +341,7 @@ export const WHY_CODE_COPY: Readonly<Record<string, string | undefined>> = {
   'a5-claimed-by-connection': 'You have put this system in charge of deciding what happens to returns.',
   'a6-only-ol-holds-payment-credentials':
     'Only OpenLinker holds the payment credentials, so only OpenLinker can do it. This one cannot be handed over.',
-  'a7-configured-under-sales-documents': 'Configured per country under Sales documents.',
+  'a7-configured-under-sales-documents': 'Configured per country under Document routing.',
 } satisfies Record<AuthorityDefaultWhyCode, string>;
 
 /** Render order for the why-code vocabulary. */
@@ -381,7 +381,7 @@ export const ROW_DETAIL_COPY = {
    */
   lockedLabel: 'Cannot be handed over',
   /** A7's link out. */
-  elsewhereLinkLabel: 'Set up under Sales documents',
+  elsewhereLinkLabel: 'Set up under Document routing',
   /**
    * A switched-off connection still carrying a claim never changes the answer,
    * but an operator reading this row needs to know the claim is there.
