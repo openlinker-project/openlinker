@@ -206,6 +206,16 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // worklist listBenchWork returns; delegates to claimParcel for the actual
   // write and re-check.
   'BenchWorkController.claimNext',
+  // #3654. The ONE packer-reachable label WRITE: replace the label on this box
+  // with a different parcel size. Narrower than the /shipments/* routes it
+  // spares a packer a trip to an admin for: the body is parcel data only (global
+  // ValidationPipe whitelist + forbidNonWhitelisted, so no address or shipment
+  // id), the recipient is derived server-side from the order exactly as
+  // auto-dispatch derives it, and the route is work-scoped with no shipment id,
+  // so another order's shipment is unreachable. Serialised per work. It cannot
+  // issue an invoice or fiscal document (bench-never-issues.spec.ts). The packer
+  // still reaches no /shipments/* write directly (ADR-071: no new principal).
+  'BenchLabelController.replaceLabel',
   // pack-bench completion. Declare a parcel finished and off the bench — the completion act
   // after the last scan (label applied, invoice inside, box on the
   // trolley). Scoped exactly as getParcel scopes it, plus the ADR-074 lock a
