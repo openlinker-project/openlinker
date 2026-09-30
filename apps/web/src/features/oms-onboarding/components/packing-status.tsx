@@ -15,13 +15,16 @@
  *
  * @module features/oms-onboarding/components
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
+import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import type { PackerSummary } from '../../users';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { AddPackerDialog } from './add-packer-dialog';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
 
 export interface PackingStatusProps {
@@ -34,6 +37,9 @@ export interface PackingStatusProps {
   readonly stockDetail: string;
   readonly stockComplete: boolean;
   readonly packerNames: string | null;
+  readonly packers: readonly PackerSummary[];
+  /** Creating a user is admin-only; the page decides, this only renders it. */
+  readonly canAddPackers: boolean;
   readonly canWrite: boolean;
   readonly writeVisible: boolean;
   readonly demoReadOnly: boolean;
@@ -44,6 +50,7 @@ export interface PackingStatusProps {
 }
 
 export function PackingStatus(props: PackingStatusProps): ReactElement {
+  const [addPackerOpen, setAddPackerOpen] = useState(false);
   const rows: SetupChecklistRow[] = [
     {
       key: 'masters',
@@ -62,18 +69,30 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
       ok: props.stockComplete,
       title: COPY.step4.stock,
       detail: props.stockDetail,
-      action: (
+      // `/inventory/locations` is only registered when the routing UI is on
+      // (#3634); linking to it otherwise lands on the catch-all redirect.
+      action: isOmsRoutingUiEnabled() ? (
         <Link className="button button--ghost button--sm" to="/inventory/locations">
           {COPY.step4.view}
         </Link>
-      ),
+      ) : null,
     },
     {
       key: 'packers',
       ok: true,
       title: COPY.step4.packers,
       detail: props.packerNames ?? COPY.step4.noPackers,
-      action: (
+      action: props.canAddPackers ? (
+        <Button
+          type="button"
+          tone="ghost"
+          className="button--sm"
+          data-testid="btn-add-packers"
+          onClick={() => setAddPackerOpen(true)}
+        >
+          {COPY.status.addPackers}
+        </Button>
+      ) : (
         <Link className="button button--ghost button--sm" to="/users">
           {COPY.status.addPackers}
         </Link>
@@ -143,6 +162,15 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
         <h2 className="oms-onboarding__panel-title">{COPY.status.setupTitle}</h2>
         <SetupChecklist rows={rows} testId="setup-status-list" />
       </section>
+
+      {props.canAddPackers ? (
+        <AddPackerDialog
+          open={addPackerOpen}
+          onOpenChange={setAddPackerOpen}
+          packers={props.packers}
+          demoReadOnly={props.demoReadOnly}
+        />
+      ) : null}
     </div>
   );
 }

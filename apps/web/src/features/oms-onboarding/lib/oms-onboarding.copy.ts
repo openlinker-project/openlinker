@@ -233,6 +233,8 @@ export const omsOnboardingCopy = {
     setupTitle: 'Setup',
     open: 'Open',
     addPackers: 'Add packers',
+    addPackerDialogBody: 'They sign in at the pack bench with this login.',
+    closeDialog: 'Close',
     stockFrom: (located: string, total: string, names: string): string =>
       `${located} of ${total} from ${names}`,
     firstOrderTitle: 'Your first order',

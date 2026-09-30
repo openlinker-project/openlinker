@@ -56,7 +56,19 @@ interface CreatedPacker {
   readonly password: string;
 }
 
-export function StepPackers({ packers, canWrite, demoReadOnly, onBack, onContinue }: StepPackersProps): ReactElement {
+export interface PackerCreatorProps {
+  readonly packers: readonly PackerSummary[];
+  readonly canWrite: boolean;
+  readonly demoReadOnly: boolean;
+}
+
+/**
+ * The add-a-packer form, the one-time-password notice and the packer list.
+ * Shared by step 2 and the status page's dialog so there is one form: the
+ * password is held in this component's state, so whichever surface unmounts
+ * it (leaving the step, closing the dialog) also discards the password.
+ */
+export function PackerCreator({ packers, canWrite, demoReadOnly }: PackerCreatorProps): ReactElement {
   const createUser = useCreateUserMutation();
   const [created, setCreated] = useState<CreatedPacker | null>(null);
   const [copied, setCopied] = useState(false);
@@ -111,16 +123,7 @@ export function StepPackers({ packers, canWrite, demoReadOnly, onBack, onContinu
   const disabled = !canWrite || createUser.isPending;
 
   return (
-    <StepPanel
-      step={2}
-      why={COPY.step2.why}
-      onBack={onBack}
-      next={
-        <Button type="button" tone="primary" data-testid="btn-continue-step-2" onClick={onContinue}>
-          {packers.length > 0 ? COPY.continue : COPY.step2.skip}
-        </Button>
-      }
-    >
+    <>
       <form className="oms-onboarding__form" onSubmit={(event) => void onSubmit(event)} noValidate>
         <p className="oms-onboarding__subtitle">{COPY.step2.addTitle}</p>
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
@@ -224,6 +227,23 @@ export function StepPackers({ packers, canWrite, demoReadOnly, onBack, onContinu
           </ul>
         </div>
       ) : null}
+    </>
+  );
+}
+
+export function StepPackers({ packers, canWrite, demoReadOnly, onBack, onContinue }: StepPackersProps): ReactElement {
+  return (
+    <StepPanel
+      step={2}
+      why={COPY.step2.why}
+      onBack={onBack}
+      next={
+        <Button type="button" tone="primary" data-testid="btn-continue-step-2" onClick={onContinue}>
+          {packers.length > 0 ? COPY.continue : COPY.step2.skip}
+        </Button>
+      }
+    >
+      <PackerCreator packers={packers} canWrite={canWrite} demoReadOnly={demoReadOnly} />
 
       <Alert tone="info" title={COPY.step2.unassignedTitle}>
         {COPY.step2.unassignedBody}

@@ -26,15 +26,18 @@ export interface StockLocatedProgress {
 }
 
 const ONE = { limit: 1 } as const;
+// Stale rows are products the master no longer reports; no sync will ever
+// locate them, so counting them would leave the progress short for good.
+const LIVE = { excludeStale: true } as const;
 
 export function useStockLocatedProgress(mainLocationId: string | null): StockLocatedProgress {
   const apiClient = useApiClient();
   const enabled = mainLocationId !== null;
-  const locatedFilters = { locationId: mainLocationId ?? '' };
+  const locatedFilters = { locationId: mainLocationId ?? '', ...LIVE };
 
   const totalQuery = useQuery({
-    queryKey: inventoryQueryKeys.list({}, ONE),
-    queryFn: () => apiClient.inventory.list({}, ONE),
+    queryKey: inventoryQueryKeys.list(LIVE, ONE),
+    queryFn: () => apiClient.inventory.list(LIVE, ONE),
     enabled,
   });
 
