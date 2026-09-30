@@ -7,7 +7,12 @@
 import type { ComponentProps } from 'react';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../../test/test-utils';
 import { RoutingRulesPanel } from './routing-rules-panel';
 import type { MappingsApi } from '../api/mappings.api';
 import type {
@@ -67,7 +72,9 @@ function renderPanel(
       deliveryMethodsError={null}
       {...props}
     />,
-    { apiClient },
+    // The parcel controls are gated on `connections:write`, which only a
+    // signed-in session carries.
+    { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
   );
 }
 
@@ -295,7 +302,7 @@ describe('RoutingRulesPanel', () => {
         }),
       );
       expect(await screen.findByText('Box 30 x 20 x 10 cm, 0.5 kg')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Edit parcel' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Edit parcel' })).toBeInTheDocument();
     });
 
     it('should offer no parcel controls for a default-routed method', async () => {
