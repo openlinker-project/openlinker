@@ -52,6 +52,7 @@ export type {
 } from './lib/resolve-sales-document-record-word';
 
 // #3307 — the merged, keyset-paginated /sales-documents list (#3306).
+export { useSalesDocumentCountriesQuery } from './hooks/use-sales-document-countries-query';
 export { useSalesDocumentsListQuery } from './hooks/use-sales-documents-list-query';
 export { SalesDocumentListCell } from './components/sales-document-list-cell';
 export type {

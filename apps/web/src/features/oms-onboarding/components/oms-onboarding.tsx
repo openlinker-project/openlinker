@@ -44,6 +44,8 @@ import { usePackersQuery, type PackerSummary } from '../../users';
 import { useConfirmProductMasterMutation } from '../hooks/use-confirm-product-master-mutation';
 import { useFulfillmentSnapshotQuery } from '../hooks/use-fulfillment-snapshot-query';
 import { useMainLocationQuery } from '../hooks/use-main-location-query';
+import { useSetSetupStepSkippedMutation } from '../hooks/use-set-setup-step-skipped-mutation';
+import { useSetupSteps } from '../hooks/use-setup-steps';
 import { useSetPackingMutation } from '../hooks/use-set-packing-mutation';
 import { useStockLocatedProgress } from '../hooks/use-stock-located-progress';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
@@ -63,7 +65,6 @@ import {
 } from '../lib/onboarding-state';
 import { selectProductMasters } from '../lib/product-masters';
 import { FirstOrderPanel } from './first-order-panel';
-import { NextStepsNotice } from './next-steps-notice';
 import { PackingStatus } from './packing-status';
 import { StepPackers } from './step-packers';
 import { StepProductMaster } from './step-product-master';
@@ -186,6 +187,9 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
 
   const confirm = useConfirmProductMasterMutation();
   const setPacking = useSetPackingMutation();
+  const setStepSkipped = useSetSetupStepSkippedMutation();
+  // Admin-only: the document-routing read behind one of the steps is.
+  const setup = useSetupSteps(canWrite, packingConnection);
   const progress = useStockLocatedProgress(step1Done && mainLocation !== null ? mainLocation.id : null);
 
   const snapshotQuery = useFulfillmentSnapshotQuery({
@@ -358,7 +362,6 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
         masterNames={masterNames}
         onGoToStatus={() => setView('status')}
       />
-      <NextStepsNotice />
     </div>
   ) : (
     <>
@@ -380,6 +383,12 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
         stockComplete={progress.complete}
         packerNames={packerNames}
         packers={packers}
+        setup={setup}
+        onSetStepSkipped={(step, skipped) => {
+          if (packingConnection === null) return;
+          setStepSkipped.mutate({ packingConnectionId: packingConnection.id, step, skipped });
+        }}
+        settingStep={setStepSkipped.isPending}
         canAddPackers={canWrite}
         canWrite={canWrite && packingConnection !== null}
         writeVisible={write.visible}
@@ -392,7 +401,6 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
         }}
         onStartAgain={() => turnOn('status')}
       />
-      {liveNow ? <NextStepsNotice /> : null}
       <StopPackingDialog
         open={stopOpen}
         masterNames={offMasterNames}

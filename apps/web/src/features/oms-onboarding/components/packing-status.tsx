@@ -22,6 +22,8 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode'
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { PackerSummary } from '../../users';
+import type { SetupStepsView } from '../hooks/use-setup-steps';
+import { SETUP_STEP_PATHS, SetupStepKeys, type SetupStepKey } from '../lib/setup-steps';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import { AddPackerDialog } from './add-packer-dialog';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
@@ -37,6 +39,10 @@ export interface PackingStatusProps {
   readonly stockComplete: boolean;
   readonly packerNames: string | null;
   readonly packers: readonly PackerSummary[];
+  /** The steps after packing; `null` for a role that cannot read them. */
+  readonly setup: SetupStepsView | null;
+  readonly onSetStepSkipped: (step: SetupStepKey, skipped: boolean) => void;
+  readonly settingStep: boolean;
   /** Creating a user is admin-only; the page decides, this only renders it. */
   readonly canAddPackers: boolean;
   readonly canWrite: boolean;
@@ -105,6 +111,47 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
     },
   ];
 
+  if (props.setup !== null) {
+    const setup = props.setup;
+    for (const key of SetupStepKeys) {
+      const state = setup.states[key];
+      const copy = COPY.status.steps[key];
+      const detail =
+        state === 'done'
+          ? copy.done
+          : state === 'skipped'
+            ? COPY.status.steps.skipped
+            : state === 'unknown'
+              ? COPY.status.steps.unknown
+              : copy.pending;
+      rows.push({
+        key,
+        ok: state === 'done' || state === 'skipped',
+        title: copy.title,
+        detail,
+        action: (
+          <span className="oms-onboarding__actions">
+            <Link className="button button--ghost button--sm" to={SETUP_STEP_PATHS[key]}>
+              {state === 'done' ? COPY.status.steps.review : COPY.status.steps.setUp}
+            </Link>
+            {state === 'pending' || state === 'unknown' || state === 'skipped' ? (
+              <Button
+                type="button"
+                tone="ghost"
+                className="button--sm"
+                data-testid={`btn-step-${key}-${state === 'skipped' ? 'undo' : 'skip'}`}
+                disabled={!props.canWrite || props.settingStep}
+                onClick={() => props.onSetStepSkipped(key, state !== 'skipped')}
+              >
+                {state === 'skipped' ? COPY.status.steps.undo : COPY.status.steps.notNeeded}
+              </Button>
+            ) : null}
+          </span>
+        ),
+      });
+    }
+  }
+
   const disabledTitle = props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : undefined;
 
   return (
@@ -117,10 +164,20 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
         <div>
           <p className="oms-onboarding__banner-title">
             <span className="oms-onboarding__pulse" aria-hidden="true" />
-            {props.live ? COPY.status.onTitle : COPY.status.offTitle}
+            {props.live
+              ? props.setup === null
+                ? COPY.status.onTitle
+                : props.setup.complete
+                  ? COPY.status.setUpTitle
+                  : COPY.status.partialTitle
+              : COPY.status.offTitle}
           </p>
           <p className="oms-onboarding__banner-body">
-            {props.live ? props.bannerDetail : COPY.status.offBody(props.offMasterNames)}
+            {props.live
+              ? props.setup !== null && !props.setup.complete
+                ? `${COPY.status.stepsLeft(props.setup.left.length)} ${props.bannerDetail}`
+                : props.bannerDetail
+              : COPY.status.offBody(props.offMasterNames)}
           </p>
         </div>
         <div className="oms-onboarding__actions">
