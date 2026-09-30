@@ -75,6 +75,18 @@ export class ProductsService implements IProductsService {
     this.logger.debug(`Variants upserted for product: ${productId}`);
   }
 
+  async fillVariantPhysicalDimensionsIfAbsent(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<boolean> {
+    return this.variantRepository.fillPhysicalDimensionsIfAbsent(variantId, dims);
+  }
+
   async recordProductTaxRate(productId: string, rate: StoredTaxRate): Promise<void> {
     await this.productRepository.recordTaxRate(productId, rate);
   }

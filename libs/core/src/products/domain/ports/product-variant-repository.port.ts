@@ -247,4 +247,22 @@ export interface ProductVariantRepositoryPort {
       readonly heightMm?: number | null;
     }
   ): Promise<void>;
+
+  /**
+   * Fill-when-NULL writer for the four physical columns (#3650): each column
+   * is set only while it is still NULL, so a value already present - typed by
+   * an operator or filled by an earlier sync - is never overwritten. Distinct
+   * from `recordPhysicalDimensions`, which is the unconditional operator
+   * writer. Absent/`null` fields are skipped, never written as NULL.
+   * Returns true when at least one row column was actually filled.
+   */
+  fillPhysicalDimensionsIfAbsent(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<boolean>;
 }

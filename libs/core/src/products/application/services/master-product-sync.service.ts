@@ -284,6 +284,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     await this.productsService.upsertProduct(product);
     if (variants.length > 0) {
       await this.productsService.upsertVariants(internalProductId, variants);
+      await this.fillPhysicalData(variants, connectionId, correlationId);
     }
 
     let priceChangeObserverFailures = 0;
@@ -852,6 +853,42 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       description: sanitizeStoredHtml(product.description ?? null),
       images: product.images ?? null,
     };
+  }
+
+  /**
+   * Persist the master's weight/dimensions onto variants that have none (#3650).
+   *
+   * Fill-when-NULL through a dedicated writer rather than the upsert, so a value
+   * already present - typed by an operator or filled by an earlier pass - is
+   * never overwritten (#3403's single-writer rule). Best-effort: the catalogue
+   * body is already durable, and physical data is an enrichment, so a failure
+   * here is logged and never fails the product sync.
+   */
+  private async fillPhysicalData(
+    variants: ProductVariant[],
+    connectionId: string,
+    correlationId: string
+  ): Promise<void> {
+    for (const variant of variants) {
+      const { weightGrams, lengthMm, widthMm, heightMm } = variant;
+      const hasAny = [weightGrams, lengthMm, widthMm, heightMm].some((v) => typeof v === 'number');
+      if (!hasAny) {
+        continue;
+      }
+      try {
+        await this.productsService.fillVariantPhysicalDimensionsIfAbsent(variant.id, {
+          weightGrams: weightGrams ?? null,
+          lengthMm: lengthMm ?? null,
+          widthMm: widthMm ?? null,
+          heightMm: heightMm ?? null,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `[master-sync] could not fill physical data: variantId=${variant.id} ` +
+            `connectionId=${connectionId} correlationId=${correlationId}: ${(error as Error).message}`
+        );
+      }
+    }
   }
 
   /**
