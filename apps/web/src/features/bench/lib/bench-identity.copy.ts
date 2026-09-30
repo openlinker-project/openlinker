@@ -1,9 +1,8 @@
 /**
  * Pack-bench identity copy (#2413, stories A2–A4, ADR-071)
  *
- * One copy source for the three designed states in the `bench-identity`
- * mockup — locked, sign in, handover — so the overlay and the identity bar
- * cannot drift apart.
+ * One copy source for the designed states in the `bench-identity` mockup —
+ * locked and sign in — plus the idle warning.
  *
  * ## What this copy is NOT allowed to say
  *
@@ -21,18 +20,6 @@
  */
 
 export const benchIdentityCopy = {
-  bar: {
-    /** Story A4: visible without opening a menu, beside the item being scanned. */
-    signedInLabel: 'Signed in',
-    signedOutLabel: 'Nobody is signed in',
-    switchAction: 'Switch packer',
-    /**
-     * Says what the switch DOES, which the mockup puts beside the control.
-     * The previous wording described how easy it was and not what happens,
-     * and a packer taking over a bench needs the second one.
-     */
-    switchHint: 'Switching clears this session - the next person signs themself in',
-  },
   locked: {
     title: 'This bench is locked',
     body: 'Sign in to carry on. Nothing about the order that was open is shown here — no reference, no buyer, no address, nothing about what is in the box.',
@@ -44,12 +31,6 @@ export const benchIdentityCopy = {
     title: 'Sign in to this bench',
     body: 'Use your own account. It works at any bench in this warehouse.',
     submitAction: 'Sign in',
-  },
-  handover: {
-    title: 'Handing the bench over',
-    body: 'The next person to finish this box is the one recorded as having packed it. Check what has already been verified before you take it on.',
-    confirmAction: 'Sign in as someone else',
-    cancelAction: 'Stay signed in',
   },
   /** #3408 — the pre-lock countdown warning. Advisory, never a fourth screen. */
   warning: (secondsRemaining: number): string =>

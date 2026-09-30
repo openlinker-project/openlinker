@@ -1185,6 +1185,36 @@ textarea,
   letter-spacing: -0.02em;
 }
 
+/* A shell with no sidebar (the pack bench): the topbar and content take the
+   full width at every breakpoint, and the brand mark moves into the topbar,
+   where it sits flush instead of carrying the sidebar's padding. */
+@media (min-width: 1024px) {
+  .shell.shell--no-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'main';
+  }
+}
+
+.shell-topbar .shell-brand {
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* On a phone the rest of the app's topbar opens with a 36 px menu button and
+   the breadcrumb. The brand takes that slot here, so only the mark stays and
+   the name and environment badge give the breadcrumb its room back. */
+@media (max-width: 767px) {
+  .shell-topbar .shell-brand__name,
+  .shell-topbar .shell-brand .context-chip {
+    display: none;
+  }
+}
+
+/* The page owns its own gutters (`.bench-shell`), so the shell adds none. */
+.shell-content.shell-content--flush {
+  padding: 0;
+}
+
 /* ── Environment badge: version line (#3287) ─────────────────────────
  * The environment label (Dev/Stg/Prod) keeps its pre-existing single-line
  * layout; when a build version is available the badge stacks a second,
@@ -24664,34 +24694,6 @@ legend.analytics-settings-dialog__label {
   background: var(--bg-surface-elevated);
 }
 
-.bench-identity-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin: 0 var(--space-5);
-  padding: var(--space-3) var(--space-5);
-  background: var(--bg-surface-muted);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.875rem;
-}
-
-/* The mockup says out loud what the switch DOES, next to the control, rather
-   than leaving it to a `title` a gloved hand never hovers. */
-.bench-identity-bar__hint {
-  margin-left: auto;
-  margin-right: var(--space-4);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-wrap: pretty;
-}
-
-@media (max-width: 900px) {
-  .bench-identity-bar__hint {
-    display: none;
-  }
-}
-
 /* ── Pack bench — work list (#2416, W3b-3) ──────────────────────────────────
  *
  * Sized for a bench rather than a desk. The 44 px touch floor is unconditional
@@ -25377,7 +25379,8 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-3);
   justify-items: start;
   max-width: 42rem;
-  padding: var(--space-6) 0;
+  /* The same side gutter as the rail's search, take-next and tabs above it. */
+  padding: var(--space-6) var(--space-4);
 }
 
 .bench-work-empty__title {
@@ -26463,115 +26466,20 @@ legend.analytics-settings-dialog__label {
   overflow-y: auto;
 }
 
-/* ── Bench topbar (#3423, mockup-parity epic #3401) ──────────────────────
- * A bench-owned header, NOT `AppShell` — `/bench` stays outside
- * `AuthenticatedAppLayout` by design (#2413). Mirrors the mockup's
- * `.topbar`/`.shell-brand`/`.shell-crumbs`/`.shell-user-chip` visually. */
-.bench-topbar {
+/* ── Bench connectivity readout (#3422, moved by #3653) ──────────────────
+ * The bench carries the application's own topbar since #3653; this readout is
+ * the one part of the old bench-only topbar no other page has. Colour is never
+ * the only signal: the dot is always paired with its own word, per the rule
+ * that also governs `StatusBadge`. The middle tone is NOT "hardware" - see
+ * `bench-connectivity-indicator.tsx`. */
+.bench-status {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  height: 52px;
-  padding: 0 var(--space-5);
-  background: var(--bg-shell);
-  border-bottom: 1px solid var(--border-subtle);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-5) 0;
+  background: var(--bg-canvas);
 }
 
-.bench-topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.bench-topbar__brand-mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: var(--accent-primary);
-  display: grid;
-  place-items: center;
-  color: var(--text-on-primary);
-  font-weight: 700;
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
-.bench-topbar__brand-name {
-  font-weight: 600;
-  font-size: 0.875rem;
-  letter-spacing: -0.02em;
-}
-
-.bench-topbar__crumbs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--border-default);
-}
-
-.bench-topbar__crumbs-current {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-/* The crumb's parent, live for a viewer who can use it (#3340 follow-up).
-   Reads as text until hovered, because a breadcrumb that shouts is a
-   breadcrumb competing with the work. */
-.bench-topbar__crumbs-up {
-  color: inherit;
-  text-decoration: none;
-  border-radius: var(--radius-sm);
-}
-
-.bench-topbar__crumbs-up:hover {
-  color: var(--text-primary);
-  text-decoration: underline;
-}
-
-.bench-topbar__crumbs-up:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-/* The explicit exit. It survives the phone breakpoint that folds the crumbs
-   away, which is the width where a typed URL is least available. */
-.bench-topbar__leave {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 0.78125rem;
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.bench-topbar__leave:hover {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-}
-
-.bench-topbar__leave:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-.bench-topbar__spacer {
-  flex: 1;
-}
-
-/* #3422 - the connectivity readout. Colour is never the only signal: the dot
-   is always paired with its own word, per the accessibility rule that also
-   governs `StatusBadge`. The three tones map to #3407's three states, and the
-   middle one is NOT "hardware" - see `bench-topbar.tsx`. */
-.bench-topbar__conn {
+.bench-conn {
   align-items: center;
   display: inline-flex;
   gap: var(--space-2);
@@ -26580,7 +26488,7 @@ legend.analytics-settings-dialog__label {
   white-space: nowrap;
 }
 
-.bench-topbar__conn-dot {
+.bench-conn__dot {
   border-radius: 50%;
   flex-shrink: 0;
   height: 8px;
@@ -26588,97 +26496,22 @@ legend.analytics-settings-dialog__label {
   background: var(--status-success);
 }
 
-.bench-topbar__conn--server-unreachable .bench-topbar__conn-dot {
+.bench-conn--server-unreachable .bench-conn__dot {
   background: var(--status-warning);
 }
 
-.bench-topbar__conn--link-down .bench-topbar__conn-dot {
+.bench-conn--link-down .bench-conn__dot {
   background: var(--status-error);
 }
 
 /* The label carries the tone too, so the state survives a monochrome screen
    and a colour-blind reader. */
-.bench-topbar__conn--server-unreachable .bench-topbar__conn-label {
+.bench-conn--server-unreachable .bench-conn__label {
   color: var(--status-warning);
 }
 
-.bench-topbar__conn--link-down .bench-topbar__conn-label {
+.bench-conn--link-down .bench-conn__label {
   color: var(--status-error);
-}
-
-/* The label is the first thing to go at phone width - the dot keeps the
-   state on screen, and the `title` keeps the detail reachable. */
-@media (max-width: 560px) {
-  .bench-topbar__conn-label {
-    display: none;
-  }
-}
-
-.bench-topbar__user-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 3px 10px 3px 3px;
-  border-radius: var(--radius-pill);
-  height: 32px;
-}
-
-.bench-topbar__user-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
-  color: var(--text-inverse);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.65625rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.bench-topbar__user-name {
-  font-size: 0.78125rem;
-  font-weight: 500;
-}
-
-@media (max-width: 560px) {
-  /* `.theme-toggle` is `overflow: hidden`, so a topbar that merely ran out of
-     room CLIPPED its third option rather than scrolling — "System" became
-     unreachable with nothing to say so. The bar wraps instead, which needs
-     the fixed 52 px height released. */
-  .bench-topbar {
-    height: auto;
-    flex-wrap: wrap;
-    row-gap: var(--space-2);
-    padding-block: var(--space-2);
-  }
-
-  .bench-topbar__crumbs {
-    display: none;
-  }
-
-  .bench-topbar__user-name {
-    display: none;
-  }
-
-  /* TWO rows, not three. The spacer grows on a desk to push the trailing
-     group right; wrapping, that growth put the avatar on a line of its own. */
-  .bench-topbar__spacer {
-    flex-basis: 100%;
-    height: 0;
-  }
-
-  .bench-topbar .theme-toggle {
-    margin-left: auto;
-  }
-
-  /* The identity row follows the topbar's own gutter on a phone; the 24 px
-     inset it carries on a desk made it read as a floating strip. */
-  .bench-identity-bar {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-  }
 }
 
 /* `.order-head__ref` — the one value on the strip the mockup lifts, and only

@@ -8,9 +8,9 @@
  *
  * Deliberately NOT exported, per the start-narrow rule: the copy module (it is
  * read by the two components inside this folder and by nothing outside), and
- * `BenchIdentityOverlay` / `BenchIdentityBar` individually — a caller composing
- * them by hand could render the bar without the overlay and ship a bench that
- * never locks. `BenchSurface` is the composition, and it is what leaves.
+ * `BenchIdentityOverlay` on its own - a caller composing it by hand could
+ * render a body with no idle lock and ship a bench that never locks.
+ * `BenchSurface` is the composition, and it is what leaves.
  *
  * @module apps/web/src/features/bench
  */
