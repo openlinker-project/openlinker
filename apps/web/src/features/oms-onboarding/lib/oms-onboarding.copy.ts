@@ -52,6 +52,9 @@ export const omsOnboardingCopy = {
     noConnectionBody:
       'Connect a provider that issues invoices (for example inFakt, KSeF or Subiekt) or fiscal receipts (for example eparagony) first. Then come back here to choose what it issues.',
     addConnection: 'Add a connection',
+    automaticRequiredTitle: 'Documents must be issued automatically',
+    automaticRequiredBody:
+      'Choose what a connection issues, mark it Primary, and set its Trigger to an automatic option (for example Auto on order paid). With the Trigger on Manual, nothing is issued unless someone does it by hand.',
     perCountry:
       'Rules for a particular country, or a default for orders no rule covers, are set on the document routing page.',
     openRouting: 'Open document routing',
@@ -268,14 +271,14 @@ export const omsOnboardingCopy = {
     setUpTitle: 'OMS is set up',
     stepsLeft: (count: number): string =>
       `Packing works. ${String(count)} ${count === 1 ? 'step is' : 'steps are'} left.`,
-    offTitle: 'Packing is off',
+    offTitle: 'Fulfilment is off',
     offBody: (names: string): string =>
       `New orders go to ${names} and are packed there, as before. Your stock setup is kept.`,
     openFulfilment: 'Open Fulfilment',
     openBench: 'Open pack bench',
     goToStatus: 'Go to status',
-    stop: 'Stop packing in OpenLinker',
-    startAgain: 'Start packing again',
+    stop: 'Turn off fulfilment',
+    startAgain: 'Turn fulfilment back on',
     starting: 'Starting…',
     setupTitle: 'Setup',
     open: 'Open',
@@ -287,8 +290,8 @@ export const omsOnboardingCopy = {
       undo: 'Undo',
       salesDocuments: {
         title: 'Sales documents',
-        pending: 'Choose which document each order gets: an invoice or a receipt.',
-        done: 'Document routing is set up.',
+        pending: 'Documents are issued by hand, or not at all. Mark a connection Primary and set its Trigger to automatic.',
+        done: 'Documents are issued automatically.',
       },
       automations: {
         title: 'Automations',
@@ -325,18 +328,20 @@ export const omsOnboardingCopy = {
    * operator is pointed at both — as links, not as prose naming a menu.
    */
   stopDialog: {
-    title: 'Stop packing in OpenLinker?',
+    title: 'Turn off fulfilment in OpenLinker?',
     bodyNewOrders: (names: string): string =>
-      `New orders go to ${names} and are packed there, as before.`,
+      `New orders will go to ${names} and be packed there, as before.`,
     bodyExisting: (count: number): string =>
       count === 0
         ? 'Nothing is on Fulfilment right now.'
-        : `The ${String(count)} ${count === 1 ? 'parcel' : 'parcels'} already on Fulfilment stay there. Finish packing them at the pack bench.`,
-    bodyKept: 'Your stock setup is kept, so you can start again with one click.',
-    cancel: 'Cancel',
-    confirm: 'Stop packing',
-    stopping: 'Stopping…',
+        : `The ${String(count)} ${count === 1 ? 'parcel' : 'parcels'} already at the pack bench stay there. Finish packing them there.`,
+    bodyKept:
+      'Sales documents and automations keep running. Your stock setup is kept, so you can turn fulfilment back on with one click.',
+    cancel: 'Keep it on',
+    confirm: 'Turn off fulfilment',
+    stopping: 'Turning off…',
   },
+
 
   /** How the product masters are named in a sentence when there are two. */
   yourProductMasters: 'your product masters',

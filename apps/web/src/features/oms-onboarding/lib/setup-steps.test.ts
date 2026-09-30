@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SalesDocumentRow } from '../../sales-documents';
 import {
   deriveSetupStepState,
+  hasAutomaticDocumentIssuing,
   readSetupSkipped,
   summariseSetup,
   withSetupSkipped,
@@ -67,5 +69,36 @@ describe('summariseSetup', () => {
     const summary = summariseSetup({ salesDocuments: 'done', automations: 'pending', whoDecides: 'done' });
     expect(summary.complete).toBe(true);
     expect(summary.left).toEqual([]);
+  });
+});
+
+describe('hasAutomaticDocumentIssuing', () => {
+  const row = (overrides: Partial<SalesDocumentRow>): SalesDocumentRow => ({
+    connectionId: 'c1',
+    name: 'inFakt',
+    platformType: 'infakt',
+    status: 'active',
+    capability: 'Invoicing',
+    documentKind: 'invoice',
+    isPrimary: true,
+    triggerModel: 'auto-on-paid',
+    ...overrides,
+  });
+
+  it('should be true for an active primary connection with an automatic trigger', () => {
+    expect(hasAutomaticDocumentIssuing([row({})])).toBe(true);
+    expect(hasAutomaticDocumentIssuing([row({ triggerModel: 'auto-on-shipped' })])).toBe(true);
+  });
+
+  it('should be false while the trigger is manual or batched', () => {
+    expect(hasAutomaticDocumentIssuing([row({ triggerModel: 'manual' })])).toBe(false);
+    expect(hasAutomaticDocumentIssuing([row({ triggerModel: 'batched' })])).toBe(false);
+  });
+
+  it('should be false when no connection goes first, issues nothing, or is not active', () => {
+    expect(hasAutomaticDocumentIssuing([row({ isPrimary: false })])).toBe(false);
+    expect(hasAutomaticDocumentIssuing([row({ documentKind: null })])).toBe(false);
+    expect(hasAutomaticDocumentIssuing([row({ status: 'needs_reauth' })])).toBe(false);
+    expect(hasAutomaticDocumentIssuing([])).toBe(false);
   });
 });

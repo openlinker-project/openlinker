@@ -9,6 +9,7 @@
  *
  * @module features/oms-onboarding/lib
  */
+import type { SalesDocumentRow } from '../../sales-documents';
 import { withConfigKey } from './config-merge';
 import { omsOnboardingCopy as COPY } from './oms-onboarding.copy';
 
@@ -97,4 +98,24 @@ export function describeSetupStep(
           ? COPY.status.steps.unknown
           : copy.pending;
   return { title: copy.title, detail };
+}
+
+const AUTOMATIC_TRIGGERS: readonly string[] = ['auto-on-paid', 'auto-on-shipped'];
+
+/**
+ * Whether documents get issued without anyone asking: an active connection
+ * that issues something, is the one that goes first, and whose trigger is
+ * automatic. The trigger defaults to manual and can only be changed on the
+ * primary row, so a connection that issues "something" but is not primary, or
+ * is primary with the default trigger, leaves every document to be issued by
+ * hand. The OMS setup requires the automatic case.
+ */
+export function hasAutomaticDocumentIssuing(rows: readonly SalesDocumentRow[]): boolean {
+  return rows.some(
+    (row) =>
+      row.status === 'active' &&
+      row.documentKind !== null &&
+      row.isPrimary &&
+      AUTOMATIC_TRIGGERS.includes(row.triggerModel)
+  );
 }

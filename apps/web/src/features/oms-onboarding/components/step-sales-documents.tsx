@@ -26,7 +26,7 @@ import type { Connection } from '../../connections';
 import { SalesDocumentsPanel, deriveSalesDocumentRows } from '../../sales-documents';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import { SETUP_STEP_NUMBERS } from '../lib/onboarding-state';
-import { SETUP_STEP_PATHS } from '../lib/setup-steps';
+import { SETUP_STEP_PATHS, hasAutomaticDocumentIssuing } from '../lib/setup-steps';
 import { StepPanel } from './step-panel';
 
 export interface StepSalesDocumentsProps {
@@ -36,7 +36,11 @@ export interface StepSalesDocumentsProps {
 }
 
 export function StepSalesDocuments({ connections, onBack, onContinue }: StepSalesDocumentsProps): ReactElement {
-  const hasProvider = deriveSalesDocumentRows(connections).length > 0;
+  const rows = deriveSalesDocumentRows(connections);
+  const hasProvider = rows.length > 0;
+  // Required, not advised: the OMS setup is not done while documents wait for
+  // someone to issue them.
+  const automatic = hasAutomaticDocumentIssuing(rows);
 
   return (
     <StepPanel
@@ -44,13 +48,31 @@ export function StepSalesDocuments({ connections, onBack, onContinue }: StepSale
       why={COPY.salesDocumentsStep.why}
       onBack={onBack}
       next={
-        <Button type="button" tone="primary" data-testid="btn-continue-sales-documents" onClick={onContinue}>
+        <Button
+          type="button"
+          tone="primary"
+          data-testid="btn-continue-sales-documents"
+          disabled={!automatic}
+          title={automatic ? undefined : COPY.salesDocumentsStep.automaticRequiredTitle}
+          onClick={onContinue}
+        >
           {COPY.continue}
         </Button>
       }
     >
       {hasProvider ? (
-        <SalesDocumentsPanel />
+        <>
+          {automatic ? null : (
+            <Alert
+              tone="warning"
+              title={COPY.salesDocumentsStep.automaticRequiredTitle}
+              data-testid="sales-documents-automatic-required"
+            >
+              {COPY.salesDocumentsStep.automaticRequiredBody}
+            </Alert>
+          )}
+          <SalesDocumentsPanel />
+        </>
       ) : (
         <Alert
           tone="warning"
