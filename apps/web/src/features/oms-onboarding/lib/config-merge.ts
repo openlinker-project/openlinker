@@ -14,6 +14,8 @@
 
 export const STOCK_LOCATION_OVERRIDE_KEY = 'stockLocationOverride';
 export const SOURCING_CLAIM_KEY = 'sourcingAuthority';
+/** A3 "who picks and ships": read by the authority resolver, see `withPackingClaimsEnabled`. */
+export const EXECUTOR_CLAIM_KEY = 'fulfillmentExecutor';
 
 /** A new config with `key` set to `value`; every other key is untouched. */
 export function withConfigKey(
@@ -40,12 +42,38 @@ export function withSourcingClaimEnabled(
   config: Record<string, unknown> | null | undefined,
   enabled: boolean
 ): Record<string, unknown> {
-  const existing = config?.[SOURCING_CLAIM_KEY];
+  return withClaimEnabled(config, SOURCING_CLAIM_KEY, enabled);
+}
+
+/**
+ * Turning packing on or off moves BOTH authorities OpenLinker holds as the
+ * OMS: where an order ships from (`sourcingAuthority`, A2) and who picks and
+ * ships it (`fulfillmentExecutor`, A3). Writing only the first left "Who
+ * decides what" reading "Wherever the order lands today" for the second while
+ * packing was plainly on.
+ */
+export function withPackingClaimsEnabled(
+  config: Record<string, unknown> | null | undefined,
+  enabled: boolean
+): Record<string, unknown> {
+  return withClaimEnabled(
+    withClaimEnabled(config, SOURCING_CLAIM_KEY, enabled),
+    EXECUTOR_CLAIM_KEY,
+    enabled
+  );
+}
+
+function withClaimEnabled(
+  config: Record<string, unknown> | null | undefined,
+  key: string,
+  enabled: boolean
+): Record<string, unknown> {
+  const existing = config?.[key];
   const base =
     typeof existing === 'object' && existing !== null && !Array.isArray(existing)
       ? (existing as Record<string, unknown>)
       : {};
-  return withConfigKey(config, SOURCING_CLAIM_KEY, { ...base, enabled });
+  return withConfigKey(config, key, { ...base, enabled });
 }
 
 /**
