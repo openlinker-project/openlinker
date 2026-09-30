@@ -15,8 +15,10 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { OmsAttentionBadges, useOmsAttentionQuery } from '../../features/fulfillment-authority';
+import { ArchiveConnectionButton } from '../../features/connections/components/archive-connection-button';
+import { RestoreConnectionButton } from '../../features/connections/components/restore-connection-button';
 
-const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
+const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth', 'archived'] as const;
 
 function isValidStatus(value: string): value is ConnectionStatus {
   return CONNECTION_STATUSES.includes(value as ConnectionStatus);
@@ -32,7 +34,25 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
       return 'error';
     case 'needs_reauth':
       return 'warning';
+    case 'archived':
+      return 'neutral';
   }
+}
+
+/**
+ * #3657 — the only row-level write on this page. Archive is offered on a
+ * DISABLED connection alone (the API refuses any other status, and a two-step
+ * disable-then-archive keeps a live integration from being hidden by one
+ * click); Restore on an archived one. Every other status gets no action.
+ */
+function ConnectionRowAction({ connection }: { connection: Connection }): ReactElement | null {
+  if (connection.status === 'disabled') {
+    return <ArchiveConnectionButton connection={connection} />;
+  }
+  if (connection.status === 'archived') {
+    return <RestoreConnectionButton connection={connection} />;
+  }
+  return null;
 }
 
 /**
@@ -49,8 +69,18 @@ function buildColumns(
   // cannot call a hook. `platforms` turns the `platformType` slug into the
   // product name an operator recognises - load-bearing now that two products
   // can share a slug prefix (`subiekt-gt` vs `subiekt-nexo`).
-  platforms: readonly { platformType: string; displayName: string }[]
+  platforms: readonly { platformType: string; displayName: string }[],
+  canWrite: boolean
 ): DataTableColumn<Connection>[] {
+  const actionColumn: DataTableColumn<Connection>[] = canWrite
+    ? [
+        {
+          id: 'actions',
+          header: <span className="sr-only">Actions</span>,
+          cell: (connection) => <ConnectionRowAction connection={connection} />,
+        },
+      ]
+    : [];
   return [
   {
     id: 'name',
@@ -93,6 +123,7 @@ function buildColumns(
     accessor: (connection) => connection.status,
     sortable: true,
   },
+  ...actionColumn,
   ];
 }
 
@@ -113,7 +144,10 @@ export function ConnectionsListPage(): ReactElement {
     () => (connectionId: string) => attention.byConnectionId.get(connectionId) ?? [],
     [attention.byConnectionId]
   );
-  const columns = useMemo(() => buildColumns(attentionFor, plugins), [attentionFor, plugins]);
+  const columns = useMemo(
+    () => buildColumns(attentionFor, plugins, write.visible),
+    [attentionFor, plugins, write.visible]
+  );
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
@@ -242,6 +276,11 @@ export function ConnectionsListPage(): ReactElement {
                 <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
               </span>
             ),
+            // Outside the card's navigation link (data-table.tsx), which is
+            // the only legal home for a button on a card that sets rowHref.
+            actions: write.visible
+              ? (connection) => <ConnectionRowAction connection={connection} />
+              : undefined,
           }}
         />
       )}

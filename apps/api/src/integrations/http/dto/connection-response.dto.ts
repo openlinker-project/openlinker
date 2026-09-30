@@ -43,10 +43,17 @@ export class ConnectionResponseDto {
 
   @ApiProperty({
     description:
-      'Whether credentials are stored in the database (true = editable via PUT /credentials; false = sourced from environment variable)',
+      'Whether credentials are editable via PUT /credentials: true for a database-backed credential, and for a connection whose adapter needs credentials but holds none (a restored archived connection, #3657); false when they are sourced from an environment variable or the adapter takes none. Read `credentialsStored` to tell whether a value is actually present.',
     example: true,
   })
   credentialsBacked!: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether a credential row is currently stored for this connection. false on a restored archived connection until credentials are re-entered (#3657).',
+    example: true,
+  })
+  credentialsStored!: boolean;
 
   @ApiPropertyOptional({ description: 'Adapter key', example: 'prestashop.webservice.v1' })
   adapterKey?: string;
@@ -94,7 +101,8 @@ export class ConnectionResponseDto {
     variantGrouping: VariantGroupingModel,
     defaultRateLimit: ConnectionRateLimit | null,
     role?: UserRole,
-    isDemoModeEnabled = false
+    isDemoModeEnabled = false,
+    requiresCredentials = true
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
@@ -110,7 +118,13 @@ export class ConnectionResponseDto {
     // real non-admin response (#1124's protection is unchanged).
     const canViewConfig = role === 'admin' || (isDemoModeEnabled && role === 'viewer');
     dto.config = canViewConfig ? connection.config : {};
-    dto.credentialsBacked = connection.credentialsRef.startsWith('db:');
+    // #3657 — an empty ref on an adapter that needs credentials is a
+    // credential-less restored connection: PUT /credentials stores a fresh one,
+    // so it is editable. An empty ref on a credential-less adapter (ADR-055) is
+    // not - there is nothing to enter.
+    dto.credentialsStored = connection.credentialsRef.startsWith('db:');
+    dto.credentialsBacked =
+      dto.credentialsStored || (connection.credentialsRef === '' && requiresCredentials);
     dto.adapterKey = connection.adapterKey;
     dto.enabledCapabilities = connection.enabledCapabilities;
     dto.supportedCapabilities = supportedCapabilities;

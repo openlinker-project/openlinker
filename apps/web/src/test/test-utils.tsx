@@ -353,6 +353,8 @@ export function createMockApiClient(
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
       disable: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled' }),
+      archive: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'archived', credentialsBacked: true, credentialsStored: false }),
+      restore: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled', credentialsBacked: true, credentialsStored: false }),
       getBankAccounts: vi.fn().mockResolvedValue([]),
       setDefaultBankAccount: vi.fn().mockResolvedValue(undefined),
       getDiagnostics: vi.fn().mockResolvedValue({

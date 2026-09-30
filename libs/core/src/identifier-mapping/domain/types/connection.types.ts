@@ -28,8 +28,21 @@ export type PlatformType = string;
  * surface a precise "re-authentication required" affordance, and — like every
  * non-`active` status — the scheduler's `status: 'active'` filter stops
  * enqueuing jobs against it. A successful re-auth flips it back to `active`.
+ *
+ * `archived` is the soft delete (#3657): reachable only from `disabled`, and
+ * only through `ConnectionService.archive`, which also removes the stored
+ * credential. The row stays so identifier mappings, category mappings and
+ * history keep their `connectionId` namespace and name. An archived connection
+ * is excluded from `ConnectionPort.list()` unless a caller asks for
+ * `status: 'archived'` explicitly, and it can be restored to `disabled`.
  */
-export const ConnectionStatusValues = ['active', 'disabled', 'error', 'needs_reauth'] as const;
+export const ConnectionStatusValues = [
+  'active',
+  'disabled',
+  'error',
+  'needs_reauth',
+  'archived',
+] as const;
 
 /**
  * Connection status type
@@ -253,6 +266,13 @@ export interface ConnectionUpdate {
    */
   adapterKey?: string;
   enabledCapabilities?: string[];
+  /**
+   * Written only by `ConnectionService` (archive clears it to `''`, credential
+   * re-entry after a restore sets a fresh `db:` ref). Deliberately absent from
+   * the HTTP update DTO: the ref points at an encrypted row and must never be
+   * chosen by a caller.
+   */
+  credentialsRef?: string;
 }
 
 /**
@@ -262,5 +282,9 @@ export interface ConnectionUpdate {
  */
 export interface ConnectionFilters {
   platformType?: PlatformType;
+  /**
+   * Exact match. When absent, archived connections are EXCLUDED (#3657) - every
+   * other status is returned. `status: 'archived'` is the only way to list them.
+   */
   status?: ConnectionStatus;
 }

@@ -51,6 +51,51 @@ describe('ConnectionActionsPanel', () => {
     expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
   });
 
+  describe('archive / restore (#3657)', () => {
+    it('offers Archive on a disabled connection', async () => {
+      const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
+      renderWithProviders(<ConnectionActionsPanel connection={disabledConnection} />, adminSession);
+
+      expect(await screen.findByRole('button', { name: 'Archive' })).toBeInTheDocument();
+    });
+
+    it('does not offer Archive on an active connection', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
+
+      expect(await screen.findByRole('button', { name: 'Disable' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+    });
+
+    it('offers only Restore on an archived connection', async () => {
+      const archived = {
+        ...sampleConnection,
+        status: 'archived' as const,
+        credentialsStored: false,
+      };
+      renderWithProviders(<ConnectionActionsPanel connection={archived} />, adminSession);
+
+      expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /test connection/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /trigger sync/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enable' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+    });
+
+    it('hides Enable on a restored connection that has no credentials yet', async () => {
+      const restored = {
+        ...sampleConnection,
+        status: 'disabled' as const,
+        credentialsBacked: true,
+        credentialsStored: false,
+      };
+      renderWithProviders(<ConnectionActionsPanel connection={restored} />, adminSession);
+
+      expect(await screen.findByRole('button', { name: 'Archive' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Enable' })).not.toBeInTheDocument();
+    });
+  });
+
   it('does not offer enable for a connection that is not disabled', async () => {
     renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
 

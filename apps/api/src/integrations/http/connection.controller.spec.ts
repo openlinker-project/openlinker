@@ -82,6 +82,8 @@ describe('ConnectionController', () => {
         testPingTriggered: true,
       }),
       disable: jest.fn(),
+      archive: jest.fn(),
+      restore: jest.fn(),
     } as unknown as jest.Mocked<ConnectionService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -489,6 +491,58 @@ describe('ConnectionController', () => {
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.status).toBe('disabled');
       expect(service.disable).toHaveBeenCalledWith('connection-123');
+    });
+  });
+
+  describe('archive / restore (#3657)', () => {
+    const withState = (status: Connection['status'], credentialsRef: string): Connection =>
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        status,
+        {},
+        credentialsRef,
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+    it('should archive through the service and return the archived DTO', async () => {
+      service.archive.mockResolvedValue(withState('archived', ''));
+
+      const result = await controller.archive('connection-123', mockAdminUser);
+
+      expect(service.archive).toHaveBeenCalledWith('connection-123');
+      expect(result).toBeInstanceOf(ConnectionResponseDto);
+      expect(result.status).toBe('archived');
+      expect(result.credentialsStored).toBe(false);
+    });
+
+    it('should restore through the service and report the credentials as re-enterable', async () => {
+      service.restore.mockResolvedValue(withState('disabled', ''));
+
+      const result = await controller.restore('connection-123', mockAdminUser);
+
+      expect(service.restore).toHaveBeenCalledWith('connection-123');
+      expect(result.status).toBe('disabled');
+      expect(result.credentialsBacked).toBe(true);
+      expect(result.credentialsStored).toBe(false);
+    });
+
+    it('should report no editable credentials for a credential-less adapter', async () => {
+      integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+        adapterKey: 'openlinker.oms.v1',
+        platformType: 'openlinker',
+        supportedCapabilities: [],
+        requiresCredentials: false,
+      });
+      service.restore.mockResolvedValue(withState('disabled', ''));
+
+      const result = await controller.restore('connection-123', mockAdminUser);
+
+      expect(result.credentialsBacked).toBe(false);
     });
   });
 

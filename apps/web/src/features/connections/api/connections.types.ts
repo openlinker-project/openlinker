@@ -27,7 +27,12 @@ export type PlatformType = string;
  */
 export const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
-export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth';
+/**
+ * `archived` is the soft delete (#3657): a connection that was disabled and
+ * then removed from view. The API leaves it out of `GET /connections` unless
+ * `?status=archived` is asked for, and its stored credential is gone.
+ */
+export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth' | 'archived';
 
 /**
  * Well-known core capabilities — mirrors `CoreCapabilityValues` on the backend.
@@ -108,8 +113,15 @@ export interface Connection {
   platformType: PlatformType;
   status: ConnectionStatus;
   config: Record<string, unknown>;
-  /** True when credentials are stored in the database and can be rotated via PUT /credentials. */
+  /** True when credentials can be written via PUT /credentials (a stored database credential, or an empty slot on an adapter that needs one). */
   credentialsBacked: boolean;
+  /**
+   * True when a credential row is actually stored (#3657). `false` together
+   * with `credentialsBacked: true` is a restored archived connection whose
+   * credentials must be re-entered. Optional only so older hand-rolled test
+   * fixtures keep type-checking; read it through `hasMissingCredentials`.
+   */
+  credentialsStored?: boolean;
   adapterKey?: string;
   enabledCapabilities: string[];
   supportedCapabilities: string[];
@@ -403,4 +415,16 @@ export interface ConnectionDiagnostics {
    * per-source degradation to report in the first place.
    */
   unreadableSources?: ConnectionDiagnosticsSource[];
+}
+
+/**
+ * A connection that can hold credentials but currently holds none - what a
+ * restored archived connection looks like until they are re-entered (#3657).
+ * `credentialsStored` absent means an API that predates the field, which only
+ * ever reported stored credentials as editable, so it reads as "not missing".
+ */
+export function hasMissingCredentials(
+  connection: Pick<Connection, 'credentialsBacked' | 'credentialsStored'>
+): boolean {
+  return connection.credentialsBacked && connection.credentialsStored === false;
 }

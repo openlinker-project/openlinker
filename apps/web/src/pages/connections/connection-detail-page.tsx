@@ -5,6 +5,7 @@ import { hasPricingSyncPage } from '../../features/connections/lib/pricing-desti
 import { useProductMasterConnections } from '../../features/connections/hooks/use-product-master-connections';
 import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
 import { EnableConnectionButton } from '../../features/connections/components/EnableConnectionButton';
+import { RestoreConnectionButton } from '../../features/connections/components/restore-connection-button';
 import { ConnectionCapabilitiesPanel } from '../../features/connections/components/ConnectionCapabilitiesPanel';
 import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
@@ -12,6 +13,7 @@ import { CatalogTrustPanel } from '../../features/connections/components/catalog
 import { ConnectionSyncStatusPanel } from '../../features/connections/components/connection-sync-status-panel';
 import { RouterReadinessPanel } from '../../features/connections/components/router-readiness-panel';
 import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
+import { hasMissingCredentials } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList } from '../../shared/ui/key-value-list';
@@ -36,6 +38,8 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
       return 'error';
     case 'needs_reauth':
       return 'warning';
+    case 'archived':
+      return 'neutral';
   }
 }
 
@@ -99,6 +103,10 @@ function SyncPausedBanner({ connection }: { connection: Connection }): ReactElem
   const write = useWriteAccess('connections:write', demoMode);
 
   if (connection.status !== 'disabled') return null;
+  // A restored archived connection is disabled too, but "enable it to resume"
+  // would be false there: it has no credentials. CredentialsMissingBanner
+  // says what to do instead (#3657).
+  if (hasMissingCredentials(connection)) return null;
 
   return (
     <Alert
@@ -112,6 +120,71 @@ function SyncPausedBanner({ connection }: { connection: Connection }): ReactElem
     >
       This connection is disabled, so OpenLinker runs no jobs against it. Its configuration,
       credentials, and mappings are untouched. Enable it to resume.
+    </Alert>
+  );
+}
+
+/**
+ * #3657 — a restored archived connection comes back disabled with its
+ * credential deleted. It cannot be enabled until credentials are entered again,
+ * so the banner offers that step, not Enable. Same recovery targets as
+ * {@link ReauthRequiredBanner}: an OAuth platform re-authenticates through its
+ * setup wizard, any other platform through the edit page.
+ */
+function CredentialsMissingBanner({ connection }: { connection: Connection }): ReactElement | null {
+  const platform = usePlatform(connection.platformType);
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
+
+  if (connection.status !== 'disabled' || !hasMissingCredentials(connection)) return null;
+
+  const oauthReauthTo =
+    platform?.requiresExternalAuthRedirect && platform.setupCard?.to
+      ? `${platform.setupCard.to}?reauth=${connection.id}`
+      : null;
+
+  return (
+    <Alert
+      tone="info"
+      title="Credentials needed"
+      action={
+        write.visible ? (
+          oauthReauthTo ? (
+            <Link className="button button--primary" to={oauthReauthTo}>
+              Re-authenticate
+            </Link>
+          ) : (
+            <Link className="button button--primary" to={`/connections/${connection.id}/edit`}>
+              Enter credentials
+            </Link>
+          )
+        ) : undefined
+      }
+    >
+      This connection was restored from the archive, which does not bring back its credentials.
+      Enter them again, then enable the connection to resume syncing.
+    </Alert>
+  );
+}
+
+/**
+ * #3657 — an archived connection is reachable only by its URL (a history link,
+ * or the Archived filter on the list). Say what it is and offer the way back.
+ */
+function ArchivedBanner({ connection }: { connection: Connection }): ReactElement | null {
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
+
+  if (connection.status !== 'archived') return null;
+
+  return (
+    <Alert
+      tone="info"
+      title="This connection is archived"
+      action={write.visible ? <RestoreConnectionButton connection={connection} /> : undefined}
+    >
+      It is hidden from your connections and runs no jobs, and its credentials were deleted. Its
+      mappings and history are kept. Restore it to set it up again.
     </Alert>
   );
 }
@@ -312,6 +385,8 @@ export function ConnectionDetailPage(): ReactElement {
       ) : null}
       {connection ? <ReauthRequiredBanner connection={connection} /> : null}
       {connection ? <SyncPausedBanner connection={connection} /> : null}
+      {connection ? <CredentialsMissingBanner connection={connection} /> : null}
+      {connection ? <ArchivedBanner connection={connection} /> : null}
       {connection ? (
         <ProductCatalogLinkBanner
           connection={connection}
@@ -361,7 +436,11 @@ export function ConnectionDetailPage(): ReactElement {
                   {
                     id: 'credentials',
                     label: 'Credentials',
-                    value: connection.credentialsBacked ? 'DB-managed' : 'Environment variable',
+                    value: hasMissingCredentials(connection)
+                      ? 'Not set'
+                      : connection.credentialsBacked
+                        ? 'DB-managed'
+                        : 'Environment variable',
                   },
                   {
                     id: 'adapter',
