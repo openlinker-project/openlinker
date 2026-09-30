@@ -62,6 +62,61 @@ export const FulfillmentRoutingSourceValues = ['rule', 'default'] as const;
 export type FulfillmentRoutingSource = (typeof FulfillmentRoutingSourceValues)[number];
 
 /**
+ * Parcel shape a routing rule ships with (#3651). Every field is nullable
+ * because a carrier needs different things: a locker takes a size `parcelTemplate`,
+ * a courier needs a fixed L/W/H box, and `defaultWeightGrams` is the per-unit
+ * fallback for a variant with no weight of its own. The box is a fixed size per
+ * rule and is NEVER computed from items (carton selection is out of scope).
+ *
+ * Dimensions are all-or-none; {@link normalizeParcelProfile} enforces that.
+ */
+export interface FulfillmentParcelProfile {
+  parcelTemplate: string | null;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  defaultWeightGrams: number | null;
+}
+
+/** Wire-level bounds shared by the API DTO and the persistence layer (mm / g). */
+export const PARCEL_PROFILE_BOUNDS = {
+  dimensionMmMax: 5000,
+  defaultWeightGramsMax: 100000,
+  parcelTemplateMaxLength: 32,
+} as const;
+
+/**
+ * Collapse a profile to `null` when it carries nothing, so "no profile" has ONE
+ * representation and a rule saved with an all-null profile behaves byte-for-byte
+ * like a rule saved without one. Returns `'incomplete-dimensions'` when only
+ * some of length/width/height are set - a partial box is meaningless to every
+ * carrier and would otherwise fail late, at the carrier preflight.
+ */
+export function normalizeParcelProfile(
+  input: Partial<FulfillmentParcelProfile> | null | undefined,
+): FulfillmentParcelProfile | null | 'incomplete-dimensions' {
+  if (!input) {
+    return null;
+  }
+  const template = input.parcelTemplate?.trim();
+  const profile: FulfillmentParcelProfile = {
+    parcelTemplate: template ? template : null,
+    lengthMm: input.lengthMm ?? null,
+    widthMm: input.widthMm ?? null,
+    heightMm: input.heightMm ?? null,
+    defaultWeightGrams: input.defaultWeightGrams ?? null,
+  };
+  const dims = [profile.lengthMm, profile.widthMm, profile.heightMm];
+  const setDims = dims.filter((d) => d !== null).length;
+  if (setDims !== 0 && setDims !== 3) {
+    return 'incomplete-dimensions';
+  }
+  const empty =
+    profile.parcelTemplate === null && setDims === 0 && profile.defaultWeightGrams === null;
+  return empty ? null : profile;
+}
+
+/**
  * Upsert input for a routing rule. `sourceConnectionId` is supplied by the
  * caller of `replaceForConnection` (the connection the rules are scoped to),
  * so it is not repeated here. A stored rule always names a processor, so
@@ -73,6 +128,8 @@ export interface FulfillmentRoutingRuleInput {
   /** The connection that fulfils. For `omp_fulfilled` this is the OMP
    * connection; for the other kinds the carrier / source-broker connection. */
   processorConnectionId: string;
+  /** Optional parcel profile (#3651). Absent/null/all-null = no profile. */
+  parcelProfile?: Partial<FulfillmentParcelProfile> | null;
 }
 
 /**
@@ -107,6 +164,12 @@ export interface FulfillmentRoutingResolution {
   processorConnectionId: string | null;
   source: FulfillmentRoutingSource;
   processorAvailable: boolean;
+  /**
+   * The matched rule's parcel profile (#3651); `null` for the `default` source
+   * and for a rule saved without one. Auto-dispatch and the label-form prefill
+   * read it; it never affects which processor is chosen.
+   */
+  parcelProfile: FulfillmentParcelProfile | null;
 }
 
 /**

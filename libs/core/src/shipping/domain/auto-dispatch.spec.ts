@@ -1,5 +1,7 @@
 import {
   resolveAutoDispatchDeliveryIntent,
+  findMissingParcelRequirement,
+  mergeAutoDispatchParcelOptions,
   resolveAutoDispatchParcel,
   resolveAutoDispatchRecipient,
   type AutoDispatchWorkLine,
@@ -150,6 +152,75 @@ describe('resolveAutoDispatchParcel', () => {
     ];
 
     expect(resolveAutoDispatchParcel(oneLine, weights, {})).toEqual({ weightGrams: 133 });
+  });
+});
+
+describe('mergeAutoDispatchParcelOptions (#3651)', () => {
+  const emptyProfile = {
+    parcelTemplate: null,
+    lengthMm: null,
+    widthMm: null,
+    heightMm: null,
+    defaultWeightGrams: null,
+  };
+
+  it('should yield exactly the connection options when there is no profile', () => {
+    expect(mergeAutoDispatchParcelOptions(null, { parcelTemplate: 'small', defaultWeightGrams: 90 })).toEqual({
+      parcelTemplate: 'small',
+      defaultWeightGrams: 90,
+    });
+    expect(mergeAutoDispatchParcelOptions(emptyProfile, {})).toEqual({});
+  });
+
+  it('should let the profile win per field and fall through where it is null', () => {
+    expect(
+      mergeAutoDispatchParcelOptions(
+        { ...emptyProfile, parcelTemplate: 'large' },
+        { parcelTemplate: 'small', defaultWeightGrams: 90 },
+      ),
+    ).toEqual({ parcelTemplate: 'large', defaultWeightGrams: 90 });
+  });
+
+  it('should emit dimensions only for a complete box', () => {
+    expect(
+      mergeAutoDispatchParcelOptions({ ...emptyProfile, lengthMm: 300, widthMm: 200, heightMm: 100 }, {})
+        .dimensions,
+    ).toEqual({ length: 300, width: 200, height: 100 });
+    expect(mergeAutoDispatchParcelOptions({ ...emptyProfile, lengthMm: 300 }, {}).dimensions).toBeUndefined();
+  });
+
+  it('should produce a byte-identical parcel to today when the rule has no profile', () => {
+    const lines = [{ productVariantId: 'v1', totalQuantity: 2, cancelledQuantity: 0 }];
+    const weights = new Map([['v1', 200]]);
+    const connection = { parcelTemplate: 'small' };
+    expect(resolveAutoDispatchParcel(lines, weights, mergeAutoDispatchParcelOptions(null, connection))).toEqual(
+      resolveAutoDispatchParcel(lines, weights, connection),
+    );
+  });
+
+  it('should attach dimensions to the resolved parcel', () => {
+    const lines = [{ productVariantId: 'v1', totalQuantity: 1, cancelledQuantity: 0 }];
+    expect(
+      resolveAutoDispatchParcel(lines, new Map([['v1', 500]]), {
+        dimensions: { length: 300, width: 200, height: 100 },
+      }),
+    ).toEqual({ weightGrams: 500, dimensions: { length: 300, width: 200, height: 100 } });
+  });
+});
+
+describe('findMissingParcelRequirement (#3651)', () => {
+  it('should report dimensions when required and absent', () => {
+    expect(findMissingParcelRequirement({ weightGrams: 1 }, { requiresDimensions: true })).toBe('dimensions');
+  });
+
+  it('should report nothing when dimensions are present or not required', () => {
+    expect(
+      findMissingParcelRequirement(
+        { weightGrams: 1, dimensions: { length: 1, width: 1, height: 1 } },
+        { requiresDimensions: true },
+      ),
+    ).toBeNull();
+    expect(findMissingParcelRequirement({ weightGrams: 1 }, { requiresDimensions: false })).toBeNull();
   });
 });
 

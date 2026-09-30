@@ -168,6 +168,7 @@ import {
   toSalesDocumentViewDto,
 } from './dto/sales-document-view-response.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
+import { ParcelProfileResponseDto } from '../../mappings/http/dto/routing-rule-response.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
 /**
@@ -1247,6 +1248,9 @@ export class OrdersController {
       processorKind: resolution.processorKind,
       processorConnectionId: resolution.processorConnectionId,
       processorAvailable: resolution.processorAvailable,
+      parcelProfile: resolution.parcelProfile
+        ? ParcelProfileResponseDto.fromDomain(resolution.parcelProfile)
+        : null,
     };
   }
 
