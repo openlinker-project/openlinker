@@ -18,7 +18,6 @@
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -69,13 +68,19 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
       ok: props.stockComplete,
       title: COPY.step4.stock,
       detail: props.stockDetail,
-      // `/inventory/locations` is only registered when the routing UI is on
-      // (#3634); linking to it otherwise lands on the catch-all redirect.
-      action: isOmsRoutingUiEnabled() ? (
-        <Link className="button button--ghost button--sm" to="/inventory/locations">
-          {COPY.step4.view}
-        </Link>
-      ) : null,
+      // The stock sync is background work, so "View" opens its job log: the
+      // place to see whether it is running, retrying or failing. Filtered to
+      // the first product master's connection (`/jobs-logs` reads the filter
+      // from the URL).
+      action:
+        props.firstMasterId === null ? null : (
+          <Link
+            className="button button--ghost button--sm"
+            to={`/jobs-logs?connectionId=${encodeURIComponent(props.firstMasterId)}`}
+          >
+            {COPY.step4.view}
+          </Link>
+        ),
     },
     {
       key: 'packers',

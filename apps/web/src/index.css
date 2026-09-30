@@ -27755,7 +27755,9 @@ legend.analytics-settings-dialog__label {
 .setup-stepper__button:disabled { cursor: not-allowed; opacity: 0.6; }
 .setup-stepper__button:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
 
-.oms-onboarding { display: flex; flex-direction: column; gap: var(--space-4); }
+/* The mockup's `.content` caps every state (wizard, waiting, status) at 1120px
+   less its padding, so the page reads as a column rather than a full-width sheet. */
+.oms-onboarding { display: flex; flex-direction: column; gap: var(--space-4); max-width: 67rem; width: 100%; }
 .oms-onboarding__stack { display: flex; flex-direction: column; gap: var(--space-4); }
 .oms-onboarding__panel { display: flex; flex-direction: column; gap: var(--space-4); }
 .oms-onboarding__panel-head { display: flex; flex-direction: column; gap: var(--space-1); }
