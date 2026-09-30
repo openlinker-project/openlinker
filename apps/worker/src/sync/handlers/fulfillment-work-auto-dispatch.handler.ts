@@ -24,6 +24,7 @@
  * | `not-enabled` | `business_failure` — the config decided against this, retrying changes nothing |
  * | `already-has-label` | `ok` — a no-op, not a failure: the "buy at most once" guard |
  * | `no-weight` | `business_failure` — a variant carries no weight and no fallback is configured; deterministic until an operator acts |
+ * | `no-dimensions` (#3651) | `business_failure` — the routed carrier declares it needs explicit L/W/H and the routing rule supplies none; deterministic until an operator sets a box on the rule |
  * | `no-address` | `business_failure` — the recipient projection could not produce a deliverable address |
  * | `no-delivery-method` (`UndispatchableResolutionException`) | `business_failure` — the resolved processor cannot fulfil this delivery shape; a routing/config fact, not a timing one |
  * | `shipment-claimed-by-sibling-work` (`FulfillmentWorkDispatchConflictException`, #3340 follow-up) | `business_failure` — a split order's ALREADY-active shipment cannot be attributed to this work; a persisted-state fact, not a timing one |
@@ -45,6 +46,11 @@ import {
   type FulfillmentWorkView,
   type IFulfillmentWorklistService,
 } from '@openlinker/core/fulfillment';
+import {
+  FULFILLMENT_ROUTING_SERVICE_TOKEN,
+  FULFILLMENT_PROCESSOR_KIND,
+  type IFulfillmentRoutingService,
+} from '@openlinker/core/mappings';
 import { readAutoDispatchConfig, type AutoDispatchConfig } from '@openlinker/core/identifier-mapping';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
@@ -64,11 +70,17 @@ import {
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   UndispatchableResolutionException,
+  findMissingParcelRequirement,
+  isParcelRequirementsReader,
+  mergeAutoDispatchParcelOptions,
   resolveAutoDispatchDeliveryIntent,
   resolveAutoDispatchParcel,
+  resolveCarrierMethod,
   resolveAutoDispatchRecipient,
   type IShipmentDispatchService,
+  type AutoDispatchParcelProfile,
   type IShipmentQueryService,
+  type ShippingProviderManagerPort,
   type ShipmentDispatchInput,
 } from '@openlinker/core/shipping';
 import type {
@@ -96,7 +108,9 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly products: IProductsService
+    private readonly products: IProductsService,
+    @Inject(FULFILLMENT_ROUTING_SERVICE_TOKEN)
+    private readonly routing: IFulfillmentRoutingService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -131,21 +145,27 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
 
     const work = await this.loadWork(job, payload.workId);
 
+    // Read before the parcel: the routing rule (keyed on the order's source
+    // connection + delivery method) can carry a parcel profile (#3651).
+    const record = await this.orderRecords.getOrderRecord(payload.orderId);
+    if (record === null) {
+      // Timing state — the same race `FulfillmentWorkDispatchHandler` tolerates.
+      throw this.retryable(job, `order record not found: orderId=${payload.orderId}`);
+    }
+    const resolution = await this.routing.resolve({
+      sourceConnectionId: record.sourceConnectionId,
+      sourceDeliveryMethodId: record.sourceDeliveryMethodId,
+    });
+
     // `no-weight` — the weight decides what the carrier charges, so a mixed
     // known/unknown parcel refuses rather than guessing.
-    const parcel = await this.resolveParcel(work, autoDispatch);
+    const parcel = await this.resolveParcel(work, autoDispatch, resolution.parcelProfile);
     if (parcel === null) {
       this.logger.warn(
         `fulfillment.work.autoDispatch refused (no-weight): workId=${payload.workId} ` +
           `connectionId=${job.connectionId}`
       );
       return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_weight' };
-    }
-
-    const record = await this.orderRecords.getOrderRecord(payload.orderId);
-    if (record === null) {
-      // Timing state — the same race `FulfillmentWorkDispatchHandler` tolerates.
-      throw this.retryable(job, `order record not found: orderId=${payload.orderId}`);
     }
 
     let order;
@@ -187,6 +207,17 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
           `orderId=${payload.orderId}`
       );
       return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_address' };
+    }
+
+    // `no-dimensions` (#3651) - the routed carrier declares it needs an explicit
+    // box and the rule supplied none. Refused before the carrier is called
+    // instead of surfacing later as a carrier preflight rejection.
+    if (await this.isMissingRequiredDimensions(job, resolution, deliveryIntent, parcel)) {
+      this.logger.warn(
+        `fulfillment.work.autoDispatch refused (no-dimensions): workId=${payload.workId} ` +
+          `orderId=${payload.orderId} connectionId=${job.connectionId}`
+      );
+      return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_dimensions' };
     }
 
     const input: ShipmentDispatchInput = {
@@ -324,18 +355,58 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
     }
   }
 
+  private async isMissingRequiredDimensions(
+    job: SyncJob,
+    resolution: Awaited<ReturnType<IFulfillmentRoutingService['resolve']>>,
+    deliveryIntent: ReturnType<typeof resolveAutoDispatchDeliveryIntent>,
+    parcel: NonNullable<ShipmentDispatchInput['parcel']>
+  ): Promise<boolean> {
+    // An OMP-fulfilled resolution buys no label here, so nothing to require.
+    if (
+      resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled ||
+      resolution.processorConnectionId === null
+    ) {
+      return false;
+    }
+    let adapter: ShippingProviderManagerPort;
+    try {
+      adapter = await this.integrations.getCapabilityAdapter<ShippingProviderManagerPort>(
+        resolution.processorConnectionId,
+        'ShippingProviderManager'
+      );
+    } catch (error) {
+      // Transient (disabled connection, credential failure), like the config read.
+      throw this.retryable(
+        job,
+        `could not resolve the shipping provider: connectionId=${resolution.processorConnectionId}`,
+        error instanceof Error ? error : undefined
+      );
+    }
+    if (!isParcelRequirementsReader(adapter)) {
+      return false;
+    }
+    const method = resolveCarrierMethod(deliveryIntent, adapter.getSupportedMethods());
+    // No resolvable method is `no-delivery-method`, decided by dispatch().
+    if (method === null) {
+      return false;
+    }
+    return findMissingParcelRequirement(parcel, adapter.getParcelRequirements(method)) !== null;
+  }
+
   private async resolveParcel(
     work: FulfillmentWorkView,
-    autoDispatch: AutoDispatchConfig
+    autoDispatch: AutoDispatchConfig,
+    parcelProfile: AutoDispatchParcelProfile | null
   ): Promise<ShipmentDispatchInput['parcel'] | null> {
     const variantIds = Array.from(new Set(work.lines.map((line) => line.productVariantId)));
     const variants = variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
     const weightByVariantId = new Map(variants.map((variant) => [variant.id, variant.weightGrams]));
 
-    return resolveAutoDispatchParcel(work.lines, weightByVariantId, {
-      parcelTemplate: autoDispatch.parcelTemplate,
-      defaultWeightGrams: autoDispatch.defaultWeightGrams,
-    });
+    return resolveAutoDispatchParcel(
+      work.lines,
+      weightByVariantId,
+      mergeAutoDispatchParcelOptions(parcelProfile, autoDispatch)
+    );
   }
 
   private retryable(job: SyncJob, message: string, cause?: Error): SyncJobExecutionError {

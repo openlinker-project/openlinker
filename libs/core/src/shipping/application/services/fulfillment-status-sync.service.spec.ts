@@ -617,6 +617,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorConnectionId: 'conn-inpost',
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],
@@ -637,6 +638,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorConnectionId: 'conn-different-ps',
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],
@@ -655,6 +657,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorConnectionId: PS,
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],
