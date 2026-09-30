@@ -58,8 +58,14 @@ describe('summariseSetup', () => {
   });
 
   it('should list pending and unknown steps as left, never as complete', () => {
-    const summary = summariseSetup({ salesDocuments: 'pending', automations: 'unknown', whoDecides: 'done' });
+    const summary = summariseSetup({ salesDocuments: 'pending', automations: 'done', whoDecides: 'unknown' });
     expect(summary.complete).toBe(false);
-    expect(summary.left).toEqual(['salesDocuments', 'automations']);
+    expect(summary.left).toEqual(['salesDocuments', 'whoDecides']);
+  });
+
+  it('should not count automations as left, since nothing is set on that step', () => {
+    const summary = summariseSetup({ salesDocuments: 'done', automations: 'pending', whoDecides: 'done' });
+    expect(summary.complete).toBe(true);
+    expect(summary.left).toEqual([]);
   });
 });

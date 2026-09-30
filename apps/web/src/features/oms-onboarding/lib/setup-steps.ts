@@ -22,6 +22,12 @@ export type SetupStepKey = (typeof SetupStepKeys)[number];
  */
 export type SetupStepState = 'done' | 'pending' | 'skipped' | 'unknown';
 
+/**
+ * Steps that are only looked at: nothing is set on them, so an installation
+ * with none of them is not "partially set up".
+ */
+export const SETUP_REVIEW_ONLY: readonly SetupStepKey[] = ['automations'];
+
 /** Where the operator takes each step. */
 export const SETUP_STEP_PATHS: Readonly<Record<SetupStepKey, string>> = {
   salesDocuments: '/settings/sales-documents',
@@ -65,12 +71,14 @@ export function deriveSetupStepState(done: boolean | null, skipped: boolean): Se
 export interface SetupSummary {
   /** Every step is done or declared not needed. */
   readonly complete: boolean;
-  /** Steps the operator still has to act on, or whose state is not known. */
+  /** Steps the operator still has to act on, or whose state is not known (review-only steps never are). */
   readonly left: readonly SetupStepKey[];
 }
 
 export function summariseSetup(states: Readonly<Record<SetupStepKey, SetupStepState>>): SetupSummary {
-  const left = SetupStepKeys.filter((key) => states[key] === 'pending' || states[key] === 'unknown');
+  const left = SetupStepKeys.filter(
+    (key) => !SETUP_REVIEW_ONLY.includes(key) && (states[key] === 'pending' || states[key] === 'unknown')
+  );
   return { complete: left.length === 0, left };
 }
 

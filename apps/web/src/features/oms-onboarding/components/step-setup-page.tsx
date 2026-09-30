@@ -16,7 +16,12 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode'
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
-import { SETUP_STEP_PATHS, type SetupStepKey, type SetupStepState } from '../lib/setup-steps';
+import {
+  SETUP_REVIEW_ONLY,
+  SETUP_STEP_PATHS,
+  type SetupStepKey,
+  type SetupStepState,
+} from '../lib/setup-steps';
 import { StepPanel } from './step-panel';
 
 export interface StepSetupPageProps {
@@ -62,7 +67,11 @@ export function StepSetupPage({
     >
       <Alert
         tone={state === 'done' ? 'success' : state === 'unknown' ? 'warning' : 'info'}
-        title={COPY.setupSteps.state[state ?? 'unknown']}
+        title={
+          COPY.setupSteps.state[
+            state === 'pending' && SETUP_REVIEW_ONLY.includes(stepKey) ? 'none' : (state ?? 'unknown')
+          ]
+        }
         data-testid={`setup-step-${stepKey}-state`}
       >
         {copy.detail}
@@ -71,7 +80,7 @@ export function StepSetupPage({
         <Link className="button button--secondary" to={SETUP_STEP_PATHS[stepKey]} data-testid={`link-setup-${stepKey}`}>
           {state === 'done' ? COPY.setupSteps.review : copy.open}
         </Link>
-        {state !== null && state !== 'done' ? (
+        {state !== null && state !== 'done' && !SETUP_REVIEW_ONLY.includes(stepKey) ? (
           <Button
             type="button"
             tone="ghost"

@@ -23,7 +23,13 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { PackerSummary } from '../../users';
 import type { SetupStepsView } from '../hooks/use-setup-steps';
-import { SETUP_STEP_PATHS, SetupStepKeys, describeSetupStep, type SetupStepKey } from '../lib/setup-steps';
+import {
+  SETUP_REVIEW_ONLY,
+  SETUP_STEP_PATHS,
+  SetupStepKeys,
+  describeSetupStep,
+  type SetupStepKey,
+} from '../lib/setup-steps';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
 import { AddPackerDialog } from './add-packer-dialog';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
@@ -127,7 +133,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
             <Link className="button button--ghost button--sm" to={SETUP_STEP_PATHS[key]}>
               {state === 'done' ? COPY.status.steps.review : COPY.status.steps.setUp}
             </Link>
-            {state === 'pending' || state === 'unknown' || state === 'skipped' ? (
+            {!SETUP_REVIEW_ONLY.includes(key) && (state === 'pending' || state === 'unknown' || state === 'skipped') ? (
               <Button
                 type="button"
                 tone="ghost"

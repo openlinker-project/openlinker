@@ -28,14 +28,30 @@ import { MAX_PRODUCT_MASTERS } from './product-masters';
 export const TOTAL_STEPS = 7;
 
 /**
- * Turning packing on is the LAST step: everything it depends on, and the rest
- * of the OMS with it, is set up before anything changes in how orders are
- * handled, which is what the page's own description promises.
+ * The wizard's steps, in order (1-based). Sales documents come right after the
+ * product master: which document an order gets is decided by what the shop
+ * sells, not by who packs it. "Turn it on" is LAST, so nothing changes in how
+ * orders are handled until everything before it is set up, which is what the
+ * page's own description promises.
  */
-export const TURN_ON_STEP = 7;
+export const WIZARD_STEPS = {
+  productMaster: 1,
+  salesDocuments: 2,
+  packers: 3,
+  whatChanges: 4,
+  automations: 5,
+  whoDecides: 6,
+  turnOn: 7,
+} as const;
 
-/** The wizard step each decision after "See what changes" lives at (1-based). */
-export const SETUP_STEP_NUMBERS = { salesDocuments: 4, automations: 5, whoDecides: 6 } as const;
+export const TURN_ON_STEP = WIZARD_STEPS.turnOn;
+
+/** The wizard step each setup decision lives at. */
+export const SETUP_STEP_NUMBERS = {
+  salesDocuments: WIZARD_STEPS.salesDocuments,
+  automations: WIZARD_STEPS.automations,
+  whoDecides: WIZARD_STEPS.whoDecides,
+} as const;
 
 /** The capability the packing connection needs for work to reach the bench (#3476). */
 export const PACKING_EXECUTOR_CAPABILITY = 'FulfillmentExecutor';
@@ -48,10 +64,10 @@ export type OnboardingDataState =
   | 'step-1-two-product-masters'
   | 'step-1-stock-syncing'
   | 'step-1-stock-complete'
-  | 'step-2-packers-empty'
-  | 'step-2-packer-added'
-  | 'step-3-what-changes'
-  | 'step-4-sales-documents'
+  | 'step-2-sales-documents'
+  | 'step-3-packers-empty'
+  | 'step-3-packer-added'
+  | 'step-4-what-changes'
   | 'step-5-automations'
   | 'step-6-who-decides'
   | 'step-7-turn-on'
@@ -173,11 +189,11 @@ export function deriveDataState(input: DataStateInput): OnboardingDataState {
       if (input.step1Done) return input.stockComplete ? 'step-1-stock-complete' : 'step-1-stock-syncing';
       return input.masterCount > 1 ? 'step-1-two-product-masters' : 'step-1-product-master';
     case 2:
-      return input.packerCount > 0 ? 'step-2-packer-added' : 'step-2-packers-empty';
+      return 'step-2-sales-documents';
     case 3:
-      return 'step-3-what-changes';
+      return input.packerCount > 0 ? 'step-3-packer-added' : 'step-3-packers-empty';
     case 4:
-      return 'step-4-sales-documents';
+      return 'step-4-what-changes';
     case 5:
       return 'step-5-automations';
     case 6:
@@ -190,8 +206,9 @@ export function deriveDataState(input: DataStateInput): OnboardingDataState {
 /**
  * Where a fresh page load starts. Packing that was ever turned on lands on the
  * status page (on or paused); otherwise the wizard opens at step 1 until it is
- * done, then at step 2 — packers are optional and step 3's acknowledgement is
- * deliberately re-asked after a reload, so neither is "done" by server state.
+ * done, then at step 2 (sales documents). The later steps are not "done" by
+ * server state alone: packers are optional and "See what changes" is
+ * deliberately re-asked after a reload.
  */
 export function initialPosition(
   live: boolean,

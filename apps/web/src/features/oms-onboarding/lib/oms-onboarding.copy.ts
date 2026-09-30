@@ -38,14 +38,24 @@ export const omsOnboardingCopy = {
 
   steps: [
     { title: 'Your product master', meta: 'Products and stock' },
+    { title: 'Sales documents', meta: 'Invoices and receipts' },
     { title: 'Add packers', meta: 'Optional' },
     { title: 'See what changes', meta: 'Read before turning on' },
-    { title: 'Sales documents', meta: 'Invoices and receipts' },
-    { title: 'Automations', meta: 'Optional' },
+    { title: 'Automations', meta: 'Review only' },
     { title: 'Who decides what', meta: 'Review' },
     { title: 'Turn it on', meta: 'Last step' },
   ],
   stepOf: (step: number, total: number): string => `Step ${String(step)} of ${String(total)}`,
+  salesDocumentsStep: {
+    why: 'Decide which document each order gets: an invoice or a receipt. Connect a provider that issues them, then say what each one issues, which goes first, and whether it issues by itself once an order is paid.',
+    noConnectionTitle: 'No invoicing or fiscal receipt connection yet',
+    noConnectionBody:
+      'Connect a provider that issues invoices (for example inFakt, KSeF or Subiekt) or fiscal receipts (for example eparagony) first. Then come back here to choose what it issues.',
+    addConnection: 'Add a connection',
+    perCountry:
+      'Rules for a particular country, or a default for orders no rule covers, are set on the document routing page.',
+    openRouting: 'Open document routing',
+  },
   setupSteps: {
     finish: 'Finish',
     review: 'Review',
@@ -54,6 +64,7 @@ export const omsOnboardingCopy = {
     state: {
       done: 'Already set up',
       pending: 'Not set up yet',
+      none: 'None yet',
       skipped: 'Marked as not needed',
       unknown: 'Could not check this right now',
     },
@@ -63,8 +74,8 @@ export const omsOnboardingCopy = {
       open: 'Open document routing',
     },
     automations: {
-      why: 'Let OpenLinker act by itself when something happens, for example buy the shipping label as soon as an order is packed.',
-      detail: 'Automations are set up on their own page. Skip this if you do not need any.',
+      why: 'Automations let OpenLinker act by itself when something happens, for example buy the shipping label as soon as an order is packed. Nothing is set here: this is a look at what exists.',
+      detail: 'Automations live on their own page. Review them, or add more, whenever you like.',
       open: 'Open automations',
     },
     whoDecides: {
@@ -281,7 +292,7 @@ export const omsOnboardingCopy = {
       },
       automations: {
         title: 'Automations',
-        pending: 'Let OpenLinker act when an order is packed, for example buy the shipping label.',
+        pending: 'None yet. Optional: let OpenLinker act when an order is packed, for example buy the shipping label.',
         done: 'At least one automation is set up.',
       },
       whoDecides: {

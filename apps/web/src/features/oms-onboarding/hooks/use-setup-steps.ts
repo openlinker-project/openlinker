@@ -15,6 +15,7 @@ import { useAutomationSummaryQuery } from '../../automation';
 import { useWhoDecidesStatusQuery } from '../../fulfillment-authority';
 import { useSalesDocumentCountriesQuery } from '../../sales-documents';
 import type { Connection } from '../../connections';
+import { deriveSalesDocumentRows } from '../../sales-documents';
 import {
   deriveSetupStepState,
   readSetupSkipped,
@@ -30,7 +31,8 @@ export interface SetupStepsView extends SetupSummary {
 
 export function useSetupSteps(
   enabled: boolean,
-  packingConnection: Connection | null
+  packingConnection: Connection | null,
+  connections: readonly Connection[]
 ): SetupStepsView | null {
   const countries = useSalesDocumentCountriesQuery({ enabled });
   const automations = useAutomationSummaryQuery({ enabled });
@@ -43,15 +45,21 @@ export function useSetupSteps(
 
   const skipped = readSetupSkipped(packingConnection.config);
 
-  const salesDocumentsDone = countries.data
-    ? countries.data.some(
-        (country) =>
-          country.ruleCount > 0 ||
-          country.invoiceDefaultConnectionId !== null ||
-          country.receiptDefaultConnectionId !== null ||
-          country.acknowledgedNoDocumentAt !== null
-      )
-    : null;
+  // Done when a connection is set to issue something (the step's own choice,
+  // and enough for documents to be issued on an install with one provider) or
+  // when country routing has been set up or acknowledged.
+  const roleSet = deriveSalesDocumentRows(connections).some((row) => row.documentKind !== null);
+  const salesDocumentsDone = roleSet
+    ? true
+    : countries.data
+      ? countries.data.some(
+          (country) =>
+            country.ruleCount > 0 ||
+            country.invoiceDefaultConnectionId !== null ||
+            country.receiptDefaultConnectionId !== null ||
+            country.acknowledgedNoDocumentAt !== null
+        )
+      : null;
 
   const automationsDone =
     automations.data === undefined || automations.data.envelopeUnreadable
