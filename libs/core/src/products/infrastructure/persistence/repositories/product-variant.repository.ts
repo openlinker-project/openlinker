@@ -439,6 +439,47 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
   }
 
   /**
+   * Fill-when-NULL counterpart of `recordPhysicalDimensions` (#3650). One
+   * statement with a per-column COALESCE, so the "is it still empty" test and
+   * the write are atomic: a concurrent operator write between a read and this
+   * update can never be clobbered. The WHERE clause restricts the statement to
+   * rows where at least one supplied column is still NULL, which keeps a
+   * steady-state sweep from rewriting every row (and bumping `updatedAt`).
+   */
+  async fillPhysicalDimensionsIfAbsent(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<boolean> {
+    const columns = ['weightGrams', 'lengthMm', 'widthMm', 'heightMm'] as const;
+    const provided = columns.filter((c) => typeof dims[c] === 'number');
+    if (provided.length === 0) {
+      return false;
+    }
+
+    const set: Partial<Record<(typeof columns)[number], () => string>> = {};
+    const params: Record<string, number> = {};
+    for (const column of provided) {
+      set[column] = () => `COALESCE("${column}", :${column})`;
+      params[column] = dims[column] as number;
+    }
+
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(ProductVariantOrmEntity)
+      .set(set)
+      .setParameters(params)
+      .where('id = :variantId', { variantId })
+      .andWhere(`(${provided.map((c) => `"${c}" IS NULL`).join(' OR ')})`)
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
    * Record a per-variant tax-rate override (#2054). Written only by a master
    * that keys tax per variant; a product-keyed master never calls this, which
    * is what leaves the override genuinely absent rather than read-as-empty.

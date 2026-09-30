@@ -54,6 +54,7 @@ describe('MasterProductSyncService', () => {
       | 'recordProductTaxRate'
       | 'recordVariantTaxRate'
       | 'clearVariantTaxRate'
+      | 'fillVariantPhysicalDimensionsIfAbsent'
     >
   >;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
@@ -86,6 +87,7 @@ describe('MasterProductSyncService', () => {
       recordProductTaxRate: jest.fn().mockResolvedValue(undefined),
       recordVariantTaxRate: jest.fn().mockResolvedValue(undefined),
       clearVariantTaxRate: jest.fn().mockResolvedValue(undefined),
+      fillVariantPhysicalDimensionsIfAbsent: jest.fn().mockResolvedValue(true),
     };
 
     eventPublisher = {
@@ -207,6 +209,38 @@ describe('MasterProductSyncService', () => {
       pruneSkippedReason: 'empty-response',
       taxRateChanges: [],
       priceChangeObserverFailures: 0,
+    });
+  });
+
+  describe('physical data (#3650)', () => {
+    it('should fill weight and dimensions through the fill-when-NULL writer when the adapter supplies them', async () => {
+      adapter.getProductVariants.mockResolvedValueOnce([
+        { ...makeVariant('ol_variant_1'), weightGrams: 700, lengthMm: 300, widthMm: 200, heightMm: 100 },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.fillVariantPhysicalDimensionsIfAbsent).toHaveBeenCalledWith(
+        'ol_variant_1',
+        { weightGrams: 700, lengthMm: 300, widthMm: 200, heightMm: 100 }
+      );
+    });
+
+    it('should not call the writer when the adapter supplies no physical data', async () => {
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.fillVariantPhysicalDimensionsIfAbsent).not.toHaveBeenCalled();
+    });
+
+    it('should not fail the product sync when the physical-data write throws', async () => {
+      adapter.getProductVariants.mockResolvedValueOnce([
+        { ...makeVariant('ol_variant_1'), weightGrams: 500 },
+      ]);
+      productsService.fillVariantPhysicalDimensionsIfAbsent.mockRejectedValueOnce(new Error('db down'));
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.variantsUpserted).toBe(1);
     });
   });
 

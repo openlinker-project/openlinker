@@ -39,6 +39,8 @@ import type { PrestashopFeatureResolver } from '../provisioners/prestashop-featu
 import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-category-path.resolver';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
+import type { PrestashopShopUnitsResolver } from '../provisioners/prestashop-shop-units.resolver';
+import { buildPrestashopPhysicalData, type PrestashopShopUnits } from '../mappers/prestashop-physical-data';
 import {
   PRESTASHOP_UNNARROWED_MAX_ROWS,
   readAllPrestashopResourcePages,
@@ -116,7 +118,11 @@ export class PrestashopProductMasterAdapter
     // this adapter a `ProductTaxRateReader` in practice; absent, the guard
     // still narrows (the method exists) but every read reports `unreadable`,
     // which is the honest answer for a shop whose resolver was never wired.
-    private readonly taxRateResolver?: PrestashopTaxRateResolver
+    private readonly taxRateResolver?: PrestashopTaxRateResolver,
+    // Optional, process-singleton. Reads the shop's weight/dimension units once
+    // per connection so variants can carry grams / millimetres (#3650). Absent,
+    // variants simply carry no physical data.
+    private readonly shopUnitsResolver?: PrestashopShopUnitsResolver
   ) {}
 
   /**
@@ -661,6 +667,7 @@ export class PrestashopProductMasterAdapter
           // case for SMB shops). Null/non-numeric → undefined → surfaces as
           // a `no-master-price` blocker downstream (#792).
           price: this.parseProductPrice(prestashopProduct.price),
+          ...(await this.resolvePhysicalData(prestashopProduct, undefined)),
         },
       ];
     }
@@ -705,6 +712,10 @@ export class PrestashopProductMasterAdapter
     // inheritance for simple products (#792 / #1096).
     const basePrice = this.parseProductPrice(prestashopProduct.price);
 
+    const shopUnits = await this.resolveShopUnits();
+    const physicalUnits = (impact: unknown): ReturnType<typeof buildPrestashopPhysicalData> =>
+      buildPrestashopPhysicalData(prestashopProduct, impact, shopUnits);
+
     // Map variants with internal IDs
     return combinations
       .map((combination) => {
@@ -744,7 +755,13 @@ export class PrestashopProductMasterAdapter
           );
           absolutePrice = undefined;
         }
-        const variant: ProductVariant = { ...mapped, id: internalId };
+        // The combination `weight` is an impact on the product weight, so the
+        // absolute variant weight is folded here where the product is at hand.
+        const variant: ProductVariant = {
+          ...mapped,
+          ...physicalUnits(combination.weight),
+          id: internalId,
+        };
         // The resolved absolute price is authoritative. Overwrite the mapper's
         // raw-impact `price`; when floored to absent, DELETE it so the raw impact
         // can't leak through (and an absent price stays absent — `price?: number`
@@ -757,6 +774,21 @@ export class PrestashopProductMasterAdapter
         return variant;
       })
       .filter((v): v is ProductVariant => v !== null);
+  }
+
+  /** Shop weight/dimension units, or `null` when unresolved or no resolver is wired. */
+  private async resolveShopUnits(): Promise<PrestashopShopUnits | null> {
+    if (!this.shopUnitsResolver) {
+      return null;
+    }
+    return this.shopUnitsResolver.resolveUnits(this.connection.id, this.httpClient);
+  }
+
+  private async resolvePhysicalData(
+    product: PrestashopProduct,
+    combinationImpact: unknown
+  ): Promise<ReturnType<typeof buildPrestashopPhysicalData>> {
+    return buildPrestashopPhysicalData(product, combinationImpact, await this.resolveShopUnits());
   }
 
   /**

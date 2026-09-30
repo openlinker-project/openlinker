@@ -49,6 +49,22 @@ export interface IProductsService {
   upsertVariants(productId: string, variants: ProductVariant[]): Promise<void>;
 
   /**
+   * Fill a variant's physical data (weight/dimensions) only where the stored
+   * column is still empty (#3650). Never overwrites an existing value, so a
+   * master re-sync cannot undo an operator-typed one. Neutral units: grams and
+   * millimetres, already converted by the adapter.
+   */
+  fillVariantPhysicalDimensionsIfAbsent(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<boolean>;
+
+  /**
    * Record what a ProductMaster said about a product's tax rate (#2054).
    *
    * Separate from `upsertProduct` on purpose: the sync upsert carries no rate,
