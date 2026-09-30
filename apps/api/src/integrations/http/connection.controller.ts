@@ -69,6 +69,7 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
   resolveVariantGroupingModel,
   resolveRequiresCredentials,
+  resolveArchivable,
 } from '@openlinker/core/integrations';
 import type { VariantGroupingModel } from '@openlinker/core/integrations';
 import {
@@ -113,6 +114,7 @@ export class ConnectionController {
     // Unknown adapter: assume credentials are needed, the safe default of
     // resolveRequiresCredentials itself.
     let requiresCredentials = true;
+    let archivable = true;
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
@@ -122,6 +124,7 @@ export class ConnectionController {
       variantGrouping = resolveVariantGroupingModel(metadata);
       defaultRateLimit = metadata.defaultRateLimit ?? null;
       requiresCredentials = resolveRequiresCredentials(metadata);
+      archivable = resolveArchivable(metadata);
     } catch (error) {
       // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
       // supportedCapabilities empty (and variantGrouping/defaultRateLimit at
@@ -140,7 +143,8 @@ export class ConnectionController {
       defaultRateLimit,
       user?.role,
       this.demoModeService.isDemoModeEnabled(),
-      requiresCredentials
+      requiresCredentials,
+      archivable
     );
   }
 

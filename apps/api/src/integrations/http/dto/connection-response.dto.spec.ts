@@ -156,6 +156,15 @@ describe('ConnectionResponseDto.fromDomain', () => {
       expect(dto2.credentialsBacked).toBe(false);
     });
 
+    it('should report archivable, defaulting to true (#3657)', () => {
+      const dflt = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', null, 'admin');
+      expect(dflt.archivable).toBe(true);
+      const oms = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', null, 'admin', false, false, false);
+      expect(oms.archivable).toBe(false);
+    });
+
     describe('credentials after an archive / restore (#3657)', () => {
       it('should report a db-backed credential as editable and stored', () => {
         const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,

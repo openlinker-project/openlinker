@@ -2313,6 +2313,21 @@ describe('ConnectionService', () => {
         }
       );
 
+      it('should refuse with 409 and change nothing when the adapter declares itself non-archivable', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'openlinker.oms.v1',
+          platformType: 'openlinker',
+          supportedCapabilities: ['FulfillmentExecutor'],
+          requiresCredentials: false,
+          archivable: false,
+        } as never);
+
+        await expect(service.archive('connection-123')).rejects.toBeInstanceOf(ConflictException);
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
       it('should return the row unchanged when the connection is already archived', async () => {
         const archived = withState('archived', '');
         connectionPort.get.mockResolvedValue(archived);

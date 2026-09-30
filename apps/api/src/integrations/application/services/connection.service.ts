@@ -55,6 +55,7 @@ import {
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
   resolveRequiresCredentials,
+  resolveArchivable,
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -1208,6 +1209,18 @@ export class ConnectionService implements IConnectionService {
     if (existing.status !== 'disabled') {
       throw new ConflictException(
         `Connection ${connectionId} is ${existing.status}; disable it before archiving`
+      );
+    }
+    // Declared by the adapter, never inferred from platformType (ADR-055):
+    // the OL-OMS connection holds routing authority claims and is disabled,
+    // never archived. See AdapterMetadata.archivable.
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: existing.platformType,
+      adapterKey: existing.adapterKey,
+    });
+    if (!resolveArchivable(metadata)) {
+      throw new ConflictException(
+        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`
       );
     }
     // Credential first, row second. A crash between the two leaves a disabled

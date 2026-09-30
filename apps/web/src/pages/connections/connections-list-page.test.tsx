@@ -71,6 +71,20 @@ describe('ConnectionsListPage', () => {
       ).toBeInTheDocument();
     });
 
+    it('offers no Archive on a disabled connection whose adapter forbids it', async () => {
+      const apiClient = createMockApiClient({
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            { ...sampleConnection, name: 'OpenLinker OMS', status: 'disabled', archivable: false },
+          ]),
+        },
+      });
+      renderWithProviders(<ConnectionsListPage />, { apiClient, sessionAdapter: adminSession });
+
+      expect((await screen.findAllByText('OpenLinker OMS')).length).toBeGreaterThan(0);
+      expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+    });
+
     it('lists archived as a status filter option', () => {
       renderWithProviders(<ConnectionsListPage />);
 

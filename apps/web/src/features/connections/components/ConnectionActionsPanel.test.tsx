@@ -59,6 +59,15 @@ describe('ConnectionActionsPanel', () => {
       expect(await screen.findByRole('button', { name: 'Archive' })).toBeInTheDocument();
     });
 
+    it('explains instead of offering Archive when the adapter forbids it', async () => {
+      const oms = { ...sampleConnection, status: 'disabled' as const, archivable: false };
+      renderWithProviders(<ConnectionActionsPanel connection={oms} />, adminSession);
+
+      expect(await screen.findByText(/can be disabled but not archived/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument();
+    });
+
     it('does not offer Archive on an active connection', async () => {
       renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, adminSession);
 

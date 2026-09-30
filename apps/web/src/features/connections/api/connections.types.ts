@@ -122,6 +122,12 @@ export interface Connection {
    * fixtures keep type-checking; read it through `hasMissingCredentials`.
    */
   credentialsStored?: boolean;
+  /**
+   * `false` for an adapter that may only be disabled, never archived - the
+   * OpenLinker OMS (#3657). Absent means an older API, which archived nothing,
+   * so read it through `canArchive`.
+   */
+  archivable?: boolean;
   adapterKey?: string;
   enabledCapabilities: string[];
   supportedCapabilities: string[];
@@ -427,4 +433,9 @@ export function hasMissingCredentials(
   connection: Pick<Connection, 'credentialsBacked' | 'credentialsStored'>
 ): boolean {
   return connection.credentialsBacked && connection.credentialsStored === false;
+}
+
+/** Whether the Archive action applies: a disabled connection on an adapter that allows it (#3657). */
+export function canArchive(connection: Pick<Connection, 'status' | 'archivable'>): boolean {
+  return connection.status === 'disabled' && connection.archivable !== false;
 }

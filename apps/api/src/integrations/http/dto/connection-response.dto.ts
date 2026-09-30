@@ -55,6 +55,13 @@ export class ConnectionResponseDto {
   })
   credentialsStored!: boolean;
 
+  @ApiProperty({
+    description:
+      'Whether the connection may be archived once disabled. false for an adapter that declares it (the OpenLinker OMS), which can only be disabled (#3657).',
+    example: true,
+  })
+  archivable!: boolean;
+
   @ApiPropertyOptional({ description: 'Adapter key', example: 'prestashop.webservice.v1' })
   adapterKey?: string;
 
@@ -102,7 +109,8 @@ export class ConnectionResponseDto {
     defaultRateLimit: ConnectionRateLimit | null,
     role?: UserRole,
     isDemoModeEnabled = false,
-    requiresCredentials = true
+    requiresCredentials = true,
+    archivable = true
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
@@ -125,6 +133,7 @@ export class ConnectionResponseDto {
     dto.credentialsStored = connection.credentialsRef.startsWith('db:');
     dto.credentialsBacked =
       dto.credentialsStored || (connection.credentialsRef === '' && requiresCredentials);
+    dto.archivable = archivable;
     dto.adapterKey = connection.adapterKey;
     dto.enabledCapabilities = connection.enabledCapabilities;
     dto.supportedCapabilities = supportedCapabilities;

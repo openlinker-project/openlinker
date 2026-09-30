@@ -1,7 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
-import { hasMissingCredentials } from '../api/connections.types';
+import { canArchive, hasMissingCredentials } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import { EnableConnectionButton } from './EnableConnectionButton';
@@ -207,7 +207,19 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
         ) : null}
 
-        {write.visible && isDisabled ? (
+        {write.visible && isDisabled && !canArchive(connection) ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Archive connection</strong>
+              <p className="muted-text">
+                This connection can be disabled but not archived. It holds settings other parts of
+                OpenLinker rely on, so it stays on your connections list.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {write.visible && canArchive(connection) ? (
           <div className="action-list__item">
             <div>
               <strong>Archive connection</strong>

@@ -2,6 +2,7 @@ import { useMemo, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import type { Connection, ConnectionFilters, ConnectionStatus } from '../../features/connections/api/connections.types';
+import { canArchive } from '../../features/connections/api/connections.types';
 import { usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -41,12 +42,13 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
 
 /**
  * #3657 — the only row-level write on this page. Archive is offered on a
- * DISABLED connection alone (the API refuses any other status, and a two-step
+ * DISABLED connection alone, and never on an adapter that declares itself
+ * non-archivable (the OMS, which is disabled only) (the API refuses any other status, and a two-step
  * disable-then-archive keeps a live integration from being hidden by one
  * click); Restore on an archived one. Every other status gets no action.
  */
 function ConnectionRowAction({ connection }: { connection: Connection }): ReactElement | null {
-  if (connection.status === 'disabled') {
+  if (canArchive(connection)) {
     return <ArchiveConnectionButton connection={connection} />;
   }
   if (connection.status === 'archived') {
