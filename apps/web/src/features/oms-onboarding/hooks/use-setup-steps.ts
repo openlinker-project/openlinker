@@ -18,6 +18,7 @@ import type { Connection } from '../../connections';
 import { deriveSalesDocumentRows } from '../../sales-documents';
 import {
   deriveSetupStepState,
+  hasAutomaticDocumentIssuing,
   readSetupSkipped,
   summariseSetup,
   type SetupStepKey,
@@ -45,21 +46,12 @@ export function useSetupSteps(
 
   const skipped = readSetupSkipped(packingConnection.config);
 
-  // Done when a connection is set to issue something (the step's own choice,
-  // and enough for documents to be issued on an install with one provider) or
-  // when country routing has been set up or acknowledged.
-  const roleSet = deriveSalesDocumentRows(connections).some((row) => row.documentKind !== null);
-  const salesDocumentsDone = roleSet
-    ? true
-    : countries.data
-      ? countries.data.some(
-          (country) =>
-            country.ruleCount > 0 ||
-            country.invoiceDefaultConnectionId !== null ||
-            country.receiptDefaultConnectionId !== null ||
-            country.acknowledgedNoDocumentAt !== null
-        )
-      : null;
+  // Done only when documents are issued automatically: the OMS setup does not
+  // count a manual trigger as done, since nothing would issue without someone
+  // asking. (Country routing is read too, but only to know the read worked.)
+  const salesDocumentsDone = countries.data
+    ? hasAutomaticDocumentIssuing(deriveSalesDocumentRows(connections))
+    : null;
 
   const automationsDone =
     automations.data === undefined || automations.data.envelopeUnreadable
