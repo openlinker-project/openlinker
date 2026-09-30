@@ -121,3 +121,22 @@ export class BenchUnlabelledParcelListResponseDto {
   @ApiProperty({ description: 'Whether the read hit its cap and there may be more' })
   truncated!: boolean;
 }
+
+/**
+ * Replace-label response (#3654). `cancelled-not-replaced` is a 2xx on purpose:
+ * money and the carrier state DID change (the old label is void), so the bench
+ * must read it as a result, not an error.
+ */
+export class BenchReplaceLabelResponseDto {
+  @ApiProperty({ enum: ['replaced', 'cancelled-not-replaced'] })
+  outcome!: 'replaced' | 'cancelled-not-replaced';
+
+  @ApiProperty()
+  cancelledShipmentId!: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  newShipmentId!: string | null;
+
+  @ApiProperty({ description: 'The old label had already been dispatched when it was voided.' })
+  cancelledAfterDispatch!: boolean;
+}
