@@ -41,8 +41,11 @@ import type { InvoiceRecord, InvoiceRecordFilters, InvoiceStatus } from '@openli
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
   IFiscalRegistrationService,
+  selectHandoverArtefact,
+  summarizeFiscalArtefacts,
 } from '@openlinker/core/fiscalization';
 import type {
+  FiscalArtefact,
   FiscalRegistrationListFilters,
   FiscalRegistrationRecord,
   FiscalRegistrationStatus,
@@ -342,6 +345,18 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     return (await this.buildViews([orderId], true)).get(orderId) ?? null;
   }
 
+  async getReceiptHandoverArtefact(orderId: string): Promise<FiscalArtefact | null> {
+    // The SAME winner the projection names, so a surface that offered "open the
+    // receipt" off `getForOrders` is served that receipt and not another one.
+    const view = (await this.buildViews([orderId], false)).get(orderId);
+    const document = view?.document ?? null;
+    if (document === null || document.kind !== 'fiscal-receipt' || document.status !== 'registered') {
+      return null;
+    }
+    const record = await this.fiscalRegistrations.getById(document.identity.recordId);
+    return selectHandoverArtefact(record.artefacts);
+  }
+
   /**
    * Which document kind an order with NO record is routed to.
    *
@@ -592,6 +607,7 @@ function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
       // `0` on a registered row is a SUCCESS - a pure reporting regime returns
       // identifiers and no artefact at all.
       artefactCount: record.artefacts?.length ?? 0,
+      artefacts: summarizeFiscalArtefacts(record.artefacts),
       identity: toIdentity({
         recordId: record.id,
         connectionId: record.connectionId,

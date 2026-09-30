@@ -20,6 +20,15 @@
  * *"the bench reaches the parcel through the work, never by enumerating a
  * register"*, which is #2413's own principle rather than a new one.
  *
+ * ## The receipt route is work-scoped for the same reason (#3646)
+ *
+ * `downloadReceipt` takes a work id and serves the artefact of that order's own
+ * registered receipt - the one the documents read reports - via
+ * `ISalesDocumentViewService`, never the fiscal registration service, which is
+ * a write surface `bench-never-issues.spec.ts` keeps out of this directory. A
+ * link comes back as JSON rather than a redirect: the client fetches with a
+ * bearer token, and a redirect would leave it nothing to put in a plain link.
+ *
  * ## The invoice print is stamped, best-effort (pack-bench completion)
  *
  * `FulfillmentWork.invoicePrintedAt` records the FIRST time this route served
@@ -78,6 +87,10 @@ import {
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
 import {
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  type ISalesDocumentViewService,
+} from '@openlinker/core/orders';
+import {
   SHIPMENT_LABEL_SERVICE_TOKEN,
   type IShipmentLabelService,
 } from '@openlinker/core/shipping';
@@ -103,6 +116,7 @@ import type {
 } from '../application/types/bench-parcel.types';
 import {
   BenchDocumentsResponseDto,
+  BenchReceiptLinkResponseDto,
   BenchUnlabelledParcelListResponseDto,
 } from './dto/bench-documents-response.dto';
 
@@ -124,7 +138,9 @@ export class BenchDocumentsController {
     @Inject(FULFILLMENT_VERIFICATION_SERVICE_TOKEN)
     private readonly verification: IFulfillmentVerificationService,
     @Inject(SHIPMENT_LABEL_SERVICE_TOKEN)
-    private readonly labelDocuments: IShipmentLabelService
+    private readonly labelDocuments: IShipmentLabelService,
+    @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
+    private readonly salesDocuments: ISalesDocumentViewService
   ) {}
 
   @Get('work/:workId/documents')
@@ -132,8 +148,9 @@ export class BenchDocumentsController {
   @ApiOperation({
     summary: 'The paper that belongs with this parcel',
     description:
-      'The invoice that goes inside the box and the label that goes on it, each with its own ' +
-      'state. A missing invoice is NAMED — in the sales-document vocabulary the rest of the ' +
+      'The sales document (invoice or fiscal receipt, in any status) and the label that goes on ' +
+      'the box, each with its own state. A missing document is NAMED — in the sales-document ' +
+      'vocabulary the rest of the ' +
       'product already uses — and never blocks packing: a tax-rate gap is an office problem the ' +
       'packer cannot fix. A packed parcel with no label is a real state, reported here and on ' +
       'GET /bench/unlabelled-parcels, which dispatch reads too.',
@@ -239,6 +256,47 @@ export class BenchDocumentsController {
       `inline; filename="invoice-${record.id}"`
     );
     return new StreamableFile(Buffer.from(document.content));
+  }
+
+  @Get('work/:workId/documents/receipt')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: "Open or print this parcel's fiscal receipt",
+    description:
+      "The artefact of the parcel's own order's REGISTERED receipt, chosen the way the documents " +
+      'read above reports it: a file first, then a link. A file is streamed; a link is returned as ' +
+      'JSON `{ url }` (not a redirect) so a client fetching with a token can render a plain link. ' +
+      'It creates nothing and registers nothing: the receipt was registered away from this bench.',
+  })
+  @ApiProduces('application/json', 'application/pdf')
+  @ApiResponse({ status: 200, type: BenchReceiptLinkResponseDto, description: 'A link artefact' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No such parcel, its order has no registered receipt, or the receipt produced nothing to hand over',
+  })
+  async downloadReceipt(
+    @Param('workId') workId: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile | BenchReceiptLinkResponseDto> {
+    const work = await this.resolveWork(workId);
+    // Through the work's own order only: no registration id is taken, so this
+    // cannot be walked to another order's receipt.
+    const artefact = await this.salesDocuments.getReceiptHandoverArtefact(work.orderId);
+    if (artefact === null) {
+      throw new NotFoundException('No receipt to open for this parcel');
+    }
+
+    if (artefact.medium === 'link') {
+      return { url: artefact.content };
+    }
+
+    // `selectHandoverArtefact` only ever yields `document` or `link`, and a
+    // `document` payload is base64 by the artefact contract.
+    const contentType = artefact.contentType ?? 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="receipt-${work.orderId}"`);
+    return new StreamableFile(Buffer.from(artefact.content, 'base64'));
   }
 
   @Get('work/:workId/documents/label')
@@ -358,6 +416,7 @@ export class BenchDocumentsController {
 
   private toDto(view: BenchDocumentsView): BenchDocumentsResponseDto {
     const invoice = view.invoice;
+    const document = view.document;
     const label = view.label;
     // Field by field, never a spread, and the union arms are flattened into one
     // nullable shape so a client reads an explicit `null` rather than an absent
@@ -372,6 +431,37 @@ export class BenchDocumentsController {
         blockReason: invoice.state === 'missing' ? invoice.blockReason : null,
         unresolvedReason: invoice.state === 'missing' ? invoice.unresolvedReason : null,
       },
+      document:
+        document === null
+          ? null
+          : {
+              kind: document.kind,
+              recordId: document.recordId,
+              connectionId: document.connectionId,
+              platformType: document.kind === 'fiscal-receipt' ? document.platformType : null,
+              status: document.status,
+              failureMode: document.failureMode,
+              documentNumber:
+                document.kind === 'fiscal-receipt'
+                  ? document.documentReference
+                  : document.documentNumber,
+              completedAt: document.completedAt,
+              printable: document.kind === 'invoice' ? document.printable : false,
+              // Field by field: the summary carries no payload, and a spread
+              // would inherit one the day the summary type grows it.
+              artefacts:
+                document.kind === 'fiscal-receipt' && document.artefacts !== null
+                  ? document.artefacts.map((artefact) => ({
+                      medium: artefact.medium,
+                      disposition: artefact.disposition,
+                      label: artefact.label,
+                      contentType: artefact.contentType,
+                    }))
+                  : null,
+            },
+      documentKind: view.noDocument?.documentKind ?? null,
+      blockReason: view.noDocument?.blockReason ?? null,
+      unresolvedReason: view.noDocument?.unresolvedReason ?? null,
       label: {
         state: label.state,
         shipmentId: label.state === 'none' ? null : label.shipmentId,
