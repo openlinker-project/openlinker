@@ -21,13 +21,14 @@
 
 export const omsOnboardingCopy = {
   page: {
-    eyebrow: 'Settings',
+    eyebrow: 'Connections',
     backToConnections: 'Add a connection',
-    wizardTitle: 'Pack orders in OpenLinker',
+    wizardTitle: 'OpenLinker OMS',
     wizardDescription:
       'Pick and pack orders on one screen, with a barcode scanner. Setup takes about 5 minutes. Nothing changes in how your orders are handled until the last step.',
-    statusTitle: 'Packing in OpenLinker',
-    statusDescription: 'Orders are packed at the pack bench. You can stop this at any time.',
+    statusTitle: 'OpenLinker OMS',
+    statusDescription:
+      'What OpenLinker takes over: packing at the pack bench, then sales documents and automations. You can stop packing at any time.',
     loadingTitle: 'Loading packing setup',
     loadingMessage: 'Reading your connections, locations and stock.',
     errorTitle: 'Could not load the packing setup',
@@ -221,6 +222,10 @@ export const omsOnboardingCopy = {
       count === 0
         ? 'Nothing on Fulfilment yet.'
         : `${String(count)} ${count === 1 ? 'parcel' : 'parcels'} on Fulfilment${ago === null ? '' : ` · last one arrived ${ago}`}`,
+    partialTitle: 'OMS is partially set up',
+    setUpTitle: 'OMS is set up',
+    stepsLeft: (count: number): string =>
+      `Packing works. ${String(count)} ${count === 1 ? 'step is' : 'steps are'} left.`,
     offTitle: 'Packing is off',
     offBody: (names: string): string =>
       `New orders go to ${names} and are packed there, as before. Your stock setup is kept.`,
@@ -233,6 +238,29 @@ export const omsOnboardingCopy = {
     setupTitle: 'Setup',
     open: 'Open',
     addPackers: 'Add packers',
+    steps: {
+      setUp: 'Set up',
+      review: 'Review',
+      notNeeded: 'Not needed',
+      undo: 'Undo',
+      salesDocuments: {
+        title: 'Sales documents',
+        pending: 'Choose which document each order gets: an invoice or a receipt.',
+        done: 'Document routing is set up.',
+      },
+      automations: {
+        title: 'Automations',
+        pending: 'Let OpenLinker act when an order is packed, for example buy the shipping label.',
+        done: 'At least one automation is set up.',
+      },
+      whoDecides: {
+        title: 'Who decides what',
+        pending: 'Something needs your attention in who decides stock, packing and returns.',
+        done: 'Nothing needs attention.',
+      },
+      skipped: 'Marked as not needed.',
+      unknown: 'Could not check this right now.',
+    },
     addPackerDialogBody: 'They sign in at the pack bench with this login.',
     closeDialog: 'Close',
     stockFrom: (located: string, total: string, names: string): string =>
@@ -254,15 +282,6 @@ export const omsOnboardingCopy = {
    * OpenLinker, but two things it depends on are configured elsewhere, so the
    * operator is pointed at both — as links, not as prose naming a menu.
    */
-  nextSteps: {
-    title: 'OpenLinker now handles fulfilment',
-    body: 'You set up packing in OpenLinker, so the whole fulfilment flow — packing the order and shipping it — now runs in OpenLinker. Don’t forget to finish two things:',
-    automationsLink: 'Set up automations',
-    automationsHint: 'for example, buy the shipping label as soon as an order is packed',
-    whoDecidesLink: 'Check Who decides what',
-    whoDecidesHint: 'see which system decides stock, packing and returns',
-  },
-
   stopDialog: {
     title: 'Stop packing in OpenLinker?',
     bodyNewOrders: (names: string): string =>
