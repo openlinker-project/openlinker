@@ -4,6 +4,7 @@ import {
   readSourcingClaim,
   readStockLocationOverride,
   withConfigKey,
+  withPackingClaimsEnabled,
   withSourcingClaimEnabled,
 } from './config-merge';
 
@@ -61,5 +62,27 @@ describe('readStockLocationOverride', () => {
     expect(readStockLocationOverride({ stockLocationOverride: 'loc-1' })).toBe('loc-1');
     expect(readStockLocationOverride({ stockLocationOverride: '  ' })).toBeNull();
     expect(readStockLocationOverride({})).toBeNull();
+  });
+});
+
+describe('withPackingClaimsEnabled', () => {
+  it('should write both the sourcing and executor claims when turning packing on', () => {
+    expect(withPackingClaimsEnabled({ baseUrl: 'x' }, true)).toEqual({
+      baseUrl: 'x',
+      sourcingAuthority: { enabled: true },
+      fulfillmentExecutor: { enabled: true },
+    });
+  });
+
+  it('should keep each claim\'s other fields when turning packing off', () => {
+    expect(
+      withPackingClaimsEnabled(
+        { sourcingAuthority: { enabled: true, isPrimary: true }, fulfillmentExecutor: { enabled: true } },
+        false
+      )
+    ).toEqual({
+      sourcingAuthority: { enabled: false, isPrimary: true },
+      fulfillmentExecutor: { enabled: false },
+    });
   });
 });

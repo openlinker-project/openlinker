@@ -19,6 +19,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
+import { useIsAdmin } from '../../../shared/auth/use-permission';
 import { benchWorkCopy } from '../lib/bench-work.copy';
 
 export interface BenchWorkEmptyProps {
@@ -33,6 +34,8 @@ export interface BenchWorkEmptyProps {
 }
 
 export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElement {
+  const isAdmin = useIsAdmin();
+
   if (routingReady) {
     return (
       <div className="bench-work-empty" data-testid="bench-work-empty-idle">
@@ -41,6 +44,18 @@ export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElem
         {/* Says the pipe is healthy, which is the fact that distinguishes this
             screen from the other one. Without it the two read alike. */}
         <p className="bench-work-empty__note">{benchWorkCopy.emptyIdle.reassurance}</p>
+      </div>
+    );
+  }
+
+  if (isAdmin) {
+    return (
+      <div className="bench-work-empty" data-testid="bench-work-empty-not-set-up">
+        <h2 className="bench-work-empty__title">{benchWorkCopy.emptyNotSetUpAdmin.title}</h2>
+        <p className="bench-work-empty__body">{benchWorkCopy.emptyNotSetUpAdmin.body}</p>
+        <Link className="button button--primary" to="/settings/packing" data-testid="link-setup-oms">
+          {benchWorkCopy.emptyNotSetUpAdmin.action}
+        </Link>
       </div>
     );
   }

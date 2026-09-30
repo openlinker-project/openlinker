@@ -1,7 +1,8 @@
 /**
  * Turn packing on or off (#3457, step 4 and the status page)
  *
- * Writes the packing connection's sourcing claim on a freshly read config
+ * Writes the packing connection's two authority claims (sourcing and
+ * executor) on a freshly read config
  * (`PATCH` replaces `config` whole). The claim is always written as an object
  * so a stop KEEPS it and its scopes — together with the warehouse and every
  * product master's stock override, which this never touches — and a restart
@@ -18,7 +19,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { connectionsQueryKeys, type Connection } from '../../connections';
 import { whoDecidesQueryKeys } from '../../fulfillment-authority';
-import { withSourcingClaimEnabled } from '../lib/config-merge';
+import { withPackingClaimsEnabled } from '../lib/config-merge';
 
 export interface SetPackingInput {
   readonly packingConnectionId: string;
@@ -33,7 +34,7 @@ export function useSetPackingMutation(): UseMutationResult<Connection, Error, Se
     mutationFn: async ({ packingConnectionId, enabled }) => {
       const fresh = await apiClient.connections.getById(packingConnectionId);
       return apiClient.connections.update(packingConnectionId, {
-        config: withSourcingClaimEnabled(fresh.config, enabled),
+        config: withPackingClaimsEnabled(fresh.config, enabled),
       });
     },
     onSettled: async () => {

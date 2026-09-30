@@ -9,10 +9,15 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlatforms } from '../../../shared/plugins';
+import { useConnectionsQuery } from '../hooks/use-connections-query';
 import { captureDemoEvent } from '../../demo';
 
 export function PlatformPicker(): ReactElement {
   const plugins = usePlatforms();
+  const connectionsQuery = useConnectionsQuery();
+  // A featured platform (the OMS) is a single setup, not one card per
+  // account: once its connection exists the card says so and leads to it.
+  const configuredTypes = new Set((connectionsQuery.data ?? []).map((c) => c.platformType));
   const cards = plugins
     .filter(
       (p) =>
@@ -49,7 +54,9 @@ export function PlatformPicker(): ReactElement {
               </div>
               <p className="platform-picker__card-description">{card.description}</p>
               <span className="platform-picker__card-cta" aria-hidden="true">
-                Continue →
+                {card.featured === true && configuredTypes.has(card.platformType)
+                  ? 'Already set up — click to edit →'
+                  : 'Continue →'}
               </span>
             </Link>
           </li>
