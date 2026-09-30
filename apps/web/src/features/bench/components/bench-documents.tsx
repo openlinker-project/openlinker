@@ -42,11 +42,12 @@
 import { useState, type ReactElement } from 'react';
 
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import type { BenchLabel } from '../api/bench-parcel.types';
+import type { BenchLabel, BenchLabelReplaceResult } from '../api/bench-parcel.types';
 import { useBenchDocumentsQuery, useBenchUnlabelledQuery } from '../hooks/use-bench-documents-query';
 import {
   describeInvoiceAbsenceAudience,
@@ -54,6 +55,7 @@ import {
 } from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { printBlob } from '../lib/bench-print';
+import { BenchChangeParcelDialog } from './bench-change-parcel-dialog';
 
 /**
  * Maps the three audiences onto their copy. A `Record` rather than a chain of
@@ -106,6 +108,11 @@ export function BenchDocumentsPanel({
   const apiClient = useApiClient();
   const documents = useBenchDocumentsQuery(workId);
   const [printError, setPrintError] = useState<string | null>(null);
+  // #3655 - Change size. `voidNotice` outlives the dialog and the label card:
+  // after `cancelled-not-replaced` there is no card to hang it on.
+  const [changeSizeOpen, setChangeSizeOpen] = useState(false);
+  const [replaceOutcome, setReplaceOutcome] = useState<BenchLabelReplaceResult | null>(null);
+  const write = useWriteAccess('bench:write', false);
   // #3404 — the signed-in PACKER's own binding, never the order's. `?? null`
   // rather than `undefined`: a session predating this field must read as
   // "unset" the same way an explicit clear does.
@@ -159,6 +166,27 @@ export function BenchDocumentsPanel({
   return (
     <section className="bench-documents" data-testid="bench-documents">
       {printError === null ? null : <Alert tone="warning">{printError}</Alert>}
+
+      {/* Never a success state: the old label is void and nothing replaced it. */}
+      {replaceOutcome?.outcome === 'cancelled-not-replaced' ? (
+        <Alert tone="warning" title={benchParcelCopy.changeSize.voidTitle} data-testid="bench-label-void">
+          <p>{benchParcelCopy.changeSize.voidBody}</p>
+          <Button
+            tone="secondary"
+            className="bench-documents__touch"
+            onClick={() => {
+              setReplaceOutcome(null);
+            }}
+          >
+            {benchParcelCopy.changeSize.voidDismiss}
+          </Button>
+        </Alert>
+      ) : null}
+      {replaceOutcome?.outcome === 'replaced' ? (
+        <Alert tone="success" data-testid="bench-label-replaced">
+          {benchParcelCopy.changeSize.replacedNotice}
+        </Alert>
+      ) : null}
 
       {/* F1, said before either control: neither paper is made here. */}
       {invoice.state === 'ready' && label.state === 'ready' ? (
@@ -290,14 +318,28 @@ export function BenchDocumentsPanel({
             </p>
           )}
           <p>{benchParcelCopy.documents.labelHint}</p>
-          <Button
-            tone="primary"
-            onClick={() => {
-              printLabel();
-            }}
-          >
-            {benchParcelCopy.documents.printLabelAction}
-          </Button>
+          <div className="bench-documents__actions">
+            <Button
+              tone="primary"
+              className="bench-documents__touch"
+              onClick={() => {
+                printLabel();
+              }}
+            >
+              {benchParcelCopy.documents.printLabelAction}
+            </Button>
+            {label.shipmentId !== null && write.canWrite ? (
+              <Button
+                tone="secondary"
+                className="bench-documents__touch"
+                onClick={() => {
+                  setChangeSizeOpen(true);
+                }}
+              >
+                {benchParcelCopy.documents.changeSizeAction}
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
       </div>
@@ -312,6 +354,17 @@ export function BenchDocumentsPanel({
           {benchParcelCopy.documents.printingTo(stationLabel)}
         </p>
       )}
+
+      <BenchChangeParcelDialog
+        workId={workId}
+        open={changeSizeOpen}
+        onOpenChange={setChangeSizeOpen}
+        templates={label.parcelTemplates ?? []}
+        onResolved={(result) => {
+          setChangeSizeOpen(false);
+          setReplaceOutcome(result);
+        }}
+      />
 
       {unlabelled && invoice.state === 'ready' ? (
         <p className="bench-documents__invoice-still-fine">

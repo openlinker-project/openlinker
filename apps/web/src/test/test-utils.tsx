@@ -966,6 +966,9 @@ export function createMockApiClient(
       downloadLabel: vi
         .fn<BenchApi['downloadLabel']>()
         .mockRejectedValue(new Error('bench.downloadLabel not stubbed')),
+      replaceLabel: vi
+        .fn<BenchApi['replaceLabel']>()
+        .mockRejectedValue(new Error('bench.replaceLabel not stubbed')),
       listUnlabelledParcels: vi
         .fn<BenchApi['listUnlabelledParcels']>()
         .mockResolvedValue({ parcels: [], total: 0, truncated: false }),

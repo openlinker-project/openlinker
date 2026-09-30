@@ -194,6 +194,12 @@ export interface BenchLabel {
    */
   readonly carrierMessageRedacted: boolean;
   readonly failedAt: string | null;
+  /**
+   * Size codes the routed carrier accepts (#3655). Optional on the wire: the
+   * backend contract (#3654) does not promise a list, so `[]` means "offer a
+   * box or a weight only", never "no size can be chosen".
+   */
+  readonly parcelTemplates?: readonly string[];
 }
 
 export interface BenchDocuments {
@@ -322,4 +328,30 @@ export interface BenchMetrics {
   readonly packedToday: number;
   readonly packedYesterday: number;
   readonly toPackAllBenches: number;
+}
+
+// ── Change size (#3655, backend #3654) ──────────────────────────────────────
+// Wire units are mm and grams. The UI speaks cm and kg and converts in
+// `lib/bench-label-replace.ts` - nowhere else.
+
+/** Parcel data ONLY. There is deliberately no address, recipient or carrier member. */
+export type BenchLabelReplaceInput =
+  | { readonly template: string }
+  | {
+      readonly lengthMm: number;
+      readonly widthMm: number;
+      readonly heightMm: number;
+      readonly weightGrams: number;
+    }
+  | { readonly weightGrams: number };
+
+/**
+ * `replaced` - a new label was bought.
+ * `refused` - nothing changed; `reason` is `cannot-cancel`, `already-handed-over`,
+ *   `parcel-completed` or an unrecognised value from a newer API.
+ * `cancelled-not-replaced` - the old label is void and no new one exists.
+ */
+export interface BenchLabelReplaceResult {
+  readonly outcome: 'replaced' | 'refused' | 'cancelled-not-replaced';
+  readonly reason: string | null;
 }
