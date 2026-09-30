@@ -65,6 +65,7 @@ import { randomUUID } from 'node:crypto';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
   CorrectionIssuer,
+  DocumentNumberConsumer,
   DocumentType,
   GetInvoiceQuery,
   InvoicingPort,
@@ -186,9 +187,56 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_ISSUE_DEADLINE_MS) {
  */
 const ISSUED_STATUSES: readonly string[] = [EPARAGONY_STATUS_CONFIRMED, EPARAGONY_STATUS_OFFLINE];
 
+/**
+ * IANA timezone the core numbering allocation resolves date variables and the
+ * period-reset bucket in when this connection carries no override (#3500).
+ * eparagony is PL-only in this codebase today, so there is no per-connection
+ * config field for it, and `Europe/Warsaw` is the only value that has ever
+ * applied - the same default `KsefInvoicingAdapter` uses.
+ */
+const DEFAULT_NUMBERING_TIME_ZONE = 'Europe/Warsaw';
+
 export class EparagonyInvoicingAdapter
-  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer, DocumentNumberConsumer
 {
+  /**
+   * Marks eparagony as an OpenLinker-numbered provider (#3500): the vendor's
+   * `POST /documents` REJECTS an invoice with `errorCode: 99` when
+   * `metadata.invoiceNumber` is absent - it does not generate one itself, which
+   * an earlier version of this adapter assumed. With this flag set, the core
+   * `InvoiceService` allocates a number from the connection's numbering series
+   * and passes it as `IssueInvoiceCommand.documentNumber`, which
+   * `composeInvoiceDocument` already honours when present. Read by
+   * `isDocumentNumberConsumer`.
+   */
+  readonly consumesDocumentNumber = true as const;
+
+  /**
+   * IANA timezone (#7) the core numbering allocation resolves date variables
+   * and the period-reset bucket in. Read by the core `InvoiceService`.
+   *
+   * Unnarrowed (not `as const`), unlike {@link consumesDocumentNumber}: this
+   * field states a config VALUE rather than a capability marker, and
+   * `KsefInvoicingAdapter.numberingTimeZone` resolves the equivalent from
+   * `config.invoiceDefaults.numberingTimeZone` per connection. eparagony is
+   * PL-only in this codebase today, so there is no per-connection config
+   * field for it yet - a fixed `Europe/Warsaw` is simply the only value that
+   * has ever applied - but leaving the type unnarrowed keeps the absence of a
+   * config path visible at the declaration, the day one is added.
+   */
+  readonly numberingTimeZone = DEFAULT_NUMBERING_TIME_ZONE;
+
+  // `maxDocumentNumberLength` (#11) is deliberately UNDECLARED, not merely
+  // forgotten: `EparagonyCreateInvoiceMetadata.invoiceNumber` is a bare
+  // `string` on the wire types, with no documented length cap anywhere in the
+  // vendor's material this integration was built against - unlike KSeF's
+  // FA(3) `P_2`, which the schema caps at 256 chars and which
+  // `KsefInvoicingAdapter` therefore declares. Inventing a number here would
+  // let OpenLinker refuse a legal allocated number the vendor would have
+  // accepted, which is worse than relying on the vendor's own `errorCode: 99`
+  // rejection for a genuinely over-long value: "unset" and "no cap" must not
+  // read as the same silence, so this comment makes the omission a decision.
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IEparagonyHttpClient,
