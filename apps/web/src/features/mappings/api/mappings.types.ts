@@ -249,8 +249,23 @@ export const FulfillmentProcessorKindValues = [
 ] as const;
 export type FulfillmentProcessorKind = (typeof FulfillmentProcessorKindValues)[number];
 
+/**
+ * Optional parcel profile carried by a routing rule (#3651 / #3652). Wire units
+ * are millimetres and grams; the UI shows cm / kg and converts at the edge
+ * (`lib/parcel-profile.ts`). Every field is optional AND nullable so the client
+ * works against an API that predates the profile (fields simply absent) and
+ * clears a stored value by sending an explicit `null`.
+ */
+export interface ParcelProfileFields {
+  parcelTemplate?: string | null;
+  lengthMm?: number | null;
+  widthMm?: number | null;
+  heightMm?: number | null;
+  defaultWeightGrams?: number | null;
+}
+
 /** A persisted routing rule — a source delivery method diverted away from the PS default. */
-export interface RoutingRule {
+export interface RoutingRule extends ParcelProfileFields {
   id: string;
   sourceConnectionId: string;
   sourceDeliveryMethodId: string;
@@ -258,7 +273,7 @@ export interface RoutingRule {
   processorConnectionId: string;
 }
 
-export interface RoutingRuleInput {
+export interface RoutingRuleInput extends ParcelProfileFields {
   sourceDeliveryMethodId: string;
   processorKind: FulfillmentProcessorKind;
   processorConnectionId: string;
