@@ -9,7 +9,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConnectionService, STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE } from './connection.service';
 import type {
   ConnectionPort,
@@ -2223,6 +2223,239 @@ describe('ConnectionService', () => {
         await expect(
           service.create(claiming(config as Record<string, unknown>))
         ).resolves.toEqual(mockConnection);
+      });
+    });
+  });
+  describe('archive / restore (#3657)', () => {
+    const withState = (
+      status: Connection['status'],
+      credentialsRef: string
+    ): Connection =>
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        status,
+        {},
+        credentialsRef,
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+    describe('archive', () => {
+      it('should delete the credential, clear the ref and set archived when the connection is disabled', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        const result = await service.archive('connection-123');
+
+        expect(credentials.delete).toHaveBeenCalledWith('cred-ref-1');
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'archived',
+          credentialsRef: '',
+        });
+        expect(mockHttpTransportFactory.evict).toHaveBeenCalledWith('connection-123');
+        expect(result.status).toBe('archived');
+      });
+
+      it('should remove the credential before archiving the row when both are written', async () => {
+        const order: string[] = [];
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        credentials.delete.mockImplementation(() => {
+          order.push('credential');
+          return Promise.resolve(true);
+        });
+        connectionPort.update.mockImplementation(() => {
+          order.push('row');
+          return Promise.resolve(withState('archived', ''));
+        });
+
+        await service.archive('connection-123');
+
+        expect(order).toEqual(['credential', 'row']);
+      });
+
+      it('should skip the credential delete when the ref is not db-backed', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await service.archive('connection-123');
+
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'archived',
+          credentialsRef: '',
+        });
+      });
+
+      it('should still archive when the credential row was already gone', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        credentials.delete.mockResolvedValue(false);
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
+      });
+
+      it.each(['active', 'error', 'needs_reauth'] as const)(
+        'should refuse with 409 and change nothing when the connection is %s',
+        async (status) => {
+          connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
+
+          await expect(service.archive('connection-123')).rejects.toBeInstanceOf(
+            ConflictException
+          );
+          expect(credentials.delete).not.toHaveBeenCalled();
+          expect(connectionPort.update).not.toHaveBeenCalled();
+        }
+      );
+
+      it('should refuse with 409 and change nothing when the adapter declares itself non-archivable', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'openlinker.oms.v1',
+          platformType: 'openlinker',
+          supportedCapabilities: ['FulfillmentExecutor'],
+          requiresCredentials: false,
+          archivable: false,
+        } as never);
+
+        await expect(service.archive('connection-123')).rejects.toBeInstanceOf(ConflictException);
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should return the row unchanged when the connection is already archived', async () => {
+        const archived = withState('archived', '');
+        connectionPort.get.mockResolvedValue(archived);
+
+        await expect(service.archive('connection-123')).resolves.toBe(archived);
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should answer 404 when the connection does not exist', async () => {
+        connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
+
+        await expect(service.archive('connection-123')).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('restore', () => {
+      it('should return an archived connection to disabled', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+        connectionPort.update.mockResolvedValue(withState('disabled', ''));
+
+        const result = await service.restore('connection-123');
+
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'disabled',
+        });
+        expect(result.status).toBe('disabled');
+      });
+
+      it.each(['active', 'disabled', 'error', 'needs_reauth'] as const)(
+        'should refuse with 409 when the connection is %s',
+        async (status) => {
+          connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
+
+          await expect(service.restore('connection-123')).rejects.toBeInstanceOf(
+            ConflictException
+          );
+          expect(connectionPort.update).not.toHaveBeenCalled();
+        }
+      );
+    });
+
+    describe('update guards', () => {
+      it('should refuse to set archived through a plain update', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+
+        await expect(
+          service.update('connection-123', { status: 'archived' })
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should refuse any status change on an archived connection', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+
+        await expect(
+          service.update('connection-123', { status: 'active' })
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should still allow a rename on an archived connection', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.update('connection-123', { name: 'Old shop' })).resolves.toBeDefined();
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { name: 'Old shop' });
+      });
+    });
+
+    describe('updateCredentials after a restore', () => {
+      it('should store a fresh credential row and point the connection at it', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockResolvedValue(withState('disabled', 'db:new'));
+
+        await service.updateCredentials('connection-123', {
+          webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345',
+        });
+
+        expect(credentials.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            platformType: 'prestashop',
+            credentialsJson: { webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345' },
+          })
+        );
+        const createdRef = (credentials.create.mock.calls[0][0] as { ref: string }).ref;
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          credentialsRef: `db:${createdRef}`,
+        });
+        expect(credentials.update).not.toHaveBeenCalled();
+      });
+
+      it('should delete the new credential row when pointing the connection at it fails', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.updateCredentials('connection-123', {
+            webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345',
+          })
+        ).rejects.toThrow('db down');
+
+        const createdRef = (credentials.create.mock.calls[0][0] as { ref: string }).ref;
+        expect(credentials.delete).toHaveBeenCalledWith(createdRef);
+      });
+
+      it('should refuse with 409 while the connection is still archived', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+
+        await expect(
+          service.updateCredentials('connection-123', { webserviceApiKey: 'KEY' })
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse when the adapter takes no credentials', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'openlinker.oms.v1',
+          platformType: 'openlinker',
+          supportedCapabilities: [],
+          requiresCredentials: false,
+        } as never);
+
+        await expect(
+          service.updateCredentials('connection-123', { anything: 'x' })
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(credentials.create).not.toHaveBeenCalled();
       });
     });
   });
