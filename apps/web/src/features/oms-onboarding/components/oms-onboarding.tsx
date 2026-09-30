@@ -63,6 +63,7 @@ import {
   SETUP_STEP_NUMBERS,
   TOTAL_STEPS,
   TURN_ON_STEP,
+  WIZARD_STEPS,
   type OnboardingView,
   type SourcingStanding,
 } from '../lib/onboarding-state';
@@ -70,6 +71,7 @@ import { selectProductMasters } from '../lib/product-masters';
 import { FirstOrderPanel } from './first-order-panel';
 import { PackingStatus } from './packing-status';
 import { StepPackers } from './step-packers';
+import { StepSalesDocuments } from './step-sales-documents';
 import { StepSetupPage } from './step-setup-page';
 import { StepProductMaster } from './step-product-master';
 import { StepTurnOn } from './step-turn-on';
@@ -201,7 +203,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
   const setPacking = useSetPackingMutation();
   const setStepSkipped = useSetSetupStepSkippedMutation();
   // Admin-only: the document-routing read behind one of the steps is.
-  const setup = useSetupSteps(canWrite, packingConnection);
+  const setup = useSetupSteps(canWrite, packingConnection, props.connections);
   const progress = useStockLocatedProgress(step1Done && mainLocation !== null ? mainLocation.id : null);
 
   const snapshotQuery = useFulfillmentSnapshotQuery({
@@ -286,7 +288,11 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
   const completedSteps = new Set(completed);
   if (step1Done) completedSteps.add(0);
   // Packing that is on has been through the steps it is made of.
-  if (live) for (const index of [0, 1, 2, TURN_ON_STEP - 1]) completedSteps.add(index);
+  if (live) {
+    for (const step of [WIZARD_STEPS.productMaster, WIZARD_STEPS.packers, WIZARD_STEPS.whatChanges, TURN_ON_STEP]) {
+      completedSteps.add(step - 1);
+    }
+  }
   for (const key of SetupStepKeys) {
     const state = setup?.states[key];
     // Both, one step at a time: the decision is made AND the operator has
@@ -335,24 +341,30 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           }}
           onContinue={() => completeStep(1)}
         />
-      ) : step === 2 ? (
+      ) : step === WIZARD_STEPS.salesDocuments ? (
+        <StepSalesDocuments
+          connections={props.connections}
+          onBack={() => goToStep(WIZARD_STEPS.productMaster)}
+          onContinue={() => completeStep(WIZARD_STEPS.salesDocuments)}
+        />
+      ) : step === WIZARD_STEPS.packers ? (
         <StepPackers
           packers={packers}
           canWrite={canWrite}
           demoReadOnly={write.demoReadOnly}
-          onBack={() => goToStep(1)}
-          onContinue={() => completeStep(2)}
+          onBack={() => goToStep(WIZARD_STEPS.salesDocuments)}
+          onContinue={() => completeStep(WIZARD_STEPS.packers)}
         />
-      ) : step === 3 ? (
+      ) : step === WIZARD_STEPS.whatChanges ? (
         <StepWhatChanges
           masterCount={masters.length}
           masterNames={masterNames}
           acknowledged={acknowledged}
           onAcknowledge={setAcknowledged}
-          onBack={() => goToStep(2)}
-          onContinue={() => completeStep(3)}
+          onBack={() => goToStep(WIZARD_STEPS.packers)}
+          onContinue={() => completeStep(WIZARD_STEPS.whatChanges)}
         />
-      ) : step >= SETUP_STEP_NUMBERS.salesDocuments && step < TURN_ON_STEP ? (
+      ) : step >= WIZARD_STEPS.automations && step < TURN_ON_STEP ? (
         <StepSetupPage
           step={step}
           stepKey={setupStepKeyAt(step)}

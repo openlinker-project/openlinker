@@ -14,6 +14,7 @@ import type { ReactElement } from 'react';
 
 import { Button } from '../../../shared/ui/button';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { WIZARD_STEPS } from '../lib/onboarding-state';
 import { StepPanel } from './step-panel';
 
 export interface StepWhatChangesProps {
@@ -44,7 +45,7 @@ export function StepWhatChanges(props: StepWhatChangesProps): ReactElement {
 
   return (
     <StepPanel
-      step={3}
+      step={WIZARD_STEPS.whatChanges}
       why={COPY.step3.why}
       onBack={props.onBack}
       next={

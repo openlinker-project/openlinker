@@ -23,7 +23,7 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode'
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
-import { SETUP_STEP_NUMBERS, TURN_ON_STEP } from '../lib/onboarding-state';
+import { SETUP_STEP_NUMBERS, TURN_ON_STEP, WIZARD_STEPS } from '../lib/onboarding-state';
 import { isRoutingRequiresLocationError } from '../lib/routing-requires-location-error';
 import type { SetupStepsView } from '../hooks/use-setup-steps';
 import { SetupStepKeys, describeSetupStep } from '../lib/setup-steps';
@@ -62,21 +62,21 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
       ok: true,
       title: COPY.step4.masters(props.masterCount),
       detail: props.masterNames,
-      action: <RowLink testId="btn-go-step-1" label={COPY.step4.view} onClick={() => props.onGoToStep(1)} />,
+      action: <RowLink testId="btn-go-step-1" label={COPY.step4.view} onClick={() => props.onGoToStep(WIZARD_STEPS.productMaster)} />,
     },
     {
       key: 'stock',
       ok: props.stockComplete,
       title: COPY.step4.stock,
       detail: props.stockComplete ? props.stockDetail : `${props.stockDetail} · ${COPY.step4.stillFilling}`,
-      action: <RowLink testId="btn-go-step-1-stock" label={COPY.step4.view} onClick={() => props.onGoToStep(1)} />,
+      action: <RowLink testId="btn-go-step-1-stock" label={COPY.step4.view} onClick={() => props.onGoToStep(WIZARD_STEPS.productMaster)} />,
     },
     {
       key: 'packers',
       ok: true,
       title: COPY.step4.packers,
       detail: props.packerNames ?? COPY.step4.noPackers,
-      action: <RowLink testId="btn-go-step-2" label={COPY.step4.change} onClick={() => props.onGoToStep(2)} />,
+      action: <RowLink testId="btn-go-step-2" label={COPY.step4.change} onClick={() => props.onGoToStep(WIZARD_STEPS.packers)} />,
     },
   ];
 
