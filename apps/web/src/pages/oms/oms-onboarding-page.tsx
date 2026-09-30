@@ -30,7 +30,7 @@ export function OmsOnboardingPage(): ReactElement {
         eyebrow={COPY.page.eyebrow}
         title={COPY.page.wizardTitle}
         description={COPY.page.wizardDescription}
-        backTo={{ to: '/settings', label: COPY.page.backToSettings }}
+        backTo={{ to: '/connections/new', label: COPY.page.backToConnections }}
       >
         {connectionsQuery.isLoading ? (
           <LoadingState title={COPY.page.loadingTitle} message={COPY.page.loadingMessage} />

@@ -22,7 +22,7 @@
 export const omsOnboardingCopy = {
   page: {
     eyebrow: 'Settings',
-    backToSettings: 'Settings',
+    backToConnections: 'Add a connection',
     wizardTitle: 'Pack orders in OpenLinker',
     wizardDescription:
       'Pick and pack orders on one screen, with a barcode scanner. Setup takes about 5 minutes. Nothing changes in how your orders are handled until the last step.',
@@ -47,7 +47,7 @@ export const omsOnboardingCopy = {
   adminOnly: 'Only an admin can change the packing setup.',
 
   /** The created packing connection's name. Renamable on its connection page. */
-  packingConnectionName: 'OpenLinker packing',
+  packingConnectionName: 'OpenLinker OMS',
 
   step1: {
     why: 'OpenLinker has no products or stock of its own. It reads them from your product master.',
@@ -281,9 +281,4 @@ export const omsOnboardingCopy = {
   yourProductMasters: 'your product masters',
   and: ' and ',
 
-  tile: {
-    title: 'Pack orders in OpenLinker',
-    description: 'Set up picking and packing at the pack bench, or see whether it is on.',
-    action: 'Open packing',
-  },
 } as const;

@@ -9,7 +9,6 @@ import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-t
 import { SalesDocumentsTile } from '../../features/sales-documents';
 import { WhoDecidesTile } from '../../features/fulfillment-authority';
 import { SourcingRulesTile } from '../../features/oms';
-import { OmsOnboardingTile } from '../../features/oms-onboarding';
 import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -120,10 +119,6 @@ export function SettingsPage(): ReactElement {
         {isAdmin ? <SalesDocumentsTile /> : null}
         {/* Deliberately NOT admin-gated — see `WhoDecidesTile`'s docblock. */}
         <WhoDecidesTile />
-
-        {/* ── Pack orders in OpenLinker (#3457) ─────────────────────── */}
-        {/* Deliberately NOT admin-gated — see `OmsOnboardingTile`'s docblock. */}
-        <OmsOnboardingTile />
 
         {/* ── Sourcing rules (admin-only, #3060) ────────────────────── */}
         {omsRoutingUi && isAdmin ? <SourcingRulesTile /> : null}

@@ -10,10 +10,38 @@
  * @module pages/oms
  */
 import type { Connection } from '../../features/connections';
+import { readSourcingClaim } from '../../features/oms-onboarding';
+import type { StatusBadgeTone } from '../../shared/ui/status-badge';
 
 /** The discriminator `createOmsFulfillmentRouterResolver` uses (ADR-055). */
 export const OMS_PLATFORM_TYPE = 'openlinker';
 
 export function findOmsConnections(connections: readonly Connection[]): Connection[] {
   return connections.filter((connection) => connection.platformType === OMS_PLATFORM_TYPE);
+}
+
+export interface ConnectionStatusView {
+  readonly label: string;
+  readonly tone: StatusBadgeTone;
+}
+
+/**
+ * What the status badge says for a connection (#3457).
+ *
+ * The OMS holds no external account, so `active` / `disabled` says nothing
+ * true about it: what decides whether orders are packed is the sourcing claim
+ * its Stop / Start writes. An OMS connection that is `active` therefore reads
+ * On / Off from that claim; any other status (`disabled`, `error`) still
+ * shows as itself, and every other platform keeps its plain status.
+ */
+export function describeConnectionStatus(
+  connection: Connection,
+  fallbackTone: StatusBadgeTone
+): ConnectionStatusView {
+  if (connection.platformType !== OMS_PLATFORM_TYPE || connection.status !== 'active') {
+    return { label: connection.status, tone: fallbackTone };
+  }
+  return readSourcingClaim(connection.config) === 'on'
+    ? { label: 'On', tone: 'success' }
+    : { label: 'Off', tone: 'neutral' };
 }
