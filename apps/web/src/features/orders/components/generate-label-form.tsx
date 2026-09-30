@@ -71,6 +71,7 @@ import {
   type LockerTemplate,
 } from './generate-label-form.schema';
 import { useRoutedCarrierPlatform } from '../hooks/use-routed-carrier-platform';
+import { useRoutedParcelProfile } from '../hooks/use-routed-parcel-profile';
 import {
   buildDispatchItem,
   classifyDeliveryMethod,
@@ -253,6 +254,33 @@ export function GenerateLabelForm({
   // via `watch`.
   const lockerTemplateRegister = form.register('lockerTemplate');
   const lockerTemplate = form.watch('lockerTemplate');
+
+  // Default parcel of the routing rule this delivery method matches (#3652).
+  // Rules load asynchronously, so prefill once when the profile arrives and
+  // never overwrite a field the operator already touched. No profile -> no-op,
+  // leaving the empty fields and 'medium' locker size exactly as before.
+  const routedParcel = useRoutedParcelProfile(order.sourceConnectionId, snapshot.shipping?.methodId);
+  useEffect(() => {
+    if (!routedParcel) return;
+    const dirty = form.formState.dirtyFields;
+    const opts = { shouldDirty: false, shouldValidate: false } as const;
+    if (routedParcel.lengthMm !== undefined && !dirty.length) form.setValue('length', routedParcel.lengthMm, opts);
+    if (routedParcel.widthMm !== undefined && !dirty.width) form.setValue('width', routedParcel.widthMm, opts);
+    if (routedParcel.heightMm !== undefined && !dirty.height) form.setValue('height', routedParcel.heightMm, opts);
+    if (routedParcel.weightGrams !== undefined && !dirty.weightGrams) {
+      form.setValue('weightGrams', routedParcel.weightGrams, opts);
+    }
+    const template = routedParcel.template;
+    if (
+      template !== undefined &&
+      !dirty.lockerTemplate &&
+      (LOCKER_TEMPLATE_VALUES as readonly string[]).includes(template)
+    ) {
+      form.setValue('lockerTemplate', template as LockerTemplate, opts);
+    }
+    // Prefill only when the routed profile changes: form is stable and
+    // formState is read imperatively at effect time.
+  }, [routedParcel]);
 
   // COD is driven by the order's payment status + the marketplace-sourced
   // amount (#1435). The gate is a block-list on the one prepaid status, not an

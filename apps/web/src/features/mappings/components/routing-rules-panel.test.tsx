@@ -276,4 +276,120 @@ describe('RoutingRulesPanel', () => {
       });
     });
   });
+
+  describe('parcel profile (#3652)', () => {
+    const RULE: RoutingRule = {
+      id: 'r1',
+      sourceConnectionId: 'conn_1',
+      sourceDeliveryMethodId: 'm1',
+      processorKind: 'ol_managed_carrier',
+      processorConnectionId: 'conn_inpost',
+    };
+
+    it('should show a one-line summary for a rule that carries a profile', async () => {
+      renderPanel(
+        buildApiClient({
+          rules: [
+            { ...RULE, lengthMm: 300, widthMm: 200, heightMm: 100, defaultWeightGrams: 500 },
+          ],
+        }),
+      );
+      expect(await screen.findByText('Box 30 x 20 x 10 cm, 0.5 kg')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit parcel' })).toBeInTheDocument();
+    });
+
+    it('should offer no parcel controls for a default-routed method', async () => {
+      renderPanel(buildApiClient());
+      await screen.findByRole('combobox', { name: /Fulfillment processor for InPost Paczkomat/i });
+      expect(screen.queryByRole('button', { name: 'Set parcel' })).not.toBeInTheDocument();
+    });
+
+    it('should save cm and kg as mm and g', async () => {
+      const replace = vi.fn().mockResolvedValue([]);
+      renderPanel(buildApiClient({ rules: [RULE], replace }));
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Set parcel' }));
+      fireEvent.change(screen.getByLabelText('Length (cm)'), { target: { value: '30' } });
+      fireEvent.change(screen.getByLabelText('Width (cm)'), { target: { value: '20' } });
+      fireEvent.change(screen.getByLabelText('Height (cm)'), { target: { value: '10' } });
+      fireEvent.change(screen.getByLabelText('Weight (kg)'), { target: { value: '0.5' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+      expect(await screen.findByText('Unsaved changes')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+
+      await waitFor(() => {
+        expect(replace).toHaveBeenCalledWith('conn_1', {
+          items: [
+            expect.objectContaining({
+              sourceDeliveryMethodId: 'm1',
+              parcelTemplate: null,
+              lengthMm: 300,
+              widthMm: 200,
+              heightMm: 100,
+              defaultWeightGrams: 500,
+            }),
+          ],
+        });
+      });
+    });
+
+    it('should send explicit nulls when a stored profile is cleared', async () => {
+      const replace = vi.fn().mockResolvedValue([]);
+      renderPanel(
+        buildApiClient({
+          rules: [{ ...RULE, lengthMm: 300, widthMm: 200, heightMm: 100, defaultWeightGrams: 500 }],
+          replace,
+        }),
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit parcel' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Clear parcel' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+
+      await waitFor(() => {
+        expect(replace).toHaveBeenCalledWith('conn_1', {
+          items: [
+            expect.objectContaining({
+              parcelTemplate: null,
+              lengthMm: null,
+              widthMm: null,
+              heightMm: null,
+              defaultWeightGrams: null,
+            }),
+          ],
+        });
+      });
+    });
+
+    it('should refuse a partial box in the dialog', async () => {
+      renderPanel(buildApiClient({ rules: [RULE] }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Set parcel' }));
+      fireEvent.change(screen.getByLabelText('Length (cm)'), { target: { value: '30' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(/together/);
+    });
+
+    it('should not send profile keys for a rule that never had one', async () => {
+      const replace = vi.fn().mockResolvedValue([]);
+      renderPanel(buildApiClient({ replace }));
+      const select = await screen.findByRole('combobox', {
+        name: /Fulfillment processor for InPost Paczkomat/i,
+      });
+      fireEvent.change(select, { target: { value: 'source_brokered::conn_allegro' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+      await waitFor(() => {
+        expect(replace).toHaveBeenCalledWith('conn_1', {
+          items: [
+            {
+              sourceDeliveryMethodId: 'm1',
+              processorKind: 'source_brokered',
+              processorConnectionId: 'conn_allegro',
+            },
+          ],
+        });
+      });
+    });
+  });
 });
