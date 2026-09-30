@@ -225,6 +225,11 @@ export interface InventoryFilters {
    * unattributed rows would misreport whose stock the operator is looking at.
    */
   sourceConnectionId?: string;
+  /**
+   * Leave out positions marked stale (the master no longer reports them).
+   * Absent keeps every row, so existing callers read what they always did.
+   */
+  excludeStale?: boolean;
 }
 
 /**

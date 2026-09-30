@@ -29,6 +29,7 @@ import {
   type PartialProductMaster,
   type ProductMasterCapability,
 } from '../lib/product-masters';
+import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 import { ProductMasterCard } from './product-master-card';
 import { StepPanel } from './step-panel';
 
@@ -230,9 +231,11 @@ function MainInactiveAlert(): ReactElement {
       title={COPY.step1.mainInactiveTitle}
       data-testid="alert-main-location-inactive"
       action={
-        <Link className="button button--secondary button--sm" to="/inventory/locations">
-          {COPY.step1.openLocations}
-        </Link>
+        isOmsRoutingUiEnabled() ? (
+          <Link className="button button--secondary button--sm" to="/inventory/locations">
+            {COPY.step1.openLocations}
+          </Link>
+        ) : undefined
       }
     >
       {COPY.step1.mainInactiveBody}

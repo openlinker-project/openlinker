@@ -379,6 +379,8 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
         )}
         stockComplete={progress.complete}
         packerNames={packerNames}
+        packers={packers}
+        canAddPackers={canWrite}
         canWrite={canWrite && packingConnection !== null}
         writeVisible={write.visible}
         demoReadOnly={write.demoReadOnly}
