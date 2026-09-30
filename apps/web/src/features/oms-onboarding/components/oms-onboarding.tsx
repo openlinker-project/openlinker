@@ -46,6 +46,7 @@ import { useFulfillmentSnapshotQuery } from '../hooks/use-fulfillment-snapshot-q
 import { useMainLocationQuery } from '../hooks/use-main-location-query';
 import { useSetSetupStepSkippedMutation } from '../hooks/use-set-setup-step-skipped-mutation';
 import { useSetupSteps } from '../hooks/use-setup-steps';
+import { SetupStepKeys, type SetupStepKey } from '../lib/setup-steps';
 import { useSetPackingMutation } from '../hooks/use-set-packing-mutation';
 import { useStockLocatedProgress } from '../hooks/use-stock-located-progress';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
@@ -59,7 +60,9 @@ import {
   isStep1Done,
   readSourcingStanding,
   resolveDataSource,
+  SETUP_STEP_NUMBERS,
   TOTAL_STEPS,
+  TURN_ON_STEP,
   type OnboardingView,
   type SourcingStanding,
 } from '../lib/onboarding-state';
@@ -67,6 +70,7 @@ import { selectProductMasters } from '../lib/product-masters';
 import { FirstOrderPanel } from './first-order-panel';
 import { PackingStatus } from './packing-status';
 import { StepPackers } from './step-packers';
+import { StepSetupPage } from './step-setup-page';
 import { StepProductMaster } from './step-product-master';
 import { StepTurnOn } from './step-turn-on';
 import { StepWhatChanges } from './step-what-changes';
@@ -82,6 +86,10 @@ export interface OmsOnboardingProps {
 }
 
 const numberFormat = new Intl.NumberFormat('en-US');
+
+function setupStepKeyAt(step: number): SetupStepKey {
+  return SetupStepKeys.find((key) => SETUP_STEP_NUMBERS[key] === step) ?? 'whoDecides';
+}
 
 function joinNames(masters: readonly Connection[]): string {
   return masters.map((master) => master.name).join(COPY.and);
@@ -173,6 +181,10 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
   const [view, setView] = useState<OnboardingView>(position.view);
   const [step, setStep] = useState(position.step);
   const [maxReached, setMaxReached] = useState(position.step);
+  // The steps the operator has actually been shown. A tick means they went
+  // through it, so data that already makes a step "done" must not tick it
+  // before they get there.
+  const [visited, setVisited] = useState<ReadonlySet<number>>(() => new Set([position.step]));
   const [completed, setCompleted] = useState<ReadonlySet<number>>(() => new Set());
   const [acknowledged, setAcknowledged] = useState(false);
   const [turnedOnAt, setTurnedOnAt] = useState<string | null>(null);
@@ -217,6 +229,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
 
   const goToStep = (next: number): void => {
     setStep(next);
+    setVisited((previous) => new Set(previous).add(next));
     setMaxReached((reached) => Math.max(reached, next));
     setView('wizard');
   };
@@ -234,7 +247,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
       {
         onSuccess: () => {
           setTurnedOnAt(new Date().toISOString());
-          setCompleted((previous) => new Set(previous).add(TOTAL_STEPS - 1));
+          setCompleted((previous) => new Set(previous).add(TURN_ON_STEP - 1));
           setView(nextView);
         },
       }
@@ -272,17 +285,30 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
   const inWizard = view === 'wizard';
   const completedSteps = new Set(completed);
   if (step1Done) completedSteps.add(0);
+  // Packing that is on has been through the steps it is made of.
+  if (live) for (const index of [0, 1, 2, TURN_ON_STEP - 1]) completedSteps.add(index);
+  for (const key of SetupStepKeys) {
+    const state = setup?.states[key];
+    // Both, one step at a time: the decision is made AND the operator has
+    // been to this very step.
+    if (visited.has(SETUP_STEP_NUMBERS[key]) && (state === 'done' || state === 'skipped')) completedSteps.add(SETUP_STEP_NUMBERS[key] - 1);
+  }
 
   const body = inWizard ? (
     <WizardLayout
+      stepperPlacement="side"
       stepper={
         <SetupStepper
           steps={COPY.steps.map((s) => s.title)}
           currentStep={step - 1}
           completedSteps={completedSteps}
-          maxReachedStep={maxReached - 1}
+          // Packing that is already on lets the operator move between the setup
+          // steps; "Turn it on" itself is behind them.
+          maxReachedStep={live ? SETUP_STEP_NUMBERS.whoDecides - 1 : maxReached - 1}
           onSelectStep={(index) => goToStep(index + 1)}
           testId="wizard-stepper"
+          orientation="vertical"
+          stepMeta={COPY.steps.map((s) => s.meta)}
         />
       }
     >
@@ -326,6 +352,30 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           onBack={() => goToStep(2)}
           onContinue={() => completeStep(3)}
         />
+      ) : step >= SETUP_STEP_NUMBERS.salesDocuments && step < TURN_ON_STEP ? (
+        <StepSetupPage
+          step={step}
+          stepKey={setupStepKeyAt(step)}
+          state={setup?.states[setupStepKeyAt(step)] ?? null}
+          last={live && step === SETUP_STEP_NUMBERS.whoDecides}
+          canWrite={canWrite && packingConnection !== null}
+          demoReadOnly={write.demoReadOnly}
+          saving={setStepSkipped.isPending}
+          onBack={() => goToStep(step - 1)}
+          // Finishing right after turning packing on leads to the first-order wait;
+          // coming back later to a setup that was already live goes to its status.
+          onContinue={() =>
+            live && step === SETUP_STEP_NUMBERS.whoDecides ? setView('status') : completeStep(step)
+          }
+          onSetSkipped={(skipped) => {
+            if (packingConnection === null) return;
+            setStepSkipped.mutate({
+              packingConnectionId: packingConnection.id,
+              step: setupStepKeyAt(step),
+              skipped,
+            });
+          }}
+        />
       ) : (
         <StepTurnOn
           masterCount={masters.length}
@@ -333,6 +383,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           stockDetail={stockDetail}
           stockComplete={progress.complete}
           packerNames={packerNames}
+          setup={setup}
           otherSystemDecides={standing === 'other'}
           canWrite={canWrite && step1Done && packingConnection !== null}
           demoReadOnly={write.demoReadOnly}
@@ -400,6 +451,10 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           setStopOpen(true);
         }}
         onStartAgain={() => turnOn('status')}
+        onContinueSetup={() => {
+          const next = setup?.left[0];
+          goToStep(next === undefined ? SETUP_STEP_NUMBERS.salesDocuments : SETUP_STEP_NUMBERS[next]);
+        }}
       />
       <StopPackingDialog
         open={stopOpen}

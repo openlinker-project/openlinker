@@ -10,6 +10,7 @@
  * @module features/oms-onboarding/lib
  */
 import { withConfigKey } from './config-merge';
+import { omsOnboardingCopy as COPY } from './oms-onboarding.copy';
 
 export const SetupStepKeys = ['salesDocuments', 'automations', 'whoDecides'] as const;
 export type SetupStepKey = (typeof SetupStepKeys)[number];
@@ -71,4 +72,21 @@ export interface SetupSummary {
 export function summariseSetup(states: Readonly<Record<SetupStepKey, SetupStepState>>): SetupSummary {
   const left = SetupStepKeys.filter((key) => states[key] === 'pending' || states[key] === 'unknown');
   return { complete: left.length === 0, left };
+}
+
+/** The title and the one-line state of a step, worded once for every list that shows it. */
+export function describeSetupStep(
+  key: SetupStepKey,
+  state: SetupStepState
+): { readonly title: string; readonly detail: string } {
+  const copy = COPY.status.steps[key];
+  const detail =
+    state === 'done'
+      ? copy.done
+      : state === 'skipped'
+        ? COPY.status.steps.skipped
+        : state === 'unknown'
+          ? COPY.status.steps.unknown
+          : copy.pending;
+  return { title: copy.title, detail };
 }
