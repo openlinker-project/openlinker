@@ -233,6 +233,85 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   );
 }
 
+export interface ShellTopbarProps {
+  /**
+   * Opens the mobile navigation drawer. Omitted by a layout with no sidebar
+   * (the pack bench, #3401 follow-up) - a menu button that opens nothing is a
+   * control shaped like one that is not.
+   */
+  readonly onOpenMenu?: () => void;
+  /**
+   * Renders the brand mark at the start of the bar. Only a layout with no
+   * sidebar needs it: everywhere else the sidebar carries the logo.
+   */
+  readonly showBrand?: boolean;
+  /**
+   * Renders the command-palette trigger. A layout that does not mount a
+   * `CommandPaletteProvider` must pass `false`, since the trigger reads that
+   * context.
+   */
+  readonly showSearch?: boolean;
+  readonly onLogout: () => void;
+}
+
+/**
+ * The application's one topbar. Exported so a layout that deliberately has no
+ * sidebar (`BenchAppLayout`) renders the SAME bar rather than a look-alike that
+ * drifts. Must sit inside a `CommandPaletteProvider` unless `showSearch` is
+ * `false`.
+ */
+export function ShellTopbar({
+  onOpenMenu,
+  showBrand = false,
+  showSearch = true,
+  onLogout,
+}: ShellTopbarProps): ReactElement {
+  const { session } = useSession();
+  const username = session.user?.username;
+  const email = session.user?.email ?? null;
+  const crumbs = resolveCrumbFromMatches(useMatches());
+
+  return (
+    <header className="shell-topbar">
+      {onOpenMenu ? (
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          aria-label="Open menu"
+          className="shell-topbar__hamburger"
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+      ) : null}
+
+      {showBrand ? <SidebarBrand /> : null}
+
+      <nav aria-label="Breadcrumb" className="shell-crumbs">
+        <span className="shell-crumbs__group">{crumbs.group}</span>
+        {crumbs.title ? (
+          <>
+            <span className="shell-crumbs__sep" aria-hidden="true">
+              /
+            </span>
+            <span className="shell-crumbs__current">{crumbs.title}</span>
+          </>
+        ) : null}
+      </nav>
+
+      {showSearch ? <TopbarSearchTrigger /> : null}
+
+      <div className="shell-topbar__spacer" />
+
+      <Button tone="ghost" className="shell-topbar__alerts">
+        Alerts <span aria-hidden="true">0</span>
+        <span className="sr-only">(0 new)</span>
+      </Button>
+
+      {username ? <UserChip username={username} email={email} onLogout={onLogout} /> : null}
+    </header>
+  );
+}
+
 export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { isReady, session, clearSession } = useSession();
   const { showToast } = useToast();
@@ -247,7 +326,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // shell itself — we only call it to drive its useEffect.
   useDensity();
   const username = session.user?.username;
-  const email = session.user?.email ?? null;
   const counts = useNavCounts();
   // The session's own role string, and the ONLY place this file reads it.
   //
@@ -281,7 +359,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     () => buildNavGroups({ isAdmin, demoMode, permissions, role }),
     [isAdmin, demoMode, permissions, role],
   );
-  const matches = useMatches();
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
@@ -321,8 +398,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     hasInitializedAnalyticsRef.current = true;
     void initDemoIntegrations(systemConfigQuery.data, true);
   }, [systemConfigQuery.isSuccess, systemConfigQuery.data, isReady, session]);
-
-  const crumbs = resolveCrumbFromMatches(matches);
 
   return (
     <CommandPaletteProvider>
@@ -367,41 +442,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
       </dialog>
 
       <div className="shell-main">
-        <header className="shell-topbar">
-          <button
-            type="button"
-            onClick={openDrawer}
-            aria-label="Open menu"
-            className="shell-topbar__hamburger"
-          >
-            <span aria-hidden="true">☰</span>
-          </button>
-
-          <nav aria-label="Breadcrumb" className="shell-crumbs">
-            <span className="shell-crumbs__group">{crumbs.group}</span>
-            {crumbs.title ? (
-              <>
-                <span className="shell-crumbs__sep" aria-hidden="true">
-                  /
-                </span>
-                <span className="shell-crumbs__current">{crumbs.title}</span>
-              </>
-            ) : null}
-          </nav>
-
-          <TopbarSearchTrigger />
-
-          <div className="shell-topbar__spacer" />
-
-          <Button tone="ghost" className="shell-topbar__alerts">
-            Alerts <span aria-hidden="true">0</span>
-            <span className="sr-only">(0 new)</span>
-          </Button>
-
-          {username ? (
-            <UserChip username={username} email={email} onLogout={handleLogout} />
-          ) : null}
-        </header>
+        <ShellTopbar onOpenMenu={openDrawer} onLogout={handleLogout} />
 
         {demoMode && isViewerOnly ? <DemoBanner /> : null}
 
