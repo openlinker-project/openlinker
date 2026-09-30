@@ -31,6 +31,7 @@ import type {
   BenchPackedTodayList,
   BenchParcel,
   BenchPresence,
+  BenchLabelReplaceResult,
   BenchReopenResult,
   BenchUndoCompletionResult,
   BenchUndoResult,
@@ -137,6 +138,10 @@ export const benchDocumentsSchema = z.object({
       .nullish()
       .transform((value) => value ?? false),
     failedAt: nullableString,
+    parcelTemplates: z
+      .array(z.string())
+      .nullish()
+      .transform((value) => value ?? []),
   }),
 });
 
@@ -285,4 +290,44 @@ export const benchMetricsSchema = z.object({
 
 export function parseBenchMetrics(payload: unknown): BenchMetrics {
   return benchMetricsSchema.parse(payload);
+}
+
+// ── Change size (#3655) ─────────────────────────────────────────────────────
+// A success body is `{ outcome: 'replaced' | 'cancelled-not-replaced', reason? }`.
+// Refusals are 409s and are folded into the same result by `bench-work.api.ts`.
+export const benchLabelReplaceResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+});
+
+export const KNOWN_REPLACE_REFUSALS = [
+  'cannot-cancel',
+  'already-handed-over',
+  'parcel-completed',
+  'no-label',
+  'recipient-unavailable',
+  'parcel-size-unknown',
+  'replace-in-progress',
+] as const;
+
+/** Reads a wire body into a result. Anything that is not a success outcome is a refusal. */
+export function parseBenchLabelReplaceResult(payload: unknown): BenchLabelReplaceResult {
+  const parsed = benchLabelReplaceResultSchema.parse(payload);
+  if (parsed.outcome === 'replaced' || parsed.outcome === 'cancelled-not-replaced') {
+    return { outcome: parsed.outcome, reason: parsed.reason };
+  }
+  return { outcome: 'refused', reason: parsed.reason ?? parsed.outcome };
+}
+
+/** Finds the refusal code in a 409 body, whichever member the backend put it in. */
+export function readReplaceRefusalReason(details: unknown): string | null {
+  if (typeof details !== 'object' || details === null) return null;
+  const record = details as Record<string, unknown>;
+  for (const key of ['reason', 'code', 'error', 'message'] as const) {
+    const value = record[key];
+    if (typeof value === 'string' && (KNOWN_REPLACE_REFUSALS as readonly string[]).includes(value)) {
+      return value;
+    }
+  }
+  return typeof record.reason === 'string' ? record.reason : null;
 }
