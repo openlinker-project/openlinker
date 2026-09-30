@@ -25,7 +25,7 @@ import { usePlatform, usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
-import { OMS_PLATFORM_TYPE } from '../oms/oms-connection';
+import { describeConnectionStatus, OMS_PLATFORM_TYPE } from '../oms/oms-connection';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -195,6 +195,11 @@ function ProductCatalogLinkBanner({
   );
 }
 
+function ConnectionStatusBadge({ connection }: { connection: Connection }): ReactElement {
+  const view = describeConnectionStatus(connection, toStatusTone(connection.status));
+  return <StatusBadge tone={view.tone}>{view.label}</StatusBadge>;
+}
+
 /** The OMS connection is configured by the packing setup, never by the generic edit form. */
 const PACKING_SETTINGS_PATH = '/settings/packing';
 
@@ -297,7 +302,7 @@ export function ConnectionDetailPage(): ReactElement {
               <span className="toolbar-chip" title={connection.platformType}>
                 {resolvePlatformLabel(platforms, connection)}
               </span>
-              <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+              <ConnectionStatusBadge connection={connection} />
             </div>
             <div className="toolbar__group">
               <span className="muted-text">Created <TimeDisplay iso={connection.createdAt} format="date" /></span>
@@ -355,9 +360,7 @@ export function ConnectionDetailPage(): ReactElement {
                   <p className="eyebrow">Connection summary</p>
                   <h3 className="section-title">Overview</h3>
                 </div>
-                <StatusBadge tone={toStatusTone(connection.status)}>
-                  {connection.status}
-                </StatusBadge>
+                <ConnectionStatusBadge connection={connection} />
               </div>
 
               <KeyValueList

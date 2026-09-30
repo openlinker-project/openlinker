@@ -10,5 +10,5 @@
  */
 export { OmsOnboarding } from './components/oms-onboarding';
 export type { OmsOnboardingProps } from './components/oms-onboarding';
-export { OmsOnboardingTile } from './components/oms-onboarding-tile';
+export { readSourcingClaim } from './lib/config-merge';
 export { omsOnboardingCopy } from './lib/oms-onboarding.copy';

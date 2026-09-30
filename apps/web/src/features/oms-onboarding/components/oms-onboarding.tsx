@@ -92,7 +92,7 @@ function Shell({ inWizard, children }: { inWizard: boolean; children: ReactEleme
       eyebrow={COPY.page.eyebrow}
       title={inWizard ? COPY.page.wizardTitle : COPY.page.statusTitle}
       description={inWizard ? COPY.page.wizardDescription : COPY.page.statusDescription}
-      backTo={{ to: '/settings', label: COPY.page.backToSettings }}
+      backTo={{ to: '/connections/new', label: COPY.page.backToConnections }}
     >
       {children}
     </PageLayout>

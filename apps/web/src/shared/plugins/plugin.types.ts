@@ -133,6 +133,13 @@ export interface PlatformSetupCard {
   description: string;
   to: string;
   badge: string;
+  /**
+   * Render the card as the platform's own product rather than a third-party
+   * integration (the OpenLinker OMS): listed first and styled apart. It also
+   * makes the card appear in the picker even when the platform is
+   * `hideFromCreateConnection` (hidden from the by-hand advanced form only).
+   */
+  featured?: boolean;
 }
 
 /**
