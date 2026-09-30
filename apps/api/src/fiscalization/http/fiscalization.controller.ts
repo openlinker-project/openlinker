@@ -73,6 +73,7 @@ import {
   orderFromReadySnapshot,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord } from '@openlinker/core/orders';
+import { Logger } from '@openlinker/shared/logging';
 
 import { AcceptedFiscalRegistrationResponseDto } from './dto/accepted-fiscal-registration-response.dto';
 import { FiscalRegistrationProgressResponseDto } from './dto/fiscal-registration-progress-response.dto';
@@ -102,6 +103,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 @ApiBearerAuth()
 @Controller()
 export class FiscalizationController {
+  private readonly logger = new Logger(FiscalizationController.name);
+
   constructor(
     @Inject(FISCAL_REGISTRATION_SERVICE_TOKEN)
     private readonly fiscalRegistrations: IFiscalRegistrationService,
@@ -179,7 +182,35 @@ export class FiscalizationController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+    await this.clearSalesDocumentBlock(dto.orderId);
     return accepted;
+  }
+
+  /**
+   * Clear the order's persisted "why no document" reason once an operator has
+   * asked for the receipt by hand (#3646), mirroring
+   * `InvoicingController.clearSalesDocumentBlock`.
+   *
+   * Without it `trigger-model-manual` stayed on the order after the receipt
+   * existed, and every surface that reads the reason - the `/orders` row, the
+   * order panel, the pack bench - told the operator no document was made. The
+   * auto-issue gate already declines to write it back for an order holding a
+   * blocking receipt, so a clear here stays cleared.
+   *
+   * Clears the block ONLY (`preserve` the matched rule), for the reason the
+   * invoicing sibling gives. Best-effort: the registration has already been
+   * accepted, so a failure to clear must not turn a 202 into an error.
+   */
+  private async clearSalesDocumentBlock(orderId: string): Promise<void> {
+    try {
+      await this.orders.markSalesDocumentBlock(orderId, null, { action: 'preserve' });
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to clear the sales-document block after requesting a fiscal registration ` +
+          `(swallowed): error=${errorName} orderId=${orderId}`,
+      );
+    }
   }
 
   @Roles('admin', 'operator', 'viewer')
