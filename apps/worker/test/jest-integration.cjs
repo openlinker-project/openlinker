@@ -213,5 +213,13 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/eparagony/src/$1',
     ),
+    '^@openlinker/integrations-shoper$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shoper/src/index.ts',
+    ),
+    '^@openlinker/integrations-shoper/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shoper/src/$1',
+    ),
   },
 };

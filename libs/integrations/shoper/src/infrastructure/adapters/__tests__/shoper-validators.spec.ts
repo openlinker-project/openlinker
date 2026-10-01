@@ -1,0 +1,58 @@
+import {
+  InvalidConnectionConfigException,
+  InvalidCredentialsShapeException,
+} from '@openlinker/core/integrations';
+
+import { ShoperConnectionConfigShapeValidatorAdapter } from '../shoper-connection-config-shape-validator.adapter';
+import { ShoperConnectionCredentialsShapeValidatorAdapter } from '../shoper-connection-credentials-shape-validator.adapter';
+
+describe('ShoperConnectionConfigShapeValidatorAdapter', () => {
+  const validator = new ShoperConnectionConfigShapeValidatorAdapter('Shoper');
+
+  it('should accept a valid baseUrl and ignore adjacent keys', async () => {
+    await expect(
+      validator.validate({ baseUrl: 'xxxxx.shoparena.pl', rateLimit: { requestsPerMinute: 60 } }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should reject a missing baseUrl with a path-tagged issue', async () => {
+    const error = await validator.validate({}).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(InvalidConnectionConfigException);
+    expect((error as InvalidConnectionConfigException).errors).toEqual([
+      { path: 'baseUrl', message: expect.stringContaining('non-empty string') },
+    ]);
+  });
+
+  it.each(['http://xxxxx.shoparena.pl', 'xxxxx.shoparena.pl/path', '10.0.0.1', 'localhost'])(
+    'should reject a malformed baseUrl %p',
+    async (baseUrl) => {
+      await expect(validator.validate({ baseUrl })).rejects.toBeInstanceOf(
+        InvalidConnectionConfigException,
+      );
+    },
+  );
+});
+
+describe('ShoperConnectionCredentialsShapeValidatorAdapter', () => {
+  const validator = new ShoperConnectionCredentialsShapeValidatorAdapter('Shoper');
+
+  it('should accept a non-empty token', async () => {
+    await expect(validator.validate({ token: 'abc123' })).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['missing', {}],
+    ['empty', { token: '' }],
+    ['whitespace', { token: '   ' }],
+    ['not a string', { token: 12345 }],
+  ])('should reject a %s token', async (_label, credentials) => {
+    await expect(validator.validate(credentials)).rejects.toBeInstanceOf(
+      InvalidCredentialsShapeException,
+    );
+  });
+
+  it('should not echo a rejected value into the error', async () => {
+    const error = await validator.validate({ token: 12345 }).catch((e: unknown) => e);
+    expect((error as Error).message).not.toContain('12345');
+  });
+});
