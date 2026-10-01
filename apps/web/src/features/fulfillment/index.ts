@@ -37,6 +37,22 @@ export {
   FulfillmentVsOrdersExplainer,
   type FulfillmentVsOrdersExplainerProps,
 } from './components/fulfillment-vs-orders-explainer';
+// #3096 — the two fulfilment pages' shared states: the role refusal (with the
+// bench link for a bench-only session) and each page's loading skeleton.
+export {
+  FulfillmentAccessDenied,
+  type FulfillmentAccessDeniedProps,
+} from './components/fulfillment-access-denied';
+export { FulfillmentWorkDetailSkeleton } from './components/fulfillment-work-detail-skeleton';
+export { AssignPackingWorkSkeleton } from './components/assign-packing-work-skeleton';
+// #3096 — one staffing runner for the board and the detail's Packer card, and
+// the one flag behind every location-only affordance.
+export {
+  useFulfillmentAssignmentRunner,
+  type FulfillmentAssignmentChange,
+  type FulfillmentAssignmentRunner,
+} from './hooks/use-fulfillment-assignment-runner';
+export { useHasMultipleLocations } from './hooks/use-has-multiple-locations';
 
 // The action set and its dialog — shared by the fulfilment screen and the
 // order-detail panel.
@@ -69,6 +85,7 @@ export type { AssignPackingWorkLaneSectionProps } from './components/assign-pack
 export { AssignPackingWorkActions } from './components/assign-packing-work-actions';
 export { useUpdateFulfillmentAssignmentMutation } from './hooks/use-update-fulfillment-assignment-mutation';
 export {
+  countTasksByPacker,
   groupTasksByPacker,
   lightestLoadLaneIds,
   // The location grouping, normalised into the shape the board renders — the

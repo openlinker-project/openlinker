@@ -29,6 +29,19 @@ function SearchEchoLoginSentinel(): React.ReactElement {
   return <div>Login page search: {location.search}</div>;
 }
 
+function BenchSentinel(): React.ReactElement {
+  return <div>Bench page</div>;
+}
+
+/** A packer: the bench, and nothing of the app (#3096, F-9). */
+const PACKER: SessionUser = {
+  id: 'user_9',
+  username: 'packer',
+  email: null,
+  role: 'packer',
+  permissions: ['bench:write'],
+};
+
 function ConsentSentinel(): React.ReactElement {
   const location = useLocation();
   return <div>Consent page next: {location.search}</div>;
@@ -69,8 +82,13 @@ function renderLayout(
       {
         path: '/',
         element: <AuthenticatedAppLayout />,
-        children: [{ index: true, handle: indexCrumb, element: <TestChild /> }],
+        children: [
+          { index: true, handle: indexCrumb, element: <TestChild /> },
+          { path: 'orders/:id', handle: indexCrumb, element: <TestChild /> },
+          { path: 'fulfillment/works/:workId', handle: indexCrumb, element: <TestChild /> },
+        ],
       },
+      { path: '/bench', element: <BenchSentinel /> },
       { path: '/login', element: options?.loginElement ?? <LoginSentinel /> },
       { path: '/consent', element: <ConsentSentinel /> },
     ],
@@ -152,6 +170,57 @@ describe('AuthenticatedAppLayout', () => {
     });
 
     expect(await screen.findByText('Authenticated content')).toBeInTheDocument();
+  });
+
+  describe('a bench-only session (#3096, F-9)', () => {
+    it.each(['/', '/orders/ol_order_1', '/fulfillment/works/ol_fwork_1'])(
+      'should send a packer to the bench when they open %s',
+      async (initialEntry) => {
+        renderLayout(createAuthenticatedSessionAdapter(PACKER), { initialEntry });
+
+        expect(await screen.findByText('Bench page')).toBeInTheDocument();
+        expect(screen.queryByText('Authenticated content')).not.toBeInTheDocument();
+      }
+    );
+
+    it('should never render the app shell for a packer, even while the config is loading', async () => {
+      const neverResolves = new Promise(() => {});
+      renderLayout(createAuthenticatedSessionAdapter(PACKER), {
+        apiClient: createMockApiClient({
+          system: { getConfig: vi.fn().mockReturnValue(neverResolves) },
+        } as Partial<ApiClient>),
+      });
+
+      expect(await screen.findByText('Bench page')).toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Loading application shell')).not.toBeInTheDocument();
+    });
+
+    it('should keep a viewer in the app when they hold orders:read', async () => {
+      renderLayout(
+        createAuthenticatedSessionAdapter({
+          ...PACKER,
+          role: 'viewer',
+          permissions: ['orders:read'],
+        }),
+        { initialEntry: '/orders/ol_order_1' }
+      );
+
+      expect(await screen.findByText('Authenticated content')).toBeInTheDocument();
+    });
+  });
+
+  it('should carry a deep link to /login as next when an anonymous session opens it', async () => {
+    renderLayout(undefined, {
+      initialEntry: '/orders/ol_order_1?tab=items',
+      loginElement: <SearchEchoLoginSentinel />,
+    });
+
+    expect(
+      await screen.findByText(
+        `Login page search: ?tab=items&next=${encodeURIComponent('/orders/ol_order_1?tab=items')}`
+      )
+    ).toBeInTheDocument();
   });
 
   it('should not render app routes while the demo-mode config is still loading (#1938)', async () => {

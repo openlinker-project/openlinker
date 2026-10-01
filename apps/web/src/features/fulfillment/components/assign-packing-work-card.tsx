@@ -45,7 +45,9 @@ import type { LiHTMLAttributes, ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
 import { formatShipBy, type ShipByLevel } from '../../../shared/format/format-ship-by';
+import { shortenId } from '../../../shared/ui/entity-label';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { formatOrderRef } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { formatUnassignedAge } from '../lib/assign-packing-work-duration';
 import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
@@ -87,6 +89,8 @@ export interface AssignPackingWorkCardProps {
   readonly inUnassignedLane?: boolean;
   /** The task's own detail-page address, carrying the page's URL state (#3259). */
   readonly detailHref: string;
+  /** Whether the install has more than one active location (#3096). */
+  readonly showLocation?: boolean;
 }
 
 /**
@@ -145,6 +149,7 @@ export function AssignPackingWorkCard({
   dragEnabled = false,
   inUnassignedLane = false,
   detailHref,
+  showLocation = false,
 }: AssignPackingWorkCardProps): ReactElement {
   const badge = badgeFor(task, inUnassignedLane);
   const units = task.lines.reduce((sum, line) => sum + line.totalQuantity, 0);
@@ -182,12 +187,17 @@ export function AssignPackingWorkCard({
           here is often a 36-char internal id where the order carries no
           source reference, and `title` gives a desk surface's hover the tail
           that truncation takes. */}
+      {/* `formatOrderRef` (#3096), the orders lists' own shortening: a
+          36-character UUID reference keeps its head AND its disambiguating
+          tail (`1a7a9550…5e3f`), where a CSS ellipsis dropped the tail. Mono
+          ink, underlined on hover only — the mockup's `.lane-card__ref`,
+          not an orange body link shouting from every row. */}
       <Link
         to={detailHref}
-        className="assign-packing-work-card__ref link"
+        className="assign-packing-work-card__ref"
         title={task.orderReference ?? task.id}
       >
-        {task.orderReference ?? task.id}
+        {task.orderReference ? formatOrderRef(task.orderReference) : shortenId(task.id)}
       </Link>
       {/* A WRAPPER holds the column width, never the badge itself. Sizing the
           badge to the slot stretched its pill to twice the width its words
@@ -215,7 +225,9 @@ export function AssignPackingWorkCard({
           lines: task.lines.length,
           units,
         })}
-        {task.locationName == null ? null : <> · {task.locationName}</>}
+        {/* Only where it can tell two rows apart (#3096): on a one-location
+            install every row would end "· Main warehouse". */}
+        {!showLocation || task.locationName == null ? null : <> · {task.locationName}</>}
       </span>
 
       <div className="assign-packing-work-card__actions">{actions}</div>

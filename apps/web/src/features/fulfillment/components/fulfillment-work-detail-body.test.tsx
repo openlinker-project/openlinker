@@ -1,40 +1,32 @@
 /**
- * `FulfillmentWorkDetailBody` - the four detail sections (#3100, #3291).
+ * `FulfillmentWorkDetailBody` — the task detail's two columns (#3100, rebuilt
+ * to the mockup's box model by #3096).
  *
- * Every assertion below is written against a property that would survive a
- * reviewer deleting the code under it, rather than against the shape of the
- * markup. The four that carry #3100's acceptance criteria:
+ * Each assertion is written against a property that would survive a reviewer
+ * deleting the code under it, rather than against markup shape:
  *
- *   1. The holds section is ABSENT, heading included, when nothing is holding
- *      the task - not an empty heading, and not derived from `status`, which
- *      never says `on_hold` (#2406). Asserted in both directions, because a
- *      component that rendered the heading unconditionally would still pass a
- *      one-sided "the banner is gone" check.
- *   2. The stale-count caveat is `COPY.lines.caveat` - byte-identical to the
- *      shipped `FulfillmentTaskCard`'s own inline sentence - not a second
- *      wording, and it appears exactly ONCE for a two-line task - once per
- *      page, never once per line.
- *   3. The Location row renders even with no location, carrying the copy
- *      table's own sentence (divergence 5) rather than disappearing; when the
- *      backend resolves a friendly name, that name renders instead of the raw
- *      id (divergence 2, #3258 superseded by the backend already carrying
- *      `locationName`).
- *   4. The connection executing the task is NOT a fact row - it moved to its
- *      own section below, so "Details" never repeats it.
- *
- * #3291's own acceptance criteria are the "who's handling this" `describe`
- * block further down: the panel renders in every reachable state, an
- * unassigned task never fires the lookup at all, and a lookup that 404s still
- * shows the raw id rather than nothing.
+ *   1. Every section is a CARD (`.detail-card`) — the page used to pass every
+ *      text check while rendering its sections flat on the page background.
+ *   2. The holds card is ABSENT, heading included, when nothing holds the
+ *      task, and heldness is read from `activeHolds`, never from `status`.
+ *   3. A line renders as a product card — name, SKU · EAN, attributes — and
+ *      falls back to the variant id only when the catalogue has no product.
+ *   4. Delivery is a carrier NAME, never the raw delivery-method id, and the
+ *      Location fact renders only on a multi-location install.
+ *   5. The bench facts (#3096, G02-3): parcel closed, channel notified, and
+ *      the warning when a closed parcel has not been settled yet.
+ *   6. The right column is the order page's own modules, fed by one order
+ *      read, plus the Packer card.
  *
  * @module apps/web/src/features/fulfillment/components
  */
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FulfillmentWorkDetailBody } from './fulfillment-work-detail-body';
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import type { ApiClient } from '../../../app/api/api-client';
 import type { FulfillmentTask, FulfillmentTaskLine } from '../api/fulfillment.types';
 import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
 
@@ -56,14 +48,13 @@ function line(overrides: Partial<FulfillmentTaskLine> = {}): FulfillmentTaskLine
 
 function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   return {
-    id: 'ol_work_1',
+    id: 'ol_fwork_1',
     orderId: 'ol_order_1',
     locationId: 'loc_warsaw',
-    locationName: undefined,
-    deliveryMethod: 'courier',
-    // `null` by default so the sections above and below "who's handling this"
-    // never fire the #3291 connection lookup as a side effect of a fixture
-    // they have no opinion about; the executor tests set their own id.
+    locationName: 'Main warehouse',
+    deliveryMethod: '2488f7b7-5d1c-4d65-b85c-4cbcf253fd93',
+    carrierName: null,
+    // `null` so the executor lookup only fires in the tests that set one.
     assignedConnectionId: null,
     assignedToUserId: null,
     selfServeEligible: true,
@@ -85,668 +76,484 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   };
 }
 
-/** The `<section>` whose heading is `title`, so each case reads one section. */
-function section(title: string): HTMLElement {
+function connection(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'conn_oms',
+    name: 'OpenLinker OMS',
+    platformType: 'openlinker',
+    status: 'active',
+    config: {},
+    credentialsBacked: false,
+    enabledCapabilities: [],
+    supportedCapabilities: [],
+    createdAt: '2026-08-20T00:00:00.000Z',
+    updatedAt: '2026-08-20T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function order(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    internalOrderId: 'ol_order_1',
+    customerId: null,
+    sourceConnectionId: 'conn_shop',
+    sourceEventId: null,
+    orderSnapshot: {
+      totals: {
+        subtotal: 20,
+        tax: 3.92,
+        shipping: 5,
+        total: 28.92,
+        currency: 'PLN',
+        taxTreatment: 'inclusive',
+      },
+    },
+    syncStatus: [],
+    syncAttempts: [],
+    recordStatus: 'ready',
+    createdAt: '2026-08-20T00:00:00.000Z',
+    updatedAt: '2026-08-20T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** A mock API whose reads the body makes all settle, so no test trips on a stray `undefined`. */
+function api(overrides: Partial<ApiClient> & { activeLocations?: number } = {}): ApiClient {
+  const { activeLocations = 1, ...rest } = overrides;
+  return createMockApiClient({
+    inventory: {
+      listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: activeLocations, page: 1, limit: 1 }),
+    } as never,
+    users: { listPackers: vi.fn().mockResolvedValue({ packers: [] }) } as never,
+    orders: { getById: vi.fn().mockRejectedValue(new ApiError('boom', 500, null)) } as never,
+    ...rest,
+  });
+}
+
+function renderBody(t: FulfillmentTask, apiClient: ApiClient = api()): void {
+  renderWithProviders(
+    <FulfillmentWorkDetailBody
+      task={t}
+      actions={<section aria-label="actions-slot">actions</section>}
+      canStaff
+      readOnly={false}
+    />,
+    { apiClient }
+  );
+}
+
+/** The card whose heading is `title`, so each case reads one card. */
+function card(title: string): HTMLElement {
   const heading = screen.getByRole('heading', { name: title });
   const owner = heading.closest('section');
   expect(owner).not.toBeNull();
   return owner as HTMLElement;
 }
 
+function factLabels(): (string | null)[] {
+  return [...card(COPY.sections.facts).querySelectorAll('dt')].map((node) => node.textContent);
+}
+
 describe('FulfillmentWorkDetailBody', () => {
-  describe('why it is stuck', () => {
-    it('renders one banner per active hold, with its reason, note and when it started', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            activeHolds: [
-              {
-                id: 'hold_1',
-                reason: 'stock-shortfall',
-                note: 'Two units short in Warsaw.',
-                placedAt: '2026-08-20T09:00:00.000Z',
-              },
-              {
-                id: 'hold_2',
-                reason: 'address-invalid',
-                note: null,
-                placedAt: '2026-08-20T09:30:00.000Z',
-              },
-            ],
-          })}
-        />
+  describe('the cards (#3096)', () => {
+    it('should render every left-column section as a detail card when the task loads', () => {
+      renderBody(
+        task({
+          activeHolds: [
+            { id: 'hold_1', reason: 'operator', note: null, placedAt: '2026-08-20T09:00:00.000Z' },
+          ],
+        })
       );
 
-      const holds = section(COPY.sections.holds);
-
-      // The shared `holdReasonLabel` mirror, never a second copy of the
-      // vocabulary: these are the labels `features/orders` already ships.
-      expect(within(holds).getByText('Stock shortfall')).toBeInTheDocument();
-      expect(within(holds).getByText('Address invalid')).toBeInTheDocument();
-      expect(within(holds).getByText('Two units short in Warsaw.')).toBeInTheDocument();
-
-      // One banner each - two holds must not collapse into one warning.
-      expect(within(holds).getAllByRole('status')).toHaveLength(2);
-      expect(within(holds).getAllByText(new RegExp(`^${COPY.holds.since}\\b`))).toHaveLength(2);
+      for (const title of [COPY.sections.holds, COPY.sections.lines, COPY.sections.facts]) {
+        expect(card(title)).toHaveClass('detail-card');
+      }
+      expect(screen.getByTestId('work-detail-hero')).toHaveClass('detail-card', 'detail-card--hero');
     });
 
-    it('renders the hold reason raw when this build does not recognise it', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            activeHolds: [
-              {
-                id: 'hold_1',
-                reason: 'reason-from-a-newer-backend',
-                note: null,
-                placedAt: '2026-08-20T09:00:00.000Z',
-              },
-            ],
-          })}
-        />
-      );
+    it('should place the caller-composed action card in the left column when given one', () => {
+      renderBody(task());
 
-      // Shown-but-unlabelled beats silently dropped: an unknown reason still
-      // tells the operator the task is stuck.
-      expect(
-        within(section(COPY.sections.holds)).getByText('reason-from-a-newer-backend')
-      ).toBeInTheDocument();
-    });
-
-    it('omits the section entirely - heading included - when nothing is holding the task', () => {
-      renderWithProviders(<FulfillmentWorkDetailBody task={task({ activeHolds: [] })} />);
-
-      expect(screen.queryByRole('heading', { name: COPY.sections.holds })).not.toBeInTheDocument();
-      // The guard of the guard: the other sections DID render, so the
-      // assertion above is about the holds section and not about a body that
-      // rendered nothing at all.
-      expect(screen.getByRole('heading', { name: COPY.sections.lines })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: COPY.sections.facts })).toBeInTheDocument();
-    });
-
-    it('reads heldness from activeHolds and never from the status axis', () => {
-      // Nothing writes `status: 'on_hold'`; a component that believed the
-      // status axis would show a held task as unheld and an unheld one as
-      // held. Both directions are asserted, since either alone passes against
-      // a component that ignores one input.
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            status: 'on_hold',
-            activeHolds: [],
-          })}
-        />
-      );
-      expect(screen.queryByRole('heading', { name: COPY.sections.holds })).not.toBeInTheDocument();
-
-      cleanup();
-
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            status: 'in_progress',
-            activeHolds: [
-              {
-                id: 'hold_1',
-                reason: 'operator',
-                note: null,
-                placedAt: '2026-08-20T09:00:00.000Z',
-              },
-            ],
-          })}
-        />
-      );
-      expect(screen.getByRole('heading', { name: COPY.sections.holds })).toBeInTheDocument();
+      const main = document.querySelector('.fulfilment-work-detail__main');
+      expect(main).not.toBeNull();
+      expect(within(main as HTMLElement).getByRole('region', { name: 'actions-slot' })).toBeInTheDocument();
     });
   });
 
-  describe("who's handling this", () => {
-    it('renders the connection name and an external-partner label once the lookup resolves', async () => {
-      const apiClient = createMockApiClient({
-        connections: {
-          getById: vi.fn().mockResolvedValue({
-            id: 'conn_3pl',
-            name: '3PL Warehouse',
-            platformType: 'prestashop',
-            status: 'active',
-            config: {},
-            credentialsBacked: true,
-            enabledCapabilities: [],
-            supportedCapabilities: [],
-            createdAt: '2026-08-20T00:00:00.000Z',
-            updatedAt: '2026-08-20T00:00:00.000Z',
-          }),
-        },
-      });
+  describe('the hero', () => {
+    it('should join both axis labels into the headline when rendered', () => {
+      renderBody(task({ status: 'open', requestStatus: 'accepted' }));
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: 'conn_3pl' })} />,
-        { apiClient }
-      );
-
-      const panel = section(COPY.sections.executor);
-      expect(await within(panel).findByText('3PL Warehouse')).toBeInTheDocument();
-      // "External partner", never the in-house sentence, for a non-`openlinker`
-      // connection - and the resolved platform label rides alongside it.
-      expect(within(panel).getByText(new RegExp(COPY.executor.externalPartner))).toBeInTheDocument();
-      expect(within(panel).queryByText(COPY.executor.inHouse)).not.toBeInTheDocument();
+      expect(screen.getByText('Open · Accepted')).toHaveClass('fulfilment-work-detail__headline');
     });
 
-    it('says the task is handled automatically for an openlinker (in-house) connection', async () => {
-      const apiClient = createMockApiClient({
-        connections: {
-          getById: vi.fn().mockResolvedValue({
-            id: 'conn_oms',
-            name: 'OpenLinker OMS',
-            platformType: 'openlinker',
-            status: 'active',
-            config: {},
-            credentialsBacked: false,
-            enabledCapabilities: [],
-            supportedCapabilities: [],
-            createdAt: '2026-08-20T00:00:00.000Z',
-            updatedAt: '2026-08-20T00:00:00.000Z',
-          }),
-        },
+    it('should name the in-house executor in the sub-line and the sentence when it resolves', async () => {
+      const apiClient = api({
+        connections: { getById: vi.fn().mockResolvedValue(connection()) } as never,
       });
+      renderBody(task({ assignedConnectionId: 'conn_oms', requestStatus: 'accepted' }), apiClient);
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: 'conn_oms' })} />,
-        { apiClient }
-      );
-
-      const panel = section(COPY.sections.executor);
-      expect(await within(panel).findByText(COPY.executor.inHouse)).toBeInTheDocument();
-      // No partner label for OL's own OMS - that wording is reserved for a
-      // holder that is not OpenLinker itself.
+      const hero = screen.getByTestId('work-detail-hero');
       expect(
-        within(panel).queryByText(new RegExp(COPY.executor.externalPartner))
-      ).not.toBeInTheDocument();
+        await within(hero).findByText('OpenLinker OMS accepted this and has not started picking yet.')
+      ).toBeInTheDocument();
+      expect(within(hero).getByText(/· OpenLinker OMS/)).toBeInTheDocument();
     });
 
-    it("renders 'not assigned yet' and never fires the lookup when the task has no executing connection", () => {
+    it('should call an external executor a partner in the sub-line when it is not the OMS', async () => {
+      const apiClient = api({
+        connections: {
+          getById: vi.fn().mockResolvedValue(
+            connection({ id: 'conn_3pl', name: '3PL Warehouse', platformType: 'prestashop' })
+          ),
+        } as never,
+      });
+      renderBody(task({ assignedConnectionId: 'conn_3pl' }), apiClient);
+
+      const hero = screen.getByTestId('work-detail-hero');
+      expect(
+        await within(hero).findByText(new RegExp(`3PL Warehouse · ${COPY.executor.externalPartner}`))
+      ).toBeInTheDocument();
+    });
+
+    it('should say the task is not routed, and never fire the lookup, when it has no executor', () => {
       const getById = vi.fn();
-      const apiClient = createMockApiClient({ connections: { getById } });
+      renderBody(task({ assignedConnectionId: null }), api({ connections: { getById } as never }));
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: null })} />,
-        { apiClient }
-      );
-
-      // `scheduled`/`unsubmitted` work with nothing routed to it yet is a
-      // real, reachable state - not an error and not a blank panel.
       expect(
-        within(section(COPY.sections.executor)).getByText(COPY.executor.unassigned)
+        within(screen.getByTestId('work-detail-hero')).getByText(new RegExp(COPY.executor.unassigned))
       ).toBeInTheDocument();
       expect(getById).not.toHaveBeenCalled();
     });
 
-    it('degrades to the raw connection id when the lookup 404s - never to nothing', async () => {
-      const apiClient = createMockApiClient({
-        connections: {
-          getById: vi.fn().mockRejectedValue(new ApiError('Not Found', 404, null)),
-        },
-      });
-
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: 'conn_deleted' })} />,
-        { apiClient }
+    it('should keep the sub-line informative when the executor lookup fails', async () => {
+      renderBody(
+        task({ assignedConnectionId: 'conn_flaky' }),
+        api({ connections: { getById: vi.fn().mockRejectedValue(new Error('down')) } as never })
       );
 
-      const panel = section(COPY.sections.executor);
-      // A deleted or renamed connection must not make the panel disappear -
-      // the raw id is what survives when the friendly name cannot be read.
-      expect(await within(panel).findByText('conn_deleted')).toBeInTheDocument();
-      expect(within(panel).getByText(COPY.executor.removed)).toBeInTheDocument();
+      expect(
+        await within(screen.getByTestId('work-detail-hero')).findByText(
+          new RegExp(COPY.executor.unavailable)
+        )
+      ).toBeInTheDocument();
     });
 
-    it('also renders the raw connection id on a non-404 read failure', async () => {
-      const apiClient = createMockApiClient({
-        connections: {
-          getById: vi.fn().mockRejectedValue(new Error('network down')),
-        },
-      });
+    it('should show the expedited pill beside the headline when the task was moved to the front', () => {
+      renderBody(task({ expeditedAt: '2026-08-20T11:00:00.000Z' }));
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: 'conn_flaky' })} />,
-        { apiClient }
+      const pill = screen.getByTestId('expedited-badge');
+      expect(pill.textContent).toContain('Moved to the front');
+      expect(pill.closest('.fulfilment-work-detail__hero-row')).not.toBeNull();
+    });
+
+    it('should leave the location out of the sub-line on a one-location install', async () => {
+      renderBody(task({ locationName: 'Main warehouse' }));
+
+      // Settle the location count first, so the assertion is about the answer.
+      await waitFor(() => {
+        expect(screen.getByTestId('work-detail-hero').textContent).not.toContain('Main warehouse');
+      });
+    });
+
+    it('should name the location in the sub-line when the install has several', async () => {
+      renderBody(task({ locationName: 'Berlin — 3PL partner' }), api({ activeLocations: 2 }));
+
+      expect(
+        await within(screen.getByTestId('work-detail-hero')).findByText(/Berlin — 3PL partner/)
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("why it's stuck", () => {
+    it('should render one compact banner per active hold with its reason, note and start', () => {
+      renderBody(
+        task({
+          activeHolds: [
+            {
+              id: 'hold_1',
+              reason: 'stock-shortfall',
+              note: 'Two units short in Warsaw.',
+              placedAt: '2026-08-20T09:00:00.000Z',
+            },
+            { id: 'hold_2', reason: 'address-invalid', note: null, placedAt: '2026-08-20T09:30:00.000Z' },
+          ],
+        })
       );
 
-      // "Never nothing" does not stop at the 404 case named in the issue - any
-      // failed read still degrades to the raw id rather than an empty panel.
-      const panel = section(COPY.sections.executor);
-      expect(await within(panel).findByText('conn_flaky')).toBeInTheDocument();
-      expect(within(panel).getByText(COPY.executor.unavailable)).toBeInTheDocument();
+      const holds = card(COPY.sections.holds);
+      expect(within(holds).getByText('Stock shortfall')).toBeInTheDocument();
+      expect(within(holds).getByText('Address invalid')).toBeInTheDocument();
+      expect(within(holds).getByText('Two units short in Warsaw.')).toBeInTheDocument();
+      const banners = within(holds).getAllByRole('status');
+      expect(banners).toHaveLength(2);
+      for (const banner of banners) expect(banner).toHaveClass('alert--compact');
+    });
+
+    it('should render the hold reason raw when this build does not recognise it', () => {
+      renderBody(
+        task({
+          activeHolds: [
+            { id: 'hold_1', reason: 'reason-from-a-newer-backend', note: null, placedAt: '2026-08-20T09:00:00.000Z' },
+          ],
+        })
+      );
+
+      expect(within(card(COPY.sections.holds)).getByText('reason-from-a-newer-backend')).toBeInTheDocument();
+    });
+
+    it('should omit the card, heading included, when nothing holds the task', () => {
+      renderBody(task({ status: 'on_hold', activeHolds: [] }));
+
+      expect(screen.queryByRole('heading', { name: COPY.sections.holds })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: COPY.sections.lines })).toBeInTheDocument();
     });
   });
 
   describe("what's in this task", () => {
-    it('renders one row per line with its picked-of-total counts', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            lines: [
-              line({ id: 'line_1', productVariantId: 'ol_variant_a', fulfilledQuantity: 1 }),
-              line({
-                id: 'line_2',
-                productVariantId: 'ol_variant_b',
-                totalQuantity: 2,
-                fulfilledQuantity: 2,
-              }),
-            ],
-          })}
-        />
+    it('should render a product card with name, codes and attributes when the line carries them', () => {
+      renderBody(
+        task({
+          lines: [
+            line({
+              id: 'line_1',
+              productName: 'Phone case',
+              sku: 'CASE-1',
+              ean: '5901234123457',
+              attributes: { Kolor: 'srebrny', Rozmiar: 'L' },
+              fulfilledQuantity: 0,
+              totalQuantity: 1,
+            }),
+          ],
+        })
       );
 
-      const lines = section(COPY.sections.lines);
-      const rows = within(lines).getAllByRole('listitem');
-      expect(rows).toHaveLength(2);
-      expect(within(rows[0]).getByText('ol_variant_a')).toBeInTheDocument();
-      expect(rows[0].textContent).toContain('1 / 5');
-      expect(within(rows[1]).getByText('ol_variant_b')).toBeInTheDocument();
-      expect(rows[1].textContent).toContain('2 / 2');
+      const row = within(card(COPY.sections.lines)).getByRole('listitem');
+      expect(within(row).getByText('Phone case')).toBeInTheDocument();
+      expect(within(row).getByText('SKU CASE-1 · EAN 5901234123457')).toBeInTheDocument();
+      expect(within(row).getByText('Kolor: srebrny · Rozmiar: L')).toBeInTheDocument();
+      expect(row.textContent).toContain('0 / 1');
+      // The raw id is not shown once the product is known.
+      expect(within(row).queryByText('ol_variant_1')).not.toBeInTheDocument();
     });
 
-    it('appends the cancelled count only when it is non-zero', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            lines: [
-              line({ id: 'line_1', productVariantId: 'ol_variant_a', cancelledQuantity: 2 }),
-              line({ id: 'line_2', productVariantId: 'ol_variant_b', cancelledQuantity: 0 }),
-            ],
-          })}
-        />
+    it('should fall back to the variant id, muted, when the catalogue has no product', () => {
+      renderBody(task({ lines: [line({ productVariantId: 'ol_variant_gone' })] }));
+
+      const code = within(card(COPY.sections.lines)).getByText('ol_variant_gone');
+      expect(code).toHaveClass('mono-text', 'text-muted');
+    });
+
+    it('should show only the attributes that tell two lines apart when they share some', () => {
+      renderBody(
+        task({
+          lines: [
+            line({ id: 'a', productName: 'Tee', attributes: { Size: 'M', Brand: 'Acme' } }),
+            line({ id: 'b', productName: 'Tee', attributes: { Size: 'L', Brand: 'Acme' } }),
+          ],
+        })
       );
 
-      const rows = within(section(COPY.sections.lines)).getAllByRole('listitem');
+      const lines = card(COPY.sections.lines);
+      expect(within(lines).getByText('Size: M')).toBeInTheDocument();
+      expect(within(lines).getByText('Size: L')).toBeInTheDocument();
+      expect(within(lines).queryByText(/Brand/)).not.toBeInTheDocument();
+    });
+
+    it('should fetch the line picture with the session token when the line has an image path', async () => {
+      const requestBlob = vi.fn().mockResolvedValue(new Blob(['x'], { type: 'image/png' }));
+      renderBody(
+        task({ lines: [line({ productName: 'Case', imageUrl: '/products/p1/images/0' })] }),
+        api({ requestBlob } as Partial<ApiClient>)
+      );
+
+      await waitFor(() => {
+        expect(requestBlob).toHaveBeenCalledWith('/products/p1/images/0');
+      });
+    });
+
+    it('should append the cancelled count only when it is non-zero', () => {
+      renderBody(
+        task({
+          lines: [
+            line({ id: 'line_1', productVariantId: 'ol_variant_a', cancelledQuantity: 2 }),
+            line({ id: 'line_2', productVariantId: 'ol_variant_b', cancelledQuantity: 0 }),
+          ],
+        })
+      );
+
+      const rows = within(card(COPY.sections.lines)).getAllByRole('listitem');
       expect(rows[0].textContent).toContain(COPY.lines.cancelledSuffix(2));
-      // A zero cancelled count says nothing and is not rendered as "(0
-      // cancelled)", which reads as a thing that happened.
       expect(rows[1].textContent).not.toContain('cancelled');
     });
 
-    it('marks a complete line with a tick that assistive technology never reads', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            lines: [
-              line({ id: 'line_1', totalQuantity: 4, fulfilledQuantity: 4 }),
-              line({ id: 'line_2', totalQuantity: 4, fulfilledQuantity: 1 }),
-            ],
-          })}
-        />
+    it('should mark a complete line with a tick assistive technology never reads', () => {
+      renderBody(
+        task({
+          lines: [
+            line({ id: 'line_1', totalQuantity: 4, fulfilledQuantity: 4 }),
+            line({ id: 'line_2', totalQuantity: 4, fulfilledQuantity: 1 }),
+          ],
+        })
       );
 
-      const lines = section(COPY.sections.lines);
-      const ticks = lines.querySelectorAll('.fulfilment-work-detail__line-done');
+      const ticks = card(COPY.sections.lines).querySelectorAll('.fulfilment-work-detail__line-done');
       expect(ticks).toHaveLength(1);
-      // Decorative reinforcement: the counts already say 4 of 4, so the glyph
-      // must not reach a screen reader as stray punctuation.
       expect(ticks[0].getAttribute('aria-hidden')).toBe('true');
     });
 
-    it('states the stale-count caveat once per page, as the shared constant — byte-identical to the card', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            lines: [line({ id: 'line_1' }), line({ id: 'line_2' })],
-          })}
-        />
-      );
+    it('should state the stale-count caveat once per page when there are several lines', () => {
+      renderBody(task({ lines: [line({ id: 'line_1' }), line({ id: 'line_2' })] }));
 
-      // The CONSTANT, so a re-worded copy of the sentence fails here rather
-      // than shipping as a second answer to one question.
       expect(screen.getAllByText(COPY.lines.caveat)).toHaveLength(1);
-      // Byte-identical to the shipped card's own inline sentence — the two
-      // surfaces must describe the stale-counter fact identically.
-      expect(COPY.lines.caveat).toBe(
-        'Picked counts are reported by whoever is working the task and can be a little behind what you see here.'
-      );
     });
 
-    it('says the task covers no lines, and drops the count caveat with them', () => {
-      renderWithProviders(<FulfillmentWorkDetailBody task={task({ lines: [] })} />);
+    it('should say the task covers no lines, and drop the caveat, when there are none', () => {
+      renderBody(task({ lines: [] }));
 
-      const lines = section(COPY.sections.lines);
-      expect(within(lines).getByText(COPY.lines.empty)).toBeInTheDocument();
-      expect(within(lines).queryAllByRole('listitem')).toHaveLength(0);
-      // There is no count here to be behind, so the caveat would be a claim
-      // about nothing.
+      expect(within(card(COPY.sections.lines)).getByText(COPY.lines.empty)).toBeInTheDocument();
       expect(screen.queryByText(COPY.lines.caveat)).not.toBeInTheDocument();
     });
   });
 
   describe('details', () => {
-    it('renders the mockup fields, with the raw location id when no friendly name is known', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({
-            locationId: 'loc_warsaw',
-            locationName: null,
-            deliveryMethod: 'courier',
-            externalWorkId: 'wh-88231',
-          })}
-        />
-      );
+    it('should render the mockup facts in order when the task carries them', () => {
+      renderBody(task({ carrierName: 'InPost Paczkomat', externalWorkId: 'wh-88231' }));
 
-      const facts = section(COPY.sections.facts);
-      const labels = [...facts.querySelectorAll('dt')].map((node) => node.textContent);
-      expect(labels).toEqual([
+      expect(factLabels()).toEqual([
         COPY.facts.state,
         COPY.facts.handshake,
-        COPY.facts.location,
         COPY.facts.delivery,
         COPY.facts.externalReference,
         COPY.facts.started,
       ]);
-
-      expect(within(facts).getByText('loc_warsaw')).toBeInTheDocument();
-      expect(within(facts).getByText('courier')).toBeInTheDocument();
+      const facts = card(COPY.sections.facts);
+      expect(within(facts).getByText('InPost Paczkomat')).toBeInTheDocument();
       expect(within(facts).getByText('wh-88231')).toBeInTheDocument();
     });
 
-    it('renders the friendly location name when the backend resolved one (#3258)', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({ locationId: 'loc_warsaw', locationName: 'Warsaw — Main warehouse' })}
-        />
-      );
+    it('should never print the raw delivery-method id when no carrier name is known', () => {
+      renderBody(task({ carrierName: null }));
 
-      const facts = section(COPY.sections.facts);
-      expect(within(facts).getByText('Warsaw — Main warehouse')).toBeInTheDocument();
-      // The raw id is not rendered ALONGSIDE the name — one Location row, one
-      // value.
-      expect(within(facts).queryByText('loc_warsaw')).not.toBeInTheDocument();
+      expect(factLabels()).not.toContain(COPY.facts.delivery);
+      expect(screen.queryByText('2488f7b7-5d1c-4d65-b85c-4cbcf253fd93')).not.toBeInTheDocument();
     });
 
-    it('keeps the Location row and names the absence when there is no location', () => {
-      renderWithProviders(<FulfillmentWorkDetailBody task={task({ locationId: null })} />);
-
-      const facts = section(COPY.sections.facts);
-      const labels = [...facts.querySelectorAll('dt')].map((node) => node.textContent);
-      expect(labels).toContain(COPY.facts.location);
-      // A row that names the absent fact, never a row that silently vanishes -
-      // a disappearing row reads as a page that forgot.
-      expect(within(facts).getByText(COPY.facts.noLocation)).toBeInTheDocument();
-    });
-
-    it('treats an empty string like an absent value, never as a blank row', () => {
-      // `nullableString` passes `''` straight through, so a row rendered on
-      // `!== null` would be a label over nothing.
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({ locationId: '', deliveryMethod: '', externalWorkId: '' })}
-        />
-      );
-
-      const facts = section(COPY.sections.facts);
-      const labels = [...facts.querySelectorAll('dt')].map((node) => node.textContent);
-      expect(labels).toEqual([
-        COPY.facts.state,
-        COPY.facts.handshake,
-        COPY.facts.location,
-        COPY.facts.started,
-      ]);
-      expect(within(facts).getByText(COPY.facts.noLocation)).toBeInTheDocument();
-      expect([...facts.querySelectorAll('dd')].every((node) => node.textContent !== '')).toBe(
-        true
-      );
-    });
-
-    it('drops the delivery and reference rows when the task carries neither', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ deliveryMethod: null, externalWorkId: null })} />
-      );
-
-      const labels = [...section(COPY.sections.facts).querySelectorAll('dt')].map(
-        (node) => node.textContent
-      );
-      // No copy exists for an absent delivery or reference, so the row goes
-      // rather than carrying a sentence nobody wrote.
-      expect(labels).toEqual([
-        COPY.facts.state,
-        COPY.facts.handshake,
-        COPY.facts.location,
-        COPY.facts.started,
-      ]);
-    });
-
-    it('never repeats the executing connection - that lives in its own section now', async () => {
-      const apiClient = createMockApiClient({
-        connections: {
-          getById: vi.fn().mockResolvedValue({
-            id: 'conn_3pl',
-            name: '3PL Warehouse',
-            platformType: 'prestashop',
-            status: 'active',
-            config: {},
-            credentialsBacked: true,
-            enabledCapabilities: [],
-            supportedCapabilities: [],
-            createdAt: '2026-08-20T00:00:00.000Z',
-            updatedAt: '2026-08-20T00:00:00.000Z',
-          }),
-        },
+    it('should fall back to the order delivery-method name when the task names no carrier', async () => {
+      const apiClient = api({
+        orders: { getById: vi.fn().mockResolvedValue(order({ sourceDeliveryMethodName: 'Allegro One Box' })) } as never,
       });
+      renderBody(task({ carrierName: null }), apiClient);
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: 'conn_3pl' })} />,
-        { apiClient }
-      );
-
-      // The name resolves inside "Who's handling this" (below), never inside
-      // "Details" - the row this test used to guard against was replaced by a
-      // whole section, not deleted outright.
-      await screen.findByText('3PL Warehouse');
-      expect(
-        within(section(COPY.sections.facts)).queryByText('3PL Warehouse')
-      ).not.toBeInTheDocument();
-      expect(within(section(COPY.sections.facts)).queryByText('conn_3pl')).not.toBeInTheDocument();
+      expect(await within(card(COPY.sections.facts)).findByText('Allegro One Box')).toBeInTheDocument();
     });
 
-    it('renders Started as a machine-readable time, not a re-formatted string', () => {
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ createdAt: '2026-08-20T10:00:00.000Z' })} />
-      );
+    it('should leave out the Location fact on a one-location install', async () => {
+      renderBody(task());
 
-      const started = section(COPY.sections.facts).querySelector('time');
+      await waitFor(() => {
+        expect(factLabels()).not.toContain(COPY.facts.location);
+      });
+    });
+
+    it('should show the Location fact by name when the install has several locations', async () => {
+      renderBody(task({ locationName: 'Berlin — 3PL partner' }), api({ activeLocations: 3 }));
+
+      expect(await within(card(COPY.sections.facts)).findByText('Berlin — 3PL partner')).toBeInTheDocument();
+      expect(factLabels()).toContain(COPY.facts.location);
+    });
+
+    it('should render Started as a machine-readable time', () => {
+      renderBody(task({ createdAt: '2026-08-20T10:00:00.000Z' }));
+
+      const started = card(COPY.sections.facts).querySelector('time');
       expect(started?.getAttribute('datetime')).toBe('2026-08-20T10:00:00.000Z');
     });
-  });
 
-  describe('shipment (#3292)', () => {
-    it('renders "nothing dispatched yet" and NO create-label CTA for a 3rd-party holder', async () => {
-      const apiClient = createMockApiClient({
-        fulfillment: { listShipments: vi.fn().mockResolvedValue([]) } as never,
-        connections: {
-          getById: vi.fn().mockResolvedValue({
-            id: 'conn_3pl',
-            name: '3PL Warehouse',
-            platformType: 'prestashop',
-            status: 'active',
-            config: {},
-            credentialsBacked: true,
-            enabledCapabilities: [],
-            supportedCapabilities: [],
-            createdAt: '2026-08-20T00:00:00.000Z',
-            updatedAt: '2026-08-20T00:00:00.000Z',
-          }),
-        },
+    describe('what the bench did (G02-3)', () => {
+      it('should leave the bench rows out entirely when the API predates them', () => {
+        renderBody(task({ parcelClosedAt: undefined }));
+
+        expect(factLabels()).not.toContain(COPY.facts.parcel);
+        expect(factLabels()).not.toContain(COPY.facts.parcelClosed);
       });
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: 'conn_3pl' })} />,
-        { apiClient }
-      );
+      it('should say the parcel is still open, and not mention the channel, before it is closed', () => {
+        renderBody(task({ parcelClosedAt: null, channelNotifiedAt: null }));
 
-      const panel = section(COPY.sections.shipment);
-      expect(await within(panel).findByText(COPY.shipment.none)).toBeInTheDocument();
-      // A 3rd-party holder ships on its own — offering the CTA would invite
-      // a duplicate shipment.
-      expect(
-        within(panel).queryByRole('link', { name: COPY.shipment.createLabel })
-      ).not.toBeInTheDocument();
-    });
-
-    it('offers the create-label CTA, linking into the order page, for OL-executed work', async () => {
-      const apiClient = createMockApiClient({
-        fulfillment: { listShipments: vi.fn().mockResolvedValue([]) } as never,
-        connections: {
-          getById: vi.fn().mockResolvedValue({
-            id: 'conn_oms',
-            name: 'OpenLinker OMS',
-            platformType: 'openlinker',
-            status: 'active',
-            config: {},
-            credentialsBacked: false,
-            enabledCapabilities: [],
-            supportedCapabilities: [],
-            createdAt: '2026-08-20T00:00:00.000Z',
-            updatedAt: '2026-08-20T00:00:00.000Z',
-          }),
-        },
+        expect(within(card(COPY.sections.facts)).getByText(COPY.facts.parcelOpen)).toBeInTheDocument();
+        expect(factLabels()).not.toContain(COPY.facts.channelNotified);
       });
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody
-          task={task({ orderId: 'ol_order_42', assignedConnectionId: 'conn_oms' })}
-        />,
-        { apiClient }
-      );
+      it('should show when the parcel closed and when the channel was told once both happened', () => {
+        renderBody(
+          task({ parcelClosedAt: '2026-08-21T08:00:00.000Z', channelNotifiedAt: '2026-08-21T08:05:00.000Z' })
+        );
 
-      const panel = section(COPY.sections.shipment);
-      const cta = await within(panel).findByRole('link', { name: COPY.shipment.createLabel });
-      expect(cta).toHaveAttribute('href', '/orders/ol_order_42#shipment');
-    });
-
-    it('renders carrier, tracking number and status for a dispatched shipment', async () => {
-      const apiClient = createMockApiClient({
-        fulfillment: {
-          listShipments: vi.fn().mockResolvedValue([
-            {
-              id: 'ol_shipment_1',
-              status: 'dispatched',
-              carrier: 'inpost',
-              trackingNumber: '6800000001',
-              hasLabel: true,
-              createdAt: '2026-08-20T09:00:00.000Z',
-              dispatchedAt: '2026-08-20T09:05:00.000Z',
-              deliveredAt: null,
-            },
-          ]),
-        } as never,
+        const facts = card(COPY.sections.facts);
+        const times = [...facts.querySelectorAll('time')].map((node) => node.getAttribute('datetime'));
+        expect(times).toContain('2026-08-21T08:00:00.000Z');
+        expect(times).toContain('2026-08-21T08:05:00.000Z');
+        expect(factLabels()).toEqual(expect.arrayContaining([COPY.facts.parcelClosed, COPY.facts.channelNotified]));
       });
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: null })} />,
-        { apiClient }
-      );
+      it('should warn, without alarm, when a closed parcel has not been settled with the channel', () => {
+        renderBody(task({ parcelClosedAt: '2026-08-21T08:00:00.000Z', channelNotifiedAt: null }));
 
-      const panel = section(COPY.sections.shipment);
-      expect(await within(panel).findByText('6800000001')).toBeInTheDocument();
-      expect(within(panel).getByText('InPost')).toBeInTheDocument();
-      expect(within(panel).getByText('dispatched')).toBeInTheDocument();
-      // The "Track this parcel" link is a real tracker URL, not a placeholder.
-      const trackLink = screen.getByRole('link', { name: COPY.shipment.trackParcel });
-      expect(trackLink).toHaveAttribute('href', expect.stringContaining('6800000001'));
-    });
-
-    it('reports no label yet rather than throwing when a shipment has none', async () => {
-      const apiClient = createMockApiClient({
-        fulfillment: {
-          listShipments: vi.fn().mockResolvedValue([
-            {
-              id: 'ol_shipment_1',
-              status: 'draft',
-              carrier: null,
-              trackingNumber: null,
-              hasLabel: false,
-              createdAt: '2026-08-20T09:00:00.000Z',
-              dispatchedAt: null,
-              deliveredAt: null,
-            },
-          ]),
-        } as never,
+        expect(
+          within(card(COPY.sections.facts)).getByText(COPY.facts.channelNotYet)
+        ).toHaveClass('fulfilment-work-detail__fact-warning');
       });
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ assignedConnectionId: null })} />,
-        { apiClient }
-      );
+      it('should show the completion instant when the parcel was declared finished', () => {
+        renderBody(task({ completedAt: '2026-08-21T09:00:00.000Z' }));
 
-      expect(await screen.findByText(COPY.shipment.noLabelYet)).toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: COPY.shipment.trackParcel })).not.toBeInTheDocument();
+        expect(factLabels()).toContain(COPY.facts.completed);
+      });
     });
   });
 
-  describe('payment (#3293)', () => {
-    it('renders total, currency and the source channel, never a COD/prepaid claim', async () => {
-      const apiClient = createMockApiClient({
-        fulfillment: { listShipments: vi.fn().mockResolvedValue([]) } as never,
-        orders: {
-          getById: vi.fn().mockResolvedValue({
-            internalOrderId: 'ol_order_1',
-            customerId: null,
-            sourceConnectionId: 'conn_shop',
-            sourceEventId: null,
-            orderSnapshot: {
-              totals: {
-                subtotal: 20,
-                tax: 3.92,
-                shipping: 5,
-                total: 28.92,
-                currency: 'PLN',
-                taxTreatment: 'inclusive',
-              },
-            },
-            syncStatus: [],
-            syncAttempts: [],
-            recordStatus: 'ready',
-            createdAt: '2026-08-20T00:00:00.000Z',
-            updatedAt: '2026-08-20T00:00:00.000Z',
-          }),
-        },
-        connections: {
-          getById: vi.fn().mockResolvedValue({
-            id: 'conn_shop',
-            name: 'My PrestaShop Store',
-            platformType: 'prestashop',
-            status: 'active',
-            config: {},
-            credentialsBacked: true,
-            enabledCapabilities: [],
-            supportedCapabilities: [],
-            createdAt: '2026-08-20T00:00:00.000Z',
-            updatedAt: '2026-08-20T00:00:00.000Z',
-          }),
-        },
-      });
+  describe('the right column', () => {
+    it('should put the Packer card first in the rail', () => {
+      renderBody(task());
 
-      renderWithProviders(
-        <FulfillmentWorkDetailBody task={task({ orderId: 'ol_order_1' })} />,
-        { apiClient }
-      );
-
-      const panel = section(COPY.sections.payment);
-      expect(await within(panel).findByText('My PrestaShop Store')).toBeInTheDocument();
-      expect(within(panel).getByText(/28[.,]92/)).toBeInTheDocument();
-      // Never a true/false payment-method claim — the copy is explicit about
-      // what this build does not yet know.
-      expect(within(panel).getByText(COPY.payment.followUpNote)).toBeInTheDocument();
-      expect(screen.queryByText(/cash on delivery/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/prepaid/i)).not.toBeInTheDocument();
+      const rail = document.querySelector('.fulfilment-work-detail__rail') as HTMLElement;
+      const firstCard = rail.querySelector('.detail-card');
+      expect(firstCard).toBe(card(COPY.sections.packer));
     });
 
-    it('says the summary could not be loaded rather than throwing when the order read fails', async () => {
-      const apiClient = createMockApiClient({
-        fulfillment: { listShipments: vi.fn().mockResolvedValue([]) } as never,
-        orders: { getById: vi.fn().mockRejectedValue(new ApiError('boom', 500, null)) },
+    it('should render the order totals and the source channel in the Payment card when the order loads', async () => {
+      const apiClient = api({
+        orders: { getById: vi.fn().mockResolvedValue(order()) } as never,
+        connections: {
+          getById: vi.fn().mockResolvedValue(
+            connection({ id: 'conn_shop', name: 'My PrestaShop Store', platformType: 'prestashop' })
+          ),
+        } as never,
       });
+      renderBody(task(), apiClient);
 
-      renderWithProviders(<FulfillmentWorkDetailBody task={task()} />, { apiClient });
+      const payment = await screen.findByRole('region', { name: COPY.sections.payment });
+      expect(within(payment).getByText(/28[.,]92/)).toBeInTheDocument();
+      expect(await within(payment).findByText('My PrestaShop Store')).toBeInTheDocument();
+      // The bespoke "is it paid?" disclaimer is gone with the bespoke section.
+      expect(screen.queryByText(/collected on delivery/i)).not.toBeInTheDocument();
+    });
 
-      expect(await screen.findByText(COPY.payment.unavailable)).toBeInTheDocument();
+    it('should keep the order page anchors so a #shipment deep link lands here too', async () => {
+      renderBody(task(), api({ orders: { getById: vi.fn().mockResolvedValue(order()) } as never }));
+
+      await screen.findByRole('region', { name: COPY.sections.payment });
+      expect(document.getElementById('shipment')).not.toBeNull();
+      expect(document.getElementById('invoicing')).not.toBeNull();
+    });
+
+    it('should say the order modules are unavailable, with a retry, when the order read fails', async () => {
+      const getById = vi.fn().mockRejectedValue(new ApiError('boom', 500, null));
+      renderBody(task(), api({ orders: { getById } as never }));
+
+      expect(await screen.findByText(COPY.order.unavailable)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: COPY.order.retry })).toBeInTheDocument();
     });
   });
 });

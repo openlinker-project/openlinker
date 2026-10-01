@@ -130,6 +130,84 @@ describe('fulfillmentTaskSchema (#2411)', () => {
 
     expect(fulfillmentTaskSchema.parse(raw).expeditedAt).toBeNull();
   });
+
+  it('should parse the line product facts when the API sends them (#3096)', () => {
+    const parsed = fulfillmentTaskSchema.parse(
+      task({
+        lines: [
+          {
+            id: 'l1',
+            orderLineId: 'o1',
+            productVariantId: 'v1',
+            productName: 'Mug',
+            sku: 'MUG-1',
+            ean: '5901234123457',
+            imageUrl: '/products/p1/images/0',
+            attributes: { Colour: 'white' },
+            totalQuantity: 1,
+            fulfilledQuantity: 0,
+            cancelledQuantity: 0,
+          },
+        ],
+      })
+    );
+
+    expect(parsed.lines[0]).toMatchObject({
+      productName: 'Mug',
+      sku: 'MUG-1',
+      ean: '5901234123457',
+      imageUrl: '/products/p1/images/0',
+      attributes: { Colour: 'white' },
+    });
+  });
+
+  it('should keep a line parseable when the API predates the product facts (#3096)', () => {
+    const parsed = fulfillmentTaskSchema.parse(
+      task({
+        lines: [
+          { id: 'l1', orderLineId: 'o1', productVariantId: 'v1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+        ],
+      })
+    );
+
+    expect(parsed.lines[0]).toMatchObject({ productName: null, sku: null, imageUrl: null, attributes: null });
+  });
+
+  it('should degrade malformed attributes to null rather than failing the task (#3096)', () => {
+    const parsed = fulfillmentTaskSchema.parse(
+      task({
+        lines: [
+          {
+            id: 'l1',
+            orderLineId: 'o1',
+            productVariantId: 'v1',
+            attributes: { Size: 42 },
+            totalQuantity: 1,
+            fulfilledQuantity: 0,
+            cancelledQuantity: 0,
+          },
+        ],
+      })
+    );
+
+    expect(parsed.lines[0]?.attributes).toBeNull();
+  });
+
+  it('should keep an absent parcelClosedAt distinct from a null one (#3096, G02-3)', () => {
+    expect(fulfillmentTaskSchema.parse(task()).parcelClosedAt).toBeUndefined();
+    expect(fulfillmentTaskSchema.parse(task({ parcelClosedAt: null })).parcelClosedAt).toBeNull();
+    expect(
+      fulfillmentTaskSchema.parse(task({ parcelClosedAt: '2026-09-10T11:00:00.000Z' })).parcelClosedAt
+    ).toBe('2026-09-10T11:00:00.000Z');
+  });
+
+  it('should normalise the other bench facts to null when absent (#3096, G02-3)', () => {
+    const parsed = fulfillmentTaskSchema.parse(task());
+
+    expect(parsed.channelNotifiedAt).toBeNull();
+    expect(parsed.completedAt).toBeNull();
+    expect(parsed.packedByUserId).toBeNull();
+  });
 });
 
 describe('fulfillmentTaskPageSchema (#2411)', () => {

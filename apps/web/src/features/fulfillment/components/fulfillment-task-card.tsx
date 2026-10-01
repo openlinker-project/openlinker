@@ -41,17 +41,32 @@
  * This card is only ever mounted inside `order-fulfillment-tasks-panel.tsx`,
  * which has no worklist position of its own to carry forward — an order page
  * is not a filtered list — so the link carries no query string, unlike the
- * assign board's own reference link (`fulfilmentWorkDetailPath`).
+ * assign board's own reference link (`fulfilmentWorkDetailPath`). Since #3096
+ * it renders only for a session holding `orders:write`: the detail page is
+ * admin + operator, and a viewer — who does see this panel — would follow the
+ * link into "you don't have access". The id still renders for them, as text.
+ *
+ * ## Products, places and carriers by name, never by internal id (#3096)
+ *
+ * Each line is a `FulfillmentLineIdentity` — the order page's product cell
+ * plus the variant's attributes — instead of a bare `ol_variant_…`. The
+ * location renders as its name, and only on a multi-location install; the
+ * delivery renders as the carrier name, never the source's delivery-method id.
  *
  * @module apps/web/src/features/fulfillment/components
  */
 import type { LiHTMLAttributes, ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
+import { usePermission } from '../../../shared/auth/use-permission';
+import { distinguishingAttributeKeys, narrowAttributes } from '../../../shared/lib/variant-attributes';
+import { shortenId } from '../../../shared/ui/entity-label';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
+import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
+import { FulfillmentLineIdentity } from './fulfillment-line-identity';
 import {
   FULFILLMENT_EXPEDITED_BADGE,
   fulfillmentRequestStatusLabel,
@@ -73,6 +88,11 @@ export function FulfillmentTaskCard({
   rootProps,
 }: FulfillmentTaskCardProps): ReactElement {
   const held = task.activeHolds.length > 0;
+  const canOpenDetail = usePermission('orders:write');
+  const showLocation = useHasMultipleLocations();
+  const distinguishing = distinguishingAttributeKeys(
+    task.lines.map((line) => ({ attributes: line.attributes ?? null }))
+  );
 
   return (
     <li
@@ -101,13 +121,22 @@ export function FulfillmentTaskCard({
             </StatusBadge>
           ) : null}
         </div>
-        <Link
-          to={fulfillmentWorkDetailPath(task.id, new URLSearchParams())}
-          className="fulfilment-task__id link mono-text"
-          title={task.id}
-        >
-          {task.id}
-        </Link>
+        {/* A link only for a session that may open the detail (#3096): the
+            page is admin + operator, and a viewer given the link would land
+            on "you don't have access". The id still renders for them. */}
+        {canOpenDetail ? (
+          <Link
+            to={fulfillmentWorkDetailPath(task.id, new URLSearchParams())}
+            className="fulfilment-task__id link mono-text"
+            title={task.id}
+          >
+            {shortenId(task.id)}
+          </Link>
+        ) : (
+          <span className="fulfilment-task__id mono-text" title={task.id}>
+            {shortenId(task.id)}
+          </span>
+        )}
       </div>
 
       {held ? (
@@ -133,16 +162,18 @@ export function FulfillmentTaskCard({
           <dt>Handshake</dt>
           <dd>{fulfillmentRequestStatusLabel(task.requestStatus)}</dd>
         </div>
-        {task.locationId ? (
+        {/* Named, never an internal id (#3096): the location only where there
+            is more than one to tell apart, the delivery as its carrier name. */}
+        {showLocation && task.locationName ? (
           <div>
             <dt>Location</dt>
-            <dd className="mono-text">{task.locationId}</dd>
+            <dd>{task.locationName}</dd>
           </div>
         ) : null}
-        {task.deliveryMethod ? (
+        {task.carrierName ? (
           <div>
             <dt>Delivery</dt>
-            <dd>{task.deliveryMethod}</dd>
+            <dd>{task.carrierName}</dd>
           </div>
         ) : null}
         {task.externalWorkId ? (
@@ -158,7 +189,11 @@ export function FulfillmentTaskCard({
           <ul className="fulfilment-task__lines">
             {task.lines.map((line) => (
               <li key={line.id}>
-                <span className="mono-text">{line.productVariantId}</span>
+                <FulfillmentLineIdentity
+                  line={line}
+                  attributes={narrowAttributes(line.attributes ?? null, distinguishing)}
+                  thumbnailSize="sm"
+                />
                 <span className="fulfilment-task__count">
                   {line.fulfilledQuantity} / {line.totalQuantity}
                   {line.cancelledQuantity > 0 ? ` (${line.cancelledQuantity} cancelled)` : ''}

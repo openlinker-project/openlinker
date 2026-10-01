@@ -26,9 +26,11 @@
  *
  * ## No nav entry
  *
- * A packer opens this at a terminal by URL. #2416 revisits that when the bench
- * has work to show — a nav entry would also need `RoleValues` widened, since it
- * is `['admin','operator']` today.
+ * A packer opens this at a terminal by URL — or by signing in anywhere: since
+ * #3096 the guest and app layouts send every bench-only session here, so a
+ * packer who types any app address lands on the bench. #2416 revisits a nav
+ * entry when the bench has work to show — it would also need `RoleValues`
+ * widened, since it is `['admin','operator']` today.
  *
  * @module app/routes
  */

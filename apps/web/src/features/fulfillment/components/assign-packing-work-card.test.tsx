@@ -190,4 +190,83 @@ describe('AssignPackingWorkCard — reference link (#3096/#3259)', () => {
     const link = screen.getByRole('link', { name: 'PS-4471' });
     expect(link).toHaveAttribute('href', DETAIL_HREF);
   });
+
+  it('should shorten a UUID-shaped reference head-and-tail and keep the full value in the title', () => {
+    render(
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ orderReference: '1a7a9550-bd84-11f1-a5f3-e32e252d5e3f' })}
+          actions={null}
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
+    );
+
+    const link = screen.getByRole('link', { name: '1a7a9550…2d5e3f' });
+    expect(link).toHaveAttribute('title', '1a7a9550-bd84-11f1-a5f3-e32e252d5e3f');
+    // The mockup's ink-coloured reference, not an orange body link.
+    expect(link).not.toHaveClass('link');
+  });
+});
+
+describe('AssignPackingWorkCard — the scan summary (#3096)', () => {
+  function lineOf(totalQuantity: number, id: string): FulfillmentTask['lines'][number] {
+    return {
+      id,
+      orderLineId: `o_${id}`,
+      productVariantId: `v_${id}`,
+      totalQuantity,
+      fulfilledQuantity: 0,
+      cancelledQuantity: 0,
+    };
+  }
+
+  it('should say only the product count when every product is a single unit', () => {
+    render(
+      <MemoryRouter>
+        <AssignPackingWorkCard task={task({ lines: [lineOf(1, 'a')] })} actions={null} detailHref={DETAIL_HREF} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('1 product to scan')).toBeInTheDocument();
+  });
+
+  it('should add the unit count when it differs from the product count', () => {
+    render(
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ lines: [lineOf(3, 'a'), lineOf(1, 'b'), lineOf(1, 'c')] })}
+          actions={null}
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('3 products, 5 units to scan')).toBeInTheDocument();
+  });
+
+  it('should leave the location off unless the caller says the install has several', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ locationName: 'Main warehouse' })}
+          actions={null}
+          detailHref={DETAIL_HREF}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.queryByText(/Main warehouse/)).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <AssignPackingWorkCard
+          task={task({ locationName: 'Main warehouse' })}
+          actions={null}
+          detailHref={DETAIL_HREF}
+          showLocation
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByText(/· Main warehouse/)).toBeInTheDocument();
+  });
 });

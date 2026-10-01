@@ -1,400 +1,271 @@
 /**
- * Fulfilment work detail body (#3100, holder panel added by #3291, shipment
- * + payment panels added by #3292/#3293)
+ * Fulfilment work detail body (#3100; rebuilt to the mockup's box model by
+ * #3096)
  *
- * The stacked sections: "Why it's stuck" (one banner per active hold),
- * "Who's handling this" (the resolved executor, #3291), "Shipment" (label +
- * carrier + tracking, #3292), "Payment" (order total, currency and source
- * channel — deliberately no COD/prepaid claim, #3293), "What's in this task"
- * (the line list plus the stale-counter caveat) and "Details" (the fact
- * grid). The original four are transcribed from `renderDetailView` in
- * `docs/plans/mockups/fulfillment-work-detail-3096.html`; "Shipment" and
- * "Payment" follow the epic's addendum design ("The Manifest") rather than
- * that mockup, which predates them.
+ * Two columns, every section a card. The LEFT column is the reviewed mockup
+ * (`docs/plans/mockups/fulfillment-work-detail-3096.html`, `#detailView`),
+ * section for section: the hero, "Why it's stuck", "What's in this task",
+ * "Details" and the action card. The RIGHT column is what the mockup did not
+ * draw, built from modules that already exist elsewhere rather than new
+ * variations of them: the Packer card (`assign-packing-work.html`), and the
+ * order page's own `OrderShipmentPanel`, `SalesDocumentPanel` and
+ * `OrderTotalsPanel`, fed by ONE order read for all three.
  *
- * ## `activeHolds` is THE authority on heldness, and it is what gates section one
+ * ## The grid is the order page's, and so is the column ratio
+ *
+ * `.order-detail__primary-grid--split` + `.order-detail__stack` — the same
+ * 60/40 split the order detail uses at ≥ 1024 px, so the two pages read as one
+ * product. Below that the grid is one column, and the two stacks dissolve
+ * (`display: contents`) so the cards can be put in the mobile order the
+ * analysis set: hero → holds → lines → packer → shipment → sales document →
+ * payment → details → actions. The DOM order is the desktop reading order, so
+ * a screen reader meets the task before the modules beside it.
+ *
+ * ## `activeHolds` is THE authority on heldness, and it gates the holds card
  *
  * Nothing in the backend writes `status = 'on_hold'` (#2406), so a held task
- * reads `status: 'open'` with a non-empty `activeHolds`. The holds section is
- * therefore keyed on the array alone and never on the status axis. When it is
- * empty the section is ABSENT — not a heading over nothing, which would read
- * to an operator as "we looked and something is stuck but we cannot say
- * what".
+ * reads `status: 'open'` with a non-empty `activeHolds`. The holds card is
+ * keyed on the array alone, and when it is empty the card is ABSENT — not a
+ * heading over nothing.
  *
  * ## The hold's actor is not rendered, because it is not projected
  *
- * `FulfillmentHoldResponseDto` withholds `placedByService` as an internal
- * actor and carries no `placedByUserId` (#2406). Rendering only the user arm
- * of that XOR would attribute every service-placed hold to nobody. This
- * surface says what was asked and when, and stays silent about who — the same
- * rule `fulfillment-task-card.tsx` already follows.
+ * `FulfillmentHoldResponseDto` withholds `placedByService` and carries no
+ * `placedByUserId` (#2406). This surface says what was asked and when, and
+ * stays silent about who.
  *
  * ## Nothing here reads `supportedActions`
  *
- * These sections describe the task; they offer no control, so no legality
- * decision is taken or mirrored (DESIGN §5.2, and
- * `scripts/check-no-supported-actions-mirror.mjs`). The action bar is
- * #3101's.
+ * These sections describe the task; the action card's controls are composed
+ * by the page from `FulfillmentTaskActions`, which renders the server's list
+ * as served (`scripts/check-no-supported-actions-mirror.mjs`).
  *
  * ## The counters are DISPLAY-ONLY, and the caveat says so once
  *
  * `recordLineProgress` moves `fulfilledQuantity` without bumping the header
- * `version` (#2400), so a count on screen can legitimately be stale.
- * `COPY.lines.caveat` is the byte-identical sentence
- * `fulfillment-task-card.tsx` already renders inline — one fact, one wording.
- * It sits under the list, once per page rather than once per line, and only
- * where counts are — a task with no lines has no counts to be behind.
+ * `version` (#2400), so a count on screen can legitimately be stale. The
+ * caveat sits under the list, once per page rather than once per line.
  *
- * ## Two deliberate divergences from the mockup
+ * ## Delivery is a carrier name, never an id
  *
- * 1. The Location row ALWAYS renders, carrying `facts.noLocation` when the
- *    task has no location. The mockup pushes the row only
- *    `if (task.locationId)`; a row that names the absent fact beats one that
- *    silently disappears (divergence 5 in the copy table's own docblock).
- * 2. The location renders `task.locationName` when the backend resolved one
- *    (#3426), falling back to the RAW id in mono when it has not — the
- *    assign board's own card reads the same field the same way. There is no
- *    separate location lookup here: `GET /fulfillment/works` and
- *    `GET /fulfillment/works/:workId` share one projection, and that
- *    projection already carries the operator-authored name (#3258).
+ * `task.deliveryMethod` is the source's delivery-method id — a UUID on Allegro
+ * — and the page used to print it as the fact. The row now reads the
+ * resolved `carrierName` (or the order's own delivery-method name) and is
+ * absent when neither is known, rather than showing an id nobody can read.
  *
- * The hold's instant is RELATIVE, matching the shipped task card. The fact
- * grid is also real `<dt>`/`<dd>` rather than the mockup's spans inside a
- * `<dl>` — semantic HTML first, and the shipped card already does it.
+ * ## Location renders only where there is more than one
  *
- * ## "Who's handling this" (#3291)
- *
- * `task.assignedConnectionId` was on the DTO and read by nothing anywhere in
- * this feature — the hero's `summariseFulfillmentWork` call always passes
- * `executorName: null`, so the derived sentence never actually names a
- * connection. This section is the one place that lookup runs: it calls
- * `useConnectionQuery`, skipping the fetch entirely when the task is
- * unassigned, and is the reason the fact grid still carries no connection row
- * — a row here AND a sentence in the hero would be the same fact stated
- * twice.
- *
- * Four states, and every one of them renders something rather than nothing:
- * unassigned (no id to look up), loading (the fetch is in flight), a failed
- * lookup (the raw id, because a deleted or renamed connection must not make
- * the panel disappear), and loaded (the connection's name, plus whether it is
- * OpenLinker's own OMS executing the task in-house or an external partner).
- * The in-house check is `connection.platformType === OMS_PLATFORM_TYPE` — a
- * local `const`, never a literal on the right of `===`, because
- * `no-restricted-syntax` bans literal platformType dispatch outside
- * `apps/web/src/plugins/` (#578/#579).
+ * With a single warehouse the Location fact names the same place on every
+ * task. It, and the location in the hero's sub-line, render only when the
+ * install has more than one active location (`useHasMultipleLocations`).
  *
  * @module apps/web/src/features/fulfillment/components
  */
-import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import type { ReactElement, ReactNode } from 'react';
 
 import { ApiError } from '../../../shared/api/api-error';
-import { formatAmount } from '../../../shared/format/format-amount';
 import { usePlatforms } from '../../../shared/plugins';
+import { distinguishingAttributeKeys, narrowAttributes } from '../../../shared/lib/variant-attributes';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { DetailSection } from '../../../shared/ui/detail-section';
+import { shortenId } from '../../../shared/ui/entity-label';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { ConnectionEntityLabel, useConnectionQuery } from '../../connections';
 import { resolvePlatformLabel } from '../../mappings';
-import { holdReasonLabel, parseOrderSnapshot, useOrderQuery } from '../../orders';
 import {
-  buildCarrierTrackingUrl,
-  getCarrierDisplayName,
-  ShipmentStatusBadge,
-  type Shipment,
-} from '../../shipments';
+  holdReasonLabel,
+  OrderShipmentPanel,
+  OrderTotalsPanel,
+  parseOrderSnapshot,
+  SalesDocumentPanel,
+  useOrderQuery,
+  type OrderRecord,
+} from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
-import { useFulfillmentWorkShipmentsQuery } from '../hooks/use-fulfillment-work-shipments-query';
+import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
 import {
+  FULFILLMENT_EXPEDITED_BADGE,
   fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
 } from '../lib/fulfillment-task.copy';
 import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
+import { summariseFulfillmentWork } from '../lib/fulfillment-work-summary';
+import { FulfillmentLineIdentity } from './fulfillment-line-identity';
+import { FulfillmentWorkPackerSection } from './fulfillment-work-packer-section';
 
 const COPY = FULFILLMENT_WORK_DETAIL_COPY;
 
 /**
- * The OMS's own `platformType` (#2405, ADR-055). A local `const` rather than
- * a literal at the comparison site — see the module docblock for why that is
- * not decoration.
+ * The OMS's own `platformType` (#2405, ADR-055). A local `const` rather than a
+ * literal at the comparison site: `no-restricted-syntax` bans literal
+ * platformType dispatch outside `apps/web/src/plugins/` (#578/#579).
  */
 const OMS_PLATFORM_TYPE = 'openlinker';
 
 export interface FulfillmentWorkDetailBodyProps {
   /** The loaded task. The page mounts this only on its loaded branch. */
   task: FulfillmentTask;
+  /** The action card, composed by the page, which owns the action runner and its dialog. */
+  actions: ReactNode;
+  /** Whether staffing controls render (`useWriteAccess().visible`). */
+  canStaff: boolean;
+  /** Rendered but disabled — the demo-viewer state (#1615). */
+  readOnly: boolean;
 }
 
-/**
- * "Why it's stuck" — one warning banner per active hold, or nothing at all.
- *
- * `Alert` rather than a bespoke banner rule: the mockup's `.hold-banner` is a
- * warning-tinted box with a bold title and a muted body, which is what
- * `alert--warning` already is. A second rule of the same shape is one more
- * thing to drift.
- */
-function WorkHoldsSection({ task }: FulfillmentWorkDetailBodyProps): ReactElement | null {
-  if (task.activeHolds.length === 0) return null;
-
-  return (
-    <section className="fulfilment-work-detail__section">
-      <h3 className="fulfilment-work-detail__section-title">{COPY.sections.holds}</h3>
-      <div className="fulfilment-work-detail__holds">
-        {task.activeHolds.map((hold) => (
-          <Alert key={hold.id} tone="warning" title={holdReasonLabel(hold.reason)}>
-            <div className="fulfilment-work-detail__hold-body">
-              {/* Operator-authored text, rendered verbatim. Absent is absent
-                  — there is no stand-in sentence for a hold nobody annotated. */}
-              {hold.note ? <span>{hold.note}</span> : null}
-              <span>
-                {COPY.holds.since} <TimeDisplay iso={hold.placedAt} format="relative" />
-              </span>
-            </div>
-          </Alert>
-        ))}
-      </div>
-    </section>
-  );
+/** Who is executing the task, resolved once for the hero's sub-line and its sentence. */
+interface ExecutorFacts {
+  /** The connection's display name, when it resolved. Feeds the summary sentence. */
+  readonly name: string | null;
+  /** What the sub-line says about the executor, or `null` while it is loading. */
+  readonly label: string | null;
 }
 
-/**
- * "Who's handling this" — resolves `task.assignedConnectionId` and reports
- * one of four states. See the module docblock for why this is a section of
- * its own rather than a row folded into "Details" or a rewrite of the hero's
- * summary sentence.
- *
- * `useConnectionQuery` is called UNCONDITIONALLY (hooks must run in the same
- * order on every render), with `enabled: false` doing the actual skipping
- * when there is no id to look up.
- */
-function WorkExecutorSection({ task }: FulfillmentWorkDetailBodyProps): ReactElement {
+function useExecutorFacts(task: FulfillmentTask): ExecutorFacts {
   const connectionId = task.assignedConnectionId;
+  // Called unconditionally (hooks run in one order every render); `enabled`
+  // does the skipping when there is no id to look up.
   const connectionQuery = useConnectionQuery(connectionId ?? '', {
     enabled: connectionId !== null,
   });
   const platforms = usePlatforms();
 
-  let body: ReactElement;
-  if (connectionId === null) {
-    // A real, reachable state — a `scheduled`/`unsubmitted` task has no
-    // executing connection yet, and that is not an error condition.
-    body = <p className="text-muted">{COPY.executor.unassigned}</p>;
-  } else if (connectionQuery.data) {
+  if (connectionId === null) return { name: null, label: COPY.executor.unassigned };
+  if (connectionQuery.data) {
     const connection = connectionQuery.data;
-    const isInHouse = connection.platformType === OMS_PLATFORM_TYPE;
-    body = (
-      <div className="fulfilment-work-detail__executor">
-        <span className="fulfilment-work-detail__executor-name">{connection.name}</span>
-        {isInHouse ? (
-          <span className="text-muted">{COPY.executor.inHouse}</span>
-        ) : (
-          <span className="fulfilment-work-detail__executor-partner">
-            {COPY.executor.externalPartner} — {resolvePlatformLabel(platforms, connection)}
-          </span>
-        )}
-      </div>
-    );
-  } else if (connectionQuery.isPending) {
-    body = <p className="text-muted">{COPY.executor.loading}</p>;
-  } else {
-    // Never nothing: a deleted/renamed connection (404) or any other failed
-    // read still surfaces the raw id, because a panel that vanishes on
-    // failure reads as "nobody is handling this" — a claim this build cannot
-    // support either way.
-    const isNotFound =
-      connectionQuery.error instanceof ApiError && connectionQuery.error.isNotFound();
-    body = (
-      <p className="fulfilment-work-detail__executor-removed">
-        <span className="mono-text">{connectionId}</span>
-        <span className="text-muted">
-          {isNotFound ? COPY.executor.removed : COPY.executor.unavailable}
-        </span>
-      </p>
-    );
+    if (connection.platformType === OMS_PLATFORM_TYPE) {
+      return { name: connection.name, label: connection.name };
+    }
+    return {
+      name: connection.name,
+      label: `${connection.name} · ${COPY.executor.externalPartner} — ${resolvePlatformLabel(platforms, connection)}`,
+    };
   }
-
-  return (
-    <section className="fulfilment-work-detail__section">
-      <h3 className="fulfilment-work-detail__section-title">{COPY.sections.executor}</h3>
-      {body}
-    </section>
-  );
+  if (connectionQuery.isPending) return { name: null, label: null };
+  // A deleted or unreadable connection must not make the sub-line go blank:
+  // a blank reads as "nobody is handling this", which this build cannot say.
+  const isNotFound = connectionQuery.error instanceof ApiError && connectionQuery.error.isNotFound();
+  return { name: null, label: isNotFound ? shortenId(connectionId) : COPY.executor.unavailable };
 }
 
 /**
- * "Shipment" (#3292) — the label/carrier/tracking state for this task's own
- * dispatch, via `shipments.fulfillmentWorkId` (#2402).
+ * The hero: the sub-line (task id · executor · location), the headline (both
+ * axes joined, 22 px / 700, as the mockup draws it), the expedited pill beside
+ * it, and the derived sentence.
  *
- * The `Create a label` CTA links to `/orders/:orderId#shipment` rather than
- * re-implementing the label-generation dialog on this page — the existing
- * order-detail flow already collects the recipient and parcel fields
- * (weight, dimensions) a label needs, which are operator-typed and have no
- * source this page could derive them from, so a duplicate dialog here would
- * either omit them or re-ask for the same thing twice.
- *
- * The CTA is gated on the SAME `connectionId`/in-house check
- * `WorkExecutorSection` already makes — a 3rd-party holder ships on its own,
- * and offering the button there would invite a duplicate shipment for a
- * parcel the partner is already handling.
+ * Both axis labels always render. Heldness lives in `activeHolds` and nothing
+ * writes `status: 'on_hold'`, so neither axis can be dropped without the page
+ * losing a fact the other one cannot carry.
  */
-function WorkShipmentSection({ task }: FulfillmentWorkDetailBodyProps): ReactElement {
-  const shipmentsQuery = useFulfillmentWorkShipmentsQuery(task.id);
-  const connectionQuery = useConnectionQuery(task.assignedConnectionId ?? '', {
-    enabled: task.assignedConnectionId !== null,
+function WorkDetailHero({
+  task,
+  executor,
+  showLocation,
+}: {
+  task: FulfillmentTask;
+  executor: ExecutorFacts;
+  showLocation: boolean;
+}): ReactElement {
+  const summary = summariseFulfillmentWork({
+    status: task.status,
+    requestStatus: task.requestStatus,
+    activeHoldCount: task.activeHolds.length,
+    locationId: task.locationId,
+    expeditedAt: task.expeditedAt ?? null,
+    cancellationReason: task.cancellationReason,
+    executorName: executor.name,
   });
-  const isOlExecuted = connectionQuery.data?.platformType === OMS_PLATFORM_TYPE;
-
-  // Newest first, already the API's own ordering (#3292's controller sorts
-  // before responding) — `[0]` is therefore the CURRENT attempt on an
-  // append-only cancel-and-re-issue history, never an arbitrary one.
-  const shipment = shipmentsQuery.data?.[0];
-  // Only the two fields `buildCarrierTrackingUrl` reads — never the full
-  // `features/shipments` `Shipment` shape, which this narrower projection
-  // does not carry.
-  const trackingUrl =
-    shipment === undefined
-      ? null
-      : buildCarrierTrackingUrl({
-          trackingNumber: shipment.trackingNumber,
-          carrier: shipment.carrier,
-        } as Shipment);
-
-  const body = ((): ReactElement => {
-    if (shipmentsQuery.isPending) {
-      return <p className="text-muted">{COPY.shipment.loading}</p>;
-    }
-    if (shipmentsQuery.isError) {
-      return <p className="text-muted">{COPY.shipment.unavailable}</p>;
-    }
-    if (shipment === undefined) {
-      return (
-        <div className="fulfilment-work-detail__shipment-empty">
-          <p className="text-muted">{COPY.shipment.none}</p>
-          {/* Never for a 3rd-party holder — they ship on their own, and this
-              button would invite a duplicate shipment for a parcel already
-              being handled. */}
-          {isOlExecuted ? (
-            <Link to={`/orders/${task.orderId}#shipment`} className="link">
-              <Button tone="secondary" className="button--sm">
-                {COPY.shipment.createLabel}
-              </Button>
-            </Link>
-          ) : null}
-        </div>
-      );
-    }
-
-    const carrierLabel = getCarrierDisplayName(shipment.carrier);
-
-    return (
-      <>
-        <dl className="fulfilment-work-detail__facts">
-          <div>
-            <dt>{COPY.shipment.status}</dt>
-            <dd>
-              <ShipmentStatusBadge status={shipment.status} />
-            </dd>
-          </div>
-          {carrierLabel ? (
-            <div>
-              <dt>{COPY.shipment.carrier}</dt>
-              <dd>{carrierLabel}</dd>
-            </div>
-          ) : null}
-          {shipment.trackingNumber ? (
-            <div>
-              <dt>{COPY.shipment.trackingNumber}</dt>
-              <dd className="mono-text">{shipment.trackingNumber}</dd>
-            </div>
-          ) : null}
-        </dl>
-        {/* A shipment row with no label yet — a draft that has not reached
-            the provider, or one whose provider call failed. Outside the
-            `<dl>` rather than a labelless row inside it. */}
-        {!shipment.hasLabel ? (
-          <p className="text-muted">{COPY.shipment.noLabelYet}</p>
-        ) : null}
-      </>
-    );
-  })();
+  const location = showLocation ? (task.locationName ?? task.locationId ?? COPY.facts.noLocation) : null;
+  const subParts = [executor.label, location].filter((part): part is string => part !== null);
+  const expeditedAt = task.expeditedAt ?? null;
 
   return (
-    <section className="fulfilment-work-detail__section">
-      <h3 className="fulfilment-work-detail__section-title">{COPY.sections.shipment}</h3>
-      {body}
-      {trackingUrl ? (
-        <p>
-          <a href={trackingUrl} target="_blank" rel="noreferrer" className="link">
-            {COPY.shipment.trackParcel}
-          </a>
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-/**
- * "Payment" (#3293) — narrowed deliberately: total, currency and the source
- * channel, never a COD/prepaid claim this build cannot support. See the
- * copy table's own docblock and #3294, the named follow-up.
- *
- * Resolves the task's own order via `useOrderQuery` (exported from
- * `features/orders` for exactly this) and `parseOrderSnapshot` — the SAME
- * read `order-detail-page.tsx` already uses for its own totals panel, never
- * a second one.
- */
-function WorkPaymentSection({ task }: FulfillmentWorkDetailBodyProps): ReactElement {
-  const orderQuery = useOrderQuery(task.orderId);
-
-  const body = ((): ReactElement => {
-    if (orderQuery.isPending) {
-      return <p className="text-muted">{COPY.executor.loading}</p>;
-    }
-    if (orderQuery.isError) {
-      return <p className="text-muted">{COPY.payment.unavailable}</p>;
-    }
-
-    const { totals } = parseOrderSnapshot(orderQuery.data.orderSnapshot);
-    if (totals === undefined) {
-      return <p className="text-muted">{COPY.payment.unavailable}</p>;
-    }
-
-    return (
-      <p>
-        <span className="mono-text">{formatAmount(totals.total, totals.currency)}</span>
-        {' · '}
-        {COPY.payment.placedOn}{' '}
-        <ConnectionEntityLabel connectionId={orderQuery.data.sourceConnectionId} showId={false} />
+    <DetailSection tone="hero" className="fulfilment-work-detail__slot--hero" data-testid="work-detail-hero">
+      <p className="fulfilment-work-detail__hero-sub">
+        <span className="mono-text" title={task.id}>
+          {shortenId(task.id)}
+        </span>
+        {subParts.map((part) => (
+          <span key={part}> · {part}</span>
+        ))}
       </p>
-    );
-  })();
-
-  return (
-    <section className="fulfilment-work-detail__section">
-      <h3 className="fulfilment-work-detail__section-title">{COPY.sections.payment}</h3>
-      {body}
-      <p className="fulfilment-work-detail__note text-muted">{COPY.payment.followUpNote}</p>
-    </section>
+      <div className="fulfilment-work-detail__hero-row">
+        <p className="fulfilment-work-detail__headline">
+          {fulfillmentStatusLabel(task.status)} · {fulfillmentRequestStatusLabel(task.requestStatus)}
+        </p>
+        {/* Display only (#3247): which expedite verb is offered comes from
+            `supportedActions`. The wording is the card's own, one fact one
+            wording. */}
+        {expeditedAt !== null ? (
+          <span className="fulfilment-work-detail__expedited" data-testid="expedited-badge">
+            <span aria-hidden="true">⚡ </span>
+            {FULFILLMENT_EXPEDITED_BADGE} · <TimeDisplay iso={expeditedAt} format="datetime" />
+          </span>
+        ) : null}
+      </div>
+      {/* `null` when this build cannot say — the headline above still carries
+          both axes, so the hero is never blank. */}
+      {summary !== null ? <p className="fulfilment-work-detail__summary">{summary}</p> : null}
+    </DetailSection>
   );
 }
 
-/** "What's in this task" — the line list, its counts, and the stale-count caveat. */
-function WorkLinesSection({ task }: FulfillmentWorkDetailBodyProps): ReactElement {
+/** "Why it's stuck" — one compact banner per active hold, or no card at all. */
+function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | null {
+  if (task.activeHolds.length === 0) return null;
+
   return (
-    <section className="fulfilment-work-detail__section">
-      <h3 className="fulfilment-work-detail__section-title">{COPY.sections.lines}</h3>
+    <DetailSection
+      title={COPY.sections.holds}
+      aria-label={COPY.sections.holds}
+      className="fulfilment-work-detail__slot--holds"
+    >
+      <div className="fulfilment-work-detail__holds">
+        {task.activeHolds.map((hold) => (
+          <Alert key={hold.id} tone="warning" density="compact" title={holdReasonLabel(hold.reason)}>
+            <div className="fulfilment-work-detail__hold-body">
+              {/* Operator-authored text, rendered verbatim. Absent is absent. */}
+              {hold.note ? <span>{hold.note}</span> : null}
+              <span>
+                {COPY.holds.since} <TimeDisplay iso={hold.placedAt} format="datetime" />
+              </span>
+            </div>
+          </Alert>
+        ))}
+      </div>
+    </DetailSection>
+  );
+}
+
+/** "What's in this task" — a product card per line, its counts, and the stale-count caveat. */
+function WorkLinesSection({ task }: { task: FulfillmentTask }): ReactElement {
+  // Narrowed across THIS task's lines: an attribute every line shares tells
+  // the operator nothing about which box is which (`variant-attributes.ts`).
+  const distinguishing = distinguishingAttributeKeys(
+    task.lines.map((line) => ({ attributes: line.attributes ?? null }))
+  );
+
+  return (
+    <DetailSection
+      title={COPY.sections.lines}
+      aria-label={COPY.sections.lines}
+      className="fulfilment-work-detail__slot--lines"
+    >
       {task.lines.length > 0 ? (
         <>
           <ul className="fulfilment-work-detail__lines">
             {task.lines.map((line) => {
               // Reinforcement, never the only signal: the two numbers beside
-              // it already say the line is complete, which is why the glyph
-              // is decorative and hidden from assistive technology.
+              // it already say the line is complete.
               const done = line.fulfilledQuantity >= line.totalQuantity;
 
               return (
                 <li key={line.id} className="fulfilment-work-detail__line">
-                  <span className="mono-text">{line.productVariantId}</span>
+                  <FulfillmentLineIdentity
+                    line={line}
+                    attributes={narrowAttributes(line.attributes ?? null, distinguishing)}
+                  />
                   <span className="fulfilment-work-detail__line-count">
                     {line.fulfilledQuantity} / {line.totalQuantity}
                     {line.cancelledQuantity > 0
@@ -411,90 +282,206 @@ function WorkLinesSection({ task }: FulfillmentWorkDetailBodyProps): ReactElemen
               );
             })}
           </ul>
-          {/* Byte-identical to the card's own caveat — once, under the counts
-              it is about. A task with no lines has no count to be behind. */}
           <p className="fulfilment-work-detail__note text-muted">{COPY.lines.caveat}</p>
         </>
       ) : (
         <p className="text-muted">{COPY.lines.empty}</p>
       )}
-    </section>
+    </DetailSection>
+  );
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }): ReactElement {
+  return (
+    <div className="fulfilment-work-detail__fact">
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
   );
 }
 
 /**
- * "Details" — the reference facts, in the mockup's order.
+ * "Details" — the reference facts, in the mockup's order, then what the bench
+ * has done to the box (#3096, G02-3).
  *
- * The connection executing the task is deliberately NOT a row here: it has
- * its own section now, `WorkExecutorSection` above (#3291) — a row in this
- * grid AND a dedicated panel would state the same fact twice.
+ * The bench rows render only when the API carries them (`undefined` against an
+ * older API leaves the rows absent rather than claiming the parcel is open),
+ * and "Channel notified" only once the parcel is closed — before that there is
+ * nothing to notify the channel about.
  */
-function WorkFactsSection({ task }: FulfillmentWorkDetailBodyProps): ReactElement {
+function WorkFactsSection({
+  task,
+  order,
+  showLocation,
+}: {
+  task: FulfillmentTask;
+  order: OrderRecord | undefined;
+  showLocation: boolean;
+}): ReactElement {
+  const delivery = task.carrierName ?? order?.sourceDeliveryMethodName ?? null;
+  const parcelClosedAt = task.parcelClosedAt;
+  const completedAt = task.completedAt ?? null;
+
   return (
-    <section className="fulfilment-work-detail__section">
-      <h3 className="fulfilment-work-detail__section-title">{COPY.sections.facts}</h3>
+    <DetailSection
+      title={COPY.sections.facts}
+      aria-label={COPY.sections.facts}
+      className="fulfilment-work-detail__slot--facts"
+    >
       <dl className="fulfilment-work-detail__facts">
-        {/* Both axes, always. Heldness lives in `activeHolds`, so neither of
-            these can be dropped without losing a fact the other cannot
-            carry. */}
-        <div>
-          <dt>{COPY.facts.state}</dt>
-          <dd>{fulfillmentStatusLabel(task.status)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.facts.handshake}</dt>
-          <dd>{fulfillmentRequestStatusLabel(task.requestStatus)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.facts.location}</dt>
-          {/* `task.locationName` when the backend resolved one (#3426),
-              falling back to the raw id in mono — see divergence 2 above. */}
-          {task.locationId ? (
-            <dd className={task.locationName ? undefined : 'mono-text'}>
-              {task.locationName ?? task.locationId}
-            </dd>
-          ) : (
-            <dd className="text-muted">{COPY.facts.noLocation}</dd>
-          )}
-        </div>
-        {/* Delivery and the external reference stay conditional, as the
-            mockup has them: there is no copy for an absent one, and
-            inventing a stand-in sentence is what the copy table exists to
-            prevent. */}
-        {task.deliveryMethod ? (
-          <div>
-            <dt>{COPY.facts.delivery}</dt>
-            <dd>{task.deliveryMethod}</dd>
-          </div>
+        <Fact label={COPY.facts.state}>{fulfillmentStatusLabel(task.status)}</Fact>
+        <Fact label={COPY.facts.handshake}>{fulfillmentRequestStatusLabel(task.requestStatus)}</Fact>
+        {showLocation ? (
+          <Fact label={COPY.facts.location}>
+            {task.locationName ?? task.locationId ?? COPY.facts.noLocation}
+          </Fact>
         ) : null}
+        {delivery !== null ? <Fact label={COPY.facts.delivery}>{delivery}</Fact> : null}
         {task.externalWorkId ? (
-          <div>
-            <dt>{COPY.facts.externalReference}</dt>
-            <dd className="mono-text">{task.externalWorkId}</dd>
-          </div>
+          <Fact label={COPY.facts.externalReference}>
+            <span className="mono-text">{task.externalWorkId}</span>
+          </Fact>
         ) : null}
-        <div>
-          <dt>{COPY.facts.started}</dt>
-          <dd>
-            <TimeDisplay iso={task.createdAt} />
-          </dd>
-        </div>
+        <Fact label={COPY.facts.started}>
+          <TimeDisplay iso={task.createdAt} format="datetime" />
+        </Fact>
+        {parcelClosedAt === undefined ? null : parcelClosedAt === null ? (
+          <Fact label={COPY.facts.parcel}>{COPY.facts.parcelOpen}</Fact>
+        ) : (
+          <>
+            <Fact label={COPY.facts.parcelClosed}>
+              <TimeDisplay iso={parcelClosedAt} format="datetime" />
+            </Fact>
+            <Fact label={COPY.facts.channelNotified}>
+              {task.channelNotifiedAt ? (
+                <TimeDisplay iso={task.channelNotifiedAt} format="datetime" />
+              ) : (
+                <span className="fulfilment-work-detail__fact-warning">{COPY.facts.channelNotYet}</span>
+              )}
+            </Fact>
+          </>
+        )}
+        {completedAt !== null ? (
+          <Fact label={COPY.facts.completed}>
+            <TimeDisplay iso={completedAt} format="datetime" />
+          </Fact>
+        ) : null}
       </dl>
-    </section>
+    </DetailSection>
+  );
+}
+
+/** A placeholder card for a rail module whose order is still loading. */
+function RailSkeleton({ slot }: { slot: string }): ReactElement {
+  return (
+    <DetailSection className={`fulfilment-work-detail__slot--${slot}`} aria-hidden="true">
+      <span className="data-table-skeleton__bar data-table-skeleton__bar--title" />
+      <span className="data-table-skeleton__bar data-table-skeleton__bar--subtitle" />
+    </DetailSection>
+  );
+}
+
+/**
+ * The order page's own modules for this task's order: shipment, sales
+ * document and payment, from ONE `useOrderQuery`.
+ *
+ * Per ORDER, not per task: `OrderShipmentPanel` reads the order's shipments.
+ * With one warehouse an order has one task, so the two are the same set; when
+ * multi-warehouse sourcing ships, the panel grows a `fulfillmentWorkId`
+ * filter (`shipments.fulfillmentWorkId`, #2402) rather than this page growing
+ * a second shipment panel.
+ */
+function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
+  const orderQuery = useOrderQuery(task.orderId);
+
+  if (orderQuery.isPending) {
+    return (
+      <>
+        <RailSkeleton slot="shipment" />
+        <RailSkeleton slot="payment" />
+      </>
+    );
+  }
+
+  // A failed read, or a read that answered nothing — an order the API no
+  // longer has — gets the same quiet card. The task is still the page; the
+  // modules beside it are context it can do without.
+  if (orderQuery.isError || !orderQuery.data) {
+    return (
+      <DetailSection className="fulfilment-work-detail__slot--shipment">
+        <p className="text-muted fulfilment-work-detail__order-unavailable">{COPY.order.unavailable}</p>
+        <Button
+          tone="secondary"
+          onClick={() => {
+            void orderQuery.refetch();
+          }}
+        >
+          {COPY.order.retry}
+        </Button>
+      </DetailSection>
+    );
+  }
+
+  const order = orderQuery.data;
+  const { totals } = parseOrderSnapshot(order.orderSnapshot);
+
+  return (
+    <>
+      {/* The same anchor wrappers the order page uses, so a `#shipment` deep
+          link works here too and a capability-gated panel still leaves its
+          target in place. */}
+      <div id="shipment" tabIndex={-1} className="fulfilment-work-detail__slot--shipment">
+        <OrderShipmentPanel order={order} />
+      </div>
+      <div id="invoicing" tabIndex={-1} className="fulfilment-work-detail__slot--invoicing">
+        <SalesDocumentPanel order={order} />
+      </div>
+      <DetailSection
+        title={COPY.sections.payment}
+        aria-label={COPY.sections.payment}
+        className="fulfilment-work-detail__slot--payment"
+      >
+        {totals === undefined ? (
+          <p className="text-muted">{COPY.payment.unavailable}</p>
+        ) : (
+          <OrderTotalsPanel totals={totals} />
+        )}
+        <p className="fulfilment-work-detail__payment-source">
+          <span className="text-muted">{COPY.payment.placedOn}</span>{' '}
+          <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
+        </p>
+      </DetailSection>
+    </>
   );
 }
 
 export function FulfillmentWorkDetailBody({
   task,
+  actions,
+  canStaff,
+  readOnly,
 }: FulfillmentWorkDetailBodyProps): ReactElement {
+  const showLocation = useHasMultipleLocations();
+  const executor = useExecutorFacts(task);
+  // The facts card reads the order's delivery-method name as a fallback. The
+  // query is shared with `WorkOrderModules` through the cache — one request.
+  const orderQuery = useOrderQuery(task.orderId);
+
   return (
-    <>
-      <WorkHoldsSection task={task} />
-      <WorkExecutorSection task={task} />
-      <WorkShipmentSection task={task} />
-      <WorkPaymentSection task={task} />
-      <WorkLinesSection task={task} />
-      <WorkFactsSection task={task} />
-    </>
+    <div className="order-detail__primary-grid order-detail__primary-grid--split fulfilment-work-detail__layout">
+      <div className="order-detail__stack fulfilment-work-detail__main">
+        <WorkDetailHero task={task} executor={executor} showLocation={showLocation} />
+        <WorkHoldsSection task={task} />
+        <WorkLinesSection task={task} />
+        <WorkFactsSection task={task} order={orderQuery.data} showLocation={showLocation} />
+        {actions}
+      </div>
+      <div className="order-detail__stack fulfilment-work-detail__rail">
+        <div className="fulfilment-work-detail__slot--packer">
+          <FulfillmentWorkPackerSection task={task} canStaff={canStaff} readOnly={readOnly} />
+        </div>
+        <WorkOrderModules task={task} />
+      </div>
+    </div>
   );
 }

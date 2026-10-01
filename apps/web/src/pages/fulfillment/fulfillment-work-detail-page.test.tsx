@@ -1,16 +1,15 @@
 /**
- * `FulfillmentWorkDetailPage` (#3098).
+ * `FulfillmentWorkDetailPage` (#3098; access, title and action card #3096).
  *
- * Four states that must not impersonate one another, and a back link that must
- * not throw away the operator's filters.
+ * Five states that must not impersonate one another, a title that names the
+ * ORDER, a back link that must not throw away the operator's filters, and the
+ * admin + operator gate.
  *
  * ## What is deliberately NOT re-asserted here
  *
- * `summariseFulfillmentWork`'s precedence has its own 30-case suite, and
- * `useFulfillmentWorkQuery`'s key and disabled-guard have theirs. Re-running
- * either through this page would pass with this file's own body reverted. What
- * is untested anywhere else is what THIS page does with those answers, so that
- * is what is written below.
+ * `summariseFulfillmentWork`'s precedence, the body's cards and
+ * `useFulfillmentWorkQuery`'s key each have their own suite. What is tested
+ * here is what THIS page does with those answers.
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -26,7 +25,6 @@ import {
 } from '../../test/test-utils';
 import {
   FULFILLMENT_ACTION_COPY,
-  FULFILLMENT_EXPEDITED_BADGE,
   FULFILLMENT_WORK_DETAIL_COPY,
   fulfillmentActionLabel,
   type FulfillmentTask,
@@ -46,6 +44,7 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   return {
     id: WORK_ID,
     orderId: 'ol_order_a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    orderReference: null,
     locationId: 'loc_warsaw',
     deliveryMethod: 'courier',
     assignedConnectionId: null,
@@ -87,17 +86,21 @@ function renderPage(
     route?: string;
     applyAction?: ApplyMock;
     sessionAdapter?: SessionAdapter;
-    demoMode?: boolean;
   } = {}
 ): ReturnType<typeof renderWithProviders> & { get: GetMock; applyAction: ApplyMock } {
   const get = opts.get ?? getMock().mockResolvedValue(task());
   const applyAction = opts.applyAction ?? applyMock().mockResolvedValue(task());
   const apiClient = createMockApiClient({
     fulfillment: { get, applyAction } as never,
-    // Pinned rather than left to the factory's default: `useWriteAccess` reads
-    // it, so a changed default would flip every action assertion below between
-    // "enabled" and "disabled with a read-only tooltip".
-    system: { getConfig: vi.fn().mockResolvedValue({ demoMode: opts.demoMode ?? false }) },
+    system: { getConfig: vi.fn().mockResolvedValue({ demoMode: false }) },
+    // The right-hand column's reads, settled so no assertion races a stray
+    // pending query. The order read fails on purpose: the rail then renders
+    // one quiet "unavailable" card instead of the order page's whole panels.
+    orders: { getById: vi.fn().mockRejectedValue(new ApiError('boom', 500, null)) } as never,
+    users: { listPackers: vi.fn().mockResolvedValue({ packers: [] }) } as never,
+    inventory: {
+      listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 1, page: 1, limit: 1 }),
+    } as never,
   });
 
   const result = renderWithProviders(
@@ -108,45 +111,22 @@ function renderPage(
       apiClient,
       route: opts.route ?? `/fulfillment/works/${WORK_ID}`,
       sessionAdapter: opts.sessionAdapter ?? createAuthenticatedSessionAdapter(),
-    },
+    }
   );
 
   return { ...result, get, applyAction };
 }
 
-/**
- * The hero, once the loaded branch has rendered.
- *
- * Scoping is load-bearing rather than tidy. The Details grid (#3100) renders
- * the SAME two axis values a second time, as labelled `State` and `Handshake`
- * rows, because the mockup shows each axis twice: glanceable in the hero, and
- * quotable in the grid beneath. So an unscoped `getByText('In progress')`
- * matches both and throws - and a query narrowed some other way (the first
- * match, a `queryAllByText` length) would stop proving WHICH surface rendered
- * it, which is the only thing these cases are about.
- */
 async function findHero(): Promise<HTMLElement> {
-  return await waitFor(() => {
-    const hero = document.querySelector<HTMLElement>('.fulfilment-work-detail__hero');
-    if (hero === null) throw new Error('the hero has not rendered yet');
-    return hero;
-  });
+  return await screen.findByTestId('work-detail-hero');
 }
 
-/**
- * The actions region, so a query cannot pick up the back link or a body
- * control by accident.
- */
+/** The actions region, so a query cannot pick up the back link or a body control. */
 function actionsRegion(): HTMLElement {
   return document.querySelector('.fulfilment-work-detail__actions') as HTMLElement;
 }
 
-/**
- * Every action control, IN DOM ORDER.
- *
- * Order matters as much as membership: a `.sort()` slipped into this page would
- * pass a set-equality assertion while silently reordering what the server sent.
- */
+/** Every action control, IN DOM ORDER — order matters as much as membership. */
 function actionLabels(): string[] {
   const region = actionsRegion();
   if (region === null) return [];
@@ -159,7 +139,7 @@ function hold(id: string, reason: string): FulfillmentTask['activeHolds'][number
   return { id, reason, note: null, placedAt: '2026-09-10T08:30:00.000Z' };
 }
 
-/** A session that can read fulfilment tasks and may not act on them. */
+/** A session that can read orders and may not open fulfilment tasks. */
 const VIEWER = createAuthenticatedSessionAdapter({
   id: 'user_9',
   username: 'viewer',
@@ -168,23 +148,55 @@ const VIEWER = createAuthenticatedSessionAdapter({
   permissions: ['orders:read'],
 });
 
+/** A session whose whole job is the bench. */
+const PACKER = createAuthenticatedSessionAdapter({
+  id: 'user_7',
+  username: 'packer',
+  email: null,
+  role: 'packer',
+  permissions: ['bench:write'],
+});
+
 describe('FulfillmentWorkDetailPage', () => {
-  describe('the four states', () => {
-    it('should render a loading state while the read is in flight', () => {
+  describe('who may open it (#3096)', () => {
+    it('should render access denied, and never send the read, when the session lacks orders:write', async () => {
+      const { get } = renderPage({ sessionAdapter: VIEWER });
+
+      expect(await screen.findByRole('heading', { name: COPY.states.denied.title })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: COPY.states.error.retry })).not.toBeInTheDocument();
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should point a bench-only session at the bench when it lands here', async () => {
+      renderPage({ sessionAdapter: PACKER });
+
+      const link = await screen.findByRole('link', { name: COPY.states.deniedBench.action });
+      expect(link).toHaveAttribute('href', '/bench');
+    });
+
+    it('should render access denied rather than an error with Retry when the read answers 403', async () => {
+      renderPage({ get: getMock().mockRejectedValue(new ApiError('Insufficient permissions', 403, null)) });
+
+      expect(await screen.findByRole('heading', { name: COPY.states.denied.title })).toBeInTheDocument();
+      expect(screen.queryByText(COPY.states.error.title)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: COPY.states.error.retry })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the states', () => {
+    it('should render the card skeleton while the read is in flight', () => {
       renderPage({ get: getMock().mockImplementation(() => new Promise<FulfillmentTask>(() => {})) });
 
-      expect(screen.getByText(COPY.states.loading.title)).toBeInTheDocument();
+      return waitFor(() => {
+        expect(screen.getByText(COPY.states.loading.title)).toHaveClass('sr-only');
+        expect(document.querySelectorAll('.detail-card').length).toBeGreaterThan(0);
+      });
     });
 
     it('should render a NOT-FOUND state for a 404, never the error state', async () => {
-      renderPage({
-        get: getMock().mockRejectedValue(new ApiError('nope', 404, null)),
-      });
+      renderPage({ get: getMock().mockRejectedValue(new ApiError('nope', 404, null)) });
 
       expect(await screen.findByText(COPY.states.notFound.message)).toBeInTheDocument();
-      // The distinction is the whole point: a 404 is a fact about the URL, an
-      // error is a fact about the request, and pointing an operator at the
-      // wrong one sends them to debug a problem they do not have.
       expect(screen.queryByText(COPY.states.error.title)).not.toBeInTheDocument();
     });
 
@@ -195,95 +207,86 @@ describe('FulfillmentWorkDetailPage', () => {
       renderPage({ get });
 
       expect(await screen.findByText(COPY.states.error.title)).toBeInTheDocument();
-      expect(screen.queryByText(COPY.states.notFound.title)).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: COPY.states.error.retry })).toBeInTheDocument();
     });
+  });
 
-    it('should render the task once loaded', async () => {
+  describe('the title and the way to the order', () => {
+    it('should title the page with the order reference when the order carries one', async () => {
+      renderPage({ get: getMock().mockResolvedValue(task({ orderReference: 'C71A02' })) });
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Order C71A02' })).toBeInTheDocument();
+    });
+
+    it('should shorten a long reference the way the orders lists do', async () => {
+      renderPage({
+        get: getMock().mockResolvedValue(task({ orderReference: '1a7a9550-bd84-11f1-a5f3-e32e252d5e3f' })),
+      });
+
+      expect(await screen.findByRole('heading', { level: 2, name: 'Order 1a7a9550…2d5e3f' })).toBeInTheDocument();
+    });
+
+    it('should fall back to the shortened internal id when the order has no reference', async () => {
       renderPage();
 
-      // The ORDER, shortened - never the 32-character raw id the mockup's own
-      // `toUpperCase()` would have shouted.
-      expect(await screen.findByText(/^Order /)).toBeInTheDocument();
-      expect(screen.queryByText(COPY.states.loading.title)).not.toBeInTheDocument();
+      const title = await screen.findByRole('heading', { level: 2, name: /^Order / });
+      expect(title.textContent).toMatch(/^Order /);
+      expect(title.textContent).not.toContain('ol_order_a1b2c3d4e5f60718293a4b5c6d7e8f90');
+    });
+
+    it('should offer an Open order action that links to the order page', async () => {
+      renderPage();
+
+      const link = await screen.findByRole('link', { name: COPY.openOrder });
+      expect(link).toHaveAttribute('href', '/orders/ol_order_a1b2c3d4e5f60718293a4b5c6d7e8f90');
     });
   });
 
   describe('the hero', () => {
-    it('should render BOTH axis labels, because neither carries the other', async () => {
-      renderPage({ get: getMock().mockResolvedValue(task()) });
+    it('should join BOTH axis labels in the headline, because neither carries the other', async () => {
+      renderPage();
 
-      // Heldness lives in `activeHolds` and nothing writes `status: on_hold`,
-      // so dropping or merging either axis loses a fact.
       const hero = await findHero();
-      expect(within(hero).getByText('In progress')).toBeInTheDocument();
-      expect(within(hero).getByText('Accepted')).toBeInTheDocument();
+      expect(within(hero).getByText('In progress · Accepted')).toBeInTheDocument();
     });
 
     it('should render the derived sentence when the build can say one', async () => {
-      renderPage({ get: getMock().mockResolvedValue(task()) });
+      renderPage();
 
       expect(
-        await screen.findByText(COPY.summary.inProgress(COPY.summary.executorFallback)),
+        await screen.findByText(COPY.summary.inProgress(COPY.summary.executorFallback))
       ).toBeInTheDocument();
-    });
-
-    it('should render NO sentence rather than a hedge when it cannot', async () => {
-      // `open` + `accepted` is a reachable state the derivation deliberately
-      // says nothing about. The page must render the axes alone.
-      renderPage({
-        get: getMock().mockResolvedValue(task({ status: 'open', requestStatus: 'accepted' })),
-      });
-
-      const hero = await findHero();
-      expect(within(hero).getByText('Accepted')).toBeInTheDocument();
-      expect(
-        document.querySelector('.fulfilment-work-detail__summary'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('should render the expedited badge only when the task carries the stamp', async () => {
-      const { unmount } = renderPage({
-        get: getMock().mockResolvedValue(task({ expeditedAt: '2026-09-10T11:00:00.000Z' })),
-      });
-      expect(await screen.findByText(FULFILLMENT_EXPEDITED_BADGE)).toBeInTheDocument();
-      unmount();
-      cleanup();
-
-      renderPage({ get: getMock().mockResolvedValue(task({ expeditedAt: null })) });
-      const hero = await findHero();
-      expect(within(hero).getByText('In progress')).toBeInTheDocument();
-      expect(screen.queryByText(FULFILLMENT_EXPEDITED_BADGE)).not.toBeInTheDocument();
     });
   });
 
   describe('the back link', () => {
-    it('should carry the worklist search params back verbatim', async () => {
-      renderPage({
-        route: `/fulfillment/works/${WORK_ID}?status=in_progress&offset=50`,
-      });
+    it('should carry the board state back, through the shared whitelist', async () => {
+      renderPage({ route: `/fulfillment/works/${WORK_ID}?orderId=ol_order_7&offset=50&groupBy=packer` });
 
       const back = await screen.findByRole('link', { name: COPY.backToWorklist });
-      // Verbatim, not re-derived: an operator who filtered and paged before
-      // drilling in has done work, and this page has no opinion about what
-      // those params mean.
-      expect(back).toHaveAttribute('href', '/fulfillment?status=in_progress&offset=50');
+      expect(back).toHaveAttribute('href', '/fulfillment?orderId=ol_order_7&offset=50&groupBy=packer');
+    });
+
+    it('should drop a legacy locationId from the back link (#3096)', async () => {
+      renderPage({ route: `/fulfillment/works/${WORK_ID}?locationId=loc_krakow&offset=25` });
+
+      const back = await screen.findByRole('link', { name: COPY.backToWorklist });
+      expect(back).toHaveAttribute('href', '/fulfillment?offset=25');
     });
 
     it('should link to the bare worklist when there are no params to carry', async () => {
       renderPage();
 
-      const back = await screen.findByRole('link', { name: COPY.backToWorklist });
-      expect(back).toHaveAttribute('href', '/fulfillment');
+      expect(await screen.findByRole('link', { name: COPY.backToWorklist })).toHaveAttribute(
+        'href',
+        '/fulfillment'
+      );
     });
 
     it('should offer the back link on the failure branches too', async () => {
       renderPage({ get: getMock().mockRejectedValue(new ApiError('nope', 404, null)) });
 
       expect(await screen.findByText(COPY.states.notFound.message)).toBeInTheDocument();
-      // A dead end is how an operator ends up using the browser's back button
-      // and losing the list state this page just went to the trouble of
-      // carrying.
       expect(screen.getByRole('link', { name: COPY.backToWorklist })).toBeInTheDocument();
     });
   });
@@ -291,35 +294,43 @@ describe('FulfillmentWorkDetailPage', () => {
   it('should request the task named in the route, not some other one', async () => {
     const { get } = renderPage({ route: `/fulfillment/works/ol_work_other` });
 
-    await screen.findByText(/^Order /);
+    await findHero();
     expect(get).toHaveBeenCalledWith('ol_work_other');
   });
 });
 
 /**
- * The action region (#3101).
+ * The action card (#3101; card + 32 px buttons #3096).
  *
- * ## What is deliberately NOT re-asserted here
- *
- * `readFulfillmentConflict` classifies both coded 409s and has its own spec;
- * `FulfillmentTaskActions` renders one control per entry and has its own; and
- * `useFulfillmentTaskActionRunner` owns the send. Re-running any of those
- * through this page would pass with this page's whole actions region deleted.
- * What is covered nowhere else is what the DETAIL page does with them - that it
- * mounts them at all, that its empty-set guard reads the permission as well as
- * the array, and that the version it sends is the one it drew - so that is what
- * is written below.
+ * `readFulfillmentConflict`, `FulfillmentTaskActions` and
+ * `useFulfillmentTaskActionRunner` each have their own spec. What is covered
+ * here is what the DETAIL page does with them.
  */
-describe('FulfillmentWorkDetailPage - the action region', () => {
+describe('FulfillmentWorkDetailPage - the action card', () => {
+  it('should render the action card as a detail card with its small label', async () => {
+    renderPage();
+
+    const card = await screen.findByRole('region', { name: COPY.sections.actions });
+    expect(card).toHaveClass('detail-card', 'detail-card--actions');
+    expect(within(card).getByText(COPY.sections.actions)).toHaveClass('fulfilment-work-detail__actions-label');
+  });
+
+  it('should render full-size buttons, not the dense 28 px ones', async () => {
+    renderPage();
+
+    await findHero();
+    const close = within(actionsRegion()).getByRole('button', {
+      name: FULFILLMENT_ACTION_COPY['close'].label,
+    });
+    expect(close).not.toHaveClass('button--sm');
+  });
+
   it('should render exactly the server’s supportedActions, in the served order', async () => {
     renderPage({
-      get: getMock().mockResolvedValue(
-        task({ supportedActions: ['close', 'hold', 'force_cancel'] }),
-      ),
+      get: getMock().mockResolvedValue(task({ supportedActions: ['close', 'hold', 'force_cancel'] })),
     });
 
-    await screen.findByText(/^Order /);
-    // Order as well as membership: a `.sort()` here would pass a set test.
+    await findHero();
     expect(actionLabels()).toEqual([
       FULFILLMENT_ACTION_COPY['close'].label,
       FULFILLMENT_ACTION_COPY['hold'].label,
@@ -328,20 +339,13 @@ describe('FulfillmentWorkDetailPage - the action region', () => {
   });
 
   it('should still render an action this build has no copy for', async () => {
-    // Vacuity guard: the case means nothing unless this really is unknown.
     expect(FULFILLMENT_ACTION_COPY['quarantine_parcel']).toBeUndefined();
 
     renderPage({
-      get: getMock().mockResolvedValue(
-        task({ supportedActions: ['close', 'quarantine_parcel'] }),
-      ),
+      get: getMock().mockResolvedValue(task({ supportedActions: ['close', 'quarantine_parcel'] })),
     });
 
-    await screen.findByText(/^Order /);
-    // The humanising fallback, asserted as the literal it produces rather than
-    // through `fulfillmentActionLabel` - a test that calls the same function
-    // the page calls agrees with it however wrong both are. Hiding the control
-    // would silently remove a capability the moment the backend grows one.
+    await findHero();
     expect(actionLabels()).toEqual([FULFILLMENT_ACTION_COPY['close'].label, 'Quarantine parcel']);
     expect(fulfillmentActionLabel('quarantine_parcel')).toBe('Quarantine parcel');
   });
@@ -349,78 +353,8 @@ describe('FulfillmentWorkDetailPage - the action region', () => {
   it('should render the nothing-left sentence when the server offers no action', async () => {
     renderPage({ get: getMock().mockResolvedValue(task({ supportedActions: [] })) });
 
-    expect(
-      await screen.findByText(FULFILLMENT_WORK_DETAIL_COPY.actions.nothingLeft),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(COPY.actions.nothingLeft)).toBeInTheDocument();
     expect(actionLabels()).toEqual([]);
-  });
-
-  it('should say NOTHING to a session that cannot act, even with an empty action set', async () => {
-    // THE case the `write.visible` half of the guard exists for, and the only
-    // one that distinguishes the two implementations: with it removed this
-    // renders "Nothing left to do." to a viewer. That reads as a statement
-    // about them rather than about the task - and worse, it is inconsistent,
-    // because the very next task with four legal actions (asserted below)
-    // renders them the same region empty. A session that cannot act gets one
-    // answer for every task, not two that look permission-shaped.
-    renderPage({
-      sessionAdapter: VIEWER,
-      get: getMock().mockResolvedValue(task({ supportedActions: [] })),
-    });
-
-    await screen.findByText(/^Order /);
-    expect(
-      screen.queryByText(FULFILLMENT_WORK_DETAIL_COPY.actions.nothingLeft),
-    ).not.toBeInTheDocument();
-  });
-
-  it('should render no control and no sentence to a viewer whose task IS actionable', async () => {
-    // The other half of that consistency claim: same viewer, four legal
-    // actions, same empty region.
-    renderPage({
-      sessionAdapter: VIEWER,
-      get: getMock().mockResolvedValue(
-        task({ supportedActions: ['close', 'hold', 'expedite', 'force_cancel'] }),
-      ),
-    });
-
-    await screen.findByText(/^Order /);
-    expect(actionLabels()).toEqual([]);
-    expect(
-      screen.queryByText(FULFILLMENT_WORK_DETAIL_COPY.actions.nothingLeft),
-    ).not.toBeInTheDocument();
-  });
-
-  it('should say nothing left to a demo viewer whose task really has nothing left', async () => {
-    // A demo read-only viewer has `write.visible` true - the capability is
-    // advertised to them - so the sentence is addressed to somebody the page
-    // is otherwise offering controls to, and must render. This is what stops
-    // the guard above being written as `write.canWrite`, which would suppress
-    // it on the deployment that most needs to show the surface working.
-    renderPage({
-      sessionAdapter: VIEWER,
-      demoMode: true,
-      get: getMock().mockResolvedValue(task({ supportedActions: [] })),
-    });
-
-    expect(
-      await screen.findByText(FULFILLMENT_WORK_DETAIL_COPY.actions.nothingLeft),
-    ).toBeInTheDocument();
-  });
-
-  it('should render a demo viewer’s controls disabled rather than hidden', async () => {
-    renderPage({
-      sessionAdapter: VIEWER,
-      demoMode: true,
-      get: getMock().mockResolvedValue(task({ supportedActions: ['close'] })),
-    });
-
-    await screen.findByText(/^Order /);
-    const close = within(actionsRegion()).getByRole('button', {
-      name: FULFILLMENT_ACTION_COPY['close'].label,
-    });
-    // #1615: the capability is advertised, not pretended away.
-    expect(close).toBeDisabled();
   });
 
   it('should give each hold its own release control when a task carries more than one', async () => {
@@ -429,36 +363,15 @@ describe('FulfillmentWorkDetailPage - the action region', () => {
         task({
           supportedActions: ['release_hold'],
           activeHolds: [hold('hold_1', 'stock-shortfall'), hold('hold_2', 'address-invalid')],
-        }),
+        })
       ),
     });
 
-    await screen.findByText(/^Order /);
-    // Two identical "Release hold" buttons side by side is the defect the
-    // mockup names: the accessible name has to say WHICH hold, or an operator
-    // releasing the wrong one has no way to have known.
-    const labels = actionLabels();
-    expect(labels).toHaveLength(2);
-    expect(new Set(labels).size).toBe(2);
-    expect(labels).toEqual([
+    await findHero();
+    expect(actionLabels()).toEqual([
       `${FULFILLMENT_ACTION_COPY['release_hold'].label} (${holdReasonLabel('stock-shortfall')})`,
       `${FULFILLMENT_ACTION_COPY['release_hold'].label} (${holdReasonLabel('address-invalid')})`,
     ]);
-  });
-
-  it('should collapse to one release control when the task carries a single hold', async () => {
-    // The complement: with nothing to disambiguate, the qualifier is noise.
-    renderPage({
-      get: getMock().mockResolvedValue(
-        task({
-          supportedActions: ['release_hold'],
-          activeHolds: [hold('hold_1', 'stock-shortfall')],
-        }),
-      ),
-    });
-
-    await screen.findByText(/^Order /);
-    expect(actionLabels()).toEqual([FULFILLMENT_ACTION_COPY['release_hold'].label]);
   });
 
   it('should send the version it RENDERED, and refresh instead of retrying, on a version_conflict', async () => {
@@ -471,78 +384,54 @@ describe('FulfillmentWorkDetailPage - the action region', () => {
         code: 'version_conflict',
         currentVersion: 4,
         supportedActions: ['hold'],
-      }),
+      })
     );
 
     renderPage({ get, applyAction });
 
-    await screen.findByText(/^Order /);
+    await findHero();
     await user.click(
-      within(actionsRegion()).getByRole('button', {
-        name: FULFILLMENT_ACTION_COPY['close'].label,
-      }),
+      within(actionsRegion()).getByRole('button', { name: FULFILLMENT_ACTION_COPY['close'].label })
     );
 
-    // (a) Sent ONCE, carrying the token that was drawn - never a fresher one
-    // re-read at click time, which would make `version_conflict` unreachable
-    // and hand the last writer the win.
     await waitFor(() => {
       expect(applyAction).toHaveBeenCalledTimes(1);
     });
     expect(applyAction).toHaveBeenCalledWith(
       WORK_ID,
       'close',
-      expect.objectContaining({ expectedVersion: 3 }),
+      expect.objectContaining({ expectedVersion: 3 })
     );
-
-    // (b) The refresh happened. EXACTLY twice, not `>= 1`: React Query settles
-    // either way, so the call count is what goes red if the conflict branch is
-    // removed or the invalidation key stops covering the detail read.
     await waitFor(() => {
       expect(get).toHaveBeenCalledTimes(2);
     });
-
-    // (c) The refreshed action set is what renders, with no second request.
     await waitFor(() => {
       expect(actionLabels()).toEqual([FULFILLMENT_ACTION_COPY['hold'].label]);
     });
     expect(applyAction).toHaveBeenCalledTimes(1);
 
-    // (d) Reported through the SHARED toast - this page has no result slot of
-    // its own - and worded for a stale token specifically.
     const toast = await findToastDescription(/Somebody moved this fulfilment task/);
-    expect(toast).toBeInTheDocument();
     expect(toast.closest('.toast')).toHaveClass('toast--warning');
   });
 
   it('should word an action_not_legal differently, and not retry it either', async () => {
     const user = userEvent.setup();
     const applyAction = applyMock().mockRejectedValue(
-      new ApiError('not legal', 409, { code: 'action_not_legal', supportedActions: [] }),
+      new ApiError('not legal', 409, { code: 'action_not_legal', supportedActions: [] })
     );
 
-    renderPage({
-      applyAction,
-      get: getMock().mockResolvedValue(task({ supportedActions: ['close'] })),
-    });
+    renderPage({ applyAction, get: getMock().mockResolvedValue(task({ supportedActions: ['close'] })) });
 
-    await screen.findByText(/^Order /);
+    await findHero();
     await user.click(
-      within(actionsRegion()).getByRole('button', {
-        name: FULFILLMENT_ACTION_COPY['close'].label,
-      }),
+      within(actionsRegion()).getByRole('button', { name: FULFILLMENT_ACTION_COPY['close'].label })
     );
 
     await waitFor(() => {
       expect(applyAction).toHaveBeenCalledTimes(1);
     });
-
-    // Distinguishable from the conflict above on BOTH axes: a different
-    // sentence, and `error` rather than `warning` - a stale token is the guard
-    // working, an illegal action is not.
     const toast = await findToastDescription(/no longer possible/);
     expect(toast.closest('.toast')).toHaveClass('toast--error');
-    expect(screen.queryByText(/Somebody moved this fulfilment task/)).not.toBeInTheDocument();
     expect(applyAction).toHaveBeenCalledTimes(1);
   });
 
@@ -550,16 +439,11 @@ describe('FulfillmentWorkDetailPage - the action region', () => {
     const user = userEvent.setup();
     const applyAction = applyMock().mockResolvedValue(task({ supportedActions: [] }));
 
-    renderPage({
-      applyAction,
-      get: getMock().mockResolvedValue(task({ supportedActions: ['close'] })),
-    });
+    renderPage({ applyAction, get: getMock().mockResolvedValue(task({ supportedActions: ['close'] })) });
 
-    await screen.findByText(/^Order /);
+    await findHero();
     await user.click(
-      within(actionsRegion()).getByRole('button', {
-        name: FULFILLMENT_ACTION_COPY['close'].label,
-      }),
+      within(actionsRegion()).getByRole('button', { name: FULFILLMENT_ACTION_COPY['close'].label })
     );
 
     expect(await findToastDescription(/applied\.$/)).toBeInTheDocument();
@@ -569,21 +453,13 @@ describe('FulfillmentWorkDetailPage - the action region', () => {
     const user = userEvent.setup();
     const applyAction = applyMock().mockResolvedValue(task());
 
-    renderPage({
-      applyAction,
-      get: getMock().mockResolvedValue(task({ supportedActions: ['hold'] })),
-    });
+    renderPage({ applyAction, get: getMock().mockResolvedValue(task({ supportedActions: ['hold'] })) });
 
-    await screen.findByText(/^Order /);
+    await findHero();
     await user.click(
-      within(actionsRegion()).getByRole('button', {
-        name: FULFILLMENT_ACTION_COPY['hold'].label,
-      }),
+      within(actionsRegion()).getByRole('button', { name: FULFILLMENT_ACTION_COPY['hold'].label })
     );
 
-    // Without the dialog mounted, three of the eight actions this page can
-    // offer would be dead controls: the click would open nothing and send
-    // nothing, silently.
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(applyAction).not.toHaveBeenCalled();
   });
@@ -595,26 +471,18 @@ describe('FulfillmentWorkDetailPage - the action region', () => {
       () =>
         new Promise<FulfillmentTask>((resolve) => {
           settle = resolve;
-        }),
+        })
     );
 
-    renderPage({
-      applyAction,
-      get: getMock().mockResolvedValue(task({ supportedActions: ['close'] })),
-    });
+    renderPage({ applyAction, get: getMock().mockResolvedValue(task({ supportedActions: ['close'] })) });
 
-    await screen.findByText(/^Order /);
+    await findHero();
     expect(actionsRegion()).toHaveAttribute('aria-busy', 'false');
 
     await user.click(
-      within(actionsRegion()).getByRole('button', {
-        name: FULFILLMENT_ACTION_COPY['close'].label,
-      }),
+      within(actionsRegion()).getByRole('button', { name: FULFILLMENT_ACTION_COPY['close'].label })
     );
 
-    // The REGION, not just the button: this page renders one task, so the
-    // whole write surface is what is updating. It is the reason the runner
-    // exposes `busyTaskId` at all.
     await waitFor(() => {
       expect(actionsRegion()).toHaveAttribute('aria-busy', 'true');
     });

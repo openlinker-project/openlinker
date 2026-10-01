@@ -27,7 +27,8 @@
  *
  * ```
  * cancelled > incomplete > held > cancellation_requested > cancellation_rejected
- *           > submitted > unassigned > scheduled / in_progress (expedited or not)
+ *           > submitted > open + accepted > unassigned
+ *           > scheduled / in_progress (expedited or not)
  * ```
  *
  * Heldness and the negotiation axis both outrank the bare orchestration
@@ -43,11 +44,11 @@
  * returning `null` rather than a fabricated tooltip. The hero's two axis
  * labels still render, so the page is never blank.
  *
- * Three reachable states produce no sentence, all confirmed rather than
- * papered over: `open` + `unsubmitted` with a location and no holds (the
- * commonest state a freshly routed task is in), `open` + `accepted` (a task
- * whose holder accepted and has not started picking), and
- * `requestStatus: 'rejected'`.
+ * Two reachable states produce no sentence, both confirmed rather than
+ * papered over: `open` + `unsubmitted` with a location and no holds, and
+ * `requestStatus: 'rejected'`. `open` + `accepted` used to be a third; #3096
+ * gave it `acceptedWaiting`, because it is the state most live tasks sit in
+ * and a hero with nothing under its headline read as a broken page.
  *
  * ## It returns a string, never a tone
  *
@@ -125,6 +126,12 @@ export function summariseFulfillmentWork(input: FulfillmentWorkSummaryInput): st
     return SUMMARY.cancellationRequested(subject);
   if (input.requestStatus === 'cancellation_rejected') return SUMMARY.cancellationRejected(subject);
   if (input.requestStatus === 'submitted') return SUMMARY.awaitingAnswer(subject);
+  // #3096 — the commonest live state a routed task sits in, and the one that
+  // left the hero with no sentence at all beneath its headline. Ahead of the
+  // location check: an executor that ACCEPTED the task has been routed to,
+  // whatever `locationId` says, so "not yet assigned anywhere" would be false.
+  if (input.status === 'open' && input.requestStatus === 'accepted')
+    return SUMMARY.acceptedWaiting(subject);
   // Only where "nothing to pick yet" is actually true. A task can reach
   // `in_progress` or `closed` while `locationId` stays null — nothing in the
   // server's action derivation reads the location, and on the default

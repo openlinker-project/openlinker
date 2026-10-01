@@ -42,6 +42,21 @@ export interface FulfillmentTaskLine {
   id: string;
   orderLineId: string;
   productVariantId: string;
+  /**
+   * What the line's product card shows (#3426, #3096): the parent product's
+   * name, the variant's codes, a picture and its attributes. Every one is
+   * `null` when the catalogue does not have it and `undefined` against an API
+   * that predates it — the card falls back to `productVariantId` either way.
+   *
+   * `imageUrl` is the API's own PROXY path (`/products/:id/images/:index`),
+   * behind the route guard, so it is fetched with the bearer token
+   * (`useAuthenticatedImage`) and never handed to a bare `<img src>`.
+   */
+  productName?: string | null;
+  sku?: string | null;
+  ean?: string | null;
+  imageUrl?: string | null;
+  attributes?: Record<string, string> | null;
   totalQuantity: number;
   /**
    * DISPLAY-ONLY, and not protected by the optimistic token: progress ingress
@@ -150,6 +165,22 @@ export interface FulfillmentTask {
    * `bench-work-presentation.ts`).
    */
   expeditedAt?: string | null;
+  /**
+   * What the pack bench has done to the box (#3096, G02-3). `parcelClosedAt`
+   * is when the box was shut — NOT `status`, since packing is part of the
+   * executor's job rather than the end of it — and `packedByUserId` who shut
+   * it. `completedAt` is the separate "finished and off the bench" instant.
+   * All optional against an API that predates them.
+   */
+  parcelClosedAt?: string | null;
+  packedByUserId?: string | null;
+  completedAt?: string | null;
+  /**
+   * When the dispatch fact was settled with the sales channel, or `null` while
+   * it is not. RESOLVED, not acknowledged: a channel that takes no dispatch
+   * notice is settled too, so copy must not promise the channel confirmed it.
+   */
+  channelNotifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   lines: FulfillmentTaskLine[];
@@ -220,11 +251,21 @@ export interface ApplyFulfillmentTaskActionRequest {
  * app may not mirror (see the module docblock), and the endpoint validates them
  * — so a value forwarded raw from the URL bar would 400 the whole page over a
  * typo, and a value this build invented would be silently dropped. Filtering is
- * by the two free-string params until a server-supplied facet list exists.
+ * by the free-string params until a server-supplied facet list exists.
+ *
+ * `active` is the one status-shaped filter this app sends, and it is an ALIAS
+ * the server resolves (#3096): "every status that still has work in it". The
+ * board asks for it by default so closed and cancelled parcels do not crowd the
+ * Unassigned lane, without this build knowing which statuses those are.
+ *
+ * `locationId` is accepted by the endpoint and still typed here, but no screen
+ * offers it since #3096: with one location it filters nothing, and it returns
+ * with multi-warehouse work.
  */
 export interface FulfillmentTaskFilters {
   orderId?: string;
   locationId?: string;
+  active?: boolean;
   /** Server-clamped; the response reports what was actually applied. */
   limit?: number;
   offset?: number;

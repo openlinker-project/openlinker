@@ -83,6 +83,9 @@ export function buildFulfillmentWorksPath(filters: FulfillmentTaskFilters = {}):
   const params = new URLSearchParams();
   if (filters.orderId !== undefined) params.set('orderId', filters.orderId);
   if (filters.locationId !== undefined) params.set('locationId', filters.locationId);
+  // Only ever `true`: `false` and absent mean the same thing to the server,
+  // so emitting `active=false` would be a second spelling of "unfiltered".
+  if (filters.active === true) params.set('active', 'true');
   if (filters.limit !== undefined) params.set('limit', String(filters.limit));
   if (filters.offset !== undefined) params.set('offset', String(filters.offset));
   const query = params.toString();

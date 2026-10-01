@@ -40,6 +40,13 @@ describe('fulfillment api', () => {
     expect(buildFulfillmentWorksPath({ offset: 0 })).toBe('/fulfillment/works?offset=0');
   });
 
+  it('should emit the active alias only when it is true (#3096)', () => {
+    expect(buildFulfillmentWorksPath({ active: true, limit: 25 })).toBe(
+      '/fulfillment/works?active=true&limit=25'
+    );
+    expect(buildFulfillmentWorksPath({ active: false })).toBe('/fulfillment/works');
+  });
+
   it('encodes a value that needs escaping', () => {
     expect(buildFulfillmentWorksPath({ orderId: 'a b&c' })).toBe(
       '/fulfillment/works?orderId=a+b%26c'
