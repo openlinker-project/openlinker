@@ -13,13 +13,19 @@ import { provisionViewer, seedBrowserSession } from '../../../src/support/access
 test.describe('G03 golden path 2 — export (#3536)', () => {
   test('admin exports the current view to CSV and downloads it', async ({ page, poll }) => {
     await page.goto('/orders');
-    await page.getByRole('button', { name: 'Export' }).click();
+    // `exact`: the bulk bar's "Export N" (#3507) must never match the header button.
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
 
     const dialog = page.getByTestId('order-export-dialog');
     await expect(dialog).toHaveAttribute('data-mk-state', /default|selected|large/);
 
     const downloadPromise = page.waitForEvent('download');
-    await dialog.getByRole('button', { name: 'Export' }).click();
+    // M5 — the primary action names the size of the job: "Export 1 284 orders",
+    // "Export orders" while the count loads, or "Start background export".
+    // (`\s` also matches the non-breaking space the count is grouped with.)
+    await dialog
+      .getByRole('button', { name: /^(Export( [\d\s]+)? orders?|Start background export)$/ })
+      .click();
 
     // #3534 — the run is `pending` until the worker generates the file;
     // the dialog polls every 2 s (`useOrderExportRunQuery`).
@@ -41,7 +47,7 @@ test.describe('G03 golden path 2 — export (#3536)', () => {
     await seedBrowserSession(page.context(), env, viewer!.creds);
 
     await page.goto('/orders');
-    await expect(page.getByRole('button', { name: 'Export' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toHaveCount(0);
 
     // Direct API refusal (D35: orders:export is admin/operator only) — the
     // UI hiding the button is not the security boundary, the route is.

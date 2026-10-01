@@ -30,6 +30,7 @@ import {
   StatusBadge,
   Textarea,
 } from '../../../shared/ui';
+import { FilterPrimitivesDemo } from './filter-primitives-demo';
 
 interface GroupProps {
   title: string;
@@ -73,6 +74,13 @@ export function PrimitivesSection(): ReactElement {
           <Button tone="secondary"><span aria-hidden="true">＋</span> Add connection</Button>
           <Button tone="ghost"><span aria-hidden="true">⟳</span> Sync now</Button>
         </div>
+      </Group>
+
+      <Group
+        title="Filters"
+        description="FilterToggleButton · FilterPanel + FilterGroup + FilterField · FilterCheck · ActiveFilterChips · QuickFilters · FilterSheet + FilterSection · BareIconButton (#3507). Every control writes immediately — there is no Apply button."
+      >
+        <FilterPrimitivesDemo />
       </Group>
 
       <Group

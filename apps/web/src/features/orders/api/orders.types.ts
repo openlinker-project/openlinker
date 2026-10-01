@@ -967,6 +967,22 @@ export interface UpdateOrderNoteRequest {
 }
 
 /**
+ * One `GET /orders/:id/notes/timeline` entry (#3531) — an authored note act
+ * for the order's Activity timeline. `kind` is read as a plain string (see
+ * `order-note-timeline.schema.ts`): a kind this build predates still renders.
+ * `body` is the text as of that act; `null` for a deletion and a flag change.
+ */
+export interface OrderNoteTimelineEntry {
+  noteId: string;
+  kind: string;
+  occurredAt: string;
+  actorUsername: string;
+  body: string | null;
+  /** The packer flag as a result of the act; `null` when the act did not set it. */
+  showToPacker: boolean | null;
+}
+
+/**
  * The closed `--tag-*` colour vocabulary (#3532/#3533). Mirrors
  * `OrderTagColorValues` in `@openlinker/core/orders` — the FE-001 contract
  * strategy (`apps/web` cannot import `@openlinker/core`, #591).
@@ -1046,6 +1062,33 @@ export const ORDER_EXPORT_COLUMN_LABELS: Record<OrderExportColumnIdValue, string
   packed: 'Packed',
   fulfillmentState: 'Fulfillment',
 };
+
+/**
+ * Mirrors core's `ORDER_EXPORT_DEFAULT_COLUMNS` — what the export job writes
+ * when a request names no columns. The dialog starts from THIS set so what it
+ * shows ticked is what the file would contain anyway (#3507 U1).
+ * Guarded, with the two lists around it, by
+ * `scripts/check-order-export-columns-mirror.mjs`.
+ */
+export const ORDER_EXPORT_DEFAULT_COLUMNS: readonly OrderExportColumnIdValue[] = [
+  'orderNumber',
+  'customerName',
+  'placedAt',
+  'currency',
+  'totalAmount',
+  'itemCount',
+  'recordStatus',
+];
+
+/**
+ * Mirrors core's `ORDER_EXPORT_PII_COLUMNS` — the columns the job blanks under
+ * `OL_STORE_PII=false`, and the ones the dialog's personal-data warning keys on.
+ * `country` is deliberately absent: redaction keeps it.
+ */
+export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnIdValue[] = [
+  'customerName',
+  'customerEmail',
+];
 
 /**
  * The `/orders` LIST's own toggleable-column vocabulary (#3530 recovery

@@ -57,6 +57,7 @@ import { EntityLabel, shortenId } from '../../../shared/ui/entity-label';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { OrderTagChip } from './order-tag-chip';
 import type { OrderTag } from '../api/orders.types';
+import { ORDER_TAGS_COPY } from '../lib/order-tags.copy';
 
 /** How many tags a list row renders before folding the rest into "+N" (#3533). */
 const TAGS_LINE_MAX_VISIBLE = 2;
@@ -189,7 +190,20 @@ export function OrderIdentityCell({
               <OrderTagChip key={tag.id} tag={tag} small />
             ))}
             {tags.length > TAGS_LINE_MAX_VISIBLE ? (
-              <span className="orders-more-count">+{tags.length - TAGS_LINE_MAX_VISIBLE}</span>
+              /* The hidden names ride on `title` for a pointer and on sr-only
+                 text for a screen reader — `aria-label` on a bare `<span>` is
+                 prohibited on the generic role and dropped by some readers. */
+              <span
+                className="orders-more-count"
+                title={ORDER_TAGS_COPY.moreTags(
+                  tags.slice(TAGS_LINE_MAX_VISIBLE).map((tag) => tag.name),
+                )}
+              >
+                <span aria-hidden="true">+{tags.length - TAGS_LINE_MAX_VISIBLE}</span>
+                <span className="sr-only">
+                  {ORDER_TAGS_COPY.moreTags(tags.slice(TAGS_LINE_MAX_VISIBLE).map((tag) => tag.name))}
+                </span>
+              </span>
             ) : null}
           </span>
         ) : null}

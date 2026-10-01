@@ -5,7 +5,7 @@
  * not block anything, and a label this bench cannot do anything about must not
  * offer a control that cannot succeed.
  */
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -51,10 +51,19 @@ function label(over: Partial<BenchLabel> = {}): BenchLabel {
   };
 }
 
+interface MountOptions {
+  readonly unlabelledTotal?: number;
+  readonly packStationLabel?: string | null;
+  /** Open is the ordinary state while a packer works a box. */
+  readonly closed?: boolean;
+}
+
+/** F3/F4 is a closed-box state; every unlabelled-block test mounts one. */
+const CLOSED: MountOptions = { closed: true };
+
 function mount(
   documents: Partial<BenchDocuments> = {},
-  unlabelledTotal = 0,
-  packStationLabel: string | null = null,
+  { unlabelledTotal = 0, packStationLabel = null, closed = false }: MountOptions = {},
 ) {
   const apiClient = createMockApiClient({
     bench: {
@@ -75,7 +84,7 @@ function mount(
 
   return {
     apiClient,
-    ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} />, {
+    ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} closed={closed} />, {
       apiClient,
       sessionAdapter: createAuthenticatedSessionAdapter({
         ...PACKER,
@@ -212,7 +221,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
           providerCode: 'LOCKER_FULL',
         }),
       },
-      3
+      { unlabelledTotal: 3, closed: true }
     );
 
     expect(await screen.findByText(/Packed, but there is no label/i)).toBeInTheDocument();
@@ -237,7 +246,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         carrierMessage: null,
         carrierMessageRedacted: true,
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/turned it down with code LOCKER_FULL/i)).toBeInTheDocument();
     expect(screen.queryByText('“”')).toBeNull();
@@ -252,7 +261,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         carrierMessage: null,
         carrierMessageRedacted: false,
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/The carrier did not say why/i)).toBeInTheDocument();
   });
@@ -269,7 +278,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         carrierMessage: null,
         carrierMessageRedacted: true,
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/not shown at the bench/i)).toBeInTheDocument();
     expect(screen.queryByText(/The carrier did not say why/i)).toBeNull();
@@ -282,7 +291,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         trackingNumber: null,
         providerCode: 'NO_LABEL',
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/Packed, but there is no label/i)).toBeInTheDocument();
     // A control that cannot succeed is worse than none — buying a label needs
@@ -294,10 +303,58 @@ describe('BenchDocumentsPanel (#2418)', () => {
   it('should still offer the invoice for inside the box while the label is outstanding', async () => {
     mount({
       label: label({ state: 'unavailable', trackingNumber: null }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByRole('button', { name: /print invoice/i })).toBeInTheDocument();
     expect(screen.getByText(/it is not missing later/i)).toBeInTheDocument();
+  });
+
+  // ── G03-6 — an OPEN box with no label yet is not "packed" ────────────────
+  //
+  // The unlabelled block says the box "is finished and correct … and it is
+  // closed". G03-6 found it on a parcel at "0 of 1": the panel keyed on the
+  // label state alone. The open arm must say the label is not ready and let
+  // packing carry on — and must not ask dispatch's list while it is open.
+  describe('a box that is still open while no label exists', () => {
+    const unavailable = label({ state: 'unavailable', trackingNumber: null, shipmentId: null });
+
+    it('should not render the unlabelled block when the box is open', async () => {
+      const { apiClient } = mount({ label: unavailable });
+
+      await screen.findByTestId('bench-documents-label-pending');
+      expect(screen.queryByTestId('bench-documents-unlabelled')).not.toBeInTheDocument();
+      expect(screen.queryByText(/This box cannot go out/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/it is closed/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/it is not missing later/i)).not.toBeInTheDocument();
+      expect(apiClient.bench.listUnlabelledParcels).not.toHaveBeenCalled();
+    });
+
+    it('should show a neutral label card that lets packing carry on when the box is open', async () => {
+      mount({ label: unavailable });
+
+      const card = await screen.findByTestId('bench-documents-label-pending');
+      expect(card).toHaveTextContent('Goes ON the box');
+      expect(card).toHaveTextContent('The label is not ready yet');
+      expect(card).toHaveTextContent(/Carry on packing/);
+      // Nothing to press: the label is dispatch's to buy, not this bench's.
+      expect(within(card).queryByRole('button')).toBeNull();
+      // The invoice card is unaffected.
+      expect(screen.getByRole('button', { name: /print invoice/i })).toBeInTheDocument();
+    });
+
+    it('should render the unlabelled block, not the pending card, once the box is closed', async () => {
+      mount({ label: unavailable }, CLOSED);
+
+      expect(await screen.findByTestId('bench-documents-unlabelled')).toBeInTheDocument();
+      expect(screen.queryByTestId('bench-documents-label-pending')).not.toBeInTheDocument();
+    });
+
+    it('should render no pending card when the label is ready', async () => {
+      mount();
+
+      await screen.findByTestId('bench-documents-label');
+      expect(screen.queryByTestId('bench-documents-label-pending')).not.toBeInTheDocument();
+    });
   });
 
   // #3420 was reverted: a control that does nothing is not rescued by a
@@ -315,7 +372,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
   // #3404 — the packer/printer binding made visible.
   describe('the printer-binding line', () => {
     it("should render the signed-in packer's own station label", async () => {
-      mount({}, 0, 'Zebra ZD420 · Bench 3');
+      mount({}, { packStationLabel: 'Zebra ZD420 · Bench 3' });
 
       const line = await screen.findByTestId('bench-documents-printer');
       expect(line).toHaveTextContent('Printing to Zebra ZD420 · Bench 3');
@@ -330,7 +387,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
     });
 
     it('should render nothing when the packer has no station label set', async () => {
-      mount({}, 0, null);
+      mount({}, { packStationLabel: null });
 
       await screen.findByRole('button', { name: 'Print invoice' });
       expect(screen.queryByTestId('bench-documents-printer')).not.toBeInTheDocument();

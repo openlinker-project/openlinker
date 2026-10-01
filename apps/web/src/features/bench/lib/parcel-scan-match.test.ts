@@ -57,6 +57,7 @@ function parcel(lines: readonly BenchParcelLine[]): BenchParcel {
     labelPrintedAt: null,
     completedAt: null,
     lines,
+    packerNotes: [],
   };
 }
 

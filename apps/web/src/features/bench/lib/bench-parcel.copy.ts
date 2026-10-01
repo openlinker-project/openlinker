@@ -293,6 +293,19 @@ export const benchParcelCopy = {
     keyboardHint: 'Not scanning? Press C to confirm the next open item by hand.',
   },
 
+  /** Notes flagged "Show to packer" (D12), read only. */
+  officeNotes: {
+    title: (count: number): string => `Notes from the office (${String(count)})`,
+    /**
+     * Calendar words, not "3h ago": a packer reads an office instruction
+     * against the clock on the wall and the shift they are on, and "today"
+     * versus "yesterday" is what tells them whether it was written for this
+     * batch. Beyond yesterday the absolute date says it better than any word.
+     */
+    today: (time: string): string => `today ${time}`,
+    yesterday: (time: string): string => `yesterday ${time}`,
+  },
+
   /** #3411 (epic #3401) — recent activity, newest first. */
   activity: {
     heading: 'Recent activity',
@@ -555,6 +568,17 @@ export const benchParcelCopy = {
      * worse than no reassurance at all.
      */
     printingTo: (label: string): string => `Printing to ${label}`,
+
+    /**
+     * The label card on a box that is still OPEN while no label exists yet.
+     * Deliberately not the unlabelled block's "this box cannot go out": that
+     * is a statement about a CLOSED box, and on an open one it told a packer
+     * at "0 of 1" that the box was finished and closed. Nothing here asks
+     * them to stop - the label is dispatch's to buy, and packing carries on.
+     */
+    labelPendingBadge: 'Not ready yet',
+    labelPendingTitle: 'The label is not ready yet',
+    labelPendingBody: 'Dispatch will sort it out. Carry on packing — nothing here waits for it.',
   },
 
   /** F3/F4 — packed, and it cannot go out. */

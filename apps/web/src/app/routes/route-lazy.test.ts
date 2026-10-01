@@ -109,8 +109,11 @@ const lazyRoutes = collectLazyRoutes([
  * two lazy routes over two pages and are now one lazy route plus an inline
  * `<Navigate>` shim on the old path. A redirect loads nothing, so it joins
  * the eager list above rather than this count — net −1, from 70 to 69.
+ *
+ * #3533 (G03, epic #3507): `/settings/order-tags` — the workspace tag
+ * manager — is one more authenticated lazy route, from 69 to 70.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 69;
+const EXPECTED_LAZY_ROUTE_COUNT = 70;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

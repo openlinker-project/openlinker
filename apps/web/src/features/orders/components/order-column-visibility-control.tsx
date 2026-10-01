@@ -16,13 +16,17 @@
  * Mobile cards are structurally unaffected: `DataTable`'s `cardView` is a
  * separate render path (`title`/`subtitle`/`meta`) that never reads the
  * `columns` array this control filters — see `data-table.tsx`'s own
- * `renderCards` branch.
+ * `renderCards` branch. So below the table breakpoint the control is not
+ * rendered at all (#3507 PR 7): a Columns button there would change nothing
+ * the operator can see. The initial-arrangement effect still runs, so the
+ * table is right the moment the viewport widens.
  *
  * @module apps/web/src/features/orders/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
+import { useMediaQuery } from '../../../shared/ui/use-media-query';
 import {
   ORDER_LIST_COLUMN_IDS,
   ORDER_LIST_COLUMN_LABELS,
@@ -30,6 +34,10 @@ import {
 } from '../api/orders.types';
 import { useWorkspaceDefaultColumnPresetQuery } from '../hooks/use-order-column-presets';
 import { OrderColumnPresetManager } from './order-column-preset-manager';
+import { ORDER_COLUMNS_PANEL_COPY } from '../lib/order-export.copy';
+
+/** `DataTable`'s own card/table switch — the band where columns stop meaning anything. */
+const CARD_VIEW_QUERY = '(max-width: 767.98px)';
 
 const LIST_AVAILABLE_COLUMNS = ORDER_LIST_COLUMN_IDS.map((id) => ({
   id,
@@ -82,8 +90,9 @@ export interface OrderColumnVisibilityControlProps {
 export function OrderColumnVisibilityControl({
   visibleColumnIds,
   onVisibleColumnIdsChange,
-}: OrderColumnVisibilityControlProps): ReactElement {
+}: OrderColumnVisibilityControlProps): ReactElement | null {
   const [open, setOpen] = useState(false);
+  const isCardView = useMediaQuery(CARD_VIEW_QUERY);
   const workspaceDefaultQuery = useWorkspaceDefaultColumnPresetQuery();
   const [initialized, setInitialized] = useState(false);
 
@@ -103,14 +112,21 @@ export function OrderColumnVisibilityControl({
     onVisibleColumnIdsChange(next);
   }
 
+  if (isCardView) return null;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button tone="ghost" className="button--sm" data-testid="orders-columns-trigger">
-          Columns
+          {ORDER_COLUMNS_PANEL_COPY.trigger}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="tag-picker" align="end" data-testid="orders-columns-popover">
+      <PopoverContent
+        className="columns-panel"
+        align="end"
+        aria-label={ORDER_COLUMNS_PANEL_COPY.panelLabel}
+        data-testid="orders-columns-popover"
+      >
         <OrderColumnPresetManager
           availableColumns={LIST_AVAILABLE_COLUMNS}
           columns={visibleColumnIds}

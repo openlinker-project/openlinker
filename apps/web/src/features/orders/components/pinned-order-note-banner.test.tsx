@@ -68,4 +68,21 @@ describe('PinnedOrderNoteBanner (#3531)', () => {
 
     expect(await screen.findByText('Shown to packer')).toBeInTheDocument();
   });
+
+  it('should link to the notes section with the full count when a note is pinned', async () => {
+    const orders = {
+      listNotes: vi.fn().mockResolvedValue([
+        makeNote({ pinnedAt: '2026-09-25T12:41:00.000Z' }),
+        makeNote({ id: 'note-2' }),
+        makeNote({ id: 'note-3' }),
+      ]),
+    };
+    renderWithProviders(<PinnedOrderNoteBanner internalOrderId={ORDER_ID} />, {
+      apiClient: createMockApiClient({ orders }),
+    });
+
+    const link = await screen.findByRole('link', { name: 'All notes (3)' });
+    expect(link).toHaveAttribute('href', '#order-notes');
+    expect(screen.getByRole('note', { name: 'Pinned note' })).toBeInTheDocument();
+  });
 });

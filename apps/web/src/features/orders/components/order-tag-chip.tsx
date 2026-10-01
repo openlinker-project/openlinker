@@ -8,7 +8,9 @@
  * @module apps/web/src/features/orders/components
  */
 import type { ReactElement } from 'react';
+import { BareIconButton } from '../../../shared/ui/bare-icon-button';
 import type { OrderTag } from '../api/orders.types';
+import { ORDER_TAGS_COPY } from '../lib/order-tags.copy';
 
 export interface OrderTagChipProps {
   tag: Pick<OrderTag, 'name' | 'color'>;
@@ -29,18 +31,15 @@ export function OrderTagChip({ tag, small, onRemove, removeDisabled }: OrderTagC
       <span className="order-tag__dot" aria-hidden="true" />
       <span className="order-tag__label">{tag.name}</span>
       {onRemove ? (
-        <button
-          type="button"
+        <BareIconButton
           className="order-tag__remove"
-          aria-label={`Remove tag ${tag.name}`}
+          label={ORDER_TAGS_COPY.removeTag(tag.name)}
           disabled={removeDisabled}
           onClick={(event) => {
             event.stopPropagation();
             onRemove();
           }}
-        >
-          ×
-        </button>
+        />
       ) : null}
     </span>
   );
