@@ -19,15 +19,15 @@ const STATE_ID: Record<string, number> = { shipped: 4, delivered: 5, cancelled: 
  * An UNAMBIGUOUS state catalogue for the #3526 `delivered` / `in-progress`
  * tests — one row per flag combination, unlike `DEFAULT_INSTALL_ORDER_STATES`
  * (used by every other describe block above), whose ids 2 and 3 both carry
- * `paid=1, shipped=0, delivered=0` and would leave `'processing'` derivation
+ * `paid=1, shipped=0` and would leave `'processing'` derivation
  * ambiguous. Mirrors `order-state-mapping.spec.ts`'s `CUSTOM_STATES` shape.
  */
 const UNAMBIGUOUS_STATES: ReadonlyArray<Record<string, unknown>> = [
-  { id: '30', name: 'New', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
-  { id: '31', name: 'Processing', deleted: '0', paid: '1', shipped: '0', delivered: '0' },
-  { id: '32', name: 'Shipped', deleted: '0', paid: '1', shipped: '1', delivered: '0' },
-  { id: '33', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivered: '1' },
-  { id: '34', name: 'Cancelled', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
+  { id: '30', name: 'New', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
+  { id: '31', name: 'Processing', deleted: '0', paid: '1', shipped: '0', delivery: '0' },
+  { id: '32', name: 'Shipped', deleted: '0', paid: '1', shipped: '1', delivery: '0' },
+  { id: '33', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivery: '1' },
+  { id: '34', name: 'Cancelled', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
 ];
 
 function serveStates(
@@ -152,7 +152,7 @@ describe('PrestashopOrderProcessorManagerAdapter — OrderStatusWriteback.write'
       // structural incapability — `rejected`, matching `dispatched`'s own
       // unresolved-mapping behaviour, never `unsupported`.
       serveStates(mockHttpClient, [
-        { id: '1', name: 'New', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
+        { id: '1', name: 'New', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
       ]);
       mockHttpClient.getResource = jest
         .fn()
