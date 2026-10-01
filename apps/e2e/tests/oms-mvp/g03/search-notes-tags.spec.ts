@@ -52,7 +52,9 @@ test.describe('G03 golden path 1 — search / notes / tags (#3536)', () => {
     test.skip(!sku, 'No seeded order line carries a SKU.');
 
     await page.goto('/orders');
-    const search = page.getByPlaceholder('Search order #, buyer, SKU, tracking…');
+    // By role + name, not placeholder: the placeholder changes with the
+    // install's PII mode (G03-14), the accessible name does not.
+    const search = page.getByRole('searchbox', { name: 'Search orders' });
     await search.fill(sku!);
     // #3529 — 300 ms debounce before the request fires.
     await page.waitForTimeout(400);
@@ -73,20 +75,44 @@ test.describe('G03 golden path 1 — search / notes / tags (#3536)', () => {
     await search.fill('');
     await page.goto(`/orders/${order.internalOrderId}`);
     const noteBody = `E2E flagged note ${Date.now()}`;
-    await page.getByPlaceholder('Add an internal note…').fill(noteBody);
-    await page.getByLabel('Show to packer').check();
+    // #3507 (M3) — the composer sits above the list; the note text also lands
+    // on the Activity timeline, so the assertion is scoped to the notes section.
+    await page.getByLabel('New note').fill(noteBody);
+    await page.getByLabel('Show to packer on the pack bench').check();
     await page.getByRole('button', { name: 'Add note' }).click();
-    await expect(page.getByText(noteBody)).toBeVisible();
+    await expect(page.locator('#order-notes').getByText(noteBody)).toBeVisible();
 
     const tagName = `E2E-${Date.now()}`;
     await page.getByRole('button', { name: '+ Add tag' }).click();
-    await page.getByPlaceholder('Search or create a tag').fill(tagName);
-    await page.getByRole('button', { name: 'Create & add' }).click();
-    await expect(page.getByText(tagName)).toBeVisible();
+    await page.getByPlaceholder('Find or create a tag').fill(tagName);
+    // M3 — "+ Create “x”" is the picker's first row; it creates AND assigns.
+    await page.getByRole('button', { name: `+ Create “${tagName}”` }).click();
+    // The name also shows in the toast and the still-open picker; the header
+    // pill's remove button is the unambiguous proof the tag is on the order.
+    await expect(page.getByRole('button', { name: `Remove tag ${tagName}` })).toBeVisible();
+    await page.keyboard.press('Escape');
 
     // 3. Back on /orders, filter by the new tag — the count agrees with the rows.
     await page.goto('/orders');
-    await page.getByLabel('Filter by tag').selectOption({ label: tagName });
+    // #3507 — the tag filter lives in the Filters panel (m4b-orders-filters).
+    // The panel's open state is remembered per browser, so open it only when
+    // it is not already open.
+    const filterToggle = page.getByTestId('orders-filter-toggle');
+    if ((await filterToggle.getAttribute('aria-expanded')) !== 'true') {
+      await filterToggle.click();
+    }
+    await page
+      .getByRole('region', { name: 'Filters' })
+      .getByRole('radiogroup', { name: 'Tag' })
+      .getByRole('radio', { name: tagName })
+      .check();
+    // The active-filter chip names the tag once the panel is hidden again.
+    await page.getByRole('button', { name: 'Hide filters' }).click();
+    await expect(
+      page.getByRole('group', { name: 'Active filters' }).getByRole('button', {
+        name: `Remove filter Tag: ${tagName}`,
+      }),
+    ).toBeVisible();
     await poll.until(
       () => page.getByRole('row').count(),
       (count) => count >= 2, // header + >=1 data row

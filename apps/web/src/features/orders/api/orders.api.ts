@@ -8,6 +8,7 @@
  */
 import type { PaginatedTotal, RowsPage } from '../../../shared/api/paginated-total.types';
 import { orderMembershipFilters } from './orders.query-keys';
+import { parseOrderNoteTimeline } from './order-note-timeline.schema';
 import type {
   OrderFilters,
   OrderPagination,
@@ -25,6 +26,7 @@ import type {
   OrderNote,
   CreateOrderNoteRequest,
   UpdateOrderNoteRequest,
+  OrderNoteTimelineEntry,
   OrderTag,
   OrderTagColorValue,
   BulkAssignOrderTagResult,
@@ -85,6 +87,8 @@ export interface OrdersApi {
   ) => Promise<ReleaseOrderHoldResult>;
   /** An order's notes, oldest first (#3531). */
   listNotes: (internalOrderId: string) => Promise<OrderNote[]>;
+  /** The notes' authored acts for the Activity timeline (#3531), parsed. */
+  listNoteTimeline: (internalOrderId: string) => Promise<OrderNoteTimelineEntry[]>;
   createNote: (internalOrderId: string, body: CreateOrderNoteRequest) => Promise<OrderNote>;
   /** D33: the author edits their own note only; the server answers 403 otherwise. */
   updateNote: (
@@ -288,6 +292,12 @@ export function createOrdersApi(request: ApiRequest, requestBlob: ApiBlobRequest
     },
     listNotes(internalOrderId): Promise<OrderNote[]> {
       return request<OrderNote[]>(`/orders/${encodeURIComponent(internalOrderId)}/notes`);
+    },
+    async listNoteTimeline(internalOrderId): Promise<OrderNoteTimelineEntry[]> {
+      const raw = await request<unknown>(
+        `/orders/${encodeURIComponent(internalOrderId)}/notes/timeline`,
+      );
+      return parseOrderNoteTimeline(raw);
     },
     createNote(internalOrderId, body): Promise<OrderNote> {
       return request<OrderNote>(`/orders/${encodeURIComponent(internalOrderId)}/notes`, {

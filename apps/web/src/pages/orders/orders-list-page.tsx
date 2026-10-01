@@ -6,8 +6,10 @@
  * — status segments (5 clickable `MetricCard`s backed by the single
  *   `/orders/status-summary` count endpoint) that **partition** the order set,
  *   so the counts sum to the total and double as the `health` URL-state filter;
- * — a filter/sort bar (#939) — source-connection, created-date range, and sort
- *   controls, all URL-state-backed (mirrors the connections-list toolbar);
+ * — the search + filter bar (`OrderListFilterBar`, #3507 / mockup
+ *   m4b-orders-filters): search, "Filters (n)" disclosing a grouped panel (a
+ *   bottom sheet on a phone), active filter chips and one quick-filter row —
+ *   all URL-state-backed through `useOrderListFilters`;
  * — a dense `DataTable` whose rows lead with human identity — the shared
  *   `OrderIdentityCell` since #2091, so this page, Shipments and Invoices answer
  *   "which order is this row?" with one renderer instead of three (#1996) —
@@ -26,7 +28,7 @@
  * @module pages/orders
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Link, useSearchParams, type SetURLSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -34,10 +36,6 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
-import { Chip, type ChipTone } from '../../shared/ui/chip';
-import { Select } from '../../shared/ui/select';
-import { Input } from '../../shared/ui/input';
-import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
@@ -55,22 +53,11 @@ import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-o
 import { OmsAttentionBadges } from '../../features/fulfillment-authority';
 import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
-import {
-  HOLD_REASON_COPY,
-  HoldReasonValues,
-  isHoldReason,
-} from '../../features/orders/lib/order-hold.types';
-import {
-  OrderLifecyclePhaseValues,
-  ORDER_LIFECYCLE_PHASE_META,
-  isOrderLifecyclePhase,
-  type OrderLifecyclePhaseValue,
-} from '../../features/orders/lib/order-lifecycle-phase';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
-import { useDemoMode } from '../../features/system';
+import { useDemoMode, useStoresPersonalData } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
@@ -89,39 +76,34 @@ import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/d
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { BulkTagPopover } from '../../features/orders/components/bulk-tag-popover';
 import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
+import { useOrderExportBackgroundToast } from '../../features/orders/hooks/use-order-export';
 import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
 import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
   OrderRecord,
-  OrderFilters,
   OrderHealthValue,
   OrderHealthSummary,
   OrderSortValue,
-  OrderSortDirection,
-  SlaStateValue,
-  FulfillmentRollupStateValue,
-  OrderLifecyclePhaseSummary,
   OrderTag,
 } from '../../features/orders/api/orders.types';
+import { ORDER_LIST_COLUMN_IDS } from '../../features/orders/api/orders.types';
+import { useOrderListFilters } from '../../features/orders/hooks/use-order-list-filters';
+import { OrderListFilterBar } from '../../features/orders/components/order-list-filter-bar';
 import {
-  OrderHealthValues,
-  OrderSortValues,
-  OrderSortDirectionValues,
-  SlaStateValues,
-  FulfillmentRollupStateValues,
-  ORDER_LIST_COLUMN_IDS,
-} from '../../features/orders/api/orders.types';
+  describeOrderFilterScope,
+  type OrderFilterChipContext,
+} from '../../features/orders/lib/order-filter-descriptors';
+import {
+  ORDER_HEALTH_LABELS,
+  ORDERS_LIST_FILTERS_COPY,
+} from '../../features/orders/lib/orders-list-filters.copy';
+import { ORDERS_LIST_PAGE_COPY as PAGE_COPY } from '../../features/orders/lib/orders-list-page.copy';
 import { useConnectionsQuery } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
-import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
 
 const PAGE_SIZE = 20;
-/** #3529 — same debounce window as `/customers` and `/products`. */
-const SEARCH_DEBOUNCE_MS = 300;
-/** #3532 — the tag-filter `<Select>`'s sentinel for `untagged=true`, so one control can express both axes without colliding with any real tag id. */
-const UNTAGGED_TAG_SELECT_VALUE = '__untagged__';
 
 /**
  * Status segments — partition the order set (#929). The "All" card carries the
@@ -136,20 +118,12 @@ interface HealthSegment {
 }
 
 const HEALTH_SEGMENTS: readonly HealthSegment[] = [
-  { key: 'source_deleted', label: 'Source deleted', tone: 'error', countKey: 'sourceDeleted' },
-  { key: 'needs_attention', label: 'Needs attention', tone: 'error', countKey: 'needsAttention' },
-  { key: 'awaiting_mapping', label: 'Awaiting mapping', tone: 'warning', countKey: 'awaitingMapping' },
-  { key: 'awaiting_dispatch', label: 'Awaiting dispatch', tone: 'info', countKey: 'awaitingDispatch' },
-  { key: 'synced', label: 'Synced', tone: 'success', countKey: 'synced' },
+  { key: 'source_deleted', label: ORDER_HEALTH_LABELS.source_deleted, tone: 'error', countKey: 'sourceDeleted' },
+  { key: 'needs_attention', label: ORDER_HEALTH_LABELS.needs_attention, tone: 'error', countKey: 'needsAttention' },
+  { key: 'awaiting_mapping', label: ORDER_HEALTH_LABELS.awaiting_mapping, tone: 'warning', countKey: 'awaitingMapping' },
+  { key: 'awaiting_dispatch', label: ORDER_HEALTH_LABELS.awaiting_dispatch, tone: 'info', countKey: 'awaitingDispatch' },
+  { key: 'synced', label: ORDER_HEALTH_LABELS.synced, tone: 'success', countKey: 'synced' },
 ];
-
-/**
- * Type-guard for the `health` URL param. `includes` widens the haystack to
- * `readonly string[]` so the predicate narrows cleanly without a cast.
- */
-function isOrderHealth(value: string | null): value is OrderHealthValue {
-  return value !== null && (OrderHealthValues as readonly string[]).includes(value);
-}
 
 /**
  * Whether the row's delivery rider is one OpenLinker could take over (#1776) —
@@ -162,69 +136,12 @@ function isTakeoverRider(rider: OrderRecord['deliveryRider']): boolean {
   );
 }
 
-/** Triage default ordering — soonest ship-by first (NULLs last), server-backed. */
-const DEFAULT_SORT: OrderSortValue = 'dispatchBy';
-
-/** Type-guard for the `sort` URL param (#939). Same widen-then-narrow shape as `isOrderHealth`. */
-function isOrderSort(value: string | null): value is OrderSortValue {
-  return value !== null && (OrderSortValues as readonly string[]).includes(value);
-}
-
-/** Type-guard for the `dir` URL param (#944). */
-function isOrderDir(value: string | null): value is OrderSortDirection {
-  return value !== null && (OrderSortDirectionValues as readonly string[]).includes(value);
-}
-
-/**
- * First-click direction per sort key (#944): the operator-intuitive default
- * when a column is newly selected. Re-clicking the active column flips it.
- * Ship-by asc (soonest first) is the list's default sort state.
- */
-const DEFAULT_DIR: Record<OrderSortValue, OrderSortDirection> = {
-  dispatchBy: 'asc',
-  createdAt: 'desc',
-  customer: 'asc',
-  items: 'desc',
-  status: 'asc',
-  total: 'desc',
-  fulfillment: 'asc',
-  payment: 'asc',
-};
-
-/** Type-guard for the `slaState` URL filter (#1108). */
-function isSlaState(value: string | null): value is SlaStateValue {
-  return value !== null && (SlaStateValues as readonly string[]).includes(value);
-}
-
-/** Type-guard for the `fulfillmentState` URL filter (#1108). */
-function isFulfillmentState(value: string | null): value is FulfillmentRollupStateValue {
-  return value !== null && (FulfillmentRollupStateValues as readonly string[]).includes(value);
-}
-
-/** SLA filter dropdown options (#1108) — `none` is omitted (not a triage state). */
-const SLA_FILTER_OPTIONS: readonly { value: SlaStateValue; label: string }[] = [
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'at_risk', label: 'At risk' },
-  { value: 'on_track', label: 'On track' },
-];
-
-/** Fulfillment filter dropdown options (#1108). */
-const FULFILLMENT_FILTER_OPTIONS: readonly { value: FulfillmentRollupStateValue; label: string }[] = [
-  { value: 'not-shipped', label: 'Not shipped' },
-  { value: 'dispatched', label: 'Dispatched' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'failed', label: 'Dispatch failed' },
-];
-
 /** Map the neutral ship-by urgency level (#927) to a StatusBadge tone. */
 const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
   ok: 'info',
   soon: 'warning',
   overdue: 'error',
 };
-
-/** "Breaching soon" window — surface orders due within this horizon (or overdue). */
-const BREACHING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Resolve the per-row total via the i18n seam (#612). Currency varies per row
@@ -269,110 +186,6 @@ function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): str
 }
 
 /**
- * URL param name for every `OrderFilters` key this page can narrow by (#2148).
- *
- * `Record<..., string>` makes this exhaustive: TypeScript fails the build when a new
- * `OrderFilters` key isn't accounted for here — either mapped to a real URL param or added
- * to the `Exclude` list below — so an unlisted filter can't silently fall through to the
- * "nothing has synced" copy the way `due` / `slaState` / `fulfillmentState` /
- * `sourceConnectionId` / `createdFrom` / `createdTo` did before this fix.
- *
- * Excluded deliberately: `sort` / `dir` change presentation, not membership (an empty
- * result is never their doing, and "View all orders" has no business resetting the
- * operator's column sort); `syncStatus` / `customerId` / `recordStatus` are query-only
- * filters this page's UI does not expose as controls — `cancelled` (#2306) joins
- * that group: the dispatch-risk page pins it, this list does not surface it.
- */
-type NarrowingOrderFilterKey = Exclude<
-  keyof OrderFilters,
-  'sort' | 'dir' | 'syncStatus' | 'customerId' | 'recordStatus' | 'cancelled'
->;
-
-const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
-  health: 'health',
-  sourceConnectionId: 'sourceConnectionId',
-  createdFrom: 'createdFrom',
-  createdTo: 'createdTo',
-  dueBefore: 'due',
-  slaState: 'slaState',
-  fulfillmentState: 'fulfillmentState',
-  salesDocumentBlocked: 'invoicing',
-  phase: 'phase',
-  taxRateConflict: 'taxRate',
-  holdReason: 'hold',
-  attention: 'attention',
-  packed: 'packed',
-  search: 'search',
-  openReturn: 'openReturn',
-  tag: 'tag',
-  untagged: 'untagged',
-};
-
-/**
- * Phase → `OrderLifecyclePhaseSummary` field (#2310). The summary is camelCase
- * per bucket while the phase union is snake_case, so the two cannot be derived
- * from one another; an exhaustive `Record` makes a new phase a compile error
- * here rather than a silently missing count.
- */
-/**
- * `StatusBadgeTone` -> `ChipTone` (#2310). `StatusBadgeTone` carries two values
- * `Chip` does not model — `review` and, since #2253, `conflict` — so the map is
- * exhaustive rather than a ternary: a tone added to the badge family becomes a
- * compile error here instead of silently type-widening the chip. `conflict`
- * lands on `warning` (attention, but the thing still worked), `review` on
- * `neutral`, matching how each already reads elsewhere.
- */
-const CHIP_TONE_FOR_PHASE_TONE: Record<StatusBadgeTone, ChipTone> = {
-  conflict: 'warning',
-  error: 'error',
-  info: 'info',
-  neutral: 'neutral',
-  review: 'neutral',
-  success: 'success',
-  warning: 'warning',
-};
-
-const PHASE_SUMMARY_KEY: Record<
-  OrderLifecyclePhaseValue,
-  keyof Omit<OrderLifecyclePhaseSummary, 'total'>
-> = {
-  cancelled: 'cancelled',
-  vendor_authoritative: 'vendorAuthoritative',
-  delivered: 'delivered',
-  in_transit: 'inTransit',
-  fulfillment_failed: 'fulfillmentFailed',
-  held: 'held',
-  amending: 'amending',
-  blocked: 'blocked',
-  ready: 'ready',
-};
-
-/** Every URL param that narrows the result set — derived, not hand-maintained (#2148). */
-const FILTER_PARAMS: readonly string[] = Object.values(NARROWING_FILTER_URL_PARAM);
-
-/**
- * Clear every filter in ONE write (#2148).
- *
- * One call, not one per param: `setSearchParams` is not a queued reducer - React Router
- * builds the next params from the CURRENT render's params, so two calls in one handler
- * both start from the same base and the second navigation supersedes the first. A "View
- * all orders" button that cleared filters one at a time would leave all but the last one
- * applied.
- */
-/**
- * The age clause the blocked chip folds into its own label (#2254).
- *
- * An age rather than only a count, because the cost of a held document is
- * lateness and a bare "42" does not say whether that started this morning or a
- * fortnight ago. It rides INSIDE the label rather than as a third dotted badge:
- * this row already carries two SLA badges, and a third would compete with them
- * for exactly the attention the SLA ones are for.
- *
- * `oldestAgeSuffix` (#3194 review) - moved to `shared/lib` and shared with the
- * invoice list's "Awaiting submission" chip, which duplicated this function
- * byte-for-byte under its own name before this extraction.
- */
-/**
  * Does any line record a channel rate that disagreed with the shop's (#2254)?
  *
  * `taxRateChannel` is written ONLY on disagreement, so its presence is the
@@ -383,136 +196,15 @@ function hasTaxRateConflict(parsed: ReturnType<typeof parseOrderSnapshot>): bool
   return parsed.items.some((item) => Boolean(item.taxRateChannel));
 }
 
-function clearAllFilters(setSearchParams: SetURLSearchParams): void {
-  setSearchParams((prev) => {
-    const p = new URLSearchParams(prev);
-    for (const key of FILTER_PARAMS) {
-      p.delete(key);
-    }
-    p.delete('offset');
-    return p;
-  });
-}
-
 export function OrdersListPage(): ReactElement {
-  const [searchParams, setSearchParams] = useSearchParams();
   const { locale } = useTranslation();
   const { showToast } = useToast();
 
-  const rawHealth = searchParams.get('health');
-  const health = isOrderHealth(rawHealth) ? rawHealth : undefined;
-  const sourceConnectionId = searchParams.get('sourceConnectionId') ?? undefined;
-  const rawSort = searchParams.get('sort');
-  const sort = isOrderSort(rawSort) ? rawSort : DEFAULT_SORT;
-  const rawDir = searchParams.get('dir');
-  // Direction defaults to the active key's first-click default until a header
-  // click pins an explicit one (#944).
-  const dir: OrderSortDirection = isOrderDir(rawDir) ? rawDir : DEFAULT_DIR[sort];
-  // Date filters stay calendar-date (YYYY-MM-DD) in the URL so the native date
-  // input round-trips; they're widened to start-/end-of-day UTC instants only
-  // when building the query, so the `createdTo` bound is inclusive of that day.
-  const createdFrom = searchParams.get('createdFrom') || undefined;
-  const createdTo = searchParams.get('createdTo') || undefined;
-  const createdFromIso = createdFrom ? `${createdFrom}T00:00:00.000Z` : undefined;
-  const createdToIso = createdTo ? `${createdTo}T23:59:59.999Z` : undefined;
-  const breaching = searchParams.get('due') === 'breaching';
-  const rawSla = searchParams.get('slaState');
-  const slaState = isSlaState(rawSla) ? rawSla : undefined;
-  const rawFulfillment = searchParams.get('fulfillmentState');
-  const fulfillmentState = isFulfillmentState(rawFulfillment) ? rawFulfillment : undefined;
-  // #2100 — an independent axis, so it lives in its own param and composes with
-  // `health` rather than replacing it. Present-only toggle: the URL never carries
-  // `invoicing=false`, so the filter is either "blocked only" or absent.
-  const invoicingBlocked = searchParams.get('invoicing') === 'blocked';
-  // #2310 — the derived lifecycle phase. An unrecognised value falls back to
-  // "unfiltered" rather than being passed through: the server would reject it,
-  // and an operator with a stale bookmark should see their orders, not an error.
-  const rawPhase = searchParams.get('phase');
-  const phase = isOrderLifecyclePhase(rawPhase) ? rawPhase : undefined;
-  // #2254 — a THIRD axis, in its own param for the same reason: the rows it
-  // finds are usually already invoiced, so it composes with the other two
-  // rather than replacing either. Present-only, like its neighbour.
-  const rateConflict = searchParams.get('taxRate') === 'conflict';
-  // #2342 — the hold REASON axis. An unrecognised value falls back to
-  // "unfiltered" rather than being passed through: the server would reject it,
-  // and an operator with a stale bookmark should see their orders, not an error.
-  const rawHoldReason = searchParams.get('hold');
-  const holdReason = isHoldReason(rawHoldReason) ? rawHoldReason : undefined;
-  // #2353 — a FOURTH axis, present-only like its two neighbours. The URL never
-  // carries `attention=false`, which would mean "hide orders OpenLinker stopped
-  // deciding about" and is not something the UI offers. Deliberately not
-  // `health=needs_attention`: that bucket means a sync failure and partitions
-  // the set, this means OpenLinker stopped deciding, and an order is routinely
-  // both.
-  const omsAttention = searchParams.get('attention') === 'true';
-  // #2997 — present-only, like its neighbours: the URL never carries
-  // `packed=false` (there is no UI control for "hide packed orders" on this
-  // page), only `packed=true`.
-  const packedOnly = searchParams.get('packed') === 'true';
-  // #2998 — same present-only shape.
-  const openReturnOnly = searchParams.get('openReturn') === 'true';
-  // #3532 — the tag axis. No picker UI ships in this pass (#3533); the URL
-  // param and the filter wiring are ready for it.
-  const tag = searchParams.get('tag') || undefined;
-  const untagged = searchParams.get('untagged') === 'true';
-  const offset = Number(searchParams.get('offset') ?? '0');
-
-  // #3527/#3528/#3529 — free-text search, debounced client-side (300 ms, the
-  // `/customers` and `/products` precedent) before it lands in the URL and the
-  // query. `searchInput` is the CONTROLLED input value (updates every
-  // keystroke); `debouncedSearch` is what actually drives the request.
-  const urlSearch = searchParams.get('search') ?? '';
-  const [searchInput, setSearchInput] = useState(urlSearch);
-  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
-  // Keeps the controlled input in sync when the URL changes from somewhere
-  // OTHER than this input's own `onChange` — `clearAllFilters`, browser
-  // back/forward, or a bookmarked link. `handleSearchChange` already sets
-  // both in the same tick, so this is a no-op on every keystroke it causes.
-  useEffect(() => {
-    setSearchInput(urlSearch);
-  }, [urlSearch]);
-
-  // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
-  // render) so the query key doesn't churn. `now + 24h` catches overdue too.
-  const dueBefore = useMemo(
-    () => (breaching ? new Date(Date.now() + BREACHING_WINDOW_MS).toISOString() : undefined),
-    [breaching],
-  );
-
-  const filters: OrderFilters = {
-    health,
-    sourceConnectionId: sourceConnectionId || undefined,
-    // Server-side ordering driven by clickable column headers (#944); defaults
-    // to the triage sort (soonest ship-by first, NULLs last).
-    sort,
-    dir,
-    createdFrom: createdFromIso,
-    createdTo: createdToIso,
-    dueBefore,
-    slaState,
-    fulfillmentState,
-    // Present-only (#2100): `true` when the chip is on, `undefined` otherwise —
-    // never `false`, which would mean "hide blocked orders" and is not something
-    // the UI offers.
-    salesDocumentBlocked: invoicingBlocked ? true : undefined,
-    // #2310 — orthogonal to `health`; both compose server-side.
-    phase,
-    taxRateConflict: rateConflict ? true : undefined,
-    // #2342 — composes with `phase` and `health` server-side, like every other axis.
-    holdReason,
-    // Present-only (#2353): `true` when the chip is on, `undefined` otherwise.
-    attention: omsAttention ? true : undefined,
-    // #2997 — present-only, no UI control for the inverse.
-    packed: packedOnly ? true : undefined,
-    // #3527/#3528 — the debounced value, never `searchInput` directly: the
-    // request must not re-fire on every keystroke.
-    search: debouncedSearch || undefined,
-    // #2998 — present-only, no UI control for the inverse.
-    openReturn: openReturnOnly ? true : undefined,
-    // #3532 — mutually exclusive by convention; no picker UI ships yet (#3533).
-    tag,
-    untagged: untagged ? true : undefined,
-  };
+  // Every URL filter read/write lives in the hook (#3507); the page is layout.
+  const filtersApi = useOrderListFilters();
+  const { state: filterState, filters, sort, dir, applySort, offset, setOffset, debouncedSearch } =
+    filtersApi;
+  const health = filterState.health;
   const pagination = { limit: PAGE_SIZE, offset };
 
   // Two-stage read (#2947): the rows do not wait for the count #2843 measured
@@ -524,14 +216,7 @@ export function OrdersListPage(): ReactElement {
   // Scoped by the same source + date axes as the table (NOT `health`, so the
   // aggregate can't be self-filtered) — keeps the segment counts coherent with
   // an active source/date filter.
-  const summaryScope = useMemo(
-    () => ({
-      sourceConnectionId: sourceConnectionId || undefined,
-      createdFrom: createdFromIso,
-      createdTo: createdToIso,
-    }),
-    [sourceConnectionId, createdFromIso, createdToIso],
-  );
+  const summaryScope = filtersApi.summaryScope;
   const summaryQuery = useOrderStatusSummaryQuery(summaryScope);
   const summary = summaryQuery.data;
   // SLA KPI counts (#1108) — same scope as the health summary.
@@ -559,6 +244,7 @@ export function OrdersListPage(): ReactElement {
     }
     return map;
   }, [tagsQuery.data]);
+  const lookupTag = useCallback((id: string): OrderTag | undefined => tagById.get(id), [tagById]);
 
   // Channel lookup: connectionId → platformType, cached app-wide via TanStack.
   const connectionsQuery = useConnectionsQuery();
@@ -595,6 +281,35 @@ export function OrdersListPage(): ReactElement {
   // raw and lowercase here while rendering correctly two pages over.
   const platforms = usePlatforms();
 
+  // A calendar day from the URL (`YYYY-MM-DD`) as a short local date — parsed
+  // as a LOCAL date on purpose: `new Date('2026-09-01')` is UTC midnight and
+  // renders as 31 Aug west of Greenwich.
+  const formatDay = useCallback(
+    (ymd: string): string => {
+      const [y, m, d] = ymd.split('-').map(Number);
+      if (!y || !m || !d) return ymd;
+      return new Intl.DateTimeFormat(getBcp47Locale(locale), {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }).format(new Date(y, m - 1, d));
+    },
+    [locale],
+  );
+  const chipContext: OrderFilterChipContext = useMemo(
+    () => ({ connectionName: (id) => connectionNames.get(id), tagById: lookupTag, formatDay }),
+    [connectionNames, lookupTag, formatDay],
+  );
+  // One human line for the whole view — the filtered empty state and the
+  // export dialog's "Current view" card name exactly what the chips name.
+  const scopeDescription = useMemo(
+    () => describeOrderFilterScope(filterState, chipContext),
+    [filterState, chipContext],
+  );
+  // G03-14: `false` only once the install is known not to store buyer data —
+  // unknown keeps the full promise rather than flickering between the two.
+  const storesPersonalData = useStoresPersonalData();
+
   const channelLabel = (platform: string | undefined): string | undefined =>
     platform ? resolvePlatformLabel(platforms, platform) : undefined;
 
@@ -613,6 +328,14 @@ export function OrdersListPage(): ReactElement {
   const [exportOpen, setExportOpen] = useState(false);
   // D35: admin and operator only — a viewer never sees the Export button.
   const exportAccess = useWriteAccess('orders:export', demoMode);
+  // The bulk bar's "Export N" opens the same dialog pre-set to the selection.
+  const [exportScope, setExportScope] = useState<'view' | 'selected'>('view');
+  // An export closed while still preparing keeps polling here and toasts once
+  // it is ready (M5 `background`), so the operator can leave the dialog.
+  const exportToast = useOrderExportBackgroundToast();
+  // U5 (M5 pin 15): a viewer holds no `orders:write`, so no row checkboxes and
+  // no bulk bar — every action in it (dispatch, tag) would answer 403.
+  const selectionEnabled = retryWrite.visible;
   // #3530 recovery pass — the list's own column visibility/order. Starts at
   // every optional column shown (the pre-existing behaviour) until
   // `OrderColumnVisibilityControl` resolves the viewer's remembered
@@ -809,30 +532,6 @@ export function OrdersListPage(): ReactElement {
       />
     );
   }
-
-  /**
-   * Apply a server-side sort (#1713): clicking a sort key flips its direction
-   * when it's already active, else starts at the key's default direction. The
-   * single entry point for both the native react-table columns (customer /
-   * status) and the merged-column per-label sort buttons. Drops `offset` so a
-   * re-sort lands on page 1. Stable across renders except when the active
-   * sort/dir change, so the columns memo (which renders the sort buttons in its
-   * headers) rebuilds exactly when the active-state arrows need to.
-   */
-  const applySort = useCallback(
-    (key: OrderSortValue): void => {
-      const nextDir: OrderSortDirection =
-        key === sort ? (dir === 'asc' ? 'desc' : 'asc') : DEFAULT_DIR[key];
-      setSearchParams((prev) => {
-        const p = new URLSearchParams(prev);
-        p.set('sort', key);
-        p.set('dir', nextDir);
-        p.delete('offset');
-        return p;
-      });
-    },
-    [sort, dir, setSearchParams],
-  );
 
   /** Render one per-label sort control for a merged-column header (#1713). */
   const sortLabel = useCallback(
@@ -1270,14 +969,14 @@ export function OrdersListPage(): ReactElement {
   // its own `title`/`subtitle` functions, never this `columns` array.
   const visibleColumns = useMemo(() => {
     const byId = new Map(columns.map((c) => [c.id, c] as const));
-    const structural = [byId.get('select'), byId.get('order')].filter(
+    const structural = [selectionEnabled ? byId.get('select') : undefined, byId.get('order')].filter(
       (c): c is DataTableColumn<OrderRecord> => c !== undefined,
     );
     const optional = visibleColumnIds
       .map((id) => byId.get(id))
       .filter((c): c is DataTableColumn<OrderRecord> => c !== undefined);
     return [...structural, ...optional];
-  }, [columns, visibleColumnIds]);
+  }, [columns, visibleColumnIds, selectionEnabled]);
 
   function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
     retryMutation.mutate(
@@ -1293,203 +992,12 @@ export function OrdersListPage(): ReactElement {
     );
   }
 
-  function setHealthFilter(next: OrderHealthValue | null): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (next) {
-        p.set('health', next);
-      } else {
-        p.delete('health');
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /**
-   * Set/clear a single filter URL param (#939) and reset paging. Empty string
-   * removes the param (e.g. the "All sources" / default-sort option). Mirrors
-   * the connections-list filter pattern; `offset` is dropped so a new filter
-   * always lands on page 1.
-   */
-  function setFilterParam(key: string, value: string): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (value) {
-        p.set(key, value);
-      } else {
-        p.delete(key);
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  function toggleBreaching(): void {
-    captureDemoEvent('demo_orders_filtered', {
-      filter: 'sla_breaching',
-      value: String(!breaching),
-    });
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (breaching) {
-        p.delete('due');
-      } else {
-        p.set('due', 'breaching');
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /** Is the current view narrowed at all? Drives the empty-state copy (#2148). */
-  const hasActiveFilters = FILTER_PARAMS.some((key) => searchParams.get(key) !== null);
-
-  /** #2254 — the conflict axis, same present-only shape as its two neighbours. */
-  function toggleRateConflict(): void {
-    captureDemoEvent('demo_orders_filtered', {
-      filter: 'tax_rate_conflict',
-      value: String(!rateConflict),
-    });
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (rateConflict) {
-        p.delete('taxRate');
-      } else {
-        p.set('taxRate', 'conflict');
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /** #2353 — the OMS inert-state axis, same present-only shape as its neighbours. */
-  function toggleOmsAttention(): void {
-    captureDemoEvent('demo_orders_filtered', {
-      filter: 'oms_attention',
-      value: String(!omsAttention),
-    });
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (omsAttention) {
-        p.delete('attention');
-      } else {
-        p.set('attention', 'true');
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /** #2997 — present-only, same shape as `toggleOmsAttention`. */
-  function togglePacked(): void {
-    captureDemoEvent('demo_orders_filtered', { filter: 'packed', value: String(!packedOnly) });
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (packedOnly) {
-        p.delete('packed');
-      } else {
-        p.set('packed', 'true');
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /** #2998 — present-only, same shape as `toggleOmsAttention`. */
-  function toggleOpenReturn(): void {
-    captureDemoEvent('demo_orders_filtered', {
-      filter: 'open_return',
-      value: String(!openReturnOnly),
-    });
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (openReturnOnly) {
-        p.delete('openReturn');
-      } else {
-        p.set('openReturn', 'true');
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /**
-   * #3527/#3528/#3529 — updates the URL on EVERY keystroke (so the search box
-   * is bookmarkable/shareable immediately), while the query itself only fires
-   * once `debouncedSearch` catches up. Mirrors `/customers`'
-   * `handleFilterChange('search', …)`.
-   */
-  function handleSearchChange(value: string): void {
-    setSearchInput(value);
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (value) {
-        p.set('search', value);
-      } else {
-        p.delete('search');
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
-  function toggleInvoicingBlocked(): void {
-    captureDemoEvent('demo_orders_filtered', {
-      filter: 'invoicing_blocked',
-      value: String(!invoicingBlocked),
-    });
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (invoicingBlocked) {
-        p.delete('invoicing');
-      } else {
-        p.set('invoicing', 'blocked');
-      }
-      // Any filter change invalidates the current page offset.
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /**
-   * Select / deselect a lifecycle-phase chip (#2310). ONE `setSearchParams`
-   * write, like every sibling handler: two calls in one handler both build from
-   * the current render's params, so the second supersedes the first and all but
-   * the last change is lost. Clicking the active chip clears the param, which
-   * restores the unfiltered list.
-   */
-  function togglePhase(next: OrderLifecyclePhaseValue): void {
-    const clearing = phase === next;
-    captureDemoEvent('demo_orders_filtered', {
-      filter: 'phase',
-      value: clearing ? 'all' : next,
-    });
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (clearing) {
-        p.delete('phase');
-      } else {
-        p.set('phase', next);
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  function setOffset(next: number): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (next === 0) {
-        p.delete('offset');
-      } else {
-        p.set('offset', String(next));
-      }
-      return p;
-    });
-  }
-
+  // Known total needs no page; only the floor ("100+") needs the rows, and only
+  // while the total is unknown (#2957 review, S2). `null` = render nothing.
+  const resultCount =
+    totalStage.total !== null || query.data
+      ? formatPaginatedTotal(totalStage.total, query.data ? offset + query.data.items.length : null)
+      : null;
 
   const freshness = useMemo(
     () => formatFreshness(query.data?.items ?? [], locale),
@@ -1535,32 +1043,36 @@ export function OrdersListPage(): ReactElement {
       eyebrow={freshness ?? 'Operations'}
       title="Orders"
       actions={
-        <>
+        <div className="button-group">
           {exportAccess.canWrite || exportAccess.demoReadOnly ? (
             <ReadOnlyLock active={exportAccess.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
               <Button
                 tone="secondary"
                 className="button--sm"
                 disabled={exportAccess.demoReadOnly}
-                onClick={() => { setExportOpen(true); }}
+                onClick={() => {
+                  setExportScope('view');
+                  setExportOpen(true);
+                }}
               >
-                Export
+                {PAGE_COPY.export}
               </Button>
             </ReadOnlyLock>
           ) : null}
+          {/* The control hides itself on a phone — cards ignore columns. */}
           <OrderColumnVisibilityControl
             visibleColumnIds={visibleColumnIds}
             onVisibleColumnIdsChange={setVisibleColumnIds}
           />
           <Button tone="ghost" className="button--sm" onClick={refreshAll}>
-            Refresh
+            {PAGE_COPY.refresh}
             <span className="button__shortcut">R</span>
           </Button>
-        </>
+        </div>
       }
     >
       {/* Status segments — partition the set; click to filter by `health`. */}
-      <div className="ds-grid ds-grid--5 orders-segments">
+      <div className="ds-grid orders-segments orders-segments--6">
         <button
           type="button"
           className={['card-button-reset', 'orders-segment', health === undefined ? 'orders-segment--active' : '']
@@ -1568,11 +1080,10 @@ export function OrdersListPage(): ReactElement {
             .join(' ')}
           aria-pressed={health === undefined}
           onClick={() => {
-            captureDemoEvent('demo_orders_filtered', { filter: 'health', value: 'all' });
-            setHealthFilter(null);
+            filtersApi.setHealth(null);
           }}
         >
-          <MetricCard label="All orders" value={summary ? String(summary.total) : '—'} />
+          <MetricCard label={PAGE_COPY.allOrders} value={summary ? String(summary.total) : '—'} />
         </button>
         {HEALTH_SEGMENTS.map((segment) => (
           <button
@@ -1583,8 +1094,7 @@ export function OrdersListPage(): ReactElement {
               .join(' ')}
             aria-pressed={health === segment.key}
             onClick={() => {
-              captureDemoEvent('demo_orders_filtered', { filter: 'health', value: segment.key });
-              setHealthFilter(segment.key);
+              filtersApi.setHealth(segment.key);
             }}
           >
             <MetricCard label={segment.label} tone={segment.tone} value={segmentCount(segment)} />
@@ -1592,332 +1102,18 @@ export function OrdersListPage(): ReactElement {
         ))}
       </div>
 
-      {/* Filter bar (#939) — source + created-date controls in URL state
-          (mirrors the connections-list toolbar). Sorting moved to clickable
-          column headers (#944). */}
-      <div className="toolbar orders-toolbar">
-        <div className="toolbar__group">
-          {/*
-            #3529 — order number, buyer, email, SKU or tracking number.
-            Debounced (300 ms); ANDed with every other filter on this toolbar.
-            No PII placeholder promise when the install does not store it —
-            the placeholder stays generic on purpose, since this page cannot
-            see `OL_STORE_PII` and a wrong promise is worse than a vague one.
-          */}
-          <Input
-            aria-label="Search orders"
-            placeholder="Search order #, buyer, SKU, tracking…"
-            value={searchInput}
-            onChange={(e) => { handleSearchChange(e.target.value); }}
-          />
-          <Select
-            aria-label="Filter by source"
-            value={sourceConnectionId ?? ''}
-            onChange={(e) => { setFilterParam('sourceConnectionId', e.target.value); }}
-          >
-            <option value="">All sources</option>
-            {(connectionsQuery.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <label className="orders-toolbar__field">
-            <span className="orders-toolbar__label">From</span>
-            <input
-              type="date"
-              className="control"
-              aria-label="Created from"
-              value={createdFrom ?? ''}
-              onChange={(e) => { setFilterParam('createdFrom', e.target.value); }}
-            />
-          </label>
-          <label className="orders-toolbar__field">
-            <span className="orders-toolbar__label">To</span>
-            <input
-              type="date"
-              className="control"
-              aria-label="Created to"
-              value={createdTo ?? ''}
-              onChange={(e) => { setFilterParam('createdTo', e.target.value); }}
-            />
-          </label>
-          <Select
-            aria-label="Filter by ship-by SLA"
-            value={slaState ?? ''}
-            onChange={(e) => { setFilterParam('slaState', e.target.value); }}
-          >
-            <option value="">Any SLA</option>
-            {SLA_FILTER_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label="Filter by fulfillment"
-            value={fulfillmentState ?? ''}
-            onChange={(e) => { setFilterParam('fulfillmentState', e.target.value); }}
-          >
-            <option value="">Any fulfillment</option>
-            {FULFILLMENT_FILTER_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-          {/*
-            #2342 — a Select rather than a chip row, and reason-scoped rather
-            than boolean. `?phase=held` already answers "show me held orders"
-            and carries a real count, so a boolean chip here would be a second
-            control meaning the same thing; the reason is the axis the phase
-            chip cannot express. Eight countless chips for a state most installs
-            rarely hit would be noise, and the chip row is for partitions that
-            carry counts.
-          */}
-          <Select
-            aria-label="Filter by hold reason"
-            value={holdReason ?? ''}
-            // `setFilterParam` writes the key VERBATIM, so this is the URL param
-            // name (`hold`), not the filter field (`holdReason`) — the two differ
-            // here, like `phase` -> `lifecyclePhase` does server-side.
-            onChange={(e) => { setFilterParam('hold', e.target.value); }}
-          >
-            <option value="">Any hold reason</option>
-            {HoldReasonValues.map((value) => (
-              <option key={value} value={value}>
-                {HOLD_REASON_COPY[value].label}
-              </option>
-            ))}
-          </Select>
-          {/*
-            #3532 — `tag` and `untagged` are mutually exclusive by convention
-            (the backend never reads them together); a single select over the
-            union of "any", the workspace vocabulary and "No tags" is the whole
-            of that contract, and the server-side filter is what makes the KPI
-            counts, the row count and this select's own choice agree.
-          */}
-          <Select
-            aria-label="Filter by tag"
-            value={untagged ? UNTAGGED_TAG_SELECT_VALUE : (tag ?? '')}
-            onChange={(e) => {
-              const value = e.target.value;
-              setSearchParams((prev) => {
-                const p = new URLSearchParams(prev);
-                p.delete('tag');
-                p.delete('untagged');
-                if (value === UNTAGGED_TAG_SELECT_VALUE) {
-                  p.set('untagged', 'true');
-                } else if (value) {
-                  p.set('tag', value);
-                }
-                p.delete('offset');
-                return p;
-              });
-            }}
-          >
-            <option value="">Any tag</option>
-            <option value={UNTAGGED_TAG_SELECT_VALUE}>No tags</option>
-            {(tagsQuery.data ?? []).map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <div className="ds-row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-        <Chip tone="warning" active={breaching} onClick={toggleBreaching}>
-          Ship-by ≤ 24h / overdue
-        </Chip>
-        {/*
-          #2100 — an independent filter, NOT a sixth health segment: an invoicing
-          block is orthogonal to sync health (a blocked order is usually also
-          `synced`), and the KPI segments above are a partition whose counts sum
-          to the total.
-
-          Hidden when the count is zero so an install that never hits this state
-          sees no extra control — but ALWAYS rendered while the filter is active,
-          even at zero. Gating on the count alone unmounted the only control for
-          `?invoicing=blocked` the moment the remediation succeeded, leaving an
-          applied filter with no way to clear it and an empty state that claimed
-          "no order records have been synced yet" (#2100 review). The sibling
-          ship-by chip is unconditional for the same reason.
-        */}
-        {invoicingBlocked || summary?.salesDocumentBlocked ? (
-          <Chip tone="error" active={invoicingBlocked} onClick={toggleInvoicingBlocked}>
-            {/* The count is omitted until the summary resolves rather than
-                defaulted to 0 — asserting a number the client does not have yet
-                would be worse than showing none.
-
-                #2554 — cross-kind wording: the underlying reasons cover both
-                invoices and fiscal receipts, so "Invoicing blocked" asserted a
-                narrower fact than the count behind it. "Sales documents
-                blocked" names what `salesDocumentBlocked` actually counts
-                (`SalesDocumentAttentionReasonValues`, which already excludes
-                `trigger-model-manual` — see the neutral figure below). */}
-            Sales documents blocked
-            {summary?.salesDocumentBlocked === undefined
-              ? ''
-              : ` ${summary.salesDocumentBlocked}${oldestAgeSuffix(
-                  summary.salesDocumentBlockedOldestAt,
-                )}`}
-          </Chip>
-        ) : null}
-        {/* #2554 — issue-on-request is NOT counted above (the backend already
-            excludes `trigger-model-manual` from `salesDocumentBlocked`, per
-            ADR-041 §54: manual is the default trigger model, so counting it
-            would put a large red number on a healthy install). Reported here
-            as its own neutral figure, not a chip: it names orders waiting for
-            the operator by CONFIGURATION, not orders anything is wrong with,
-            and there is no separate filter for it to link to — the manual
-            reason is visible per-row wherever the document line itself
-            renders "Issued on request". */}
-        {summary?.salesDocumentIssuedOnRequest ? (
-          <span className="text-muted mono tabular orders-summary-note">
-            {summary.salesDocumentIssuedOnRequest} issued on request
-          </span>
-        ) : null}
-        {/* #2254 — its own count, and it mounts on `filterActive || count` for
-            the same nine-line reason the chip above does: gating on the count
-            alone unmounts the only way to clear the filter the moment
-            remediation succeeds. No tone: `.chip.chip--active` overrides every
-            `.chip--{tone}`, so an inactive `conflict` chip (96% lightness, hue
-            45) would read as pressed next to an active accent chip (96%, hue
-            60). The label and `aria-pressed` carry the state; the row badge
-            carries the semantics. */}
-        {rateConflict || summary?.taxRateConflict ? (
-          <Chip active={rateConflict} onClick={toggleRateConflict}>
-            Rate conflict
-            {summary?.taxRateConflict === undefined ? '' : ` ${summary.taxRateConflict}`}
-          </Chip>
-        ) : null}
-        {/* #2356 — the OMS inert-state axis. Mounts on `filterActive || count`
-            for the same nine-line reason its two neighbours do: gating on the
-            count alone unmounts the only way to clear the filter the moment the
-            remediation succeeds, leaving an applied filter and an empty state
-            that claims nothing has synced. `error` tone follows the invoicing
-            chip rather than the untoned rate-conflict one — that neighbour is
-            untoned because `.chip--active` overrides `.chip--conflict` and an
-            inactive conflict chip reads as pressed; `error` does not have that
-            problem, and this axis is genuinely error-toned. */}
-        {omsAttention || summary?.omsAttention ? (
-          <Chip tone="error" active={omsAttention} onClick={toggleOmsAttention}>
-            OpenLinker stopped
-            {summary?.omsAttention === undefined ? '' : ` ${summary.omsAttention}`}
-          </Chip>
-        ) : null}
-        {/* #2997 — "is it packed" as an operator-facing scan axis. No count is
-            fetched for this chip in this pass; it is a plain toggle, like
-            `rateConflict` before its own count landed. */}
-        <Chip active={packedOnly} onClick={togglePacked}>
-          Packed
-        </Chip>
-        {/* #2998 — "has an open return". Neutral tone: a return is routine, not
-            an alarm — the badge on the row it filters to carries the same
-            neutral reading. */}
-        <Chip active={openReturnOnly} onClick={toggleOpenReturn}>
-          Open return
-        </Chip>
-        {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts.
-            The BADGES stay conditional (a zero-count badge is a dead signal),
-            but the LINK below is not: see its comment. */}
-        <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-          {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) ? (
-            <>
-              <StatusBadge tone="error" withDot compact>
-                {slaSummary.overdue} overdue
-              </StatusBadge>
-              <StatusBadge tone="warning" withDot compact>
-                {slaSummary.atRisk} at risk
-              </StatusBadge>
-            </>
-          ) : null}
-          {/* #2306 — the ranked triage surface; this list keeps SLA as one
-              column among many, the risk page makes it the primary axis.
-
-              Rendered UNCONDITIONALLY (#2441 review I3). Gating it on
-              `overdue > 0 || atRisk > 0` made this the sole entry point in the
-              app to a page whose two most useful states are only reachable when
-              nothing is breaching: the `on_track` bucket, and the
-              `noDeadlinesAnywhere` empty state whose copy is a *configuration*
-              answer ("deadlines come from the marketplace dispatch window") —
-              i.e. the diagnostic an install needs, gated behind the condition
-              that proves it does not need it. The page's own empty states do
-              the talking; only the copy varies here.
-
-              `.nav-link` for the ≥44 px coarse-pointer floor (#2441 review I4)
-              — a bare `<a>` gets none of it, and orders is a mobile surface.
-              As a flex item the link is blockified, so `min-height` applies. */}
-          <Link className="nav-link" to="/orders/dispatch-risk">
-            {/* Copy varies with the state, so a clear install is not told to
-                "review risk" it does not have — the counts themselves stay on
-                the badges beside this link rather than being repeated here. */}
-            {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0)
-              ? 'Review dispatch risk'
-              : 'Dispatch risk overview'}
-          </Link>
-        </span>
-        {/* A known total needs no page (#2957 review, S2): gating the whole
-            span on `query.data` unmounted it for a round trip on a pure
-            re-sort, where the count is keyed without `sort` and already
-            cached. Only the FLOOR needs the rows, and only when the total is
-            still unknown - an ungated floor on a deep link would read "100+"
-            computed from a URL offset before a row exists. */}
-        {(totalStage.total !== null || query.data) && (
-          <span
-            className="text-muted mono tabular"
-            style={{ marginLeft: 'auto', fontSize: '0.75rem' }}
-          >
-            {formatPaginatedTotal(
-              totalStage.total,
-              query.data ? offset + query.data.items.length : null
-            )}{' '}
-            results
-          </span>
-        )}
-      </div>
-
-      {/*
-        Lifecycle-phase chips (#2310) — a SECOND orthogonal partition beside the
-        health segments above, deliberately NOT a sixth health segment: the KPI
-        cards are a partition whose counts must keep summing to the total, and a
-        held order is usually also `synced` (ADR-059).
-
-        Visibility follows the invoicing chip (#2100): a zero-count chip is
-        hidden so an install that never reaches a phase sees no dead control —
-        but the ACTIVE chip is always rendered, even at zero, or the only way to
-        clear an applied `?phase=` unmounts the moment its last order moves on.
-        `vendor_authoritative` / `held` / `amending` are therefore simply absent
-        until Waves 2 and 4 give them producers, which is correct, not a gap.
-      */}
-      <div
-        className="ds-row orders-phase-chips"
-        style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}
-        role="group"
-        aria-label="Filter by lifecycle phase"
-      >
-        {OrderLifecyclePhaseValues.map((value) => {
-          const count = lifecycleSummary?.[PHASE_SUMMARY_KEY[value]];
-          const active = phase === value;
-          if (!active && !count) return null;
-          const meta = ORDER_LIFECYCLE_PHASE_META[value];
-          return (
-            <Chip
-              key={value}
-              tone={CHIP_TONE_FOR_PHASE_TONE[meta.tone]}
-              active={active}
-              onClick={() => { togglePhase(value); }}
-            >
-              {/* The count is omitted until the summary resolves rather than
-                  defaulted to 0 — the same rule the invoicing chip follows. */}
-              {meta.label}
-              {count === undefined ? '' : ` ${count}`}
-            </Chip>
-          );
-        })}
-      </div>
+      <OrderListFilterBar
+        filtersApi={filtersApi}
+        sources={connectionsQuery.data ?? []}
+        tags={tagsQuery.data ?? []}
+        tagById={lookupTag}
+        summary={summary}
+        slaSummary={slaSummary}
+        lifecycleSummary={lifecycleSummary}
+        resultCount={resultCount}
+        storesPersonalData={storesPersonalData}
+        formatDay={formatDay}
+      />
 
       {query.isLoading ? (
         <DataTableSkeleton columns={visibleColumns} rowAction label="Loading orders…" />
@@ -1936,12 +1132,12 @@ export function OrdersListPage(): ReactElement {
             title="All clear — nothing needs your attention"
             message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
             action={
-              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+              <Button onClick={filtersApi.clearAll}>
                 View all orders
               </Button>
             }
           />
-        ) : rateConflict ? (
+        ) : filterState.rateConflict ? (
           /*
             #2254 — sits ABOVE both single-filter arms, because two of them can be
             active at once. With the conflict filter and the invoicing filter both
@@ -1958,12 +1154,12 @@ export function OrdersListPage(): ReactElement {
             title="No rate conflicts in this view"
             message="The other filters are still applied. Clear them to check the whole list."
             action={
-              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+              <Button onClick={filtersApi.clearAll}>
                 Clear filters
               </Button>
             }
           />
-        ) : invoicingBlocked ? (
+        ) : filterState.invoicingBlocked ? (
           /*
             #2100 — `invoicing=blocked` gets its own copy ahead of the generic
             `hasActiveFilters` arm below: "no orders matched" is technically true
@@ -1978,7 +1174,7 @@ export function OrdersListPage(): ReactElement {
             title="Nothing is blocked"
             message="No order's sales document is waiting on a routing decision right now."
             action={
-              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+              <Button onClick={filtersApi.clearAll}>
                 View all orders
               </Button>
             }
@@ -1993,15 +1189,23 @@ export function OrdersListPage(): ReactElement {
             arm's "clear filters" action.
           */
           <EmptyState
-            title={`No orders match "${debouncedSearch}"`}
-            message="Try a different order number, buyer name, email, SKU or tracking number."
+            title={ORDERS_LIST_FILTERS_COPY.noResultsTitle(debouncedSearch)}
+            message={
+              storesPersonalData === false
+                ? ORDERS_LIST_FILTERS_COPY.noResultsMessageNoPii
+                : ORDERS_LIST_FILTERS_COPY.noResultsMessage
+            }
             action={
-              <Button onClick={() => { handleSearchChange(''); }}>
-                Clear search
+              <Button
+                onClick={() => {
+                  filtersApi.setSearch('');
+                }}
+              >
+                {ORDERS_LIST_FILTERS_COPY.clearSearch}
               </Button>
             }
           />
-        ) : hasActiveFilters ? (
+        ) : filtersApi.hasActiveFilters ? (
           /*
             #2148 — one arm for every narrowing filter, not one arm per param.
             `health` used to be the only filter with an arm, so `due=breaching`,
@@ -2019,12 +1223,10 @@ export function OrdersListPage(): ReactElement {
             "polite" default for.
           */
           <EmptyState
-            title="No orders in this view"
-            message="No orders match the current filters. Clear them to see everything."
+            title={ORDERS_LIST_FILTERS_COPY.noFilterResultsTitle}
+            message={ORDERS_LIST_FILTERS_COPY.noFilterResultsMessage(scopeDescription)}
             action={
-              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
-                View all orders
-              </Button>
+              <Button onClick={filtersApi.clearAll}>{ORDERS_LIST_FILTERS_COPY.clearFilters}</Button>
             }
           />
         ) : (
@@ -2053,8 +1255,9 @@ export function OrdersListPage(): ReactElement {
             // middle-aligned Order cell sat below the top-aligned expander and
             // beside a centred checkbox — three anchors in one row.
             className="orders-table"
-            stickyLeftColumns={2}
+            stickyLeftColumns={selectionEnabled ? 2 : 1}
             footer={
+              selectionEnabled ? (
               <BulkActionBar
                 count={selectedOrders.length}
                 itemNoun="order"
@@ -2069,12 +1272,24 @@ export function OrdersListPage(): ReactElement {
                       Clear
                     </Button>
                     <BulkTagPopover selectedOrders={selectedOrders} />
+                    {exportAccess.canWrite ? (
+                      <Button
+                        tone="secondary"
+                        onClick={() => {
+                          setExportScope('selected');
+                          setExportOpen(true);
+                        }}
+                      >
+                        {PAGE_COPY.exportSelected(selectedOrders.length)}
+                      </Button>
+                    ) : null}
                     <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
                       Dispatch {selectedOrders.length}
                     </Button>
                   </>
                 }
               />
+              ) : undefined
             }
             expandable={{
               // Non-essential fields (order ref, items, exact ship-by, carrier,
@@ -2098,7 +1313,7 @@ export function OrdersListPage(): ReactElement {
             manualSorting
             cardView={{
               // Per-row select stays usable in the mobile card layout (#1109/#1620).
-              select: (order) => renderSelectCheckbox(order),
+              select: selectionEnabled ? (order) => renderSelectCheckbox(order) : undefined,
               // The SAME renderer as the desktop Order column (#2091). Safe to
               // put a link + Copy button here because this page drives its rows
               // with `expandable` and passes no `rowHref`: `DataTableCard` only
@@ -2403,6 +1618,9 @@ export function OrdersListPage(): ReactElement {
         filters={filters}
         filteredCount={totalStage.total}
         selectedOrders={selectedOrders}
+        initialScope={exportScope}
+        scopeDescription={scopeDescription}
+        onContinueInBackground={exportToast.track}
       />
     </PageLayout>
   );

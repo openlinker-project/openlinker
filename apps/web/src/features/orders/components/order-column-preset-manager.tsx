@@ -1,26 +1,26 @@
 /**
- * Order Column Preset Manager (#3530, D32)
+ * Order Column Preset Manager (#3530, D32, #3507 PR 7)
  *
- * Save / apply / delete a personal column preset, shared by the export
- * dialog and the `/orders` list's own column-visibility control
- * (`OrderColumnVisibilityControl`) — one component, parameterized by
- * `availableColumns`, so "the orders list and the export share the same
- * preset shape" (#3530's own docblock) is true of the EDITOR too, not just
- * of the wire shape. The two callers pass disjoint id vocabularies
- * (`ORDER_EXPORT_COLUMN_IDS` vs `ORDER_LIST_COLUMN_IDS`), so one saved
- * preset's `columns` array can freely mix both — each caller narrows to the
- * ids it recognises and ignores the rest, exactly as the export job's
- * `narrowOrderExportColumns` already does for an unrecognised id.
+ * The body of the `/orders` list's Columns panel (`.columns-panel`, hosted by
+ * `OrderColumnVisibilityControl`): apply / save / delete a personal column
+ * preset, tick columns on and off, and reorder the ticked ones.
  *
- * Visible columns are listed in ORDER with Up/Down buttons (reorder), and
- * hidden ones are listed separately with an Add button — a stable, no-DnD-
- * library way to satisfy "show/hide/reorder" that still keys off one
- * `columns: string[]` array, matching the preset's own persisted shape.
+ * `availableColumns` is the vocabulary this manager may touch. A saved
+ * preset's `columns` array is a shared shape (#3530) that may also carry the
+ * EXPORT's ids; those are never rendered here and are carried through every
+ * change untouched, exactly as the export job's `narrowOrderExportColumns`
+ * skips an id it does not know.
+ *
+ * One list, in table order: ticked columns first (with up/down buttons — the
+ * order IS the table's column order, and arrow buttons need no drag library),
+ * then the hidden ones, greyed, at the end. Ticking a hidden column appends it.
  *
  * @module apps/web/src/features/orders/components
  */
 import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
+import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
@@ -30,6 +30,7 @@ import {
   useOrderColumnPresetsQuery,
   useSetWorkspaceDefaultColumnPresetMutation,
 } from '../hooks/use-order-column-presets';
+import { ORDER_COLUMNS_PANEL_COPY as COPY } from '../lib/order-export.copy';
 
 export interface OrderColumnDescriptor {
   id: string;
@@ -42,15 +43,12 @@ export interface OrderColumnPresetManagerProps {
   /** The columns currently in effect, in the order they should render. */
   columns: readonly string[];
   onColumnsChange: (columns: string[]) => void;
-  /** Renders the reorder/save/delete affordances. `false` for a read-mostly embed (unused today, kept for symmetry with the export dialog's own gating). */
-  canWrite?: boolean;
 }
 
 export function OrderColumnPresetManager({
   availableColumns,
   columns,
   onColumnsChange,
-  canWrite = true,
 }: OrderColumnPresetManagerProps): ReactElement {
   const isAdmin = useIsAdmin();
   const presetsQuery = useOrderColumnPresetsQuery();
@@ -58,30 +56,26 @@ export function OrderColumnPresetManager({
   const deletePreset = useDeleteColumnPresetMutation();
   const setWorkspaceDefault = useSetWorkspaceDefaultColumnPresetMutation();
   const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [saving, setSaving] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const labelFor = (id: string): string => availableColumns.find((c) => c.id === id)?.label ?? id;
-  // Only the ids THIS manager recognises count as "visible" — a mixed
-  // preset's export-shaped ids (say) are simply not this manager's concern.
   const knownIds = new Set(availableColumns.map((c) => c.id));
+  const labelFor = (id: string): string => availableColumns.find((c) => c.id === id)?.label ?? id;
   const visible = columns.filter((id) => knownIds.has(id));
-  const hidden = availableColumns.filter((c) => !visible.includes(c.id));
+  const hidden = availableColumns.filter((c) => !visible.includes(c.id)).map((c) => c.id);
+  const presets = presetsQuery.data ?? [];
+  const selectedPreset = presets.find((p) => p.id === selectedPresetId) ?? null;
 
   function replaceKnownColumns(nextVisible: string[]): void {
-    // Preserve any id from OTHER vocabularies the current preset carries
-    // (e.g. the export's ids when this is the list's manager) — toggling a
-    // list column must never silently drop an export column id sitting in
-    // the same shared array.
+    // Ids from the other vocabulary ride along untouched — toggling a list
+    // column must never drop an export column sitting in the same array.
     const foreign = columns.filter((id) => !knownIds.has(id));
     onColumnsChange([...nextVisible, ...foreign]);
   }
 
-  function show(id: string): void {
-    replaceKnownColumns([...visible, id]);
-  }
-
-  function hide(id: string): void {
-    replaceKnownColumns(visible.filter((v) => v !== id));
+  function toggle(id: string, checked: boolean): void {
+    replaceKnownColumns(checked ? [...visible, id] : visible.filter((v) => v !== id));
   }
 
   function move(id: string, delta: 1 | -1): void {
@@ -95,130 +89,162 @@ export function OrderColumnPresetManager({
 
   function applyPreset(id: string): void {
     setSelectedPresetId(id);
-    const preset = presetsQuery.data?.find((p) => p.id === id);
+    const preset = presets.find((p) => p.id === id);
     if (preset) onColumnsChange(preset.columns);
   }
 
+  function closeSaveRow(): void {
+    setSaving(false);
+    setNewPresetName('');
+    createPreset.reset();
+  }
+
   function saveAsPreset(): void {
-    if (!newPresetName.trim()) return;
+    const name = newPresetName.trim();
+    if (!name) return;
     createPreset.mutate(
-      { name: newPresetName.trim(), columns: [...columns] },
-      { onSuccess: () => { setNewPresetName(''); } },
+      { name, columns: [...columns] },
+      {
+        onSuccess: (preset) => {
+          setSelectedPresetId(preset.id);
+          setSaving(false);
+          setNewPresetName('');
+        },
+      },
     );
   }
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-      <label className="orders-toolbar__field">
-        <span className="orders-toolbar__label">Saved presets</span>
-        <Select
-          aria-label="Apply a saved column preset"
-          value={selectedPresetId}
-          disabled={!canWrite}
-          onChange={(e) => { applyPreset(e.target.value); }}
-        >
-          <option value="">Custom</option>
-          {(presetsQuery.data ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
-        {canWrite && selectedPresetId ? (
+    <>
+      <div className="columns-panel__presets">
+        <FormField label={COPY.preset} name="orders-columns-preset">
+          <Select
+            value={selectedPresetId}
+            onChange={(e) => { applyPreset(e.target.value); }}
+          >
+            <option value="">{COPY.presetCustom}</option>
+            {presets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        {presetsQuery.isError ? (
+          <p className="form-field__description columns-panel__note">{COPY.presetsLoadError}</p>
+        ) : null}
+        {saving ? (
+          <div className="columns-panel__save">
+            <Input
+              aria-label={COPY.presetName}
+              placeholder={COPY.presetName}
+              value={newPresetName}
+              autoFocus
+              onChange={(e) => { setNewPresetName(e.target.value); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); saveAsPreset(); }
+              }}
+            />
+            <Button
+              tone="secondary"
+              className="button--sm"
+              onClick={saveAsPreset}
+              disabled={!newPresetName.trim() || createPreset.isPending}
+            >
+              {COPY.save}
+            </Button>
+            <Button tone="ghost" className="button--sm" onClick={closeSaveRow}>
+              {COPY.cancel}
+            </Button>
+            {createPreset.isError ? (
+              <p className="form-field__error columns-panel__note">{COPY.saveError}</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="columns-panel__actions">
+            <Button tone="ghost" className="button--sm" onClick={() => { setSaving(true); }}>
+              {COPY.saveAsPreset}
+            </Button>
+            {selectedPreset ? (
+              <Button tone="ghost" className="button--sm" onClick={() => { setConfirmingDelete(true); }}>
+                {COPY.deletePreset}
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <ul className="columns-panel__list" aria-label={COPY.listLabel}>
+        {visible.map((id, index) => (
+          <li key={id} className="columns-panel__item">
+            <label className="columns-panel__check">
+              <input type="checkbox" checked onChange={(e) => { toggle(id, e.target.checked); }} />
+              <span>{labelFor(id)}</span>
+            </label>
+            <span className="columns-panel__move">
+              <Button
+                tone="ghost"
+                className="button--xs columns-panel__move-button"
+                aria-label={COPY.moveUp(labelFor(id))}
+                disabled={index === 0}
+                onClick={() => { move(id, -1); }}
+              >
+                ↑
+              </Button>
+              <Button
+                tone="ghost"
+                className="button--xs columns-panel__move-button"
+                aria-label={COPY.moveDown(labelFor(id))}
+                disabled={index === visible.length - 1}
+                onClick={() => { move(id, 1); }}
+              >
+                ↓
+              </Button>
+            </span>
+          </li>
+        ))}
+        {hidden.map((id) => (
+          <li key={id} className="columns-panel__item columns-panel__item--hidden">
+            <label className="columns-panel__check">
+              <input type="checkbox" checked={false} onChange={(e) => { toggle(id, e.target.checked); }} />
+              <span>{labelFor(id)}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+
+      <div className="columns-panel__foot">
+        <span className="text-muted">{COPY.footHint}</span>
+        {isAdmin ? (
           <Button
             tone="ghost"
             className="button--xs"
-            onClick={() => {
-              deletePreset.mutate(selectedPresetId);
-              setSelectedPresetId('');
-            }}
+            disabled={setWorkspaceDefault.isPending}
+            onClick={() => { setWorkspaceDefault.mutate([...columns]); }}
           >
-            Delete preset
+            {setWorkspaceDefault.isSuccess ? COPY.workspaceDefaultSaved : COPY.setWorkspaceDefault}
           </Button>
-        ) : null}
-      </label>
-
-      <div style={{ display: 'grid', gap: 'var(--space-1)' }}>
-        <span className="orders-toolbar__label">Visible columns (in order)</span>
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '2px' }}>
-          {visible.map((id, index) => (
-            <li
-              key={id}
-              className="ds-row"
-              style={{ justifyContent: 'space-between', gap: 'var(--space-2)' }}
-            >
-              <span>{labelFor(id)}</span>
-              <span className="toolbar__group">
-                <Button
-                  tone="ghost"
-                  className="button--xs"
-                  aria-label={`Move ${labelFor(id)} up`}
-                  disabled={!canWrite || index === 0}
-                  onClick={() => { move(id, -1); }}
-                >
-                  ↑
-                </Button>
-                <Button
-                  tone="ghost"
-                  className="button--xs"
-                  aria-label={`Move ${labelFor(id)} down`}
-                  disabled={!canWrite || index === visible.length - 1}
-                  onClick={() => { move(id, 1); }}
-                >
-                  ↓
-                </Button>
-                <Button
-                  tone="ghost"
-                  className="button--xs"
-                  disabled={!canWrite}
-                  onClick={() => { hide(id); }}
-                >
-                  Hide
-                </Button>
-              </span>
-            </li>
-          ))}
-        </ul>
-
-        {hidden.length > 0 ? (
-          <>
-            <span className="orders-toolbar__label">Hidden</span>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '2px' }}>
-              {hidden.map((c) => (
-                <li key={c.id} className="ds-row" style={{ justifyContent: 'space-between' }}>
-                  <span className="text-muted">{c.label}</span>
-                  <Button tone="ghost" className="button--xs" disabled={!canWrite} onClick={() => { show(c.id); }}>
-                    Show
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </>
         ) : null}
       </div>
 
-      {canWrite ? (
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-          <Input
-            aria-label="New preset name"
-            placeholder="Preset name"
-            value={newPresetName}
-            onChange={(e) => { setNewPresetName(e.target.value); }}
-          />
-          <Button tone="secondary" className="button--sm" onClick={saveAsPreset} disabled={!newPresetName.trim()}>
-            Save as preset
-          </Button>
-          {isAdmin ? (
-            <Button
-              tone="ghost"
-              className="button--sm"
-              onClick={() => { setWorkspaceDefault.mutate([...columns]); }}
-            >
-              Set as workspace default
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+      <ConfirmDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title={COPY.deleteTitle}
+        description={COPY.deleteDescription(selectedPreset?.name ?? '')}
+        confirmLabel={COPY.deleteConfirm}
+        tone="danger"
+        isConfirming={deletePreset.isPending}
+        onConfirm={() => {
+          if (!selectedPreset) return;
+          deletePreset.mutate(selectedPreset.id, {
+            onSuccess: () => {
+              setSelectedPresetId('');
+              setConfirmingDelete(false);
+            },
+          });
+        }}
+      />
+    </>
   );
 }

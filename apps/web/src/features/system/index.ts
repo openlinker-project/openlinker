@@ -6,3 +6,4 @@ export type {
 export { systemQueryKeys } from './api/system.query-keys';
 export { useSystemConfigQuery } from './hooks/use-system-config-query';
 export { useDemoMode } from './hooks/use-demo-mode';
+export { useStoresPersonalData } from './hooks/use-stores-personal-data';

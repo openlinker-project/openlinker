@@ -45,6 +45,10 @@ import {
   PinnedOrderNoteBanner,
 } from '../../features/orders/components/order-notes-panel';
 import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
+import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
+import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
+import { resolvePlatformLabel } from '../../features/mappings';
+import { usePlatforms } from '../../shared/plugins';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
@@ -92,6 +96,10 @@ export function OrderDetailPage(): ReactElement {
   // Non-fatal by design: a returns read that could not answer must not take the
   // order's own timeline down with it — the page renders one section shorter.
   const returnEventsQuery = useOrderReturnEventsQuery(internalOrderId || null);
+  // #3531 — the notes' authored acts, same non-fatal contract as returns: an
+  // unreadable answer contributes no rows rather than failing the timeline.
+  const noteTimelineQuery = useOrderNotesTimelineQuery(internalOrderId);
+  const platforms = usePlatforms();
   const { session } = useSession();
   // The order timeline's automation half (#2385). Its own read rather than a
   // field on `GET /orders/:id`: every order-detail load would otherwise pay for
@@ -212,9 +220,20 @@ export function OrderDetailPage(): ReactElement {
     returnEventsQuery.data ?? [],
     session.user?.id ?? null,
   );
+  const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
+  // The notes section's "Never sent to …" promise names THIS order's channels
+  // (source + destinations), not every connection in the workspace.
+  const orderChannelNames = Array.from(
+    new Set(
+      [order.sourceConnectionId, ...order.syncStatus.map((s) => s.destinationConnectionId)]
+        .map((id) => connections.find((c) => c.id === id))
+        .filter((c): c is NonNullable<typeof c> => c !== undefined)
+        .map((c) => resolvePlatformLabel(platforms, c)),
+    ),
+  );
   const hasShippingCapability = connections.some((c) =>
     c.supportedCapabilities.includes(SHIPPING_CAPABILITY),
   );
@@ -350,9 +369,11 @@ export function OrderDetailPage(): ReactElement {
       eyebrow="Orders"
       title="Order detail"
     >
-      <OrderDetailHeader order={order} snapshot={snapshot} />
-
-      <OrderTagsHeaderRow internalOrderId={order.internalOrderId} />
+      <OrderDetailHeader
+        order={order}
+        snapshot={snapshot}
+        tags={<OrderTagsHeaderRow internalOrderId={order.internalOrderId} />}
+      />
 
       <PinnedOrderNoteBanner internalOrderId={order.internalOrderId} />
 
@@ -460,7 +481,11 @@ export function OrderDetailPage(): ReactElement {
 
           {/* #3531/#3533 — beside Hold and Packing: notes are a fact about
               every order, independent of which integration it came through. */}
-          <OrderNotesPanel key={order.internalOrderId} internalOrderId={order.internalOrderId} />
+          <OrderNotesPanel
+            key={order.internalOrderId}
+            internalOrderId={order.internalOrderId}
+            channelNames={orderChannelNames}
+          />
 
           <section className="detail-section">
             <h3 className="detail-section__title">
@@ -582,7 +607,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={returnTimelineEvents}
+          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />

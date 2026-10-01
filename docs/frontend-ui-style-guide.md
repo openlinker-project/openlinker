@@ -549,7 +549,14 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 
 - `PageHeader` — page title + description + actions slot; page content begins ≤ 100 px from viewport top.
 - `PageShell` — sidebar (240 px) + topbar (52 px) + main. Enforced structure for every authenticated page.
-- `FilterBar` — chip-based filter surface above tables; chips are `{ label: value }` with a remove button each. Paired with `Add filter` affordance at the end.
+- `FilterBar` — chip-based filter surface above tables; chips are `{ label: value }` with a remove button each. Paired with `Add filter` affordance at the end. **Implemented (#3507) as composable parts in `shared/ui`**, first used by `/orders` (mockup `docs/plans/mockups/oms-mvp/m4b-orders-filters.html`, live examples on `/dev/ui` → Primitives → Filters):
+  - `FilterToggleButton` — "Filters (n) ▾" disclosure (`aria-expanded`/`aria-controls`; count badge hidden at 0).
+  - `FilterPanel` + `FilterGroup` + `FilterField` + `FilterRange` — the accordion body: up to four `<fieldset>` columns (2 × 2 below 1280 px) and a footer (`FilterPanelFooter`: hint + "Clear all" / "Hide filters"). **No Apply button** — every control writes the URL immediately.
+  - `FilterCheck` / `FilterChecks` — checkbox or radio row with a mono count (text, never colour alone).
+  - `ActiveFilterChips` — the `{label: value} ×` row + "Clear all"; renders nothing when unfiltered and moves focus to the next chip (or a fallback) on removal.
+  - `QuickFilters` (+ `QuickFiltersLabel`, `QuickFiltersSeparator`) — one labelled row of one-click `Chip` toggles with counts in `.chip__count`.
+  - `FilterSheet` + `FilterSection` — the phone bottom sheet (`Dialog` + `.dialog__content--sheet`) with native `<details>` sections whose summary shows the current value.
+  - `BareIconButton` (`.button--bare`) — the `×` inside a pill; resets the global button box so a 22 px pill stays 22 px, and grows its tap target with `::after` on a coarse pointer instead of the box.
 - `SetupStepper` — horizontal stepper for integration wizards (Allegro, PrestaShop). Per-step validation; next/back/save.
 - `BackLink` (+ `PageLayout.backTo`) — retreat-one-level navigation for detail and sub-pages. Rendered via `PageLayout.backTo={{ to, label }}` above the eyebrow, outside `actions` (which is reserved for forward CTAs — Cancel is a form concern, not navigation). Labels match sidebar-nav entry names (e.g. `"Jobs & Logs"`, not `"Jobs"`). The glyph is `aria-hidden` so accessible names read as the bare label. When all three slots are populated the vertical stack is `backTo → eyebrow → title` in that order — anticipate this composition when designing a page; if a tighter header is wanted, omit `eyebrow`. Also composable standalone for non-PageLayout hosts (e.g. the wizard-card back slot, via `className="wizard-card__back"`). Tokens only: `--text-muted`, `--text-primary`, `--accent-focus`.
 
@@ -644,6 +651,8 @@ Defaults (FE-002):
 | Orders Status cell | auto, ~144 px | Documented `DataTable` exception (#2310, extended #2342 / #2350 / #2356) — health badge + lifecycle-phase badge + optional stock-at-risk badge + optional hold badge + optional OMS attention badge(s) + optional failure reason, up to six stacked lines. See the carve-out below, including the Wave-2 composition note. |
 | Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
 | Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
+| Quick-filter `Chip` / tag pill | `22 px` | `.chip` and `.order-tag` (#3507). An icon button inside a pill is a `BareIconButton`, never a plain `<button>` (which inherits the 32 px box). |
+| Active-filter chip (`.filter-chip`) | `24 px` | `{label: value}` + an 18 px `BareIconButton`. |
 | Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
 | Button `md` | `32 px` | Default for page-header actions and forms. |
 | Input / Select | `32 px` | Never taller. |
@@ -858,6 +867,14 @@ Parity matrix — what changes across sizes:
 | Detail pages | single-column stack | 1-col or 60/40 split | 65/35 grid |
 | KPI strip | 1 × 4 vertical | 2 × 2 grid | 1 × 4 horizontal |
 | Analytics KPI strip (6 cards, #1990) | 1 × 6 vertical | 2 columns × 3 rows | 3 columns × 2 rows — see the analytics KPI card carve-out above |
+| Orders status segments (6 cards, `.orders-segments--6`, #3507) | **horizontal scroll-snap strip** (cards 9.5 rem) — documented departure below | 3 columns × 2 rows | 6 columns × 1 row (≥ 1280 px), 3 × 2 below |
+| List filters (`FilterBar` parts, #3507) | search 100 % + "Filters (n)" opening a **bottom sheet**; chip rows scroll horizontally | as desktop | search · "Filters (n)" accordion panel · active chips · quick-filter row |
+
+**Documented departure — orders status segments on a phone (#3507, DEC-8).** Six full-width KPI
+cards stacked vertically pushed the first order ~600 px down on a 390 × 844 screen, before any
+filter. The six partition cards become one horizontally scrolling, snap-aligned strip instead
+(still `aria-pressed` buttons, still the `health` filter), so the first order row is visible
+without scrolling. Other KPI strips keep the vertical stack.
 | `MetricCard` | full width | 2-col grid | 4-col grid |
 | Forms (single-column) | `max-width: 100%` | `max-width: 560 px` | `max-width: 560 px` |
 | Raw payload panel | collapsed by default | as desktop | as desktop |
