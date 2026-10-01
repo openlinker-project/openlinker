@@ -55,6 +55,10 @@ describe('ShipmentRepository', () => {
     waybillRelayLastFailedAt: null,
     waybillRelayLastFailureReason: null,
     waybillRelayLastFailureConnectionId: null,
+    // #3506 delivered-relay tracking — a fresh row has none.
+    deliveredRelayedAt: null,
+    deliveredRelayFailureCount: 0,
+    deliveredRelayLastFailureAt: null,
     ...overrides,
   });
 

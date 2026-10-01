@@ -101,6 +101,9 @@ describe('ShipmentDispatchNotificationService', () => {
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
+      findDeliveredRelayPending: jest.fn(),
+      markDeliveredRelayed: jest.fn(),
+      recordDeliveredRelayFailure: jest.fn(),
     };
     orderRecords = {
       persistOrder: jest.fn(),
