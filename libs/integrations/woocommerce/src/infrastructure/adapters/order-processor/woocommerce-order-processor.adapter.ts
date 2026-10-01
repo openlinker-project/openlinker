@@ -37,6 +37,12 @@
  *   ADR-063 `taxRate` — mirrors `PrestashopOrderProcessorManagerAdapter`. The
  *   booked `total` is read back and compared against the buyer-paid total,
  *   warning on drift.
+ * - Tax class (#3505): when the store calculates taxes itself
+ *   (`woocommerce_calc_taxes = yes`) every line carries the `tax_class` that
+ *   gives its own rate, resolved by `WooCommerceTaxClassResolver`; a rate no
+ *   class gives refuses the order. A mixed-rate shipping charge goes out as
+ *   one taxable fee line per rate. With store taxes off the payload is
+ *   unchanged.
  * - Payment status (#2600 / #3471): `set_paid` is gated on
  *   `order.paymentStatus === 'paid'`, never on `order.status` alone — a
  *   cash-on-delivery order is not settled just because it reached `processing`.
@@ -105,7 +111,10 @@ import type {
   WooCommerceOrderAddress,
   WooCommerceLineItemRequest,
   WooCommerceShippingLineRequest,
+  WooCommerceFeeLineRequest,
 } from './woocommerce-order.types';
+import { WooCommerceTaxClassResolver } from './woocommerce-tax-class.resolver';
+import type { WooCommerceTaxClassTable } from './woocommerce-tax-class.types';
 import { WC_ORDER_STATUS_MAP, WC_ORDER_STATUS_VALUES } from './woocommerce-order.types';
 import {
   WC_ORDER_STATUS_LABELS,
@@ -158,6 +167,11 @@ export class WooCommerceOrderProcessorAdapter
     // (`createWooCommercePlugin()` with no deps) — carrier resolution then
     // falls back to the pre-#3471 hardcoded default.
     private readonly mappingConfigService?: IMappingConfigService,
+    // #3505 — the store's tax classes, read once per adapter instance. A
+    // parameter only so a spec can hand in a stub; production uses the default.
+    private readonly taxClassResolver: WooCommerceTaxClassResolver = new WooCommerceTaxClassResolver(
+      httpClient,
+    ),
   ) {}
 
   // ─── OrderProcessorManagerPort ────────────────────────────────────────────
@@ -214,13 +228,19 @@ export class WooCommerceOrderProcessorAdapter
       await this.provisionAddresses(order, order.customerId, customerId);
     }
 
+    // Step 2c — the store's tax classes (#3505). `null` = WooCommerce does not
+    // calculate taxes, and the payload stays exactly as it was before.
+    const taxClasses = await this.taxClassResolver.load();
+
     // Step 3 — resolve line items (throws on any unresolvable or corrupted
-    // mapping, or on a gross-priced line with no resolvable tax rate — #3470).
-    const lineItems = await this.resolveLineItems(order);
+    // mapping, or on a gross-priced line with no resolvable tax rate — #3470,
+    // or on a rate no store tax class gives — #3505).
+    const lineItems = await this.resolveLineItems(order, taxClasses);
 
     // Step 4 — build shipping lines, resolving the operator's carrier mapping
-    // (#3471) — mirrors PrestaShop's resolveExternalCarrierId.
-    const shippingLines = await this.buildShippingLines(order);
+    // (#3471) — mirrors PrestaShop's resolveExternalCarrierId. A mixed-rate
+    // shipping charge on a tax-calculating store comes back as fee lines.
+    const { shippingLines, feeLines } = await this.buildShippingCharges(order, taxClasses);
 
     // Step 5 — build WC order payload.
     // _ol_order_id is a forensic/recovery marker only — NOT a dedup guard. WC REST
@@ -253,6 +273,7 @@ export class WooCommerceOrderProcessorAdapter
       shipping: this.mapAddress(order.shippingAddress),
       line_items: lineItems,
       ...(shippingLines.length > 0 ? { shipping_lines: shippingLines } : {}),
+      ...(feeLines.length > 0 ? { fee_lines: feeLines } : {}),
       payment_method: 'other',
       payment_method_title: 'External',
       currency: currencyCode,
@@ -650,6 +671,7 @@ export class WooCommerceOrderProcessorAdapter
    */
   private async resolveLineItems(
     order: OrderCreate,
+    taxClasses: WooCommerceTaxClassTable | null,
   ): Promise<WooCommerceLineItemRequest[]> {
     const items = order.items;
     // `exclusive` → already net, pin as-is. Everything else (`inclusive`/unset)
@@ -733,6 +755,15 @@ export class WooCommerceOrderProcessorAdapter
         : grossLineAmount;
       const lineSubtotal = netLineAmount.toFixed(2);
       const lineTotal = lineSubtotal;
+      const taxClass =
+        taxClasses !== null && item.taxRate !== undefined
+          ? this.resolveTaxClass(
+              taxClasses,
+              item.taxRate,
+              this.taxCountryFor(order, item.taxRateCountry),
+              `line ${item.sku ?? item.productId}`,
+            )
+          : undefined;
 
       lineItems.push({
         product_id: productId,
@@ -741,6 +772,7 @@ export class WooCommerceOrderProcessorAdapter
         subtotal: lineSubtotal,
         total: lineTotal,
         ...(item.name ? { name: item.name } : {}),
+        ...(taxClass !== undefined ? { tax_class: taxClass } : {}),
       });
     }
 
@@ -781,8 +813,46 @@ export class WooCommerceOrderProcessorAdapter
   }
 
   /**
-   * Builds WC shipping lines from order totals. Returns empty array when
-   * shipping cost is 0.
+   * The store tax class that taxes at exactly `taxRate` in `country` (#3505).
+   * Only called when the store calculates taxes: WooCommerce then recomputes
+   * the tax from the class, so a line without the right class is booked at
+   * the product's class — a 5% line at 23% — and the order total drifts from
+   * what the buyer paid. No matching class → refuse rather than book a wrong
+   * order (ADR-014, the `resolveLineTaxFraction` precedent).
+   */
+  private resolveTaxClass(
+    taxClasses: WooCommerceTaxClassTable,
+    taxRate: string,
+    country: string | undefined,
+    subject: string,
+  ): string {
+    const ratePercent = (taxRatePercentToFraction(taxRate) ?? 0) * 100;
+    const taxClass = taxClasses.resolve(country, ratePercent);
+    if (taxClass === null) {
+      throw new WooCommerceOrderProcessingException(
+        `Cannot create WC order: ${subject} is taxed at ${taxRate}% but no WooCommerce tax ` +
+          `class gives that rate${country ? ` for ${country}` : ''}, and the store calculates ` +
+          `taxes itself — the order would be booked at the wrong rate. Add a tax class with ` +
+          `that rate in WooCommerce (WooCommerce → Settings → Tax). No order was created.`,
+        this.connection.id,
+      );
+    }
+    return taxClass;
+  }
+
+  /**
+   * The country a rate applies in: the line's own ADR-063 `taxRateCountry`
+   * when the source settled one, else where the order ships (WooCommerce's
+   * default tax basis), else the billing country.
+   */
+  private taxCountryFor(order: OrderCreate, rateCountry: string | undefined): string | undefined {
+    return rateCountry ?? order.shippingAddress?.country ?? order.billingAddress?.country ?? undefined;
+  }
+
+  /**
+   * Builds WC shipping lines (or, for a mixed-rate charge on a store that
+   * calculates taxes, fee lines — #3505) from order totals. Returns nothing
+   * when shipping cost is 0.
    *
    * Resolves the destination `method_id` from the operator's carrier mapping
    * (#3471, mirrors `PrestashopOrderProcessorManagerAdapter.resolveExternalCarrierId`),
@@ -818,21 +888,32 @@ export class WooCommerceOrderProcessorAdapter
    * unaffected — `splitShippingAcrossRates` returns exactly one part and
    * this still emits exactly one shipping line.
    */
-  private async buildShippingLines(order: OrderCreate): Promise<WooCommerceShippingLineRequest[]> {
-    if (!order.totals.shipping || order.totals.shipping <= 0) return [];
+  private async buildShippingCharges(
+    order: OrderCreate,
+    taxClasses: WooCommerceTaxClassTable | null,
+  ): Promise<{
+    shippingLines: WooCommerceShippingLineRequest[];
+    feeLines: WooCommerceFeeLineRequest[];
+  }> {
+    if (!order.totals.shipping || order.totals.shipping <= 0) {
+      return { shippingLines: [], feeLines: [] };
+    }
 
     const methodId = await this.resolveShippingMethodId(order);
     const methodTitle = order.shipping?.methodName ?? 'Shipping';
 
     // `exclusive` → shipping is already net, pin as-is (mirrors resolveLineItems).
     if (order.totals.taxTreatment === 'exclusive') {
-      return [
-        {
-          method_id: methodId,
-          method_title: methodTitle,
-          total: order.totals.shipping.toFixed(2),
-        },
-      ];
+      return {
+        shippingLines: [
+          {
+            method_id: methodId,
+            method_title: methodTitle,
+            total: order.totals.shipping.toFixed(2),
+          },
+        ],
+        feeLines: [],
+      };
     }
 
     const splitLines: ShippingSplitLine[] = order.items.map((item) => ({
@@ -854,18 +935,46 @@ export class WooCommerceOrderProcessorAdapter
       );
     }
 
-    return parts.map((part) => {
-      const fraction = taxRatePercentToFraction(part.taxRate) ?? 0;
-      const net = part.amount / (1 + fraction);
+    const netOf = (part: { amount: number; taxRate: string }): string =>
+      (part.amount / (1 + (taxRatePercentToFraction(part.taxRate) ?? 0))).toFixed(2);
+
+    // #3505 (DEC-9) — a store that calculates taxes taxes EVERY shipping line
+    // at one class (its shipping tax-class setting), and WC REST takes no
+    // `tax_class` on a shipping line. A mixed-rate charge is therefore booked
+    // as one taxable FEE line per rate, each pinned to its own class; the
+    // carrier's `method_id` is lost for such baskets — the accepted trade-off.
+    // A single-rate charge stays an ordinary shipping line.
+    if (taxClasses !== null && parts.length > 1) {
       return {
+        shippingLines: [],
+        feeLines: parts.map((part) => ({
+          name: `${methodTitle} (${part.taxRate}%)`,
+          tax_class: this.resolveTaxClass(
+            taxClasses,
+            part.taxRate,
+            this.taxCountryFor(
+              order,
+              order.items.find((item) => item.taxRate === part.taxRate)?.taxRateCountry,
+            ),
+            `the ${part.taxRate}% share of shipping`,
+          ),
+          tax_status: 'taxable' as const,
+          total: netOf(part),
+        })),
+      };
+    }
+
+    return {
+      shippingLines: parts.map((part) => ({
         method_id: methodId,
         // Only decorated with the rate when the basket actually split into
         // more than one part — the single-rate case keeps the plain title
         // every existing order (and test) already expects.
         method_title: parts.length > 1 ? `${methodTitle} (${part.taxRate}%)` : methodTitle,
-        total: net.toFixed(2),
-      };
-    });
+        total: netOf(part),
+      })),
+      feeLines: [],
+    };
   }
 
   private async resolveShippingMethodId(order: OrderCreate): Promise<string> {
