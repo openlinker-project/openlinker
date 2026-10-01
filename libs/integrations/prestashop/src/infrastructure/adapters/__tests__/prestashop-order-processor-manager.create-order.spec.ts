@@ -808,7 +808,8 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         expect(error).not.toBeInstanceOf(PrestashopTaxRateUnknownException);
         expect(error?.message).toBe(
           'PrestaShop product #100 (PROD-001-VAR-001): tax rate could not be read - GET ' +
-            'products/100 returned 503. No order was created; the sync job retries on its own.'
+            'products/100 returned 503. No order was created. This is not retried automatically ' +
+            '— use the destination Retry action on the order once the read succeeds.'
         );
         // The status the resolver saw is carried through, so anything that
         // classifies on it downstream (auth failure, rate limit) still can.
