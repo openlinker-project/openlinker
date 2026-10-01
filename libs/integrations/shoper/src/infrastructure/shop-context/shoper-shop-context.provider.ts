@@ -96,8 +96,14 @@ export class ShoperShopContextProvider {
       language: data.default_language_name ?? '',
       currency: data.default_currency_name ?? null,
       weightUnit: data.locale_default_weight ?? FALLBACK_WEIGHT_UNIT,
+      warehousesEnabled: isFlagOn(data.warehouses_enabled),
     };
   }
+}
+
+/** Shoper serves flags as JSON booleans, but a `"1"` / `1` must also read as on. */
+function isFlagOn(value: unknown): boolean {
+  return value === true || value === 1 || value === '1' || value === 'true';
 }
 
 /** A cache entry written by another release must not be trusted blindly. */
@@ -107,6 +113,9 @@ function isUsableContext(value: ShoperMapContext | null): value is ShoperMapCont
     typeof value === 'object' &&
     typeof value.language === 'string' &&
     typeof value.weightUnit === 'string' &&
+    // An entry written before this field existed lacks it: ask the shop again
+    // rather than assume "no warehouses" about a shop we did not check.
+    typeof value.warehousesEnabled === 'boolean' &&
     (value.currency === null || typeof value.currency === 'string')
   );
 }

@@ -5,6 +5,7 @@ const CONFIG = {
   default_language_name: 'pl_PL',
   default_currency_name: 'PLN',
   locale_default_weight: 'KILOGRAM',
+  warehouses_enabled: false,
 };
 
 function providerWith(get: jest.Mock): ShoperShopContextProvider {
@@ -20,6 +21,7 @@ describe('ShoperShopContextProvider', () => {
       language: 'pl_PL',
       currency: 'PLN',
       weightUnit: 'KILOGRAM',
+      warehousesEnabled: false,
     });
     expect(get).toHaveBeenCalledWith('/application-config');
   });
@@ -77,6 +79,7 @@ describe('ShoperShopContextProvider', () => {
         language: 'en_US',
         currency: 'EUR',
         weightUnit: 'KILOGRAM',
+        warehousesEnabled: false,
       });
       const get = jest.fn();
 
@@ -89,6 +92,7 @@ describe('ShoperShopContextProvider', () => {
         language: 'en_US',
         currency: 'EUR',
         weightUnit: 'KILOGRAM',
+        warehousesEnabled: false,
       });
     });
 
@@ -136,6 +140,40 @@ describe('ShoperShopContextProvider', () => {
       language: '',
       currency: null,
       weightUnit: 'KILOGRAM',
+      warehousesEnabled: false,
     });
+  });
+
+  it.each([[true], [1], ['1'], ['true']])(
+    'should read warehouses_enabled=%p as on',
+    async (flag) => {
+      const get = jest
+        .fn()
+        .mockResolvedValue({ status: 200, data: { ...CONFIG, warehouses_enabled: flag } });
+
+      await expect(providerWith(get).get()).resolves.toMatchObject({ warehousesEnabled: true });
+    },
+  );
+
+  it('should refetch a cached entry written before the warehouse flag existed', async () => {
+    const cache = {
+      get: jest.fn().mockResolvedValue({
+        host: 'x',
+        language: 'pl_PL',
+        currency: 'PLN',
+        weightUnit: 'KILOGRAM',
+      }),
+      set: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn(),
+    };
+    const get = jest.fn().mockResolvedValue({ status: 200, data: CONFIG });
+    const p = new ShoperShopContextProvider(
+      { get } as unknown as ShoperHttpClient,
+      'shop.example.pl',
+      { cache, cacheKey: 'k' },
+    );
+
+    await expect(p.get()).resolves.toMatchObject({ warehousesEnabled: false });
+    expect(get).toHaveBeenCalledTimes(1);
   });
 });
