@@ -17,8 +17,21 @@ describe('ShoperRetryClassifierAdapter', () => {
     expect(classifier.isNonRetryable(cause)).toBe(true);
   });
 
-  it.each([400, 401, 403, 404, 410, 422])('should treat HTTP %i as terminal', (status) => {
+  it.each([400, 401, 403, 410, 422])('should treat HTTP %i as terminal', (status) => {
     expect(classifier.isNonRetryable(new ShoperApiError(status))).toBe(true);
+  });
+
+  describe('a 404', () => {
+    it('should be terminal when Shoper itself reported the resource gone (its error envelope)', () => {
+      expect(
+        classifier.isNonRetryable(new ShoperApiError(404, 'invalid_request', 'Resource not found')),
+      ).toBe(true);
+    });
+
+    it('should stay retryable when it is bare: a proxy or maintenance page clears on its own', () => {
+      expect(classifier.isNonRetryable(new ShoperApiError(404))).toBe(false);
+      expect(classifier.isNonRetryable(new ShoperApiError(404, 'server_error'))).toBe(false);
+    });
   });
 
   it.each([408, 429, 500, 502, 503, 504])('should keep HTTP %i retryable', (status) => {
