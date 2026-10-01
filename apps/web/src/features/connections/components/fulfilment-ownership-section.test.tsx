@@ -4,6 +4,7 @@
  * @module features/connections/components
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
+import type { ReactElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,7 +18,7 @@ function Harness({
   initial: boolean;
   configIsParseable?: boolean;
   sync: () => void;
-}): JSX.Element {
+}): ReactElement {
   const form = useForm<any>({ defaultValues: { fulfilmentOwnedByDestination: initial } });
   return (
     <>
