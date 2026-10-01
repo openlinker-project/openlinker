@@ -23,6 +23,21 @@ describe('parseShoperBaseUrl', () => {
     });
   });
 
+  it.each([
+    ['shop.internal'],
+    ['shop.local'],
+    ['shop.lan'],
+    ['intranet.corp'],
+    ['x.home.arpa'],
+    ['shop.localhost'],
+    ['shop.example'],
+  ])('should reject the private or reserved suffix in %p', (raw) => {
+    expect(parseShoperBaseUrl(raw)).toEqual({
+      ok: false,
+      issues: [expect.stringContaining('private or reserved')],
+    });
+  });
+
   it('should reject http because the token is sent on every request', () => {
     expect(parseShoperBaseUrl('http://xxxxx.shoparena.pl')).toEqual({
       ok: false,
@@ -68,7 +83,7 @@ describe('parseShoperBaseUrl', () => {
 describe('buildShoperApiUrl', () => {
   it('should build an https URL under /webapi/rest', () => {
     expect(buildShoperApiUrl('xxxxx.shoparena.pl', '/application-config')).toBe(
-      'https://xxxxx.shoparena.pl/webapi/rest/application-config',
+      'https://xxxxx.shoparena.pl/webapi/rest/application-config'
     );
   });
 });

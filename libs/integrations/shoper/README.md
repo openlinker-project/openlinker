@@ -37,7 +37,8 @@ Only the token is stored; it is used directly as `Authorization: Bearer <token>`
 
 Shoper enforces access per area server-side (`403 insufficient_scope`). In the integration's
 **Obszar sklepu x Zakres dostępu** table grant these areas (the capabilities that use each one arrive with
-the rest of the milestone, so grant them up front to avoid re-visiting the panel):
+the rest of the milestone, so grant them up front to avoid re-visiting the panel). The connection test
+itself needs none of them and its 403 message names none:
 
 produkty, warianty produktów, stany dostępności, kategorie, stawki vat, magazyny, zamówienia, przesyłki,
 statusy zamówień, klienci, webhooki, dostawy, płatności
@@ -50,9 +51,9 @@ statusy zamówień, klienci, webhooki, dostawy, płatności
 
 | Result | Meaning |
 |---|---|
-| `200` | host is a Shoper shop and the token is valid |
+| `200` | host is a Shoper shop and the token is valid (the body must look like `application-config`; a bare 200, an empty or non-JSON page fails) |
 | `401` | token invalid or revoked |
-| `403` | token valid but missing a permission (the message lists the areas above) |
+| `403` | the request was refused; this probe needs no area, so check the integration is active and unrestricted |
 | `404` | host is not a Shoper shop |
 
 A passing test does **not** prove every area above was granted; each capability reports its own missing area.

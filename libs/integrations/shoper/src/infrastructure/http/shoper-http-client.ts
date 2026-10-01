@@ -17,7 +17,11 @@
  *   - **Redirects are never followed.** The Bearer token must not be replayed
  *     to a host the operator did not configure, and a 3xx from a shop is an
  *     error anyway.
- *   - **The response is size-capped.** A timeout bounds time, not bytes.
+ *   - **The response is size-capped, while it is read.** A timeout bounds time,
+ *     not bytes, and `response.text()` buffers everything before it can be
+ *     measured, so the body is consumed as a stream, bytes are counted (not
+ *     UTF-16 units) and the reader is cancelled once past the ceiling - which
+ *     also holds for a chunked response that declares no `content-length`.
  *
  * @module libs/integrations/shoper/src/infrastructure/http
  */
@@ -53,7 +57,7 @@ export class ShoperHttpClient {
    */
   constructor(
     private readonly config: ShoperHttpClientConfig,
-    private readonly fetchImpl: FetchLike,
+    private readonly fetchImpl: FetchLike
   ) {}
 
   async get<T>(path: string): Promise<ShoperHttpResponse<T>> {
@@ -84,23 +88,46 @@ export class ShoperHttpClient {
       throw new ShoperApiError(response.status, body?.error, body?.error_description);
     }
 
-    return { status: response.status, data: (parseJson<T>(text) ?? ({} as T)) };
+    // A 2xx whose body is empty or not JSON is NOT an answer: a parked domain or
+    // a catch-all page would otherwise read as `{}` and look like a Shoper shop.
+    const data = parseJson<T>(text);
+    if (data === null) {
+      throw new ShoperNetworkError(
+        `Shoper returned an unreadable response (HTTP ${response.status}, not JSON)`
+      );
+    }
+    return { status: response.status, data };
   }
 
   private async readBody(response: Response): Promise<string> {
     const declared = Number(response.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
       throw new ShoperNetworkError(
-        `Shoper response is larger than the ${MAX_RESPONSE_BYTES}-byte limit`,
+        `Shoper response is larger than the ${MAX_RESPONSE_BYTES}-byte limit`
       );
     }
-    const text = await response.text();
-    if (text.length > MAX_RESPONSE_BYTES) {
-      throw new ShoperNetworkError(
-        `Shoper response is larger than the ${MAX_RESPONSE_BYTES}-byte limit`,
-      );
+    if (response.body === null) {
+      return '';
     }
-    return text;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let received = 0;
+    let text = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return text + decoder.decode();
+      }
+      received += value.byteLength;
+      if (received > MAX_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new ShoperNetworkError(
+          `Shoper response is larger than the ${MAX_RESPONSE_BYTES}-byte limit`
+        );
+      }
+      text += decoder.decode(value, { stream: true });
+    }
   }
 
   private toNetworkError(error: unknown, timedOut: boolean): ShoperNetworkError {
@@ -113,7 +140,7 @@ export class ShoperHttpClient {
         ? `Shoper request timed out after ${REQUEST_TIMEOUT_MS}ms`
         : `Shoper request failed: ${cause.message}`,
       timedOut,
-      cause,
+      cause
     );
   }
 }

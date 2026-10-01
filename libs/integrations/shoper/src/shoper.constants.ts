@@ -29,7 +29,7 @@ export const SHOPER_CONNECTION_TEST_PATH = '/application-config';
  * shop's admin panel ("Dodaj integrację"). Shoper enforces them server-side
  * (`403 insufficient_scope`, SPIKE-3638 C3), so a token missing one fails the
  * capability that needs it, not the connection test. Listed for the operator
- * (README, 403 message); the capabilities that use each area land with their
+ * (README); the capabilities that use each area land with their
  * own epics.
  */
 export const SHOPER_REQUIRED_SCOPES = [
