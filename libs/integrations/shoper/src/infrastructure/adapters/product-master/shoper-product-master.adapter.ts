@@ -37,6 +37,9 @@ import type {
   ProductUpdate,
   ProductVariantCreate,
   Category,
+  ProductTaxRateReader,
+  ReadProductTaxRateInput,
+  TaxRateResolution,
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -52,6 +55,8 @@ import type {
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import { mapShoperTaxName } from '../../mappers/shoper-tax-rate.mapper';
+import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
 import {
   SHOPER_MAX_PAGE_SIZE,
@@ -73,7 +78,7 @@ const DEFAULT_WINDOW = SHOPER_MAX_PAGE_SIZE;
 /** A Shoper id is a positive integer; anything else cannot be one. */
 const SHOPER_ID = /^\d+$/;
 
-export class ShoperProductMasterAdapter implements ProductMasterPort {
+export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
   private readonly productReads = new Map<string, Promise<ShoperProduct>>();
@@ -82,6 +87,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     private readonly client: ShoperHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly shopContext: ShoperShopContextProvider,
+    private readonly taxTable: ShoperTaxTableProvider,
     private readonly connection: Connection,
   ) {}
 
@@ -163,6 +169,58 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
 
   searchProducts(query: string, filters?: ProductFilters): Promise<Product[]> {
     return this.getProducts({ ...filters, query });
+  }
+
+  // ─── Tax rate (ADR-063) ────────────────────────────────────────────────────
+
+  /**
+   * The rate the shop assigns this product, as an ADR-063 code. Tax lives on
+   * the Shoper PRODUCT, not the stock row, so `variantId` is not consulted
+   * (`readsTaxRatePerVariant()` is false).
+   *
+   * Never guesses: no fallback to the shop default tax or to 23%. A missing
+   * `tax_id` is the shop's answer (`not-configured`, persisted, fixed in the
+   * shop); a `tax_id` absent from `/taxes` or a row name this build does not
+   * recognise established nothing (`unreadable`, not persisted). Transport
+   * failures propagate - turning one into an answer would let a single 500
+   * during a sweep mark products rate-less.
+   */
+  async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
+    const externalId = await this.resolveExternalProductId(input.productId);
+    const data = await this.readProduct(externalId);
+
+    const taxId = data.tax_id === null || data.tax_id === undefined ? '' : String(data.tax_id).trim();
+    if (taxId.length === 0 || taxId === '0') {
+      return {
+        kind: 'unknown',
+        reason: 'not-configured',
+        detail: `Shoper product ${externalId} has no tax rate assigned`,
+      };
+    }
+
+    const row = (await this.taxTable.get()).get(taxId);
+    if (row === undefined) {
+      return {
+        kind: 'unknown',
+        reason: 'unreadable',
+        detail: `Shoper tax_id ${taxId} is not in the shop's tax table`,
+      };
+    }
+
+    const code = mapShoperTaxName(row.name);
+    if (code === null) {
+      return {
+        kind: 'unknown',
+        reason: 'unreadable',
+        detail: `Shoper tax "${row.name}" is not a recognised rate`,
+      };
+    }
+
+    return { kind: 'resolved', code, countryIso2: null };
+  }
+
+  readsTaxRatePerVariant(): boolean {
+    return false;
   }
 
   // ─── Categories ────────────────────────────────────────────────────────────

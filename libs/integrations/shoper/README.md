@@ -68,6 +68,14 @@ A passing test does **not** prove every area above was granted; each capability 
 | `listExternalIds` | `GET /products?order=product_id ASC` (paged) |
 | `getCategories` | `GET /categories-tree` (structure) + `GET /categories` (names, all pages) |
 | `getProductCategories` | `GET /products/:id` -> `categories` ids resolved through `getCategories` |
+| `readProductTaxRate` (`ProductTaxRateReader`) | `GET /products/:id` -> `tax_id` -> `GET /taxes` row (table read once per adapter) |
+
+- **Tax rate** (ADR-063) is read by row NAME, never `value`: `0%`, `zw.` and `np.` all carry `value: "0"`.
+  `23%`->`23`, `8%`->`8`, `5%`->`5`, `0%`->`0`, `zw.`->`zw`, `np.`->`np`. No `tax_id` is `not-configured`;
+  an unknown `tax_id` or unrecognised name is `unreadable` (not persisted); a transport failure throws. There
+  is no fallback to the shop default or to 23%. Tax lives on the product (`readsTaxRatePerVariant()` is false)
+  and the table is not country-scoped (`countryIso2: null`). Guard-narrowed, not in the manifest - as for the
+  sibling plugins.
 
 - **Categories** live in two resources: `categories-tree` carries ids and children only (no names), and the
   paged `categories` list carries the per-language name and `active`. They are joined by id; a listed category
