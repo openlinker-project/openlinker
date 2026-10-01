@@ -1,5 +1,6 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 
+import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../../domain/exceptions/shoper-not-supported.exception';
 import {
@@ -406,6 +407,174 @@ describe('ShoperProductMasterAdapter', () => {
     });
   });
 
+  describe('categories', () => {
+    const tree = [{ id: 45, children: [{ id: 38, children: [] }, { id: 39, children: [] }] }];
+    const list = envelope([
+      { category_id: '45', translations: { pl_PL: { name: 'Kolekcje', active: '1' } } },
+      { category_id: '38', translations: { pl_PL: { name: 'Zestawy', active: '1' } } },
+      { category_id: '39', translations: { pl_PL: { name: 'Talerze', active: '0' } } },
+    ]);
+
+    it('should return the directory joined from the tree and the paged list', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': tree, '/categories': list });
+
+      await expect(adapter.getCategories()).resolves.toEqual([
+        { id: '45', name: 'Kolekcje', depth: 0, active: true },
+        { id: '38', name: 'Zestawy', parentId: '45', depth: 1, active: true },
+        { id: '39', name: 'Talerze', parentId: '45', depth: 1, active: false },
+      ]);
+      expect(get).toHaveBeenCalledWith(
+        '/categories',
+        expect.objectContaining({ order: 'category_id ASC', limit: 50, page: 1 }),
+      );
+    });
+
+    it('should read every page of the category list', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string, query?: { page?: number }) => {
+        if (path === '/categories-tree') return Promise.resolve({ status: 200, data: [] });
+        const page = query?.page ?? 1;
+        return Promise.resolve({
+          status: 200,
+          data: envelope(
+            [{ category_id: String(page), translations: { pl_PL: { name: `C${page}` } } }],
+            { pages: 2, page },
+          ),
+        });
+      });
+
+      const categories = await adapter.getCategories();
+
+      expect(categories.map((c) => c.id)).toEqual(['1', '2']);
+    });
+
+    it('should build the directory ONCE per adapter instance, however many products ask', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await adapter.getProductCategories('ol_product_1');
+      await adapter.getProductCategories('ol_product_1');
+      await adapter.getCategories();
+      await adapter.getCategories();
+
+      const calls = get.mock.calls.map(([path]) => path as string);
+      expect(calls.filter((p) => p === '/categories-tree')).toHaveLength(1);
+      expect(calls.filter((p) => p === '/categories')).toHaveLength(1);
+    });
+
+    it('should share the directory between concurrent callers', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': tree, '/categories': list });
+
+      await Promise.all([adapter.getCategories(), adapter.getCategories(), adapter.getCategories()]);
+
+      expect(get.mock.calls.filter(([path]) => path === '/categories-tree')).toHaveLength(1);
+    });
+
+    it('should hand each caller its own array, so one cannot corrupt the shared directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': tree, '/categories': list });
+
+      const first = await adapter.getCategories();
+      first.length = 0;
+
+      await expect(adapter.getCategories()).resolves.toHaveLength(3);
+    });
+
+    it('should not keep a failed directory build: the next call retries', async () => {
+      const { adapter, get } = setup();
+      get.mockRejectedValueOnce(new Error('tree 500'));
+      get.mockImplementation((path: string) =>
+        Promise.resolve({ status: 200, data: path === '/categories-tree' ? tree : list }),
+      );
+
+      await expect(adapter.getCategories()).rejects.toThrow();
+      await expect(adapter.getCategories()).resolves.toHaveLength(3);
+    });
+
+    it.each([
+      ['an object', {}],
+      ['a string', 'oops'],
+      ['null', null],
+    ])('should throw on an unreadable category tree (%s) instead of returning unplaced roots', async (_l, bad) => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': bad, '/categories': list });
+
+      await expect(adapter.getCategories()).rejects.toBeInstanceOf(ShoperNetworkError);
+    });
+
+    it('should accept a legitimately empty tree', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': [], '/categories': list });
+
+      const categories = await adapter.getCategories();
+
+      expect(categories.every((c) => c.parentId === undefined && c.depth === undefined)).toBe(true);
+    });
+
+    it('should read the product ONCE when getProduct and getProductCategories both ask', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await adapter.getProduct('ol_product_1');
+      await adapter.getProductCategories('ol_product_1');
+
+      expect(get.mock.calls.filter(([path]) => path === '/products/93')).toHaveLength(1);
+    });
+
+    it('should not keep a failed product read: the next call retries', async () => {
+      const { adapter, get } = setup();
+      get.mockRejectedValueOnce(new Error('product 500'));
+      respond(get, { '/products/93': buildProduct({ categories: [] }) });
+
+      await expect(adapter.getProductCategories('ol_product_1')).rejects.toThrow('product 500');
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    it('should resolve a product category ids through the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [39, 38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      const categories = await adapter.getProductCategories('ol_product_1');
+
+      expect(categories.map((c) => c.name)).toEqual(['Talerze', 'Zestawy']);
+    });
+
+    it('should skip an id absent from the directory instead of throwing', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [38, 777] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        expect.objectContaining({ id: '38' }),
+      ]);
+    });
+
+    it('should return [] for a product with no categories without reading the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ categories: [] }) });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('methods outside this milestone', () => {
     type Call = (adapter: ShoperProductMasterAdapter) => Promise<unknown>;
     const cases: Array<[string, Call]> = [
@@ -413,7 +582,6 @@ describe('ShoperProductMasterAdapter', () => {
       ['updateProduct', (a): Promise<unknown> => a.updateProduct('p', {})],
       ['deleteProduct', (a): Promise<unknown> => a.deleteProduct('p')],
       ['upsertProductVariant', (a): Promise<unknown> => a.upsertProductVariant('p', { sku: 's' })],
-      ['getProductCategories', (a): Promise<unknown> => a.getProductCategories('p')],
       ['assignCategories', (a): Promise<unknown> => a.assignCategories('p', [])],
     ];
 
