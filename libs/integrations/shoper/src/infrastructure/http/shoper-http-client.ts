@@ -49,6 +49,23 @@ export interface ShoperHttpResponse<T> {
   readonly data: T;
 }
 
+/**
+ * Query parameters of a request. Keys may carry Shoper's bracket syntax
+ * (`filters[product_id]`); both keys and values are percent-encoded, which the
+ * live API accepts (verified against the trial shop).
+ */
+export type ShoperQuery = Readonly<Record<string, string | number>>;
+
+function encodeQuery(query: ShoperQuery | undefined): string {
+  if (query === undefined) {
+    return '';
+  }
+  const pairs = Object.entries(query).map(
+    ([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+  );
+  return pairs.length > 0 ? `?${pairs.join('&')}` : '';
+}
+
 export class ShoperHttpClient {
   /**
    * `fetchImpl` is **required**, deliberately: an optional `?? globalThis.fetch`
@@ -60,14 +77,14 @@ export class ShoperHttpClient {
     private readonly fetchImpl: FetchLike
   ) {}
 
-  async get<T>(path: string): Promise<ShoperHttpResponse<T>> {
+  async get<T>(path: string, query?: ShoperQuery): Promise<ShoperHttpResponse<T>> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     let response: Response;
     let text: string;
     try {
-      response = await this.fetchImpl(buildShoperApiUrl(this.config.host, path), {
+      response = await this.fetchImpl(buildShoperApiUrl(this.config.host, path) + encodeQuery(query), {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${this.config.token}`,
