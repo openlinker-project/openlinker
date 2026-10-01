@@ -2,7 +2,7 @@ import type { Connection, IdentifierMappingPort } from '@openlinker/core/identif
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
-import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
+import { ShoperInvalidStockLevelException } from '../../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../../domain/exceptions/shoper-stock-not-found.exception';
@@ -19,6 +19,8 @@ import type { ShoperShopContextProvider } from '../../../shop-context/shoper-sho
 import { ShoperInventoryMasterAdapter } from '../shoper-inventory-master.adapter';
 
 const CONNECTION_ID = 'conn-1';
+/** A 404 carrying Shoper's own envelope - its statement that the resource is gone. */
+const NOT_FOUND = new ShoperApiError(404, 'invalid_request', 'Resource not found');
 
 function setup(context = MAP_CONTEXT): {
   adapter: ShoperInventoryMasterAdapter;
@@ -77,11 +79,46 @@ describe('ShoperInventoryMasterAdapter', () => {
     ]);
   });
 
-  it('should report a deleted product with the neutral not-found error', async () => {
+  it('should not probe the product while it still lists stock rows', async () => {
     const { adapter, get } = setup();
-    get.mockRejectedValue(new ShoperApiError(404, '/products/93', 'invalid_request'));
+    shop(get, [buildStock()]);
+
+    await adapter.listInventory('ol_93');
+
+    const paths = (get.mock.calls as Array<[string]>).map(([path]) => path);
+    expect(paths).not.toContain('/products/93');
+  });
+
+  it('should report a deleted product with the neutral not-found error when it has no stock rows', async () => {
+    const { adapter, get } = setup();
+    get.mockImplementation((path: string) =>
+      path === '/products/93'
+        ? Promise.reject(NOT_FOUND)
+        : Promise.resolve({ status: 200, data: envelope([]) }),
+    );
 
     await expect(adapter.listInventory('ol_93')).rejects.toBeInstanceOf(MasterProductNotFoundError);
+  });
+
+  it('should report a deletion when the stock listing itself answers Shoper’s 404 and the product is gone', async () => {
+    const { adapter, get } = setup();
+    get.mockRejectedValue(NOT_FOUND);
+
+    await expect(adapter.listInventory('ol_93')).rejects.toBeInstanceOf(MasterProductNotFoundError);
+  });
+
+  it('should not read a 404 from the stock listing as a deletion while the product resolves', async () => {
+    const { adapter, get } = setup();
+    get.mockImplementation((path: string) =>
+      path === '/products/93'
+        ? Promise.resolve({ status: 200, data: buildProduct() })
+        : Promise.reject(NOT_FOUND),
+    );
+
+    const error = await adapter.listInventory('ol_93').catch((e: unknown) => e);
+
+    expect(error).toBe(NOT_FOUND);
+    expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
   });
 
   it('should keep a missing mapping platform-native, not a deletion', async () => {
@@ -100,11 +137,22 @@ describe('ShoperInventoryMasterAdapter', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
-  it('should fail on an unreadable stock level instead of reporting 0', async () => {
-    const { adapter, get } = setup();
-    shop(get, [buildStock({ stock: '' })]);
+  it('should fail on an unreadable stock level instead of reporting 0, minting no ids', async () => {
+    const { adapter, get, mapping } = setup();
+    shop(get, [buildStock({ stock_id: '181', stock: '5' }), buildStock({ stock_id: '182', stock: '' })]);
 
-    await expect(adapter.listInventory('ol_93')).rejects.toBeInstanceOf(ShoperNetworkError);
+    await expect(adapter.listInventory('ol_93')).rejects.toBeInstanceOf(
+      ShoperInvalidStockLevelException,
+    );
+    expect(mapping.batchGetOrCreateInternalIds).not.toHaveBeenCalled();
+  });
+
+  it('should fail rather than return an inventory without an internal id', async () => {
+    const { adapter, get, mapping } = setup();
+    shop(get, [buildStock()]);
+    mapping.batchGetOrCreateInternalIds.mockResolvedValue(new Map());
+
+    await expect(adapter.listInventory('ol_93')).rejects.toThrow(/Missing internal id/);
   });
 
   it('should drop stock rows that belong to another product', async () => {
@@ -122,11 +170,13 @@ describe('ShoperInventoryMasterAdapter', () => {
     await expect(adapter.getAvailableQuantity('ol_93')).resolves.toBe(5);
   });
 
-  it('should treat a resolving product with no stock rows as an inferred absence', async () => {
+  // An empty list would make the sync stale every variant and pause its offers
+  // (#1689) for a product that still exists, so it is an error from BOTH reads.
+  it('should treat a resolving product with no stock rows as an inferred absence, never an empty list', async () => {
     const { adapter, get } = setup();
     shop(get, []);
 
-    await expect(adapter.listInventory('ol_93')).resolves.toEqual([]);
+    await expect(adapter.listInventory('ol_93')).rejects.toBeInstanceOf(ShoperStockNotFoundException);
     await expect(adapter.getInventory('ol_93')).rejects.toBeInstanceOf(ShoperStockNotFoundException);
   });
 

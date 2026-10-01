@@ -113,8 +113,9 @@ export interface ShoperApplicationConfig {
   readonly locale_default_weight: string;
   /**
    * Multi-warehouse module (a paid Premium feature, SPIKE-3638 M10). A real JSON
-   * boolean on the live shop (`false`); read leniently, since a flag the shop
-   * serves as `"1"` must not be mistaken for "off".
+   * boolean on the live shop (`false`). Only an explicit "off" (`false`, `0`,
+   * `"0"`, `"false"`) reads as off; anything else - including a missing field -
+   * reads as on, so stock is refused rather than published on a guess.
    */
   readonly warehouses_enabled: boolean | string | number;
 }

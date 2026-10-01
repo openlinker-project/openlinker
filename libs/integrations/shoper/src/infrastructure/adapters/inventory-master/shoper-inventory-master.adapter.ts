@@ -14,11 +14,19 @@
  * decision 2) and Shoper has no reservation concept (`reserved` is 0).
  *
  * Three behaviours are load-bearing:
- *   - **Deletion** is reported where Shoper says so: the product is read through
- *     the shared `ShoperProductReader`, so a 404 carrying Shoper's own envelope
- *     becomes the neutral `MasterProductNotFoundError` (#1688) and nothing else
- *     does. A product that resolves but has no stock row is an INFERRED absence
- *     and stays a platform-native error.
+ *   - **Deletion** is reported where Shoper says so: when a product has no stock
+ *     rows, it is read through the shared `ShoperProductReader`, so a 404
+ *     carrying Shoper's own envelope becomes the neutral
+ *     `MasterProductNotFoundError` (#1688) and nothing else does. A product that
+ *     resolves but has no stock row is an INFERRED absence and raises the
+ *     platform-native `ShoperStockNotFoundException` - from `listInventory` too,
+ *     never an empty list: `MasterInventorySyncService` prunes on an empty
+ *     response, which would stale every variant and pause its offers (#1689)
+ *     for a product that still exists. Every Shoper product carries at least one
+ *     stock row, so an empty answer is an anomaly, not a state to sync.
+ *     The probe is spent only on that empty answer. Probing every product would
+ *     double the sweep's request count (the regression the PrestaShop adapter
+ *     removed), and a product that still lists stock rows is not gone.
  *   - **Multi-warehouse shops are refused**, not guessed at: with the module on,
  *     `product-stocks.stock` is not known to be the whole pool, and a wrong stock
  *     level is published to marketplaces.
@@ -38,10 +46,12 @@ import type { Connection, IdentifierMappingPort } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
-import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
+import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
+import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../domain/exceptions/shoper-stock-not-found.exception';
 import { ShoperWarehousesNotSupportedException } from '../../../domain/exceptions/shoper-warehouses-not-supported.exception';
+import type { ShoperStock } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
 import { fetchShoperStocks } from '../../http/shoper-stocks';
 import {
@@ -80,20 +90,24 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
       productId,
     );
 
-    // The deletion probe. A product Shoper reports gone raises the neutral
-    // error here; the stock listing below would only say "no rows", which is
-    // not the same claim.
-    await this.productReader.read(externalId, productId);
-
-    const stocks = await fetchShoperStocks(this.client, externalId, (count) =>
-      this.logger.warn(
-        `Shoper returned ${count} stock row(s) of another product while reading product ` +
-          `${externalId}; dropped (connection: ${this.connection.id})`,
-      ),
-    );
+    const stocks = await this.fetchStocksOrClassifyDeletion(externalId, productId);
     if (stocks.length === 0) {
-      return [];
+      // The deletion probe, spent only here. A product Shoper reports gone
+      // raises the neutral error from the reader; one that still resolves is an
+      // inferred absence and must not reach the sync as an empty list.
+      await this.productReader.read(externalId, productId);
+      throw new ShoperStockNotFoundException(productId, this.connection.id);
     }
+
+    // Every level is checked before any id is minted: a row that cannot be
+    // reported must not leave mappings behind for a variant it never synced.
+    const levels = stocks.map((stock) => {
+      const quantity = readShoperStockLevel(stock);
+      if (quantity === null) {
+        throw new ShoperInvalidStockLevelException(stock.stock_id, externalId, this.connection.id);
+      }
+      return quantity;
+    });
 
     const [variantIds, inventoryIds] = await Promise.all([
       this.identifierMapping.batchGetOrCreateInternalIds(
@@ -118,13 +132,8 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
       ),
     ]);
 
-    return stocks.map((stock) => {
-      const quantity = readShoperStockLevel(stock);
-      if (quantity === null) {
-        throw new ShoperNetworkError(
-          `Shoper returned no readable stock level for stock ${stock.stock_id} of product ${externalId}`,
-        );
-      }
+    return stocks.map((stock, index) => {
+      const quantity = levels[index];
       const variantId = variantIds.get(`${stock.stock_id}:${this.connection.id}`);
       const inventoryId = inventoryIds.get(`stock:${stock.stock_id}:${this.connection.id}`);
       if (variantId === undefined || inventoryId === undefined) {
@@ -142,17 +151,42 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
    * precision use `listInventory`.
    */
   async getInventory(productId: string, _locationId?: string): Promise<Inventory> {
-    const rows = await this.listInventory(productId);
-    // Not the neutral not-found: an empty row set means the product resolved but
-    // carries no stock entry, which is an inferred absence, not a deletion.
-    if (rows.length === 0) {
-      throw new ShoperStockNotFoundException(productId, this.connection.id);
-    }
-    return rows[0];
+    // `listInventory` never returns an empty list: it raises the inferred-absence
+    // error itself, so the first row always exists.
+    const [first] = await this.listInventory(productId);
+    return first;
   }
 
   async getAvailableQuantity(productId: string, locationId?: string): Promise<number> {
     return (await this.getInventory(productId, locationId)).available;
+  }
+
+  // ─── Internals ─────────────────────────────────────────────────────────────
+
+  /**
+   * The product's stock rows. Whether a filtered listing of a deleted product
+   * answers an empty list or a 404 is not verified on a live shop, so a 404
+   * here is not trusted as a deletion on its own: the product itself is asked,
+   * and only its answer can become the neutral error. If it still resolves, the
+   * listing's 404 is rethrown untouched.
+   */
+  private async fetchStocksOrClassifyDeletion(
+    externalId: string,
+    productId: string,
+  ): Promise<ShoperStock[]> {
+    try {
+      return await fetchShoperStocks(this.client, externalId, (count) =>
+        this.logger.warn(
+          `Shoper returned ${count} stock row(s) of another product while reading product ` +
+            `${externalId}; dropped (connection: ${this.connection.id})`,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
+        await this.productReader.read(externalId, productId);
+      }
+      throw error;
+    }
   }
 
   // ─── Not supported in this task ────────────────────────────────────────────

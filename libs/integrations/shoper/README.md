@@ -157,13 +157,18 @@ at create and never retro-filled, so an existing connection must be edited.
   ADR-058) and `reserved` is always 0 - Shoper has no reservation concept.
 - `getInventory` returns the FIRST row for a multi-variant product (the WooCommerce contract); use
   `listInventory` for per-variant stock.
-- **Multi-warehouse shops are refused** (`application-config.warehouses_enabled` on): with the module active,
-  `stock` is not known to be the whole pool, and a wrong level would be published to marketplaces. The error is
-  terminal.
-- **An unreadable stock level is an error, never 0** - reading it as zero would zero a live offer.
+- **Multi-warehouse shops are refused** (`application-config.warehouses_enabled` on, or the flag missing or not
+  recognisably off): with the module active, `stock` is not known to be the whole pool, and a wrong level would
+  be published to marketplaces. The error is terminal. It is raised per product, so on such a shop every product
+  in an inventory sweep cycle ends as its own dead job - keep the connection to `ProductMaster` only.
+- **An unreadable stock level is an error, never 0** - reading it as zero would zero a live offer. Retryable.
 - **Deletion** is reported only when Shoper itself says the product is gone (its own 404 envelope), as the
-  neutral `MasterProductNotFoundError`. A product with no stock rows is an inferred absence and stays a
-  retryable platform error.
+  neutral `MasterProductNotFoundError`. The product is only probed when its stock listing comes back empty (or
+  answers a 404), so a normal sweep costs one request per product, not two.
+- **A product with no stock rows is an error from `listInventory` too, never an empty list** - an inferred
+  absence, raised as the retryable `ShoperStockNotFoundException`. The inventory sync prunes on an empty
+  response, which would stale every variant and pause its offers for a product that still exists; every Shoper
+  product carries at least one stock row, so an empty answer is an anomaly.
 - `adjustInventory` is not implemented yet (#3687); `reserveInventory` / `releaseInventory` are deprecated by
   ADR-061 and throw `ShoperNotSupportedException`.
 - `master.inventory.syncAll` walks OL's own product mappings, so run a ProductMaster sync first.

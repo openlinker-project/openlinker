@@ -140,11 +140,23 @@ describe('ShoperShopContextProvider', () => {
       language: '',
       currency: null,
       weightUnit: 'KILOGRAM',
-      warehousesEnabled: false,
+      // Not known to be off, so stock reads refuse rather than guess.
+      warehousesEnabled: true,
     });
   });
 
-  it.each([[true], [1], ['1'], ['true']])(
+  it.each([[false], [0], ['0'], ['false']])(
+    'should read warehouses_enabled=%p as off',
+    async (flag) => {
+      const get = jest
+        .fn()
+        .mockResolvedValue({ status: 200, data: { ...CONFIG, warehouses_enabled: flag } });
+
+      await expect(providerWith(get).get()).resolves.toMatchObject({ warehousesEnabled: false });
+    },
+  );
+
+  it.each([[true], [1], ['1'], ['true'], [null], ['yes']])(
     'should read warehouses_enabled=%p as on',
     async (flag) => {
       const get = jest

@@ -101,9 +101,15 @@ export class ShoperShopContextProvider {
   }
 }
 
-/** Shoper serves flags as JSON booleans, but a `"1"` / `1` must also read as on. */
+/**
+ * Shoper serves the flag as a JSON boolean (`false` on the live shop), but a
+ * `"1"` / `1` must also read as on. Only an explicit "off" reads as off: a
+ * missing or unrecognised value reads as ON, because the flag gates whether a
+ * stock level is safe to publish at all, and refusing is the side that cannot
+ * put a wrong number on a marketplace.
+ */
 function isFlagOn(value: unknown): boolean {
-  return value === true || value === 1 || value === '1' || value === 'true';
+  return !(value === false || value === 0 || value === '0' || value === 'false');
 }
 
 /** A cache entry written by another release must not be trusted blindly. */

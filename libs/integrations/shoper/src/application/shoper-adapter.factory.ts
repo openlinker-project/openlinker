@@ -63,8 +63,11 @@ export class ShoperAdapterFactory {
     });
 
     // ONE product reader for the bag: ProductMaster and InventoryMaster read the
-    // same `GET /products/:id`, and a deleted product must be reported the same
-    // way by whichever of them core reaches it through first.
+    // same `GET /products/:id`, so within one resolution the request is made
+    // once. That saving is per BAG only - `getCapabilityAdapter` builds a fresh
+    // bag on every call, so a product sync and an inventory sync each read the
+    // product themselves. Reporting a deletion identically from both does not
+    // rest on sharing the instance; it rests on both going through this class.
     const productReader = new ShoperProductReader(client, connection.id);
 
     return {
