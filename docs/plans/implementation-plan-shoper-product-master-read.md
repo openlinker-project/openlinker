@@ -15,8 +15,8 @@ Because `getProduct` is the port boundary where a deleted product must become `M
 | Fact | Consequence |
 |---|---|
 | List envelope `{count: "36", pages: 12, page: 1, list: [...]}`; **numbers are strings** | One typed envelope; every numeric field parsed explicitly, never trusted as `number`. |
-| Paging is **page-based** (`page`, `limit`); default order is ascending `product_id` | `listExternalIds({limit, offset})` maps `offset` to a page; a non-page-aligned offset is **refused**, not shifted. |
-| **`limit` max is 50; above it Shoper silently falls back to 10/page** (`limit=51`, `500` -> 10) | The adapter never sends > 50 and refuses a larger request (`exceedsAdapterPageSize`) - a silent clamp would make `readPagedIds` believe a short page is the end of the catalogue. |
+| Paging is **page-based** (`page`, `limit`); default order is ascending `product_id` | `listExternalIds({limit, offset})` is a WINDOW, not a Shoper page: it is covered by pages of 50 and sliced, so any offset is exact. *(Originally planned as "refuse a non-aligned offset"; that wedged the sweeps - see the #3679 review.)* |
+| **`limit` max is 50; above it Shoper silently falls back to 10/page** (`limit=51`, `500` -> 10) | The adapter never SENDS a page above 50. A caller's window above 50 (the sweep default is 100) is composed from several pages, not refused - refusing it made `master.product.syncAll` fail on every tick with default settings. |
 | Bare `order=product_id` sorts **descending**; `order=product_id ASC` ascending | Always send an explicit direction. |
 | `GET /products` rows embed `stock` (the default variant), `options`, `main_image`, `categories`, `tax_id`, `translations` | `getProducts` needs no per-product follow-up call. |
 | `GET /product-stocks?filters[product_id]=93` works and returns that product's variants | `getProductVariants` = one filtered request. |

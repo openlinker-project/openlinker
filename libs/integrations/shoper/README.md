@@ -91,8 +91,8 @@ A passing test does **not** prove every area above was granted; each capability 
   is an error, not "no structure" - only a real `[]` means an empty tree.
   The directory is built once per adapter instance (a promise memo, failures not kept) and `getProduct` /
   `getProductCategories` share one `GET /products/:id`, so resolving categories for many products does not
-  re-read the directory per product. A 404 inside `getProductCategories` stays a plain `ShoperApiError`:
-  deletion is detected at `getProduct`, never as a side effect of a category read.
+  re-read the directory per product. `getProductCategories` reads the product through the same translating
+  read as `getProduct`, so a product Shoper reports gone is the neutral `MasterProductNotFoundError` there too.
 
 - **Variants:** one `product-stocks` row = one `ProductVariant`, keyed by its real `stock_id`. No synthetic
   variant is minted for a simple product - Shoper already gives it a stock row.
@@ -101,14 +101,52 @@ A passing test does **not** prove every area above was granted; each capability 
 - **Images:** only the main image, `https://<host>/userdata/public/gfx/<unic_name>.<extension>`.
 - Writes throw `ShoperNotSupportedException`.
 
-Paging rules the adapter enforces (all observed on a live shop):
+Paging (all observed on a live shop):
 
-- Shoper pages by **page index**; an `offset` that is not a multiple of `limit` is refused, never rounded.
-- **`limit` is capped at 50, and a larger value is silently reduced to 10** by the shop. The adapter refuses
-  anything above 50 rather than sending it, because a silently short page reads as the end of the catalogue.
+- Shoper pages by **page index** and **caps a page at 50 rows; a larger `limit` is silently reduced to 10**.
+- The `{limit, offset}` a caller passes is its own **window** (a sweep's budget, 100 by default, up to 500 and
+  changeable at runtime), not a Shoper page. The adapter covers any window with pages of 50 and slices, so
+  any `limit` up to 1000 and any `offset` is served exactly - nothing is refused and no window is shifted.
+  It never sends a page above 50, and stops only on the shop's own last page, never on a short page.
 - A bare `order=<field>` sorts descending; the adapter always sends an explicit `ASC`.
 - `filters[category_id]` and `filters[code]` are not valid on `products` (the shop answers 404); the
   `categoryIds` and `status` filters are therefore refused rather than ignored.
+
+### Deletion and the catalogue sweeps
+
+- **A deleted product** surfaces from `getProduct` as the neutral `MasterProductNotFoundError`, which core
+  turns into stale variants and (via the stale-variant chain) paused offers. The translation is deliberately
+  narrow: only a `404` carrying Shoper's own `invalid_request` envelope counts (`ShoperApiError.isResourceNotFound`).
+  A bare `404` - a wrong or moved host, a proxy page - stays a plain `ShoperApiError`, because reading it as a
+  deletion would stale the whole catalogue on a configuration error. Shoper answers a wrong *path* with `400`,
+  so a `404` with the envelope really means "no such resource". A product that resolves but has no stock rows
+  is an inferred absence and is not translated.
+  A bare `404` is **retryable**, because it is ambiguous: a proxy or maintenance page clears, a wrong `baseUrl`
+  does not. The latter is stopped at save time by the connection tester and config validator; if one slips
+  through, its jobs end on the ordinary retry ladder instead of staling anything.
+- **The same translation applies to every method that reads the product** (`getProduct`,
+  `getProductCategories`, `readProductTaxRate`) - they share one read, so core reports the deletion whichever it
+  reaches first. The retry classifier agrees with it: a 404 is terminal only when it carries Shoper's envelope;
+  a bare 404 (a proxy or maintenance page) is retried.
+- **What to re-check if Shoper changes**: the safety of `isResourceNotFound` rests on two live observations
+  (SPIKE-3638 M6, re-probed for #3678): a missing resource answers `404` + `{"error":"invalid_request",...}`, and
+  a wrong *path* answers `400`, not `404`. The failure mode of getting it wrong is staling a whole catalogue and
+  pausing live offers, so if Shoper ever changes the error envelope or the status for a missing resource,
+  re-probe `GET /products/999999999`, `GET /products/abc` and `GET /nonexistent/1` first.
+- **Offset paging and a mid-cycle delete.** `listExternalIds` pages by offset over an ascending-id collection,
+  so a delete during a multi-tick cycle shifts later rows left and the cycle can step over one live product for
+  that cycle. That is acceptable only because absence is never a deletion signal: `master.product.reconcile`
+  enumerates OpenLinker's own mappings and re-reads each product, and deletion is concluded solely from
+  Shoper's explicit 404. A skipped product is picked up by the next cycle; it is never staled for being missing.
+- **The sweeps need no Shoper-specific scheduler code.** `master.product.syncAll`, `master.product.reconcile`
+  (the deletion audit) and `master.product.syncDelta` are registered core-side by capability
+  (`CORE_CAPABILITY_TASKS`, `capability: 'ProductMaster'`), so declaring `ProductMaster` is what enrols a
+  connection. They walk the catalogue through `listExternalIds`, which pages in ascending `product_id` order.
+- **No modified-since rung.** Shoper has no bulk "changed since" query - only a per-object
+  `GET /object-mtime/<object>/<id>` (the plural form answers 500) - so `ModifiedProductLister` is not
+  implemented and the delta pass skips Shoper connections. The full pass is the only sweep, from day one.
+- Webhook-driven deletion detection (a `product.deleted` trigger) belongs to the webhook work (#3644); until
+  then the periodic `reconcile` audit is the deletion authority, as for any master without a delete hook.
 
 ## Known gaps
 

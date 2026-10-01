@@ -33,6 +33,19 @@ export class ShoperApiError extends Error {
   isAuthRejection(): boolean {
     return this.statusCode === 401 || this.statusCode === 403;
   }
+
+  /**
+   * True only when SHOPER reported the addressed resource absent (SPIKE-3638
+   * M6): a `404` that carries Shoper's own `invalid_request` envelope. A bare
+   * `404` - an HTML page, an empty body, a proxy in front of a wrong or moved
+   * host - is NOT this, and must never be read as a deletion: that mistake
+   * would stale a whole catalogue and pause live offers on a configuration
+   * error. (Shoper answers a wrong PATH with `400`, not `404`, so a `404` with
+   * the envelope really does mean "no such resource".)
+   */
+  isResourceNotFound(): boolean {
+    return this.statusCode === 404 && this.errorCode === 'invalid_request';
+  }
 }
 
 function buildMessage(statusCode: number, errorCode?: string, errorDescription?: string): string {
