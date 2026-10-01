@@ -16,3 +16,10 @@ export interface ShoperErrorBody {
   readonly error?: string;
   readonly error_description?: string;
 }
+
+/** The slice of `GET /application-config` the adapter reads. */
+export interface ShoperApplicationConfig {
+  readonly default_language_name: string;
+  readonly default_currency_name: string;
+  readonly locale_default_weight: string;
+}
