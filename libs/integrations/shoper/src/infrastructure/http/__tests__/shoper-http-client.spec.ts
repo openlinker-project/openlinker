@@ -39,6 +39,32 @@ describe('ShoperHttpClient', () => {
     );
   });
 
+  it('should percent-encode query keys and values, keeping Shoper bracket keys intact', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
+
+    await build(fetchImpl).get('/product-stocks', {
+      'filters[product_id]': '93',
+      order: 'stock_id ASC',
+      limit: 50,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://xxxxx.shoparena.pl/webapi/rest/product-stocks?filters%5Bproduct_id%5D=93&order=stock_id%20ASC&limit=50',
+      expect.anything(),
+    );
+  });
+
+  it('should not append a query string when there is none', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, {}));
+
+    await build(fetchImpl).get('/products', {});
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://xxxxx.shoparena.pl/webapi/rest/products',
+      expect.anything(),
+    );
+  });
+
   it('should map a 401 to ShoperApiError carrying the shop error code', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(
       jsonResponse(401, {

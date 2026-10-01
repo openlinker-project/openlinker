@@ -2,10 +2,11 @@
 
 OpenLinker adapter for [Shoper](https://www.shoper.pl) (Polish SaaS e-commerce platform), REST API.
 
-**Status: connection skeleton only (#3639).** The plugin registers, tests a connection and validates its
-config and credentials. It declares **no capabilities yet** (`supportedCapabilities: []`); ProductMaster,
-InventoryMaster, OrderProcessorManager, fulfilment writeback and webhooks land in their own epics of the
-"Shoper Integration" milestone (#3640-#3644). Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`.
+**Status:** connection skeleton (#3639) plus the **read side of `ProductMaster`** (#3675): products, variants,
+search and id enumeration. Categories (#3676), tax rate (#3677) and deletion detection (#3678) complete
+ProductMaster; InventoryMaster, OrderProcessorManager, fulfilment writeback and webhooks land in their own
+epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
+and the live findings recorded in `docs/plans/implementation-plan-shoper-product-master-read.md`.
 
 | | |
 |---|---|
@@ -57,8 +58,38 @@ statusy zamówień, klienci, webhooki, dostawy, płatności
 
 A passing test does **not** prove every area above was granted; each capability reports its own missing area.
 
+## ProductMaster (read)
+
+| Port method | Shoper call |
+|---|---|
+| `getProduct` | `GET /products/:id` |
+| `getProducts` / `searchProducts` | `GET /products` (paged; `filters={"product_id":{"in":[...]}}`, `filters={"translations.name":{"like":"%q%"}}`) |
+| `getProductVariants` | `GET /product-stocks?filters[product_id]=:id` (all pages) |
+| `listExternalIds` | `GET /products?order=product_id ASC` (paged) |
+
+- **Variants:** one `product-stocks` row = one `ProductVariant`, keyed by its real `stock_id`. No synthetic
+  variant is minted for a simple product - Shoper already gives it a stock row.
+- **Text** is read from `translations[<shop default language>]` (`application-config.default_language_name`);
+  the translations' own `isdefault` flag reads `"0"` on every language and is not used.
+- **Images:** only the main image, `https://<host>/userdata/public/gfx/<unic_name>.<extension>`.
+- Writes and category reads throw `ShoperNotSupportedException`.
+
+Paging rules the adapter enforces (all observed on a live shop):
+
+- Shoper pages by **page index**; an `offset` that is not a multiple of `limit` is refused, never rounded.
+- **`limit` is capped at 50, and a larger value is silently reduced to 10** by the shop. The adapter refuses
+  anything above 50 rather than sending it, because a silently short page reads as the end of the catalogue.
+- A bare `order=<field>` sorts descending; the adapter always sends an explicit `ASC`.
+- `filters[category_id]` and `filters[code]` are not valid on `products` (the shop answers 404); the
+  `categoryIds` and `status` filters are therefore refused rather than ignored.
+
 ## Known gaps
 
 - **No rate limiting or retries yet.** The real request ceiling is unconfirmed (SPIKE-3638 C6); no
   `defaultRateLimit` is declared. Set `config.rateLimit` on the connection if a shop needs a cap.
 - The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
+- **Multi-variant products are not live-verified**: the trial shop has none, so a variant's `options` are not
+  mapped to `attributes` yet (they stay `null`) rather than guessed at.
+- Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
+  the process time zone would stamp a wrong instant.
+- Only the main image is exposed; the rest need `product-images` (one extra call per product).
