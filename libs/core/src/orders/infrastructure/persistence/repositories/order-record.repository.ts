@@ -56,6 +56,10 @@ import {
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
+import type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+} from '../../../domain/types/order-search-text-reindex.types';
 import {
   AuthorityAttentionCountedReasonValues,
   buildAuthorityAttentionPayload,
@@ -66,6 +70,7 @@ import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
 } from '@openlinker/core/fulfillment-authority';
+import { getEnvBoolean } from '@openlinker/shared/config';
 import { deriveOrderSearchText, normalizeOrderSearchText } from '../../../domain/order-search-text';
 import {
   SalesDocumentAttentionReasonValues,
@@ -1133,6 +1138,77 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const total = Number(raw?.total ?? 0);
     const terminalMarked = Number(raw?.terminal_marked ?? 0);
     return { total, terminalMarked, pending: total - terminalMarked };
+  }
+
+  /**
+   * One keyset page for the `searchText` reindex pass (#3507 G03-14) — see the
+   * port's JSDoc. `getRawMany` over three named columns rather than `getMany`:
+   * the pass needs nothing else, and hydrating full entities would pull every
+   * out-of-band column for a row it may not even rewrite (the #2826
+   * `findNetExcludedOrderCandidatesPage` reasoning). Keyset on the text primary
+   * key, never `OFFSET`, so a concurrent insert cannot shift a page boundary.
+   */
+  async findSearchTextReindexPage(
+    afterInternalOrderId: string | null,
+    limit: number
+  ): Promise<OrderSearchTextReindexRow[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."orderSnapshot"', 'order_snapshot')
+      .addSelect('rec."searchText"', 'search_text')
+      .orderBy('rec."internalOrderId"', 'ASC')
+      .limit(limit);
+
+    if (afterInternalOrderId !== null) {
+      qb.where('rec."internalOrderId" > :afterInternalOrderId', { afterInternalOrderId });
+    }
+
+    const rows = await qb.getRawMany<{
+      internal_order_id: string;
+      order_snapshot: unknown;
+      search_text: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      orderSnapshot:
+        typeof row.order_snapshot === 'object' && row.order_snapshot !== null
+          ? (row.order_snapshot as Record<string, unknown>)
+          : {},
+      searchText: row.search_text ?? '',
+    }));
+  }
+
+  /**
+   * Conditional per-row rewrite for the reindex pass (#3507 G03-14) — see the
+   * port's JSDoc for the `expectedSearchText` guard. One statement per row,
+   * not one `UPDATE ... FROM (VALUES ...)`: the query builder has no
+   * parameterised form of the latter, and a page is bounded by the caller's
+   * budget anyway.
+   *
+   * `updatedAt` is assigned to ITSELF on purpose. A query-builder `update()`
+   * appends `"updatedAt" = CURRENT_TIMESTAMP` for an `@UpdateDateColumn`
+   * unless the column is already in the SET list; naming it with its own value
+   * is how this derived-data repair leaves the row's real timestamp alone.
+   */
+  async rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number> {
+    let rewritten = 0;
+    for (const rewrite of rewrites) {
+      const result = await this.repository
+        .createQueryBuilder()
+        .update(OrderRecordOrmEntity)
+        .set({ searchText: rewrite.searchText, updatedAt: () => '"updatedAt"' })
+        .where('"internalOrderId" = :internalOrderId', {
+          internalOrderId: rewrite.internalOrderId,
+        })
+        .andWhere('"searchText" = :expectedSearchText', {
+          expectedSearchText: rewrite.expectedSearchText,
+        })
+        .execute();
+      rewritten += result.affected ?? 0;
+    }
+    return rewritten;
   }
 
   /**
@@ -2787,6 +2863,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // Serialized explicitly rather than relying on the driver's object
     // handling, so the jsonb column receives a document in every case.
     add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), { cast: '::jsonb' });
+    // #3507 G03-1 — derived from the snapshot written one line up, so it
+    // belongs to the SHARED half: both paths rewrite the snapshot, so both
+    // must rewrite the text, or `ON CONFLICT` keeps the previous buyer's
+    // corpus (and a first INSERT keeps the column default `''`, leaving the
+    // order unsearchable). `toOrm` stamping the entity is not enough on its
+    // own — this statement enumerates its columns, the `buyerTaxId` trap below.
+    add('searchText', entity.searchText ?? '');
     add('recordStatus', entity.recordStatus);
     add('mappingFailureReason', entity.mappingFailureReason);
     add('dispatchByAt', entity.dispatchByAt);
@@ -3239,7 +3322,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // never round-tripped from a prior value: there is no separate writer to
     // forget, because the snapshot it derives from is itself rewritten whole
     // on every ingestion. See `deriveOrderSearchText`'s own docblock.
-    entity.searchText = deriveOrderSearchText(orderRecord.orderSnapshot);
+    //
+    // #3507 G03-14 — the PII mode is read HERE, at the call site, so the
+    // domain function stays pure. `getEnvBoolean('OL_STORE_PII', true)` is the
+    // same flag-and-default `getPiiConfig().storePii` resolves, but without
+    // `getPiiConfig()`'s throw on an unset `OL_PII_HASH_SALT` — that throw is
+    // unrelated to this flag and would fail every order write on an install
+    // that never configured a salt (the `routing-ship-to.types.ts` /
+    // `OrderIngestionService` precedent).
+    entity.searchText = deriveOrderSearchText(orderRecord.orderSnapshot, {
+      storePii: getEnvBoolean('OL_STORE_PII', true),
+    });
     // The five analytics scalars (#1985/#2832) are deliberately NOT mapped here -
     // see the class comment above and `upsertWithLineItems`, their sole writer.
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,

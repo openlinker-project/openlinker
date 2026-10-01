@@ -42,6 +42,10 @@ import type {
   CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
+import type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+} from '../types/order-search-text-reindex.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -972,4 +976,28 @@ export interface OrderRecordRepositoryPort {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<FxRestatementRemainingSummary>;
+
+  /**
+   * One keyset page of `order_records` for the `searchText` reindex pass
+   * (#3507 G03-14): rows with `internalOrderId > afterInternalOrderId` (or from
+   * the start when `null`), ascending, at most `limit`. Narrowed to the three
+   * columns the pass needs — the snapshot to re-derive from and the stored text
+   * to compare against — and NOT filtered on the text: the derivation is
+   * application code, so "does this row disagree" can only be answered after
+   * reading it.
+   */
+  findSearchTextReindexPage(
+    afterInternalOrderId: string | null,
+    limit: number
+  ): Promise<OrderSearchTextReindexRow[]>;
+
+  /**
+   * Conditionally rewrite `searchText` for each entry (#3507 G03-14), guarded
+   * on the row still holding `expectedSearchText` — a concurrent ingestion that
+   * already rewrote it wins. `updatedAt` is deliberately left untouched: the
+   * text is derived data, and bumping the timestamp would reorder every
+   * "recently updated" view by an internal reindex nobody performed. Returns
+   * how many rows were actually rewritten.
+   */
+  rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number>;
 }

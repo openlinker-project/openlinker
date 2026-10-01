@@ -69,7 +69,7 @@ describe('buildOrderExportCsv', () => {
       null,
       '11111111-1111-4111-8111-111111111111',
       null,
-      { orderNumber: 'N1', totals: { total: -5 }, currency: 'PLN' },
+      { orderNumber: 'N1', totals: { total: -5, currency: 'PLN' } },
       [],
       'ready',
       new Date('2026-05-01T10:00:00Z'),
@@ -78,5 +78,26 @@ describe('buildOrderExportCsv', () => {
     const csv = buildOrderExportCsv([order], ['totalAmount']);
     const lines = csv.split('\r\n');
     expect(lines[1]).toBe('-5');
+  });
+
+  it('should fill the Currency column from totals.currency when exporting a production-shaped snapshot', () => {
+    // #3507 G03-11: the column was empty for EVERY order because the
+    // projection read a top-level `currency` no producer writes.
+    const order = new OrderRecord(
+      'ol_order_pln',
+      null,
+      '11111111-1111-4111-8111-111111111111',
+      null,
+      { orderNumber: 'PL-1001', totals: { total: 99.5, currency: 'PLN' }, items: [] },
+      [],
+      'ready',
+      new Date('2026-05-01T10:00:00Z'),
+      new Date('2026-05-01T10:00:00Z'),
+    );
+
+    const lines = buildOrderExportCsv([order], ['orderNumber', 'currency', 'totalAmount']).split('\r\n');
+
+    expect(lines[0]).toBe('﻿Order #;Currency;Total');
+    expect(lines[1]).toBe('PL-1001;PLN;99.5');
   });
 });

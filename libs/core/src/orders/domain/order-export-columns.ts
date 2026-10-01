@@ -14,8 +14,8 @@
  * column id this list does not recognise is silently skipped, exactly as
  * that docblock already prescribes for an unrecognised key on the list side.
  *
- * PII handling mirrors what `deriveOrderSearchText` already documents: with
- * `OL_STORE_PII=false` the snapshot already carries `[REDACTED]` addresses
+ * PII handling: with `OL_STORE_PII=false` a snapshot ingested under that
+ * setting already carries `[REDACTED]` addresses
  * and omits the buyer email outright (`order-address-redaction.ts`,
  * `order-record.service.ts`). This module never writes the literal
  * `[REDACTED]` string into an exported cell — it reads that sentinel back
@@ -119,12 +119,24 @@ function readItems(snapshot: Record<string, unknown>): { count: number; skus: st
   return { count: items.length, skus: skus.join('; ') };
 }
 
+function readNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * The currency lives on `totals` — `OrderTotals.currency` /
+ * `IncomingOrderTotals.currency`, the same path `listDistinctNativeCurrencies`
+ * and the web app read. Reading only a top-level `snapshot.currency`, a key no
+ * producer writes, left the Currency column empty for every order (#3507
+ * G03-11). The top-level key stays as a fallback for a hand-built snapshot
+ * that carries it and nothing else; it never overrides `totals`.
+ */
 function readTotals(snapshot: Record<string, unknown>): { currency: string | null; total: number | null } {
   const totals = snapshot.totals;
-  if (typeof totals !== 'object' || totals === null) return { currency: null, total: null };
-  const t = totals as Record<string, unknown>;
+  const t: Record<string, unknown> =
+    typeof totals === 'object' && totals !== null ? (totals as Record<string, unknown>) : {};
   const total = typeof t.total === 'number' ? t.total : null;
-  const currency = typeof snapshot.currency === 'string' ? snapshot.currency : null;
+  const currency = readNonEmptyString(t.currency) ?? readNonEmptyString(snapshot.currency);
   return { currency, total };
 }
 
