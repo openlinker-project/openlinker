@@ -49,6 +49,13 @@ export type {
   WaybillRelayFailure,
   RecordWaybillRelayFailureInput,
 } from './domain/types/waybill-relay-failure.types';
+// #3506 (G02-7) — the delivered-relay bookkeeping `Shipment.deliveredRelay`
+// carries. The re-drive bounds stay private to the status-sync service.
+export { NO_DELIVERED_RELAY_STATE } from './domain/types/delivered-relay.types';
+export type {
+  DeliveredRelayState,
+  FindDeliveredRelayPendingOptions,
+} from './domain/types/delivered-relay.types';
 
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
