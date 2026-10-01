@@ -336,7 +336,7 @@ export const omsOnboardingCopy = {
         ? 'Nothing is on Fulfilment right now.'
         : `The ${String(count)} ${count === 1 ? 'parcel' : 'parcels'} already at the pack bench stay there. Finish packing them there.`,
     bodyKept:
-      'Sales documents and automations keep running. Your stock setup is kept, so you can turn fulfilment back on with one click.',
+      'Invoices and receipts are still issued automatically, for new orders too. Your automations keep running. Your stock setup is kept, so you can turn fulfilment back on with one click.',
     cancel: 'Keep it on',
     confirm: 'Turn off fulfilment',
     stopping: 'Turning off…',
