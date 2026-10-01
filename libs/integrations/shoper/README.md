@@ -75,7 +75,9 @@ A passing test does **not** prove every area above was granted; each capability 
   can edit, so it is **cross-checked against `value`** (a percentage name must equal `Number(value)`, an
   exemption must carry 0); a row that contradicts itself is `unreadable`, since two disagreeing fields are a
   guess. `oo` is not mapped: no live row has carried it, and an unrecognised name is `unreadable` anyway.
-  No `tax_id` is `not-configured`;
+  No `tax_id` is `not-configured`; so is `tax_id` `"0"`, which is an ASSUMPTION ("no tax group", as in
+  PrestaShop) not verified live - the trial shop only carries real tax ids. It errs towards holding the
+  document rather than issuing one at a rate nobody chose;
   an unknown `tax_id` or unrecognised name is `unreadable` (not persisted); a transport failure throws. There
   is no fallback to the shop default or to 23%. Tax lives on the product (`readsTaxRatePerVariant()` is false)
   and the table is not country-scoped (`countryIso2: null`). Guard-narrowed, not in the manifest - as for the
