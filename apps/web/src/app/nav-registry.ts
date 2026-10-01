@@ -20,7 +20,8 @@ import { mergePluginNavContributions } from '../plugins/merge-nav-contributions'
 import { plugins } from '../plugins';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 import type { Permission } from '../shared/auth/session.types';
-import type { NavGroup, NavRegistryGroup } from './nav-registry.types';
+import type { OmsRoutingState } from '../features/fulfillment-authority';
+import type { LiveNavItem, NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
  * Canonical sidebar composition. The shell consumes whatever this builder
@@ -50,7 +51,15 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // today. There is no `fulfillment:*` permission a reader could go
       // looking for instead. A `viewer` shown this entry would 403 on the
       // first request the screen makes.
-      { to: '/fulfillment', label: 'Fulfilment', requiresPermission: 'orders:write' },
+      //
+      // `requiresOms` (#3505): with routing switched off no fulfilment task is
+      // ever created, so the screen is empty by construction.
+      {
+        to: '/fulfillment',
+        label: 'Fulfilment',
+        requiresPermission: 'orders:write',
+        requiresOms: true,
+      },
       // The bench itself (#2413) had no way in but a typed URL. A packer still
       // reaches it that way — they get no sidebar at all, since `/bench` renders
       // outside `AuthenticatedAppLayout` on purpose — but an admin or operator
@@ -60,8 +69,14 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // reason as the entry above: the bench's own routes are
       // `@Roles('admin', 'operator', 'packer')`, and `ROLE_PERMISSIONS.packer`
       // is `[]`, so no permission can name all three. A `viewer` shown this
-      // entry would 403 on the first request the page makes.
-      { to: '/bench', label: 'Pack bench', requiresPermission: 'orders:write' },
+      // entry would 403 on the first request the page makes. `requiresOms`
+      // (#3505): the bench packs fulfilment tasks, which only routing creates.
+      {
+        to: '/bench',
+        label: 'Pack bench',
+        requiresPermission: 'orders:write',
+        requiresOms: true,
+      },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },
@@ -131,6 +146,44 @@ export interface BuildNavGroupsInput {
    * than every one of them.
    */
   permissions?: readonly Permission[];
+  /**
+   * Whether fulfilment routing is on (#3505), for `requiresOms` items.
+   * Defaults to `unknown`, which hides them — same "not resolved yet sees no
+   * gated item" posture as `permissions`.
+   */
+  omsRouting?: OmsRoutingState;
+}
+
+/**
+ * The `requiresOms` gate (#3505), shared by the sidebar and the command
+ * palette so the two cannot disagree.
+ *
+ * `unreadable` SHOWS the item on purpose: the status read failing says nothing
+ * about whether routing is on, and hiding the entry would cost an operator the
+ * screen for as long as one endpoint is down. `unknown` (not answered yet)
+ * hides it, so a routing-off install never flashes the entry while loading.
+ */
+export function isOmsNavItemVisible(item: LiveNavItem, omsRouting: OmsRoutingState): boolean {
+  if (item.requiresOms !== true) return true;
+  return omsRouting === 'on' || omsRouting === 'unreadable';
+}
+
+/**
+ * Whether this session holds a permission that unlocks any `requiresOms`
+ * item — i.e. whether the routing-state read is worth issuing at all. A
+ * session that could not see those entries anyway (a packer, a viewer) skips
+ * the request rather than making one the API may refuse.
+ */
+export function sessionNeedsOmsRouting(permissions: readonly Permission[] = []): boolean {
+  return BASE_NAV_GROUPS.some(
+    (group) =>
+      group.kind === 'live' &&
+      group.items.some(
+        (item) =>
+          item.requiresOms === true &&
+          (item.requiresPermission === undefined || permissions.includes(item.requiresPermission)),
+      ),
+  );
 }
 
 /**
@@ -152,6 +205,7 @@ export function buildNavGroups({
   isAdmin,
   demoMode,
   permissions = [],
+  omsRouting = 'unknown',
 }: BuildNavGroupsInput): NavGroup[] {
   // `mergePluginNavContributions` deep-clones each live group before mutating,
   // so pushing the readonly BASE group objects by reference is safe.
@@ -176,7 +230,8 @@ export function buildNavGroups({
       const items = group.items.filter(
         (item) =>
           (item.requiresPermission === undefined || permissions.includes(item.requiresPermission)) &&
-          (item.requiresRole === undefined || (item.requiresRole === 'admin' && isAdmin)),
+          (item.requiresRole === undefined || (item.requiresRole === 'admin' && isAdmin)) &&
+          isOmsNavItemVisible(item, omsRouting),
       );
       if (items.length === 0) continue;
       baseGroups.push(items.length === group.items.length ? group : { ...group, items });

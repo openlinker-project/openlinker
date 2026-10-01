@@ -36,7 +36,8 @@ import type { PaletteGroup, PaletteItem } from '../shared/ui/command-palette';
 import { useSession } from '../shared/auth/use-session';
 import { useDemoMode } from '../features/system';
 import { captureDemoEvent } from '../features/demo';
-import { BASE_NAV_GROUPS } from './nav-registry';
+import { useOmsRoutingState } from '../features/fulfillment-authority';
+import { BASE_NAV_GROUPS, isOmsNavItemVisible, sessionNeedsOmsRouting } from './nav-registry';
 import type { LiveNavGroup } from './nav-registry.types';
 
 // ── Recents ──────────────────────────────────────────────────────────
@@ -180,6 +181,10 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
   const syncJobsQuery = useSyncJobsQuery(undefined, { limit: 20 });
   const demoMode = useDemoMode();
   const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
+  // Same `requiresOms` gate as the sidebar (#3505) — and the same cached read.
+  const omsRouting = useOmsRoutingState({
+    enabled: sessionNeedsOmsRouting(session.user?.permissions),
+  });
 
   // ── Navigation source ─────────────────────────────────────────────
 
@@ -201,6 +206,11 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
         ) {
           continue;
         }
+        // …and the sidebar's routing gate, so ⌘K cannot surface an entry the
+        // sidebar hides for a routing-off install.
+        if (!isOmsNavItemVisible(item, omsRouting)) {
+          continue;
+        }
         if (
           searchTerm.length === 0 ||
           item.label.toLowerCase().includes(searchTerm) ||
@@ -217,7 +227,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       }
     }
     return items;
-  }, [searchTerm, handleSelect, demoMode, isAdmin, session.user?.permissions]);
+  }, [searchTerm, handleSelect, demoMode, isAdmin, session.user?.permissions, omsRouting]);
 
   // ── Connection source ─────────────────────────────────────────────
 

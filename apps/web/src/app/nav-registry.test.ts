@@ -7,8 +7,9 @@
  * in demo mode.
  */
 import { describe, expect, it } from 'vitest';
-import { buildNavGroups } from './nav-registry';
+import { buildNavGroups, isOmsNavItemVisible, sessionNeedsOmsRouting } from './nav-registry';
 import type { NavGroup } from './nav-registry.types';
+import type { OmsRoutingState } from '../features/fulfillment-authority';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 
 const byLabel = (groups: NavGroup[], label: string): NavGroup | undefined =>
@@ -85,6 +86,83 @@ describe('buildNavGroups', () => {
       expect(items).toContain('Jobs & Logs');
       expect(items).toContain('Webhooks');
       expect(items).toContain('Cursors');
+    });
+  });
+
+  describe('per-item requiresOms gate (#3505)', () => {
+    const operationsItems = (omsRouting?: OmsRoutingState): string[] => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        permissions: ['orders:read', 'orders:write'],
+        omsRouting,
+      });
+      const operations = byLabel(groups, 'Operations');
+      if (operations?.kind !== 'live') throw new Error('expected a live Operations group');
+      return operations.items.map((i) => i.label);
+    };
+
+    it('should show Fulfilment and Pack bench when routing is on', () => {
+      const items = operationsItems('on');
+      expect(items).toContain('Fulfilment');
+      expect(items).toContain('Pack bench');
+    });
+
+    it('should hide Fulfilment and Pack bench when routing is off', () => {
+      const items = operationsItems('off');
+      expect(items).not.toContain('Fulfilment');
+      expect(items).not.toContain('Pack bench');
+      expect(items).toContain('Orders');
+    });
+
+    it('should hide them while the routing state is unknown, including by default', () => {
+      expect(operationsItems('unknown')).not.toContain('Fulfilment');
+      expect(operationsItems()).not.toContain('Pack bench');
+    });
+
+    it('should show them when the routing state could not be read', () => {
+      const items = operationsItems('unreadable');
+      expect(items).toContain('Fulfilment');
+      expect(items).toContain('Pack bench');
+    });
+
+    it('should still apply the permission gate when routing is on', () => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        permissions: ['orders:read'],
+        omsRouting: 'on',
+      });
+      const operations = byLabel(groups, 'Operations');
+      if (operations?.kind !== 'live') throw new Error('expected a live Operations group');
+      expect(operations.items.map((i) => i.label)).not.toContain('Fulfilment');
+    });
+  });
+
+  describe('isOmsNavItemVisible', () => {
+    it.each<[OmsRoutingState, boolean]>([
+      ['on', true],
+      ['unreadable', true],
+      ['off', false],
+      ['unknown', false],
+    ])('should resolve a requiresOms item to %s → %s', (state, visible) => {
+      expect(isOmsNavItemVisible({ to: '/x', label: 'X', requiresOms: true }, state)).toBe(visible);
+    });
+
+    it('should never hide an item that does not require OMS', () => {
+      expect(isOmsNavItemVisible({ to: '/x', label: 'X' }, 'off')).toBe(true);
+    });
+  });
+
+  describe('sessionNeedsOmsRouting', () => {
+    it('should need the routing state for a session that holds orders:write', () => {
+      expect(sessionNeedsOmsRouting(['orders:read', 'orders:write'])).toBe(true);
+    });
+
+    it('should not need it for a session that cannot see any routing-gated entry', () => {
+      expect(sessionNeedsOmsRouting(['orders:read'])).toBe(false);
+      expect(sessionNeedsOmsRouting(['bench:write'])).toBe(false);
+      expect(sessionNeedsOmsRouting()).toBe(false);
     });
   });
 });
