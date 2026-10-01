@@ -460,7 +460,7 @@ describe('ShipmentStatusSyncService', () => {
       relay.relay.mockResolvedValue(relayResult({ connectionId: PS1, outcome: 'rejected' }));
       shipments.recordDeliveredRelayFailure.mockResolvedValue(DELIVERED_RELAY_MAX_FAILURES);
       const error = jest
-        .spyOn((service as unknown as { logger: { error: () => void } }).logger, 'error')
+        .spyOn((service as unknown as { logger: { error: (message: string) => void } }).logger, 'error')
         .mockImplementation(() => undefined);
 
       await service.sync(CARRIER, { limit: 50 });

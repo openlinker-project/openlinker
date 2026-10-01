@@ -80,6 +80,9 @@ describe('ShipmentCancellationService', () => {
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
+      findDeliveredRelayPending: jest.fn(),
+      markDeliveredRelayed: jest.fn(),
+      recordDeliveredRelayFailure: jest.fn(),
     };
     cancellerAdapter = {
       generateLabel: jest.fn(),
