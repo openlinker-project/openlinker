@@ -44,6 +44,7 @@ export type {
   SyncJob,
   SyncJobRequest,
   SyncJobHandlerResult,
+  SyncJobDeadFailure,
   EnqueueJobResult,
   JobType,
   JobStatus,
