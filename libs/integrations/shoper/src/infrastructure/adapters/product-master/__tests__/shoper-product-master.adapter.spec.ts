@@ -11,6 +11,8 @@ import {
 } from '../../../__tests__/shoper-test-data';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
+import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
+import { isProductTaxRateReader } from '@openlinker/core/products';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
 
 const CONNECTION_ID = 'conn-1';
@@ -22,10 +24,28 @@ interface Harness {
     getExternalIds: jest.Mock;
     batchGetOrCreateInternalIds: jest.Mock;
   };
+  taxTable: { get: jest.Mock };
 }
+
+/** The live trial shop's /taxes table. */
+const TAX_TABLE = new Map(
+  [
+    ['1', '23', '23%'],
+    ['2', '8', '8%'],
+    ['3', '0', '0%'],
+    ['4', '0', 'zw.'],
+    ['5', '0', 'np.'],
+    ['6', '5', '5%'],
+    ['9', '7', 'stawka specjalna'],
+    // Hand-edited / corrupted rows: the label and the value contradict each other.
+    ['10', '8', '23%'],
+    ['11', '23', 'zw.'],
+  ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
+);
 
 function setup(): Harness {
   const get = jest.fn();
+  const taxTable = { get: jest.fn().mockResolvedValue(TAX_TABLE) };
   const mapping = {
     getExternalIds: jest.fn().mockResolvedValue([
       { externalId: '93', connectionId: CONNECTION_ID, platformType: 'shoper', entityType: 'Product' },
@@ -42,9 +62,10 @@ function setup(): Harness {
     { get } as unknown as ShoperHttpClient,
     mapping as unknown as IdentifierMappingPort,
     { get: () => Promise.resolve(MAP_CONTEXT) } as unknown as ShoperShopContextProvider,
+    taxTable as unknown as ShoperTaxTableProvider,
     { id: CONNECTION_ID } as Connection,
   );
-  return { adapter, get, mapping };
+  return { adapter, get, mapping, taxTable };
 }
 
 function respond(get: jest.Mock, routes: Record<string, unknown>): void {
@@ -404,6 +425,117 @@ describe('ShoperProductMasterAdapter', () => {
 
       await expect(adapter.getProductVariants('ol_product_1')).resolves.toEqual([]);
       expect(mapping.batchGetOrCreateInternalIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('readProductTaxRate', () => {
+    it('should be discoverable through the core guard', () => {
+      expect(isProductTaxRateReader(setup().adapter)).toBe(true);
+    });
+
+    it.each([
+      ['1', '23'],
+      ['2', '8'],
+      ['6', '5'],
+      ['3', '0'],
+      ['4', 'zw'],
+      ['5', 'np'],
+    ])('should resolve tax_id %p to code %p', async (taxId, code) => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ tax_id: taxId }) });
+
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).resolves.toEqual({
+        kind: 'resolved',
+        code,
+        countryIso2: null,
+      });
+    });
+
+    it.each([[null], [''], ['0']])(
+      'should report a product with tax_id %p as not configured, never a fallback rate',
+      async (taxId) => {
+        const { adapter, get, taxTable } = setup();
+        respond(get, { '/products/93': buildProduct({ tax_id: taxId }) });
+
+        await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).resolves.toMatchObject({
+          kind: 'unknown',
+          reason: 'not-configured',
+        });
+        expect(taxTable.get).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should report a tax_id missing from the table as unreadable', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ tax_id: '42' }) });
+
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).resolves.toMatchObject({
+        kind: 'unknown',
+        reason: 'unreadable',
+      });
+    });
+
+    it('should report an unrecognised rate name as unreadable, naming it', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ tax_id: '9' }) });
+
+      const result = await adapter.readProductTaxRate({ productId: 'ol_product_1' });
+
+      expect(result).toMatchObject({ kind: 'unknown', reason: 'unreadable' });
+      expect(result.kind === 'unknown' && result.detail).toContain('stawka specjalna');
+    });
+
+    it.each([
+      ['10', '23%', 'carries value 8'],
+      ['11', 'zw.', 'carries value 23'],
+    ])(
+      'should refuse tax_id %p ("%s") whose name contradicts its value, rather than feed a fiscal document',
+      async (taxId, name, detail) => {
+        const { adapter, get } = setup();
+        respond(get, { '/products/93': buildProduct({ tax_id: taxId }) });
+
+        const result = await adapter.readProductTaxRate({ productId: 'ol_product_1' });
+
+        expect(result).toMatchObject({ kind: 'unknown', reason: 'unreadable' });
+        expect(result.kind === 'unknown' && result.detail).toContain(detail);
+        expect(result.kind === 'unknown' && result.detail).toContain(name);
+      },
+    );
+
+    it('should let a transport failure propagate instead of turning it into an answer', async () => {
+      const { adapter, get, taxTable } = setup();
+      respond(get, { '/products/93': buildProduct() });
+      taxTable.get.mockRejectedValue(new Error('taxes 500'));
+
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_1' })).rejects.toThrow(
+        'taxes 500',
+      );
+    });
+
+    it('should share the product read with getProduct and getProductCategories', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [] }),
+        '/categories-tree': [],
+        '/categories': envelope([]),
+      });
+
+      await adapter.getProduct('ol_product_1');
+      await adapter.getProductCategories('ol_product_1');
+      await adapter.readProductTaxRate({ productId: 'ol_product_1' });
+
+      expect(get.mock.calls.filter(([path]) => path === '/products/93')).toHaveLength(1);
+    });
+
+    it('should read the product, not the variant, since tax lives on the product', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      await adapter.readProductTaxRate({ productId: 'ol_product_1', variantId: 'ol_variant_1' });
+
+      expect(adapter.readsTaxRatePerVariant()).toBe(false);
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(get).toHaveBeenCalledWith('/products/93');
     });
   });
 
