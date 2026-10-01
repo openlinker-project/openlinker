@@ -1,0 +1,55 @@
+/**
+ * Shoper Retry Classifier Adapter
+ *
+ * Tells the worker runner which Shoper failures are DETERMINISTIC - the same
+ * input fails the same way every time - so the job goes terminal instead of
+ * burning the whole retry ladder (ADR-007). Without it, every failure
+ * defaults to retryable, and a sweep child for a mis-configured connection
+ * would be retried ten times with backoff to six hours for nothing.
+ *
+ * Non-retryable:
+ *   - `ShoperConfigException` - the connection's config or credentials are
+ *     unusable; only an operator edit changes that.
+ *   - `ShoperNotSupportedException` - a method this integration does not offer.
+ *   - `ShoperNotMappedException` - the internal id has no Shoper id here; the
+ *     same job re-run finds the same gap.
+ *   - `RangeError` - a window or offset the adapter's own sanity bounds reject.
+ *   - `ShoperApiError` 4xx other than 408 and 429 - the shop understood the
+ *     request and refused it (`400` bad request, `401`/`403` credentials or
+ *     scope, `404`, `422`). `401`/`403` are additionally surfaced to the
+ *     operator as `needs_reauth` by the auth-failure classifier.
+ *
+ * Retryable (the default): `ShoperNetworkError`, `408`, `429` and every `5xx`.
+ *
+ * @module libs/integrations/shoper/src/infrastructure/adapters
+ * @implements {RetryClassifierPort}
+ */
+import type { RetryClassifierPort } from '@openlinker/core/sync';
+
+import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
+import { ShoperConfigException } from '../../domain/exceptions/shoper-config.exception';
+import { ShoperNotMappedException } from '../../domain/exceptions/shoper-not-mapped.exception';
+import { ShoperNotSupportedException } from '../../domain/exceptions/shoper-not-supported.exception';
+
+const RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
+
+export class ShoperRetryClassifierAdapter implements RetryClassifierPort {
+  isNonRetryable(cause: unknown): boolean {
+    if (
+      cause instanceof ShoperConfigException ||
+      cause instanceof ShoperNotSupportedException ||
+      cause instanceof ShoperNotMappedException ||
+      cause instanceof RangeError
+    ) {
+      return true;
+    }
+    if (cause instanceof ShoperApiError) {
+      return (
+        cause.statusCode >= 400 &&
+        cause.statusCode < 500 &&
+        !RETRYABLE_CLIENT_ERRORS.has(cause.statusCode)
+      );
+    }
+    return false;
+  }
+}
