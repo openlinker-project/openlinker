@@ -18,7 +18,7 @@ describe('ShoperTaxTableProvider', () => {
     const table = await providerWith(get).get();
 
     expect(table.get('4')?.name).toBe('zw.');
-    expect(get).toHaveBeenCalledWith('/taxes', { limit: 50, page: 1 });
+    expect(get).toHaveBeenCalledWith('/taxes', { order: 'tax_id ASC', limit: 50, page: 1 });
   });
 
   it('should request the table once for many callers', async () => {

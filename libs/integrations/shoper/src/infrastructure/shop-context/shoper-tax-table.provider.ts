@@ -38,6 +38,9 @@ export class ShoperTaxTableProvider {
       const result = await fetchShoperPage<ShoperTax>(this.client, '/taxes', {
         page,
         limit: SHOPER_MAX_PAGE_SIZE,
+        // Explicit, like every other read in the plugin: a bare `order=<field>`
+        // sorts DESCENDING on Shoper, and an unordered paged read is not stable.
+        query: { order: 'tax_id ASC' },
       });
       for (const row of result.items) {
         table.set(String(row.tax_id), row);

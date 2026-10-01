@@ -37,6 +37,9 @@ const TAX_TABLE = new Map(
     ['5', '0', 'np.'],
     ['6', '5', '5%'],
     ['9', '7', 'stawka specjalna'],
+    // Hand-edited / corrupted rows: the label and the value contradict each other.
+    ['10', '8', '23%'],
+    ['11', '23', 'zw.'],
   ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
 );
 
@@ -481,6 +484,23 @@ describe('ShoperProductMasterAdapter', () => {
       expect(result).toMatchObject({ kind: 'unknown', reason: 'unreadable' });
       expect(result.kind === 'unknown' && result.detail).toContain('stawka specjalna');
     });
+
+    it.each([
+      ['10', '23%', 'carries value 8'],
+      ['11', 'zw.', 'carries value 23'],
+    ])(
+      'should refuse tax_id %p ("%s") whose name contradicts its value, rather than feed a fiscal document',
+      async (taxId, name, detail) => {
+        const { adapter, get } = setup();
+        respond(get, { '/products/93': buildProduct({ tax_id: taxId }) });
+
+        const result = await adapter.readProductTaxRate({ productId: 'ol_product_1' });
+
+        expect(result).toMatchObject({ kind: 'unknown', reason: 'unreadable' });
+        expect(result.kind === 'unknown' && result.detail).toContain(detail);
+        expect(result.kind === 'unknown' && result.detail).toContain(name);
+      },
+    );
 
     it('should let a transport failure propagate instead of turning it into an answer', async () => {
       const { adapter, get, taxTable } = setup();

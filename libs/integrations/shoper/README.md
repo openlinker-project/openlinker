@@ -70,8 +70,12 @@ A passing test does **not** prove every area above was granted; each capability 
 | `getProductCategories` | `GET /products/:id` -> `categories` ids resolved through `getCategories` |
 | `readProductTaxRate` (`ProductTaxRateReader`) | `GET /products/:id` -> `tax_id` -> `GET /taxes` row (table read once per adapter) |
 
-- **Tax rate** (ADR-063) is read by row NAME, never `value`: `0%`, `zw.` and `np.` all carry `value: "0"`.
-  `23%`->`23`, `8%`->`8`, `5%`->`5`, `0%`->`0`, `zw.`->`zw`, `np.`->`np`. No `tax_id` is `not-configured`;
+- **Tax rate** (ADR-063) is read by row NAME, never `value` alone: `0%`, `zw.` and `np.` all carry `value: "0"`.
+  `23%`->`23`, `8%`->`8`, `5%`->`5`, `0%`->`0`, `zw.`->`zw`, `np.`->`np`. The name is a free label a merchant
+  can edit, so it is **cross-checked against `value`** (a percentage name must equal `Number(value)`, an
+  exemption must carry 0); a row that contradicts itself is `unreadable`, since two disagreeing fields are a
+  guess. `oo` is not mapped: no live row has carried it, and an unrecognised name is `unreadable` anyway.
+  No `tax_id` is `not-configured`;
   an unknown `tax_id` or unrecognised name is `unreadable` (not persisted); a transport failure throws. There
   is no fallback to the shop default or to 23%. Tax lives on the product (`readsTaxRatePerVariant()` is false)
   and the table is not country-scoped (`countryIso2: null`). Guard-narrowed, not in the manifest - as for the

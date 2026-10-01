@@ -55,7 +55,7 @@ import type {
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
-import { mapShoperTaxName } from '../../mappers/shoper-tax-rate.mapper';
+import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
 import {
@@ -180,8 +180,9 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
    *
    * Never guesses: no fallback to the shop default tax or to 23%. A missing
    * `tax_id` is the shop's answer (`not-configured`, persisted, fixed in the
-   * shop); a `tax_id` absent from `/taxes` or a row name this build does not
-   * recognise established nothing (`unreadable`, not persisted). Transport
+   * shop); a `tax_id` absent from `/taxes`, a row name this build does not
+   * recognise, or a row whose name and `value` contradict each other
+   * established nothing (`unreadable`, not persisted). Transport
    * failures propagate - turning one into an answer would let a single 500
    * during a sweep mark products rate-less.
    */
@@ -207,16 +208,14 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       };
     }
 
-    const code = mapShoperTaxName(row.name);
-    if (code === null) {
-      return {
-        kind: 'unknown',
-        reason: 'unreadable',
-        detail: `Shoper tax "${row.name}" is not a recognised rate`,
-      };
+    // The name alone is not trusted: it is a label a merchant can edit, and the
+    // result feeds a fiscal document, so `value` must agree with it.
+    const rate = mapShoperTaxRow(row);
+    if (!rate.ok) {
+      return { kind: 'unknown', reason: 'unreadable', detail: rate.detail };
     }
 
-    return { kind: 'resolved', code, countryIso2: null };
+    return { kind: 'resolved', code: rate.code, countryIso2: null };
   }
 
   readsTaxRatePerVariant(): boolean {
