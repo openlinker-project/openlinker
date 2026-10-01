@@ -21,8 +21,14 @@
  *   - `ShoperApiError` 404 ONLY when it carries Shoper's own error envelope
  *     (`isResourceNotFound`): the shop said the resource is not there.
  *
- * Retryable (the default): `ShoperNetworkError`, a BARE 404 (proxy or
- * maintenance page, a host that moved), `408`, `429` and every `5xx`.
+ * Retryable (the default): `ShoperNetworkError`, a BARE 404, `408`, `429` and
+ * every `5xx`. A bare 404 is retryable because it is ambiguous, not because it
+ * is known to clear: a proxy or maintenance page does, a wrong `baseUrl` does
+ * NOT. The latter is stopped earlier - the connection tester and the config
+ * shape validator reject it at save time - so what reaches here is mostly the
+ * transient kind. If a bad host does slip through, each job still ends on the
+ * ordinary retry ladder (`maxAttempts`, then dead) rather than staling the
+ * catalogue, which is the failure this classification exists to avoid.
  *
  * @module libs/integrations/shoper/src/infrastructure/adapters
  * @implements {RetryClassifierPort}

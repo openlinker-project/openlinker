@@ -88,8 +88,8 @@ A passing test does **not** prove every area above was granted; each capability 
   is an error, not "no structure" - only a real `[]` means an empty tree.
   The directory is built once per adapter instance (a promise memo, failures not kept) and `getProduct` /
   `getProductCategories` share one `GET /products/:id`, so resolving categories for many products does not
-  re-read the directory per product. A 404 inside `getProductCategories` stays a plain `ShoperApiError`:
-  deletion is detected at `getProduct`, never as a side effect of a category read.
+  re-read the directory per product. `getProductCategories` reads the product through the same translating
+  read as `getProduct`, so a product Shoper reports gone is the neutral `MasterProductNotFoundError` there too.
 
 - **Variants:** one `product-stocks` row = one `ProductVariant`, keyed by its real `stock_id`. No synthetic
   variant is minted for a simple product - Shoper already gives it a stock row.
@@ -118,6 +118,9 @@ Paging (all observed on a live shop):
   deletion would stale the whole catalogue on a configuration error. Shoper answers a wrong *path* with `400`,
   so a `404` with the envelope really means "no such resource". A product that resolves but has no stock rows
   is an inferred absence and is not translated.
+  A bare `404` is **retryable**, because it is ambiguous: a proxy or maintenance page clears, a wrong `baseUrl`
+  does not. The latter is stopped at save time by the connection tester and config validator; if one slips
+  through, its jobs end on the ordinary retry ladder instead of staling anything.
 - **The same translation applies to every method that reads the product** (`getProduct`,
   `getProductCategories`, `readProductTaxRate`) - they share one read, so core reports the deletion whichever it
   reaches first. The retry classifier agrees with it: a 404 is terminal only when it carries Shoper's envelope;
