@@ -9,8 +9,9 @@
  * participant of the order — the source marketplace included — through the
  * single role-agnostic `OrderStatusWriteback` lifecycle relay (#1168 / ADR-027).
  * The same relay fires a `delivered` event on the delivered transition
- * (#3526) — see `relayDeliveredToParticipants` for why that one needs no
- * dedicated claim column the way the waybill relay's `waybillRelayedAt` does.
+ * (#3526), and since #3506 (G02-7) a `delivered` relay that did not land is
+ * RE-DRIVEN on later ticks — see `relayDeliveredToParticipants` and
+ * `redriveOwedDeliveredRelays`.
  *
  * Mirrors `OfferStatusSyncService` (#816): the service returns scan stats; the
  * caller (worker handler) advances the persisted `connection_cursors` offset.
@@ -62,9 +63,13 @@ import {
 import type { IShipmentStatusSyncService } from '../interfaces/shipment-status-sync.service.interface';
 import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
 import { resolveCarrierHint } from './resolve-carrier-hint';
-import type {
-  ShipmentStatusSyncOptions,
-  ShipmentStatusSyncResult,
+import {
+  DELIVERED_RELAY_MAX_AGE_MS,
+  DELIVERED_RELAY_MAX_FAILURES,
+  DELIVERED_RELAY_REDRIVE_LIMIT,
+  DELIVERED_RELAY_RETRY_AFTER_MS,
+  type ShipmentStatusSyncOptions,
+  type ShipmentStatusSyncResult,
 } from '../types/shipment-status-sync.types';
 import type { Shipment } from '../../domain/entities/shipment.entity';
 import { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
@@ -104,6 +109,17 @@ const PUSH_GATE_OPEN_FROM: readonly ShipmentStatus[] = [
   SHIPMENT_STATUS.Dispatched,
   SHIPMENT_STATUS.InTransit,
 ];
+
+/**
+ * What one `delivered` relay attempt achieved (#3506, G02-7).
+ *
+ * - `relayed` — every participant applied it or STRUCTURALLY declined it
+ *   (no capability, a platform with no delivered state): nothing to retry.
+ * - `failed` — a participant rejected it, could not be constructed
+ *   (`adapter-unresolved`, transient by #1947's classification), or the relay
+ *   threw before reaching anyone. Retried on a later tick.
+ */
+type DeliveredRelayOutcome = 'relayed' | 'failed';
 
 @Injectable()
 export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
@@ -186,6 +202,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     const consumed = offset + page.items.length;
     const nextOffset = consumed >= page.total ? 0 : consumed;
 
+    const redrive = await this.redriveOwedDeliveredRelays(connectionId);
+
     return {
       scanned: page.items.length,
       updated,
@@ -193,7 +211,65 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       failed,
       total: page.total,
       nextOffset,
+      deliveredRelaysRetried: redrive.retried,
+      deliveredRelaysRecovered: redrive.recovered,
     };
+  }
+
+  /**
+   * Re-drive the `delivered` relay for this connection's delivered shipments
+   * that still owe it (#3506, G02-7) — the bounded second pass after the scan.
+   *
+   * The scan cannot do this itself: `SCAN_STATUSES` excludes `delivered`, so a
+   * shipment whose relay failed on the tick that discovered the transition is
+   * never visited again. This pass reads them back by predicate instead
+   * (frontier-as-query: a stamped row leaves the set, so there is no cursor),
+   * oldest first, bounded three ways:
+   *
+   * - `DELIVERED_RELAY_REDRIVE_LIMIT` rows per call;
+   * - `DELIVERED_RELAY_RETRY_AFTER_MS` since the last failure, which also stops
+   *   this pass re-driving a row the scan above failed on a moment ago;
+   * - `DELIVERED_RELAY_MAX_FAILURES` attempts, and deliveries older than
+   *   `DELIVERED_RELAY_MAX_AGE_MS`, after which the row is given up on and
+   *   says so once in the log.
+   *
+   * A repeat is safe because a `delivered` status write is idempotent on every
+   * shipped `OrderStatusWriteback` adapter (see `relayDeliveredToParticipants`).
+   *
+   * Never throws: this pass is bookkeeping on top of a scan that has already
+   * persisted its own results, and a failed read must not fail that scan.
+   */
+  private async redriveOwedDeliveredRelays(
+    connectionId: string,
+  ): Promise<{ retried: number; recovered: number }> {
+    let owed: readonly Shipment[];
+    const now = Date.now();
+    try {
+      owed = await this.shipments.findDeliveredRelayPending(connectionId, {
+        limit: DELIVERED_RELAY_REDRIVE_LIMIT,
+        maxFailures: DELIVERED_RELAY_MAX_FAILURES,
+        deliveredSince: new Date(now - DELIVERED_RELAY_MAX_AGE_MS),
+        lastFailureBefore: new Date(now - DELIVERED_RELAY_RETRY_AFTER_MS),
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the delivered shipments still owed a delivered relay (connection ${connectionId}): ${this.message(error)}`,
+      );
+      return { retried: 0, recovered: 0 };
+    }
+
+    let recovered = 0;
+    // Sequential, like the scan: each attempt fans out to every participant.
+    for (const shipment of owed) {
+      const outcome = await this.relayDeliveredToParticipants(
+        shipment,
+        shipment.deliveredAt ?? undefined,
+      );
+      if (outcome === 'relayed') {
+        recovered += 1;
+      }
+    }
+    return { retried: owed.length, recovered };
   }
 
   async syncOneByProviderShipmentId(
@@ -279,7 +355,8 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       // The SNAPSHOT's instant, never `shipment.deliveredAt` — `shipment` is
       // the pre-patch row this tick loaded, so that field is still `null`
       // here; the carrier's own instant is what `patch.deliveredAt` above was
-      // just set from.
+      // just set from. The outcome is recorded on the row inside the call, so
+      // a failure here is re-driven by `redriveOwedDeliveredRelays` later.
       await this.relayDeliveredToParticipants(shipment, snapshot.deliveredAt);
     }
 
@@ -503,59 +580,102 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
   }
 
   /**
-   * Relay `delivered` to every participant of the order (#3526).
+   * Relay `delivered` to every participant of the order (#3526), and record
+   * whether it landed (#3506, G02-7).
    *
-   * BEST-EFFORT and never throws — a failed or partial relay costs nothing
-   * worse than the next carrier poll finding the SAME transition again if it
-   * somehow re-observes it (see below), unlike the waybill relay above, whose
-   * far-side call is a NON-IDEMPOTENT create (`POST /shipments`) and therefore
-   * needs `waybillRelayedAt`'s dedicated claim/release cycle. Setting a
-   * platform's own delivered-equivalent status is idempotent on every shipped
-   * `OrderStatusWriteback` adapter (writing a status a participant already
-   * holds is a no-op there), so this carries no comparable claim column.
+   * No claim/release cycle the way the waybill relay has one: that relay's
+   * far-side call is a NON-IDEMPOTENT create (`POST /shipments`), whereas
+   * setting a platform's own delivered-equivalent status is idempotent on every
+   * shipped `OrderStatusWriteback` adapter (writing a status a participant
+   * already holds is a no-op there). So two callers racing on one shipment (a
+   * poll tick and a carrier webhook both reading the pre-patch row) cost at
+   * most a duplicate no-op write, never a duplicate physical action — and the
+   * same property is what makes re-driving a failed relay safe.
    *
-   * "At most once per shipment" in the ordinary case is a CONSEQUENCE of the
-   * caller's own guard, not a claim this method makes for itself: the caller
-   * fires this only on `snapshot.status !== shipment.status`, and once the
-   * persisted row reads `delivered`, `SCAN_STATUSES` excludes it from every
-   * later poll tick while `syncOneByProviderShipmentId`'s own comparison
-   * refuses to re-patch an already-delivered row — so a REDELIVERED carrier
-   * webhook for an already-delivered shipment never reaches this method a
-   * second time.
+   * What it does carry is BOOKKEEPING: `deliveredRelayedAt` is stamped once the
+   * relay reached every participant that could take it, and a failure bumps
+   * `deliveredRelayFailureCount`. Until #3506 a rejection was only logged, and
+   * since `SCAN_STATUSES` excludes `delivered` the row was never visited again —
+   * a PrestaShop destination that rejected the write (G02-7: no resolvable
+   * "delivered" state) stayed "Shipped" until somebody reset the database.
    *
-   * Accepted, narrow limitation, stated rather than hidden: two callers racing
-   * on the SAME shipment (a poll tick and a concurrent webhook, both reading
-   * the pre-patch row before either persists) could both observe the
-   * transition and both relay once. Bounded by the idempotency argument
-   * above — the operator-visible cost is at most a duplicate no-op status
-   * write on the far side, never a duplicate physical action.
+   * On the transition path this runs BEFORE the status patch is written, so the
+   * stamp lands first and a relay that succeeds first time never becomes a
+   * re-drive candidate.
+   *
+   * Never throws: neither a relay failure nor a bookkeeping failure may abort
+   * `buildPatchAndMaybePush`, which would discard the whole patch — terminal
+   * status, deliveredAt, carrier backfill included.
    */
   private async relayDeliveredToParticipants(
     shipment: Shipment,
     deliveredAt: Date | undefined,
-  ): Promise<void> {
+  ): Promise<DeliveredRelayOutcome> {
+    let outcome: DeliveredRelayOutcome;
     try {
       const result = await this.orderLifecycleRelay.relay({
         internalOrderId: shipment.orderId,
         originConnectionId: shipment.connectionId,
         event: { type: 'delivered', deliveredAt },
       });
-      for (const target of result.targets) {
-        if (target.outcome === 'rejected') {
-          this.logger.warn(
-            `Delivered relay to ${target.connectionId} failed for shipment ${shipment.id}` +
-              `${target.detail ? `: ${target.detail}` : ''}`,
-          );
-        }
+      // The same transient/structural split as the waybill relay (#1947): a
+      // participant we could not even construct an adapter for is a failure to
+      // retry, a participant with no delivered state is a decline to accept.
+      const transientlyUnreached = result.targets.filter(
+        (t) =>
+          t.outcome === 'rejected' ||
+          (t.outcome === 'unsupported' && t.unsupportedReason === 'adapter-unresolved'),
+      );
+      for (const target of transientlyUnreached) {
+        this.logger.warn(
+          `Delivered relay to ${target.connectionId} failed for shipment ${shipment.id} ` +
+            `(${target.outcome}${target.unsupportedReason ? `/${target.unsupportedReason}` : ''})` +
+            `${target.detail ? `: ${target.detail}` : ''}`,
+        );
       }
+      outcome = transientlyUnreached.length > 0 ? 'failed' : 'relayed';
     } catch (error) {
       // The relay reports per-target outcomes rather than throwing, but it CAN
       // throw before its per-target loop (identifier resolution) — the same
-      // shape `relayWaybillToParticipants` catches. Swallowed here rather than
-      // aborting `buildPatchAndMaybePush`, which would discard the whole
-      // patch — terminal status, deliveredAt, carrier backfill included.
+      // shape `relayWaybillToParticipants` catches.
       this.logger.warn(
         `Delivered relay threw for shipment ${shipment.id} (order ${shipment.orderId}): ${this.message(error)}`,
+      );
+      outcome = 'failed';
+    }
+
+    await this.recordDeliveredRelayOutcome(shipment.id, outcome);
+    return outcome;
+  }
+
+  /**
+   * Persist a delivered-relay outcome. BEST-EFFORT: a stamp that fails to
+   * write leaves the row owed, which costs one idempotent re-drive; a failure
+   * count that fails to write costs one retry beyond the bound. Neither is
+   * worth failing the poll over.
+   */
+  private async recordDeliveredRelayOutcome(
+    shipmentId: string,
+    outcome: DeliveredRelayOutcome,
+  ): Promise<void> {
+    const at = new Date();
+    try {
+      if (outcome === 'relayed') {
+        await this.shipments.markDeliveredRelayed(shipmentId, at);
+        return;
+      }
+      const failures = await this.shipments.recordDeliveredRelayFailure(shipmentId, at);
+      if (failures >= DELIVERED_RELAY_MAX_FAILURES) {
+        // Logged once: the row leaves the re-drive frontier at this count.
+        this.logger.error(
+          `delivered_relay_given_up: shipment ${shipmentId} failed its delivered relay ` +
+            `${String(failures)} times and will not be retried; the order's participants may ` +
+            'still show it as shipped',
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not record the delivered-relay outcome (${outcome}) for shipment ${shipmentId}: ${this.message(error)}`,
       );
     }
   }

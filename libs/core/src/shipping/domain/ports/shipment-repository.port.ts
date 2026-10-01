@@ -16,6 +16,7 @@
 
 import type { Shipment } from '../entities/shipment.entity';
 import type { ShipmentDirection } from '../types/shipment-direction.types';
+import type { FindDeliveredRelayPendingOptions } from '../types/delivered-relay.types';
 import type {
   PaginatedShipments,
   ShipmentFilters,
@@ -267,4 +268,38 @@ export interface ShipmentRepositoryPort {
    * the marketplace, which is the defect being fixed.
    */
   clearWaybillRelayFailures(id: string): Promise<void>;
+
+  /**
+   * One page of this connection's OUTBOUND, provider-backed (non-branch-1)
+   * `delivered` shipments whose
+   * `delivered` lifecycle relay is still owed (#3506, G02-7): no
+   * `deliveredRelayedAt`, fewer than `maxFailures` failed attempts, delivered
+   * (or, lacking a carrier instant, created) at or after `deliveredSince`, and
+   * no failure since `lastFailureBefore`. Oldest first, capped at `limit`.
+   *
+   * Frontier-as-query, like {@link listDispatchedAwaitingReservationConsume}:
+   * a stamped row leaves the set, so the predicate is the cursor and an offset
+   * would step over rows.
+   */
+  findDeliveredRelayPending(
+    connectionId: string,
+    options: FindDeliveredRelayPendingOptions,
+  ): Promise<readonly Shipment[]>;
+
+  /**
+   * Stamp `deliveredRelayedAt`, only if it is still NULL (#3506). Monotone, so
+   * two racing relays both reporting success stamp once.
+   *
+   * @returns whether THIS call stamped it.
+   */
+  markDeliveredRelayed(id: string, at: Date): Promise<boolean>;
+
+  /**
+   * Count one failed `delivered` relay attempt (#3506): increments
+   * `deliveredRelayFailureCount` and sets `deliveredRelayLastFailureAt`, in one
+   * statement, only while the relay is still owed.
+   *
+   * @returns the count after the increment, or 0 when no owed row matched.
+   */
+  recordDeliveredRelayFailure(id: string, at: Date): Promise<number>;
 }
