@@ -6,7 +6,6 @@
  * `features/sales-documents/api|hooks|lib|components` are banned by ESLint
  * for cross-feature consumers (#609).
  */
-export { useUpdateSalesDocumentMutation } from './hooks/use-update-sales-document-mutation';
 export { SalesDocumentsPanel } from './components/sales-documents-panel';
 export { SalesDocumentsTile } from './components/sales-documents-tile';
 export { SalesDocumentRuleEnginePanel } from './components/sales-document-rule-engine-panel';
@@ -53,7 +52,6 @@ export type {
 } from './lib/resolve-sales-document-record-word';
 
 // #3307 — the merged, keyset-paginated /sales-documents list (#3306).
-export { useSalesDocumentCountriesQuery } from './hooks/use-sales-document-countries-query';
 export { useSalesDocumentsListQuery } from './hooks/use-sales-documents-list-query';
 export { SalesDocumentListCell } from './components/sales-document-list-cell';
 export type {

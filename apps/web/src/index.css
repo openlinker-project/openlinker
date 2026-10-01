@@ -27754,9 +27754,9 @@ legend.analytics-settings-dialog__label {
 }
 /* The global `button` rule paints every button orange, fixes its height at 2rem
    and gives it an orange hover; a step in the list is none of that. */
-.setup-stepper__button,
-.setup-stepper__button:hover,
-.setup-stepper__button:active {
+.setup-stepper--vertical .setup-stepper__button,
+.setup-stepper--vertical .setup-stepper__button:hover,
+.setup-stepper--vertical .setup-stepper__button:active {
   height: auto;
   min-height: 0;
   background: none;
@@ -28015,7 +28015,7 @@ legend.analytics-settings-dialog__label {
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 800px) {
   .setup-stepper--vertical { margin: 0; position: sticky; top: var(--space-6); }
   .setup-stepper--vertical .setup-stepper__list {
     flex-direction: column;

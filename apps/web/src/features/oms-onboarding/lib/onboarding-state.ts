@@ -216,5 +216,5 @@ export function initialPosition(
   step1Done: boolean
 ): { view: OnboardingView; step: number } {
   if (live || paused) return { view: 'status', step: TURN_ON_STEP };
-  return { view: 'wizard', step: step1Done ? 2 : 1 };
+  return { view: 'wizard', step: step1Done ? WIZARD_STEPS.salesDocuments : WIZARD_STEPS.productMaster };
 }
