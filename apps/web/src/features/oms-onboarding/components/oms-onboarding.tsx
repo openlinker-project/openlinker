@@ -339,13 +339,21 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
               masters,
             });
           }}
-          onContinue={() => completeStep(1)}
+          onContinue={() => completeStep(WIZARD_STEPS.productMaster)}
         />
       ) : step === WIZARD_STEPS.salesDocuments ? (
         <StepSalesDocuments
           connections={props.connections}
+          skipped={setup?.states.salesDocuments === 'skipped'}
+          canWrite={canWrite && packingConnection !== null}
+          demoReadOnly={write.demoReadOnly}
+          saving={setStepSkipped.isPending}
           onBack={() => goToStep(WIZARD_STEPS.productMaster)}
           onContinue={() => completeStep(WIZARD_STEPS.salesDocuments)}
+          onSetSkipped={(skipped) => {
+            if (packingConnection === null) return;
+            setStepSkipped.mutate({ packingConnectionId: packingConnection.id, step: 'salesDocuments', skipped });
+          }}
         />
       ) : step === WIZARD_STEPS.packers ? (
         <StepPackers

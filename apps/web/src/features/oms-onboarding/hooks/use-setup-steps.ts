@@ -5,15 +5,14 @@
  * nothing here stores whether they are done: each is asked of the place that
  * owns it. Only "not needed" is ours, kept on the OMS connection's config.
  *
- * Admin-only by construction: the document-routing read is `@Roles('admin')`,
- * so the queries are not sent for anyone else and the hook reports `null`,
- * which the page renders as the setup it always showed.
+ * Admin-only: the automation summary is gated by `enabled` and the hook reports
+ * `null` for anyone else, which the page renders as the setup it always showed.
+ * The who-decides read is open to read-only roles (#2353) and is not gated.
  *
  * @module features/oms-onboarding/hooks
  */
 import { useAutomationSummaryQuery } from '../../automation';
 import { useWhoDecidesStatusQuery } from '../../fulfillment-authority';
-import { useSalesDocumentCountriesQuery } from '../../sales-documents';
 import type { Connection } from '../../connections';
 import { deriveSalesDocumentRows } from '../../sales-documents';
 import {
@@ -35,23 +34,19 @@ export function useSetupSteps(
   packingConnection: Connection | null,
   connections: readonly Connection[]
 ): SetupStepsView | null {
-  const countries = useSalesDocumentCountriesQuery({ enabled });
   const automations = useAutomationSummaryQuery({ enabled });
   const whoDecides = useWhoDecidesStatusQuery();
 
   if (!enabled || packingConnection === null) return null;
   // A read still in flight is not an answer: waiting avoids a flash of
   // "partially set up" on a setup that is in fact complete.
-  if (countries.isLoading || automations.isLoading || whoDecides.isLoading) return null;
+  if (automations.isLoading || whoDecides.isLoading) return null;
 
   const skipped = readSetupSkipped(packingConnection.config);
 
-  // Done only when documents are issued automatically: the OMS setup does not
-  // count a manual trigger as done, since nothing would issue without someone
-  // asking. (Country routing is read too, but only to know the read worked.)
-  const salesDocumentsDone = countries.data
-    ? hasAutomaticDocumentIssuing(deriveSalesDocumentRows(connections))
-    : null;
+  // Done only when documents are issued automatically: a manual trigger issues
+  // nothing unless someone asks.
+  const salesDocumentsDone = hasAutomaticDocumentIssuing(deriveSalesDocumentRows(connections));
 
   const automationsDone =
     automations.data === undefined || automations.data.envelopeUnreadable
