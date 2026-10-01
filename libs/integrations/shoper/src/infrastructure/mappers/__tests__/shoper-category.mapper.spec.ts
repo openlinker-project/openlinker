@@ -65,14 +65,40 @@ describe('joinShoperCategories', () => {
     expect(categories[0].active).toBe(false);
   });
 
-  it('should use the default language and fall back when it has no name', () => {
+  it('should use the default language and fall back to another language that has a name', () => {
     expect(joinShoperCategories([category('38', 'Zestawy')], LIVE_TREE, 'en_US').categories[0].name).toBe(
       'Zestawy-en',
     );
-    expect(joinShoperCategories([category('38', null)], LIVE_TREE, 'pl_PL').categories[0].name).toBe('-en');
-    expect(
-      joinShoperCategories([{ category_id: '38', translations: {} }], LIVE_TREE, 'pl_PL').categories[0].name,
-    ).toBe('category-38');
+    const onlyEnglish: ShoperCategory = {
+      category_id: '38',
+      translations: { pl_PL: { name: '', active: '1' }, en_US: { name: 'Sets', active: '1' } },
+    };
+    expect(joinShoperCategories([onlyEnglish], LIVE_TREE, 'pl_PL').categories[0].name).toBe('Sets');
+  });
+
+  it.each([
+    ['no translations at all', { category_id: '38', translations: {} }],
+    ['only blank names', { category_id: '38', translations: { pl_PL: { name: '  ' }, en_US: { name: null } } }],
+  ])('should skip a category with %s instead of inventing a label, and report it', (_label, raw) => {
+    const { categories, unnamedIds } = joinShoperCategories(
+      [raw as ShoperCategory, category('39', 'Talerze')],
+      LIVE_TREE,
+      'pl_PL',
+    );
+
+    expect(categories.map((c) => c.id)).toEqual(['39']);
+    expect(unnamedIds).toEqual(['38']);
+    expect(JSON.stringify(categories)).not.toContain('category-');
+  });
+
+  it('should not also report a nameless listed category as a tree node without a record', () => {
+    const { unnamedTreeIds } = joinShoperCategories(
+      [{ category_id: '38', translations: {} }],
+      [{ id: 38, children: [] }],
+      'pl_PL',
+    );
+
+    expect(unnamedTreeIds).toEqual([]);
   });
 
   it('should keep a listed category missing from the tree, unplaced, and report it', () => {

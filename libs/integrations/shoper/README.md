@@ -71,7 +71,13 @@ A passing test does **not** prove every area above was granted; each capability 
 
 - **Categories** live in two resources: `categories-tree` carries ids and children only (no names), and the
   paged `categories` list carries the per-language name and `active`. They are joined by id; a listed category
-  missing from the tree is returned without a parent, a tree node with no record is dropped, both are logged.
+  missing from the tree is returned without a parent; a tree node with no record, and a category with no name
+  in any language, are dropped (no invented label); all three are logged. A tree response that is not an array
+  is an error, not "no structure" - only a real `[]` means an empty tree.
+  The directory is built once per adapter instance (a promise memo, failures not kept) and `getProduct` /
+  `getProductCategories` share one `GET /products/:id`, so resolving categories for many products does not
+  re-read the directory per product. A 404 inside `getProductCategories` stays a plain `ShoperApiError`:
+  deletion is detected at `getProduct`, never as a side effect of a category read.
 
 - **Variants:** one `product-stocks` row = one `ProductVariant`, keyed by its real `stock_id`. No synthetic
   variant is minted for a simple product - Shoper already gives it a stock row.

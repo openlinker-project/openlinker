@@ -12,6 +12,8 @@
  *     category exists; only its place is unknown);
  *   - in the tree, not in the list: dropped - with no name it cannot be shown
  *     truthfully;
+ *   - in the list with no name in any language: dropped for the same reason
+ *     (no invented `category-<id>` label), and reported;
  *   - a node seen twice (or a cycle): first occurrence wins, so a malformed
  *     tree cannot loop or report two parents.
  *
@@ -36,6 +38,8 @@ export interface ShoperCategoryJoin {
   readonly unnamedTreeIds: string[];
   /** Ids present in the list but missing from the tree (kept, unplaced). */
   readonly unplacedIds: string[];
+  /** Ids listed with no name in ANY language (dropped: a label would be invented). */
+  readonly unnamedIds: string[];
 }
 
 /** Walks the tree iteratively; root depth is 0. */
@@ -87,6 +91,7 @@ export function joinShoperCategories(
   const listed = new Set<string>();
   const categories: Category[] = [];
   const unplacedIds: string[] = [];
+  const unnamedIds: string[] = [];
 
   for (const raw of list) {
     const id = String(raw.category_id);
@@ -95,13 +100,20 @@ export function joinShoperCategories(
     }
     listed.add(id);
     const translation = pickTranslation(raw.translations, language);
+    const name = translation?.name?.trim();
+    if (translation === undefined || name === undefined || name.length === 0) {
+      // Same rule as a tree node with no record: without a name it cannot be
+      // shown truthfully, and a placeholder label would read as a real one.
+      unnamedIds.push(id);
+      continue;
+    }
     const position = positions.get(id);
     if (position === undefined) {
       unplacedIds.push(id);
     }
     categories.push({
       id,
-      name: translation?.name?.trim() ?? `category-${id}`,
+      name,
       ...(position?.parentId === undefined ? {} : { parentId: position.parentId }),
       ...(position === undefined ? {} : { depth: position.depth }),
       ...(translation?.active === undefined || translation.active === null
@@ -111,5 +123,5 @@ export function joinShoperCategories(
   }
 
   const unnamedTreeIds = [...positions.keys()].filter((id) => !listed.has(id));
-  return { categories, unnamedTreeIds, unplacedIds };
+  return { categories, unnamedTreeIds, unplacedIds, unnamedIds };
 }

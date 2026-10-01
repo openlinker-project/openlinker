@@ -42,6 +42,7 @@ import type { IdentifierMappingPort, Connection } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
+import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import type {
@@ -74,6 +75,8 @@ const SHOPER_ID = /^\d+$/;
 
 export class ShoperProductMasterAdapter implements ProductMasterPort {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
+  private categoryDirectory: Promise<Category[]> | null = null;
+  private readonly productReads = new Map<string, Promise<ShoperProduct>>();
 
   constructor(
     private readonly client: ShoperHttpClient,
@@ -99,7 +102,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
 
   async getProduct(productId: string): Promise<Product> {
     const externalId = await this.resolveExternalProductId(productId);
-    const { data } = await this.client.get<ShoperProduct>(`/products/${externalId}`);
+    const data = await this.readProduct(externalId);
     const ctx = await this.shopContext.get();
     return { ...mapShoperProduct(data, ctx), id: productId };
   }
@@ -167,15 +170,42 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
   /**
    * The master's whole category directory: structure from `categories-tree`,
    * names from the paged `categories` list (the tree carries ids only).
+   *
+   * Built at most ONCE per adapter instance: a caller resolving categories for
+   * a page of products would otherwise rebuild the whole directory (the tree
+   * plus every list page) per product, against a shop with an unknown request
+   * ceiling. Memoised as a promise so concurrent callers share one build, and a
+   * failure is dropped so the next call retries. Each caller gets its own array.
    */
   async getCategories(): Promise<Category[]> {
+    if (this.categoryDirectory === null) {
+      this.categoryDirectory = this.loadCategoryDirectory().catch((error: unknown) => {
+        this.categoryDirectory = null;
+        throw error;
+      });
+    }
+    return [...(await this.categoryDirectory)];
+  }
+
+  private async loadCategoryDirectory(): Promise<Category[]> {
     const [tree, list, ctx] = await Promise.all([
       this.client.get<ShoperCategoryTreeNode[]>('/categories-tree'),
       this.fetchAllCategories(),
       this.shopContext.get(),
     ]);
-    const roots = Array.isArray(tree.data) ? tree.data : [];
-    const joined = joinShoperCategories(list, roots, ctx.language);
+    // A legitimately empty tree is `[]`. Anything else that is not an array is
+    // an unreadable answer, and reading it as "no structure" would return every
+    // category as an unplaced root, dressed up as the real directory.
+    if (!Array.isArray(tree.data)) {
+      throw new ShoperNetworkError('Shoper returned an unreadable category tree');
+    }
+    const joined = joinShoperCategories(list, tree.data, ctx.language);
+    if (joined.unnamedIds.length > 0) {
+      this.logger.warn(
+        `Shoper categories with no name in any language, skipped: ${joined.unnamedIds.join(',')} ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
     if (joined.unnamedTreeIds.length > 0) {
       this.logger.warn(
         `Shoper category tree lists ids with no category record, skipped: ${joined.unnamedTreeIds.join(',')} ` +
@@ -191,11 +221,14 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     return joined.categories;
   }
 
+  /**
+   * A 404 here is a plain `ShoperApiError`, not the neutral not-found: deletion
+   * is detected at `getProduct`, the port boundary core stales on, never as a
+   * side effect of a category read.
+   */
   async getProductCategories(productId: string): Promise<Category[]> {
     const externalId = await this.resolveExternalProductId(productId);
-    const { data } = await this.client.get<Pick<ShoperProduct, 'categories'>>(
-      `/products/${externalId}`,
-    );
+    const data = await this.readProduct(externalId);
     const ids = Array.isArray(data.categories) ? data.categories.map(String) : [];
     if (ids.length === 0) {
       return [];
@@ -242,6 +275,23 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
   }
 
   // ─── Internals ─────────────────────────────────────────────────────────────
+
+  /**
+   * `GET /products/:id`, shared within this adapter instance. One resolution
+   * typically calls `getProduct` and then `getProductCategories` for the same
+   * product; without this they would issue the same request twice. Promise
+   * memo, failure not kept (the next call retries). The instance lives for one
+   * resolution, so a cached payload cannot go meaningfully stale.
+   */
+  private readProduct(externalId: string): Promise<ShoperProduct> {
+    let read = this.productReads.get(externalId);
+    if (read === undefined) {
+      read = this.client.get<ShoperProduct>(`/products/${externalId}`).then((r) => r.data);
+      this.productReads.set(externalId, read);
+      read.catch(() => this.productReads.delete(externalId));
+    }
+    return read;
+  }
 
   private async resolveExternalProductId(productId: string): Promise<string> {
     const mappings = await this.identifierMapping.getExternalIds(
