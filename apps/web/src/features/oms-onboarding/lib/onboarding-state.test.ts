@@ -12,6 +12,7 @@ import {
   isStep1Done,
   readSourcingStanding,
   resolveDataSource,
+  TURN_ON_STEP,
   type DataStateInput,
   type OnboardingDataState,
 } from './onboarding-state';
@@ -174,8 +175,8 @@ describe('isPackingLive / isPackingPaused', () => {
 
 describe('initialPosition', () => {
   it('should land on status once packing was ever turned on, else the first undone step', () => {
-    expect(initialPosition(true, false, true)).toEqual({ view: 'status', step: 4 });
-    expect(initialPosition(false, true, true)).toEqual({ view: 'status', step: 4 });
+    expect(initialPosition(true, false, true)).toEqual({ view: 'status', step: TURN_ON_STEP });
+    expect(initialPosition(false, true, true)).toEqual({ view: 'status', step: TURN_ON_STEP });
     expect(initialPosition(false, false, true)).toEqual({ view: 'wizard', step: 2 });
     expect(initialPosition(false, false, false)).toEqual({ view: 'wizard', step: 1 });
   });
