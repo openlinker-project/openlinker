@@ -74,6 +74,20 @@ export class ShoperHttpClient {
   ) {}
 
   async get<T>(path: string, query?: ShoperQuery): Promise<ShoperHttpResponse<T>> {
+    return this.request<T>('GET', path, query);
+  }
+
+  /** JSON write. Same safety properties as `get`: no redirects, capped body, timeout. */
+  async put<T>(path: string, body: unknown): Promise<ShoperHttpResponse<T>> {
+    return this.request<T>('PUT', path, undefined, body);
+  }
+
+  private async request<T>(
+    method: 'GET' | 'PUT',
+    path: string,
+    query?: ShoperQuery,
+    body?: unknown,
+  ): Promise<ShoperHttpResponse<T>> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -81,11 +95,13 @@ export class ShoperHttpClient {
     let text: string;
     try {
       response = await this.fetchImpl(buildShoperApiUrl(this.config.host, path) + encodeQuery(query), {
-        method: 'GET',
+        method,
         headers: {
           Authorization: `Bearer ${this.config.token}`,
           Accept: 'application/json',
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         redirect: 'manual',
         signal: controller.signal,
       });
@@ -97,8 +113,8 @@ export class ShoperHttpClient {
     }
 
     if (response.status < 200 || response.status >= 300) {
-      const body = parseJson<ShoperErrorBody>(text);
-      throw new ShoperApiError(response.status, body?.error, body?.error_description);
+      const errorBody = parseJson<ShoperErrorBody>(text);
+      throw new ShoperApiError(response.status, errorBody?.error, errorBody?.error_description);
     }
 
     return { status: response.status, data: (parseJson<T>(text) ?? ({} as T)) };

@@ -180,11 +180,106 @@ describe('ShoperInventoryMasterAdapter', () => {
     await expect(adapter.getInventory('ol_93')).rejects.toBeInstanceOf(ShoperStockNotFoundException);
   });
 
+  describe('adjustInventory', () => {
+    function withPut(stocks: unknown[]): ReturnType<typeof setup> & { put: jest.Mock } {
+      const h = setup();
+      const put = jest.fn().mockResolvedValue({ status: 200, data: {} });
+      (h.adapter as unknown as { client: { put: jest.Mock } }).client.put = put;
+      shop(h.get, stocks);
+      h.mapping.getExternalIds.mockImplementation((type: string) =>
+        Promise.resolve(
+          type === 'ProductVariant'
+            ? [{ externalId: '181', connectionId: CONNECTION_ID }]
+            : [{ externalId: '93', connectionId: CONNECTION_ID }],
+        ),
+      );
+      return { ...h, put };
+    }
+
+    it('should write current plus delta as an absolute stock and report it unsupported-idempotent', async () => {
+      const { adapter, put } = withPut([buildStock({ stock: '74' })]);
+
+      const result = await adapter.adjustInventory({ productId: 'ol_93', quantity: 2 });
+
+      expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 76 });
+      expect(result).toMatchObject({
+        quantity: 76,
+        available: 76,
+        adjustmentOutcome: { disposition: 'applied', idempotency: 'unsupported', appliedAt: null },
+      });
+    });
+
+    it('should report unsupported even when the caller sent an idempotency key', async () => {
+      const { adapter } = withPut([buildStock({ stock: '1' })]);
+
+      const result = await adapter.adjustInventory({
+        productId: 'ol_93',
+        quantity: 1,
+        idempotencyKey: 'k',
+      });
+
+      expect(result.adjustmentOutcome?.idempotency).toBe('unsupported');
+    });
+
+    it('should clamp a decrease below zero to 0', async () => {
+      const { adapter, put } = withPut([buildStock({ stock: '3' })]);
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: -10 })).resolves.toMatchObject({
+        quantity: 0,
+      });
+      expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 0 });
+    });
+
+    it('should target the named variant of a multi-variant product', async () => {
+      const { adapter, put } = withPut([
+        buildStock({ stock_id: '180', stock: '9' }),
+        buildStock({ stock_id: '181', stock: '4' }),
+      ]);
+
+      await adapter.adjustInventory({ productId: 'ol_93', variantId: 'ol_181', quantity: 1 });
+
+      expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 5 });
+    });
+
+    it('should refuse to guess the variant when several exist and none is named', async () => {
+      const { adapter, put } = withPut([buildStock({ stock_id: '180' }), buildStock({ stock_id: '181' })]);
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        ShoperStockNotFoundException,
+      );
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should refuse on a multi-warehouse shop without reading or writing', async () => {
+      const h = setup({ ...MAP_CONTEXT, warehousesEnabled: true });
+
+      await expect(h.adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        ShoperWarehousesNotSupportedException,
+      );
+      expect(h.get).not.toHaveBeenCalled();
+    });
+
+    it('should not report success when the write fails', async () => {
+      const { adapter, put } = withPut([buildStock({ stock: '3' })]);
+      put.mockRejectedValue(new ShoperNetworkError('boom'));
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        ShoperNetworkError,
+      );
+    });
+
+    it('should not write when the product is gone', async () => {
+      const { adapter, get, put } = withPut([]);
+      get.mockRejectedValue(new ShoperApiError(404, '/products/93', 'invalid_request'));
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
+      expect(put).not.toHaveBeenCalled();
+    });
+  });
+
   it.each([
-    [
-      'adjustInventory',
-      (a: ShoperInventoryMasterAdapter): Promise<unknown> => a.adjustInventory({} as never),
-    ],
     [
       'reserveInventory',
       (a: ShoperInventoryMasterAdapter): Promise<unknown> => a.reserveInventory('p', 1, 'o'),

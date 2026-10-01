@@ -169,7 +169,14 @@ at create and never retro-filled, so an existing connection must be edited.
   absence, raised as the retryable `ShoperStockNotFoundException`. The inventory sync prunes on an empty
   response, which would stale every variant and pause its offers for a product that still exists; every Shoper
   product carries at least one stock row, so an empty answer is an anomaly.
-- `adjustInventory` is not implemented yet (#3687); `reserveInventory` / `releaseInventory` are deprecated by
+- **`adjustInventory` is read-modify-write, and not atomic** (#3687). Shoper's `PUT /product-stocks/:id` takes an
+  absolute `stock` and has no conditional write or idempotency key, so the adapter reads the row, adds the delta
+  and writes the result. A sale between the read and the PUT (Shoper also decrements stock by itself when an
+  order line is created) is overwritten, and a retry after a lost response applies the delta twice. The outcome
+  is therefore always reported `idempotency: 'unsupported'`, `appliedAt: null`. A decrease below zero is clamped
+  to 0 with a warning. A multi-variant product needs `variantId`; without it the write is refused rather than
+  moved to a guessed variant. Multi-warehouse shops are refused, as on the read side. `reason` goes to the log.
+- `reserveInventory` / `releaseInventory` are deprecated by
   ADR-061 and throw `ShoperNotSupportedException`.
 - `master.inventory.syncAll` walks OL's own product mappings, so run a ProductMaster sync first.
 

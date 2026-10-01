@@ -109,28 +109,10 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
       return quantity;
     });
 
-    const [variantIds, inventoryIds] = await Promise.all([
-      this.identifierMapping.batchGetOrCreateInternalIds(
-        stocks.map((s) => ({
-          entityType: CORE_ENTITY_TYPE.ProductVariant,
-          externalId: s.stock_id,
-          connectionId: this.connection.id,
-          context: {
-            parentEntityType: CORE_ENTITY_TYPE.Product,
-            parentInternalId: productId,
-            metadata: { variantExternalId: s.stock_id },
-          },
-        })),
-      ),
-      this.identifierMapping.batchGetOrCreateInternalIds(
-        stocks.map((s) => ({
-          entityType: CORE_ENTITY_TYPE.Inventory,
-          externalId: `stock:${s.stock_id}`,
-          connectionId: this.connection.id,
-          context: { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: productId },
-        })),
-      ),
-    ]);
+    const [variantIds, inventoryIds] = await this.mintIds(
+      productId,
+      stocks.map((s) => s.stock_id),
+    );
 
     return stocks.map((stock, index) => {
       const quantity = levels[index];
@@ -191,8 +173,122 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
 
   // ─── Not supported in this task ────────────────────────────────────────────
 
-  adjustInventory(_adjustment: InventoryAdjustment): Promise<InventoryAdjustmentResult> {
-    return Promise.reject(new ShoperNotSupportedException('adjustInventory'));
+  /**
+   * Read, add the delta, write the absolute result. Shoper's `PUT
+   * /product-stocks/:id` takes an absolute `stock` and has no conditional write
+   * or idempotency key (SPIKE-3638 M8/M9), so this is NOT atomic: a sale landing
+   * between the read and the PUT is overwritten, and a retry after a lost
+   * response applies the delta again. Reported honestly as `unsupported`.
+   *
+   * A delta taking stock below zero is clamped to 0 with a warning (the
+   * PrestaShop behaviour), so less than the requested decrease is applied.
+   */
+  async adjustInventory(adjustment: InventoryAdjustment): Promise<InventoryAdjustmentResult> {
+    const ctx = await this.shopContext.get();
+    if (ctx.warehousesEnabled) {
+      throw new ShoperWarehousesNotSupportedException(this.connection.id);
+    }
+
+    const externalId = await resolveShoperExternalProductId(
+      this.identifierMapping,
+      this.connection.id,
+      adjustment.productId,
+    );
+    await this.productReader.read(externalId, adjustment.productId);
+
+    const stocks = await fetchShoperStocks(this.client, externalId, () => undefined);
+    const stock = await this.pickStockRow(stocks, adjustment, externalId);
+
+    const current = readShoperStockLevel(stock);
+    if (current === null) {
+      throw new ShoperNetworkError(
+        `Shoper returned no readable stock level for stock ${stock.stock_id} of product ${externalId}`,
+      );
+    }
+
+    const requested = current + adjustment.quantity;
+    const next = Math.max(0, requested);
+    if (next !== requested) {
+      this.logger.warn(
+        `Shoper stock ${stock.stock_id} of product ${externalId} would go to ${requested}; ` +
+          `clamped to 0 (connection: ${this.connection.id})`,
+      );
+    }
+    if (adjustment.reason !== undefined) {
+      this.logger.log(
+        `Adjusting Shoper stock ${stock.stock_id} by ${adjustment.quantity} (${adjustment.reason}), ` +
+          `${current} -> ${next} (connection: ${this.connection.id})`,
+      );
+    }
+
+    await this.client.put(`/product-stocks/${encodeURIComponent(stock.stock_id)}`, { stock: next });
+
+    const [variantIds, inventoryIds] = await this.mintIds(adjustment.productId, [stock.stock_id]);
+    const inventory = mapShoperStockToInventory(next, {
+      productId: adjustment.productId,
+      variantId: variantIds.get(`${stock.stock_id}:${this.connection.id}`) ?? '',
+      inventoryId: inventoryIds.get(`stock:${stock.stock_id}:${this.connection.id}`) ?? '',
+    });
+    return {
+      ...inventory,
+      adjustmentOutcome: { disposition: 'applied', idempotency: 'unsupported', appliedAt: null },
+    };
+  }
+
+  private async mintIds(
+    productId: string,
+    stockIds: string[],
+  ): Promise<[Map<string, string>, Map<string, string>]> {
+    return Promise.all([
+      this.identifierMapping.batchGetOrCreateInternalIds(
+        stockIds.map((id) => ({
+          entityType: CORE_ENTITY_TYPE.ProductVariant,
+          externalId: id,
+          connectionId: this.connection.id,
+          context: {
+            parentEntityType: CORE_ENTITY_TYPE.Product,
+            parentInternalId: productId,
+            metadata: { variantExternalId: id },
+          },
+        })),
+      ),
+      this.identifierMapping.batchGetOrCreateInternalIds(
+        stockIds.map((id) => ({
+          entityType: CORE_ENTITY_TYPE.Inventory,
+          externalId: `stock:${id}`,
+          connectionId: this.connection.id,
+          context: { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: productId },
+        })),
+      ),
+    ]);
+  }
+
+  private async pickStockRow(
+    stocks: ShoperStock[],
+    adjustment: InventoryAdjustment,
+    externalId: string,
+  ): Promise<ShoperStock> {
+    if (adjustment.variantId !== undefined) {
+      const mappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.ProductVariant,
+        adjustment.variantId,
+      );
+      const variantExternal = mappings.find((m) => m.connectionId === this.connection.id);
+      const match = stocks.find((s) => s.stock_id === variantExternal?.externalId);
+      if (match === undefined) {
+        throw new ShoperStockNotFoundException(adjustment.productId, this.connection.id);
+      }
+      return match;
+    }
+    if (stocks.length === 1) {
+      return stocks[0];
+    }
+    // Several variants and none named: writing the first would move stock of the
+    // wrong variant, so refuse rather than guess.
+    throw new ShoperStockNotFoundException(
+      stocks.length === 0 ? adjustment.productId : `${adjustment.productId} (variant required for ${externalId})`,
+      this.connection.id,
+    );
   }
 
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
