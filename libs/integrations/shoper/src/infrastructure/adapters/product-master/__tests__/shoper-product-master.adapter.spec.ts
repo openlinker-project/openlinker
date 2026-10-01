@@ -12,7 +12,13 @@ import {
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
 import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
-import { isProductTaxRateReader } from '@openlinker/core/products';
+import {
+  MasterProductNotFoundError,
+  isModifiedProductLister,
+  isProductTaxRateReader,
+} from '@openlinker/core/products';
+import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
+import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
 
 const CONNECTION_ID = 'conn-1';
@@ -234,6 +240,113 @@ describe('ShoperProductMasterAdapter', () => {
         ShoperNotMappedException,
       );
       expect(get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deletion at the master (getProduct)', () => {
+    function failWith(get: jest.Mock, error: Error): void {
+      get.mockRejectedValue(error);
+    }
+
+    it('should translate Shoper’s structured 404 into the neutral MasterProductNotFoundError', async () => {
+      const { adapter, get } = setup();
+      const cause = new ShoperApiError(404, 'invalid_request', 'Resource not found');
+      failWith(get, cause);
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(MasterProductNotFoundError);
+      expect(error).toMatchObject({ productId: 'ol_product_1', connectionId: CONNECTION_ID, cause });
+    });
+
+    it.each([
+      ['a bare 404 from a wrong or moved host', new ShoperApiError(404)],
+      ['a 401', new ShoperApiError(401, 'unauthorized_client')],
+      ['a 403', new ShoperApiError(403, 'insufficient_scope')],
+      ['a 429', new ShoperApiError(429)],
+      ['a 500', new ShoperApiError(500, 'server_error')],
+      ['a network failure', new ShoperNetworkError('ECONNREFUSED')],
+    ])('should NOT read %s as a deletion', async (_label, failure) => {
+      const { adapter, get } = setup();
+      failWith(get, failure);
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBe(failure);
+      expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
+    });
+
+    it('should not treat a missing mapping as a deletion', async () => {
+      const { adapter, mapping } = setup();
+      mapping.getExternalIds.mockResolvedValue([]);
+
+      const error = await adapter.getProduct('ol_product_1').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ShoperNotMappedException);
+      expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
+    });
+
+    it('should treat a product that resolves but has no stock rows as an inferred absence, not a deletion', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/product-stocks': envelope([]) });
+
+      await expect(adapter.getProductVariants('ol_product_1')).resolves.toEqual([]);
+    });
+  });
+
+  describe('catalogue enumeration for the sweeps', () => {
+    /** A fake shop of `total` products that honours page/limit like the live one. */
+    function shopOf(total: number, get: jest.Mock): void {
+      get.mockImplementation((_path: string, query: { page: number; limit: number }) => {
+        const all = Array.from({ length: total }, (_, i) => ({ product_id: String(i + 1) }));
+        const start = (query.page - 1) * query.limit;
+        return Promise.resolve({
+          status: 200,
+          data: envelope(all.slice(start, start + query.limit), {
+            count: total,
+            pages: Math.max(1, Math.ceil(total / query.limit)),
+            page: query.page,
+          }),
+        });
+      });
+    }
+
+    async function walk(adapter: ShoperProductMasterAdapter, limit: number): Promise<string[]> {
+      const seen: string[] = [];
+      for (let offset = 0; ; offset += limit) {
+        const page = await adapter.listExternalIds({ limit, offset });
+        seen.push(...page);
+        if (page.length < limit) return seen;
+      }
+    }
+
+    it.each([
+      [36, 20],
+      [40, 20],
+      [1, 50],
+      [120, 50],
+    ])('should enumerate a %i-product catalogue at page size %i with no gaps or duplicates', async (total, limit) => {
+      const { adapter, get } = setup();
+      shopOf(total, get);
+
+      const seen = await walk(adapter, limit);
+
+      expect(seen).toHaveLength(total);
+      expect(new Set(seen).size).toBe(total);
+      expect(seen).toEqual(Array.from({ length: total }, (_, i) => String(i + 1)));
+    });
+
+    it('should return an empty page past the end, so a cycle ends instead of looping', async () => {
+      const { adapter, get } = setup();
+      shopOf(36, get);
+
+      await expect(adapter.listExternalIds({ limit: 20, offset: 100 })).resolves.toEqual([]);
+    });
+
+    it('should not offer a modified-since rung: Shoper has no bulk primitive to back it', () => {
+      const { adapter } = setup();
+
+      expect(isModifiedProductLister(adapter)).toBe(false);
     });
   });
 

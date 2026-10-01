@@ -107,6 +107,25 @@ Paging rules the adapter enforces (all observed on a live shop):
 - `filters[category_id]` and `filters[code]` are not valid on `products` (the shop answers 404); the
   `categoryIds` and `status` filters are therefore refused rather than ignored.
 
+### Deletion and the catalogue sweeps
+
+- **A deleted product** surfaces from `getProduct` as the neutral `MasterProductNotFoundError`, which core
+  turns into stale variants and (via the stale-variant chain) paused offers. The translation is deliberately
+  narrow: only a `404` carrying Shoper's own `invalid_request` envelope counts (`ShoperApiError.isResourceNotFound`).
+  A bare `404` - a wrong or moved host, a proxy page - stays a plain `ShoperApiError`, because reading it as a
+  deletion would stale the whole catalogue on a configuration error. Shoper answers a wrong *path* with `400`,
+  so a `404` with the envelope really means "no such resource". A product that resolves but has no stock rows
+  is an inferred absence and is not translated.
+- **The sweeps need no Shoper-specific scheduler code.** `master.product.syncAll`, `master.product.reconcile`
+  (the deletion audit) and `master.product.syncDelta` are registered core-side by capability
+  (`CORE_CAPABILITY_TASKS`, `capability: 'ProductMaster'`), so declaring `ProductMaster` is what enrols a
+  connection. They walk the catalogue through `listExternalIds`, which pages in ascending `product_id` order.
+- **No modified-since rung.** Shoper has no bulk "changed since" query - only a per-object
+  `GET /object-mtime/<object>/<id>` (the plural form answers 500) - so `ModifiedProductLister` is not
+  implemented and the delta pass skips Shoper connections. The full pass is the only sweep, from day one.
+- Webhook-driven deletion detection (a `product.deleted` trigger) belongs to the webhook work (#3644); until
+  then the periodic `reconcile` audit is the deletion authority, as for any master without a delete hook.
+
 ## Known gaps
 
 - **No rate limiting or retries yet.** The real request ceiling is unconfirmed (SPIKE-3638 C6); no

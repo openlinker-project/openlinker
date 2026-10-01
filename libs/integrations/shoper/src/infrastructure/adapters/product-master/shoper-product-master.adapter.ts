@@ -43,8 +43,10 @@ import type {
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
+import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
@@ -108,7 +110,18 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
 
   async getProduct(productId: string): Promise<Product> {
     const externalId = await this.resolveExternalProductId(productId);
-    const data = await this.readProduct(externalId);
+    let data: ShoperProduct;
+    try {
+      data = await this.readProduct(externalId);
+    } catch (error) {
+      // The port boundary where a master-side deletion becomes the neutral
+      // error core stales variants on (#1599). Only a 404 Shoper itself
+      // reported counts - see `ShoperApiError.isResourceNotFound`.
+      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw error;
+    }
     const ctx = await this.shopContext.get();
     return { ...mapShoperProduct(data, ctx), id: productId };
   }
