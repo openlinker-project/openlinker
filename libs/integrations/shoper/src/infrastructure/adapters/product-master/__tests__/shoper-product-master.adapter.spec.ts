@@ -275,6 +275,45 @@ describe('ShoperProductMasterAdapter', () => {
       expect(error).not.toBeInstanceOf(MasterProductNotFoundError);
     });
 
+    describe('through every method that reads the product', () => {
+      type Read = (adapter: ShoperProductMasterAdapter) => Promise<unknown>;
+      const reads: Array<[string, Read]> = [
+        ['getProduct', (a): Promise<unknown> => a.getProduct('ol_product_1')],
+        ['getProductCategories', (a): Promise<unknown> => a.getProductCategories('ol_product_1')],
+        [
+          'readProductTaxRate',
+          (a): Promise<unknown> => a.readProductTaxRate({ productId: 'ol_product_1' }),
+        ],
+      ];
+
+      it.each(reads)(
+        'should report a deleted product as the neutral error from %s, wherever core reaches it first',
+        async (_name, read) => {
+          const { adapter, get } = setup();
+          failWith(get, new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+          const error = await read(adapter).catch((e: unknown) => e);
+
+          expect(error).toBeInstanceOf(MasterProductNotFoundError);
+          expect(error).toMatchObject({ productId: 'ol_product_1', connectionId: CONNECTION_ID });
+        },
+      );
+
+      it.each(reads)(
+        'should NOT read a bare 404 as a deletion from %s',
+        async (_name, read) => {
+          const { adapter, get } = setup();
+          const bare = new ShoperApiError(404);
+          failWith(get, bare);
+
+          const error = await read(adapter).catch((e: unknown) => e);
+
+          expect(error).toBe(bare);
+        },
+      );
+
+    });
+
     it('should not treat a missing mapping as a deletion', async () => {
       const { adapter, mapping } = setup();
       mapping.getExternalIds.mockResolvedValue([]);

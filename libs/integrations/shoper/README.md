@@ -118,6 +118,20 @@ Paging (all observed on a live shop):
   deletion would stale the whole catalogue on a configuration error. Shoper answers a wrong *path* with `400`,
   so a `404` with the envelope really means "no such resource". A product that resolves but has no stock rows
   is an inferred absence and is not translated.
+- **The same translation applies to every method that reads the product** (`getProduct`,
+  `getProductCategories`, `readProductTaxRate`) - they share one read, so core reports the deletion whichever it
+  reaches first. The retry classifier agrees with it: a 404 is terminal only when it carries Shoper's envelope;
+  a bare 404 (a proxy or maintenance page) is retried.
+- **What to re-check if Shoper changes**: the safety of `isResourceNotFound` rests on two live observations
+  (SPIKE-3638 M6, re-probed for #3678): a missing resource answers `404` + `{"error":"invalid_request",...}`, and
+  a wrong *path* answers `400`, not `404`. The failure mode of getting it wrong is staling a whole catalogue and
+  pausing live offers, so if Shoper ever changes the error envelope or the status for a missing resource,
+  re-probe `GET /products/999999999`, `GET /products/abc` and `GET /nonexistent/1` first.
+- **Offset paging and a mid-cycle delete.** `listExternalIds` pages by offset over an ascending-id collection,
+  so a delete during a multi-tick cycle shifts later rows left and the cycle can step over one live product for
+  that cycle. That is acceptable only because absence is never a deletion signal: `master.product.reconcile`
+  enumerates OpenLinker's own mappings and re-reads each product, and deletion is concluded solely from
+  Shoper's explicit 404. A skipped product is picked up by the next cycle; it is never staled for being missing.
 - **The sweeps need no Shoper-specific scheduler code.** `master.product.syncAll`, `master.product.reconcile`
   (the deletion audit) and `master.product.syncDelta` are registered core-side by capability
   (`CORE_CAPABILITY_TASKS`, `capability: 'ProductMaster'`), so declaring `ProductMaster` is what enrols a

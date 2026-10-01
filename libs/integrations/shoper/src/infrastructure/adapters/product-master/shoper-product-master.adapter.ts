@@ -110,18 +110,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
 
   async getProduct(productId: string): Promise<Product> {
     const externalId = await this.resolveExternalProductId(productId);
-    let data: ShoperProduct;
-    try {
-      data = await this.readProduct(externalId);
-    } catch (error) {
-      // The port boundary where a master-side deletion becomes the neutral
-      // error core stales variants on (#1599). Only a 404 Shoper itself
-      // reported counts - see `ShoperApiError.isResourceNotFound`.
-      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
-        throw new MasterProductNotFoundError(productId, this.connection.id, error);
-      }
-      throw error;
-    }
+    const data = await this.readProduct(externalId, productId);
     const ctx = await this.shopContext.get();
     return { ...mapShoperProduct(data, ctx), id: productId };
   }
@@ -201,7 +190,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
    */
   async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
     const externalId = await this.resolveExternalProductId(input.productId);
-    const data = await this.readProduct(externalId);
+    const data = await this.readProduct(externalId, input.productId);
 
     const taxId = data.tax_id === null || data.tax_id === undefined ? '' : String(data.tax_id).trim();
     if (taxId.length === 0 || taxId === '0') {
@@ -292,13 +281,14 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   }
 
   /**
-   * A 404 here is a plain `ShoperApiError`, not the neutral not-found: deletion
-   * is detected at `getProduct`, the port boundary core stales on, never as a
-   * side effect of a category read.
+   * Reads the product through the same translating read as `getProduct`, so a
+   * product Shoper reports gone surfaces here as the neutral
+   * `MasterProductNotFoundError` too - core may reach a deleted product through
+   * this method first, and a plain `ShoperApiError` would miss the deletion.
    */
   async getProductCategories(productId: string): Promise<Category[]> {
     const externalId = await this.resolveExternalProductId(productId);
-    const data = await this.readProduct(externalId);
+    const data = await this.readProduct(externalId, productId);
     const ids = Array.isArray(data.categories) ? data.categories.map(String) : [];
     if (ids.length === 0) {
       return [];
@@ -352,11 +342,26 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
    * product; without this they would issue the same request twice. Promise
    * memo, failure not kept (the next call retries). The instance lives for one
    * resolution, so a cached payload cannot go meaningfully stale.
+   *
+   * THE one place a master-side deletion becomes the neutral error core stales
+   * variants on (#1599): `getProduct`, `getProductCategories` and
+   * `readProductTaxRate` all read through here, so whichever of them core
+   * reaches a deleted product through first reports it. Only a 404 Shoper
+   * itself reported counts (`ShoperApiError.isResourceNotFound`); anything else
+   * passes through untouched.
    */
-  private readProduct(externalId: string): Promise<ShoperProduct> {
+  private readProduct(externalId: string, productId: string): Promise<ShoperProduct> {
     let read = this.productReads.get(externalId);
     if (read === undefined) {
-      read = this.client.get<ShoperProduct>(`/products/${externalId}`).then((r) => r.data);
+      read = this.client.get<ShoperProduct>(`/products/${externalId}`).then(
+        (r) => r.data,
+        (error: unknown): never => {
+          if (error instanceof ShoperApiError && error.isResourceNotFound()) {
+            throw new MasterProductNotFoundError(productId, this.connection.id, error);
+          }
+          throw error instanceof Error ? error : new Error(String(error));
+        },
+      );
       this.productReads.set(externalId, read);
       read.catch(() => this.productReads.delete(externalId));
     }
