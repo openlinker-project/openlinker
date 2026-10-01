@@ -8,8 +8,11 @@
  *
  * It does NOT prove the token holds every scope the capabilities will need -
  * Shoper enforces those per resource (`403 insufficient_scope`), and each
- * capability epic reports its own missing area. The failure message for a 403
- * lists the required areas so the operator can fix it in one visit.
+ * capability epic reports its own missing area. This probe needs no area, so
+ * its 403 message deliberately names none: listing them would nudge operators
+ * towards an over-privileged token for capabilities that do not exist yet.
+ * The 2xx body is asserted to look like `application-config`, so a host that
+ * merely answers 200 (parked domain, catch-all page) does not pass.
  *
  * Never throws: every failure becomes a `ConnectionTestResult` with
  * `success: false`. Unexpected failures are logged at warn level. The token is
@@ -30,10 +33,11 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
-import { SHOPER_CONNECTION_TEST_PATH, SHOPER_REQUIRED_SCOPES } from '../../shoper.constants';
+import { SHOPER_CONNECTION_TEST_PATH } from '../../shoper.constants';
 import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../domain/exceptions/shoper-network.error';
 import { parseShoperBaseUrl } from '../../domain/policies/shoper-base-url.policy';
+import type { ShoperApplicationConfig } from '../../domain/types/shoper-api.types';
 import type { ShoperCredentials } from '../../domain/types/shoper-credentials.types';
 import { ShoperHttpClient } from '../http/shoper-http-client';
 
@@ -44,7 +48,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
 
   async test(
     connection: Connection,
-    credentialsResolver: CredentialsResolverPort,
+    credentialsResolver: CredentialsResolverPort
   ): Promise<ConnectionTestResult> {
     const startedAt = Date.now();
     const elapsed = (): number => Date.now() - startedAt;
@@ -68,7 +72,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       }
 
       const credentials = await credentialsResolver.get<ShoperCredentials>(
-        connection.credentialsRef,
+        connection.credentialsRef
       );
       if (typeof credentials.token !== 'string' || credentials.token.trim().length === 0) {
         return {
@@ -83,9 +87,19 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       // limiter as every other call site, not a bare fetch.
       const client = new ShoperHttpClient(
         { host: base.host, token: credentials.token },
-        this.http.forConnection(connection),
+        this.http.forConnection(connection)
       );
-      const response = await client.get(SHOPER_CONNECTION_TEST_PATH);
+      const response = await client.get<Partial<ShoperApplicationConfig>>(
+        SHOPER_CONNECTION_TEST_PATH
+      );
+      if (!looksLikeApplicationConfig(response.data)) {
+        return {
+          success: false,
+          status: response.status,
+          message: 'The host answered, but not like a Shoper REST API - verify the shop host name',
+          latencyMs: elapsed(),
+        };
+      }
 
       return {
         success: true,
@@ -105,7 +119,8 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
         return {
           success: false,
           status: statusCode,
-          message: 'Shoper rejected the API token - check that it is correct and has not been revoked',
+          message:
+            'Shoper rejected the API token - check that it is correct and has not been revoked',
           latencyMs,
         };
       }
@@ -114,8 +129,8 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
           success: false,
           status: statusCode,
           message:
-            'The Shoper API token lacks a required permission. Grant these areas to the ' +
-            `integration in the shop admin panel: ${SHOPER_REQUIRED_SCOPES.join(', ')}`,
+            'Shoper refused the request (HTTP 403). This check needs no special area, so verify ' +
+            'in the shop admin panel that the integration is active and not restricted',
           latencyMs,
         };
       }
@@ -149,13 +164,25 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
         success: false,
         message: error.timedOut
           ? 'Shoper connection test timed out - the shop did not respond in time'
-          : (error.originalError?.message ?? error.message),
+          : error.originalError?.message ?? error.message,
         latencyMs,
       };
     }
 
     const message = error instanceof Error ? error.message : 'Shoper connection test failed';
-    this.logger.warn('Shoper connection test failed unexpectedly', { connectionId, error: message });
+    this.logger.warn('Shoper connection test failed unexpectedly', {
+      connectionId,
+      error: message,
+    });
     return { success: false, message, latencyMs };
   }
+}
+
+/** `application-config` always carries the shop's default language; a stand-in page does not. */
+function looksLikeApplicationConfig(data: unknown): data is ShoperApplicationConfig {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    typeof (data as Partial<ShoperApplicationConfig>).default_language_name === 'string'
+  );
 }

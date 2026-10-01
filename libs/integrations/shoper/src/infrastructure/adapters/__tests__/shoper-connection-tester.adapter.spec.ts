@@ -2,7 +2,6 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
-import { SHOPER_REQUIRED_SCOPES } from '../../../shoper.constants';
 import { ShoperConnectionTesterAdapter } from '../shoper-connection-tester.adapter';
 
 const TOKEN = 'secret-token-value';
@@ -21,7 +20,7 @@ function connection(overrides: Partial<Connection> = {}): Connection {
 
 function setup(
   fetchImpl: jest.Mock,
-  credentials: unknown = { token: TOKEN },
+  credentials: unknown = { token: TOKEN }
 ): {
   tester: ShoperConnectionTesterAdapter;
   resolver: CredentialsResolverPort;
@@ -42,7 +41,7 @@ function reply(status: number, body: unknown = {}): jest.Mock {
 
 describe('ShoperConnectionTesterAdapter', () => {
   it('should succeed when application-config answers 200, through the connection-bound transport', async () => {
-    const fetchImpl = reply(200, { shop: 'x' });
+    const fetchImpl = reply(200, { default_language_name: 'pl_PL' });
     const { tester, resolver, http } = setup(fetchImpl);
     const conn = connection();
 
@@ -52,7 +51,7 @@ describe('ShoperConnectionTesterAdapter', () => {
     expect(http.forConnection).toHaveBeenCalledWith(conn);
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://xxxxx.shoparena.pl/webapi/rest/application-config',
-      expect.anything(),
+      expect.anything()
     );
   });
 
@@ -65,15 +64,34 @@ describe('ShoperConnectionTesterAdapter', () => {
     expect(result.message).toContain('rejected the API token');
   });
 
-  it('should list the required areas on a 403', async () => {
+  it('should not nudge towards extra permissions on a 403', async () => {
     const { tester, resolver } = setup(reply(403, { error: 'insufficient_scope' }));
 
     const result = await tester.test(connection(), resolver);
 
     expect(result).toMatchObject({ success: false, status: 403 });
-    for (const scope of SHOPER_REQUIRED_SCOPES) {
-      expect(result.message).toContain(scope);
-    }
+    expect(result.message).toContain('needs no special area');
+    expect(result.message).not.toContain('produkty');
+  });
+
+  it('should fail when a host answers 200 with JSON that is not application-config', async () => {
+    const { tester, resolver } = setup(reply(200, { hello: 'world' }));
+
+    const result = await tester.test(connection(), resolver);
+
+    expect(result).toMatchObject({ success: false, status: 200 });
+    expect(result.message).toContain('not like a Shoper REST API');
+  });
+
+  it('should fail when a host answers 200 with a non-JSON page', async () => {
+    const { tester, resolver } = setup(
+      jest.fn().mockResolvedValue(new Response('<html>parked</html>', { status: 200 }))
+    );
+
+    const result = await tester.test(connection(), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('unreadable response');
   });
 
   it('should say the REST API was not found on a 404', async () => {
@@ -96,7 +114,7 @@ describe('ShoperConnectionTesterAdapter', () => {
 
   it('should surface the underlying network error', async () => {
     const { tester, resolver } = setup(
-      jest.fn().mockRejectedValue(new Error('getaddrinfo ENOTFOUND')),
+      jest.fn().mockRejectedValue(new Error('getaddrinfo ENOTFOUND'))
     );
 
     const result = await tester.test(connection(), resolver);

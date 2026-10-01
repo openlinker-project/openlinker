@@ -7,7 +7,7 @@ const TOKEN = 'secret-token-value';
 function jsonResponse(
   status: number,
   body: unknown,
-  headers: Record<string, string> = {},
+  headers: Record<string, string> = {}
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -18,7 +18,7 @@ function jsonResponse(
 function build(fetchImpl: jest.Mock): ShoperHttpClient {
   return new ShoperHttpClient(
     { host: 'xxxxx.shoparena.pl', token: TOKEN },
-    fetchImpl as unknown as typeof fetch,
+    fetchImpl as unknown as typeof fetch
   );
 }
 
@@ -35,7 +35,7 @@ describe('ShoperHttpClient', () => {
         method: 'GET',
         redirect: 'manual',
         headers: expect.objectContaining({ Authorization: `Bearer ${TOKEN}` }),
-      }),
+      })
     );
   });
 
@@ -44,7 +44,7 @@ describe('ShoperHttpClient', () => {
       jsonResponse(401, {
         error: 'unauthorized_client',
         error_description: 'Provided access token is invalid',
-      }),
+      })
     );
 
     const error = await build(fetchImpl)
@@ -79,9 +79,11 @@ describe('ShoperHttpClient', () => {
   });
 
   it('should treat a redirect as an error instead of following it', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(
-      new Response(null, { status: 302, headers: { location: 'https://evil.example' } }),
-    );
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(
+        new Response(null, { status: 302, headers: { location: 'https://evil.example' } })
+      );
 
     await expect(build(fetchImpl).get('/x')).rejects.toMatchObject({ statusCode: 302 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -107,6 +109,43 @@ describe('ShoperHttpClient', () => {
     await expect(build(fetchImpl).get('/x')).rejects.toBeInstanceOf(ShoperNetworkError);
   });
 
+  it('should refuse a 2xx whose body is empty or not JSON', async () => {
+    for (const body of ['', '<html>parked</html>']) {
+      const fetchImpl = jest.fn().mockResolvedValue(new Response(body, { status: 200 }));
+
+      await expect(build(fetchImpl).get('/x')).rejects.toBeInstanceOf(ShoperNetworkError);
+    }
+  });
+
+  it('should cap a chunked body that declares no content-length, and stop reading', async () => {
+    const chunk = new Uint8Array(1024 * 1024).fill(97);
+    let pulled = 0;
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(stream, { status: 200 }));
+
+    await expect(build(fetchImpl).get('/x')).rejects.toBeInstanceOf(ShoperNetworkError);
+
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThan(10);
+  });
+
+  it('should count bytes, not UTF-16 units, against the cap', async () => {
+    // 3-byte characters: 1.5M of them is ~4.5 MB but only 1.5M UTF-16 units.
+    const body = JSON.stringify({ t: '€'.repeat(1_500_000) });
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(body, { status: 200 }));
+
+    await expect(build(fetchImpl).get('/x')).rejects.toBeInstanceOf(ShoperNetworkError);
+  });
+
   it('should report a timeout when the request is aborted', async () => {
     jest.useFakeTimers();
     try {
@@ -114,7 +153,7 @@ describe('ShoperHttpClient', () => {
         (_url: string, init?: RequestInit) =>
           new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
-          }),
+          })
       );
       const pending = build(fetchImpl as unknown as jest.Mock)
         .get('/x')
