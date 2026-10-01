@@ -993,6 +993,46 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('fulfilment ownership flag validation (#2118)', () => {
+      it('should accept a boolean flag and a cleared null on create', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: true },
+          })
+        ).resolves.toEqual(mockConnection);
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: null },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject a non-boolean flag on create', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: 'true' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a non-boolean flag on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', fulfilmentOwnedByDestination: 1 },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
     describe('neutral stock and pricing config validation (#2610)', () => {
       it('should accept a create carrying all three keys within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);

@@ -780,3 +780,37 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
     expect(screen.queryByTestId('order-buyer-tax-id-none')).not.toBeInTheDocument();
   });
 });
+
+describe('OrderDetailPage - packing affordance for a destination that packs itself (#2118)', () => {
+  afterEach(cleanup);
+
+  it('shows the Mark packed control when no destination declares it packs for itself', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(await screen.findByText('Packing')).toBeInTheDocument();
+  });
+
+  it('hides the Mark packed control when the order went to a destination that packs itself', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            { ...sampleConnection, config: { fulfilmentOwnedByDestination: true } },
+          ]),
+      },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    await waitFor(() => expect(screen.queryByText('Packing')).not.toBeInTheDocument());
+  });
+});
