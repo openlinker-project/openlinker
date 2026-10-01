@@ -18,7 +18,6 @@ import {
   isProductTaxRateReader,
 } from '@openlinker/core/products';
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
-import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
 
 const CONNECTION_ID = 'conn-1';
