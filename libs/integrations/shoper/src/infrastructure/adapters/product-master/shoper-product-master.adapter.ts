@@ -37,6 +37,9 @@ import type {
   ProductUpdate,
   ProductVariantCreate,
   Category,
+  ProductTaxRateReader,
+  ReadProductTaxRateInput,
+  TaxRateResolution,
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -52,16 +55,15 @@ import type {
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
+import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
 import {
   SHOPER_MAX_PAGE_SIZE,
   fetchShoperPage,
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
-import {
-  mapShoperProduct,
-  mapShoperStockToVariant,
-} from '../../mappers/shoper-product.mapper';
+import { mapShoperProduct, mapShoperStockToVariant } from '../../mappers/shoper-product.mapper';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
 /** Explicit direction: a bare `order=<field>` sorts DESCENDING on Shoper. */
@@ -73,7 +75,7 @@ const DEFAULT_WINDOW = SHOPER_MAX_PAGE_SIZE;
 /** A Shoper id is a positive integer; anything else cannot be one. */
 const SHOPER_ID = /^\d+$/;
 
-export class ShoperProductMasterAdapter implements ProductMasterPort {
+export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
   private readonly productReads = new Map<string, Promise<ShoperProduct>>();
@@ -82,7 +84,8 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     private readonly client: ShoperHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly shopContext: ShoperShopContextProvider,
-    private readonly connection: Connection,
+    private readonly taxTable: ShoperTaxTableProvider,
+    private readonly connection: Connection
   ) {}
 
   // ─── Read methods ──────────────────────────────────────────────────────────
@@ -95,7 +98,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
         offset: filters?.offset ?? 0,
         limit: filters?.limit ?? DEFAULT_WINDOW,
         query: { order: PRODUCT_ORDER },
-      },
+      }
     );
     return rows.map((p) => String(p.product_id));
   }
@@ -146,7 +149,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
           parentInternalId: productId,
           metadata: { variantExternalId: s.stock_id },
         },
-      })),
+      }))
     );
 
     const variants: ProductVariant[] = [];
@@ -163,6 +166,59 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
 
   searchProducts(query: string, filters?: ProductFilters): Promise<Product[]> {
     return this.getProducts({ ...filters, query });
+  }
+
+  // ─── Tax rate (ADR-063) ────────────────────────────────────────────────────
+
+  /**
+   * The rate the shop assigns this product, as an ADR-063 code. Tax lives on
+   * the Shoper PRODUCT, not the stock row, so `variantId` is not consulted
+   * (`readsTaxRatePerVariant()` is false).
+   *
+   * Never guesses: no fallback to the shop default tax or to 23%. A missing
+   * `tax_id` is the shop's answer (`not-configured`, persisted, fixed in the
+   * shop); a `tax_id` absent from `/taxes`, a row name this build does not
+   * recognise, or a row whose name and `value` contradict each other
+   * established nothing (`unreadable`, not persisted). Transport
+   * failures propagate - turning one into an answer would let a single 500
+   * during a sweep mark products rate-less.
+   */
+  async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
+    const externalId = await this.resolveExternalProductId(input.productId);
+    const data = await this.readProduct(externalId);
+
+    const taxId =
+      data.tax_id === null || data.tax_id === undefined ? '' : String(data.tax_id).trim();
+    // `'0'` is treated as "no tax group" - unverified live (see README); holds, never guesses.
+    if (taxId.length === 0 || taxId === '0') {
+      return {
+        kind: 'unknown',
+        reason: 'not-configured',
+        detail: `Shoper product ${externalId} has no tax rate assigned`,
+      };
+    }
+
+    const row = (await this.taxTable.get()).get(taxId);
+    if (row === undefined) {
+      return {
+        kind: 'unknown',
+        reason: 'unreadable',
+        detail: `Shoper tax_id ${taxId} is not in the shop's tax table`,
+      };
+    }
+
+    // The name alone is not trusted: it is a label a merchant can edit, and the
+    // result feeds a fiscal document, so `value` must agree with it.
+    const rate = mapShoperTaxRow(row);
+    if (!rate.ok) {
+      return { kind: 'unknown', reason: 'unreadable', detail: rate.detail };
+    }
+
+    return { kind: 'resolved', code: rate.code, countryIso2: null };
+  }
+
+  readsTaxRatePerVariant(): boolean {
+    return false;
   }
 
   // ─── Categories ────────────────────────────────────────────────────────────
@@ -203,19 +259,19 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     if (joined.unnamedIds.length > 0) {
       this.logger.warn(
         `Shoper categories with no name in any language, skipped: ${joined.unnamedIds.join(',')} ` +
-          `(connection: ${this.connection.id})`,
+          `(connection: ${this.connection.id})`
       );
     }
     if (joined.unnamedTreeIds.length > 0) {
       this.logger.warn(
         `Shoper category tree lists ids with no category record, skipped: ${joined.unnamedTreeIds.join(',')} ` +
-          `(connection: ${this.connection.id})`,
+          `(connection: ${this.connection.id})`
       );
     }
     if (joined.unplacedIds.length > 0) {
       this.logger.warn(
         `Shoper categories missing from the category tree, returned without a parent: ` +
-          `${joined.unplacedIds.join(',')} (connection: ${this.connection.id})`,
+          `${joined.unplacedIds.join(',')} (connection: ${this.connection.id})`
       );
     }
     return joined.categories;
@@ -240,7 +296,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
       const category = directory.get(id);
       if (category === undefined) {
         this.logger.warn(
-          `Shoper product ${externalId} references unknown category ${id}, skipped (connection: ${this.connection.id})`,
+          `Shoper product ${externalId} references unknown category ${id}, skipped (connection: ${this.connection.id})`
         );
         continue;
       }
@@ -265,7 +321,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
 
   upsertProductVariant(
     _productId: string,
-    _variant: ProductVariantCreate,
+    _variant: ProductVariantCreate
   ): Promise<ProductVariant> {
     return Promise.reject(new ShoperNotSupportedException('upsertProductVariant'));
   }
@@ -296,7 +352,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
   private async resolveExternalProductId(productId: string): Promise<string> {
     const mappings = await this.identifierMapping.getExternalIds(
       CORE_ENTITY_TYPE.Product,
-      productId,
+      productId
     );
     const mapping = mappings.find((m) => m.connectionId === this.connection.id);
     if (mapping === undefined) {
@@ -338,13 +394,13 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
    */
   private async getProductsByExternalIds(
     externalIds: readonly string[],
-    where: Record<string, unknown> | null,
+    where: Record<string, unknown> | null
   ): Promise<Product[]> {
     const valid = externalIds.filter((id) => SHOPER_ID.test(id));
     if (valid.length < externalIds.length) {
       this.logger.warn(
         `Ignoring ${externalIds.length - valid.length} non-numeric product id(s) ` +
-          `(connection: ${this.connection.id})`,
+          `(connection: ${this.connection.id})`
       );
     }
 
@@ -376,7 +432,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
         entityType: CORE_ENTITY_TYPE.Product,
         externalId: p.product_id,
         connectionId: this.connection.id,
-      })),
+      }))
     );
 
     const products: Product[] = [];
@@ -436,7 +492,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     if (own.length < rows.length) {
       this.logger.warn(
         `Shoper returned ${rows.length - own.length} stock row(s) of another product while ` +
-          `reading product ${externalProductId}; dropped (connection: ${this.connection.id})`,
+          `reading product ${externalProductId}; dropped (connection: ${this.connection.id})`
       );
     }
     return own;

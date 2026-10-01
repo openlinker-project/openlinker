@@ -96,6 +96,16 @@ export interface ShoperCategoryTreeNode {
   readonly children: readonly ShoperCategoryTreeNode[];
 }
 
+/**
+ * A `GET /taxes` row. Three live rows share `value: "0"` (`0%`, `zw.`, `np.`),
+ * so the NAME is what identifies the rate, not `value`.
+ */
+export interface ShoperTax {
+  readonly tax_id: string;
+  readonly value: string;
+  readonly name: string;
+}
+
 /** The slice of `GET /application-config` the adapter reads. */
 export interface ShoperApplicationConfig {
   readonly default_language_name: string;

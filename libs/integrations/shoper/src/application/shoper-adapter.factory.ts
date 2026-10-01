@@ -26,6 +26,7 @@ import type { ShoperCredentials } from '../domain/types/shoper-credentials.types
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
 import { ShoperShopContextProvider } from '../infrastructure/shop-context/shoper-shop-context.provider';
+import { ShoperTaxTableProvider } from '../infrastructure/shop-context/shoper-tax-table.provider';
 
 export interface ShoperAdapters {
   readonly productMaster: ShoperProductMasterAdapter;
@@ -63,6 +64,7 @@ export class ShoperAdapterFactory {
         client,
         identifierMapping,
         shopContext,
+        new ShoperTaxTableProvider(client),
         connection,
       ),
     };
