@@ -75,6 +75,17 @@ export interface LiveNavItem {
    * pre-existing behaviour.
    */
   requiresRole?: 'admin';
+  /**
+   * Show the item only while fulfilment routing ("OMS") is switched on
+   * (#3505) — for screens that are empty by construction without it
+   * (`/fulfillment`, `/bench`). Applied on top of the permission/role gates.
+   *
+   * Resolved through `isOmsNavItemVisible`: an `unknown` routing state (the
+   * read has not answered) hides the item, while an `unreadable` one (the
+   * read FAILED) shows it — a status outage must not take a screen away from
+   * the operators who use it.
+   */
+  requiresOms?: true;
   to: string;
 }
 
