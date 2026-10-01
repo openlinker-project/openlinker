@@ -98,11 +98,13 @@ A passing test does **not** prove every area above was granted; each capability 
 - **Images:** only the main image, `https://<host>/userdata/public/gfx/<unic_name>.<extension>`.
 - Writes throw `ShoperNotSupportedException`.
 
-Paging rules the adapter enforces (all observed on a live shop):
+Paging (all observed on a live shop):
 
-- Shoper pages by **page index**; an `offset` that is not a multiple of `limit` is refused, never rounded.
-- **`limit` is capped at 50, and a larger value is silently reduced to 10** by the shop. The adapter refuses
-  anything above 50 rather than sending it, because a silently short page reads as the end of the catalogue.
+- Shoper pages by **page index** and **caps a page at 50 rows; a larger `limit` is silently reduced to 10**.
+- The `{limit, offset}` a caller passes is its own **window** (a sweep's budget, 100 by default, up to 500 and
+  changeable at runtime), not a Shoper page. The adapter covers any window with pages of 50 and slices, so
+  any `limit` up to 1000 and any `offset` is served exactly - nothing is refused and no window is shifted.
+  It never sends a page above 50, and stops only on the shop's own last page, never on a short page.
 - A bare `order=<field>` sorts descending; the adapter always sends an explicit `ASC`.
 - `filters[category_id]` and `filters[code]` are not valid on `products` (the shop answers 404); the
   `categoryIds` and `status` filters are therefore refused rather than ignored.
