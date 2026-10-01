@@ -7,28 +7,32 @@ import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
 function hostWithRegistries(): {
   host: HostServices;
   registries: Record<string, { register: jest.Mock }>;
+  credentialsGet: jest.Mock;
 } {
   const registries = {
     connectionTesterRegistry: { register: jest.fn() },
     connectionConfigShapeValidatorRegistry: { register: jest.fn() },
     connectionCredentialsShapeValidatorRegistry: { register: jest.fn() },
     authFailureClassifierRegistry: { register: jest.fn() },
+    retryClassifierRegistry: { register: jest.fn() },
   };
+  const credentialsGet = jest.fn().mockResolvedValue({ token: 'secret-token-value' });
   const host = {
     http: { forConnection: jest.fn().mockReturnValue(jest.fn()) },
     identifierMapping: {},
-    credentialsResolver: { get: jest.fn().mockResolvedValue({ token: 'secret-token-value' }) },
+    credentialsResolver: { get: credentialsGet },
     ...registries,
   } as unknown as HostServices;
-  return { host, registries };
+  return { host, registries, credentialsGet };
 }
 
-function connection(): Connection {
+function connection(overrides: Record<string, unknown> = {}): Connection {
   return {
     id: 'c',
     platformType: 'shoper',
     config: { baseUrl: 'sklep729770.shoparena.pl' },
     credentialsRef: 'db:cred-1',
+    ...overrides,
   } as unknown as Connection;
 }
 
@@ -44,7 +48,7 @@ describe('Shoper plugin', () => {
     expect(createShoperPlugin().manifest).toBe(shoperAdapterManifest);
   });
 
-  it('should register the tester, both shape validators and the auth classifier under its adapter key', () => {
+  it('should register the tester, both shape validators and both classifiers under its adapter key', () => {
     const { host, registries } = hostWithRegistries();
 
     createShoperPlugin().register?.(host);
@@ -76,11 +80,44 @@ describe('Shoper plugin', () => {
     expect(host.http.forConnection).toHaveBeenCalledWith(conn);
   });
 
-  it('should still reject a capability no task has delivered yet', async () => {
+  describe('an unsupported capability', () => {
+    it('should fail with the SDK’s uniform error', async () => {
+      const { host } = hostWithRegistries();
+
+      await expect(
+        createShoperPlugin().createCapabilityAdapter(connection(), 'InventoryMaster', host),
+      ).rejects.toThrow(/does not support capability: InventoryMaster/);
+    });
+
+    it('should not decrypt the credentials or open a transport to say so', async () => {
+      const { host, credentialsGet } = hostWithRegistries();
+
+      await createShoperPlugin()
+        .createCapabilityAdapter(connection(), 'InventoryMaster', host)
+        .catch(() => undefined);
+
+      expect(credentialsGet).not.toHaveBeenCalled();
+      expect(host.http.forConnection).not.toHaveBeenCalled();
+    });
+
+    it('should report the unsupported capability even when the connection config is broken', async () => {
+      const { host } = hostWithRegistries();
+
+      await expect(
+        createShoperPlugin().createCapabilityAdapter(
+          connection({ config: {} }),
+          'InventoryMaster',
+          host,
+        ),
+      ).rejects.toThrow(/does not support capability/);
+    });
+  });
+
+  it('should still surface a broken config for the capability it does support', async () => {
     const { host } = hostWithRegistries();
 
     await expect(
-      createShoperPlugin().createCapabilityAdapter(connection(), 'InventoryMaster', host),
-    ).rejects.toThrow(/capability/);
+      createShoperPlugin().createCapabilityAdapter(connection({ config: {} }), 'ProductMaster', host),
+    ).rejects.toThrow(/misconfigured/);
   });
 });

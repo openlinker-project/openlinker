@@ -15,9 +15,8 @@
  *     reports `x-shop-api-limit: 10`, unit unknown). Inventing a number is
  *     worse than none; absent means unlimited until the operator sets
  *     `config.rateLimit`.
- *   - a retry classifier - the default (retryable) treatment fits the read
- *     failures this adapter raises today; a permanent-failure classification
- *     arrives with the first capability that writes.
+ *   - penalty-free deferral for 429 / 503 (`getRetryDeferral`) - the request
+ *     ceiling is unknown, so there is no honest delay to quote.
  *   - Sales documents (invoice / receipt) - confirmed absent from Shoper's API
  *     (SPIKE-3638), a deliberate scope boundary, not a gap.
  *
@@ -28,7 +27,8 @@ import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
 import { SHOPER_ADAPTER_KEY, SHOPER_BRAND, SHOPER_PLATFORM_TYPE } from './shoper.constants';
-import { ShoperAdapterFactory } from './application/shoper-adapter.factory';
+import { ShoperAdapterFactory, type ShoperAdapters } from './application/shoper-adapter.factory';
+import { ShoperRetryClassifierAdapter } from './infrastructure/adapters/shoper-retry-classifier.adapter';
 import { ShoperAuthFailureClassifierAdapter } from './infrastructure/adapters/shoper-auth-failure-classifier.adapter';
 import { ShoperConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/shoper-connection-config-shape-validator.adapter';
 import { ShoperConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/shoper-connection-credentials-shape-validator.adapter';
@@ -74,26 +74,39 @@ export function createShoperPlugin(): AdapterPlugin {
         SHOPER_ADAPTER_KEY,
         new ShoperAuthFailureClassifierAdapter(),
       );
+      host.retryClassifierRegistry.register(
+        SHOPER_ADAPTER_KEY,
+        new ShoperRetryClassifierAdapter(),
+      );
     },
 
-    async createCapabilityAdapter<T>(
+    createCapabilityAdapter<T>(
       connection: Connection,
       capability: string,
       host: HostServices,
     ): Promise<T> {
-      const adapters = await factory.createAdapters(
-        connection,
-        host.identifierMapping,
-        host.credentialsResolver,
-        // Connection-bound outbound transport (#1810). No manifest default rate
-        // limit is passed - this plugin declares none (SPIKE-3638 C6).
-        host.http.forConnection(connection),
-      );
-      return dispatchCapability<T>(
-        capability,
-        { ProductMaster: () => adapters.productMaster },
-        SHOPER_BRAND,
-      );
+      // Dispatch FIRST, build lazily: an unsupported capability must fail with
+      // the SDK's uniform "does not support" error before any credential is
+      // decrypted, and a bad connection config must not mask that error.
+      const build = async (): Promise<ShoperAdapters> =>
+        factory.createAdapters(
+          connection,
+          host.identifierMapping,
+          host.credentialsResolver,
+          // Connection-bound outbound transport (#1810). No manifest default rate
+          // limit is passed - this plugin declares none (SPIKE-3638 C6).
+          host.http.forConnection(connection),
+          host.cache,
+        );
+      try {
+        return dispatchCapability<Promise<T>>(
+          capability,
+          { ProductMaster: async () => (await build()).productMaster },
+          SHOPER_BRAND,
+        );
+      } catch (error) {
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+      }
     },
   };
 }

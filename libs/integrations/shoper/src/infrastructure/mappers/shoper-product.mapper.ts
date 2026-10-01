@@ -78,8 +78,22 @@ export function pickShoperTranslation(
   return Object.values(translations).find((t) => nonEmpty(t.name) !== null);
 }
 
-/** Public URL of a gfx. Verified live: `/userdata/public/gfx/<unic_name>.<extension>`. */
-export function buildShoperImageUrl(host: string, image: ShoperMainImage): string {
+/** A file stem: word characters, dots and dashes, never a leading dot (no `..`). */
+const IMAGE_STEM = /^\w[\w.-]*$/;
+const IMAGE_EXTENSION = /^\w+$/;
+
+/**
+ * Public URL of a gfx. Verified live: `/userdata/public/gfx/<unic_name>.<extension>`.
+ *
+ * `unic_name` and `extension` come from the shop and are interpolated into a
+ * path, so a `/`, `?`, `#` or `..` would change which resource is addressed.
+ * The host is fixed, so this is not SSRF, but a value that is not a plain file
+ * name yields `null` (no image) rather than a URL pointing somewhere else.
+ */
+export function buildShoperImageUrl(host: string, image: ShoperMainImage): string | null {
+  if (!IMAGE_STEM.test(image.unic_name) || !IMAGE_EXTENSION.test(image.extension)) {
+    return null;
+  }
   return `https://${host}/userdata/public/gfx/${image.unic_name}.${image.extension}`;
 }
 
@@ -114,13 +128,14 @@ export function mapShoperProduct(raw: ShoperProduct, ctx: ShoperMapContext): Omi
   const sku = nonEmpty(raw.code);
   const weight =
     raw.stock === null ? undefined : weightInKilograms(raw.stock.weight, ctx.weightUnit);
+  const imageUrl = raw.main_image === null ? null : buildShoperImageUrl(ctx.host, raw.main_image);
 
   return {
     name: nonEmpty(translation?.name) ?? sku ?? `product-${raw.product_id}`,
     sku,
     price: raw.stock === null ? null : (parseShoperNumber(raw.stock.price) ?? null),
     description: nonEmpty(translation?.description),
-    images: raw.main_image === null ? null : [buildShoperImageUrl(ctx.host, raw.main_image)],
+    images: imageUrl === null ? null : [imageUrl],
     currency: ctx.currency,
     categories: raw.categories.map(String),
     ...(weight === undefined ? {} : { weight }),

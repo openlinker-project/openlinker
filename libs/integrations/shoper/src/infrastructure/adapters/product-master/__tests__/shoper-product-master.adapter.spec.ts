@@ -55,6 +55,34 @@ function respond(get: jest.Mock, routes: Record<string, unknown>): void {
   });
 }
 
+/**
+ * A fake shop of `total` products that behaves like the live one where it
+ * matters: pages by index and SILENTLY shrinks a `limit` above 50 to 10.
+ */
+function fakeShop(total: number, get: jest.Mock): void {
+  get.mockImplementation((_path: string, query: { page: number; limit: number }) => {
+    const effective = query.limit > 50 ? 10 : query.limit;
+    const all = Array.from({ length: total }, (_, i) => ({ product_id: String(i + 1) }));
+    const start = (query.page - 1) * effective;
+    return Promise.resolve({
+      status: 200,
+      data: envelope(all.slice(start, start + effective), {
+        count: total,
+        pages: Math.max(1, Math.ceil(total / effective)),
+        page: query.page,
+      }),
+    });
+  });
+}
+
+function idsFrom(first: number, last: number): string[] {
+  return Array.from({ length: last - first + 1 }, (_, i) => String(first + i));
+}
+
+function pagesRequested(get: jest.Mock): number[] {
+  return get.mock.calls.map(([, query]) => (query as { page: number }).page);
+}
+
 describe('ShoperProductMasterAdapter', () => {
   describe('listExternalIds', () => {
     it('should return Shoper product ids, ascending, from page 1 by default', async () => {
@@ -70,28 +98,89 @@ describe('ShoperProductMasterAdapter', () => {
       });
     });
 
-    it('should translate an aligned offset to a page index', async () => {
+    it('should serve a 100-row window (the sweep default) from two pages of 50', async () => {
       const { adapter, get } = setup();
-      respond(get, { '/products': envelope([]) });
+      fakeShop(400, get);
 
-      await adapter.listExternalIds({ limit: 20, offset: 40 });
+      const ids = await adapter.listExternalIds({ limit: 100, offset: 0 });
 
-      expect(get).toHaveBeenCalledWith('/products', expect.objectContaining({ limit: 20, page: 3 }));
+      expect(ids).toEqual(idsFrom(1, 100));
+      expect(pagesRequested(get)).toEqual([1, 2]);
     });
 
-    it('should refuse an offset that is not a multiple of the page size', async () => {
+    it('should serve a window at an offset that is not a multiple of anything', async () => {
       const { adapter, get } = setup();
+      fakeShop(400, get);
 
-      await expect(adapter.listExternalIds({ limit: 20, offset: 25 })).rejects.toThrow(
-        /not a multiple/,
-      );
-      expect(get).not.toHaveBeenCalled();
+      const ids = await adapter.listExternalIds({ limit: 100, offset: 130 });
+
+      expect(ids).toEqual(idsFrom(131, 230));
+      expect(pagesRequested(get)).toEqual([3, 4, 5]);
     });
 
-    it('should refuse a page size Shoper would silently shrink', async () => {
+    it('should serve the largest sweep window (500) in ten requests', async () => {
+      const { adapter, get } = setup();
+      fakeShop(2000, get);
+
+      const ids = await adapter.listExternalIds({ limit: 500, offset: 500 });
+
+      expect(ids).toEqual(idsFrom(501, 1000));
+      expect(get).toHaveBeenCalledTimes(10);
+    });
+
+    it('should never ask Shoper for a page above its ceiling of 50, which it would silently shrink', async () => {
+      const { adapter, get } = setup();
+      fakeShop(400, get);
+
+      await adapter.listExternalIds({ limit: 500, offset: 0 });
+      await adapter.listExternalIds({ limit: 7, offset: 3 });
+
+      const limits = get.mock.calls.map(([, query]) => (query as { limit: number }).limit);
+      expect(Math.max(...limits)).toBe(50);
+    });
+
+    it('should keep a cursor intact when the sweep page size changes mid-cycle (100 -> 30)', async () => {
+      const { adapter, get } = setup();
+      fakeShop(400, get);
+
+      const cycle = [
+        ...(await adapter.listExternalIds({ limit: 100, offset: 0 })),
+        ...(await adapter.listExternalIds({ limit: 30, offset: 100 })),
+        ...(await adapter.listExternalIds({ limit: 30, offset: 130 })),
+        ...(await adapter.listExternalIds({ limit: 270, offset: 160 })),
+      ];
+
+      // 100 + 30 + 30 + a 270 window that runs past the end of a 400-row shop:
+      // every row exactly once, in order, none skipped at the seams.
+      expect(cycle).toEqual(idsFrom(1, 400));
+    });
+
+    it('should stop on the shop’s own last page, not on a short page of its own making', async () => {
+      const { adapter, get } = setup();
+      fakeShop(36, get);
+
+      const ids = await adapter.listExternalIds({ limit: 100, offset: 0 });
+
+      expect(ids).toEqual(idsFrom(1, 36));
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return an empty window past the end instead of looping', async () => {
+      const { adapter, get } = setup();
+      fakeShop(36, get);
+
+      await expect(adapter.listExternalIds({ limit: 100, offset: 500 })).resolves.toEqual([]);
+    });
+
+    it.each([
+      ['a window above the sanity bound', { limit: 1001, offset: 0 }],
+      ['a zero window', { limit: 0, offset: 0 }],
+      ['a negative offset', { limit: 10, offset: -1 }],
+      ['a fractional offset', { limit: 10, offset: 1.5 }],
+    ])('should reject %s without calling Shoper', async (_label, window) => {
       const { adapter, get } = setup();
 
-      await expect(adapter.listExternalIds({ limit: 100 })).rejects.toThrow(/maximum of 50/);
+      await expect(adapter.listExternalIds(window)).rejects.toThrow(RangeError);
       expect(get).not.toHaveBeenCalled();
     });
   });
@@ -160,6 +249,53 @@ describe('ShoperProductMasterAdapter', () => {
       expect(JSON.parse(request.filters)).toEqual({ product_id: { in: [93, 94] } });
     });
 
+    it('should serve a window larger than one Shoper page from several pages', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((_path: string, query: { page: number; limit: number }) =>
+        Promise.resolve({
+          status: 200,
+          data: envelope(
+            Array.from({ length: 50 }, (_, i) =>
+              buildProduct({ product_id: String((query.page - 1) * 50 + i + 1) }),
+            ),
+            { count: 200, pages: 4, page: query.page },
+          ),
+        }),
+      );
+
+      const products = await adapter.getProducts({ limit: 80, offset: 10 });
+
+      expect(products).toHaveLength(80);
+      expect(products[0].id).toBe('ol_11');
+      expect(products[79].id).toBe('ol_90');
+    });
+
+    it('should skip a non-numeric id instead of sending NaN in the filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([buildProduct()]) });
+
+      await adapter.getProducts({ externalIds: ['93', 'abc', '9 3', ''] });
+
+      const [, request] = get.mock.calls[0] as [string, { filters: string }];
+      expect(JSON.parse(request.filters)).toEqual({ product_id: { in: [93] } });
+    });
+
+    it('should not call Shoper at all when no requested id is numeric', async () => {
+      const { adapter, get } = setup();
+
+      await expect(adapter.getProducts({ externalIds: ['abc'] })).resolves.toEqual([]);
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should leave an id Shoper did not return out of the result, not report it as deleted', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products': envelope([buildProduct({ product_id: '93' })]) });
+
+      const products = await adapter.getProducts({ externalIds: ['93', '999'] });
+
+      expect(products.map((p) => p.id)).toEqual(['ol_93']);
+    });
+
     it('should chunk a requested id set larger than one page', async () => {
       const { adapter, get } = setup();
       respond(get, { '/products': envelope([]) });
@@ -215,6 +351,22 @@ describe('ShoperProductMasterAdapter', () => {
         expect.objectContaining({ entityType: 'ProductVariant', externalId: '300' }),
         expect.objectContaining({ entityType: 'ProductVariant', externalId: '301' }),
       ]);
+    });
+
+    it('should drop stock rows of another product if Shoper stops honouring the product filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([
+          buildStock({ stock_id: '181', product_id: '93' }),
+          buildStock({ stock_id: '182', product_id: '94' }),
+          buildStock({ stock_id: '183', product_id: '95' }),
+        ]),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => v.id)).toEqual(['ol_181']);
+      expect(variants.every((v) => v.productId === 'ol_product_1')).toBe(true);
     });
 
     it('should not mint a synthetic variant for a simple product', async () => {

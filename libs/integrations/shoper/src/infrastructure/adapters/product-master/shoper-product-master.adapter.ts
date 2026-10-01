@@ -18,9 +18,14 @@
  * identifier mapping; `listExternalIds` returns Shoper ids.
  *
  * Paging: Shoper pages by page index, caps `limit` at 50 and SILENTLY shrinks a
- * larger one to 10. This adapter never sends more than 50 and refuses a larger
- * request, and refuses an `offset` that is not a multiple of `limit` rather
- * than returning a shifted window (see `shoper-pagination.ts`).
+ * larger one to 10. The caller's `{limit, offset}` is its own WINDOW (a sweep's
+ * budget, operator-settable at runtime), not a Shoper page, so the adapter
+ * covers any window with pages of 50 and slices - nothing is refused and no
+ * window is ever shifted (see `fetchShoperWindow`).
+ *
+ * Filter syntax, both forms live-verified: `/products` takes the JSON form
+ * (`filters={"product_id":{"in":[..]}}`, `{"translations.name":{"like":..}}`),
+ * `/product-stocks` takes the bracket form (`filters[product_id]=93`).
  *
  * @module libs/integrations/shoper/src/infrastructure/adapters/product-master
  * @implements {ProductMasterPort}
@@ -45,8 +50,8 @@ import type { ShoperProduct, ShoperStock } from '../../../domain/types/shoper-ap
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
 import {
   SHOPER_MAX_PAGE_SIZE,
-  assertShoperPageSize,
   fetchShoperPage,
+  fetchShoperWindow,
 } from '../../http/shoper-pagination';
 import {
   mapShoperProduct,
@@ -56,6 +61,12 @@ import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-c
 
 /** Explicit direction: a bare `order=<field>` sorts DESCENDING on Shoper. */
 const PRODUCT_ORDER = 'product_id ASC';
+
+/** Window used when the caller names none: one Shoper page. */
+const DEFAULT_WINDOW = SHOPER_MAX_PAGE_SIZE;
+
+/** A Shoper id is a positive integer; anything else cannot be one. */
+const SHOPER_ID = /^\d+$/;
 
 export class ShoperProductMasterAdapter implements ProductMasterPort {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
@@ -70,13 +81,16 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
   // ─── Read methods ──────────────────────────────────────────────────────────
 
   async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
-    const { limit, page } = this.resolvePaging(filters, 'listExternalIds');
-    const result = await fetchShoperPage<Pick<ShoperProduct, 'product_id'>>(
+    const rows = await fetchShoperWindow<Pick<ShoperProduct, 'product_id'>>(
       this.client,
       '/products',
-      { page, limit, query: { order: PRODUCT_ORDER } },
+      {
+        offset: filters?.offset ?? 0,
+        limit: filters?.limit ?? DEFAULT_WINDOW,
+        query: { order: PRODUCT_ORDER },
+      },
     );
-    return result.items.map((p) => p.product_id);
+    return rows.map((p) => String(p.product_id));
   }
 
   async getProduct(productId: string): Promise<Product> {
@@ -96,16 +110,15 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
       return this.getProductsByExternalIds(filters.externalIds, where);
     }
 
-    const { limit, page } = this.resolvePaging(filters, 'getProducts');
     if (where !== null) {
       query.filters = JSON.stringify(where);
     }
-    const result = await fetchShoperPage<ShoperProduct>(this.client, '/products', {
-      page,
-      limit,
+    const rows = await fetchShoperWindow<ShoperProduct>(this.client, '/products', {
+      offset: filters?.offset ?? 0,
+      limit: filters?.limit ?? DEFAULT_WINDOW,
       query,
     });
-    return this.toProducts(result.items);
+    return this.toProducts(rows);
   }
 
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
@@ -189,26 +202,6 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
   }
 
   /**
-   * `offset` -> page. Shoper pages by index, so an offset that is not a whole
-   * number of pages cannot be expressed; it is refused, never rounded.
-   */
-  private resolvePaging(
-    filters: { limit?: number; offset?: number } | undefined,
-    operation: string,
-  ): { limit: number; page: number } {
-    const limit = filters?.limit ?? SHOPER_MAX_PAGE_SIZE;
-    assertShoperPageSize(limit, operation);
-    const offset = filters?.offset ?? 0;
-    if (!Number.isInteger(offset) || offset < 0 || offset % limit !== 0) {
-      throw new RangeError(
-        `Shoper ${operation}: offset ${offset} is not a multiple of the page size ${limit}; ` +
-          'Shoper pages by page index and cannot return a shifted window',
-      );
-    }
-    return { limit, page: offset / limit + 1 };
-  }
-
-  /**
    * Filters Shoper cannot express on `products` are REFUSED, never ignored: an
    * ignored filter would return a wider set than the caller asked for.
    */
@@ -230,13 +223,30 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     return Object.keys(where).length > 0 ? where : null;
   }
 
+  /**
+   * An id Shoper never returns is simply ABSENT from the result - this method
+   * cannot tell "deleted" from "not returned". Deletion is detected where the
+   * shop says so explicitly: a 404 on `getProduct` (see `MasterProductNotFoundError`).
+   *
+   * An id that is not a positive integer cannot be a Shoper id; it is skipped
+   * and logged, never sent (`Number('x')` would become `null` in the JSON
+   * filter and silently widen or break the query).
+   */
   private async getProductsByExternalIds(
     externalIds: readonly string[],
     where: Record<string, unknown> | null,
   ): Promise<Product[]> {
+    const valid = externalIds.filter((id) => SHOPER_ID.test(id));
+    if (valid.length < externalIds.length) {
+      this.logger.warn(
+        `Ignoring ${externalIds.length - valid.length} non-numeric product id(s) ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
+
     const products: Product[] = [];
-    for (let i = 0; i < externalIds.length; i += SHOPER_MAX_PAGE_SIZE) {
-      const chunk = externalIds.slice(i, i + SHOPER_MAX_PAGE_SIZE);
+    for (let i = 0; i < valid.length; i += SHOPER_MAX_PAGE_SIZE) {
+      const chunk = valid.slice(i, i + SHOPER_MAX_PAGE_SIZE);
       const filtersParam: Record<string, unknown> = {
         ...where,
         product_id: { in: chunk.map(Number) },
@@ -287,11 +297,29 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
         limit: SHOPER_MAX_PAGE_SIZE,
         query: { 'filters[product_id]': externalProductId, order: 'stock_id ASC' },
       });
-      stocks.push(...result.items);
+      stocks.push(...this.onlyStocksOf(externalProductId, result.items));
       if (page >= result.pages) {
         return stocks;
       }
       page += 1;
     }
+  }
+
+  /**
+   * Guard against the filter being ignored. Shoper silently rewrites invalid
+   * parameters (`limit` -> 10), so a `filters[product_id]` it stopped honouring
+   * would answer with the WHOLE stock table, and every product would be handed
+   * foreign variants under a wrong parent. A row that is not this product's is
+   * dropped and logged.
+   */
+  private onlyStocksOf(externalProductId: string, rows: readonly ShoperStock[]): ShoperStock[] {
+    const own = rows.filter((s) => String(s.product_id) === externalProductId);
+    if (own.length < rows.length) {
+      this.logger.warn(
+        `Shoper returned ${rows.length - own.length} stock row(s) of another product while ` +
+          `reading product ${externalProductId}; dropped (connection: ${this.connection.id})`,
+      );
+    }
+    return own;
   }
 }

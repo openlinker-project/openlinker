@@ -60,6 +60,35 @@ describe('buildShoperImageUrl', () => {
   });
 });
 
+describe('buildShoperImageUrl safety', () => {
+  it.each([
+    ['a path separator', { unic_name: '207/../../x', extension: 'png' }],
+    ['a query', { unic_name: '207?x=1', extension: 'png' }],
+    ['a fragment', { unic_name: '207#x', extension: 'png' }],
+    ['a leading dot', { unic_name: '..', extension: 'png' }],
+    ['an empty name', { unic_name: '', extension: 'png' }],
+    ['a dotted extension', { unic_name: '207', extension: 'png/x' }],
+    ['an empty extension', { unic_name: '207', extension: '' }],
+    ['whitespace', { unic_name: '20 7', extension: 'png' }],
+  ])('should refuse a file name containing %s, rather than address another resource', (_l, image) => {
+    expect(buildShoperImageUrl(SHOP_HOST, image)).toBeNull();
+  });
+
+  it('should accept ordinary stems, including dots and dashes inside', () => {
+    expect(buildShoperImageUrl(SHOP_HOST, { unic_name: '207-a.b_c', extension: 'webp' })).toBe(
+      'https://sklep729770.shoparena.pl/userdata/public/gfx/207-a.b_c.webp',
+    );
+  });
+
+  it('should leave a product without an image when the file name is unsafe', () => {
+    const product = mapShoperProduct(
+      buildProduct({ main_image: { unic_name: '../x', extension: 'png' } }),
+      MAP_CONTEXT,
+    );
+    expect(product.images).toBeNull();
+  });
+});
+
 describe('mapShoperStockToVariant', () => {
   it('should map the variant grain: sku, EAN, price and weight', () => {
     expect(mapShoperStockToVariant(buildStock(), 'ol_product_1', MAP_CONTEXT)).toEqual({

@@ -8,14 +8,16 @@
  * and never cached across connections.
  *
  * `getCapabilityAdapter` builds a fresh adapter bag on every call and memoises
- * nothing, so the shop-context request (`application-config`) is repeated once
- * per resolution. It is a single cheap read and is shared by every method of
- * the resolved adapter.
+ * nothing, so the shop-context request (`application-config`) would be repeated
+ * once per resolution - one extra request per product job against a shop whose
+ * request ceiling is unknown. The host cache, when wired, carries it between
+ * resolutions for a few minutes (see `ShoperShopContextProvider`).
  *
  * @module libs/integrations/shoper/src/application
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 
 import { ShoperConfigException } from '../domain/exceptions/shoper-config.exception';
@@ -35,6 +37,7 @@ export class ShoperAdapterFactory {
     identifierMapping: IdentifierMappingPort,
     credentialsResolver: CredentialsResolverPort,
     fetchImpl: FetchLike,
+    cache?: CachePort,
   ): Promise<ShoperAdapters> {
     const base = parseShoperBaseUrl((connection.config ?? {}).baseUrl);
     if (!base.ok) {
@@ -50,7 +53,10 @@ export class ShoperAdapterFactory {
     }
 
     const client = new ShoperHttpClient({ host: base.host, token: credentials.token }, fetchImpl);
-    const shopContext = new ShoperShopContextProvider(client, base.host);
+    const shopContext = new ShoperShopContextProvider(client, base.host, {
+      cache,
+      cacheKey: `shoper:shop-context:${connection.id}:${base.host}`,
+    });
 
     return {
       productMaster: new ShoperProductMasterAdapter(

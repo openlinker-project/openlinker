@@ -9,9 +9,12 @@
  *     string while `pages` / `page` are numbers.
  *   - **`limit` is capped at 50, and a larger value is NOT rejected**: Shoper
  *     silently falls back to 10 rows per page (`limit=51` and `limit=500` both
- *     answer 10). A caller that believes it asked for 100 would read a short
- *     page as the end of the collection, so this helper refuses an oversized
- *     page instead of sending it.
+ *     answer 10). A single REQUEST is therefore refused above 50
+ *     (`fetchShoperPage`) rather than sent, since a silently short page reads
+ *     as the end of the collection. A WINDOW of any size is a different matter:
+ *     `fetchShoperWindow` composes it from pages of 50 and slices, so callers
+ *     (the sweeps, whose page size is operator-settable) are never constrained
+ *     by Shoper's ceiling.
  *   - A bare `order=<field>` sorts DESCENDING. Callers pass an explicit
  *     direction (`product_id ASC`); the helper does not pick one.
  *
@@ -57,6 +60,71 @@ export function assertShoperPageSize(limit: number, operation: string): void {
         '(a larger value is silently reduced to 10 by the shop)',
     );
   }
+}
+
+/**
+ * Upper bound on a window a caller may ask for in one call. The sweeps' page
+ * size is operator-settable up to 500 (ADR-069); 1000 leaves headroom while
+ * still bounding the number of Shoper requests a single call can issue
+ * (1000 / 50 = 20).
+ */
+export const SHOPER_MAX_WINDOW = 1000;
+
+export interface ShoperWindowRequest {
+  /** Zero-based index of the first row wanted, in the order given by `query.order`. */
+  readonly offset: number;
+  /** Number of rows wanted, 1..{@link SHOPER_MAX_WINDOW}. */
+  readonly limit: number;
+  readonly query?: ShoperQuery;
+}
+
+/**
+ * Reads the rows `[offset, offset + limit)` of a collection, however the
+ * caller sized its window.
+ *
+ * Shoper pages by page index with a fixed ceiling of 50, but a caller's
+ * window is its own affair (a sweep's budget, a setting changed between two
+ * ticks - 100 -> 30 at offset 100). The adapter therefore picks the page size
+ * itself, always 50, fetches the pages that cover the window and slices. Any
+ * window and any offset is expressible exactly, so nothing has to be refused
+ * and nothing is ever read as a short page standing for the end of the
+ * collection: the loop stops only on the shop's own last page.
+ *
+ * The caller must pass an explicit, stable `order` (a bare `order=<field>`
+ * sorts descending on Shoper).
+ */
+export async function fetchShoperWindow<T>(
+  client: ShoperHttpClient,
+  path: string,
+  request: ShoperWindowRequest,
+): Promise<T[]> {
+  const { offset, limit } = request;
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new RangeError(`Shoper ${path}: offset must be a non-negative integer, got ${offset}`);
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > SHOPER_MAX_WINDOW) {
+    throw new RangeError(
+      `Shoper ${path}: window size must be an integer between 1 and ${SHOPER_MAX_WINDOW}, got ${limit}`,
+    );
+  }
+
+  const skip = offset % SHOPER_MAX_PAGE_SIZE;
+  const wanted = skip + limit;
+  const rows: T[] = [];
+
+  for (let page = Math.floor(offset / SHOPER_MAX_PAGE_SIZE) + 1; rows.length < wanted; page += 1) {
+    const result = await fetchShoperPage<T>(client, path, {
+      page,
+      limit: SHOPER_MAX_PAGE_SIZE,
+      ...(request.query === undefined ? {} : { query: request.query }),
+    });
+    rows.push(...result.items);
+    if (result.items.length === 0 || page >= result.pages) {
+      break;
+    }
+  }
+
+  return rows.slice(skip, skip + limit);
 }
 
 export async function fetchShoperPage<T>(
