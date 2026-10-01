@@ -113,6 +113,21 @@ degradation at resolve time. Neither ships here.
 **Status of decision (3) is unchanged.** No FK, no `SET NOT NULL`, no four-column index; the #1904
 withhold guard stays in force.
 
+## Amendment (#3483, 2026-10-01): two product masters on one shelf are counted twice unless their catalogues are separate
+
+Decision (2) makes cross-source coexistence legitimate: two positions that differ only in owning
+connection are separate mirrors, and the availability sum adds them. It did not say what that means
+when two masters describe the **same physical shelf**.
+
+**Two product masters may point their stock at one location only if their catalogues are
+separate.** When the same physical item is listed in both masters, OpenLinker sees two positions with
+two stock counts and **does not link them**: it cannot know they are one shelf, so it sums them, and
+the item reads as double its real quantity. That is the intended reading of decision (2), not a
+defect in it. Linking such positions is a deduplication problem, tracked with #3454 (two product
+masters feeding one warehouse) and the four-column key work in #2325, and it is deliberately not
+solved here. An operator who sets up two masters for one warehouse should keep their catalogues
+disjoint.
+
 ## References
 
 - Related issues: #1904, #1689, #2322, #3206

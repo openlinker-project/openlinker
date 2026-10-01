@@ -61,6 +61,25 @@ deliberate underselling trade-off, stated rather than hidden.
 re-opens the scoped-subtraction rule; a master adapter that can implement a hold primitive
 un-defers `MasterReservationWriter`.
 
+## Amendment (#3483, 2026-10-01): OL never decrements its own mirror; it asks the master to
+
+The decision that a reservation "never decrements `availableQuantity`" stands. What this amendment
+adds is the rule for the one thing that *does* have to lower stock: the sale itself.
+
+Under the OL-OMS posture an OL-executed routed order is no longer mirrored into the product master
+as an order (see the DESIGN §5.5 amendment). The master would therefore never learn the stock left,
+and OL cannot record it locally, because `inventory_items` is a mirror that every master sync
+rewrites: an OL-side decrement would vanish at the next tick and the number published to the
+marketplace would drift back up. So for an OL-executed routed order OL **requests a decrement at the
+master**, one `adjustInventory(-q, reason = order_sale, key = sale:{ownerConnectionId}:{workId}:{lineId})`
+per work line, on the product master that owns that line (#3453). The master stays the authority for
+on-hand stock; the request is idempotent under the #2368 key contract, and cancellation reverses it
+with `order_sale_reversal` (#3479).
+
+The ledger and the decrement describe the same units, so available-to-promise must count them once
+(#3480). The `diagnostic` stamp is unaffected: it applies where OL does not execute, and there OL
+requests no decrement at all.
+
 ## References
 
 - Related ADRs: [ADR-058](./058-multi-location-positions-reservations-availability-authority.md), [ADR-028](./028-order-cancellation-stock-restore.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md), [ADR-062](./062-trust-posture-authority-holding-capabilities.md)

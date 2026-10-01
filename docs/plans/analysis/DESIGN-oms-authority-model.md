@@ -311,6 +311,18 @@ net of the master's own reservations; `reservedQuantity` is subtracted nowhere),
 scope is taken as-is, with OL's ledger rows for that scope reported alongside as
 `olHeldNotReflected` for operator diagnosis.
 
+**The sale decrement is a request to the master, never a write to OL's mirror (amendment #3483,
+2026-10-01).** "Creating a reservation never decrements `availableQuantity`" stays true, and so does
+its corollary: OL does not own on-hand stock and never edits its own `inventory_items` mirror to
+account for a sale, because the next master sync would overwrite the edit. What changed with the
+OL-OMS posture is that an OL-executed routed order no longer reaches the product master as an
+order (§5.5, §13.1), so the master would never learn the stock left. OL therefore **asks the master
+to lower it**: one `adjustInventory(-q, reason = order_sale, key = sale:{ownerConnectionId}:{workId}:{lineId})`
+per work line, sent to the product master that owns that line (#3453), with `order_sale_reversal`
+as its mirror image on cancellation (#3479). The master stays the authority for on-hand stock; OL
+only reports the sale to it. The reservation ledger and the decrement count the same units, so the
+ATP read must count them once (#3480).
+
 **`InventoryMasterPort.reserveInventory` / `releaseInventory` are deprecated in place, not
 retired.** ANALYSIS-1032 §5 already killed outright removal ("inverting a promise the WooCommerce
 operator guide makes and shipping a published-contract change with no deprecation cycle …
@@ -588,11 +600,21 @@ plugin (auto-accept + pick-list UI; progress from the store-associate surface), 
 
 - **Intercept** at `order-ingestion.service.ts` between `persistOrder` and `syncOrder`: `none` →
   today's path; `ambiguous` → persist reason, today's path; `selected` → `route()` → create work →
-  **a held order does not reach `syncOrder`** (a hold that still mirrors the order into the shop is
-  not a hold). `OrderSyncService` is **retained, not reinterpreted**: destination-mirror creation
+  **an order OpenLinker owns does not reach `syncOrder`** (held or routed: OpenLinker is its system
+  of record, so there is nothing to mirror; see the amendment below). `OrderSyncService` is **retained, not reinterpreted**: destination-mirror creation
   is a commercial/catalogue act distinct from fulfillment assignment; under a router the fan-out
   becomes router-filtered via an optional `destinationConnectionIds` on `OrderSyncRequest`
-  (defaulting to today's behaviour). A filtered-out destination gets no `syncStatus[]` entry by
+  (defaulting to today's behaviour). **Amendment #3483 (2026-10-01) — who owns the order.** When
+  the OL-OMS holds A2 and OpenLinker executes the work, **no commercial mirror is created**: the
+  order's system of record is OpenLinker, and the product master receives only a stock decrement
+  (§4.2, #3453), never the order. The router-filtered fan-out therefore matters for **third-party
+  OMS postures** (§13.2), where the destination shop is still a commercial destination; under the
+  OL-OMS an OL-executed routed order does not reach `syncOrder` at all. Four classes of order are
+  **outside routing** and keep today's path: an order whose source is a product master is not
+  routed (#3487, it is the master's own order); an `omp_fulfilled` order is not routed (#3488, the
+  marketplace ships it); an order already mirrored into a product master before the switch is not
+  routed on re-ingest (#3455); and in the other direction an order the router **cannot place** is
+  held in OpenLinker, not mirrored to every product master (#3485). A filtered-out destination gets no `syncStatus[]` entry by
   design, which means the branch-1 status-sync/`fulfillmentState` path never fires for it — that
   is acceptable *only because* nothing load-bearing depends on it for routed orders: their
   `fulfillmentState` is fed by work-progress-derived shipments (a 3PL `shipped` event or
@@ -1147,8 +1169,7 @@ sequenceDiagram
     participant ING as OrderIngestionService
     participant AV as IAvailabilityService (inventory)
     participant EXE as OL-OMS plugin (FulfillmentRouter + FulfillmentExecutor)
-    participant SYNC as OrderSyncService
-    participant SHOP as Destination shop
+    participant PM as Product master (InventoryMaster)
     participant DSP as ShipmentDispatchService
     participant PHY as Carrier (OL contract)
     participant REL as Lifecycle relay
@@ -1166,10 +1187,10 @@ sequenceDiagram
     EXE-->>ING: RoutingPlan (assignments + explanation, holds, unfulfillable lines)
     ING->>ING: create FulfillmentWork rows (per location x delivery method)
     alt routing plan carries an active hold
-        ING->>ING: STOP - held order never reaches syncOrder (fulfillment_holds row)
+        ING->>ING: STOP - held order stays in OpenLinker (fulfillment_holds row), never mirrored
     else no hold
-        ING->>SYNC: syncOrder (router-filtered destination set)
-        SYNC->>SHOP: createOrder (commercial mirror, idempotent, per-order lock)
+        ING->>PM: adjustInventory(-q, reason=order_sale, key=sale:{ownerConnectionId}:{workId}:{lineId}) per line, on the master that owns it
+        Note over ING,PM: #3483 - OpenLinker owns the order. No createOrder, no commercial mirror: the product master only has its stock lowered
     end
     ING->>EXE: requestFulfillment(work, caller-minted idempotency key)
     Note over ING,EXE: D3 - in-process executor, auto-accepts (the reject branch exists structurally, it is just never taken by OL against itself)
@@ -1187,6 +1208,11 @@ sequenceDiagram
 ```
 
 ### 13.2 Posture A — third-party OMS (orchestrator; DOMS holds availability + routing, a 3PL executes)
+
+> **Revisited for #3483 (2026-10-01).** The `createOrder (commercial mirror)` line below is kept
+> deliberately: under a third-party OMS the destination shop is still a commercial destination OL
+> feeds, so the router-filtered fan-out of §5.5 applies here. It is the OL-OMS posture (§13.1) that
+> no longer mirrors. The two diagrams now differ on that step, and the table after them says why.
 
 ```mermaid
 sequenceDiagram
@@ -1245,7 +1271,8 @@ divergence traces to one authority row of §2 and to physical control, never to 
 | Router | OL-OMS plugin answers `route()` | DOMS adapter answers `route()` | **Nothing but the holder.** Same port, same `RoutingPlan`, same gate. |
 | **D3 — execution handshake** | In-process, auto-accepts | Remote, live reject branch with `{reason, blocking}` | Implementer shape of the same `FulfillmentExecutorPort` — OL never rejects work against itself, a vendor legitimately does. |
 | **D2 — shipment** | OL mints the label via `ShipmentDispatchService`, authors the close event, consumes the reservation | 3PL ships under its own carrier contract, OL records an *observed* shipment | Physical control (ADR-052): only the party holding the parcel can label it, and only the close-event author may consume (§3 adjudication #1). |
-| Everything else (ingest, persist, selection gate, `FulfillmentWork`, hold gate, shop mirror, relay, invoicing) | identical | identical | The core resolves each port by connection and cannot tell the scenarios apart. |
+| **Order of record (#3483)** | OpenLinker. **No commercial mirror**; the product master gets a stock decrement only (`order_sale`) | The destination shop still receives the order (`createOrder`, router-filtered) | With the OL-OMS the order is OpenLinker's own, and a mirror in the master would be a second system of record for it. A third-party OMS is a different system whose destinations OL still feeds. |
+| Everything else (ingest, persist, selection gate, `FulfillmentWork`, hold gate, relay, invoicing) | identical | identical | The core resolves each port by connection and cannot tell the scenarios apart. |
 
 ### 13.3 Posture B — third-party OMS owns the order (OL as channel gateway)
 
