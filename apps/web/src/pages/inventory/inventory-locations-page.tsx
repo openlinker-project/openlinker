@@ -287,12 +287,13 @@ export function InventoryLocationsPage(): ReactElement {
               connectionId={location.ownerConnectionId}
               connection={connection}
               loading={connectionsQuery.isLoading}
-              adornment={
-                connection ? (
-                  <span className="channel-pill" data-channel={connection.platformType}>
-                    {resolvePlatformLabel(platforms, connection.platformType)}
-                  </span>
-                ) : null
+              channel={
+                connection
+                  ? {
+                      platformType: connection.platformType,
+                      label: resolvePlatformLabel(platforms, connection.platformType),
+                    }
+                  : undefined
               }
             />
           );

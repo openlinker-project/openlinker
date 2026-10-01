@@ -105,7 +105,7 @@ import {
   SlaStateValues,
   FulfillmentRollupStateValues,
 } from '../../features/orders/api/orders.types';
-import { useConnectionsQuery } from '../../features/connections';
+import { ConnectionChip, useConnectionsQuery } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
@@ -844,9 +844,12 @@ export function OrdersListPage(): ReactElement {
                   standalone Channel column is visible. */}
               {source ? (
                 <span className="orders-order-channel">
-                  <span className="channel-pill" data-channel={sourcePlatform}>
-                    {source}
-                  </span>
+                  <ConnectionChip
+                    connectionId={order.sourceConnectionId}
+                    name={connectionNames.get(order.sourceConnectionId) ?? null}
+                    loading={connectionsQuery.isLoading}
+                    channel={{ platformType: sourcePlatform, label: source }}
+                  />
                   {dest ? (
                     <span className="text-muted orders-cell-sub">
                       → {dest}
@@ -905,9 +908,15 @@ export function OrdersListPage(): ReactElement {
           if (!source) return <span className="text-muted">—</span>;
           return (
             <span className="orders-cell-stack">
-              <span className="channel-pill" data-channel={platformByConnection.get(order.sourceConnectionId)}>
-                {source}
-              </span>
+              <ConnectionChip
+                connectionId={order.sourceConnectionId}
+                name={connectionNames.get(order.sourceConnectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                channel={{
+                  platformType: platformByConnection.get(order.sourceConnectionId),
+                  label: source,
+                }}
+              />
               {dest ? <span className="text-muted orders-cell-sub">→ {dest}</span> : null}
             </span>
           );
@@ -1881,12 +1890,15 @@ export function OrdersListPage(): ReactElement {
                 return (
                   <span className="orders-card-sub">
                     {source ? (
-                      <span
-                        className="channel-pill"
-                        data-channel={platformByConnection.get(order.sourceConnectionId)}
-                      >
-                        {source}
-                      </span>
+                      <ConnectionChip
+                        connectionId={order.sourceConnectionId}
+                        name={connectionNames.get(order.sourceConnectionId) ?? null}
+                        loading={connectionsQuery.isLoading}
+                        channel={{
+                  platformType: platformByConnection.get(order.sourceConnectionId),
+                  label: source,
+                }}
+                      />
                     ) : null}
                     {dest ? (
                       <span className="text-muted orders-cell-sub">

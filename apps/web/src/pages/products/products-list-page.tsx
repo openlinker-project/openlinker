@@ -822,11 +822,7 @@ export function ProductsListPage(): ReactElement {
                     connectionId={origin.connectionId}
                     connection={connectionById.get(origin.connectionId) ?? null}
                     loading={connectionsQuery.isLoading}
-                    adornment={
-                      <span className="channel-pill" data-channel={origin.platformType}>
-                        {platformLabel(origin.platformType)}
-                      </span>
-                    }
+                    channel={{ platformType: origin.platformType, label: platformLabel(origin.platformType) }}
                   />
                 ) : null}
               </span>
@@ -856,17 +852,11 @@ export function ProductsListPage(): ReactElement {
               // column of "Unknown".
               connection={connectionById.get(origin.connectionId) ?? null}
               loading={connectionsQuery.isLoading}
-              // Products is the one list that passes the channel pill: the
-              // source connection's channel is the fact an operator scans for
-              // first here, whereas Listings carries Channel as its own column
-              // and Shipments' adornment is a carrier dot. The platformType
-              // comes off the product's own external-id row, so the pill renders
+              // One clickable chip (#3670): the platform at rest, the
+              // connection name sliding out on hover. The platformType comes
+              // off the product's own external-id row, so the chip renders
               // even while the connection itself is still unresolved.
-              adornment={
-                <span className="channel-pill" data-channel={origin.platformType}>
-                  {platformLabel(origin.platformType)}
-                </span>
-              }
+              channel={{ platformType: origin.platformType, label: platformLabel(origin.platformType) }}
             />
           );
         },
