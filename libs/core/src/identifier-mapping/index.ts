@@ -14,6 +14,7 @@ export * from './domain/ports/connection.port';
 export * from './domain/types/identifier-mapping.types';
 export * from './domain/types/connection.types';
 export * from './domain/types/stock-safety-buffer.types';
+export * from './domain/types/fulfilment-ownership.types';
 export * from './domain/types/pricing-rule.types';
 export * from './domain/types/auto-dispatch.types';
 export * from './domain/types/price-sync-mode.types';

@@ -23,6 +23,8 @@ import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
+  FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
+  isPresentButInvalidFulfilmentOwnedByDestination,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -248,6 +250,24 @@ export class ConnectionService implements IConnectionService {
     ) {
       throw new BadRequestException(
         'config.rateLimit.maxConcurrent must be a number between 1 and 64'
+      );
+    }
+  }
+
+  /**
+   * Refuse a non-boolean `config.fulfilmentOwnedByDestination` (#2118).
+   *
+   * Display-only flag, so a wrong type changes nothing on the server - but the
+   * readers coerce it to `false`, and an operator who typed `"true"` would see
+   * a saved setting that never hides a packing affordance. Refused here rather
+   * than coerced silently, the same reported-not-enforced reasoning as
+   * `validateStockAndPricingConfig`. Never defaults a value in; an absent key
+   * stays absent, and `null` (a cleared knob) is accepted.
+   */
+  private validateFulfilmentOwnedByDestinationConfig(config: Record<string, unknown>): void {
+    if (isPresentButInvalidFulfilmentOwnedByDestination(config)) {
+      throw new BadRequestException(
+        `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY} must be true or false`
       );
     }
   }
@@ -800,6 +820,7 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
@@ -1063,6 +1084,7 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);

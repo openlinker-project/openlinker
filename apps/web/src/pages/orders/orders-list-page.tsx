@@ -80,6 +80,8 @@ import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/un
 import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
+import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
+import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
@@ -527,6 +529,11 @@ export function OrdersListPage(): ReactElement {
     });
     return map;
   }, [connectionsQuery.data]);
+
+  // Destinations the operator declared as packing and shipping by themselves
+  // (#2118). Display-only: it hides OpenLinker's packed tick for orders routed
+  // there, nothing else.
+  const fulfilmentOwnedIds = useFulfilmentOwnedConnectionIds();
 
   // Registry-resolved, never a local map: the four-entry `CHANNEL_LABELS` this
   // replaced (#2088) had no row for `erli` or `woocommerce`, so both rendered
@@ -1032,7 +1039,9 @@ export function OrdersListPage(): ReactElement {
                   shipped → due → carrier), and packing precedes everything else
                   in it. It is also the one slot that never depends on a sibling —
                   the fulfillment badge below is conditional. */}
-              <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
+              {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+                <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
+              )}
               {/* When the row offers "Generate label" the CTA is deferred to sit
                   directly under the Awaiting-label delivery chip (the state it
                   resolves), so the top slot only carries the passive fulfillment
@@ -1185,6 +1194,9 @@ export function OrdersListPage(): ReactElement {
       // Per-page snapshot cache + issuing-capability gate (#1713/#2552).
       parsedFor,
       hasIssuingCapability,
+      // Which destinations pack for themselves (#2118) - the packed tick is
+      // withheld for orders routed there.
+      fulfilmentOwnedIds,
       // The shared Order cell renderer (#2091) — a `useCallback` over
       // `parsedFor`, so this rebuilds exactly when the parse cache does.
       renderOrderIdentity,
@@ -2007,20 +2019,22 @@ export function OrdersListPage(): ReactElement {
                         <dt>Customer</dt>
                         <dd>{cust ?? '—'}</dd>
                       </div>
-                      <div>
-                        <dt>Packed</dt>
-                        <dd>
-                          {/* SAME component as the desktop cell. On a narrow
-                              viewport the desktop tick becomes a labelled fact,
-                              so the empty case needs a dash rather than nothing —
-                              a <dd> may not be empty. */}
-                          <OrderPackedTick
-                            packedAt={order.packedAt}
-                            layout="row"
-                            emptyFallback="—"
-                          />
-                        </dd>
-                      </div>
+                      {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+                        <div>
+                          <dt>Packed</dt>
+                          <dd>
+                            {/* SAME component as the desktop cell. On a narrow
+                                viewport the desktop tick becomes a labelled fact,
+                                so the empty case needs a dash rather than nothing —
+                                a <dd> may not be empty. */}
+                            <OrderPackedTick
+                              packedAt={order.packedAt}
+                              layout="row"
+                              emptyFallback="—"
+                            />
+                          </dd>
+                        </div>
+                      )}
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>
                         <dd>

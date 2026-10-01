@@ -411,6 +411,8 @@ export const editConnectionSchema = z
     pricingRule: pricingRuleFormSchema.optional(),
     // Per-connection stock-location override (#3206/#3207) — platform-neutral.
     stockLocationOverride: stockLocationOverrideFormSchema,
+    // Per-connection "this system packs and ships orders itself" flag (#2118) — platform-neutral.
+    fulfilmentOwnedByDestination: z.boolean().nullable().optional(),
   });
 
 /**
@@ -581,6 +583,13 @@ export type StructuredConfigPatch = {
    * `null` rather than deleting the key (see `rateLimit` for why not a delete).
    */
   stockLocationOverride?: string | null;
+  /**
+   * Per-connection display flag — flat `config.fulfilmentOwnedByDestination`
+   * (#2118). Platform-neutral. Written as an explicit boolean, never deleted:
+   * `false` is the same "off" statement an absent key makes, and writing it
+   * keeps the shallow-spread merge honest (see `rateLimit`).
+   */
+  fulfilmentOwnedByDestination?: boolean | null;
 };
 
 /**
@@ -946,6 +955,11 @@ export function mergeStructuredIntoConfig(
     const trimmed =
       typeof structured.stockLocationOverride === 'string' ? structured.stockLocationOverride.trim() : '';
     next.stockLocationOverride = trimmed.length === 0 ? null : trimmed;
+  }
+  // "This system packs and ships orders itself" (#2118). One flat boolean; only
+  // `true` is a statement, everything else is written as an explicit `false`.
+  if (structured.fulfilmentOwnedByDestination !== undefined) {
+    next.fulfilmentOwnedByDestination = structured.fulfilmentOwnedByDestination === true;
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch
