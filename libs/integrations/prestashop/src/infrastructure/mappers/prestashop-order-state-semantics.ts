@@ -11,15 +11,19 @@
  * default-install table 1-7 and read every custom state as `pending`, silently
  * (#2607).
  *
- * The state row itself carries PrestaShop's own answer. `delivered`, `shipped`
- * and `paid` are the flags PrestaShop uses internally to decide whether to show
- * a tracking link or send a shipped email, so they are as authoritative as
- * anything the WebService exposes, and they are the same in every language.
+ * The state row itself carries PrestaShop's own answer where it has one.
+ * `shipped` and `paid` are the flags PrestaShop uses internally to decide
+ * whether to show a tracking link or send a shipped email, so they are as
+ * authoritative as anything the WebService exposes, and they are the same in
+ * every language.
  *
- * Cancellation and refund have no flag of their own - `ps_order_state` has no
- * such column, and PrestaShop identifies those states through configuration
- * keys instead. So they are read from the state's own labels, across every
- * language the row carries.
+ * Delivery, cancellation and refund have no flag of their own - `ps_order_state`
+ * has no such column, and PrestaShop identifies those states through
+ * configuration keys (`PS_OS_DELIVERED`, `PS_OS_CANCELED`, `PS_OS_REFUND`)
+ * instead. So they are read from the state's own labels, across every language
+ * the row carries. The `delivery` column is NOT a delivered flag (#3506,
+ * G02-7): a clean install sets it on "Processing in progress", "Shipped" and
+ * "Delivered" alike, and "Shipped" and "Delivered" carry identical flags.
  *
  * Reading labels is the weak half, and two rules keep it honest (#2607 review).
  *
@@ -90,6 +94,90 @@ const CANCEL_STEMS: readonly string[] = [
 ];
 
 /**
+ * Delivered vocabulary (#3506, G02-7), same rules as the two below, and read
+ * ONLY on a state PrestaShop already flags `shipped` — a parcel that never
+ * left cannot have arrived, so a label alone never makes a state delivered.
+ *
+ * Each entry is the PAST-PARTICIPLE stem, deliberately: the progressive forms
+ * ("Out for delivery", Polish "W doręczeniu", Spanish "Entregando", Czech
+ * "Doručuje se") describe a parcel still moving, and reading one as delivered
+ * would tell a buyer's shop the parcel arrived while it is on the van. English
+ * "delivery" does not start with `delivered`, and the Romance stems stop before
+ * the gerund/noun endings ("livraison", "consegna", "entrega" all miss).
+ *
+ * A label is also refused when it carries a negation or a "partially" word —
+ * see `DELIVERED_LABEL_QUALIFIERS`. Known gaps, falling back to `shipped` (the
+ * pre-fix reading, which is the safe direction): Turkish ("Teslim edildi" vs
+ * the suffix-negated "Teslim edilmedi" cannot be told apart by a prefix rule),
+ * Finnish "Toimitettu" (also used for "sent"), and the non-Latin scripts the
+ * cancellation vocabulary already lists.
+ */
+const DELIVERED_STEMS: readonly string[] = [
+  'delivered', // en
+  'dostarczon', // pl "Dostarczone", "Dostarczono"
+  'doreczon', // pl "Doręczone", "Doręczono"
+  'zugestellt', // de
+  'geliefert', // de
+  'ausgeliefert', // de
+  'livre', // fr "Livré", "Livrée"
+  'livrat', // ro
+  'entregad', // es "Entregado"
+  'entregue', // pt
+  'consegnat', // it "Consegnato"
+  'bezorgd', // nl
+  'afgeleverd', // nl
+  'geleverd', // nl
+  'dorucen', // cs, sk "Doručeno", "Doručené"
+  'dostavljen', // hr, sl, sr "Dostavljeno"
+  'isporucen', // hr, sr "Isporučeno"
+  'levererad', // sv
+  'leveret', // da
+  'levert', // no
+  'kezbesit', // hu "Kézbesítve"
+  'pristatyt', // lt "Pristatyta"
+  'piegadat', // lv "Piegādāts"
+  'lliurat', // ca
+];
+
+/**
+ * Whole words that void a delivered reading of the label they appear in.
+ *
+ * Exact words, not stems: the vocabulary above matches the start of a word, so
+ * "Not delivered", "Nie dostarczono", "Non consegnato" and "Partially
+ * delivered" would otherwise each read as delivered. A false "delivered" is a
+ * claim to a buyer; a missed one reads as `shipped`, which is what every
+ * PrestaShop state read as before #3506 - so the refusal always errs safe.
+ */
+const DELIVERED_LABEL_QUALIFIERS: ReadonlySet<string> = new Set([
+  'not', // en
+  'no', // es, it, pt
+  'non', // fr, it
+  'nao', // pt "Não"
+  'nie', // pl
+  'nicht', // de
+  'niet', // nl
+  'nije', // hr, sr
+  'inte', // sv
+  'ikke', // da, no
+  'ei', // fi
+  'nem', // hu
+  'partial', // en
+  'partially', // en
+  'partly', // en
+  'czesciowo', // pl "Częściowo"
+  'teilweise', // de
+  'partiel', // fr
+  'partiellement', // fr
+  'parcial', // es, pt
+  'parcialmente', // es, pt
+  'parziale', // it
+  'parzialmente', // it
+  'gedeeltelijk', // nl
+  'castecne', // cs "Částečně"
+  'ciastocne', // sk "Čiastočne"
+]);
+
+/**
  * Refund vocabulary, same rules and the same documented gap. Checked after
  * cancellation, and never before the flags: a state can be both refunded and
  * shipped, and where the parcel is comes first.
@@ -119,9 +207,12 @@ const REFUND_STEMS: readonly string[] = [
  *
  * `no-evidence` is the one value a caller must act on: nothing about the state
  * said anything, so `pending` is a default rather than a reading.
+ *
+ * `delivered-label` replaced `delivered-flag` (#3506): there is no delivered
+ * flag on a PrestaShop order state, so that basis could never be produced.
  */
 export const ORDER_STATE_DERIVATION_BASIS_VALUES = [
-  'delivered-flag',
+  'delivered-label',
   'shipped-flag',
   'cancel-label',
   'refund-label',
@@ -189,6 +280,26 @@ export function isCancelledOrderState(state: PrestashopOrderState): boolean {
 }
 
 /**
+ * True when any of the state's labels reads as a delivery that has happened.
+ *
+ * The label half only; `deriveOrderState` additionally requires the `shipped`
+ * flag. A label that also carries a negation or "partially" word is refused
+ * (see `DELIVERED_LABEL_QUALIFIERS`).
+ */
+export function isDeliveredOrderStateLabel(state: PrestashopOrderState): boolean {
+  for (const label of extractOrderStateLabels(state.name)) {
+    const words = toLabelWords(label);
+    if (words.some((word) => DELIVERED_LABEL_QUALIFIERS.has(word))) {
+      continue;
+    }
+    if (words.some((word) => DELIVERED_STEMS.some((stem) => word.startsWith(stem)))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * True when any of the state's labels reads as a refund.
  */
 export function isRefundedOrderState(state: PrestashopOrderState): boolean {
@@ -199,15 +310,18 @@ export function isRefundedOrderState(state: PrestashopOrderState): boolean {
  * Derive the neutral order status one state row stands for, with the evidence
  * that produced it.
  *
- * Order of the tests is the point. `delivered` and `shipped` come first because
- * they are the shop's own flags and beat any label reading. `paid` alone is
- * `processing`: money has arrived and nothing has left the warehouse.
+ * Order of the tests is the point. A `shipped` state comes first because the
+ * flag is the shop's own and beats any label reading; within it the label
+ * decides between `delivered` and `shipped`, because PrestaShop has no flag
+ * that does (its "Shipped" and "Delivered" rows carry identical flags). `paid`
+ * alone is `processing`: money has arrived and nothing has left the warehouse.
  */
 export function deriveOrderState(state: PrestashopOrderState): OrderStateDerivation {
-  if (isTruthyStateFlag(state.delivered)) {
-    return { status: 'delivered', basis: 'delivered-flag' };
+  const shipped = isTruthyStateFlag(state.shipped);
+  if (shipped && isDeliveredOrderStateLabel(state)) {
+    return { status: 'delivered', basis: 'delivered-label' };
   }
-  if (isTruthyStateFlag(state.shipped)) {
+  if (shipped) {
     return { status: 'shipped', basis: 'shipped-flag' };
   }
   if (isCancelledOrderState(state)) {
@@ -269,4 +383,8 @@ function extractTextLabel(value: unknown): string | null {
 }
 
 /** Exposed for the spec that pins the minimum-stem-length rule. */
-export const ORDER_STATE_LABEL_STEMS: readonly string[] = [...CANCEL_STEMS, ...REFUND_STEMS];
+export const ORDER_STATE_LABEL_STEMS: readonly string[] = [
+  ...CANCEL_STEMS,
+  ...REFUND_STEMS,
+  ...DELIVERED_STEMS,
+];
