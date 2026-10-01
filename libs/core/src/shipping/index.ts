@@ -243,6 +243,16 @@ export type {
 } from './application/types/fulfillment-status-sync.types';
 export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
 
+// Application — shipment-first dispatch routing for a fulfilment work (#3506,
+// G02-4). Interface + outcome types only; the service is injected via
+// FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN by the API's parcel-closure
+// notifier and the worker's `fulfillment.work.relaySweep` handler.
+export type { IFulfillmentWorkDispatchRouterService } from './application/interfaces/fulfillment-work-dispatch-router.service.interface';
+export type {
+  WorkDispatchRouteOutcome,
+  WorkDispatchRouteStatus,
+} from './application/types/fulfillment-work-dispatch-router.types';
+
 // Domain + application — line-grain shipment read model (#2727,
 // `DECISION-oms-fulfilment-grain` option C). Contracts and the pure capacity
 // rule only; the service is injected via SHIPMENT_LINE_SERVICE_TOKEN and the

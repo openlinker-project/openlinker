@@ -27,14 +27,13 @@ import { FulfillmentWorkController } from './http/fulfillment-work.controller';
   // (ADR-053) forbidden from reading any of the three:
   //
   //   OrdersModule    (#3425) — masked buyer name, dispatch deadline, carrier,
-  //                             and the source's own order reference (#3426);
-  //                             also #3525's dispatch relay
+  //                             and the source's own order reference (#3426)
   //   InventoryModule (#3426) — the location's operator-authored name
   //   ProductsModule  (#3426) — each line's product name
-  //   ShippingModule  (#3525) — the linked-shipment lookup + the shipment-grain
-  //                             notify the closure notifier prefers when a
-  //                             work has exactly one outbound `generated`
-  //                             shipment
+  //   ShippingModule  (#3525) — the shipment-first dispatch router (#3506)
+  //                             the closure notifier hands every `dispatch`
+  //                             intent to; the worker's relay sweep uses the
+  //                             same one
   //
   // All four are reached through their published `I*Service` interfaces and
   // never a `*RepositoryPort`, and all three reads are batched per page.
