@@ -1,0 +1,64 @@
+/**
+ * Shoper Adapter Factory
+ *
+ * Per-connection factory for Shoper capability adapters. Resolves the
+ * connection's `baseUrl` and Bearer token, builds ONE `ShoperHttpClient` over
+ * the connection-bound transport, and constructs the capability adapters on
+ * top of it. Credentials are resolved here, per call - never in a constructor
+ * and never cached across connections.
+ *
+ * `getCapabilityAdapter` builds a fresh adapter bag on every call and memoises
+ * nothing, so the shop-context request (`application-config`) is repeated once
+ * per resolution. It is a single cheap read and is shared by every method of
+ * the resolved adapter.
+ *
+ * @module libs/integrations/shoper/src/application
+ */
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { CredentialsResolverPort } from '@openlinker/core/integrations';
+import type { FetchLike } from '@openlinker/shared/http';
+
+import { ShoperConfigException } from '../domain/exceptions/shoper-config.exception';
+import { parseShoperBaseUrl } from '../domain/policies/shoper-base-url.policy';
+import type { ShoperCredentials } from '../domain/types/shoper-credentials.types';
+import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
+import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
+import { ShoperShopContextProvider } from '../infrastructure/shop-context/shoper-shop-context.provider';
+
+export interface ShoperAdapters {
+  readonly productMaster: ShoperProductMasterAdapter;
+}
+
+export class ShoperAdapterFactory {
+  async createAdapters(
+    connection: Connection,
+    identifierMapping: IdentifierMappingPort,
+    credentialsResolver: CredentialsResolverPort,
+    fetchImpl: FetchLike,
+  ): Promise<ShoperAdapters> {
+    const base = parseShoperBaseUrl((connection.config ?? {}).baseUrl);
+    if (!base.ok) {
+      throw new ShoperConfigException(connection.id, base.issues.join('; '));
+    }
+    if (!connection.credentialsRef) {
+      throw new ShoperConfigException(connection.id, 'no stored credentials');
+    }
+
+    const credentials = await credentialsResolver.get<ShoperCredentials>(connection.credentialsRef);
+    if (typeof credentials.token !== 'string' || credentials.token.trim().length === 0) {
+      throw new ShoperConfigException(connection.id, 'stored credentials have no API token');
+    }
+
+    const client = new ShoperHttpClient({ host: base.host, token: credentials.token }, fetchImpl);
+    const shopContext = new ShoperShopContextProvider(client, base.host);
+
+    return {
+      productMaster: new ShoperProductMasterAdapter(
+        client,
+        identifierMapping,
+        shopContext,
+        connection,
+      ),
+    };
+  }
+}
