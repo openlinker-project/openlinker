@@ -32,10 +32,28 @@ const nullableString = z
   .nullish()
   .transform((value) => value ?? null);
 
+/**
+ * A variant's attributes. Nullish for an API that predates the field, and a
+ * value that is not a string map degrades to `null` rather than failing the
+ * whole task to parse — an attribute is a description, never a gate.
+ */
+const attributesSchema = z
+  .record(z.string(), z.string())
+  .nullish()
+  .catch(null)
+  .transform((value) => value ?? null);
+
 export const fulfillmentTaskLineSchema = z.object({
   id: z.string(),
   orderLineId: z.string(),
   productVariantId: z.string(),
+  // #3426 / #3096 — what the line's product card renders. All nullish: an API
+  // that predates them sends nothing, and the card falls back to the variant id.
+  productName: nullableString,
+  sku: nullableString,
+  ean: nullableString,
+  imageUrl: nullableString,
+  attributes: attributesSchema,
   totalQuantity: z.number(),
   fulfilledQuantity: z.number(),
   cancelledQuantity: z.number(),
@@ -87,6 +105,15 @@ export const fulfillmentTaskSchema = z.object({
    * `.toLocaleString()`.
    */
   expeditedAt: nullableString,
+  // #3096 (G02-3) — what the bench has done to the box and whether the channel
+  // has been told. Nullish against an API that predates them. `parcelClosedAt`
+  // alone keeps `undefined` distinct from `null`: it gates the bench rows, and
+  // an API that does not send it must leave them ABSENT rather than have every
+  // task read "Still open".
+  parcelClosedAt: z.string().nullish(),
+  packedByUserId: nullableString,
+  completedAt: nullableString,
+  channelNotifiedAt: nullableString,
   createdAt: z.string(),
   updatedAt: z.string(),
   lines: z

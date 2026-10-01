@@ -92,6 +92,16 @@ export { OrderBuyerTaxIdValue } from './components/order-buyer-tax-id-value';
 export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';
 
+// #3096 — the fulfilment task detail is built from the order page's own
+// modules rather than new variations of them: the product identity a line
+// renders, and the shipment, sales-document and totals panels its right-hand
+// column stacks. One component per idea, so the two pages cannot drift.
+export { OrderLineItemIdentity } from './components/order-line-item-identity';
+export type { OrderLineItemIdentityProps } from './components/order-line-item-identity';
+export { OrderShipmentPanel } from './components/order-shipment-panel';
+export { SalesDocumentPanel } from './components/sales-document-panel';
+export { OrderTotalsPanel } from './components/order-totals-panel';
+
 // #2382 — the refund confirmation form and its vocabulary live in `orders`
 // because `refund_records` and `IOrderRefundService` do; the returns money panel
 // is the first consumer and the order-level capture path is the second. The

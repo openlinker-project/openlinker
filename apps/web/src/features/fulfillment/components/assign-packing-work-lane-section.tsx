@@ -76,6 +76,8 @@ export interface AssignPackingWorkLaneSectionProps {
   lightestLoad: boolean;
   /** #3259 — the task's own detail-page address. Threaded exactly like `renderActions`. */
   detailHref: (task: FulfillmentTask) => string;
+  /** Whether rows name their location — only on a multi-location install (#3096). */
+  showLocation?: boolean;
 }
 
 function laneTitle(lane: AssignPackingWorkLane): string {
@@ -96,6 +98,7 @@ export function AssignPackingWorkLaneSection({
   onDropOnLane,
   lightestLoad,
   detailHref,
+  showLocation = false,
 }: AssignPackingWorkLaneSectionProps): ReactElement {
   const title = laneTitle(lane);
   const isUnassignedLane = lane.id === UNASSIGNED_LANE_ID;
@@ -239,6 +242,7 @@ export function AssignPackingWorkLaneSection({
                 // see `assign-packing-work-card.tsx`'s `badgeFor`.
                 inUnassignedLane={isUnassignedLane}
                 detailHref={detailHref(task)}
+                showLocation={showLocation}
               />
             ))}
           </ul>

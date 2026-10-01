@@ -118,7 +118,7 @@ describe('fulfilment work detail stylesheet coverage', () => {
     // The guard of the guard. Under a substring test this fabricated leaf - a
     // truncation of a real class - passes on the strength of its longer
     // sibling, so the check could not fail for the defect it exists to catch.
-    const fabricatedLeaf = `${PREFIX}__section-titl`;
+    const fabricatedLeaf = `${PREFIX}__hero-su`;
     expect(declared.has(fabricatedLeaf)).toBe(false);
     expect(isBlockRoot(fabricatedLeaf)).toBe(false);
     expect(css.includes(`.${fabricatedLeaf}`)).toBe(true);
@@ -156,6 +156,52 @@ describe('fulfilment work detail stylesheet coverage', () => {
 
     const hidden = [...usedClassNames()].filter((name) => declaresDisplayNone(css, name));
     expect(hidden).toEqual([]);
+  });
+
+  /**
+   * The box model the mockups are drawn with (#3096). The page used to pass
+   * every class-presence check while rendering its sections as flat blocks on
+   * the page background, so the declarations themselves are asserted here.
+   */
+  describe('the mockup box model (#3096)', () => {
+    function ruleBody(css: string, selector: string): string {
+      const match = new RegExp(`(^|[\\s}])${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(css);
+      expect(match, `no rule for ${selector}`).not.toBeNull();
+      return match?.[2] ?? '';
+    }
+
+    it('should draw every detail section as a bordered, raised card', () => {
+      const body = ruleBody(stripComments(readCss()), '.detail-card');
+
+      expect(body).toMatch(/border:\s*1px solid var\(--border-default\)/);
+      expect(body).toMatch(/border-radius:\s*var\(--radius-lg\)/);
+      expect(body).toMatch(/box-shadow:\s*var\(--shadow-xs\)/);
+      expect(body).toMatch(/background:\s*var\(--bg-surface\)/);
+      expect(body).toMatch(/padding:\s*1\.25rem var\(--space-5\)/);
+    });
+
+    it('should lay the facts out in two columns at every width', () => {
+      const body = ruleBody(stripComments(readCss()), `.${PREFIX}__facts`);
+
+      expect(body).toMatch(/grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+    });
+
+    it('should give the board filter a width, never a flex-basis a column turns into a height', () => {
+      const css = stripComments(readCss());
+      const body = ruleBody(css, '.assign-packing-work-toolbar__filter');
+
+      expect(body).toMatch(/flex:\s*none/);
+      expect(body).toMatch(/width:\s*min\(20rem,\s*100%\)/);
+      // The rule that drew 324 x 320 px inputs on a phone must not come back.
+      expect(css).not.toMatch(/\.assign-packing-work-filters\s*>\s*\*\s*\{[^}]*flex:\s*0 1 20rem/);
+    });
+
+    it('should wrap the board metrics by grid track, never by flex line', () => {
+      const body = ruleBody(stripComments(readCss()), '.kpi-grid');
+
+      expect(body).toMatch(/display:\s*grid/);
+      expect(body).toMatch(/grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(160px,\s*1fr\)\)/);
+    });
   });
 
   it('escapes a class name before matching it, rather than only appearing to', () => {

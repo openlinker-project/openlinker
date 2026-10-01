@@ -51,10 +51,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // looking for instead. A `viewer` shown this entry would 403 on the
       // first request the screen makes.
       { to: '/fulfillment', label: 'Fulfilment', requiresPermission: 'orders:write' },
-      // The bench itself (#2413) had no way in but a typed URL. A packer still
-      // reaches it that way — they get no sidebar at all, since `/bench` renders
-      // outside `AuthenticatedAppLayout` on purpose — but an admin or operator
-      // checking the floor had to know the path by heart.
+      // The bench itself (#2413) had no way in but a typed URL. A packer never
+      // needs this entry: since #3096 every app address redirects a bench-only
+      // session to `/bench` (`AuthenticatedAppLayout`), and `/bench` renders
+      // outside that layout on purpose, so they get no sidebar at all - but an
+      // admin or operator checking the floor had to know the path by heart.
       //
       // Gated on `orders:write`, held by exactly admin + operator, for the same
       // reason as the entry above: the bench's own routes are

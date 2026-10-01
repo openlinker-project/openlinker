@@ -159,6 +159,7 @@ function renderState(opts: {
   applyAction?: ReturnType<typeof vi.fn>;
   route?: string;
   demoMode?: boolean;
+  user?: SessionUser;
 }): void {
   const apiClient = createMockApiClient({
     system: {
@@ -177,7 +178,7 @@ function renderState(opts: {
     {
       apiClient,
       route: opts.route ?? `/fulfillment/works/${WORK_ID}`,
-      sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR),
+      sessionAdapter: createAuthenticatedSessionAdapter(opts.user ?? OPERATOR),
     }
   );
 }
@@ -229,9 +230,21 @@ describe('fulfilment work detail copy audit', () => {
     expect(BANNED_TERMS.length).toBeGreaterThanOrEqual(9);
   });
 
-  it('is clean while loading', () => {
+  it('is clean while loading', async () => {
     renderState({ get: vi.fn(() => new Promise<never>(() => undefined)) });
+    // The gate renders nothing until the session hydrates, so wait for the
+    // skeleton's own status text rather than reading the first paint.
+    await screen.findByText('Loading this fulfilment task');
     expectCleanCopy('Loading this fulfilment task');
+  });
+
+  it('is clean on the access-denied render (#3096)', async () => {
+    renderState({
+      get: vi.fn().mockResolvedValue(task()),
+      user: { ...OPERATOR, role: 'viewer', permissions: ['orders:read'] },
+    });
+    await screen.findByText('Fulfilment tasks are for supervisors');
+    expectCleanCopy('Fulfilment tasks are for supervisors');
   });
 
   it('is clean on a 404, and never the generic error copy', async () => {
@@ -287,6 +300,8 @@ describe('fulfilment work detail copy audit', () => {
   });
 
   it('is clean on a partly-cancelled line, an external reference and no location', async () => {
+    // No Location fact on a one-location install (#3096), so the external
+    // reference is the sentinel the render is waited on.
     renderState({
       get: vi.fn().mockResolvedValue(
         task({
@@ -305,8 +320,8 @@ describe('fulfilment work detail copy audit', () => {
         })
       ),
     });
-    await screen.findByText('No location yet');
-    expectCleanCopy('No location yet');
+    await screen.findByText('EXT-9182');
+    expectCleanCopy('(1 cancelled)');
   });
 
   it("is clean on the un-coded 409 an operator hits from this page’s own action bar", async () => {

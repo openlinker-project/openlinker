@@ -1,35 +1,41 @@
 /**
- * Assign Packing Work (#3340, ADR-074)
+ * Assign Packing Work (#3340, ADR-074; mockup parity #3096)
  *
- * A supervisor's staffing board: every fulfilment task, grouped into one
- * swimlane per packer plus a pinned "Unassigned" lane, with click-only
- * controls to move a task, hold it, or toggle whether anyone may self-serve
- * it, PLUS native drag-and-drop between lanes (#3426) as a mouse-only
- * shortcut. The "Move to" select stays the primary, keyboard-reachable path
- * — the mockup's own accessibility argument — and is never removed; drag is
- * purely additive.
+ * A supervisor's staffing board: every fulfilment task with work left in it,
+ * grouped into one swimlane per packer plus a pinned "Unassigned" lane, with
+ * click-only controls to move a task, act on it, or toggle whether anyone may
+ * self-serve it, PLUS native drag-and-drop between lanes (#3426) as a
+ * mouse-only shortcut. The `Assign to…` / `Move to…` menu stays the primary,
+ * keyboard-reachable path — the mockup's own accessibility argument — and drag
+ * is purely additive. Design of record: `docs/plans/mockups/assign-packing-work.html`.
+ *
+ * ## Admin and operator only (#3096)
+ *
+ * The roster read and every write here are `@Roles('admin', 'operator')` —
+ * exactly who holds `orders:write`. A viewer used to reach the board by URL
+ * and meet a 403'd roster rendered as a lane of "No longer a packer". The page
+ * is now gated on the permission and renders an access-denied state for
+ * anyone else; nothing below the gate mounts, so no request is made only to
+ * be refused.
+ *
+ * ## Only work that is still to be done, by default
+ *
+ * The read asks for `active=true` — a server-resolved alias for "every status
+ * outside the domain's terminal set". Closed and cancelled parcels used to sit
+ * in the Unassigned lane beside work that needed hands. The FE may not mirror
+ * the status vocabulary (see `fulfillment.types.ts`), which is exactly why the
+ * filter is an alias the server owns rather than a list sent from here.
  *
  * ## Dragged-task identity lives in React state, not a module-level var
  *
  * The mockup's own script uses a plain mutable variable; that is not safe
- * across React re-renders (a stale closure could read the wrong task after
- * an unrelated state update), so it is lifted to `useState` here, on the one
- * component that already owns every other piece of staffing state.
- *
- * ## Not the worklist page, and not built on top of it
- *
- * `/fulfillment` groups by (location, delivery method) — an execution axis.
- * This groups by WHO — a staffing axis, orthogonal to it (ADR-074). Both read
- * the same `GET /fulfillment/works`, unfiltered by status for the same reason
- * the worklist is: the FE may not mirror the `status` vocabulary (see
- * `fulfillment.types.ts`), so there is nothing safe to filter server-side by.
+ * across React re-renders, so it is lifted to `useState` here.
  *
  * ## The roster read can fail independently of the task read
  *
  * A failed `usePackersQuery` does not block the board — a supervisor can still
- * hold a task or leave it unassigned with no roster at all. Only the "Move to"
- * select degrades, to just the Unassigned option, with a stated reason rather
- * than a silently empty dropdown.
+ * act on a task or leave it unassigned with no roster at all. Only the menu
+ * degrades, with a stated reason rather than a silently empty dropdown.
  *
  * ## This file carries no user-visible string literals
  *
@@ -45,11 +51,14 @@ import {
   ASSIGN_PACKING_WORK_COPY,
   AssignPackingWorkActions,
   AssignPackingWorkLaneSection,
+  AssignPackingWorkSkeleton,
   FULFILLMENT_WORKLIST_COPY,
   FULFILLMENT_WORKLIST_PAGE_SIZE,
+  FulfillmentAccessDenied,
   FulfillmentTaskActionDialog,
   UNASSIGNED_LANE_ID,
   clearFulfillmentFilters,
+  countTasksByPacker,
   formatUnassignedAge,
   fulfillmentWorkDetailPath,
   groupTasksByPacker,
@@ -62,92 +71,98 @@ import {
   setFulfillmentFilterParam,
   setFulfillmentOffsetParam,
   toBoardLanes,
+  useFulfillmentAssignmentRunner,
   useFulfillmentTaskActionRunner,
   useFulfillmentTasksQuery,
-  useUpdateFulfillmentAssignmentMutation,
+  useHasMultipleLocations,
   type FulfillmentTask,
 } from '../../features/fulfillment';
 import { usePackersQuery, type PackerSummary } from '../../features/users';
 import { useDemoMode } from '../../features/system';
 import { useWriteAccess } from '../../shared/auth/use-permission';
-import { ApiError } from '../../shared/api/api-error';
+import { AccessGate } from '../../shared/ui/access-gate';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
 import { Input } from '../../shared/ui/input';
-import { MetricCard } from '../../shared/ui/metric-card';
+import { KpiCard, KpiGrid } from '../../shared/ui/kpi-card';
+import { ListPagination } from '../../shared/ui/list-pagination';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { SegmentedControl } from '../../shared/ui/segmented-control';
-import { useToast } from '../../shared/ui/toast-provider';
 
 /**
  * Which question the lanes answer.
  *
  * `packer` is "who packs this" — the staffing axis this screen was built on.
  * `location` is "where is it packed from", the execution axis the worklist
- * this screen absorbed was grouped by. One read, two readings of it.
+ * this screen absorbed was grouped by. One read, two readings of it — and the
+ * second is offered only where there is more than one place to read (#3096).
  */
 type BoardGroupBy = 'packer' | 'location';
 const GROUP_BY_PARAM = 'groupBy';
 const DEFAULT_GROUP_BY: BoardGroupBy = 'packer';
 
-function readGroupBy(params: URLSearchParams): BoardGroupBy {
-  return params.get(GROUP_BY_PARAM) === 'location' ? 'location' : DEFAULT_GROUP_BY;
+function readGroupBy(params: URLSearchParams, locationAxisOffered: boolean): BoardGroupBy {
+  return locationAxisOffered && params.get(GROUP_BY_PARAM) === 'location'
+    ? 'location'
+    : DEFAULT_GROUP_BY;
 }
 
 export function AssignPackingWorkPage(): ReactElement {
+  return (
+    <AccessGate
+      require="orders:write"
+      fallback={
+        <PageLayout
+          eyebrow={ASSIGN_PACKING_WORK_COPY.page.eyebrow}
+          title={ASSIGN_PACKING_WORK_COPY.page.title}
+        >
+          <FulfillmentAccessDenied copy={ASSIGN_PACKING_WORK_COPY.denied} />
+        </PageLayout>
+      }
+    >
+      <AssignPackingWorkBoard />
+    </AccessGate>
+  );
+}
+
+function AssignPackingWorkBoard(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => readFulfillmentFilters(searchParams), [searchParams]);
   const offset = readFulfillmentOffset(searchParams);
   const isFiltered = hasActiveFulfillmentFilters(filters);
-  const groupBy = readGroupBy(searchParams);
+  const hasMultipleLocations = useHasMultipleLocations();
+  const groupBy = readGroupBy(searchParams, hasMultipleLocations);
   const byPacker = groupBy === 'packer';
 
-  // Paged, not a flat ceiling. This screen used to ask for a fixed 100 and
-  // show whatever came back, so past that it silently displayed a slice —
-  // and grouped by packer, a slice means somebody's lane looks empty when it
-  // is not. The page size is the server's own default, which it clamps to
-  // anyway.
+  // Paged, not a flat ceiling: past a fixed 100 the board silently displayed a
+  // slice, and grouped by packer a slice makes somebody's lane look empty. The
+  // page size is the server's own default, which it clamps to anyway.
   const tasksQuery = useFulfillmentTasksQuery({
     ...filters,
+    active: true,
     limit: FULFILLMENT_WORKLIST_PAGE_SIZE,
     offset,
   });
   const packersQuery = usePackersQuery();
-  const assignmentMutation = useUpdateFulfillmentAssignmentMutation();
-  const { showToast } = useToast();
   const demoMode = useDemoMode();
-  // The same permission the worklist page resolves its write gate from
-  // (#2411): `GET /users/packers` and the assignment PATCH are both
+  // `GET /users/packers` and the assignment PATCH are both
   // `@Roles('admin', 'operator')`, exactly who holds `orders:write`.
   const write = useWriteAccess('orders:write', demoMode);
 
-  /**
-   * Which task has an ASSIGNMENT write in flight.
-   *
-   * Deliberately separate from `actions.busyTaskId`: assignment is not an
-   * action (ADR-074 puts WHO-may-assign outside the legality matrix
-   * `applyAction` enforces), so a 409 here is only ever the orthogonal
-   * lost-update guard, never `action_not_legal` — it has neither the
-   * runner's two-code 409 contract nor its dialog. Two writes, two busy
-   * flags, one disabled state at the control.
-   */
-  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
-  // Every ACTION goes through the shared runner (#3257): the 409 contract, the
-  // busy task and the dialog form all live there, so this screen cannot grow
-  // its own dialect of them.
+  // Two writes, two busy flags, one disabled state at the control: an
+  // assignment is not an action (ADR-074), so it has its own runner.
+  const assignment = useFulfillmentAssignmentRunner();
   const actions = useFulfillmentTaskActionRunner();
 
-  /** #3426 — the task currently being dragged, lifted here for the reason stated above. */
+  /** #3426 — the task currently being dragged. */
   const [draggedTask, setDraggedTask] = useState<FulfillmentTask | null>(null);
 
   const packers: PackerSummary[] = packersQuery.data?.packers ?? [];
   const page = tasksQuery.data;
   const tasks = page?.works ?? [];
-  // The APPLIED page, not the requested one — the server clamps, and a pager
-  // that reports what it asked for rather than what it got is a pager that
-  // lies about which rows are on screen.
+  // The APPLIED page, not the requested one — the server clamps.
   const appliedLimit = page?.limit ?? FULFILLMENT_WORKLIST_PAGE_SIZE;
   const appliedOffset = page?.offset ?? offset;
   const total = page?.total ?? 0;
@@ -155,131 +170,47 @@ export function AssignPackingWorkPage(): ReactElement {
     () => (byPacker ? groupTasksByPacker(tasks, packers) : toBoardLanes(groupTasksIntoLanes(tasks))),
     [byPacker, tasks, packers]
   );
-  // #3427 — computed once over every lane, not per lane: the tag is a
-  // comparison ACROSS packers, which a single lane cannot make about itself.
-  // Empty off the packer axis: a location lane is not a workload, and the
-  // helper reads lane ids as packer ids.
   const lightestLanes = useMemo(
     () => (byPacker ? lightestLoadLaneIds(lanes) : new Set<string>()),
     [byPacker, lanes]
   );
-  // #3428 — counted from the TASKS, not from the pinned lane.
-  //
-  // Reading the lane was correct while packer was the only axis; on the
-  // location axis no lane carries that id, so it answered a confident `0`
-  // over a page with four unassigned tasks on it. A metric that is wrong on
-  // one axis is worse than one that is absent, and the tasks answer the same
-  // question on every axis.
+  // "Marta Kowalczyk (2)" in the assignment menu — counted from THIS page's
+  // tasks, the same scope the lanes are drawn from (#3096).
+  const queueCounts = useMemo(() => countTasksByPacker(tasks, packers), [tasks, packers]);
+  // #3428 — counted from the TASKS, not from the pinned lane, so the number
+  // reads the same on either grouping axis.
   const unassignedCount = tasks.filter((task) => task.assignedToUserId === null).length;
-  // #3424 — same "counted from the TASKS" rule as `unassignedCount` just
-  // above: the oldest wait in the pool is a fact about this page's tasks,
-  // not about any one lane, and reads correctly on both grouping axes.
   const oldestUnassignedAge = formatUnassignedAge(oldestUnassignedSince(tasks));
 
-  const setFilter = (key: 'orderId' | 'locationId', value: string): void => {
-    setSearchParams(setFulfillmentFilterParam(searchParams, key, value));
+  const setOrderFilter = (value: string): void => {
+    setSearchParams(setFulfillmentFilterParam(searchParams, 'orderId', value));
   };
   const clearFilters = (): void => {
     setSearchParams(clearFulfillmentFilters(searchParams));
   };
   const setGroupBy = (next: BoardGroupBy): void => {
     const params = new URLSearchParams(searchParams);
-    // The default is not written, so a plain `/fulfillment` stays clean and a
-    // shared link only ever carries an axis somebody actually chose.
+    // The default is not written, so a plain `/fulfillment` stays clean.
     if (next === DEFAULT_GROUP_BY) params.delete(GROUP_BY_PARAM);
     else params.set(GROUP_BY_PARAM, next);
-    // Offset goes with it: row 26 of the packer grouping is not row 26 of the
-    // location grouping — the same reason `setFulfillmentFilterParam` drops it.
+    // Row 26 of the packer grouping is not row 26 of the location grouping.
     params.delete('offset');
     setSearchParams(params);
   };
   const goToOffset = (next: number): void => {
     setSearchParams(setFulfillmentOffsetParam(searchParams, next));
   };
-  /**
-   * Enter commits the filter, because a box that only reacts to blur reads as
-   * broken to anyone who types and presses Enter.
-   */
-  const commitOnEnter = (
-    event: KeyboardEvent<HTMLInputElement>,
-    key: 'orderId' | 'locationId'
-  ): void => {
+  /** Enter commits the filter, because a box that only reacts to blur reads as broken. */
+  const commitOnEnter = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    setFilter(key, event.currentTarget.value.trim());
+    setOrderFilter(event.currentTarget.value.trim());
   };
 
   /**
-   * Which failure sentence a staffing write gets (#3415).
-   *
-   * Four unrelated failures used to share one, and its "Nothing has changed"
-   * half is a claim rather than a hedge - true of a refusal, false of a 409,
-   * and unknowable on a 5xx or a dropped connection, which is precisely when
-   * a supervisor most needs to be told to go and look.
-   *
-   * A 401 is deliberately absent: the session layer already redirects, so a
-   * toast about it would talk over a page that is on its way out.
-   */
-  const staffingFailureMessage = (error: unknown, isMove: boolean): string => {
-    if (error instanceof ApiError) {
-      if (error.isForbidden()) return ASSIGN_PACKING_WORK_COPY.row.moveForbidden;
-      if (error.isNotFound()) return ASSIGN_PACKING_WORK_COPY.row.moveNotFound;
-      if (error.isConflict()) return ASSIGN_PACKING_WORK_COPY.row.moveConflict;
-      if (error.isServerError() || error.isNetworkError()) {
-        return ASSIGN_PACKING_WORK_COPY.row.moveUnknown;
-      }
-      // A 4xx we do recognise as deterministic: the server refused, so
-      // nothing changed and saying so is honest.
-      return isMove
-        ? ASSIGN_PACKING_WORK_COPY.row.moveFailed
-        : ASSIGN_PACKING_WORK_COPY.row.selfServeFailed;
-    }
-    return ASSIGN_PACKING_WORK_COPY.row.moveUnknown;
-  };
-
-  const setAssignment = (
-    task: FulfillmentTask,
-    body: { assignedToUserId?: string | null; selfServeEligible?: boolean }
-  ): void => {
-    setBusyTaskId(task.id);
-    // #3429 — only the failure path toasted before; a successful staffing
-    // change said nothing at all. The two success messages are told apart
-    // by which field the CALLER set, never guessed from the task's new
-    // state (a self-serve toggle on an already-unassigned task could
-    // otherwise be misread as a move).
-    const successMessage =
-      'assignedToUserId' in body
-        ? ASSIGN_PACKING_WORK_COPY.row.moveSucceeded
-        : ASSIGN_PACKING_WORK_COPY.row.selfServeUpdated;
-    // `task.version` is the one this control was RENDERED with, never a
-    // fresher value re-read at click time — see
-    // `UpdateFulfillmentWorkAssignmentRequest`'s own docblock for why: a
-    // fresher token would make the 409 this guard exists to raise
-    // unreachable and hand the last writer the win.
-    assignmentMutation.mutate(
-      { workId: task.id, expectedVersion: task.version, ...body },
-      {
-        onSuccess: () => {
-          showToast({ tone: 'success', description: successMessage });
-        },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            description: staffingFailureMessage(error, 'assignedToUserId' in body),
-          });
-        },
-        onSettled: () => {
-          setBusyTaskId(null);
-        },
-      }
-    );
-  };
-
-  /**
-   * #3426 — fires on ANY drop, whatever lane it lands in. Dropping onto the
-   * dragged task's own CURRENT lane is a no-op (matching the mockup's own
-   * `drop` handler), and routes through the SAME `setAssignment` the "Move
-   * to" select already uses — no new endpoint, no parallel mutation path.
+   * #3426 — fires on ANY drop. Dropping onto the dragged task's own CURRENT
+   * lane is a no-op, and the move routes through the SAME runner the menu
+   * uses — no new endpoint, no parallel mutation path.
    */
   const handleDropOnLane = (destinationLaneId: string): void => {
     const task = draggedTask;
@@ -289,7 +220,7 @@ export function AssignPackingWorkPage(): ReactElement {
     const currentLaneId = task.assignedToUserId ?? UNASSIGNED_LANE_ID;
     if (currentLaneId === destinationLaneId) return;
 
-    setAssignment(task, {
+    assignment.setAssignment(task, {
       assignedToUserId: destinationLaneId === UNASSIGNED_LANE_ID ? null : destinationLaneId,
     });
   };
@@ -298,14 +229,15 @@ export function AssignPackingWorkPage(): ReactElement {
     <AssignPackingWorkActions
       task={task}
       packers={packers}
+      queueCounts={queueCounts}
       visible={write.visible}
       readOnly={write.demoReadOnly}
-      busy={busyTaskId === task.id || actions.busyTaskId === task.id}
+      busy={assignment.busyTaskId === task.id || actions.busyTaskId === task.id}
       onMoveTo={(userId) => {
-        setAssignment(task, { assignedToUserId: userId });
+        assignment.setAssignment(task, { assignedToUserId: userId });
       }}
       onToggleSelfServe={(selfServeEligible) => {
-        setAssignment(task, { selfServeEligible });
+        assignment.setAssignment(task, { selfServeEligible });
       }}
       onInvoke={(action) => {
         actions.run(task, action, {});
@@ -323,17 +255,49 @@ export function AssignPackingWorkPage(): ReactElement {
   );
 
   // #3259 — the task's own detail-page address, carrying this screen's own
-  // state forward (filters, paging, `?groupBy=`) so the detail page's back
-  // link can restore it. `searchParams` is the URL exactly as it stands,
-  // never `filters`/`offset`/`groupBy` re-assembled — those are the SERVER's
-  // shape, and `fulfillmentWorkDetailPath` has its own whitelist for the
-  // browser's.
+  // state forward so the detail page's back link can restore it.
   const detailHref = (task: FulfillmentTask): string =>
     fulfillmentWorkDetailPath(task.id, searchParams);
 
+  // #3428's three cards, in the mockup's order: Unassigned, Packers, Oldest.
+  // A grid, not a wrapped flex row — see `.kpi-grid`. Only once the board has
+  // real data to summarise; the skeleton draws their shape until then.
+  const metrics = (
+    <KpiGrid className="assign-packing-work-metrics">
+      <KpiCard
+        density="compact"
+        label={ASSIGN_PACKING_WORK_COPY.metrics.unassignedLabel}
+        value={unassignedCount}
+      />
+      {/* A FAILED roster read renders "Not known", never `0`: the page keeps
+          working without a roster, and a zero would report an empty warehouse
+          when the truth is that the question was never answered. */}
+      <KpiCard
+        density="compact"
+        label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesLabel}
+        value={
+          packersQuery.isError || packersQuery.isPending ? (
+            <EmptyValue label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesUnknownLabel} />
+          ) : (
+            packers.filter((packer) => packer.online).length
+          )
+        }
+      />
+      <KpiCard
+        density="compact"
+        label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedLabel}
+        value={
+          oldestUnassignedAge ?? (
+            <EmptyValue label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedEmptyLabel} />
+          )
+        }
+      />
+    </KpiGrid>
+  );
+
   const body = ((): ReactElement => {
     if (tasksQuery.isPending) {
-      return <p className="text-muted">{ASSIGN_PACKING_WORK_COPY.loading.message}</p>;
+      return <AssignPackingWorkSkeleton />;
     }
     if (tasksQuery.isError) {
       return (
@@ -396,60 +360,46 @@ export function AssignPackingWorkPage(): ReactElement {
     }
     return (
       <>
-        {/* Once, not per lane. Now that the board is paged, a lane holds only
-            the tasks on THIS page — so a packer's lane can look empty while
-            they have plenty. That is a fact about the board, and repeating it
-            on every lane would state N times something true once. */}
-        <p className="text-muted assign-packing-work-scope-note">
-          {FULFILLMENT_WORKLIST_COPY.lane.pageScopeNote}
-        </p>
+        {/* Once, not per lane — and only when the board is really paged: a
+            lane holds only the tasks on THIS page, so a packer's lane can look
+            empty while they have plenty. On a single page it is true of
+            nothing, and an always-on sentence is one an operator learns to
+            skip (#3096). */}
+        {total > appliedLimit ? (
+          <p className="text-muted assign-packing-work-scope-note">
+            {FULFILLMENT_WORKLIST_COPY.lane.pageScopeNote}
+          </p>
+        ) : null}
 
-      <div className="assign-packing-work-board">
-        {lanes.map((lane) => (
-          <AssignPackingWorkLaneSection
-            key={lane.id}
-            lane={lane}
-            renderActions={renderActions}
-            // Only on the packer axis. `handleDropOnLane` sends a lane id
-            // straight into `assignedToUserId`; on any other axis that would
-            // PATCH a location key as a user id. The drop handler has no way
-            // to tell — a lane id is an opaque string — so the gate is here.
-            dragEnabled={write.canWrite && byPacker}
-            onTaskDragStart={setDraggedTask}
-            onDropOnLane={handleDropOnLane}
-            lightestLoad={lightestLanes.has(lane.id)}
-            detailHref={detailHref}
-          />
-        ))}
-      </div>
-
-        <div className="pagination">
-          <span className="text-muted tabular">
-            {FULFILLMENT_WORKLIST_COPY.pagination.range(
-              appliedOffset + 1,
-              Math.min(appliedOffset + appliedLimit, total),
-              total
-            )}
-          </span>
-          <div className="pagination__actions">
-            <Button
-              disabled={appliedOffset <= 0}
-              onClick={() => {
-                goToOffset(Math.max(0, appliedOffset - appliedLimit));
-              }}
-            >
-              {FULFILLMENT_WORKLIST_COPY.pagination.previous}
-            </Button>
-            <Button
-              disabled={appliedOffset + appliedLimit >= total}
-              onClick={() => {
-                goToOffset(appliedOffset + appliedLimit);
-              }}
-            >
-              {FULFILLMENT_WORKLIST_COPY.pagination.next}
-            </Button>
-          </div>
+        <div className="assign-packing-work-board">
+          {lanes.map((lane) => (
+            <AssignPackingWorkLaneSection
+              key={lane.id}
+              lane={lane}
+              renderActions={renderActions}
+              // Only on the packer axis. `handleDropOnLane` sends a lane id
+              // straight into `assignedToUserId`; on any other axis that would
+              // PATCH a location key as a user id.
+              dragEnabled={write.canWrite && byPacker}
+              onTaskDragStart={setDraggedTask}
+              onDropOnLane={handleDropOnLane}
+              lightestLoad={lightestLanes.has(lane.id)}
+              detailHref={detailHref}
+              showLocation={hasMultipleLocations}
+            />
+          ))}
         </div>
+
+        <ListPagination
+          className="assign-packing-work-pagination"
+          offset={appliedOffset}
+          limit={appliedLimit}
+          rowCount={tasks.length}
+          total={total}
+          totalState="known"
+          showTotalLoader={false}
+          onOffsetChange={goToOffset}
+        />
       </>
     );
   })();
@@ -460,20 +410,44 @@ export function AssignPackingWorkPage(): ReactElement {
       title={ASSIGN_PACKING_WORK_COPY.page.title}
       description={ASSIGN_PACKING_WORK_COPY.page.description}
     >
-      <div className="assign-packing-work-groupby">
-        <SegmentedControl
-          aria-label={ASSIGN_PACKING_WORK_COPY.groupBy.label}
-          value={groupBy}
-          options={[
-            { value: 'packer', label: ASSIGN_PACKING_WORK_COPY.groupBy.packer },
-            { value: 'location', label: ASSIGN_PACKING_WORK_COPY.groupBy.location },
-          ]}
-          onChange={setGroupBy}
+      <div
+        className="assign-packing-work-toolbar"
+        role="group"
+        aria-label={FULFILLMENT_WORKLIST_COPY.filter.groupLabel}
+      >
+        {/* The second axis only where there is a second place (#3096). */}
+        {hasMultipleLocations ? (
+          <SegmentedControl
+            aria-label={ASSIGN_PACKING_WORK_COPY.groupBy.label}
+            value={groupBy}
+            options={[
+              { value: 'packer', label: ASSIGN_PACKING_WORK_COPY.groupBy.packer },
+              { value: 'location', label: ASSIGN_PACKING_WORK_COPY.groupBy.location },
+            ]}
+            onChange={setGroupBy}
+          />
+        ) : null}
+        {/* `key` is the URL's own value, so the box REMOUNTS whenever the
+            filter changes from outside it — which is what makes `Clear
+            filters` clear the text as well as the list. */}
+        <Input
+          key={`orderId:${filters.orderId ?? ''}`}
+          className="assign-packing-work-toolbar__filter"
+          aria-label={FULFILLMENT_WORKLIST_COPY.filter.orderLabel}
+          placeholder={FULFILLMENT_WORKLIST_COPY.filter.orderPlaceholder}
+          defaultValue={filters.orderId ?? ''}
+          onBlur={(event) => {
+            setOrderFilter(event.target.value.trim());
+          }}
+          onKeyDown={commitOnEnter}
         />
-        {/* Said in place rather than left to be discovered: the cards simply
-            stop being draggable on the other axis, and a control that quietly
-            stops working reads as a bug. Only shown to someone who had drag
-            in the first place. */}
+        {isFiltered ? (
+          <Button tone="secondary" onClick={clearFilters}>
+            {FULFILLMENT_WORKLIST_COPY.filter.clear}
+          </Button>
+        ) : null}
+        {/* Said in place: the cards stop being draggable on the other axis,
+            and a control that quietly stops working reads as a bug. */}
         {write.canWrite && !byPacker ? (
           <span className="text-muted assign-packing-work-groupby__note">
             {ASSIGN_PACKING_WORK_COPY.groupBy.dragUnavailable}
@@ -481,95 +455,17 @@ export function AssignPackingWorkPage(): ReactElement {
         ) : null}
       </div>
 
-      <div
-        className="toolbar assign-packing-work-filters"
-        role="group"
-        aria-label={FULFILLMENT_WORKLIST_COPY.filter.groupLabel}
-      >
-        {/* `key` is the URL's own value, so the box REMOUNTS whenever the
-            filter changes from outside it — which is what makes `Clear
-            filters` clear the text as well as the list. An uncontrolled input
-            ignores a changed `defaultValue`, so without this the page shows a
-            filter box reading `ol_order_7` over an unfiltered board and the
-            remedy appears to do nothing. Typing stays uncontrolled; the key
-            only moves when the committed value does. */}
-        <Input
-          key={`orderId:${filters.orderId ?? ''}`}
-          aria-label={FULFILLMENT_WORKLIST_COPY.filter.orderLabel}
-          placeholder={FULFILLMENT_WORKLIST_COPY.filter.orderPlaceholder}
-          defaultValue={filters.orderId ?? ''}
-          onBlur={(event) => {
-            setFilter('orderId', event.target.value.trim());
-          }}
-          onKeyDown={(event) => {
-            commitOnEnter(event, 'orderId');
-          }}
-        />
-        <Input
-          key={`locationId:${filters.locationId ?? ''}`}
-          aria-label={FULFILLMENT_WORKLIST_COPY.filter.locationLabel}
-          placeholder={FULFILLMENT_WORKLIST_COPY.filter.locationPlaceholder}
-          defaultValue={filters.locationId ?? ''}
-          onBlur={(event) => {
-            setFilter('locationId', event.target.value.trim());
-          }}
-          onKeyDown={(event) => {
-            commitOnEnter(event, 'locationId');
-          }}
-        />
-        {isFiltered ? (
-          <Button onClick={clearFilters}>{FULFILLMENT_WORKLIST_COPY.filter.clear}</Button>
-        ) : null}
-      </div>
-
       {packersQuery.isError ? (
         <Alert tone="warning">{ASSIGN_PACKING_WORK_COPY.rosterError.message}</Alert>
       ) : null}
 
-      {/* #3428's three cards, complete: "Unassigned right now", "Oldest
-          unassigned" (on #3424's `unassignedSince`) and "Packers at their
-          benches" (on #3424's presence threshold). Only shown once the board
-          has real data to summarise. */}
-      {tasksQuery.isPending || tasksQuery.isError ? null : (
-        <div className="assign-packing-work-metrics">
-          <MetricCard
-            label={ASSIGN_PACKING_WORK_COPY.metrics.unassignedLabel}
-            value={unassignedCount}
-          />
-          <MetricCard
-            label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedLabel}
-            value={
-              oldestUnassignedAge ?? (
-                <EmptyValue label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedEmptyLabel} />
-              )
-            }
-          />
-          {/* A FAILED roster read renders "Not known", never `0`. The page
-              deliberately keeps working without a roster, so a zero here
-              would report an empty warehouse when the truth is that the
-              question was never answered. */}
-          <MetricCard
-            label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesLabel}
-            value={
-              packersQuery.isError || packersQuery.isPending ? (
-                <EmptyValue
-                  label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesUnknownLabel}
-                />
-              ) : (
-                packers.filter((packer) => packer.online).length
-              )
-            }
-          />
-        </div>
-      )}
+      {tasksQuery.isPending || tasksQuery.isError ? null : metrics}
 
       {body}
 
       {actions.pendingForm ? (
         <FulfillmentTaskActionDialog
           // Remount per (task, mode, hold) so a draft never carries across.
-          // The old key was the task id alone, which was enough while `hold`
-          // was the only mode this screen had.
           key={`${actions.pendingForm.task.id}:${actions.pendingForm.mode}:${actions.pendingForm.hold?.id ?? ''}`}
           open
           mode={actions.pendingForm.mode}

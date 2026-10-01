@@ -5,7 +5,7 @@
  * the fulfilment screen's own page title, loading line, error and
  * nothing-to-do sentence come from `assign-packing-work.copy.ts`; what is
  * still read from HERE is the vocabulary that came with the capabilities the
- * merged screen absorbed - the filter boxes, the pager, the two empty states
+ * merged screen absorbed - the order filter, the two empty states
  * only those capabilities can produce, and the lane labels
  * `fulfillment-lanes.ts` falls back to.
  *
@@ -39,8 +39,6 @@ export const FULFILLMENT_WORKLIST_COPY = {
   filter: {
     orderLabel: 'Order',
     orderPlaceholder: 'Filter by order id',
-    locationLabel: 'Location',
-    locationPlaceholder: 'Filter by location id',
     clear: 'Clear filters',
     groupLabel: 'Fulfilment task filters',
   },
@@ -51,8 +49,9 @@ export const FULFILLMENT_WORKLIST_COPY = {
     /** Shown when a task carries no `deliveryMethod`. */
     noDeliveryMethod: 'No delivery method yet',
     /**
-     * Stated on every lane, because the rows are a paged slice: a lane shows
-     * the tasks for that pair ON THIS PAGE, and a later page can add more.
+     * Stated once above the lanes, and only when there is more than one page
+     * (#3096): a lane shows the tasks ON THIS PAGE, and a later page can add
+     * more. On a single page the sentence is true of nothing and is noise.
      */
     pageScopeNote: 'Grouped from the tasks on this page only.',
   },
@@ -69,13 +68,5 @@ export const FULFILLMENT_WORKLIST_COPY = {
       message: 'There are fulfilment tasks, but none this far down the list.',
       action: 'Back to the first page',
     },
-  },
-
-  pagination: {
-    previous: 'Previous',
-    next: 'Next',
-    /** `Showing 1–25 of 92` */
-    range: (from: number, to: number, total: number): string =>
-      `Showing ${from}–${to} of ${total}`,
   },
 } as const;

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { AnalyticsPage } from './analytics-page';
+import { ApiError } from '../../shared/api/api-error';
 import type { AnalyticsTrustSnapshot } from '../../features/analytics';
 
 const ROUTE = '/analytics?from=2026-07-16&to=2026-08-14';
@@ -146,6 +147,22 @@ describe('AnalyticsPage', () => {
 
     expect(await screen.findByText('Unable to load data coverage')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('should show the access-denied state with no Retry when the coverage read is refused with a 403', async () => {
+    const apiClient = createMockApiClient({
+      analyticsTrust: {
+        getTrust: vi.fn().mockRejectedValue(new ApiError('Insufficient permissions', 403, null)),
+      },
+    });
+
+    renderWithProviders(<AnalyticsPage />, { apiClient, route: ROUTE });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Data coverage is not available to your role' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Unable to load data coverage')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   function healthySnapshot(): AnalyticsTrustSnapshot {

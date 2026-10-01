@@ -189,18 +189,28 @@ describe('summariseFulfillmentWork', () => {
     });
   });
 
-  describe('the fail-safe: an unrecognised combination renders nothing', () => {
-    it('returns null for an open task, accepted, no holds, with a location', () => {
-      // One of the three states the module docblock names as reachable and
-      // deliberately unworded: a task whose holder accepted and has not
-      // started picking.
+  describe('an accepted task that has not started (#3096)', () => {
+    it('should say the executor accepted it when the task is open and accepted', () => {
       expect(
         summariseFulfillmentWork(
-          input({ status: 'open', requestStatus: 'accepted', locationId: 'ol_location_1' })
+          input({
+            status: 'open',
+            requestStatus: 'accepted',
+            locationId: 'ol_location_1',
+            executorName: 'OpenLinker OMS',
+          })
         )
-      ).toBeNull();
+      ).toBe('OpenLinker OMS accepted this and has not started picking yet.');
     });
 
+    it('should not call an accepted task unrouted when it carries no location', () => {
+      expect(
+        summariseFulfillmentWork(input({ status: 'open', requestStatus: 'accepted', locationId: null }))
+      ).toBe('Whoever is working this task accepted this and has not started picking yet.');
+    });
+  });
+
+  describe('the fail-safe: an unrecognised combination renders nothing', () => {
     it('returns null for an open, unsubmitted task with a location and no holds', () => {
       expect(
         summariseFulfillmentWork(
@@ -210,7 +220,11 @@ describe('summariseFulfillmentWork', () => {
     });
 
     it('returns null for a rejected request', () => {
-      expect(summariseFulfillmentWork(input({ requestStatus: 'rejected' }))).toBeNull();
+      // With a location: an open task with NO location is the "nothing to pick
+      // yet" branch, which outranks the unworded rejected state.
+      expect(
+        summariseFulfillmentWork(input({ requestStatus: 'rejected', locationId: 'ol_location_1' }))
+      ).toBeNull();
     });
 
     it('returns null for a wholly unrecognised status the frontend cannot mirror', () => {
