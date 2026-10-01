@@ -53,6 +53,32 @@ export class FulfillmentWorkLineResponseDto {
       'because productVariantId is still on the row and a fabricated label is not actionable.',
   })
   productName!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "The variant's SKU (#3096); null when it has none or is absent from the catalogue.",
+  })
+  sku!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "The variant's EAN (#3096); null when it has none or is absent from the catalogue.",
+  })
+  ean!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The API's own proxy path for the parent product's first image (#3096) — " +
+      '`productImageProxyPath`, the same path the pack bench reads. Relative, and behind the ' +
+      'ordinary route guard, so a browser fetches it with its bearer token. null when the ' +
+      'product has no image.',
+  })
+  imageUrl!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: "The variant's own attributes, e.g. { Size: 'L' } (#3096); null when it has none.",
+  })
+  attributes!: Record<string, string> | null;
   @ApiProperty() totalQuantity!: number;
   @ApiProperty({
     description:
@@ -148,6 +174,33 @@ export class FulfillmentWorkResponseDto {
     description: "The source's own delivery-method label (#3425); null when the source reports none",
   })
   carrierName!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the pack bench shut the box (#2418), or null while it is open. Not status: ' +
+      'packing is part of the executor job, not the end of it (#3096, G02-3).',
+  })
+  parcelClosedAt!: Date | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'The user id of the last verifier who shut the box, or null while it is open.',
+  })
+  packedByUserId!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When an operator declared the parcel finished and off the bench, or null until then. ' +
+      'A distinct instant from parcelClosedAt.',
+  })
+  completedAt!: Date | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the dispatch fact was settled with the sales channel (#3096, G02-3), or null while ' +
+      'it is not. Marks the relay as RESOLVED, which includes a channel that accepts no ' +
+      'dispatch notice - do not word it as an acknowledgement.',
+  })
+  channelNotifiedAt!: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiProperty({ type: [FulfillmentWorkLineResponseDto] })
