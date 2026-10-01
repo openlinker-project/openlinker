@@ -23,6 +23,33 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Never route a one-field change through a full-upsert port
+
+**Context**: price-change propagation to a WooCommerce shop (#3144) reused
+`ShopProductManagerPort.publishProduct`, because the port had no narrower write.
+
+**Problem**: `publishProduct` is a full upsert. The WooCommerce body always sends
+`manage_stock: true` + `stock_quantity`, and name / description whenever content
+is present, so every price change overwrote the shop's stock (and switched stock
+management on for products the shop did not manage), and its title and
+description whenever no earlier publish snapshot existed. Reusing the last
+snapshot and wrapping the call in the stock lock made the write *consistent*,
+not *narrow* — it still wrote fields nobody asked to change. The e2e run caught
+it only because stock 30 came back as OL's number (G01-10).
+
+**Rule**: a change to one field needs a write that carries only that field. If
+the port has none, add an optional sub-capability with a type guard
+(`ShopProductPriceUpdater`) and fall back to the full write only for adapters
+that lack it. Assert the adapter body with `toEqual` on the exact object, so a
+field sneaking back in fails the spec.
+
+**Applies to**: `libs/core/src/listings/application/services/price-change-apply.service.ts`,
+any shop/marketplace adapter `publishProduct`-style upsert.
+
+**Source**: #3505 (G01-10), 2026-10-01.
+
+---
+
 ## A push plan built from pre-rebase subjects silently drops commits made after it
 
 **Context**: the pack-bench stack (#3330-#3439). After rebasing fourteen
