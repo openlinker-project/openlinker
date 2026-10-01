@@ -8,6 +8,7 @@ import { PriceChangeApplyService } from '../price-change-apply.service';
 import { PriceChangeEpisode } from '../../../domain/entities/price-change-episode.entity';
 import { ListingCreationRecord } from '../../../domain/entities/listing-creation-record.entity';
 import { AvailabilityUnknownError } from '../../../domain/exceptions/availability-unknown.error';
+import { ProductPublishTargetNotFoundException } from '../../../domain/exceptions/product-publish-target-not-found.exception';
 import type { PriceChangeApplyInput } from '../../../domain/types/price-change-apply.types';
 
 function buildConnection(overrides: Partial<Connection> = {}): Connection {
@@ -98,6 +99,7 @@ describe('PriceChangeApplyService', () => {
   let syncLock: { acquire: jest.Mock; release: jest.Mock };
   let syncCursors: { getCursor: jest.Mock; advanceCursorIfNewer: jest.Mock };
   let marketplaceAdapter: { updateOfferFields: jest.Mock };
+  let productsService: { getVariant: jest.Mock; getVariantsByProductId: jest.Mock };
   let service: PriceChangeApplyService;
 
   const validInput: PriceChangeApplyInput = {
@@ -149,6 +151,10 @@ describe('PriceChangeApplyService', () => {
       getCursor: jest.fn().mockResolvedValue(null),
       advanceCursorIfNewer: jest.fn().mockResolvedValue(true),
     };
+    productsService = {
+      getVariant: jest.fn().mockResolvedValue({ id: 'ol_variant_1', productId: 'ol_product_1' }),
+      getVariantsByProductId: jest.fn().mockResolvedValue([{ id: 'ol_variant_1' }]),
+    };
 
     service = new PriceChangeApplyService(
       connections as never,
@@ -162,7 +168,8 @@ describe('PriceChangeApplyService', () => {
       listingRecords as never,
       identifierMapping as never,
       syncLock as never,
-      syncCursors as never
+      syncCursors as never,
+      productsService as never
     );
   });
 
@@ -236,7 +243,12 @@ describe('PriceChangeApplyService', () => {
       const result = await service.applyPriceChange(validInput);
 
       expect(result).toEqual({ outcome: 'ok' });
-      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+      // Only the ProductPublisher adapter is resolved (to test it for the
+      // price-only capability, #3505) — never the OfferManager one.
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'OfferManager'
+      );
       expect(productPublishExecution.executePublish).toHaveBeenCalledWith(
         expect.objectContaining({ stock: 9, status: 'published', price: { amount: 399, currency: 'PLN' } })
       );
@@ -432,6 +444,90 @@ describe('PriceChangeApplyService', () => {
       identifierMapping.getExternalIds.mockResolvedValue([
         { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
       ]);
+    });
+
+    // #3505 (G01-10) — a full publish re-sends stock and content, which on
+    // WooCommerce overwrote the shop's stock, name and description on every
+    // price change. An adapter that can write the price alone gets exactly that.
+    describe('price-only shop write (ShopProductPriceUpdater)', () => {
+      let shopAdapter: { publishProduct: jest.Mock; updateShopProductPrice: jest.Mock };
+
+      beforeEach(() => {
+        shopAdapter = {
+          publishProduct: jest.fn(),
+          updateShopProductPrice: jest.fn().mockResolvedValue(undefined),
+        };
+        integrationsService.getCapabilityAdapter.mockResolvedValue(shopAdapter);
+      });
+
+      it('should write only the price and never publish, read stock or take the stock lock when the adapter can', async () => {
+        const result = await service.applyPriceChange({ ...validInput, episodeId: undefined });
+
+        expect(result).toEqual({ outcome: 'ok' });
+        expect(shopAdapter.updateShopProductPrice).toHaveBeenCalledWith({
+          externalProductId: 'ext-shop-1',
+          price: { amount: '399.00', currency: 'PLN' },
+          idempotencyKey: expect.stringContaining('pricing:apply:ol_variant_1:dest-1:ext-shop-1'),
+        });
+        expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
+        expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
+        expect(syncLock.acquire).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursorIfNewer).not.toHaveBeenCalled();
+      });
+
+      it('should address the variation under its parent when the variant belongs to a grouped publish', async () => {
+        productsService.getVariantsByProductId.mockResolvedValue([
+          { id: 'ol_variant_1' },
+          { id: 'ol_variant_2' },
+        ]);
+        identifierMapping.getExternalIds.mockImplementation((_entityType: string, internalId: string) =>
+          Promise.resolve([
+            {
+              externalId: internalId === 'ol_product_1' ? 'ext-parent-1' : 'ext-shop-1',
+              platformType: 'woocommerce',
+              connectionId: 'dest-1',
+              entityType: 'ShopProduct',
+            },
+          ])
+        );
+
+        await service.applyPriceChange(validInput);
+
+        expect(shopAdapter.updateShopProductPrice).toHaveBeenCalledWith(
+          expect.objectContaining({
+            externalProductId: 'ext-shop-1',
+            externalParentProductId: 'ext-parent-1',
+          })
+        );
+      });
+
+      it('should resolve to business_failure without creating a product when the shop product is gone', async () => {
+        shopAdapter.updateShopProductPrice.mockRejectedValue(
+          new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', 'ext-shop-1')
+        );
+
+        const result = await service.applyPriceChange(validInput);
+
+        expect(result.outcome).toBe('business_failure');
+        expect(shopAdapter.publishProduct).not.toHaveBeenCalled();
+        expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
+      });
+
+      it('should propagate a transient failure for the runner to retry', async () => {
+        const cause = new Error('socket hang up');
+        shopAdapter.updateShopProductPrice.mockRejectedValue(cause);
+
+        await expect(service.applyPriceChange(validInput)).rejects.toBe(cause);
+      });
+
+      it('should refuse when no ShopProduct mapping exists, before touching the adapter', async () => {
+        identifierMapping.getExternalIds.mockResolvedValue([]);
+
+        const result = await service.applyPriceChange(validInput);
+
+        expect(result.outcome).toBe('business_failure');
+        expect(shopAdapter.updateShopProductPrice).not.toHaveBeenCalled();
+      });
     });
 
     it('throws AvailabilityUnknownError (transient) rather than defaulting stock to 0 when ATP is null (#3161 review, BLOCKING)', async () => {
