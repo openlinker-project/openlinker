@@ -2,11 +2,9 @@
  * Shoper Product Master Adapter
  *
  * Implements `ProductMasterPort` over Shoper's REST API - the READ side:
- * `getProduct`, `getProducts`, `getProductVariants`, `searchProducts` and
- * `listExternalIds`. Every write, and the category reads, throw
- * `ShoperNotSupportedException` (an empty result would read as "no categories"
- * rather than "not implemented"); the category reads arrive with their own
- * milestone task.
+ * `getProduct`, `getProducts`, `getProductVariants`, `searchProducts`,
+ * `listExternalIds`, `getCategories` and `getProductCategories`. Every write
+ * throws `ShoperNotSupportedException` (a silent no-op would read as "done").
  *
  * Variant model (SPIKE-3638 M1): `products` is the header and `product-stocks`
  * is the variant grain, so each stock row is one `ProductVariant` keyed by its
@@ -46,7 +44,13 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
-import type { ShoperProduct, ShoperStock } from '../../../domain/types/shoper-api.types';
+import type {
+  ShoperCategory,
+  ShoperCategoryTreeNode,
+  ShoperProduct,
+  ShoperStock,
+} from '../../../domain/types/shoper-api.types';
+import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
 import {
   SHOPER_MAX_PAGE_SIZE,
@@ -158,6 +162,60 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     return this.getProducts({ ...filters, query });
   }
 
+  // ─── Categories ────────────────────────────────────────────────────────────
+
+  /**
+   * The master's whole category directory: structure from `categories-tree`,
+   * names from the paged `categories` list (the tree carries ids only).
+   */
+  async getCategories(): Promise<Category[]> {
+    const [tree, list, ctx] = await Promise.all([
+      this.client.get<ShoperCategoryTreeNode[]>('/categories-tree'),
+      this.fetchAllCategories(),
+      this.shopContext.get(),
+    ]);
+    const roots = Array.isArray(tree.data) ? tree.data : [];
+    const joined = joinShoperCategories(list, roots, ctx.language);
+    if (joined.unnamedTreeIds.length > 0) {
+      this.logger.warn(
+        `Shoper category tree lists ids with no category record, skipped: ${joined.unnamedTreeIds.join(',')} ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
+    if (joined.unplacedIds.length > 0) {
+      this.logger.warn(
+        `Shoper categories missing from the category tree, returned without a parent: ` +
+          `${joined.unplacedIds.join(',')} (connection: ${this.connection.id})`,
+      );
+    }
+    return joined.categories;
+  }
+
+  async getProductCategories(productId: string): Promise<Category[]> {
+    const externalId = await this.resolveExternalProductId(productId);
+    const { data } = await this.client.get<Pick<ShoperProduct, 'categories'>>(
+      `/products/${externalId}`,
+    );
+    const ids = Array.isArray(data.categories) ? data.categories.map(String) : [];
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const directory = new Map((await this.getCategories()).map((c) => [c.id, c]));
+    const categories: Category[] = [];
+    for (const id of ids) {
+      const category = directory.get(id);
+      if (category === undefined) {
+        this.logger.warn(
+          `Shoper product ${externalId} references unknown category ${id}, skipped (connection: ${this.connection.id})`,
+        );
+        continue;
+      }
+      categories.push(category);
+    }
+    return categories;
+  }
+
   // ─── Not supported in this milestone ───────────────────────────────────────
 
   createProduct(_product: ProductCreate): Promise<Product> {
@@ -177,10 +235,6 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
     _variant: ProductVariantCreate,
   ): Promise<ProductVariant> {
     return Promise.reject(new ShoperNotSupportedException('upsertProductVariant'));
-  }
-
-  getProductCategories(_productId: string): Promise<Category[]> {
-    return Promise.reject(new ShoperNotSupportedException('getProductCategories'));
   }
 
   assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
@@ -285,6 +339,21 @@ export class ShoperProductMasterAdapter implements ProductMasterPort {
       products.push({ ...mapShoperProduct(raw, ctx), id: internalId });
     }
     return products;
+  }
+
+  private async fetchAllCategories(): Promise<ShoperCategory[]> {
+    const categories: ShoperCategory[] = [];
+    for (let page = 1; ; page += 1) {
+      const result = await fetchShoperPage<ShoperCategory>(this.client, '/categories', {
+        page,
+        limit: SHOPER_MAX_PAGE_SIZE,
+        query: { order: 'category_id ASC' },
+      });
+      categories.push(...result.items);
+      if (page >= result.pages) {
+        return categories;
+      }
+    }
   }
 
   /** Exhausts every page of a product's stocks (a product may have more than 50 variants). */

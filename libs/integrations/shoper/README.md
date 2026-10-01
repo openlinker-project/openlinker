@@ -66,13 +66,19 @@ A passing test does **not** prove every area above was granted; each capability 
 | `getProducts` / `searchProducts` | `GET /products` (paged; `filters={"product_id":{"in":[...]}}`, `filters={"translations.name":{"like":"%q%"}}`) |
 | `getProductVariants` | `GET /product-stocks?filters[product_id]=:id` (all pages) |
 | `listExternalIds` | `GET /products?order=product_id ASC` (paged) |
+| `getCategories` | `GET /categories-tree` (structure) + `GET /categories` (names, all pages) |
+| `getProductCategories` | `GET /products/:id` -> `categories` ids resolved through `getCategories` |
+
+- **Categories** live in two resources: `categories-tree` carries ids and children only (no names), and the
+  paged `categories` list carries the per-language name and `active`. They are joined by id; a listed category
+  missing from the tree is returned without a parent, a tree node with no record is dropped, both are logged.
 
 - **Variants:** one `product-stocks` row = one `ProductVariant`, keyed by its real `stock_id`. No synthetic
   variant is minted for a simple product - Shoper already gives it a stock row.
 - **Text** is read from `translations[<shop default language>]` (`application-config.default_language_name`);
   the translations' own `isdefault` flag reads `"0"` on every language and is not used.
 - **Images:** only the main image, `https://<host>/userdata/public/gfx/<unic_name>.<extension>`.
-- Writes and category reads throw `ShoperNotSupportedException`.
+- Writes throw `ShoperNotSupportedException`.
 
 Paging rules the adapter enforces (all observed on a live shop):
 

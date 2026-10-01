@@ -78,6 +78,24 @@ export interface ShoperProduct {
   readonly options: readonly unknown[];
 }
 
+/** Per-language text of a category. */
+export interface ShoperCategoryTranslation {
+  readonly name?: string | null;
+  readonly active?: string | null;
+}
+
+/** A `GET /categories` row: carries the TEXT, not the structure. */
+export interface ShoperCategory {
+  readonly category_id: string;
+  readonly translations: Readonly<Record<string, ShoperCategoryTranslation>>;
+}
+
+/** A `GET /categories-tree` node: carries the STRUCTURE only (ids, no names). */
+export interface ShoperCategoryTreeNode {
+  readonly id: number;
+  readonly children: readonly ShoperCategoryTreeNode[];
+}
+
 /** The slice of `GET /application-config` the adapter reads. */
 export interface ShoperApplicationConfig {
   readonly default_language_name: string;

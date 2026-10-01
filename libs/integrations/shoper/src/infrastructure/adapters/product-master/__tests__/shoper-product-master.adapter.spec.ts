@@ -406,6 +406,83 @@ describe('ShoperProductMasterAdapter', () => {
     });
   });
 
+  describe('categories', () => {
+    const tree = [{ id: 45, children: [{ id: 38, children: [] }, { id: 39, children: [] }] }];
+    const list = envelope([
+      { category_id: '45', translations: { pl_PL: { name: 'Kolekcje', active: '1' } } },
+      { category_id: '38', translations: { pl_PL: { name: 'Zestawy', active: '1' } } },
+      { category_id: '39', translations: { pl_PL: { name: 'Talerze', active: '0' } } },
+    ]);
+
+    it('should return the directory joined from the tree and the paged list', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/categories-tree': tree, '/categories': list });
+
+      await expect(adapter.getCategories()).resolves.toEqual([
+        { id: '45', name: 'Kolekcje', depth: 0, active: true },
+        { id: '38', name: 'Zestawy', parentId: '45', depth: 1, active: true },
+        { id: '39', name: 'Talerze', parentId: '45', depth: 1, active: false },
+      ]);
+      expect(get).toHaveBeenCalledWith(
+        '/categories',
+        expect.objectContaining({ order: 'category_id ASC', limit: 50, page: 1 }),
+      );
+    });
+
+    it('should read every page of the category list', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string, query?: { page?: number }) => {
+        if (path === '/categories-tree') return Promise.resolve({ status: 200, data: [] });
+        const page = query?.page ?? 1;
+        return Promise.resolve({
+          status: 200,
+          data: envelope(
+            [{ category_id: String(page), translations: { pl_PL: { name: `C${page}` } } }],
+            { pages: 2, page },
+          ),
+        });
+      });
+
+      const categories = await adapter.getCategories();
+
+      expect(categories.map((c) => c.id)).toEqual(['1', '2']);
+    });
+
+    it('should resolve a product category ids through the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [39, 38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      const categories = await adapter.getProductCategories('ol_product_1');
+
+      expect(categories.map((c) => c.name)).toEqual(['Talerze', 'Zestawy']);
+    });
+
+    it('should skip an id absent from the directory instead of throwing', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ categories: [38, 777] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        expect.objectContaining({ id: '38' }),
+      ]);
+    });
+
+    it('should return [] for a product with no categories without reading the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ categories: [] }) });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('methods outside this milestone', () => {
     type Call = (adapter: ShoperProductMasterAdapter) => Promise<unknown>;
     const cases: Array<[string, Call]> = [
@@ -413,7 +490,6 @@ describe('ShoperProductMasterAdapter', () => {
       ['updateProduct', (a): Promise<unknown> => a.updateProduct('p', {})],
       ['deleteProduct', (a): Promise<unknown> => a.deleteProduct('p')],
       ['upsertProductVariant', (a): Promise<unknown> => a.upsertProductVariant('p', { sku: 's' })],
-      ['getProductCategories', (a): Promise<unknown> => a.getProductCategories('p')],
       ['assignCategories', (a): Promise<unknown> => a.assignCategories('p', [])],
     ];
 
