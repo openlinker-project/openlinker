@@ -400,6 +400,33 @@ describe('OrderSyncService', () => {
       );
     });
 
+    it('should thread each line tax rate into OrderCreate when the snapshot carries mixed rates', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.items = [
+        { ...order.items[0], id: 'item-1', taxRate: '23', taxRateCountry: 'PL' },
+        { ...order.items[0], id: 'item-2', taxRate: '8' },
+      ];
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      const sent = adapter.createOrder.mock.calls[0][0];
+      expect(sent.items.map((i) => i.taxRate)).toEqual(['23', '8']);
+      expect(sent.items[0].taxRateCountry).toBe('PL');
+    });
+
+    it('should leave taxRate absent on OrderCreate items when the snapshot line has none', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      const sent = adapter.createOrder.mock.calls[0][0];
+      expect('taxRate' in sent.items[0]).toBe(false);
+    });
+
     it('should pass the source payment status through to the destination (#2600)', async () => {
       // A destination cannot tell a cash-on-delivery order from a prepaid one
       // without this, and there is nothing else on the contract that says so.

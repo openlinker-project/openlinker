@@ -225,6 +225,11 @@ export class OrderSyncService implements IOrderSyncService {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
+        // Destinations that convert a gross-priced line to net (WooCommerce) need
+        // the per-line rate settled at ingestion; absence must stay absence so
+        // they refuse rather than guess.
+        ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
+        ...(item.taxRateCountry !== undefined ? { taxRateCountry: item.taxRateCountry } : {}),
       })),
       totals: {
         subtotal: order.totals.subtotal,
