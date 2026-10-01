@@ -1,4 +1,4 @@
-# ADR-075: A frontend may derive a display sentence from server-owned vocabularies, never legality
+# ADR-076: A frontend may derive a display sentence from server-owned vocabularies, never legality
 
 - **Status**: Accepted
 - **Date**: 2026-09-28

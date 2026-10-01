@@ -123,12 +123,15 @@ adding the scan root does not by itself make the copy covered.
 
 **A routed task detail, beside the worklist (#3096).** `/fulfillment/works/:workId`
 is a second page, reached by clicking a task's own id on the assign board or on the
-order-detail panel — not a split screen. The detail carries seven stacked sections
-(the vs-Orders framing, a hero, holds, who's handling it, lines, facts, the action bar)
-while the assign board is already lane-grouped with its own filters and paging, so
-side by side collapses one of them at every width an operator actually uses; a page
-also has an ADDRESS an operator can paste into a ticket, which "the third row I had
-selected" cannot be. Its own copy lives in `lib/fulfillment-work-detail.copy.ts` —
+order-detail panel — not a split screen. The detail is two columns of cards
+(`DetailSection`) on the order page's own grid (`.order-detail__primary-grid--split`):
+the left column is the mockup — hero, holds, lines, facts, the action card — and the
+right column is the Packer card plus the order page's own `OrderShipmentPanel`,
+`SalesDocumentPanel` and `OrderTotalsPanel`, fed by one `useOrderQuery`, rather than
+new variations of them (#3096). The assign board is already lane-grouped with its own
+filters and paging, so side by side collapses one of them at every width an operator
+actually uses; a page also has an ADDRESS an operator can paste into a ticket, which
+"the third row I had selected" cannot be. Its own copy lives in `lib/fulfillment-work-detail.copy.ts` —
 the same `*.copy.ts` gate rule as `fulfillment-task.copy.ts` above, and load-bearing
 for the same reason: `scripts/check-ui-vocabulary.mjs` does not scan
 `apps/web/src/pages` at all, so the page file itself (`pages/fulfillment/fulfillment-work-detail-page.tsx`)
@@ -149,7 +152,7 @@ always visible on the detail page, never behind a disclosure, because the operat
 who needs the explanation is the one who does not know they need it.
 
 **A frontend derivation may narrow the "server decides, frontend renders" rule for
-DISPLAY only, never for legality (#3099, ADR-075).** `fulfillment-work-summary.ts`
+DISPLAY only, never for legality (#3099, ADR-076).** `fulfillment-work-summary.ts`
 derives one plain-language sentence from `status`, `requestStatus`, `activeHolds.length`,
 `locationId`, `expeditedAt` and `cancellationReason` — a held task reads
 `status: 'open'` with a non-empty `activeHolds`, since nothing writes `status: 'on_hold'`,
@@ -157,8 +160,34 @@ so the raw status alone can mislead. The function takes a narrow six-field struc
 the whole `FulfillmentTask`, so `supportedActions` is structurally unreachable from
 inside it; an unrecognised `(status, requestStatus)` combination returns `null` rather
 than a guessed sentence, and the hero's two raw axis labels render regardless, so the
-page is never blank. See ADR-075 for the decision, the rejected alternatives and the
+page is never blank. See ADR-076 for the decision, the rejected alternatives and the
 fail-closed rule in full.
+
+**The board and the detail are admin + operator screens (#3096).** Both pages render
+inside `AccessGate require="orders:write"` with an `AccessDeniedState` fallback, so no
+query mounts for a session that would be refused, and the API matches:
+`GET /fulfillment/works/:workId` and its `/shipments` are `@Roles('admin', 'operator')`.
+`GET /fulfillment/works` stays open to `viewer` — the order-detail panel reads it. The
+board asks for `active=true`, a server-resolved alias for "every status outside the
+domain's terminal set", so closed and cancelled work never reaches its lanes without
+this app mirroring the status vocabulary.
+
+**A bench-only session never renders the app shell (#3096, F-9).**
+`resolveSessionSurface` (`shared/auth/session-surface.ts`) derives "bench-only" from
+`permissions[]` — `bench:write` without `orders:read` — never from the role name, and
+`AuthenticatedAppLayout` redirects such a session to `/bench` BEFORE its loading branch
+(which already renders `AppShell`). `/bench` sits outside that layout, so one check
+closes every core and plugin route. `GuestLayout` sends a signed-in bench-only session
+to `/bench` and everyone else to their `?next=` deep link, sanitised by
+`shared/lib/resolve-next-path.ts`. `role.types.spec.ts` pins that exactly one role
+matches the predicate.
+
+**A 403 is a role fact, not an outage (#3096).** `QueryErrorState` (`shared/ui`) picks
+`AccessDeniedState` for a 403 (`isAccessDeniedError`, which excludes the demo-consent
+403 that has its own redirect), `EmptyState` for a 404 when the caller supplies copy,
+and `ErrorState` with a Retry for anything else — so no 403 offers a Retry that cannot
+succeed. The fulfilment pages, the Analytics coverage card and `/users` use it; the
+remaining `ErrorState` call sites migrate to it as they are touched.
 
 **Cross-feature consumption example (#2150):** `invoicing` type-imports `OrderRecord` from the `orders` feature's public barrel (`import type { OrderRecord } from '../../orders';`) in `order-invoice-panel.tsx` and `sales-document-block-copy.ts`, and `shipments` imports `ordersQueryKeys` the same way in `use-notify-dispatched-mutation.ts`. `orders` is now the most cross-imported feature barrel in the app — five call sites (Orders, Shipments, Invoices, Products, Customers) render its `OrderIdentityCell` — so the slug was added to both `no-restricted-imports` pattern groups (`features/**` and `plugins/**`) in `.eslintrc.js`, for every canonical subdirectory (`orders/api`, `orders/hooks`, `orders/components`, `orders/lib`, `orders/types`).
 
