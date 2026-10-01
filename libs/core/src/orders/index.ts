@@ -384,6 +384,13 @@ export {
 } from './domain/order-export-columns';
 export type { OrderExportColumnId, OrderExportCellValue } from './domain/order-export-columns';
 export { buildOrderExportCsv } from './domain/order-export-csv';
+// `searchText` re-derivation under the current PII mode (#3507 G03-14).
+export type { IOrderSearchTextReindexService } from './application/services/order-search-text-reindex.service.interface';
+export type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+  OrderSearchTextReindexRunResult,
+} from './domain/types/order-search-text-reindex.types';
 export * from './orders.tokens';
 
 // Domain entities

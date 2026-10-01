@@ -521,11 +521,15 @@ export class OrderRecordOrmEntity {
 
   /**
    * Denormalized, diacritic-folded free-text search corpus (#3527) — order
-   * number, buyer name, buyer email and every line SKU, space-joined.
+   * number, buyer name, buyer email and every line SKU, space-joined; under
+   * `OL_STORE_PII=false` the order number and SKUs only (#3507 G03-14).
    * Recomputed on EVERY write by `OrderRecordRepository.toOrm` (via
-   * `deriveOrderSearchText`), never incrementally maintained: the snapshot it
-   * derives from is itself rewritten wholesale on every ingestion, so a
-   * separate write path would only be a second place to forget.
+   * `deriveOrderSearchText`) and written by both halves of the
+   * frozen-attribution upsert (#3507 G03-1), never incrementally maintained:
+   * the snapshot it derives from is itself rewritten wholesale on every
+   * ingestion, so a separate write path would only be a second place to
+   * forget. The one out-of-band writer is `OrderSearchTextReindexService`,
+   * which re-derives rows stored before the PII flag was turned off.
    *
    * `NOT NULL DEFAULT ''` rather than nullable — the `DestinationCategory.
    * searchText` precedent — so the trigram index and the `LIKE` predicate

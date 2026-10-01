@@ -19,15 +19,34 @@
  * `customerEmail`, `billingAddress`/`shippingAddress.{firstName,lastName}`,
  * `items[].sku`), so there is no need to discriminate between the two shapes.
  *
- * Whatever PII redaction already applied to the snapshot (`OL_STORE_PII=false`
- * writes `[REDACTED]` / omits fields entirely) flows through unchanged — this
- * function only ever reads what the snapshot already carries, so an install
- * that does not store PII simply cannot be searched by buyer name or email,
- * which is the honest reading of a redacted snapshot rather than a special
- * case coded here.
+ * ## PII (#3507 G03-14)
+ *
+ * `storePii` is an explicit argument, never an environment read, so this
+ * module stays pure (the `buildRoutingShipTo` precedent,
+ * `libs/core/src/fulfillment/domain/types/routing-ship-to.types.ts`). With it
+ * `false` the corpus is the order number and the line SKUs ONLY — no email, no
+ * names — regardless of what the snapshot carries.
+ *
+ * The snapshot alone cannot be trusted to answer that question. An order
+ * ingested while `OL_STORE_PII` was on keeps the buyer's real name and email
+ * in its stored `orderSnapshot` after the flag is turned off (the flip is not
+ * retroactive — `order-export-columns.ts` blanks its PII columns
+ * unconditionally for the same reason), so deriving from "whatever the
+ * snapshot happens to carry" left those rows searchable by surname on an
+ * install that promises not to store personal data. The worker's
+ * `OrderSearchTextReindexService` pass re-derives existing rows under the
+ * current flag; every new write goes through this function with it.
  *
  * @module libs/core/src/orders/domain
  */
+
+/**
+ * The install's PII mode, resolved by the caller (`getEnvBoolean('OL_STORE_PII',
+ * true)` — see `OrderRecordRepository.toOrm` for why not `getPiiConfig()`).
+ */
+export interface OrderSearchTextOptions {
+  readonly storePii: boolean;
+}
 
 /**
  * Letters NFD does NOT decompose — see `normalizeCategorySearchText`'s
@@ -103,17 +122,24 @@ function readItemSkus(value: unknown): string[] {
  * still normalize identically — none exists today, but the corpus and the
  * normalization are two independent concerns and should stay two functions.
  */
-export function buildOrderSearchCorpus(snapshot: Record<string, unknown>): string {
+export function buildOrderSearchCorpus(
+  snapshot: Record<string, unknown>,
+  options: OrderSearchTextOptions
+): string {
   const parts: string[] = [];
 
   if (typeof snapshot.orderNumber === 'string' && snapshot.orderNumber.length > 0) {
     parts.push(snapshot.orderNumber);
   }
-  if (typeof snapshot.customerEmail === 'string' && snapshot.customerEmail.length > 0) {
-    parts.push(snapshot.customerEmail);
+  // Buyer email and names are personal data: indexed only when the install
+  // stores it — see the module doc for why the snapshot cannot decide this.
+  if (options.storePii) {
+    if (typeof snapshot.customerEmail === 'string' && snapshot.customerEmail.length > 0) {
+      parts.push(snapshot.customerEmail);
+    }
+    parts.push(...readAddressName(snapshot.billingAddress));
+    parts.push(...readAddressName(snapshot.shippingAddress));
   }
-  parts.push(...readAddressName(snapshot.billingAddress));
-  parts.push(...readAddressName(snapshot.shippingAddress));
   parts.push(...readItemSkus(snapshot.items));
 
   return parts.join(' ');
@@ -127,6 +153,9 @@ export function buildOrderSearchCorpus(snapshot: Record<string, unknown>): strin
  * practice: every write recomputes it, there is no separate write path to
  * forget.
  */
-export function deriveOrderSearchText(snapshot: Record<string, unknown>): string {
-  return normalizeOrderSearchText(buildOrderSearchCorpus(snapshot));
+export function deriveOrderSearchText(
+  snapshot: Record<string, unknown>,
+  options: OrderSearchTextOptions
+): string {
+  return normalizeOrderSearchText(buildOrderSearchCorpus(snapshot, options));
 }

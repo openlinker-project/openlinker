@@ -52,15 +52,23 @@ import { OrderExportsController } from './http/order-exports.controller';
     // `AnalyticsRemediationController` precedent.
     CoreSyncModule,
   ],
+  // ORDER MATTERS (#3507 G03-10). Express matches routes in registration
+  // order and Nest registers controllers in this array's order, so the two
+  // controllers with a STATIC prefix under `orders/` must come before
+  // `OrdersController`: its `@Get(':internalOrderId')` matches any
+  // two-segment path, and registered first it answered
+  // `GET /orders/column-presets` with "Order not found: column-presets".
+  // Their three-segment routes (`workspace-default`, `:id`, `:runId`) were
+  // never shadowed, which is why saving a preset worked while listing failed.
   controllers: [
+    OrderColumnPresetsController,
+    OrderExportsController,
     OrdersController,
     RefundsController,
     SalesDocumentsController,
-    OrderColumnPresetsController,
     OrderNotesController,
     OrderTagsController,
     OrderTagAssignmentsController,
-    OrderExportsController,
   ],
 })
 export class OrdersModule {}

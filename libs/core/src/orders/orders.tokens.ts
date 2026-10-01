@@ -51,6 +51,8 @@ export const ORDER_TEST_FIXTURE_SERVICE_TOKEN = Symbol('IOrderTestFixtureService
 // Orders CSV/XLSX export runs (#3534, D35).
 export const ORDER_EXPORT_REPOSITORY_TOKEN = Symbol('OrderExportRepositoryPort');
 export const ORDER_EXPORT_SERVICE_TOKEN = Symbol('IOrderExportService');
+// `order_records.searchText` re-derivation under the current PII mode (#3507 G03-14).
+export const ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN = Symbol('IOrderSearchTextReindexService');
 
 
 

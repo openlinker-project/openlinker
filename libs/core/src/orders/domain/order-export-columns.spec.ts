@@ -43,8 +43,9 @@ describe('resolveOrderExportCell', () => {
     const order = makeOrder({
       orderNumber: 'PL-1001',
       customerEmail: 'buyer@example.com',
-      totals: { total: 99.5 },
-      currency: 'PLN',
+      // The production shape (`OrderTotals.currency`): the currency is on
+      // `totals`, never top-level (#3507 G03-11).
+      totals: { total: 99.5, currency: 'PLN' },
       items: [{ sku: 'A-1' }, { sku: 'A-2' }],
     });
 
@@ -56,6 +57,38 @@ describe('resolveOrderExportCell', () => {
     expect(resolveOrderExportCell(order, 'itemCount')).toBe(2);
     expect(resolveOrderExportCell(order, 'skus')).toBe('A-1; A-2');
     expect(resolveOrderExportCell(order, 'placedAt')).toBe('2026-05-02T08:30:00.000Z');
+  });
+
+  it('should read the currency from totals.currency when the snapshot has the production shape', () => {
+    const order = makeOrder({ totals: { total: 10, currency: 'EUR' } });
+
+    expect(resolveOrderExportCell(order, 'currency')).toBe('EUR');
+  });
+
+  it('should prefer totals.currency over a stray top-level currency when both are present', () => {
+    const order = makeOrder({ totals: { total: 10, currency: 'EUR' }, currency: 'PLN' });
+
+    expect(resolveOrderExportCell(order, 'currency')).toBe('EUR');
+  });
+
+  it('should fall back to a top-level currency when totals carries none', () => {
+    const order = makeOrder({ totals: { total: 10 }, currency: 'PLN' });
+
+    expect(resolveOrderExportCell(order, 'currency')).toBe('PLN');
+  });
+
+  it('should write an empty currency cell when neither totals nor the snapshot carries one', () => {
+    const order = makeOrder({ totals: { total: 10 } });
+
+    expect(resolveOrderExportCell(order, 'currency')).toBeNull();
+    expect(resolveOrderExportCell(order, 'totalAmount')).toBe(10);
+  });
+
+  it('should write an empty currency and total when the snapshot has no totals at all', () => {
+    const order = makeOrder({ orderNumber: 'PL-1' });
+
+    expect(resolveOrderExportCell(order, 'currency')).toBeNull();
+    expect(resolveOrderExportCell(order, 'totalAmount')).toBeNull();
   });
 
   it('reads a redacted PII field as an EMPTY cell, never the literal [REDACTED] string', () => {
@@ -88,8 +121,7 @@ describe('resolveOrderExportCell', () => {
     const order = makeOrder({
       orderNumber: 'PL-1001',
       country: 'PL',
-      totals: { total: 12.5 },
-      currency: 'PLN',
+      totals: { total: 12.5, currency: 'PLN' },
     });
 
     expect(resolveOrderExportCell(order, 'orderNumber', false)).toBe('PL-1001');

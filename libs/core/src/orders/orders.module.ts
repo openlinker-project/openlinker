@@ -44,6 +44,7 @@ import { OrderTagService } from './application/services/order-tag.service';
 import { OrderExportRepository } from './infrastructure/persistence/repositories/order-export-run.repository';
 import { OrderExportRunOrmEntity } from './infrastructure/persistence/entities/order-export-run.orm-entity';
 import { OrderExportService } from './application/services/order-export.service';
+import { OrderSearchTextReindexService } from './application/services/order-search-text-reindex.service';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
@@ -78,6 +79,7 @@ import {
   ORDER_TAG_SERVICE_TOKEN,
   ORDER_EXPORT_REPOSITORY_TOKEN,
   ORDER_EXPORT_SERVICE_TOKEN,
+  ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -193,6 +195,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderTagService,
     OrderExportRepository,
     OrderExportService,
+    OrderSearchTextReindexService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -314,6 +317,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_EXPORT_SERVICE_TOKEN,
       useExisting: OrderExportService,
     },
+    {
+      provide: ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
+      useExisting: OrderSearchTextReindexService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -364,6 +371,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the API's export controller AND the worker's job handler
     // can inject the export seam (#3534).
     ORDER_EXPORT_SERVICE_TOKEN,
+    // Exported so the worker's `maintenance` role can run the PII-mode
+    // `searchText` reindex pass (#3507 G03-14).
+    ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}

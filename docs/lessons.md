@@ -111,9 +111,14 @@ lost-race case here is the worked example: its premise is that its own
 which is both more realistic than the unassigned row it had and the shape the
 rule needs.
 
-**Applies to**: any spec suite built on a `makeX(over)` factory.
+**Applies to**: any spec suite built on a `makeX(over)` factory — and any hand-written fixture of a
+stored document (an `orderSnapshot`, a payload), which must be copied from the producer's type, not
+from the reader under test.
 
-**Source**: #3360, 2026-09-23.
+**Source**: #3360, 2026-09-23. Recurred in #3507 G03-11: `order-export-columns.spec.ts` put
+`currency` at the snapshot's top level, where `readTotals` wrongly looked, instead of on `totals`
+(`OrderTotals.currency`) where every producer writes it — so the export's Currency column was empty
+for every real order while the spec stayed green.
 
 ---
 
@@ -1988,3 +1993,34 @@ function computes.
 
 **Source**: session-013 recovery pass on #3507 (G03) review, fixed same-branch before the migration
 had run anywhere.
+
+---
+
+## A static route under a parametric controller's prefix must be registered BEFORE that controller
+
+**Context**: #3530 added `OrderColumnPresetsController` at `@Controller('orders/column-presets')`
+beside `OrdersController` at `@Controller('orders')`, whose detail route is `@Get(':internalOrderId')`.
+The new controller was appended to `OrdersModule.controllers` after `OrdersController`.
+
+**Problem**: Express matches routes in registration order and Nest registers controllers in the
+order of the module's `controllers` array, so `GET /orders/column-presets` — two segments, the same
+shape as `/orders/:internalOrderId` — was answered by the order-detail handler with `404 Order not
+found: column-presets`. Every three-segment preset route (`workspace-default`, `:id`) still worked,
+so saving a preset succeeded while listing presets failed; the defect only showed on the live API
+(#3507 G03-10). No gate notices: the route-authorization coverage spec reads decorators, not path
+precedence, and a controller unit spec calls the handler directly, bypassing routing entirely.
+
+**Rule**: when a controller's prefix extends another controller's prefix with a STATIC segment
+(`orders/column-presets`, `orders/export` under `orders`), list it before the parametric controller in
+the module's `controllers` array, with a comment saying why the order is load-bearing. Prove it with
+an HTTP int-spec that hits the static path's shortest route (the one with the same segment count as
+the parametric route) AND a real id on the parametric route, so the fix cannot invert the defect.
+Cross-module shadowing follows the same rule at the `imports` level of the host app.
+
+**Applies to**: `apps/api/src/**/*.module.ts` `controllers` arrays; any new controller whose prefix
+starts with another controller's prefix (`grep -rn "@Controller('" apps/api/src` — the companion
+lesson above on prefix collisions).
+
+**Source**: #3507 G03-10 (live API: `GET /v1/orders/column-presets` → 404); fixed in
+`apps/api/src/orders/orders.module.ts`, guarded by
+`apps/api/test/integration/orders/order-column-presets-routing.int-spec.ts`.
