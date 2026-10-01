@@ -62,6 +62,7 @@ const SCAN_ROOTS = [
   'libs/integrations/subiekt',
   'libs/integrations/subiekt-nexo',
   'libs/integrations/woocommerce',
+  'libs/integrations/shoper',
   // #2390 / ADR-055: the OL-OMS answers from OpenLinker's own tables, not a
   // vendor API — there is no network boundary to adapt across, and adding one
   // would put an HTTP hop on the ATP publish hot path for an in-process
