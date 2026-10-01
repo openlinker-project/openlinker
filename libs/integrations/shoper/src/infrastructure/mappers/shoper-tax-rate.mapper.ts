@@ -37,7 +37,11 @@ const PERCENT = /^(\d{1,2})(?:[.,]0+)?\s*%?$/;
 
 export type ShoperTaxRateResult =
   | { readonly ok: true; readonly code: string }
-  | { readonly ok: false; readonly reason: 'unrecognised-name' | 'value-mismatch'; readonly detail: string };
+  | {
+      readonly ok: false;
+      readonly reason: 'unrecognised-name' | 'value-mismatch';
+      readonly detail: string;
+    };
 
 /** The rate code a row NAME spells, or null when it spells none we know. */
 export function mapShoperTaxName(name: string | null | undefined): string | null {
@@ -69,7 +73,8 @@ export function mapShoperTaxRow(row: Pick<ShoperTax, 'name' | 'value'>): ShoperT
     };
   }
 
-  const value = typeof row.value === 'string' || typeof row.value === 'number' ? Number(row.value) : Number.NaN;
+  const value =
+    typeof row.value === 'string' || typeof row.value === 'number' ? Number(row.value) : Number.NaN;
   const expected = code in EXEMPTION_CODES ? 0 : Number(code);
   if (!Number.isFinite(value) || value !== expected) {
     return {

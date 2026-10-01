@@ -65,10 +65,7 @@ import {
   fetchShoperPage,
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
-import {
-  mapShoperProduct,
-  mapShoperStockToVariant,
-} from '../../mappers/shoper-product.mapper';
+import { mapShoperProduct, mapShoperStockToVariant } from '../../mappers/shoper-product.mapper';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
 /** Explicit direction: a bare `order=<field>` sorts DESCENDING on Shoper. */
@@ -90,7 +87,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly shopContext: ShoperShopContextProvider,
     private readonly taxTable: ShoperTaxTableProvider,
-    private readonly connection: Connection,
+    private readonly connection: Connection
   ) {}
 
   // ─── Read methods ──────────────────────────────────────────────────────────
@@ -103,7 +100,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         offset: filters?.offset ?? 0,
         limit: filters?.limit ?? DEFAULT_WINDOW,
         query: { order: PRODUCT_ORDER },
-      },
+      }
     );
     return rows.map((p) => String(p.product_id));
   }
@@ -154,7 +151,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
           parentInternalId: productId,
           metadata: { variantExternalId: s.stock_id },
         },
-      })),
+      }))
     );
 
     const variants: ProductVariant[] = [];
@@ -192,7 +189,9 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     const externalId = await this.resolveExternalProductId(input.productId);
     const data = await this.readProduct(externalId, input.productId);
 
-    const taxId = data.tax_id === null || data.tax_id === undefined ? '' : String(data.tax_id).trim();
+    const taxId =
+      data.tax_id === null || data.tax_id === undefined ? '' : String(data.tax_id).trim();
+    // `'0'` is treated as "no tax group" - unverified live (see README); holds, never guesses.
     if (taxId.length === 0 || taxId === '0') {
       return {
         kind: 'unknown',
@@ -262,19 +261,19 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     if (joined.unnamedIds.length > 0) {
       this.logger.warn(
         `Shoper categories with no name in any language, skipped: ${joined.unnamedIds.join(',')} ` +
-          `(connection: ${this.connection.id})`,
+          `(connection: ${this.connection.id})`
       );
     }
     if (joined.unnamedTreeIds.length > 0) {
       this.logger.warn(
         `Shoper category tree lists ids with no category record, skipped: ${joined.unnamedTreeIds.join(',')} ` +
-          `(connection: ${this.connection.id})`,
+          `(connection: ${this.connection.id})`
       );
     }
     if (joined.unplacedIds.length > 0) {
       this.logger.warn(
         `Shoper categories missing from the category tree, returned without a parent: ` +
-          `${joined.unplacedIds.join(',')} (connection: ${this.connection.id})`,
+          `${joined.unplacedIds.join(',')} (connection: ${this.connection.id})`
       );
     }
     return joined.categories;
@@ -300,7 +299,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       const category = directory.get(id);
       if (category === undefined) {
         this.logger.warn(
-          `Shoper product ${externalId} references unknown category ${id}, skipped (connection: ${this.connection.id})`,
+          `Shoper product ${externalId} references unknown category ${id}, skipped (connection: ${this.connection.id})`
         );
         continue;
       }
@@ -325,7 +324,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
 
   upsertProductVariant(
     _productId: string,
-    _variant: ProductVariantCreate,
+    _variant: ProductVariantCreate
   ): Promise<ProductVariant> {
     return Promise.reject(new ShoperNotSupportedException('upsertProductVariant'));
   }
@@ -371,7 +370,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   private async resolveExternalProductId(productId: string): Promise<string> {
     const mappings = await this.identifierMapping.getExternalIds(
       CORE_ENTITY_TYPE.Product,
-      productId,
+      productId
     );
     const mapping = mappings.find((m) => m.connectionId === this.connection.id);
     if (mapping === undefined) {
@@ -413,13 +412,13 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
    */
   private async getProductsByExternalIds(
     externalIds: readonly string[],
-    where: Record<string, unknown> | null,
+    where: Record<string, unknown> | null
   ): Promise<Product[]> {
     const valid = externalIds.filter((id) => SHOPER_ID.test(id));
     if (valid.length < externalIds.length) {
       this.logger.warn(
         `Ignoring ${externalIds.length - valid.length} non-numeric product id(s) ` +
-          `(connection: ${this.connection.id})`,
+          `(connection: ${this.connection.id})`
       );
     }
 
@@ -451,7 +450,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         entityType: CORE_ENTITY_TYPE.Product,
         externalId: p.product_id,
         connectionId: this.connection.id,
-      })),
+      }))
     );
 
     const products: Product[] = [];
@@ -511,7 +510,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     if (own.length < rows.length) {
       this.logger.warn(
         `Shoper returned ${rows.length - own.length} stock row(s) of another product while ` +
-          `reading product ${externalProductId}; dropped (connection: ${this.connection.id})`,
+          `reading product ${externalProductId}; dropped (connection: ${this.connection.id})`
       );
     }
     return own;
