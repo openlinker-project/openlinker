@@ -10,7 +10,7 @@
  * `fulfillment.types.ts` states that nothing in this app branches on `status`
  * or `requestStatus`, and `scripts/check-no-supported-actions-mirror.mjs`
  * backs it. This derivation does branch on them, so it is a NARROWING of that
- * rule (recorded by ADR-075, #3248) rather than an exception to it: what
+ * rule (recorded by ADR-076, #3248) rather than an exception to it: what
  * stays untouched is that controls come from the server's own action list
  * and from nothing else.
  *

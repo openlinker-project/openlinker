@@ -74,11 +74,6 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
 .back-link{ display:inline-flex; align-items:center; gap:6px; font-size:.8125rem; color:var(--text-secondary); text-decoration:none; margin-bottom:14px; }
 .back-link:hover{ color:var(--text-primary); }
 
-.callout{ display:flex; gap:12px; align-items:flex-start; margin-top:18px; padding:14px 16px; border-radius:var(--radius-lg); background:var(--status-info-soft); border:1px solid var(--status-info-border); }
-.callout__glyph{ font-size:1rem; flex-shrink:0; }
-.callout__text{ font-size:.8125rem; color:var(--text-secondary); }
-.callout__text b{ color:var(--text-primary); }
-.callout__title{ font-weight:600; font-size:.8125rem; color:var(--status-info-fg); margin-bottom:3px; }
 code.k{ font-family:var(--font-mono); font-size:.8em; }
 
 .compare{ display:grid; grid-template-columns:1fr 1fr; gap:0; margin-top:16px; border:1px solid var(--border-default); border-radius:var(--radius-lg); overflow:hidden; max-width:78ch; }
@@ -91,10 +86,6 @@ code.k{ font-family:var(--font-mono); font-size:.8em; }
 .compare__text{ font-size:.8125rem; color:var(--text-secondary); }
 .compare__text b{ color:var(--text-primary); }
 
-.example{ display:flex; gap:12px; align-items:flex-start; margin-top:14px; padding:14px 16px; border-radius:var(--radius-lg); background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); max-width:78ch; }
-.example__glyph{ font-family:var(--font-mono); font-size:.875rem; font-weight:700; color:var(--accent-primary-hover); flex-shrink:0; }
-.example__text{ font-size:.8125rem; color:var(--text-secondary); }
-.example__text b{ color:var(--text-primary); }
 
 .demo-toolbar{ display:flex; align-items:center; gap:8px; margin-top:16px; padding:10px 14px; background:var(--bg-surface-muted); border-radius:var(--radius-md); flex-wrap:wrap; }
 .demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; width:100%; }
@@ -249,19 +240,15 @@ code.k{ font-family:var(--font-mono); font-size:.8em; }
     <h1 class="title">Fulfilment</h1>
     <p class="desc">The fulfilment tasks waiting to be worked, grouped by where the goods are and how they leave.</p>
 
-    <div class="callout">
-      <span class="callout__glyph" aria-hidden="true">🔍</span>
-      <div>
-        <div class="callout__title">Validation note — not part of the product</div>
-        <p class="callout__text">Cross-checking against the real code: <code class="k">features/fulfillment</code> does <b>not</b> render <code class="k">expeditedAt</code> anywhere — an operator here can't tell a task was moved to the front except noticing the button flip. The pack bench already solves this (<code class="k">bench-work-row.tsx</code>, badge text "Moved to the front") — the badge below borrows that exact wording rather than inventing a second one.</p>
-      </div>
-    </div>
-
+    <!-- #3096 review: this worklist view is SUPERSEDED. `/fulfillment` is the
+         staffing board of `assign-packing-work.html`, which is the design of
+         record for that screen; the view below is kept only because the detail
+         view links back to it. The location filter is gone (one warehouse,
+         no WMS), as is the earlier "validation note", which was never product. -->
     <div class="demo-toolbar" role="group" aria-label="Mockup — jump to a page state" id="pageStateSwitcher"></div>
 
     <div class="toolbar" role="group" aria-label="Fulfilment task filters">
       <input class="field-input" id="orderFilter" placeholder="Filter by order id" aria-label="Order">
-      <input class="field-input" id="locationFilter" placeholder="Filter by location id" aria-label="Location">
       <button class="button button--secondary" id="clearFiltersBtn" style="display:none" onclick="clearFilters()">Clear filters</button>
     </div>
 
@@ -298,10 +285,12 @@ code.k{ font-family:var(--font-mono); font-size:.8em; }
         <p class="compare__text">One physical packing job. An order becomes more than one of these only when it ships from more than one place.</p>
       </div>
     </div>
-    <div class="example">
-      <span class="example__glyph">e.g.</span>
-      <p class="example__text">Order <b>#9F2E1A</b> is one row in Orders. But its shoe box ships from Warsaw and its earbuds ship from Berlin — so it's <b>two separate tasks</b> here, one per warehouse.</p>
-    </div>
+    <!-- #3096 review: the "e.g." worked example is removed. With one warehouse
+         every order is one task, so an example of the opposite read as a claim
+         about the operator's own install. The shipped page also adds a right
+         column this mockup does not draw — the Packer card
+         (`assign-packing-work.html`) and the order page's own Shipment, Sales
+         document and Payment modules — beside the cards below. -->
 
     <div class="demo-toolbar" role="group" aria-label="Mockup — view a different task" id="taskSwitcher"></div>
 
@@ -414,7 +403,7 @@ const WORKLIST_COPY = {
     countersCaveat: 'Picked counts are reported by whoever is working the task and can be a little behind.',
   },
   lane: { noLocation: 'No location yet', noDeliveryMethod: 'No delivery method yet', pageScopeNote: 'Grouped from the tasks on this page only.' },
-  filter: { orderLabel: 'Order', orderPlaceholder: 'Filter by order id', locationLabel: 'Location', locationPlaceholder: 'Filter by location id', clear: 'Clear filters', groupLabel: 'Fulfilment task filters' },
+  filter: { orderLabel: 'Order', orderPlaceholder: 'Filter by order id', clear: 'Clear filters', groupLabel: 'Fulfilment task filters' },
   loading: { message: 'Loading fulfilment tasks…' },
   error: { title: 'Could not load the fulfilment worklist', message: 'The worklist could not be read just now. Nothing has been changed.', retry: 'Retry' },
   empty: {
@@ -508,7 +497,6 @@ const NOT_FOUND_HASH = '#/works/does-not-exist';
 let currentOutcome = 'ok';
 let pageState = 'data';
 let orderFilter = '';
-let locationFilter = '';
 let openDialog = null; // { taskId, mode, holdId? }
 
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -538,7 +526,6 @@ function groupIntoLanes(tasks) {
 function filteredTasks() {
   return TASKS.filter((t) => {
     if (orderFilter && !t.orderId.toLowerCase().includes(orderFilter.toLowerCase())) return false;
-    if (locationFilter && !(t.locationId || '').toLowerCase().includes(locationFilter.toLowerCase())) return false;
     return true;
   });
 }
@@ -584,18 +571,15 @@ function setPageState(slug) {
   // Every slug OTHER than 'empty-filtered' clears the live filters — a demo
   // state must not be an accidental composite of whatever the operator (or
   // the previous demo click) typed into the filter boxes a moment ago.
-  if (slug === 'empty-filtered') { orderFilter = 'zzz-no-match'; locationFilter = ''; }
-  else { orderFilter = ''; locationFilter = ''; }
+  orderFilter = slug === 'empty-filtered' ? 'zzz-no-match' : '';
   document.getElementById('orderFilter').value = orderFilter;
-  document.getElementById('locationFilter').value = locationFilter;
   renderStateSwitcher(); render();
 }
 function clearFilters() {
-  orderFilter = ''; locationFilter = ''; document.getElementById('orderFilter').value = ''; document.getElementById('locationFilter').value = '';
+  orderFilter = ''; document.getElementById('orderFilter').value = '';
   pageState = 'data'; renderStateSwitcher(); render();
 }
 document.getElementById('orderFilter').addEventListener('input', (e) => { orderFilter = e.target.value; pageState = 'data'; renderStateSwitcher(); render(); });
-document.getElementById('locationFilter').addEventListener('input', (e) => { locationFilter = e.target.value; pageState = 'data'; renderStateSwitcher(); render(); });
 
 // ── Shared rendering: badges, actions, holds, lines ─────────────────────
 function renderActionButton(task, action, extraLabel) {
@@ -642,7 +626,7 @@ function taskCardHtml(task) {
   const slug = computeWorkStateSlug(task);
   return `<li class="task-card" data-work-id="${task.id}" data-state="${slug}" data-testid="task-card-${task.id}" onclick="location.hash = '#/works/${task.id}'">
     <div class="task-card__head">
-      <div class="task-card__badges">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge" title="Proposed — see validation note above">⚡ Moved to the front</span>` : ''}</div>
+      <div class="task-card__badges">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge">⚡ Moved to the front</span>` : ''}</div>
       <span class="task-card__id" title="${task.id}">${task.id}</span>
     </div>
     ${renderHoldList(task)}
@@ -658,7 +642,7 @@ function taskRowHtml(task) {
   return `<div class="wrow" data-work-id="${task.id}" data-state="${slug}" data-testid="task-row-${task.id}" onclick="location.hash = '#/works/${task.id}'">
     <div class="wrow__main">
       <div class="wrow__identity"><span class="wrow__id">${task.id}</span><span class="wrow__order">${task.orderId}</span></div>
-      <div class="wrow__state">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" title="Proposed — see validation note above">⚡ Moved</span>` : ''}<span class="wrow__substate">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span></div>
+      <div class="wrow__state">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge">⚡ Moved</span>` : ''}<span class="wrow__substate">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span></div>
       <div class="wrow__lines">${task.lines.length > 0 ? WORKLIST_COPY.row.lineCount(fulfilled, total) : WORKLIST_COPY.row.noLines}</div>
     </div>
     ${task.supportedActions.length ? `<div class="wrow__actions">${renderActions(task)}</div>` : ''}
@@ -688,7 +672,7 @@ function laneHtml(lane) {
 
 function render() {
   const target = document.getElementById('pageBody');
-  document.getElementById('clearFiltersBtn').style.display = (orderFilter || locationFilter) ? '' : 'none';
+  document.getElementById('clearFiltersBtn').style.display = orderFilter ? '' : 'none';
   // `data-state` on the RENDERED SURFACE, not only on the switcher button that
   // requested it — a task/E2E spec selects `#pageBody[data-state="…"]`, never
   // "whichever chip currently carries `chip--active`".
