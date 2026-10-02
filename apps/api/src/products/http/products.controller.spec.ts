@@ -98,6 +98,7 @@ function createMockInventoryQuery(): jest.Mocked<IInventoryQueryService> {
     // Unused here — the mock satisfies the full IInventoryQueryService shape (#2319, #3240).
     getDuplicatePositionReport: jest.fn(),
     getProvenanceBackfillStatus: jest.fn(),
+    resolveStockOwner: jest.fn(),
   };
 }
 

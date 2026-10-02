@@ -18,6 +18,10 @@ import type {
   DuplicatePositionReport,
   ProvenanceBackfillStatus,
 } from '../../domain/types/inventory.types';
+import type {
+  InventoryOwnerQuery,
+  InventoryOwnerResolution,
+} from '../../domain/types/inventory-owner.types';
 import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
@@ -129,4 +133,25 @@ export interface IInventoryQueryService {
    * completion stamp.
    */
   getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus>;
+
+  /**
+   * Which connection owns the live stock for one product (and variant) — the
+   * provenance read behind a per-line write to "the" product master (#3486).
+   *
+   * The cross-context seam for {@link resolveInventoryPositionOwner}: a sibling
+   * context (the returns restock) may not read the inventory repository port, so
+   * it asks here and gets the same answer the sale decrement (#3453) acts on.
+   * Reads live (`isStale = false`) positions only; never throws for a modelled
+   * condition — no position, unknown provenance and several owners are all
+   * `blocked` results the caller names to the operator.
+   *
+   * **Single-product by design (#3498 review)** — one query per call, unlike
+   * the sale decrement's own `findLiveOwnerPositions`, which batches across a
+   * work's lines. The returns write path is per line (`disposeLine`) so this
+   * costs no N+1 there; a future caller that loops over several lines of one
+   * return or work should reach for a batched sibling of this method rather
+   * than call it once per line (the `getEarliestOrderDateByConnection`, #2083,
+   * lesson).
+   */
+  resolveStockOwner(query: InventoryOwnerQuery): Promise<InventoryOwnerResolution>;
 }
