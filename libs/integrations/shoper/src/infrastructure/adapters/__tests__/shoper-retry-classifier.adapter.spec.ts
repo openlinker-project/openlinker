@@ -2,6 +2,7 @@ import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperConfigException } from '../../../domain/exceptions/shoper-config.exception';
 import { ShoperCustomerUnresolvableException } from '../../../domain/exceptions/shoper-customer-unresolvable.exception';
 import { ShoperOrderUnbuildableException } from '../../../domain/exceptions/shoper-order-unbuildable.exception';
+import { ShoperOrderModifiedException } from '../../../domain/exceptions/shoper-order-modified.exception';
 import { ShoperDuplicateOrderException } from '../../../domain/exceptions/shoper-duplicate-order.exception';
 import { ShoperPartialOrderException } from '../../../domain/exceptions/shoper-partial-order.exception';
 import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
@@ -20,6 +21,7 @@ describe('ShoperRetryClassifierAdapter', () => {
     ['a not-supported exception', new ShoperNotSupportedException('createProduct')],
     ['a warehouses-not-supported exception', new ShoperWarehousesNotSupportedException('c')],
     ['an unbuildable order', new ShoperOrderUnbuildableException('c', 'no currency')],
+    ['an edited order left alone', new ShoperOrderModifiedException('c', '10', 'm', '1/2 lines')],
     ['a duplicated order', new ShoperDuplicateOrderException('c', 'ol_order_1', ['10', '11'])],
     ['an unresolvable customer', new ShoperCustomerUnresolvableException('c', 'no email')],
     ['a not-mapped exception', new ShoperNotMappedException('p', 'c')],

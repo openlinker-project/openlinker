@@ -4,8 +4,8 @@ OpenLinker adapter for [Shoper](https://www.shoper.pl) (Polish SaaS e-commerce p
 
 **Status:** connection skeleton (#3639) plus the **read side of `ProductMaster`** (#3675): products, variants,
 search and id enumeration. Categories (#3676), tax rate (#3677) and deletion detection (#3678) complete
-ProductMaster; InventoryMaster, OrderProcessorManager, fulfilment writeback and webhooks land in their own
-epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
+ProductMaster. `InventoryMaster` (#3686, #3687) and the `OrderProcessorManager` skeleton (#3692) are described
+below; fulfilment writeback and webhooks land in their own epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
 and the live findings recorded in `docs/plans/implementation-plan-shoper-product-master-read.md`.
 
 | | |
@@ -191,8 +191,11 @@ at create and never retro-filled, so an existing connection must be edited.
 
 ## OrderProcessorManager
 
-Declared as `OrderProcessorManager` (#3692, #3693, #3694). Enable it on the connection's `enabledCapabilities` -
-the list is stamped at create and never retro-filled. The stock double-deduction policy (#3695) is not decided yet.
+Declared as `OrderProcessorManager` (#3692, #3693, #3694). **It is not enabled by default**: a new connection gets only
+`ProductMaster` and `InventoryMaster` (`defaultEnabledCapabilities`), because core fans every ingested order out to
+every active `OrderProcessorManager` connection and a shop meant as a catalogue / stock master must not start
+receiving orders. Enable it explicitly on the connection's `enabledCapabilities` - the list is stamped at create and
+never retro-filled. The stock double-deduction policy (#3695) is not decided yet.
 
 `createOrder` resolves everything first and writes second, because Shoper decrements stock as each line is
 created: user, variants, taxes, the three required ids, currency and prices are settled before the first write.
@@ -207,12 +210,22 @@ a Shoper line `price` is gross). The result is the Shoper-native order id.
 - payment: `config.defaults.paymentId` only (the order carries no payment-method name to map);
 - with none of these set the order fails before any write, naming the key to set.
 
+The adapter also implements `DestinationOptionsReader` (`GET /shippings`, `/statuses`, `/payments`, every page), so
+the connection's Mappings page can offer the shop's own rows when an operator maps a source delivery method or order
+state. The mapping value is the Shoper id `createOrder` writes. Payment methods are listed for the same screen but no
+payment mapping is consumed yet.
+
 `shipping_tax_id` is read from the chosen shipping method (`GET /shippings/:id`), `currency_id` from `/currencies`
 by ISO code, and each line's `tax`/`tax_value` from `/taxes` by the line's rate code. A currency, tax or shipping
 method the shop does not have is `ShoperOrderUnbuildableException` (terminal, before any write).
 
-**Net-priced sources:** Shoper line prices are gross and OpenLinker computes no tax (ADR-063), so a net-priced
-line needs the source-reported `unitPriceGross`; without it the order is refused.
+**Net-priced sources:** Shoper amounts are gross and OpenLinker computes no tax (ADR-063), so a net-priced line
+needs the source-reported `unitPriceGross`, and net-priced shipping needs `shippingGross` (a zero cost needs none);
+without them the order is refused rather than written with a net figure.
+
+**Payment state:** an order the source reports as `paid` is created with `paid` equal to the order sum, which Shoper
+reads as paid (verified live: `is_paid: true`). Any other or unknown state sends no `paid` amount, so a cash-on-delivery
+or awaiting order stays unpaid in the shop.
 
 **Phone is required** on both Shoper addresses (an empty one is a 400). The address's own is used, else the other
 address's; an order with no phone at all is refused rather than given an invented number.
@@ -231,9 +244,16 @@ and accepts two orders with the same one (SPIKE-3638 O5). Two layers cover it:
   `GET /orders?filters[notes_priv]=` is an exact-match filter (verified live), so `createOrder` first asks whether
   an order with that marker exists: a **complete** one (its `/order-products` line count equals the lines to be
   created) is returned as the result and nothing is written; an **incomplete** one is deleted - restoring its stock -
-  and the order is created afresh, never completed in place; **several** are refused with
+  and the order is created afresh, never completed in place, **but only while it is still in the status OpenLinker
+  created it in**: a line-count mismatch is also what a merchant editing the order looks like, so an order that
+  has left that status is left alone and `ShoperOrderModifiedException` (terminal) names it; **several** are refused with
   `ShoperDuplicateOrderException` (terminal, naming the ids) because picking one silently could keep the wrong one.
   The lookup costs one extra `GET` per order.
+- **Limits, stated plainly.** "Complete" compares the NUMBER of lines only, so an order that changed at the source
+  between two attempts is returned as it stands - `createOrder` does not re-sync content. An unreadable line count is
+  an error (retryable), never "incomplete": the guard does not delete on a value it could not read. The marker lives
+  in `notes_priv`, which a merchant can edit or clear in the admin; an edited marker turns recovery into "no hit",
+  and the retry then creates a second order. Shoper offers no other round-tripped field to carry it (SPIKE-3638 O5).
 - `createOrder` therefore requires `OrderCreate.internalOrderId` and refuses an order without it - with no key a
   retry could not recognise its own order.
 
@@ -247,7 +267,8 @@ usable buyer email (a source that reports none, or `OL_STORE_PII=false`) fails w
 Verified on a trial shop (2026-10): `POST /users` with `email`, `firstname`, `lastname`, `active` answers the bare
 user id; the order payload above creates an order whose `sum` is lines + `shipping_cost`.
 
-Not covered: the stock double-deduction policy (#3695), pickup points, order status writeback.
+Not covered: the stock double-deduction policy (#3695), **pickup points** (a locker order lands as a plain delivery to
+the buyer's address, so the warehouse must read the pickup point from the source order), order status writeback.
 
 ## Known gaps
 

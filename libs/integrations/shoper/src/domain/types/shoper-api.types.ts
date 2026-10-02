@@ -174,6 +174,8 @@ export interface ShoperOrderCreateRequest {
   readonly shipping_tax_id: number;
   readonly shipping_cost: number;
   readonly currency_id: number;
+  /** Amount already paid; equal to the order sum makes Shoper read it as paid. Omitted when unknown. */
+  readonly paid?: number;
   readonly billing_address: ShoperOrderAddress;
   readonly delivery_address: ShoperOrderAddress;
   /** Private note: the OpenLinker order id, for forensic recovery only (NOT a dedup key). */
@@ -196,4 +198,15 @@ export interface ShoperOrderProductCreateRequest {
 export interface ShoperOrderRef {
   readonly order_id: string;
   readonly notes_priv?: string | null;
+  /** The order's current status; compared with the one OpenLinker created it in. */
+  readonly status_id?: string | number | null;
+}
+
+/** Row of `/shippings`, `/payments` or `/statuses`: the id plus per-language labels. */
+export interface ShoperOptionRow {
+  readonly shipping_id?: string;
+  readonly payment_id?: string;
+  readonly status_id?: string;
+  readonly name?: string | null;
+  readonly translations?: Readonly<Record<string, { readonly name?: string | null; readonly title?: string | null }>>;
 }

@@ -14,7 +14,7 @@
  */
 import type { Address, OrderItem, PriceTaxTreatment } from '@openlinker/core/orders';
 
-import type { ShoperOrderAddress, ShoperTax } from '../../domain/types/shoper-api.types';
+import type { ShoperOptionRow, ShoperOrderAddress, ShoperTax } from '../../domain/types/shoper-api.types';
 import { mapShoperTaxRow } from './shoper-tax-rate.mapper';
 
 const ISO2 = /^[A-Za-z]{2}$/;
@@ -81,4 +81,23 @@ export function expectedOrderSum(
 function nonEmpty(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+}
+
+/**
+ * An operator-facing label for a `/shippings` / `/payments` / `/statuses` row:
+ * the row's own name, else the first translation that carries one (the shop's
+ * languages are not known here), else the id so a row is never unselectable.
+ */
+export function labelShoperOption(row: ShoperOptionRow, id: string): string {
+  const own = nonEmpty(row.name ?? undefined);
+  if (own !== undefined) {
+    return own;
+  }
+  for (const translation of Object.values(row.translations ?? {})) {
+    const label = nonEmpty(translation.name ?? translation.title ?? undefined);
+    if (label !== undefined) {
+      return label;
+    }
+  }
+  return id;
 }

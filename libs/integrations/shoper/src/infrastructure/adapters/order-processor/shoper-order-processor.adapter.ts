@@ -32,24 +32,36 @@
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
-import type { OrderCreate, OrderItem, OrderProcessorManagerPort, OrderRef } from '@openlinker/core/orders';
+import type {
+  DestinationOptionsReader,
+  MappingOption,
+  OrderCreate,
+  OrderItem,
+  OrderProcessorManagerPort,
+  OrderRef,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
+import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperDuplicateOrderException } from '../../../domain/exceptions/shoper-duplicate-order.exception';
+import { ShoperOrderModifiedException } from '../../../domain/exceptions/shoper-order-modified.exception';
 import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperOrderUnbuildableException } from '../../../domain/exceptions/shoper-order-unbuildable.exception';
 import { ShoperPartialOrderException } from '../../../domain/exceptions/shoper-partial-order.exception';
 import type { ShoperOrderDefaults } from '../../../domain/types/shoper-config.types';
 import type {
+  ShoperOptionRow,
   ShoperOrderCreateRequest,
   ShoperOrderRef,
   ShoperOrderProductCreateRequest,
 } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
+import { SHOPER_MAX_PAGE_SIZE, fetchShoperPage } from '../../http/shoper-pagination';
 import {
   expectedOrderSum,
   findShoperTaxForRate,
+  labelShoperOption,
   mapShoperOrderAddress,
   resolveGrossUnitPrice,
 } from '../../mappers/shoper-order.mapper';
@@ -63,7 +75,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Shoper rounds to cents, so a smaller gap is not a real mismatch. */
 const SUM_TOLERANCE = 0.011;
 
-export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
+export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, DestinationOptionsReader {
   private readonly logger = new Logger(ShoperOrderProcessorAdapter.name);
 
   constructor(
@@ -84,7 +96,11 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
     // lock only covers the window it can see: a create that succeeded on Shoper
     // whose mapping write then failed leaves a retry with nothing to skip on.
     // The marker we write on every order closes that window (see `recoverExisting`).
-    const existing = await this.recoverExisting(prepared.marker, prepared.lines.length);
+    const existing = await this.recoverExisting(
+      prepared.marker,
+      prepared.lines.length,
+      prepared.header.status_id,
+    );
     if (existing !== null) {
       return { orderId: existing };
     }
@@ -132,12 +148,28 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
 
   /**
    * An order already created for this marker. Complete -> its id (nothing is
-   * written). Incomplete (a crash mid-lines, or a rollback that failed) -> it is
-   * deleted, which restores the stock its lines took, and null is returned so
-   * the caller recreates it: lines already written may be wrong, so a half order
-   * is never completed in place. Several -> refused.
+   * written). Incomplete -> deleted ONLY if it is still in the status OpenLinker
+   * created it in: that restores the stock its lines took, and null is returned so
+   * the caller recreates it (lines already written may be wrong, so a half order is
+   * never completed in place). Several -> refused.
+   *
+   * A line-count mismatch is also what a merchant editing the order looks like, so
+   * a mismatch alone never authorises a delete: an order that has since left its
+   * creation status is left alone (`ShoperOrderModifiedException`). And an
+   * unreadable line count is an error, never "incomplete" - a guard that deletes on
+   * a value it could not read would destroy good orders.
+   *
+   * "Complete" compares the NUMBER of lines only. An order that changed at the
+   * source between two attempts is therefore returned as it stands; `createOrder`
+   * does not re-sync content.
    */
-  private async recoverExisting(marker: string, expectedLines: number): Promise<string | null> {
+  private async recoverExisting(
+    marker: string,
+    expectedLines: number,
+    createdInStatusId: number,
+  ): Promise<string | null> {
+    // The default page (10) is plenty for an exact marker match; it also caps the
+    // ids a duplicate report can name.
     const found = await this.client.get<{ list?: readonly ShoperOrderRef[] }>('/orders', {
       'filters[notes_priv]': marker,
     });
@@ -157,16 +189,31 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
     const lines = await this.client.get<{ count?: string | number }>('/order-products', {
       'filters[order_id]': orderId,
     });
-    if (Number(lines.data.count) === expectedLines) {
+    const count = Number(lines.data.count);
+    if (lines.data.count === undefined || lines.data.count === null || !Number.isFinite(count)) {
+      throw new ShoperNetworkError(
+        `Shoper returned no readable line count for order ${orderId} (${marker}); not deleting it`,
+      );
+    }
+    if (count === expectedLines) {
       this.logger.log(
         `Shoper order ${orderId} already exists for ${marker} (connection: ${this.connection.id}); skipping create`,
       );
       return orderId;
     }
 
+    if (Number(rows[0].status_id) !== createdInStatusId) {
+      throw new ShoperOrderModifiedException(
+        this.connection.id,
+        orderId,
+        marker,
+        `${count}/${expectedLines} lines and status ${String(rows[0].status_id)} instead of ${createdInStatusId}`,
+      );
+    }
+
     this.logger.warn(
-      `Shoper order ${orderId} for ${marker} has ${String(lines.data.count)}/${expectedLines} lines ` +
-        `(connection: ${this.connection.id}); deleting it and recreating`,
+      `Shoper order ${orderId} for ${marker} has ${count}/${expectedLines} lines and is still in status ` +
+        `${createdInStatusId} (connection: ${this.connection.id}); deleting it and recreating`,
     );
     await this.client.delete(`/orders/${orderId}`);
     return null;
@@ -214,7 +261,7 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
       throw this.unbuildable(`the shop has no currency "${order.totals.currency}"`);
     }
 
-    const shippingCost = order.totals.shippingGross ?? order.totals.shipping;
+    const shippingCost = this.resolveShippingCost(order);
     const header: Omit<ShoperOrderCreateRequest, 'user_id'> = {
       email,
       status_id: statusId,
@@ -223,6 +270,9 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
       shipping_tax_id: shippingTaxId,
       shipping_cost: shippingCost,
       currency_id: Number(currencyId),
+      ...(order.paymentStatus === 'paid'
+        ? { paid: expectedOrderSum(lines, shippingCost) }
+        : {}),
       billing_address: mapShoperOrderAddress(billing, phone),
       delivery_address: mapShoperOrderAddress(delivery, phone),
       notes_priv: marker,
@@ -311,6 +361,69 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
     }
   }
 
+  /**
+   * Shoper amounts are gross. Shipping is held to the same rule as the lines: on a
+   * net-priced source (`exclusive`) the net `shipping` would be written as gross
+   * and under-charge the order by the VAT on shipping, so without the source's own
+   * `shippingGross` it is refused (a zero cost needs no gross figure).
+   */
+  private resolveShippingCost(order: OrderCreate): number {
+    const { shippingGross, shipping, taxTreatment } = order.totals;
+    if (shippingGross !== undefined) {
+      return shippingGross;
+    }
+    if (taxTreatment === 'exclusive' && shipping > 0) {
+      throw this.unbuildable(
+        'shipping is net-priced and the source reported no gross shipping; ' +
+          'Shoper amounts are gross and OpenLinker does not compute tax',
+      );
+    }
+    return shipping;
+  }
+
+  // ─── DestinationOptionsReader (mapping UI) ─────────────────────────────────
+  //
+  // The operator maps a source delivery method / order state onto one of the
+  // shop's own rows; `value` is the Shoper id `createOrder` writes. Payments are
+  // listed for the same screen but no mapping is consumed yet: the order carries
+  // no payment-method name, so `defaults.paymentId` is the only source.
+
+  listCarriers(): Promise<MappingOption[]> {
+    return this.listOptions('/shippings', 'shipping_id', 'shipping_id ASC');
+  }
+
+  listOrderStatuses(): Promise<MappingOption[]> {
+    return this.listOptions('/statuses', 'status_id', 'status_id ASC');
+  }
+
+  listPaymentMethods(): Promise<MappingOption[]> {
+    return this.listOptions('/payments', 'payment_id', 'payment_id ASC');
+  }
+
+  private async listOptions(
+    path: string,
+    idKey: 'shipping_id' | 'payment_id' | 'status_id',
+    order: string,
+  ): Promise<MappingOption[]> {
+    const options: MappingOption[] = [];
+    for (let page = 1; ; page += 1) {
+      const result = await fetchShoperPage<ShoperOptionRow>(this.client, path, {
+        page,
+        limit: SHOPER_MAX_PAGE_SIZE,
+        query: { order },
+      });
+      for (const row of result.items) {
+        const id = row[idKey];
+        if (id !== undefined) {
+          options.push({ value: String(id), label: labelShoperOption(row, String(id)) });
+        }
+      }
+      if (page >= result.pages) {
+        return options;
+      }
+    }
+  }
+
   // ─── Failure handling ──────────────────────────────────────────────────────
 
   private async rollBack(
@@ -336,7 +449,10 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
 
   private warnOnSumMismatch(order: OrderCreate, prepared: PreparedOrder, orderId: string): void {
     const sent = expectedOrderSum(prepared.lines, prepared.shippingCost);
-    if (Math.abs(sent - order.totals.total) > SUM_TOLERANCE) {
+    // A discount the source reports may or may not already be in the line prices
+    // (the buyer-paid price usually is), so either reading is a match.
+    const accepted = [order.totals.total, order.totals.total + (order.totals.discountTotal ?? 0)];
+    if (accepted.every((total) => Math.abs(sent - total) > SUM_TOLERANCE)) {
       this.logger.warn(
         `Shoper order ${orderId} totals ${sent} but the source order totals ${order.totals.total} ` +
           `(connection: ${this.connection.id}) - a discount or rounding the lines do not carry`,
@@ -372,10 +488,13 @@ function readDefaults(connection: Connection): ShoperOrderDefaults {
     return {};
   }
   const record = raw as Record<string, unknown>;
+  const shippingId = toPositiveInt(record.shippingId);
+  const paymentId = toPositiveInt(record.paymentId);
+  const statusId = toPositiveInt(record.statusId);
   return {
-    ...(toPositiveInt(record.shippingId) !== null ? { shippingId: toPositiveInt(record.shippingId) as number } : {}),
-    ...(toPositiveInt(record.paymentId) !== null ? { paymentId: toPositiveInt(record.paymentId) as number } : {}),
-    ...(toPositiveInt(record.statusId) !== null ? { statusId: toPositiveInt(record.statusId) as number } : {}),
+    ...(shippingId !== null ? { shippingId } : {}),
+    ...(paymentId !== null ? { paymentId } : {}),
+    ...(statusId !== null ? { statusId } : {}),
   };
 }
 
