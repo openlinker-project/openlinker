@@ -3,6 +3,7 @@ import { MasterProductNotFoundError } from '@openlinker/core/products';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperInvalidStockLevelException } from '../../../../domain/exceptions/shoper-invalid-stock-level.exception';
+import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../../domain/exceptions/shoper-stock-not-found.exception';
@@ -357,7 +358,7 @@ describe('ShoperInventoryMasterAdapter', () => {
 
     it('should not write when the product is gone', async () => {
       const { adapter, get, put } = withPut([]);
-      get.mockRejectedValue(new ShoperApiError(404, '/products/93', 'invalid_request'));
+      get.mockRejectedValue(NOT_FOUND);
 
       await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
         MasterProductNotFoundError,

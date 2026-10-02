@@ -209,9 +209,7 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
 
     const current = readShoperStockLevel(stock);
     if (current === null) {
-      throw new ShoperNetworkError(
-        `Shoper returned no readable stock level for stock ${stock.stock_id} of product ${externalId}`,
-      );
+      throw new ShoperInvalidStockLevelException(stock.stock_id, externalId, this.connection.id);
     }
 
     // Ids are resolved BEFORE the write: failing after the PUT would report an
