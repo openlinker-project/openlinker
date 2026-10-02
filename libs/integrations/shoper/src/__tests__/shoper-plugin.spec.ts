@@ -3,6 +3,8 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
+import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
+import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
 import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
 
 function hostWithRegistries(): {
@@ -38,11 +40,22 @@ function connection(overrides: Record<string, unknown> = {}): Connection {
 }
 
 describe('Shoper plugin', () => {
-  it('should expose the documented manifest with the ProductMaster and InventoryMaster capabilities', () => {
+  it('should not enable OrderProcessorManager by default, so a catalogue-only shop receives no orders', () => {
+    const defaults = shoperAdapterManifest.defaultEnabledCapabilities;
+
+    expect(defaults).toEqual(['ProductMaster', 'InventoryMaster']);
+    expect(defaults).not.toContain('OrderProcessorManager');
+    // Every default must be a capability the adapter really supports.
+    for (const capability of defaults ?? []) {
+      expect(shoperAdapterManifest.supportedCapabilities).toContain(capability);
+    }
+  });
+
+  it('should expose the documented manifest with its three capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
       isDefault: true,
     });
     expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
@@ -82,6 +95,27 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperInventoryMasterAdapter);
+  });
+
+  it('should resolve OrderProcessorManager to the Shoper order processor adapter', async () => {
+    const { host } = hostWithRegistries();
+    const deps = { customerProvisioner: {} as ShoperCustomerProvisioner };
+
+    const adapter = await createShoperPlugin(deps).createCapabilityAdapter<unknown>(
+      connection(),
+      'OrderProcessorManager',
+      host,
+    );
+
+    expect(adapter).toBeInstanceOf(ShoperOrderProcessorAdapter);
+  });
+
+  it('should refuse OrderProcessorManager when built without the customer provisioner', async () => {
+    const { host } = hostWithRegistries();
+
+    await expect(
+      createShoperPlugin().createCapabilityAdapter(connection(), 'OrderProcessorManager', host),
+    ).rejects.toThrow(/customer provisioner/);
   });
 
   it('should route the connection through the connection-bound transport', async () => {

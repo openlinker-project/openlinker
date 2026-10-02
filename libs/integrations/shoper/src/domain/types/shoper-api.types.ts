@@ -119,3 +119,19 @@ export interface ShoperApplicationConfig {
    */
   readonly warehouses_enabled: boolean | string | number;
 }
+
+/** A `GET /users` row (the slice the customer provisioner reads). */
+export interface ShoperUser {
+  readonly user_id: string;
+  readonly email: string;
+  readonly firstname?: string | null;
+  readonly lastname?: string | null;
+}
+
+/** Body of `POST /users`. */
+export interface ShoperUserCreateRequest {
+  readonly email: string;
+  readonly firstname: string;
+  readonly lastname: string;
+  readonly active: 1;
+}

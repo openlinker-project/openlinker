@@ -27,6 +27,7 @@ import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
 import { SHOPER_ADAPTER_KEY, SHOPER_BRAND, SHOPER_PLATFORM_TYPE } from './shoper.constants';
+import type { ShoperCustomerProvisioner } from './infrastructure/provisioners/shoper-customer.provisioner';
 import { ShoperAdapterFactory, type ShoperAdapters } from './application/shoper-adapter.factory';
 import { ShoperRetryClassifierAdapter } from './infrastructure/adapters/shoper-retry-classifier.adapter';
 import { ShoperAuthFailureClassifierAdapter } from './infrastructure/adapters/shoper-auth-failure-classifier.adapter';
@@ -43,13 +44,25 @@ export const shoperAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPER_ADAPTER_KEY,
   platformType: SHOPER_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+  // `OrderProcessorManager` is supported but NOT on by default. Without this, a
+  // connection created with no explicit capability list gets every capability
+  // in the manifest, and `OrderSyncService` fans each ingested order out to every
+  // active `OrderProcessorManager` connection - so a Shoper shop meant only as a
+  // catalogue / stock master would start receiving orders. An operator who wants
+  // Shoper as an order destination enables it explicitly (#3350 mechanism).
+  defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   displayName: 'Shoper REST API',
   version: '1.0.0',
   isDefault: true,
 };
 
-export function createShoperPlugin(): AdapterPlugin {
+/** Nest-provided collaborators the plugin cannot get from the `HostServices` bag. */
+export interface ShoperPluginDeps {
+  readonly customerProvisioner: ShoperCustomerProvisioner;
+}
+
+export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
   // One factory for the plugin's lifetime. It holds no state: the connection,
   // its credentials and the HTTP client are all parameters of `createAdapters`.
   const factory = new ShoperAdapterFactory();
@@ -97,6 +110,7 @@ export function createShoperPlugin(): AdapterPlugin {
           // limit is passed - this plugin declares none (SPIKE-3638 C6).
           host.http.forConnection(connection),
           host.cache,
+          deps?.customerProvisioner,
         );
       try {
         return dispatchCapability<Promise<T>>(
@@ -104,6 +118,16 @@ export function createShoperPlugin(): AdapterPlugin {
           {
             ProductMaster: async () => (await build()).productMaster,
             InventoryMaster: async () => (await build()).inventoryMaster,
+            OrderProcessorManager: async () => {
+              const { orderProcessor } = await build();
+              if (orderProcessor === null) {
+                throw new Error(
+                  `${SHOPER_BRAND} OrderProcessorManager needs its customer provisioner - ` +
+                    'resolve this capability through ShoperIntegrationModule, not a bare createShoperPlugin().',
+                );
+              }
+              return orderProcessor;
+            },
           },
           SHOPER_BRAND,
         );
