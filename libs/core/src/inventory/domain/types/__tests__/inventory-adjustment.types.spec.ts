@@ -33,8 +33,12 @@ const baseResult: InventoryAdjustmentResult = {
 };
 
 describe('inventory adjustment vocabulary', () => {
-  it('should expose exactly the two reasons a shipped caller writes', () => {
-    expect(InventoryAdjustmentReasonValues).toEqual(['return_restock', 'manual_correction']);
+  it('should expose exactly the three reasons a shipped caller writes', () => {
+    expect(InventoryAdjustmentReasonValues).toEqual([
+      'return_restock',
+      'manual_correction',
+      'order_sale',
+    ]);
   });
 
   it('should expose deduplicated as a disposition, not a refusal', () => {
