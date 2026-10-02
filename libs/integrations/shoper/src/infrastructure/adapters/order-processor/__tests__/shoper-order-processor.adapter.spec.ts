@@ -1,74 +1,383 @@
-import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { Address, OrderCreate } from '@openlinker/core/orders';
 
-import { ShoperNotSupportedException } from '../../../../domain/exceptions/shoper-not-supported.exception';
+import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
+import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
+import { ShoperOrderUnbuildableException } from '../../../../domain/exceptions/shoper-order-unbuildable.exception';
+import { ShoperPartialOrderException } from '../../../../domain/exceptions/shoper-partial-order.exception';
+import type { ShoperTax } from '../../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperCustomerProvisioner } from '../../../provisioners/shoper-customer.provisioner';
+import type { ShoperOrderOptionsProvider } from '../../../shop-context/shoper-order-options.provider';
+import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
 import { ShoperOrderProcessorAdapter } from '../shoper-order-processor.adapter';
 
-function address(firstName: string, lastName: string): Address {
-  return { firstName, lastName, address1: 'Prosta 1', city: 'Warszawa', postalCode: '00-001', country: 'PL' };
-}
+const TAXES = new Map<string, ShoperTax>([
+  ['1', { tax_id: '1', value: '23', name: '23%' }],
+  ['2', { tax_id: '2', value: '8', name: '8%' }],
+]);
 
-function setup() {
-  const resolveOrCreateCustomer = jest.fn().mockResolvedValue('91');
-  const adapter = new ShoperOrderProcessorAdapter(
-    {} as ShoperHttpClient,
-    {} as IdentifierMappingPort,
-    { resolveOrCreateCustomer } as unknown as ShoperCustomerProvisioner,
-    'conn-1',
-  );
-  return { adapter, resolveOrCreateCustomer };
-}
-
-function order(overrides: Partial<OrderCreate> = {}): OrderCreate {
+function address(firstName = 'Jan', lastName = 'Kowalski'): Address {
   return {
+    firstName,
+    lastName,
+    address1: 'Prosta 1',
+    city: 'Warszawa',
+    postalCode: '00-001',
+    country: 'pl',
+    phone: '600100200',
+  };
+}
+
+function order(overrides: Record<string, unknown> = {}): OrderCreate {
+  return {
+    internalOrderId: 'ol_order_1',
     status: 'pending',
     customerId: 'ol_customer_1',
-    items: [],
-    totals: { total: 0, currency: 'PLN' },
-    billingAddress: address('Jan', 'Kowalski'),
+    items: [
+      { id: 'l1', productId: 'ol_p1', variantId: 'ol_v1', quantity: 2, price: 50, sku: 'SKU1', name: 'Misa', taxRate: '23' },
+      { id: 'l2', productId: 'ol_p2', variantId: 'ol_v2', quantity: 1, price: 10, sku: 'SKU2', taxRate: '8' },
+    ],
+    totals: { subtotal: 110, tax: 0, shipping: 12, total: 122, currency: 'PLN', taxTreatment: 'inclusive' },
+    billingAddress: address(),
+    shippingAddress: address('Anna', 'Nowak'),
+    shipping: { methodId: 'allegro-m1' },
+    source: { connectionId: 'allegro-conn' },
     metadata: { buyerEmail: ' jan@example.com ' },
     ...overrides,
-  } as OrderCreate;
+  } as unknown as OrderCreate;
+}
+
+function setup(config: Record<string, unknown> = { defaults: { shippingId: 8, paymentId: 1, statusId: 1 } }): Harness {
+  const post = jest.fn().mockImplementation((path: string) =>
+    Promise.resolve({ status: 200, data: path === '/orders' ? 10 : 16 }),
+  );
+  const del = jest.fn().mockResolvedValue({ status: 200, data: 1 });
+  const get = jest.fn();
+  const mapping = {
+    getExternalIds: jest.fn().mockImplementation((type: string, id: string) =>
+      Promise.resolve([{ connectionId: 'conn-1', externalId: `${type}:${id}`.replace(/\D+/g, '') || '1' }]),
+    ),
+  };
+  const resolveOrCreateCustomer = jest.fn().mockResolvedValue('91');
+  const options = {
+    getShippingTaxId: jest.fn().mockResolvedValue('1'),
+    getCurrencyId: jest.fn().mockResolvedValue('1'),
+  };
+  const mappingConfig = {
+    resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+    resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
+  };
+  const adapter = new ShoperOrderProcessorAdapter(
+    { post, delete: del, get } as unknown as ShoperHttpClient,
+    mapping as unknown as IdentifierMappingPort,
+    { resolveOrCreateCustomer } as unknown as ShoperCustomerProvisioner,
+    { get: () => Promise.resolve(TAXES) } as unknown as ShoperTaxTableProvider,
+    options as unknown as ShoperOrderOptionsProvider,
+    { id: 'conn-1', config } as unknown as Connection,
+    mappingConfig as unknown as IMappingConfigService,
+  );
+  return { adapter, post, del, get, options, mappingConfig, resolveOrCreateCustomer };
+}
+
+interface Harness {
+  adapter: ShoperOrderProcessorAdapter;
+  post: jest.Mock;
+  del: jest.Mock;
+  get: jest.Mock;
+  options: { getShippingTaxId: jest.Mock; getCurrencyId: jest.Mock };
+  mappingConfig: { resolveCarrierMapping: jest.Mock; resolveOrderStateMapping: jest.Mock };
+  resolveOrCreateCustomer: jest.Mock;
 }
 
 describe('ShoperOrderProcessorAdapter', () => {
-  it('should not create orders yet', async () => {
-    const { adapter } = setup();
+  describe('createOrder', () => {
+    it('should create the header, then one line per item, at the buyer-paid gross price', async () => {
+      const { adapter, post } = setup();
 
-    await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperNotSupportedException);
+      await expect(adapter.createOrder(order())).resolves.toEqual({ orderId: '10' });
+
+      const [headerPath, header] = post.mock.calls[0] as [string, Record<string, unknown>];
+      expect(headerPath).toBe('/orders');
+      expect(header).toMatchObject({
+        user_id: 91,
+        email: 'jan@example.com',
+        status_id: 1,
+        payment_id: 1,
+        shipping_id: 8,
+        shipping_tax_id: 1,
+        shipping_cost: 12,
+        currency_id: 1,
+        notes_priv: 'OpenLinker order ol_order_1',
+        billing_address: expect.objectContaining({ firstname: 'Jan', country_code: 'PL' }),
+        delivery_address: expect.objectContaining({ firstname: 'Anna', lastname: 'Nowak' }),
+      });
+      expect(post).toHaveBeenCalledTimes(3);
+      expect(post.mock.calls[1]).toEqual([
+        '/order-products',
+        expect.objectContaining({ order_id: 10, price: 50, quantity: 2, name: 'Misa', tax: '23%', tax_value: 23 }),
+      ]);
+      expect(post.mock.calls[2]).toEqual([
+        '/order-products',
+        expect.objectContaining({ order_id: 10, price: 10, quantity: 1, name: 'SKU2', tax: '8%', tax_value: 8 }),
+      ]);
+    });
+
+    it('should fill a missing phone from the other address', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.createOrder(order({ billingAddress: { ...address(), phone: undefined } }));
+
+      expect(post.mock.calls[0]).toEqual([
+        '/orders',
+        expect.objectContaining({
+          billing_address: expect.objectContaining({ phone: '600100200' }),
+        }),
+      ]);
+    });
+
+    it('should prefer an operator mapping to the connection default', async () => {
+      const { adapter, post, mappingConfig } = setup();
+      mappingConfig.resolveCarrierMapping.mockResolvedValue('3');
+      mappingConfig.resolveOrderStateMapping.mockResolvedValue('2');
+
+      await adapter.createOrder(order());
+
+      expect(mappingConfig.resolveCarrierMapping).toHaveBeenCalledWith('allegro-conn', 'allegro-m1');
+      expect((post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ shipping_id: 3, status_id: 2 });
+    });
+
+    it('should use the source gross price for a net-priced line', async () => {
+      const { adapter, post } = setup();
+      const o = order({
+        totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+        items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' }],
+      });
+
+      await adapter.createOrder(o);
+
+      expect((post.mock.calls[1] as [string, unknown])[1]).toMatchObject({ price: 123 });
+    });
+
+    it('should refuse net-priced shipping the source gave no gross figure for, before any write', async () => {
+      const { adapter, post, resolveOrCreateCustomer } = setup();
+      const o = order({
+        totals: { subtotal: 100, tax: 23, shipping: 10, total: 133, currency: 'PLN', taxTreatment: 'exclusive' },
+        items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' }],
+      });
+
+      await expect(adapter.createOrder(o)).rejects.toThrow(/shipping is net-priced/);
+      expect(post).not.toHaveBeenCalled();
+      expect(resolveOrCreateCustomer).not.toHaveBeenCalled();
+    });
+
+    it('should accept zero net shipping, and use the source gross shipping when it is reported', async () => {
+      const free = setup();
+      await free.adapter.createOrder(
+        order({
+          totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+          items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' }],
+        }),
+      );
+      expect((free.post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ shipping_cost: 0 });
+
+      const gross = setup();
+      await gross.adapter.createOrder(
+        order({
+          totals: { subtotal: 100, tax: 23, shipping: 10, shippingGross: 12.3, total: 135.3, currency: 'PLN', taxTreatment: 'exclusive' },
+          items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' }],
+        }),
+      );
+      expect((gross.post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ shipping_cost: 12.3 });
+    });
+
+    it('should mark the order paid for exactly its sum when the source says it is paid', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.createOrder(order({ paymentStatus: 'paid' }));
+
+      // 2 x 50 + 1 x 10 + 12 shipping
+      expect((post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ paid: 122 });
+    });
+
+    it.each([['cod'], ['awaiting'], ['refunded'], [undefined]])(
+      'should send no paid amount for payment status %p',
+      async (paymentStatus) => {
+        const { adapter, post } = setup();
+
+        await adapter.createOrder(order({ paymentStatus }));
+
+        expect((post.mock.calls[0] as [string, Record<string, unknown>])[1]).not.toHaveProperty('paid');
+      },
+    );
+
+    it('should refuse a net-priced line the source gave no gross price for, before any write', async () => {
+      const { adapter, post, resolveOrCreateCustomer } = setup();
+      const o = order({
+        totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+        items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, taxRate: '23' }],
+      });
+
+      await expect(adapter.createOrder(o)).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+      expect(post).not.toHaveBeenCalled();
+      expect(resolveOrCreateCustomer).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a missing buyer email', { metadata: {} }],
+      ['no lines', { items: [] }],
+      ['no phone on either address', { billingAddress: { ...address(), phone: undefined }, shippingAddress: { ...address(), phone: ' ' } }],
+      ['no address', { billingAddress: undefined, shippingAddress: undefined }],
+      ['a line without a tax rate', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1 }] }],
+      ['a tax rate the shop does not have', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1, taxRate: '5' }] }],
+    ])('should refuse %s before any write', async (_label, overrides) => {
+      const { adapter, post, resolveOrCreateCustomer } = setup();
+
+      await expect(adapter.createOrder(order(overrides))).rejects.toBeInstanceOf(
+        ShoperOrderUnbuildableException,
+      );
+      expect(post).not.toHaveBeenCalled();
+      expect(resolveOrCreateCustomer).not.toHaveBeenCalled();
+    });
+
+    it('should name the config key to set when no payment method is configured', async () => {
+      const { adapter, post } = setup({ defaults: { shippingId: 8, statusId: 1 } });
+
+      await expect(adapter.createOrder(order())).rejects.toThrow(/defaults\.paymentId/);
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a currency the shop does not have', async () => {
+      const { adapter, post, options } = setup();
+      options.getCurrencyId.mockResolvedValue(null);
+
+      await expect(adapter.createOrder(order())).rejects.toThrow(/no currency "PLN"/);
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an unknown shipping method as unbuildable', async () => {
+      const { adapter, post, options } = setup();
+      options.getShippingTaxId.mockRejectedValue(new ShoperApiError(404, 'invalid_request'));
+
+      await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a line with no variant', async () => {
+      const { adapter, post } = setup();
+      const o = order({ items: [{ id: 'l', productId: 'p', quantity: 1, price: 1, taxRate: '23' }] });
+
+      await expect(adapter.createOrder(o)).rejects.toBeInstanceOf(ShoperNotMappedException);
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('should delete the header and rethrow the cause when a line fails', async () => {
+      const { adapter, post, del } = setup();
+      const failure = new ShoperApiError(400, 'invalid_request', 'bad stock');
+      post.mockImplementation((path: string) =>
+        path === '/orders' ? Promise.resolve({ status: 200, data: 10 }) : Promise.reject(failure),
+      );
+
+      await expect(adapter.createOrder(order())).rejects.toBe(failure);
+      expect(del).toHaveBeenCalledWith('/orders/10');
+    });
+
+    it('should report a partial order, terminally, when the cleanup delete fails too', async () => {
+      const { adapter, post, del } = setup();
+      post.mockImplementation((path: string) =>
+        path === '/orders' ? Promise.resolve({ status: 200, data: 10 }) : Promise.reject(new Error('boom')),
+      );
+      del.mockRejectedValue(new Error('delete failed'));
+
+      const error = await adapter.createOrder(order()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ShoperPartialOrderException);
+      expect(error).toMatchObject({ externalOrderId: '10', linesCreated: 0, linesTotal: 2 });
+    });
+
+    it('should refuse a header answer with no order id', async () => {
+      const { adapter, post } = setup();
+      post.mockResolvedValue({ status: 200, data: {} });
+
+      await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+    });
   });
 
-  it('should resolve the customer from the metadata email and the billing name', async () => {
-    const { adapter, resolveOrCreateCustomer } = setup();
+  describe('DestinationOptionsReader', () => {
+    function pages(rows: unknown[]): jest.Mock {
+      return jest.fn().mockResolvedValue({ status: 200, data: { count: String(rows.length), pages: 1, page: 1, list: rows } });
+    }
 
-    await expect(adapter.resolveCustomer(order())).resolves.toBe('91');
+    it('should list shipping methods by id, labelled from the row or its first translation', async () => {
+      const h = setup();
+      h.get.mockImplementation(
+        pages([
+          { shipping_id: '8', name: 'InPost Kurier' },
+          { shipping_id: '9', translations: { pl_PL: { name: 'Odbior osobisty' } } },
+          { shipping_id: '10' },
+        ]),
+      );
 
-    expect(resolveOrCreateCustomer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        internalCustomerId: 'ol_customer_1',
-        buyerEmail: 'jan@example.com',
-        firstName: 'Jan',
-        lastName: 'Kowalski',
-        connectionId: 'conn-1',
-      }),
-    );
+      await expect(h.adapter.listCarriers()).resolves.toEqual([
+        { value: '8', label: 'InPost Kurier' },
+        { value: '9', label: 'Odbior osobisty' },
+        { value: '10', label: '10' },
+      ]);
+      expect(h.get).toHaveBeenCalledWith('/shippings', expect.objectContaining({ order: 'shipping_id ASC' }));
+    });
+
+    it('should list order statuses and payment methods from their own collections', async () => {
+      const h = setup();
+      h.get.mockImplementation((path: string) => {
+        const list =
+          path === '/statuses'
+            ? [{ status_id: '1', translations: { pl_PL: { name: 'zlozone' }, en_US: { name: 'placed' } } }]
+            : [{ payment_id: '1', name: 'cash', translations: { pl_PL: { title: 'Gotowka' } } }];
+        return Promise.resolve({ status: 200, data: { count: '1', pages: 1, page: 1, list } });
+      });
+
+      await expect(h.adapter.listOrderStatuses()).resolves.toEqual([{ value: '1', label: 'zlozone' }]);
+      await expect(h.adapter.listPaymentMethods()).resolves.toEqual([{ value: '1', label: 'cash' }]);
+    });
+
+    it('should read every page', async () => {
+      const h = setup();
+      h.get
+        .mockResolvedValueOnce({ status: 200, data: { count: '2', pages: 2, page: 1, list: [{ shipping_id: '1', name: 'A' }] } })
+        .mockResolvedValueOnce({ status: 200, data: { count: '2', pages: 2, page: 2, list: [{ shipping_id: '2', name: 'B' }] } });
+
+      await expect(h.adapter.listCarriers()).resolves.toHaveLength(2);
+    });
   });
 
-  it('should fall back to the shipping name and pass no email when it is not valid', async () => {
-    const { adapter, resolveOrCreateCustomer } = setup();
+  describe('resolveCustomer', () => {
+    it('should resolve the customer from the metadata email and the billing name', async () => {
+      const { adapter, resolveOrCreateCustomer } = setup();
 
-    await adapter.resolveCustomer(
-      order({
-        billingAddress: undefined,
-        shippingAddress: address('Anna', 'Nowak'),
-        metadata: { buyerEmail: 'not-an-email' },
-      }),
-    );
+      await expect(adapter.resolveCustomer(order())).resolves.toBe('91');
 
-    expect(resolveOrCreateCustomer).toHaveBeenCalledWith(
-      expect.objectContaining({ buyerEmail: undefined, firstName: 'Anna', lastName: 'Nowak' }),
-    );
+      expect(resolveOrCreateCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          internalCustomerId: 'ol_customer_1',
+          buyerEmail: 'jan@example.com',
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          connectionId: 'conn-1',
+        }),
+      );
+    });
+
+    it('should fall back to the shipping name and pass no email when it is not valid', async () => {
+      const { adapter, resolveOrCreateCustomer } = setup();
+
+      await adapter.resolveCustomer(
+        order({ billingAddress: undefined, metadata: { buyerEmail: 'not-an-email' } }),
+      );
+
+      expect(resolveOrCreateCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({ buyerEmail: undefined, firstName: 'Anna', lastName: 'Nowak' }),
+      );
+    });
   });
 });

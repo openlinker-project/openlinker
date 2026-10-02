@@ -192,28 +192,67 @@ at create and never retro-filled, so an existing connection must be edited.
   ADR-061 and throw `ShoperNotSupportedException`.
 - `master.inventory.syncAll` walks OL's own product mappings, so run a ProductMaster sync first.
 
-## OrderProcessorManager (skeleton)
+## OrderProcessorManager
 
-Declared as `OrderProcessorManager` (#3692). **It is not enabled by default**: a new connection gets only
+Declared as `OrderProcessorManager` (#3692, #3693). **It is not enabled by default**: a new connection gets only
 `ProductMaster` and `InventoryMaster` (`defaultEnabledCapabilities`), because core fans every ingested order out to
 every active `OrderProcessorManager` connection and a shop meant as a catalogue / stock master must not start
 receiving orders. Enable it explicitly on the connection's `enabledCapabilities` - the list is stamped at create and
-never retro-filled. **`createOrder` is not implemented yet** and throws
-`ShoperNotSupportedException`; order creation (header + lines) and the duplicate-order guard arrive with the next
-slices of epic #3642, so do not enable the capability on a production connection before they land.
+never retro-filled. **There is no duplicate-order guard yet (#3694): a retried `createOrder` creates a second Shoper
+order, so do not enable the capability on a production connection before that slice lands.**
 
-What exists now is the user an order must reference. Shoper rejects `user_id = 0` on `POST /orders` and does not
-provision a guest, so `ShoperCustomerProvisioner` resolves or creates one:
+`createOrder` resolves everything first and writes second, because Shoper decrements stock as each line is
+created: user, variants, taxes, the three required ids, currency and prices are settled before the first write.
+Then `POST /orders` (header) and one `POST /order-products` per line, at the buyer-paid **gross** price (ADR-014;
+a Shoper line `price` is gross). The result is the Shoper-native order id.
 
-- an existing `Customer` identifier mapping on the connection wins;
-- otherwise, under a lock per (connection, email hash), `POST /users`; on Shoper's duplicate-email `400` the
-  existing user is found with `GET /users?filters[email]=` and reused;
-- **there is no guest fallback**, unlike WooCommerce. An order with no usable buyer email (a source that reports
-  none, or `OL_STORE_PII=false`, which keeps only an email hash) fails with
-  `ShoperCustomerUnresolvableException`, a terminal error - retrying cannot add the email.
-- Auth failures, 5xx and network errors are rethrown, never degraded to a wrong user.
+**Header ids** (`shipping_id`, `payment_id`, `status_id`) are ids of rows in the shop's own `/shippings`,
+`/payments`, `/statuses`; Shoper has no catch-all, so OpenLinker never guesses one:
 
-The `POST /users` body (`email`, `firstname`, `lastname`, `active`) has not been confirmed against a live shop yet.
+- shipping: the operator's carrier mapping for the source delivery method, else `config.defaults.shippingId`;
+- status: the operator's order-state mapping, else `config.defaults.statusId`;
+- payment: `config.defaults.paymentId` only (the order carries no payment-method name to map);
+- with none of these set the order fails before any write, naming the key to set.
+
+The adapter also implements `DestinationOptionsReader` (`GET /shippings`, `/statuses`, `/payments`, every page), so
+the connection's Mappings page can offer the shop's own rows when an operator maps a source delivery method or order
+state. The mapping value is the Shoper id `createOrder` writes. Payment methods are listed for the same screen but no
+payment mapping is consumed yet.
+
+`shipping_tax_id` is read from the chosen shipping method (`GET /shippings/:id`), `currency_id` from `/currencies`
+by ISO code, and each line's `tax`/`tax_value` from `/taxes` by the line's rate code. A currency, tax or shipping
+method the shop does not have is `ShoperOrderUnbuildableException` (terminal, before any write).
+
+**Net-priced sources:** Shoper amounts are gross and OpenLinker computes no tax (ADR-063), so a net-priced line
+needs the source-reported `unitPriceGross`, and net-priced shipping needs `shippingGross` (a zero cost needs none);
+without them the order is refused rather than written with a net figure.
+
+**Payment state:** an order the source reports as `paid` is created with `paid` equal to the order sum, which Shoper
+reads as paid (verified live: `is_paid: true`). Any other or unknown state sends no `paid` amount, so a cash-on-delivery
+or awaiting order stays unpaid in the shop.
+
+**Phone is required** on both Shoper addresses (an empty one is a 400). The address's own is used, else the other
+address's; an order with no phone at all is refused rather than given an invented number.
+
+**A half-built order is removed.** If a line fails after the header exists, `DELETE /orders/:id` is issued (live:
+this restores the stock the lines took). If that fails too, `ShoperPartialOrderException` names the order id and is
+terminal, because a retry would create a second order - delete it in the shop and re-run the sync.
+
+The order's `notes_priv` carries `OpenLinker order <id>` as a recovery marker. It is NOT a dedup key: Shoper does
+not round-trip the order `code` and accepts two orders with the same one (SPIKE-3638 O5).
+
+**Customer.** Shoper rejects `user_id = 0` and does not provision a guest, so `ShoperCustomerProvisioner` resolves
+or creates the user: an existing `Customer` mapping wins; otherwise, under a lock per (connection, email hash),
+`POST /users`, and on Shoper's duplicate-email `400` the existing user is found with
+`GET /users?filters[email]=` and reused. **There is no guest fallback** (unlike WooCommerce): an order with no
+usable buyer email (a source that reports none, or `OL_STORE_PII=false`) fails with
+`ShoperCustomerUnresolvableException`, a terminal error.
+
+Verified on a trial shop (2026-10): `POST /users` with `email`, `firstname`, `lastname`, `active` answers the bare
+user id; the order payload above creates an order whose `sum` is lines + `shipping_cost`.
+
+Not covered: the stock double-deduction policy (#3695), **pickup points** (a locker order lands as a plain delivery to
+the buyer's address, so the warehouse must read the pickup point from the source order), order status writeback.
 
 ## Known gaps
 

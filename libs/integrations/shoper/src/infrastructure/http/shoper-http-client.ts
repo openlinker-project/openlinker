@@ -96,8 +96,13 @@ export class ShoperHttpClient {
     return this.request<T>('POST', path, undefined, body);
   }
 
+  /** Delete; Shoper answers `1`. Same safety properties as `get`. */
+  async delete(path: string): Promise<ShoperHttpResponse<unknown>> {
+    return this.request<unknown>('DELETE', path);
+  }
+
   private async request<T>(
-    method: 'GET' | 'PUT' | 'POST',
+    method: 'GET' | 'PUT' | 'POST' | 'DELETE',
     path: string,
     query?: ShoperQuery,
     body?: unknown,
