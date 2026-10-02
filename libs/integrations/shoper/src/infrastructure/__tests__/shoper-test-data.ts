@@ -17,6 +17,7 @@ export const MAP_CONTEXT: ShoperMapContext = {
   currency: 'PLN',
   weightUnit: 'KILOGRAM',
   warehousesEnabled: false,
+  decrementsStockOnOrder: true,
 };
 
 export function buildStock(overrides: Partial<ShoperStock> = {}): ShoperStock {

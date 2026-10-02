@@ -13,6 +13,9 @@
  * settled first; the only failures left after the header exists are the shop's
  * own.
  *
+ * **Stock (#3695).** Shoper removes stock itself when a line is created. This adapter
+ * never writes stock for an order it creates and never compensates.
+ *
  * **Idempotency.** Shoper has none of its own (SPIKE-3638 O5). `OrderSyncService`
  * holds the per-(order, destination) lock and skips on a recorded mapping; this
  * adapter closes the window that leaves (created on Shoper, mapping never
@@ -66,11 +69,15 @@ import {
   resolveGrossUnitPrice,
 } from '../../mappers/shoper-order.mapper';
 import type { ShoperCustomerProvisioner } from '../../provisioners/shoper-customer.provisioner';
+import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 import type { ShoperOrderOptionsProvider } from '../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 
 /** RFC-5322-lite: enough to refuse an obviously unusable value. */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Connections already warned that their shop does not reduce stock itself (see `warnIfShopKeepsStock`). */
+const WARNED_STOCK_FLAG_CONNECTIONS = new Set<string>();
 
 /** Shoper rounds to cents, so a smaller gap is not a real mismatch. */
 const SUM_TOLERANCE = 0.011;
@@ -84,6 +91,7 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
     private readonly customerProvisioner: ShoperCustomerProvisioner,
     private readonly taxTable: ShoperTaxTableProvider,
     private readonly options: ShoperOrderOptionsProvider,
+    private readonly shopContext: ShoperShopContextProvider,
     private readonly connection: Connection,
     private readonly mappingConfig?: IMappingConfigService,
   ) {}
@@ -104,6 +112,7 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
     if (existing !== null) {
       return { orderId: existing };
     }
+
 
     const userId = await this.resolveCustomer(order);
 
@@ -127,6 +136,7 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
       throw await this.rollBack(orderId, linesCreated, prepared.lines.length, error);
     }
 
+    await this.warnIfShopKeepsStock(order);
     this.warnOnSumMismatch(order, prepared, orderId);
     return { orderId };
   }
@@ -445,6 +455,32 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
       );
       return new ShoperPartialOrderException(this.connection.id, orderId, linesCreated, linesTotal, cause);
     }
+  }
+
+  /**
+   * Stock policy (#3695): Shoper is authoritative for its own decrement. This
+   * adapter never writes stock for an order it creates and never compensates;
+   * with `shopping_update_stock_on_buy` off the shop keeps its stock unchanged
+   * (the owner may run an ERP/WMS that does it), which is worth one warning. Read
+   * after the order exists so a failed create costs no extra request.
+   */
+  private async warnIfShopKeepsStock(order: OrderCreate): Promise<void> {
+    const context = await this.shopContext.get();
+    if (context.decrementsStockOnOrder) {
+      return;
+    }
+    // Once per connection per process: on a shop that keeps stock elsewhere on
+    // purpose this is the normal state, and a warning for every sale is noise.
+    const message =
+      `Shoper connection ${this.connection.id} has shopping_update_stock_on_buy off: creating order ` +
+      `${order.internalOrderId ?? '<unknown>'} did NOT reduce the shop's stock, and OpenLinker does not ` +
+      'compensate with a stock write';
+    if (WARNED_STOCK_FLAG_CONNECTIONS.has(this.connection.id)) {
+      this.logger.debug(message);
+      return;
+    }
+    WARNED_STOCK_FLAG_CONNECTIONS.add(this.connection.id);
+    this.logger.warn(message);
   }
 
   private warnOnSumMismatch(order: OrderCreate, prepared: PreparedOrder, orderId: string): void {

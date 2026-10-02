@@ -118,6 +118,11 @@ export interface ShoperApplicationConfig {
    * reads as on, so stock is refused rather than published on a guess.
    */
   readonly warehouses_enabled: boolean | string | number;
+  /**
+   * Whether the shop removes stock itself when an order line is created ("1" on
+   * the trial shop). Absent or unrecognised reads as ON, the shop default.
+   */
+  readonly shopping_update_stock_on_buy?: boolean | string | number;
 }
 
 /** A `GET /users` row (the slice the customer provisioner reads). */

@@ -270,8 +270,45 @@ usable buyer email (a source that reports none, or `OL_STORE_PII=false`) fails w
 Verified on a trial shop (2026-10): `POST /users` with `email`, `firstname`, `lastname`, `active` answers the bare
 user id; the order payload above creates an order whose `sum` is lines + `shipping_cost`.
 
-Not covered: the stock double-deduction policy (#3695), **pickup points** (a locker order lands as a plain delivery to
-the buyer's address, so the warehouse must read the pickup point from the source order), order status writeback.
+**Stock policy (#3695): Shoper decrements its own stock, OpenLinker never does it a second time.** Shoper removes
+stock the moment an order line is created (`shopping_update_stock_on_buy`; live: 74 -> 72 for a quantity-2 line,
+and back to 74 after `DELETE /orders/:id`). So:
+
+- the only stock write OpenLinker ever makes to a Shoper `InventoryMaster` is `adjustInventory`, whose single
+  production caller is a **return restock** - a positive correction for goods that came back, never a sale. The
+  closed `InventoryAdjustment.reason` set (`return_restock | manual_correction`) has no sale reason, so core cannot
+  express one;
+- `createOrder` never writes stock and never compensates for the decrement Shoper made (a spec fails if the order flow
+  issues a `PUT` or any non-`GET` to `/product-stocks`; `adjustInventory`, the return restock, legitimately does
+  `PUT /product-stocks/:id`);
+- the inventory sync is read-only and publishes the master's number as an **absolute** quantity, so after an order
+  the already-lowered Shoper figure is simply mirrored - nothing is applied twice;
+- a failed or retried order leaves the stock where one order would: a rolled-back header restores it (above), and
+  the duplicate recovery of #3694 returns the existing order instead of creating a second one.
+
+**When the shop does not decrement stock itself** (`shopping_update_stock_on_buy` off, e.g. an ERP/WMS does it),
+the order is still created and OpenLinker still writes nothing: compensating would be the double deduction the
+shop owner chose to avoid elsewhere. A warning naming the config key is logged for each such order, and the shop's
+stock - and therefore what OpenLinker mirrors and publishes - stays unchanged until the shop reduces it. A missing
+or unrecognised value reads as ON, the shop default.
+
+The advisory reservation ledger (ADR-061) is a separate, core-level mechanism and is not changed here; on the
+default `omp_fulfilled` topology its holds are `diagnostic` and subtract nothing.
+
+**Known gap: a cancelled order strands its stock.** OpenLinker cannot cancel or delete the Shoper order when the
+source order is cancelled (no Shoper cancel capability yet), so Shoper keeps the units decremented while the
+marketplace offer is restored from master availability, which still excludes them. Those units do not return to
+sale until someone cancels the order in the shop. Closing it needs a Shoper order-cancellation capability.
+
+**What the tests prove.** `shoper-stock-policy.spec.ts` drives the real adapters against a fake shop that mirrors the
+behaviour observed on a trial shop in 2026-10 (decrement when a line is created, restore on `DELETE /orders/:id`).
+It proves OpenLinker adds no second decrement; it cannot notice Shoper behaving differently (a plan that decrements
+at a status change, or a `DELETE` whose restore depends on order status). The live checks in the PR are the
+evidence for the real shop.
+
+Not covered: **pickup points** (a locker order lands as a plain delivery to the buyer's address, so the warehouse
+must read the pickup point from the source order), order status writeback, cancelling a Shoper order from
+OpenLinker (see the gap above).
 
 ## Known gaps
 
