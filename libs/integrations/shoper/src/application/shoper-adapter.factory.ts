@@ -24,6 +24,8 @@ import { ShoperConfigException } from '../domain/exceptions/shoper-config.except
 import { parseShoperBaseUrl } from '../domain/policies/shoper-base-url.policy';
 import type { ShoperCredentials } from '../domain/types/shoper-credentials.types';
 import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
+import { ShoperOrderOptionsProvider } from '../infrastructure/shop-context/shoper-order-options.provider';
 import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
@@ -47,6 +49,7 @@ export class ShoperAdapterFactory {
     fetchImpl: FetchLike,
     cache?: CachePort,
     customerProvisioner?: ShoperCustomerProvisioner,
+    mappingConfig?: IMappingConfigService,
   ): Promise<ShoperAdapters> {
     const base = parseShoperBaseUrl((connection.config ?? {}).baseUrl);
     if (!base.ok) {
@@ -74,13 +77,14 @@ export class ShoperAdapterFactory {
     // product themselves. Reporting a deletion identically from both does not
     // rest on sharing the instance; it rests on both going through this class.
     const productReader = new ShoperProductReader(client, connection.id);
+    const taxTable = new ShoperTaxTableProvider(client);
 
     return {
       productMaster: new ShoperProductMasterAdapter(
         client,
         identifierMapping,
         shopContext,
-        new ShoperTaxTableProvider(client),
+        taxTable,
         connection,
         productReader,
       ),
@@ -94,7 +98,15 @@ export class ShoperAdapterFactory {
       orderProcessor:
         customerProvisioner === undefined
           ? null
-          : new ShoperOrderProcessorAdapter(client, identifierMapping, customerProvisioner, connection.id),
+          : new ShoperOrderProcessorAdapter(
+              client,
+              identifierMapping,
+              customerProvisioner,
+              taxTable,
+              new ShoperOrderOptionsProvider(client),
+              connection,
+              mappingConfig,
+            ),
     };
   }
 }

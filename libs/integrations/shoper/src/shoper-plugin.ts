@@ -27,6 +27,7 @@ import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
 import { SHOPER_ADAPTER_KEY, SHOPER_BRAND, SHOPER_PLATFORM_TYPE } from './shoper.constants';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { ShoperCustomerProvisioner } from './infrastructure/provisioners/shoper-customer.provisioner';
 import { ShoperAdapterFactory, type ShoperAdapters } from './application/shoper-adapter.factory';
 import { ShoperRetryClassifierAdapter } from './infrastructure/adapters/shoper-retry-classifier.adapter';
@@ -60,6 +61,7 @@ export const shoperAdapterManifest: AdapterMetadata = {
 /** Nest-provided collaborators the plugin cannot get from the `HostServices` bag. */
 export interface ShoperPluginDeps {
   readonly customerProvisioner: ShoperCustomerProvisioner;
+  readonly mappingConfigService: IMappingConfigService;
 }
 
 export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
@@ -111,6 +113,7 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
           host.http.forConnection(connection),
           host.cache,
           deps?.customerProvisioner,
+          deps?.mappingConfigService,
         );
       try {
         return dispatchCapability<Promise<T>>(

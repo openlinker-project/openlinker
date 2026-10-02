@@ -57,6 +57,11 @@ import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
   SchedulerTaskRegistryService,
 } from '@openlinker/core/sync';
+import {
+  MappingsModule,
+  MAPPING_CONFIG_SERVICE_TOKEN,
+  IMappingConfigService,
+} from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
@@ -70,6 +75,7 @@ import { createShoperPlugin } from './shoper-plugin';
     IntegrationsModule,
     SyncModule,
     IdentifierMappingModule,
+    MappingsModule,
     RateLimitModule,
   ],
   providers: [ShoperCustomerProvisioner],
@@ -113,6 +119,8 @@ export class ShoperIntegrationModule implements OnModuleInit {
     @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
     private readonly http: HttpTransportFactoryPort,
     private readonly customerProvisioner: ShoperCustomerProvisioner,
+    @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
+    private readonly mappingConfigService: IMappingConfigService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort,
   ) {}
@@ -120,7 +128,10 @@ export class ShoperIntegrationModule implements OnModuleInit {
   onModuleInit(): void {
     this.logger.log('Registering Shoper plugin (manifest + factory + side registries)...');
 
-    const plugin = createShoperPlugin({ customerProvisioner: this.customerProvisioner });
+    const plugin = createShoperPlugin({
+      customerProvisioner: this.customerProvisioner,
+      mappingConfigService: this.mappingConfigService,
+    });
 
     const host: HostServices = {
       logger: (context: string) => new Logger(context),
