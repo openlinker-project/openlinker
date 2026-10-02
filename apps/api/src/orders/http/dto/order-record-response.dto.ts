@@ -29,6 +29,10 @@ import {
 } from '@openlinker/core/order-lifecycle';
 import { OrderHoldDto } from './order-hold-response.dto';
 import {
+  FulfillmentBlockReasonValues,
+  type FulfillmentBlockReason,
+} from '@openlinker/core/fulfillment';
+import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
 } from '@openlinker/core/sales-documents';
@@ -353,6 +357,28 @@ export class OrderRecordResponseDto {
       'a skipped order follows today\'s path and is mirrored to its destinations as usual.',
   })
   fulfillmentRoutingSkipReason!: FulfillmentRoutingSkipReason | null;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentBlockReasonValues,
+    nullable: true,
+    description:
+      'Why fulfilment routing is HOLDING this order in OpenLinker with no work object explaining it ' +
+      '(#2396, readable since #3485), or null. A held order is not mirrored to any destination. ' +
+      'With the OMS on: `routing-refused` (the plan could not be committed, typically a line out of ' +
+      'stock; re-routed automatically), `routing-no-shipping-address` (clears when the source sends ' +
+      'an address), `routing-failed` (re-routed automatically). The others are transient routing ' +
+      'states. Opposite of `fulfillmentRoutingSkipReason`, which is NOT a hold.',
+  })
+  fulfillmentBlockReason!: FulfillmentBlockReason | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'PII-free elaboration of `fulfillmentBlockReason` (ids and causes only), rendered verbatim; ' +
+      'null when there is no block or nothing to add.',
+  })
+  fulfillmentBlockDetail!: string | null;
 
   @ApiPropertyOptional({
     type: OrderHoldDto,

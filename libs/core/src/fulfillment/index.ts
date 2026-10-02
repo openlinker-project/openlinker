@@ -171,6 +171,12 @@ export type {
   RouteOrderInput,
   RoutingCommitOutcome,
 } from './application/types/routing-commit.types';
+// #3485 — the ONE mapping from a routing outcome to the order's hold state,
+// shared by the ingestion intercept and the `fulfillment.work.route` handler.
+export {
+  deriveRoutingHoldOutcome,
+  type RoutingHoldOutcome,
+} from './application/types/routing-hold-outcome.types';
 export type { RoutingLockPort } from './domain/ports/routing-lock.port';
 export {
   FULFILLMENT_ROUTE_LOCK_TTL_MS,

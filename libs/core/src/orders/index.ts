@@ -381,6 +381,7 @@ export type { OrderSummary } from './domain/order-summary-projection';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
+export type { HeldOrderRef } from './domain/ports/order-record-repository.port';
 
 // ADR-044 change proposals (#2333) — the Wave-2 gate. `OrderChangeRepositoryPort`
 // is deliberately NOT exported: it is intra-context, and a sibling reaches the
