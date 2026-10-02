@@ -111,4 +111,11 @@ export interface ShoperApplicationConfig {
   readonly default_language_name: string;
   readonly default_currency_name: string;
   readonly locale_default_weight: string;
+  /**
+   * Multi-warehouse module (a paid Premium feature, SPIKE-3638 M10). A real JSON
+   * boolean on the live shop (`false`). Only an explicit "off" (`false`, `0`,
+   * `"0"`, `"false"`) reads as off; anything else - including a missing field -
+   * reads as on, so stock is refused rather than published on a guess.
+   */
+  readonly warehouses_enabled: boolean | string | number;
 }

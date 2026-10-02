@@ -9,6 +9,7 @@ import {
   buildStock,
   envelope,
 } from '../../../__tests__/shoper-test-data';
+import { ShoperProductReader } from '../../../readers/shoper-product.reader';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
 import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
@@ -69,6 +70,7 @@ function setup(): Harness {
     { get: () => Promise.resolve(MAP_CONTEXT) } as unknown as ShoperShopContextProvider,
     taxTable as unknown as ShoperTaxTableProvider,
     { id: CONNECTION_ID } as Connection,
+    new ShoperProductReader({ get } as unknown as ShoperHttpClient, CONNECTION_ID),
   );
   return { adapter, get, mapping, taxTable };
 }

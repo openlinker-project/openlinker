@@ -1,8 +1,11 @@
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperConfigException } from '../../../domain/exceptions/shoper-config.exception';
+import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
+import { ShoperStockNotFoundException } from '../../../domain/exceptions/shoper-stock-not-found.exception';
+import { ShoperWarehousesNotSupportedException } from '../../../domain/exceptions/shoper-warehouses-not-supported.exception';
 import { ShoperRetryClassifierAdapter } from '../shoper-retry-classifier.adapter';
 
 describe('ShoperRetryClassifierAdapter', () => {
@@ -11,6 +14,7 @@ describe('ShoperRetryClassifierAdapter', () => {
   it.each([
     ['a config exception', new ShoperConfigException('c', 'no token')],
     ['a not-supported exception', new ShoperNotSupportedException('createProduct')],
+    ['a warehouses-not-supported exception', new ShoperWarehousesNotSupportedException('c')],
     ['a not-mapped exception', new ShoperNotMappedException('p', 'c')],
     ['a RangeError from the adapter’s own bounds', new RangeError('window')],
   ])('should treat %s as terminal: re-running the job fails identically', (_label, cause) => {
@@ -36,6 +40,13 @@ describe('ShoperRetryClassifierAdapter', () => {
 
   it.each([408, 429, 500, 502, 503, 504])('should keep HTTP %i retryable', (status) => {
     expect(classifier.isNonRetryable(new ShoperApiError(status))).toBe(false);
+  });
+
+  it.each([
+    ['an inferred stock absence', new ShoperStockNotFoundException('p', 'c')],
+    ['an unreadable stock level', new ShoperInvalidStockLevelException('181', '93', 'c')],
+  ])('should keep %s retryable: a re-read is what can clear it', (_label, cause) => {
+    expect(classifier.isNonRetryable(cause)).toBe(false);
   });
 
   it('should keep a network failure retryable', () => {
