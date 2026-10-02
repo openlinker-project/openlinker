@@ -23,13 +23,16 @@ import type { FetchLike } from '@openlinker/shared/http';
 import { ShoperConfigException } from '../domain/exceptions/shoper-config.exception';
 import { parseShoperBaseUrl } from '../domain/policies/shoper-base-url.policy';
 import type { ShoperCredentials } from '../domain/types/shoper-credentials.types';
+import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
+import { ShoperProductReader } from '../infrastructure/readers/shoper-product.reader';
 import { ShoperShopContextProvider } from '../infrastructure/shop-context/shoper-shop-context.provider';
 import { ShoperTaxTableProvider } from '../infrastructure/shop-context/shoper-tax-table.provider';
 
 export interface ShoperAdapters {
   readonly productMaster: ShoperProductMasterAdapter;
+  readonly inventoryMaster: ShoperInventoryMasterAdapter;
 }
 
 export class ShoperAdapterFactory {
@@ -59,12 +62,28 @@ export class ShoperAdapterFactory {
       cacheKey: `shoper:shop-context:${connection.id}:${base.host}`,
     });
 
+    // ONE product reader for the bag: ProductMaster and InventoryMaster read the
+    // same `GET /products/:id`, so within one resolution the request is made
+    // once. That saving is per BAG only - `getCapabilityAdapter` builds a fresh
+    // bag on every call, so a product sync and an inventory sync each read the
+    // product themselves. Reporting a deletion identically from both does not
+    // rest on sharing the instance; it rests on both going through this class.
+    const productReader = new ShoperProductReader(client, connection.id);
+
     return {
       productMaster: new ShoperProductMasterAdapter(
         client,
         identifierMapping,
         shopContext,
         new ShoperTaxTableProvider(client),
+        connection,
+        productReader,
+      ),
+      inventoryMaster: new ShoperInventoryMasterAdapter(
+        client,
+        identifierMapping,
+        shopContext,
+        productReader,
         connection,
       ),
     };

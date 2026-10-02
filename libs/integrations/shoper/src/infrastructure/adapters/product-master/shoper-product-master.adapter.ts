@@ -43,12 +43,9 @@ import type {
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
-import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
-import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import type {
   ShoperCategory,
@@ -65,7 +62,10 @@ import {
   fetchShoperPage,
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
+import { fetchShoperStocks } from '../../http/shoper-stocks';
 import { mapShoperProduct, mapShoperStockToVariant } from '../../mappers/shoper-product.mapper';
+import { resolveShoperExternalProductId } from '../../readers/shoper-product-id';
+import type { ShoperProductReader } from '../../readers/shoper-product.reader';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
 /** Explicit direction: a bare `order=<field>` sorts DESCENDING on Shoper. */
@@ -80,15 +80,20 @@ const SHOPER_ID = /^\d+$/;
 export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
-  private readonly productReads = new Map<string, Promise<ShoperProduct>>();
+  private readonly productReader: ShoperProductReader;
 
   constructor(
     private readonly client: ShoperHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly shopContext: ShoperShopContextProvider,
     private readonly taxTable: ShoperTaxTableProvider,
-    private readonly connection: Connection
-  ) {}
+    private readonly connection: Connection,
+    // Shared with the InventoryMaster adapter of the same resolution, so a
+    // product is read (and a deletion reported) once.
+    productReader: ShoperProductReader,
+  ) {
+    this.productReader = productReader;
+  }
 
   // ─── Read methods ──────────────────────────────────────────────────────────
 
@@ -336,47 +341,19 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   // ─── Internals ─────────────────────────────────────────────────────────────
 
   /**
-   * `GET /products/:id`, shared within this adapter instance. One resolution
-   * typically calls `getProduct` and then `getProductCategories` for the same
-   * product; without this they would issue the same request twice. Promise
-   * memo, failure not kept (the next call retries). The instance lives for one
-   * resolution, so a cached payload cannot go meaningfully stale.
-   *
-   * THE one place a master-side deletion becomes the neutral error core stales
-   * variants on (#1599): `getProduct`, `getProductCategories` and
-   * `readProductTaxRate` all read through here, so whichever of them core
-   * reaches a deleted product through first reports it. Only a 404 Shoper
-   * itself reported counts (`ShoperApiError.isResourceNotFound`); anything else
-   * passes through untouched.
+   * `GET /products/:id` through the shared `ShoperProductReader`: one request
+   * per product per resolution, and THE place a master-side deletion becomes the
+   * neutral error core stales variants on (#1599). `getProduct`,
+   * `getProductCategories` and `readProductTaxRate` all read through here - and
+   * so does the `InventoryMaster` adapter when the factory hands both the same
+   * reader - so whichever core reaches a deleted product through first reports it.
    */
   private readProduct(externalId: string, productId: string): Promise<ShoperProduct> {
-    let read = this.productReads.get(externalId);
-    if (read === undefined) {
-      read = this.client.get<ShoperProduct>(`/products/${externalId}`).then(
-        (r) => r.data,
-        (error: unknown): never => {
-          if (error instanceof ShoperApiError && error.isResourceNotFound()) {
-            throw new MasterProductNotFoundError(productId, this.connection.id, error);
-          }
-          throw error instanceof Error ? error : new Error(String(error));
-        },
-      );
-      this.productReads.set(externalId, read);
-      read.catch(() => this.productReads.delete(externalId));
-    }
-    return read;
+    return this.productReader.read(externalId, productId);
   }
 
-  private async resolveExternalProductId(productId: string): Promise<string> {
-    const mappings = await this.identifierMapping.getExternalIds(
-      CORE_ENTITY_TYPE.Product,
-      productId
-    );
-    const mapping = mappings.find((m) => m.connectionId === this.connection.id);
-    if (mapping === undefined) {
-      throw new ShoperNotMappedException(productId, this.connection.id);
-    }
-    return mapping.externalId;
+  private resolveExternalProductId(productId: string): Promise<string> {
+    return resolveShoperExternalProductId(this.identifierMapping, this.connection.id, productId);
   }
 
   /**
@@ -481,38 +458,13 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   }
 
   /** Exhausts every page of a product's stocks (a product may have more than 50 variants). */
-  private async fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {
-    const stocks: ShoperStock[] = [];
-    let page = 1;
-    for (;;) {
-      const result = await fetchShoperPage<ShoperStock>(this.client, '/product-stocks', {
-        page,
-        limit: SHOPER_MAX_PAGE_SIZE,
-        query: { 'filters[product_id]': externalProductId, order: 'stock_id ASC' },
-      });
-      stocks.push(...this.onlyStocksOf(externalProductId, result.items));
-      if (page >= result.pages) {
-        return stocks;
-      }
-      page += 1;
-    }
-  }
-
-  /**
-   * Guard against the filter being ignored. Shoper silently rewrites invalid
-   * parameters (`limit` -> 10), so a `filters[product_id]` it stopped honouring
-   * would answer with the WHOLE stock table, and every product would be handed
-   * foreign variants under a wrong parent. A row that is not this product's is
-   * dropped and logged.
-   */
-  private onlyStocksOf(externalProductId: string, rows: readonly ShoperStock[]): ShoperStock[] {
-    const own = rows.filter((s) => String(s.product_id) === externalProductId);
-    if (own.length < rows.length) {
+  private fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {
+    // The filter-ignored guard lives in `fetchShoperStocks`; this only reports it.
+    return fetchShoperStocks(this.client, externalProductId, (count) =>
       this.logger.warn(
-        `Shoper returned ${rows.length - own.length} stock row(s) of another product while ` +
-          `reading product ${externalProductId}; dropped (connection: ${this.connection.id})`
-      );
-    }
-    return own;
+        `Shoper returned ${count} stock row(s) of another product while reading product ` +
+          `${externalProductId}; dropped (connection: ${this.connection.id})`,
+      ),
+    );
   }
 }
