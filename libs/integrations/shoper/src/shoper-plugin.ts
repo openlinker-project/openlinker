@@ -45,6 +45,13 @@ export const shoperAdapterManifest: AdapterMetadata = {
   platformType: SHOPER_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
   supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+  // `OrderProcessorManager` is supported but NOT on by default. Without this, a
+  // connection created with no explicit capability list gets every capability
+  // in the manifest, and `OrderSyncService` fans each ingested order out to every
+  // active `OrderProcessorManager` connection - so a Shoper shop meant only as a
+  // catalogue / stock master would start receiving orders. An operator who wants
+  // Shoper as an order destination enables it explicitly (#3350 mechanism).
+  defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   displayName: 'Shoper REST API',
   version: '1.0.0',
   isDefault: true,

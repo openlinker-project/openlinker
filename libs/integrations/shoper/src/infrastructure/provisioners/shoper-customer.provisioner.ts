@@ -115,6 +115,9 @@ export class ShoperCustomerProvisioner {
     input: ResolveShoperCustomerInput,
     buyerEmail: string,
   ): Promise<string> {
+    // Names may be empty: Shoper accepts a user with blank or absent
+    // `firstname` / `lastname` (verified on the trial shop), so a nameless order
+    // is not refused here - the email is the only thing that identifies a user.
     const body: ShoperUserCreateRequest = {
       email: buyerEmail,
       firstname: input.firstName,
@@ -143,6 +146,8 @@ export class ShoperCustomerProvisioner {
   }
 
   private async findByEmail(client: ShoperHttpClient, email: string): Promise<string | null> {
+    // Default page size is enough: `filters[email]` is an exact match, and the
+    // address is unique on Shoper (a duplicate is the 400 that brought us here).
     const result = await client.get<{ list?: readonly ShoperUser[] }>('/users', {
       'filters[email]': email,
     });

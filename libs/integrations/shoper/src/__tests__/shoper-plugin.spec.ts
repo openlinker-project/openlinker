@@ -40,11 +40,22 @@ function connection(overrides: Record<string, unknown> = {}): Connection {
 }
 
 describe('Shoper plugin', () => {
-  it('should expose the documented manifest with the ProductMaster and InventoryMaster capabilities', () => {
+  it('should not enable OrderProcessorManager by default, so a catalogue-only shop receives no orders', () => {
+    const defaults = shoperAdapterManifest.defaultEnabledCapabilities;
+
+    expect(defaults).toEqual(['ProductMaster', 'InventoryMaster']);
+    expect(defaults).not.toContain('OrderProcessorManager');
+    // Every default must be a capability the adapter really supports.
+    for (const capability of defaults ?? []) {
+      expect(shoperAdapterManifest.supportedCapabilities).toContain(capability);
+    }
+  });
+
+  it('should expose the documented manifest with its three capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
       isDefault: true,
     });
     expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
