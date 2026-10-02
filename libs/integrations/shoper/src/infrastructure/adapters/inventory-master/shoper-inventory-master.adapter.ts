@@ -50,6 +50,7 @@ import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../domain/exceptions/shoper-stock-not-found.exception';
+import { ShoperVariantRequiredException } from '../../../domain/exceptions/shoper-variant-required.exception';
 import { ShoperWarehousesNotSupportedException } from '../../../domain/exceptions/shoper-warehouses-not-supported.exception';
 import type { ShoperStock } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
@@ -109,28 +110,10 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
       return quantity;
     });
 
-    const [variantIds, inventoryIds] = await Promise.all([
-      this.identifierMapping.batchGetOrCreateInternalIds(
-        stocks.map((s) => ({
-          entityType: CORE_ENTITY_TYPE.ProductVariant,
-          externalId: s.stock_id,
-          connectionId: this.connection.id,
-          context: {
-            parentEntityType: CORE_ENTITY_TYPE.Product,
-            parentInternalId: productId,
-            metadata: { variantExternalId: s.stock_id },
-          },
-        })),
-      ),
-      this.identifierMapping.batchGetOrCreateInternalIds(
-        stocks.map((s) => ({
-          entityType: CORE_ENTITY_TYPE.Inventory,
-          externalId: `stock:${s.stock_id}`,
-          connectionId: this.connection.id,
-          context: { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: productId },
-        })),
-      ),
-    ]);
+    const [variantIds, inventoryIds] = await this.mintIds(
+      productId,
+      stocks.map((s) => s.stock_id),
+    );
 
     return stocks.map((stock, index) => {
       const quantity = levels[index];
@@ -189,10 +172,182 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
     }
   }
 
-  // ─── Not supported in this task ────────────────────────────────────────────
+  // ─── Writes and unsupported methods ────────────────────────────────────────
 
-  adjustInventory(_adjustment: InventoryAdjustment): Promise<InventoryAdjustmentResult> {
-    return Promise.reject(new ShoperNotSupportedException('adjustInventory'));
+  /**
+   * Read, add the delta, write the absolute result. Shoper's `PUT
+   * /product-stocks/:id` takes an absolute `stock` and has no conditional write
+   * or idempotency key (SPIKE-3638 M8/M9), so this is NOT atomic:
+   * - a change landing between the read and the PUT is overwritten (a lost
+   *   update), and nothing here detects it - the post-write read-back sees only
+   *   what was just written;
+   * - a retry after a lost response applies the delta again.
+   * Reported honestly as `unsupported`.
+   *
+   * The read-back after the PUT covers a different gap: it returns the level
+   * Shoper holds NOW (a change landing after the write shows up), so that is
+   * the number propagated onward rather than a computed one.
+   *
+   * A delta taking stock below zero is clamped to 0 with a warning (the
+   * PrestaShop behaviour), so less than the requested decrease is applied.
+   */
+  async adjustInventory(adjustment: InventoryAdjustment): Promise<InventoryAdjustmentResult> {
+    const ctx = await this.shopContext.get();
+    if (ctx.warehousesEnabled) {
+      throw new ShoperWarehousesNotSupportedException(this.connection.id);
+    }
+
+    const externalId = await resolveShoperExternalProductId(
+      this.identifierMapping,
+      this.connection.id,
+      adjustment.productId,
+    );
+    // One request fewer than a separate probe: a 404 on the listing is
+    // classified as a deletion only if the product itself is gone.
+    const stocks = await this.fetchStocksOrClassifyDeletion(externalId, adjustment.productId);
+    const stock = await this.pickStockRow(stocks, adjustment);
+
+    const current = readShoperStockLevel(stock);
+    if (current === null) {
+      throw new ShoperInvalidStockLevelException(stock.stock_id, externalId, this.connection.id);
+    }
+
+    // Ids are resolved BEFORE the write: failing after the PUT would report an
+    // error (in doubt) for a change that definitely landed.
+    const [variantIds, inventoryIds] = await this.mintIds(adjustment.productId, [stock.stock_id]);
+    const variantId = variantIds.get(`${stock.stock_id}:${this.connection.id}`);
+    const inventoryId = inventoryIds.get(`stock:${stock.stock_id}:${this.connection.id}`);
+    if (variantId === undefined || inventoryId === undefined) {
+      throw new Error(
+        `Identifier mapping returned no id for Shoper stock ${stock.stock_id} of product ${externalId} ` +
+          `(connection: ${this.connection.id})`,
+      );
+    }
+
+    const requested = current + adjustment.quantity;
+    const next = Math.max(0, requested);
+    if (next !== requested) {
+      this.logger.warn(
+        `Shoper stock ${stock.stock_id} of product ${externalId} would go to ${requested}; ` +
+          `clamped to 0 (connection: ${this.connection.id})`,
+      );
+    }
+    if (adjustment.reason !== undefined) {
+      this.logger.log(
+        `Adjusting Shoper stock ${stock.stock_id} by ${adjustment.quantity} (${adjustment.reason}), ` +
+          `${current} -> ${next} (connection: ${this.connection.id})`,
+      );
+    }
+
+    await this.client.put(`/product-stocks/${encodeURIComponent(stock.stock_id)}`, { stock: next });
+
+    const level = await this.readBackLevel(externalId, stock.stock_id, next);
+    const inventory = mapShoperStockToInventory(level, {
+      productId: adjustment.productId,
+      variantId,
+      inventoryId,
+    });
+    return {
+      ...inventory,
+      adjustmentOutcome: { disposition: 'applied', idempotency: 'unsupported', appliedAt: null },
+    };
+  }
+
+  /**
+   * The level Shoper holds after the write. The PUT is not atomic, so a
+   * concurrent sale can make it differ from what was written; the real number is
+   * what propagates to marketplaces. A failed read-back must not turn an
+   * applied write into an error, so it falls back to the written level.
+   */
+  private async readBackLevel(externalId: string, stockId: string, written: number): Promise<number> {
+    try {
+      const row = (await this.fetchStocks(externalId)).find((s) => s.stock_id === stockId);
+      const actual = row === undefined ? null : readShoperStockLevel(row);
+      if (actual === null) {
+        this.logger.warn(
+          `Shoper stock ${stockId} of product ${externalId} unreadable after write; ` +
+            `reporting the written level ${written} (connection: ${this.connection.id})`,
+        );
+        return written;
+      }
+      if (actual !== written) {
+        this.logger.warn(
+          `Shoper stock ${stockId} of product ${externalId} reads ${actual} after writing ${written}; ` +
+            `a concurrent change was overwritten or applied (connection: ${this.connection.id})`,
+        );
+      }
+      return actual;
+    } catch (error) {
+      this.logger.warn(
+        `Shoper stock read-back failed for ${stockId} of product ${externalId}: ` +
+          `${error instanceof Error ? error.message : String(error)}; reporting the written level ${written}`,
+      );
+      return written;
+    }
+  }
+
+  private fetchStocks(externalId: string): Promise<ShoperStock[]> {
+    return fetchShoperStocks(this.client, externalId, (count) =>
+      this.logger.warn(
+        `Shoper returned ${count} stock row(s) of another product while reading product ` +
+          `${externalId}; dropped (connection: ${this.connection.id})`,
+      ),
+    );
+  }
+
+  private async mintIds(
+    productId: string,
+    stockIds: string[],
+  ): Promise<[Map<string, string>, Map<string, string>]> {
+    return Promise.all([
+      this.identifierMapping.batchGetOrCreateInternalIds(
+        stockIds.map((id) => ({
+          entityType: CORE_ENTITY_TYPE.ProductVariant,
+          externalId: id,
+          connectionId: this.connection.id,
+          context: {
+            parentEntityType: CORE_ENTITY_TYPE.Product,
+            parentInternalId: productId,
+            metadata: { variantExternalId: id },
+          },
+        })),
+      ),
+      this.identifierMapping.batchGetOrCreateInternalIds(
+        stockIds.map((id) => ({
+          entityType: CORE_ENTITY_TYPE.Inventory,
+          externalId: `stock:${id}`,
+          connectionId: this.connection.id,
+          context: { parentEntityType: CORE_ENTITY_TYPE.Product, parentInternalId: productId },
+        })),
+      ),
+    ]);
+  }
+
+  private async pickStockRow(
+    stocks: ShoperStock[],
+    adjustment: InventoryAdjustment,
+  ): Promise<ShoperStock> {
+    if (adjustment.variantId !== undefined) {
+      const mappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.ProductVariant,
+        adjustment.variantId,
+      );
+      const variantExternal = mappings.find((m) => m.connectionId === this.connection.id);
+      const match = stocks.find((s) => s.stock_id === variantExternal?.externalId);
+      if (match === undefined) {
+        throw new ShoperStockNotFoundException(adjustment.productId, this.connection.id);
+      }
+      return match;
+    }
+    if (stocks.length === 1) {
+      return stocks[0];
+    }
+    // Several variants and none named: writing the first would move stock of the
+    // wrong variant, so refuse rather than guess.
+    if (stocks.length === 0) {
+      throw new ShoperStockNotFoundException(adjustment.productId, this.connection.id);
+    }
+    throw new ShoperVariantRequiredException(adjustment.productId, this.connection.id);
   }
 
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {
