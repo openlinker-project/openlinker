@@ -10,6 +10,8 @@ import { ShoperPartialOrderException } from '../../../../domain/exceptions/shope
 import type { ShoperTax } from '../../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperCustomerProvisioner } from '../../../provisioners/shoper-customer.provisioner';
+import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
+import { MAP_CONTEXT } from '../../../__tests__/shoper-test-data';
 import type { ShoperOrderOptionsProvider } from '../../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
 import { ShoperOrderProcessorAdapter } from '../shoper-order-processor.adapter';
@@ -50,7 +52,10 @@ function order(overrides: Record<string, unknown> = {}): OrderCreate {
   } as unknown as OrderCreate;
 }
 
-function setup(config: Record<string, unknown> = { defaults: { shippingId: 8, paymentId: 1, statusId: 1 } }): Harness {
+function setup(
+  config: Record<string, unknown> = { defaults: { shippingId: 8, paymentId: 1, statusId: 1 } },
+  shopDecrements = true,
+): Harness {
   const post = jest.fn().mockImplementation((path: string) =>
     Promise.resolve({ status: 200, data: path === '/orders' ? 10 : 16 }),
   );
@@ -76,6 +81,7 @@ function setup(config: Record<string, unknown> = { defaults: { shippingId: 8, pa
     { resolveOrCreateCustomer } as unknown as ShoperCustomerProvisioner,
     { get: () => Promise.resolve(TAXES) } as unknown as ShoperTaxTableProvider,
     options as unknown as ShoperOrderOptionsProvider,
+    { get: () => Promise.resolve({ ...MAP_CONTEXT, decrementsStockOnOrder: shopDecrements }) } as unknown as ShoperShopContextProvider,
     { id: 'conn-1', config } as unknown as Connection,
     mappingConfig as unknown as IMappingConfigService,
   );

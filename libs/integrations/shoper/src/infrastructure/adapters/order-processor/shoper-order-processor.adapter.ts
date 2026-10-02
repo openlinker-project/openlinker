@@ -13,6 +13,9 @@
  * settled first; the only failures left after the header exists are the shop's
  * own.
  *
+ * **Stock (#3695).** Shoper removes stock itself when a line is created. This adapter
+ * never writes stock for an order it creates and never compensates.
+ *
  * **Idempotency.** Shoper has none of its own (SPIKE-3638 O5). `OrderSyncService`
  * holds the per-(order, destination) lock and skips on a recorded mapping; this
  * adapter closes the window that leaves (created on Shoper, mapping never
@@ -54,6 +57,7 @@ import {
   resolveGrossUnitPrice,
 } from '../../mappers/shoper-order.mapper';
 import type { ShoperCustomerProvisioner } from '../../provisioners/shoper-customer.provisioner';
+import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 import type { ShoperOrderOptionsProvider } from '../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 
@@ -72,6 +76,7 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
     private readonly customerProvisioner: ShoperCustomerProvisioner,
     private readonly taxTable: ShoperTaxTableProvider,
     private readonly options: ShoperOrderOptionsProvider,
+    private readonly shopContext: ShoperShopContextProvider,
     private readonly connection: Connection,
     private readonly mappingConfig?: IMappingConfigService,
   ) {}
@@ -88,6 +93,8 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
     if (existing !== null) {
       return { orderId: existing };
     }
+
+    await this.warnIfShopKeepsStock(order);
 
     const userId = await this.resolveCustomer(order);
 
@@ -331,6 +338,23 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort {
         `Could not remove incomplete Shoper order ${orderId} (connection: ${this.connection.id}): ${String(deleteError)}`,
       );
       return new ShoperPartialOrderException(this.connection.id, orderId, linesCreated, linesTotal, cause);
+    }
+  }
+
+  /**
+   * Stock policy (#3695): Shoper is authoritative for its own decrement. This
+   * adapter never writes stock for an order it creates and never compensates;
+   * with `shopping_update_stock_on_buy` off the shop keeps its stock unchanged
+   * (the owner may run an ERP/WMS that does it), which is worth one warning.
+   */
+  private async warnIfShopKeepsStock(order: OrderCreate): Promise<void> {
+    const context = await this.shopContext.get();
+    if (!context.decrementsStockOnOrder) {
+      this.logger.warn(
+        `Shoper connection ${this.connection.id} has shopping_update_stock_on_buy off: creating order ` +
+          `${order.internalOrderId ?? '<unknown>'} will NOT reduce the shop's stock, and OpenLinker does not ` +
+          'compensate with a stock write',
+      );
     }
   }
 

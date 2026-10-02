@@ -104,6 +104,7 @@ export class ShoperAdapterFactory {
               customerProvisioner,
               taxTable,
               new ShoperOrderOptionsProvider(client),
+              shopContext,
               connection,
               mappingConfig,
             ),

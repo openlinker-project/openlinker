@@ -247,7 +247,31 @@ usable buyer email (a source that reports none, or `OL_STORE_PII=false`) fails w
 Verified on a trial shop (2026-10): `POST /users` with `email`, `firstname`, `lastname`, `active` answers the bare
 user id; the order payload above creates an order whose `sum` is lines + `shipping_cost`.
 
-Not covered: the stock double-deduction policy (#3695), pickup points, order status writeback.
+**Stock policy (#3695): Shoper decrements its own stock, OpenLinker never does it a second time.** Shoper removes
+stock the moment an order line is created (`shopping_update_stock_on_buy`; live: 74 -> 72 for a quantity-2 line,
+and back to 74 after `DELETE /orders/:id`). So:
+
+- the only stock write OpenLinker ever makes to a Shoper `InventoryMaster` is `adjustInventory`, whose single
+  production caller is a **return restock** - a positive correction for goods that came back, never a sale. The
+  closed `InventoryAdjustment.reason` set (`return_restock | manual_correction`) has no sale reason, so core cannot
+  express one;
+- `createOrder` never writes stock and never compensates for the decrement Shoper made (a spec fails if it issues
+  a `PUT` or any non-`GET` to `/product-stocks`);
+- the inventory sync is read-only and publishes the master's number as an **absolute** quantity, so after an order
+  the already-lowered Shoper figure is simply mirrored - nothing is applied twice;
+- a failed or retried order leaves the stock where one order would: a rolled-back header restores it (above), and
+  the duplicate recovery of #3694 returns the existing order instead of creating a second one.
+
+**When the shop does not decrement stock itself** (`shopping_update_stock_on_buy` off, e.g. an ERP/WMS does it),
+the order is still created and OpenLinker still writes nothing: compensating would be the double deduction the
+shop owner chose to avoid elsewhere. A warning naming the config key is logged for each such order, and the shop's
+stock - and therefore what OpenLinker mirrors and publishes - stays unchanged until the shop reduces it. A missing
+or unrecognised value reads as ON, the shop default.
+
+The advisory reservation ledger (ADR-061) is a separate, core-level mechanism and is not changed here; on the
+default `omp_fulfilled` topology its holds are `diagnostic` and subtract nothing.
+
+Not covered: pickup points, order status writeback, cancelling a Shoper order from OpenLinker.
 
 ## Known gaps
 
