@@ -33,11 +33,12 @@ const baseResult: InventoryAdjustmentResult = {
 };
 
 describe('inventory adjustment vocabulary', () => {
-  it('should expose exactly the three reasons a shipped caller writes', () => {
+  it('should expose exactly the four reasons a shipped caller writes', () => {
     expect(InventoryAdjustmentReasonValues).toEqual([
       'return_restock',
       'manual_correction',
       'order_sale',
+      'order_sale_reversal',
     ]);
   });
 
