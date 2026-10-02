@@ -65,7 +65,7 @@ import {
 import { fetchShoperStocks } from '../../http/shoper-stocks';
 import { mapShoperProduct, mapShoperStockToVariant } from '../../mappers/shoper-product.mapper';
 import { resolveShoperExternalProductId } from '../../readers/shoper-product-id';
-import { ShoperProductReader } from '../../readers/shoper-product.reader';
+import type { ShoperProductReader } from '../../readers/shoper-product.reader';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
 /** Explicit direction: a bare `order=<field>` sorts DESCENDING on Shoper. */
@@ -88,11 +88,11 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     private readonly shopContext: ShoperShopContextProvider,
     private readonly taxTable: ShoperTaxTableProvider,
     private readonly connection: Connection,
-    // Shared with the InventoryMaster adapter of the same resolution when the
-    // factory passes one, so a product is read (and a deletion reported) once.
-    productReader?: ShoperProductReader,
+    // Shared with the InventoryMaster adapter of the same resolution, so a
+    // product is read (and a deletion reported) once.
+    productReader: ShoperProductReader,
   ) {
-    this.productReader = productReader ?? new ShoperProductReader(client, connection.id);
+    this.productReader = productReader;
   }
 
   // ─── Read methods ──────────────────────────────────────────────────────────

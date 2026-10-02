@@ -9,7 +9,7 @@ describe('shoper-inventory.mapper', () => {
     expect(readShoperStockLevel({ stock })).toBe(expected);
   });
 
-  it.each([[''], ['abc'], [undefined as unknown as string]])(
+  it.each([[''], ['abc'], ['-3'], [undefined as unknown as string]])(
     'should read an unreadable stock %p as null, never 0',
     (stock) => {
       expect(readShoperStockLevel({ stock })).toBeNull();

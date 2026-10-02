@@ -22,7 +22,9 @@ import { parseShoperNumber } from './shoper-product.mapper';
  * Fractional values are kept as the shop states them.
  */
 export function readShoperStockLevel(stock: Pick<ShoperStock, 'stock'>): number | null {
-  return parseShoperNumber(stock.stock) ?? null;
+  const level = parseShoperNumber(stock.stock);
+  // A negative level is not a stock figure we can publish: treat it as unreadable.
+  return level === undefined || level < 0 ? null : level;
 }
 
 export interface ShoperInventoryIds {

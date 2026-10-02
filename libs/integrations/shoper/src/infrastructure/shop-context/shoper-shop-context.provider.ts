@@ -20,6 +20,7 @@
  *
  * @module libs/integrations/shoper/src/infrastructure/shop-context
  */
+import { Logger } from '@openlinker/shared/logging';
 import type { CachePort } from '@openlinker/shared';
 
 import { SHOPER_CONNECTION_TEST_PATH } from '../../shoper.constants';
@@ -40,6 +41,8 @@ export interface ShoperShopContextCacheOptions {
 }
 
 export class ShoperShopContextProvider {
+  private readonly logger = new Logger(ShoperShopContextProvider.name);
+
   private pending: Promise<ShoperMapContext> | null = null;
 
   constructor(
@@ -91,6 +94,12 @@ export class ShoperShopContextProvider {
     const { data } = await this.client.get<Partial<ShoperApplicationConfig>>(
       SHOPER_CONNECTION_TEST_PATH,
     );
+    if (data.warehouses_enabled === undefined || data.warehouses_enabled === null) {
+      this.logger.warn(
+        'Shoper application-config carries no warehouses_enabled flag; treating the shop ' +
+          'as multi-warehouse, so InventoryMaster reads are refused',
+      );
+    }
     return {
       host: this.host,
       language: data.default_language_name ?? '',

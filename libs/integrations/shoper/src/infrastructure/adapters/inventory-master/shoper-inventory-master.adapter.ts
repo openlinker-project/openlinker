@@ -164,9 +164,9 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
   // ─── Internals ─────────────────────────────────────────────────────────────
 
   /**
-   * The product's stock rows. Whether a filtered listing of a deleted product
-   * answers an empty list or a 404 is not verified on a live shop, so a 404
-   * here is not trusted as a deletion on its own: the product itself is asked,
+   * The product's stock rows. A live shop answers a filtered listing of a
+   * deleted product with 200 and an empty list (verified on a trial shop), which
+   * the caller probes. A 404 is not trusted as a deletion on its own either: the product itself is asked,
    * and only its answer can become the neutral error. If it still resolves, the
    * listing's 404 is rethrown untouched.
    */
