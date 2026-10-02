@@ -4,8 +4,8 @@ OpenLinker adapter for [Shoper](https://www.shoper.pl) (Polish SaaS e-commerce p
 
 **Status:** connection skeleton (#3639) plus the **read side of `ProductMaster`** (#3675): products, variants,
 search and id enumeration. Categories (#3676), tax rate (#3677) and deletion detection (#3678) complete
-ProductMaster; InventoryMaster, OrderProcessorManager, fulfilment writeback and webhooks land in their own
-epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
+ProductMaster. `InventoryMaster` (#3686, #3687) and the `OrderProcessorManager` skeleton (#3692) are described
+below; fulfilment writeback and webhooks land in their own epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
 and the live findings recorded in `docs/plans/implementation-plan-shoper-product-master-read.md`.
 
 | | |
@@ -191,10 +191,12 @@ at create and never retro-filled, so an existing connection must be edited.
 
 ## OrderProcessorManager
 
-Declared as `OrderProcessorManager` (#3692, #3693). Enable it on the connection's `enabledCapabilities` - the list
-is stamped at create and never retro-filled. **There is no duplicate-order guard yet (#3694): a retried
-`createOrder` creates a second Shoper order, so do not enable the capability on a production connection before
-that slice lands.**
+Declared as `OrderProcessorManager` (#3692, #3693). **It is not enabled by default**: a new connection gets only
+`ProductMaster` and `InventoryMaster` (`defaultEnabledCapabilities`), because core fans every ingested order out to
+every active `OrderProcessorManager` connection and a shop meant as a catalogue / stock master must not start
+receiving orders. Enable it explicitly on the connection's `enabledCapabilities` - the list is stamped at create and
+never retro-filled. **There is no duplicate-order guard yet (#3694): a retried `createOrder` creates a second Shoper
+order, so do not enable the capability on a production connection before that slice lands.**
 
 `createOrder` resolves everything first and writes second, because Shoper decrements stock as each line is
 created: user, variants, taxes, the three required ids, currency and prices are settled before the first write.
