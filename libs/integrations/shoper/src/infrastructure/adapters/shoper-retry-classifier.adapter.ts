@@ -15,6 +15,8 @@
  *     same job re-run finds the same gap.
  *   - `ShoperWarehousesNotSupportedException` - the shop runs the multi-warehouse
  *     module; only an operator change alters that.
+ *   - `ShoperVariantRequiredException` - a stock write on a multi-variant product
+ *     with no variant named; the same call names none again.
  *   - `RangeError` - a window or offset the adapter's own sanity bounds reject.
  *   - `ShoperApiError` 4xx other than 404, 408 and 429 - the shop understood
  *     the request and refused it (`400` bad request, `401`/`403` credentials
@@ -41,6 +43,7 @@ import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
 import { ShoperConfigException } from '../../domain/exceptions/shoper-config.exception';
 import { ShoperNotMappedException } from '../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../domain/exceptions/shoper-not-supported.exception';
+import { ShoperVariantRequiredException } from '../../domain/exceptions/shoper-variant-required.exception';
 import { ShoperWarehousesNotSupportedException } from '../../domain/exceptions/shoper-warehouses-not-supported.exception';
 
 const RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
@@ -52,6 +55,7 @@ export class ShoperRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof ShoperNotSupportedException ||
       cause instanceof ShoperNotMappedException ||
       cause instanceof ShoperWarehousesNotSupportedException ||
+      cause instanceof ShoperVariantRequiredException ||
       cause instanceof RangeError
     ) {
       return true;

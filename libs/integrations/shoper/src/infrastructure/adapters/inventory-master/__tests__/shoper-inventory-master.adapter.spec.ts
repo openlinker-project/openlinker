@@ -3,9 +3,11 @@ import { MasterProductNotFoundError } from '@openlinker/core/products';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperInvalidStockLevelException } from '../../../../domain/exceptions/shoper-invalid-stock-level.exception';
+import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../../domain/exceptions/shoper-stock-not-found.exception';
+import { ShoperVariantRequiredException } from '../../../../domain/exceptions/shoper-variant-required.exception';
 import { ShoperWarehousesNotSupportedException } from '../../../../domain/exceptions/shoper-warehouses-not-supported.exception';
 import {
   MAP_CONTEXT,
@@ -25,10 +27,12 @@ const NOT_FOUND = new ShoperApiError(404, 'invalid_request', 'Resource not found
 function setup(context = MAP_CONTEXT): {
   adapter: ShoperInventoryMasterAdapter;
   get: jest.Mock;
+  put: jest.Mock;
   mapping: { getExternalIds: jest.Mock; batchGetOrCreateInternalIds: jest.Mock };
 } {
   const get = jest.fn();
-  const client = { get } as unknown as ShoperHttpClient;
+  const put = jest.fn().mockResolvedValue({ status: 200, data: {} });
+  const client = { get, put } as unknown as ShoperHttpClient;
   const mapping = {
     getExternalIds: jest.fn().mockResolvedValue([
       { externalId: '93', connectionId: CONNECTION_ID, platformType: 'shoper', entityType: 'Product' },
@@ -47,7 +51,7 @@ function setup(context = MAP_CONTEXT): {
     new ShoperProductReader(client, CONNECTION_ID),
     { id: CONNECTION_ID } as Connection,
   );
-  return { adapter, get, mapping };
+  return { adapter, get, put, mapping };
 }
 
 function shop(get: jest.Mock, stocks: unknown[], product: unknown = buildProduct()): void {
@@ -180,11 +184,190 @@ describe('ShoperInventoryMasterAdapter', () => {
     await expect(adapter.getInventory('ol_93')).rejects.toBeInstanceOf(ShoperStockNotFoundException);
   });
 
+  describe('adjustInventory', () => {
+    function withPut(stocks: unknown[]): ReturnType<typeof setup> & { put: jest.Mock } {
+      const h = setup();
+      shop(h.get, stocks);
+      // A write is visible to the read-back, as on a real shop.
+      h.put.mockImplementation((path: string, body: { stock: number }) => {
+        const row = (stocks as Array<{ stock_id: string; stock: unknown }>).find(
+          (r) => `/product-stocks/${r.stock_id}` === path,
+        );
+        if (row) row.stock = String(body.stock);
+        return Promise.resolve({ status: 200, data: {} });
+      });
+      h.mapping.getExternalIds.mockImplementation((type: string) =>
+        Promise.resolve(
+          type === 'ProductVariant'
+            ? [{ externalId: '181', connectionId: CONNECTION_ID }]
+            : [{ externalId: '93', connectionId: CONNECTION_ID }],
+        ),
+      );
+      return h;
+    }
+
+    it('should write current plus delta as an absolute stock and report it unsupported-idempotent', async () => {
+      const { adapter, put } = withPut([buildStock({ stock: '74' })]);
+
+      const result = await adapter.adjustInventory({ productId: 'ol_93', quantity: 2 });
+
+      expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 76 });
+      expect(result).toMatchObject({
+        quantity: 76,
+        available: 76,
+        adjustmentOutcome: { disposition: 'applied', idempotency: 'unsupported', appliedAt: null },
+      });
+    });
+
+    it('should report unsupported even when the caller sent an idempotency key', async () => {
+      const { adapter } = withPut([buildStock({ stock: '1' })]);
+
+      const result = await adapter.adjustInventory({
+        productId: 'ol_93',
+        quantity: 1,
+        idempotencyKey: 'k',
+      });
+
+      expect(result.adjustmentOutcome?.idempotency).toBe('unsupported');
+    });
+
+    it('should clamp a decrease below zero to 0', async () => {
+      const { adapter, put } = withPut([buildStock({ stock: '3' })]);
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: -10 })).resolves.toMatchObject({
+        quantity: 0,
+      });
+      expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 0 });
+    });
+
+    it('should target the named variant of a multi-variant product', async () => {
+      const { adapter, put } = withPut([
+        buildStock({ stock_id: '180', stock: '9' }),
+        buildStock({ stock_id: '181', stock: '4' }),
+      ]);
+
+      await adapter.adjustInventory({ productId: 'ol_93', variantId: 'ol_181', quantity: 1 });
+
+      expect(put).toHaveBeenCalledWith('/product-stocks/181', { stock: 5 });
+    });
+
+    it('should refuse to guess the variant when several exist and none is named', async () => {
+      const { adapter, put } = withPut([buildStock({ stock_id: '180' }), buildStock({ stock_id: '181' })]);
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        ShoperVariantRequiredException,
+      );
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a variantId that matches no stock row without writing', async () => {
+      const { adapter, put, mapping } = withPut([buildStock({ stock_id: '180' })]);
+      mapping.getExternalIds.mockImplementation((type: string) =>
+        Promise.resolve([
+          { externalId: type === 'ProductVariant' ? '999' : '93', connectionId: CONNECTION_ID },
+        ]),
+      );
+
+      await expect(
+        adapter.adjustInventory({ productId: 'ol_93', variantId: 'ol_999', quantity: 1 }),
+      ).rejects.toBeInstanceOf(ShoperStockNotFoundException);
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should not write when the stock level is unreadable', async () => {
+      const { adapter, put } = withPut([buildStock({ stock: 'abc' })]);
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        ShoperInvalidStockLevelException,
+      );
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should not write when identifier mapping fails', async () => {
+      const { adapter, put, mapping } = withPut([buildStock({ stock: '3' })]);
+      mapping.batchGetOrCreateInternalIds.mockRejectedValue(new Error('db down'));
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toThrow('db down');
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should report the level Shoper holds after the write, not the computed one', async () => {
+      const { adapter, get } = withPut([buildStock({ stock: '5' })]);
+      let reads = 0;
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') return Promise.resolve({ status: 200, data: buildProduct() });
+        reads += 1;
+        return Promise.resolve({ status: 200, data: envelope([buildStock({ stock: reads === 1 ? '5' : '3' })]) });
+      });
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: -1 })).resolves.toMatchObject({
+        quantity: 3,
+      });
+    });
+
+    it('should report the written level when the stock is unreadable after the write', async () => {
+      const { adapter, get } = withPut([buildStock({ stock: '5' })]);
+      let reads = 0;
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') return Promise.resolve({ status: 200, data: buildProduct() });
+        reads += 1;
+        return Promise.resolve({
+          status: 200,
+          data: envelope([buildStock({ stock: reads === 1 ? '5' : 'abc' })]),
+        });
+      });
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: -1 })).resolves.toMatchObject({
+        quantity: 4,
+      });
+    });
+
+    it('should report the written level when the read-back request fails', async () => {
+      const { adapter, get } = withPut([buildStock({ stock: '5' })]);
+      let reads = 0;
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') return Promise.resolve({ status: 200, data: buildProduct() });
+        reads += 1;
+        return reads === 1
+          ? Promise.resolve({ status: 200, data: envelope([buildStock({ stock: '5' })]) })
+          : Promise.reject(new ShoperNetworkError('boom'));
+      });
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: -1 })).resolves.toMatchObject({
+        quantity: 4,
+      });
+    });
+
+    it('should refuse on a multi-warehouse shop without reading or writing', async () => {
+      const h = setup({ ...MAP_CONTEXT, warehousesEnabled: true });
+
+      await expect(h.adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        ShoperWarehousesNotSupportedException,
+      );
+      expect(h.get).not.toHaveBeenCalled();
+    });
+
+    it('should not report success when the write fails', async () => {
+      const { adapter, put } = withPut([buildStock({ stock: '3' })]);
+      put.mockRejectedValue(new ShoperNetworkError('boom'));
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        ShoperNetworkError,
+      );
+    });
+
+    it('should not write when the product is gone', async () => {
+      const { adapter, get, put } = withPut([]);
+      get.mockRejectedValue(NOT_FOUND);
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: 1 })).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
+      expect(put).not.toHaveBeenCalled();
+    });
+  });
+
   it.each([
-    [
-      'adjustInventory',
-      (a: ShoperInventoryMasterAdapter): Promise<unknown> => a.adjustInventory({} as never),
-    ],
     [
       'reserveInventory',
       (a: ShoperInventoryMasterAdapter): Promise<unknown> => a.reserveInventory('p', 1, 'o'),
