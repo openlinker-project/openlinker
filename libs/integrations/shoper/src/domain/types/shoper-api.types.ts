@@ -191,3 +191,9 @@ export interface ShoperOrderProductCreateRequest {
   readonly tax: string;
   readonly tax_value: number;
 }
+
+/** The slice of a `GET /orders` row the duplicate guard reads. */
+export interface ShoperOrderRef {
+  readonly order_id: string;
+  readonly notes_priv?: string | null;
+}

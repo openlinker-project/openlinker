@@ -2,6 +2,7 @@ import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperConfigException } from '../../../domain/exceptions/shoper-config.exception';
 import { ShoperCustomerUnresolvableException } from '../../../domain/exceptions/shoper-customer-unresolvable.exception';
 import { ShoperOrderUnbuildableException } from '../../../domain/exceptions/shoper-order-unbuildable.exception';
+import { ShoperDuplicateOrderException } from '../../../domain/exceptions/shoper-duplicate-order.exception';
 import { ShoperPartialOrderException } from '../../../domain/exceptions/shoper-partial-order.exception';
 import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
@@ -19,12 +20,18 @@ describe('ShoperRetryClassifierAdapter', () => {
     ['a not-supported exception', new ShoperNotSupportedException('createProduct')],
     ['a warehouses-not-supported exception', new ShoperWarehousesNotSupportedException('c')],
     ['an unbuildable order', new ShoperOrderUnbuildableException('c', 'no currency')],
-    ['a partial order', new ShoperPartialOrderException('c', '10', 1, 2, new Error('x'))],
+    ['a duplicated order', new ShoperDuplicateOrderException('c', 'ol_order_1', ['10', '11'])],
     ['an unresolvable customer', new ShoperCustomerUnresolvableException('c', 'no email')],
     ['a not-mapped exception', new ShoperNotMappedException('p', 'c')],
     ['a RangeError from the adapter’s own bounds', new RangeError('window')],
   ])('should treat %s as terminal: re-running the job fails identically', (_label, cause) => {
     expect(classifier.isNonRetryable(cause)).toBe(true);
+  });
+
+  it('should keep a partial order retryable: the retry removes the stale header and recreates', () => {
+    expect(
+      classifier.isNonRetryable(new ShoperPartialOrderException('c', '10', 1, 2, new Error('x'))),
+    ).toBe(false);
   });
 
   it.each([400, 401, 403, 410, 422])('should treat HTTP %i as terminal', (status) => {
