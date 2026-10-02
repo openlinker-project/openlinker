@@ -27,6 +27,14 @@ export interface SetupStepperProps {
   /** 0-based. With `onSelectStep`, steps after this one are disabled. Defaults to `currentStep`. */
   maxReachedStep?: number;
   testId?: string;
+  /**
+   * `vertical` stacks the steps in a column for a wizard that keeps its list
+   * beside the content. Horizontal stays the default, so every other wizard
+   * is unchanged.
+   */
+  orientation?: 'horizontal' | 'vertical';
+  /** A short line under each step's label, shown in the vertical layout. Same order as `steps`. */
+  stepMeta?: readonly string[];
 }
 
 function testIdFor(testId: string | undefined, part: string): string | undefined {
@@ -41,13 +49,17 @@ export function SetupStepper({
   onSelectStep,
   maxReachedStep,
   testId,
+  orientation = 'horizontal',
+  stepMeta,
 }: SetupStepperProps): ReactElement {
   const reached = maxReachedStep ?? currentStep;
 
   return (
     <nav
       aria-label="Setup progress"
-      className={['setup-stepper', className].filter(Boolean).join(' ')}
+      className={['setup-stepper', orientation === 'vertical' ? 'setup-stepper--vertical' : '', className]
+        .filter(Boolean)
+        .join(' ')}
       data-testid={testId}
     >
       {/* Desktop / tablet: full step list */}
@@ -80,7 +92,13 @@ export function SetupStepper({
                   <span>{index + 1}</span>
                 )}
               </span>
-              <span className="setup-stepper__label">{label}</span>
+              <span className="setup-stepper__text">
+                <span className="setup-stepper__label">{label}</span>
+                {orientation === 'vertical' && stepMeta !== undefined ? (
+                  // Always rendered, even empty, so every row is the same height.
+                  <span className="setup-stepper__meta">{stepMeta[index]}</span>
+                ) : null}
+              </span>
             </>
           );
 

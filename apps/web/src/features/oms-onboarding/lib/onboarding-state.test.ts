@@ -12,6 +12,7 @@ import {
   isStep1Done,
   readSourcingStanding,
   resolveDataSource,
+  TURN_ON_STEP,
   type DataStateInput,
   type OnboardingDataState,
 } from './onboarding-state';
@@ -79,10 +80,13 @@ describe('deriveDataState', () => {
     [{ masterCount: 2 }, 'step-1-two-product-masters'],
     [{ step1Done: true }, 'step-1-stock-syncing'],
     [{ step1Done: true, stockComplete: true }, 'step-1-stock-complete'],
-    [{ step: 2 }, 'step-2-packers-empty'],
-    [{ step: 2, packerCount: 1 }, 'step-2-packer-added'],
-    [{ step: 3 }, 'step-3-what-changes'],
-    [{ step: 4 }, 'step-4-turn-on'],
+    [{ step: 2 }, 'step-2-sales-documents'],
+    [{ step: 3 }, 'step-3-packers-empty'],
+    [{ step: 3, packerCount: 1 }, 'step-3-packer-added'],
+    [{ step: 4 }, 'step-4-what-changes'],
+    [{ step: 5 }, 'step-5-automations'],
+    [{ step: 6 }, 'step-6-who-decides'],
+    [{ step: 7 }, 'step-7-turn-on'],
     [{ view: 'waiting' }, 'waiting-first-order'],
     [{ view: 'first' }, 'first-order-arrived'],
     [{ view: 'status', live: true }, 'status-on'],
@@ -171,8 +175,8 @@ describe('isPackingLive / isPackingPaused', () => {
 
 describe('initialPosition', () => {
   it('should land on status once packing was ever turned on, else the first undone step', () => {
-    expect(initialPosition(true, false, true)).toEqual({ view: 'status', step: 4 });
-    expect(initialPosition(false, true, true)).toEqual({ view: 'status', step: 4 });
+    expect(initialPosition(true, false, true)).toEqual({ view: 'status', step: TURN_ON_STEP });
+    expect(initialPosition(false, true, true)).toEqual({ view: 'status', step: TURN_ON_STEP });
     expect(initialPosition(false, false, true)).toEqual({ view: 'wizard', step: 2 });
     expect(initialPosition(false, false, false)).toEqual({ view: 'wizard', step: 1 });
   });

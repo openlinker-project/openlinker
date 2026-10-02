@@ -21,6 +21,7 @@ function baseProps(overrides: Partial<PackingStatusProps> = {}): PackingStatusPr
     stockDetail: '100 of 100 products',
     stockComplete: true,
     packerNames: 'anna',
+    setup: null,
     canWrite: true,
     writeVisible: true,
     demoReadOnly: false,

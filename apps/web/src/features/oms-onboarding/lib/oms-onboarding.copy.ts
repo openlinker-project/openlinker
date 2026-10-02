@@ -21,13 +21,14 @@
 
 export const omsOnboardingCopy = {
   page: {
-    eyebrow: 'Settings',
+    eyebrow: 'Connections',
     backToConnections: 'Add a connection',
-    wizardTitle: 'Pack orders in OpenLinker',
+    wizardTitle: 'OpenLinker OMS',
     wizardDescription:
       'Pick and pack orders on one screen, with a barcode scanner. Setup takes about 5 minutes. Nothing changes in how your orders are handled until the last step.',
-    statusTitle: 'Packing in OpenLinker',
-    statusDescription: 'Orders are packed at the pack bench. You can stop this at any time.',
+    statusTitle: 'OpenLinker OMS',
+    statusDescription:
+      'What OpenLinker takes over: packing at the pack bench, then sales documents and automations. You can stop packing at any time.',
     loadingTitle: 'Loading packing setup',
     loadingMessage: 'Reading your connections, locations and stock.',
     errorTitle: 'Could not load the packing setup',
@@ -37,11 +38,55 @@ export const omsOnboardingCopy = {
 
   steps: [
     { title: 'Your product master', meta: 'Products and stock' },
+    { title: 'Sales documents', meta: 'Invoices and receipts' },
     { title: 'Add packers', meta: 'Optional' },
     { title: 'See what changes', meta: 'Read before turning on' },
-    { title: 'Turn it on', meta: '' },
+    { title: 'Automations', meta: 'Review only' },
+    { title: 'Who decides what', meta: 'Review' },
+    { title: 'Turn it on', meta: 'Last step' },
   ],
   stepOf: (step: number, total: number): string => `Step ${String(step)} of ${String(total)}`,
+  salesDocumentsStep: {
+    why: 'Decide which document each order gets: an invoice or a receipt. Connect a provider that issues them, then say what each one issues, which goes first, and whether it issues by itself once an order is paid.',
+    noConnectionTitle: 'No invoicing or fiscal receipt connection yet',
+    noConnectionBody:
+      'Connect a provider that issues invoices (for example inFakt, KSeF or Subiekt) or fiscal receipts (for example eparagony) first. Then come back here to choose what it issues.',
+    addConnection: 'Add a connection',
+    automaticRequiredTitle: 'Documents must be issued automatically',
+    automaticRequiredBody:
+      'Choose what a connection issues, mark it Primary, and set its Trigger to an automatic option (for example Auto on order paid). With the Trigger on Manual, nothing is issued unless someone does it by hand.',
+    perCountry:
+      'Rules for a particular country, or a default for orders no rule covers, are set on the document routing page.',
+    openRouting: 'Open document routing',
+  },
+  setupSteps: {
+    finish: 'Finish',
+    review: 'Review',
+    notNeeded: 'Not needed',
+    undo: 'Undo',
+    state: {
+      done: 'Already set up',
+      pending: 'Not set up yet',
+      none: 'None yet',
+      skipped: 'Marked as not needed',
+      unknown: 'Could not check this right now',
+    },
+    salesDocuments: {
+      why: 'Packing works. Next, decide which document each order gets: an invoice or a receipt, country by country.',
+      detail: 'Document routing is configured on its own page. You can come back here when you are done.',
+      open: 'Open document routing',
+    },
+    automations: {
+      why: 'Automations let OpenLinker act by itself when something happens, for example buy the shipping label as soon as an order is packed. Nothing is set here: this is a look at what exists.',
+      detail: 'Automations live on their own page. Review them, or add more, whenever you like.',
+      open: 'Open automations',
+    },
+    whoDecides: {
+      why: 'Check which system decides stock, packing and returns. Anything that needs your attention is listed there.',
+      detail: 'This is a review, not a form: nothing here changes until you choose an arrangement.',
+      open: 'Open who decides what',
+    },
+  },
   back: 'Back',
   continue: 'Continue',
   adminOnly: 'Only an admin can change the packing setup.',
@@ -221,18 +266,46 @@ export const omsOnboardingCopy = {
       count === 0
         ? 'Nothing on Fulfilment yet.'
         : `${String(count)} ${count === 1 ? 'parcel' : 'parcels'} on Fulfilment${ago === null ? '' : ` · last one arrived ${ago}`}`,
-    offTitle: 'Packing is off',
+    continueSetup: 'Continue setup',
+    partialTitle: 'OMS is partially set up',
+    setUpTitle: 'OMS is set up',
+    stepsLeft: (count: number): string =>
+      `Packing works. ${String(count)} ${count === 1 ? 'step is' : 'steps are'} left.`,
+    offTitle: 'Fulfilment is off',
     offBody: (names: string): string =>
       `New orders go to ${names} and are packed there, as before. Your stock setup is kept.`,
     openFulfilment: 'Open Fulfilment',
     openBench: 'Open pack bench',
     goToStatus: 'Go to status',
-    stop: 'Stop packing in OpenLinker',
-    startAgain: 'Start packing again',
+    stop: 'Turn off fulfilment',
+    startAgain: 'Turn fulfilment back on',
     starting: 'Starting…',
     setupTitle: 'Setup',
     open: 'Open',
     addPackers: 'Add packers',
+    steps: {
+      setUp: 'Set up',
+      review: 'Review',
+      notNeeded: 'Not needed',
+      undo: 'Undo',
+      salesDocuments: {
+        title: 'Sales documents',
+        pending: 'Documents are issued by hand, or not at all. Mark a connection Primary and set its Trigger to automatic.',
+        done: 'Documents are issued automatically.',
+      },
+      automations: {
+        title: 'Automations',
+        pending: 'None yet. Optional: let OpenLinker act when an order is packed, for example buy the shipping label.',
+        done: 'At least one automation is set up.',
+      },
+      whoDecides: {
+        title: 'Who decides what',
+        pending: 'Something needs your attention in who decides stock, packing and returns.',
+        done: 'Nothing needs attention.',
+      },
+      skipped: 'Marked as not needed.',
+      unknown: 'Could not check this right now.',
+    },
     addPackerDialogBody: 'They sign in at the pack bench with this login.',
     closeDialog: 'Close',
     stockFrom: (located: string, total: string, names: string): string =>
@@ -254,28 +327,21 @@ export const omsOnboardingCopy = {
    * OpenLinker, but two things it depends on are configured elsewhere, so the
    * operator is pointed at both — as links, not as prose naming a menu.
    */
-  nextSteps: {
-    title: 'OpenLinker now handles fulfilment',
-    body: 'You set up packing in OpenLinker, so the whole fulfilment flow — packing the order and shipping it — now runs in OpenLinker. Don’t forget to finish two things:',
-    automationsLink: 'Set up automations',
-    automationsHint: 'for example, buy the shipping label as soon as an order is packed',
-    whoDecidesLink: 'Check Who decides what',
-    whoDecidesHint: 'see which system decides stock, packing and returns',
-  },
-
   stopDialog: {
-    title: 'Stop packing in OpenLinker?',
+    title: 'Turn off fulfilment in OpenLinker?',
     bodyNewOrders: (names: string): string =>
-      `New orders go to ${names} and are packed there, as before.`,
+      `New orders will go to ${names} and be packed there, as before.`,
     bodyExisting: (count: number): string =>
       count === 0
         ? 'Nothing is on Fulfilment right now.'
-        : `The ${String(count)} ${count === 1 ? 'parcel' : 'parcels'} already on Fulfilment stay there. Finish packing them at the pack bench.`,
-    bodyKept: 'Your stock setup is kept, so you can start again with one click.',
-    cancel: 'Cancel',
-    confirm: 'Stop packing',
-    stopping: 'Stopping…',
+        : `The ${String(count)} ${count === 1 ? 'parcel' : 'parcels'} already at the pack bench stay there. Finish packing them there.`,
+    bodyKept:
+      'Invoices and receipts are still issued automatically, for new orders too. Your automations keep running. Your stock setup is kept, so you can turn fulfilment back on with one click.',
+    cancel: 'Keep it on',
+    confirm: 'Turn off fulfilment',
+    stopping: 'Turning off…',
   },
+
 
   /** How the product masters are named in a sentence when there are two. */
   yourProductMasters: 'your product masters',
