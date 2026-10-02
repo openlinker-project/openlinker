@@ -118,4 +118,100 @@ export interface ShoperApplicationConfig {
    * reads as on, so stock is refused rather than published on a guess.
    */
   readonly warehouses_enabled: boolean | string | number;
+  /**
+   * Whether the shop removes stock itself when an order line is created ("1" on
+   * the trial shop). Absent or unrecognised reads as ON, the shop default.
+   */
+  readonly shopping_update_stock_on_buy?: boolean | string | number;
+}
+
+/** A `GET /users` row (the slice the customer provisioner reads). */
+export interface ShoperUser {
+  readonly user_id: string;
+  readonly email: string;
+  readonly firstname?: string | null;
+  readonly lastname?: string | null;
+}
+
+/** Body of `POST /users`. */
+export interface ShoperUserCreateRequest {
+  readonly email: string;
+  readonly firstname: string;
+  readonly lastname: string;
+  readonly active: 1;
+}
+
+/** A `GET /shippings` row (the slice the order flow reads). */
+export interface ShoperShipping {
+  readonly shipping_id: string;
+  /** The shipping method's own tax; becomes the order's `shipping_tax_id`. */
+  readonly tax_id: string;
+}
+
+/** A `GET /currencies` row. */
+export interface ShoperCurrency {
+  readonly currency_id: string;
+  readonly name: string;
+}
+
+/** Billing / delivery address of `POST /orders`. */
+export interface ShoperOrderAddress {
+  readonly firstname: string;
+  readonly lastname: string;
+  readonly company: string;
+  readonly street1: string;
+  readonly street2: string;
+  readonly city: string;
+  readonly postcode: string;
+  readonly state: string;
+  readonly country_code: string;
+  readonly phone: string;
+  readonly tax_identification_number: string;
+}
+
+/** Body of `POST /orders` (the six required fields of SPIKE-3638 O1, plus context). */
+export interface ShoperOrderCreateRequest {
+  readonly user_id: number;
+  readonly email: string;
+  readonly status_id: number;
+  readonly payment_id: number;
+  readonly shipping_id: number;
+  readonly shipping_tax_id: number;
+  readonly shipping_cost: number;
+  readonly currency_id: number;
+  /** Amount already paid; equal to the order sum makes Shoper read it as paid. Omitted when unknown. */
+  readonly paid?: number;
+  readonly billing_address: ShoperOrderAddress;
+  readonly delivery_address: ShoperOrderAddress;
+  /** Private note: the OpenLinker order id, for forensic recovery only (NOT a dedup key). */
+  readonly notes_priv?: string;
+}
+
+/** Body of `POST /order-products`. `price` is GROSS and `tax` is the tax NAME. */
+export interface ShoperOrderProductCreateRequest {
+  readonly order_id: number;
+  readonly product_id: number;
+  readonly stock_id: number;
+  readonly price: number;
+  readonly quantity: number;
+  readonly name: string;
+  readonly tax: string;
+  readonly tax_value: number;
+}
+
+/** The slice of a `GET /orders` row the duplicate guard reads. */
+export interface ShoperOrderRef {
+  readonly order_id: string;
+  readonly notes_priv?: string | null;
+  /** The order's current status; compared with the one OpenLinker created it in. */
+  readonly status_id?: string | number | null;
+}
+
+/** Row of `/shippings`, `/payments` or `/statuses`: the id plus per-language labels. */
+export interface ShoperOptionRow {
+  readonly shipping_id?: string;
+  readonly payment_id?: string;
+  readonly status_id?: string;
+  readonly name?: string | null;
+  readonly translations?: Readonly<Record<string, { readonly name?: string | null; readonly title?: string | null }>>;
 }

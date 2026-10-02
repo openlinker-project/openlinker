@@ -87,8 +87,22 @@ export class ShoperHttpClient {
     return this.request<unknown>('PUT', path, undefined, body);
   }
 
+  /**
+   * JSON create. Same safety properties as `get`. Typed by the caller because
+   * Shoper's answer differs per resource (a bare id for some, an object for
+   * others); an unreadable body is already a `ShoperNetworkError`.
+   */
+  async post<T>(path: string, body: unknown): Promise<ShoperHttpResponse<T>> {
+    return this.request<T>('POST', path, undefined, body);
+  }
+
+  /** Delete; Shoper answers `1`. Same safety properties as `get`. */
+  async delete(path: string): Promise<ShoperHttpResponse<unknown>> {
+    return this.request<unknown>('DELETE', path);
+  }
+
   private async request<T>(
-    method: 'GET' | 'PUT',
+    method: 'GET' | 'PUT' | 'POST' | 'DELETE',
     path: string,
     query?: ShoperQuery,
     body?: unknown,
