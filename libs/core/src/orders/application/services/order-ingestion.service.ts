@@ -70,6 +70,7 @@ import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   type IFulfillmentRoutingService,
   FULFILLMENT_PROCESSOR_KIND,
+  type FulfillmentRoutingResolution,
 } from '@openlinker/core/mappings';
 import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
@@ -96,7 +97,10 @@ import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
-import { isOrderFromOwnProductMaster } from '../../domain/types/fulfillment-routing-eligibility.types';
+import {
+  isOrderFromOwnProductMaster,
+  isOrderShippedElsewhere,
+} from '../../domain/types/fulfillment-routing-eligibility.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
@@ -123,8 +127,8 @@ interface FulfillmentInterceptOutcome {
  * The fulfilment router this order would be handed to, resolved ONCE (#3480).
  *
  * `null` means the pass-through: nobody claims A2, the claim is ambiguous, the
- * claimant has no router wired, or the order comes from the operator's own shop
- * (#3487). Resolved before the advisory hold is recorded, so
+ * claimant has no router wired, the order comes from the operator's own shop
+ * (#3487), or another system ships it (#3488). Resolved before the advisory hold is recorded, so
  * the hold's immutable `atpEffect` and the intercept that routes the order are
  * decided from the same answer and cannot disagree.
  */
@@ -574,6 +578,12 @@ export class OrderIngestionService implements IOrderIngestionService {
       incoming.externalUrl ?? null
     );
 
+    // The order's ADR-012 fulfilment routing, resolved at most once and only if
+    // asked for: the reservation's `atpEffect` (#2344) and the #3488 routing
+    // skip both read it, and a second resolve could answer differently if a rule
+    // were edited between the two.
+    const fulfillmentRouting = this.memoizeFulfillmentRouting(order, connectionId);
+
     // #2344: record OL's own advisory holds. Placed after `persistOrder` so the
     // order row exists, and before destination provisioning. `cancelledFromEarlySignal`
     // (#2069) is threaded through so an order already known-cancelled via the
@@ -583,10 +593,15 @@ export class OrderIngestionService implements IOrderIngestionService {
     // intercept: the intercept enqueues the sale decrement, and a hold created
     // after it could land after its own consume and then subtract for its whole
     // TTL.
-    const routingTarget = await this.resolveRoutingTarget(order.id, connectionId);
+    const routingTarget = await this.resolveRoutingTarget(
+      order.id,
+      connectionId,
+      fulfillmentRouting
+    );
     await this.reserveOrderInventory(
       order,
       connectionId,
+      fulfillmentRouting,
       cancelledFromEarlySignal,
       routingTarget !== null && order.shippingAddress !== undefined
     );
@@ -868,8 +883,8 @@ export class OrderIngestionService implements IOrderIngestionService {
    * degrades to the pass-through (`null`), which is also what stamps the hold the
    * way it was stamped before #3480.
    *
-   * **#3487's "never route the operator's own shop" rule lives HERE, not in the
-   * intercept.** This answer also decides the advisory hold's insert-only
+   * **#3487's "never route the operator's own shop" and #3488's "never route
+   * what another system ships" rules live HERE, not in the intercept.** This answer also decides the advisory hold's insert-only
    * `atpEffect`, so a rule checked only later would stamp a storefront order's
    * hold `published` while the order is never routed — the shop has already
    * lowered its own stock, so that subtracts the same units twice (#3480).
@@ -878,7 +893,8 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async resolveRoutingTarget(
     orderId: string,
-    orderSourceConnectionId: string
+    orderSourceConnectionId: string,
+    fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>
   ): Promise<RoutingTarget> {
     try {
       const connections = await this.connections.list();
@@ -890,6 +906,39 @@ export class OrderIngestionService implements IOrderIngestionService {
         this.logger.log(
           `Not routing order ${orderId}: its source connection ${orderSourceConnectionId} ` +
             `is a product master (the operator's own shop); following today's path.`
+        );
+        return null;
+      }
+
+      // #3488 — an order whose delivery method the operator has routed to
+      // another system (`omp_fulfilled` by an ADR-012 rule) is shipped there, so
+      // putting it on the pack bench too would ship it twice. Only a matched
+      // rule counts — see `isOrderShippedElsewhere` for why the default does
+      // not — and a failed routing read does NOT route (#3496 review). Skipping
+      // is today's path: the order is mirrored to its destinations and handled
+      // exactly as on any pre-OMS install, so nothing is lost. Routing on an
+      // unknown answer could put a parcel on the bench that the marketplace also
+      // ships — a physical, unrecoverable double shipment — so this resolves
+      // toward the action that cannot duplicate, like #3489 (declining beats a
+      // blind retry), #3493 (never reverse an unconfirmed write) and #2346
+      // (fail closed on an indeterminate obligation). Here, not in the
+      // intercept, for the same reason as #3487: the hold's `atpEffect` is
+      // decided from this answer. Resolved after the cheaper own-shop check and
+      // shared with the reservation, so it is never resolved twice.
+      const routing = await fulfillmentRouting();
+      if (routing === null) {
+        this.logger.warn(
+          `Not routing order ${orderId}: its fulfilment routing could not be read, so ` +
+            `whether another system ships it is unknown; following today's path.`
+        );
+        return null;
+      }
+      if (isOrderShippedElsewhere(routing)) {
+        // `log`, not `debug`: the answer to "why is this order not on the pack
+        // bench?", invisible at `debug` on a normal deployment (#3496 review).
+        this.logger.log(
+          `Not routing order ${orderId}: its delivery method is routed to ` +
+            `omp_fulfilled by a fulfilment routing rule; following today's path.`
         );
         return null;
       }
@@ -1772,6 +1821,7 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async reserveOrderInventory(
     order: Order,
     connectionId: string,
+    fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
     alreadyCancelled = false,
     routedByOms = false
   ): Promise<void> {
@@ -1807,7 +1857,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       // consumes the hold, so the units are counted once.
       const atpEffect: ReservationAtpEffect = routedByOms
         ? 'published'
-        : await this.resolveReservationAtpEffect(order, connectionId);
+        : this.toReservationAtpEffect(order, await fulfillmentRouting());
 
       let result;
       try {
@@ -1868,34 +1918,54 @@ export class OrderIngestionService implements IOrderIngestionService {
    * publishing 0 after selling 1, for the whole TTL), so the unknown case takes
    * the arm that subtracts from nothing.
    */
-  private async resolveReservationAtpEffect(
+  private toReservationAtpEffect(
     order: Order,
-    connectionId: string
-  ): Promise<ReservationAtpEffect> {
-    try {
-      const resolution = await this.fulfillmentRouting.resolve({
-        sourceConnectionId: connectionId,
-        sourceDeliveryMethodId: order.shipping?.methodId ?? null,
-      });
+    resolution: FulfillmentRoutingResolution | null
+  ): ReservationAtpEffect {
+    // `null` is a failed routing read, already warned about where it failed.
+    if (resolution === null) return 'diagnostic';
 
-      if (resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled) {
-        return 'diagnostic';
-      }
-      if (!resolution.processorAvailable) {
-        this.logger.warn(
-          `Fulfillment route for order ${order.id} names an unavailable processor; ` +
-            'recording the reservation as diagnostic rather than claiming OL executes it'
-        );
-        return 'diagnostic';
-      }
-      return 'published';
-    } catch (error) {
+    if (resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled) {
+      return 'diagnostic';
+    }
+    if (!resolution.processorAvailable) {
       this.logger.warn(
-        `Could not resolve fulfillment routing for order ${order.id}; ` +
-          `recording the reservation as diagnostic: ${(error as Error).message}`
+        `Fulfillment route for order ${order.id} names an unavailable processor; ` +
+          'recording the reservation as diagnostic rather than claiming OL executes it'
       );
       return 'diagnostic';
     }
+    return 'published';
+  }
+
+  /**
+   * The order's ADR-012 fulfilment routing, resolved lazily and at most once.
+   *
+   * **Never rejects.** A failed read answers `null`, which each reader treats as
+   * "unknown": the reservation takes the `diagnostic` arm and the #3488 routing
+   * skip does not route (fail closed, #3496 review). The failed promise is cached like a successful one, so a
+   * store outage costs one warning per order, not one per reader.
+   */
+  private memoizeFulfillmentRouting(
+    order: Order,
+    connectionId: string
+  ): () => Promise<FulfillmentRoutingResolution | null> {
+    let resolution: Promise<FulfillmentRoutingResolution | null> | undefined;
+    return () => {
+      resolution ??= this.fulfillmentRouting
+        .resolve({
+          sourceConnectionId: connectionId,
+          sourceDeliveryMethodId: order.shipping?.methodId ?? null,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Could not resolve fulfillment routing for order ${order.id}; ` +
+              `treating it as unknown: ${(error as Error).message}`
+          );
+          return null;
+        });
+      return resolution;
+    };
   }
 
   private buildUnifiedOrder(
