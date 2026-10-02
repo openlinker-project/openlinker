@@ -77,6 +77,7 @@ describe('InventorySaleDecrementHandler (#3453)', () => {
   const decremented = (overrides: Partial<DecrementForWorkResult> = {}): DecrementForWorkResult => ({
     lines: [],
     retryableLineIds: [],
+    holdCloseFailedLineIds: [],
     attention: { kind: 'none' },
     ...overrides,
   });
@@ -147,6 +148,18 @@ describe('InventorySaleDecrementHandler (#3453)', () => {
     await expect(handler.execute(job())).rejects.toBeInstanceOf(SyncJobExecutionError);
     // The attention write happens BEFORE the throw, so the oversell window is visible.
     expect(orderRecords.markOmsAttention).toHaveBeenCalled();
+  });
+
+  // #3480, #3491 review: the decrement already landed and is never re-sent —
+  // the retry's only job is to re-enter the (idempotent) hold consume. Without
+  // this throw, nothing re-drives it and the reservation subtracts from ATP
+  // for a sale the master already lowered, permanently.
+  it('should throw a retryable error when a settled line\'s hold could not be closed', async () => {
+    saleDecrements.decrementForWork.mockResolvedValue(
+      decremented({ holdCloseFailedLineIds: ['line-1'] })
+    );
+
+    await expect(handler.execute(job())).rejects.toBeInstanceOf(SyncJobExecutionError);
   });
 
   it('should lower nothing for an order cancelled before the job ran', async () => {

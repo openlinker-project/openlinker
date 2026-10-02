@@ -304,7 +304,8 @@ export type SaleDecrementAttention =
  * failure is never erased by another work's success.
  */
 export function deriveSaleDecrementAttention(
-  rows: readonly SaleDecrementAttentionRow[]
+  rows: readonly SaleDecrementAttentionRow[],
+  holdCloseFailedCount = 0
 ): SaleDecrementAttention {
   const failed = rows.filter(
     (row) =>
@@ -312,13 +313,20 @@ export function deriveSaleDecrementAttention(
       !(row.reason != null && NON_ATTENTION_REASONS.includes(row.reason))
   ).length;
 
-  if (failed === 0) {
+  if (failed === 0 && holdCloseFailedCount === 0) {
     return { kind: 'none' };
   }
 
   const parts: string[] = [];
   if (failed > 0) {
     parts.push(`${String(failed)} line(s) not lowered or in doubt`);
+  }
+  if (holdCloseFailedCount > 0) {
+    // Distinct wording: the stock write SUCCEEDED, only the advisory hold is
+    // still counting, so ATP is under-published until the close heals.
+    parts.push(
+      `${String(holdCloseFailedCount)} line(s) lowered in the product master but their hold is still counting`
+    );
   }
   return { kind: 'blocked', detail: parts.join('; ') };
 }
