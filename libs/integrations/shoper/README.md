@@ -4,8 +4,8 @@ OpenLinker adapter for [Shoper](https://www.shoper.pl) (Polish SaaS e-commerce p
 
 **Status:** connection skeleton (#3639) plus the **read side of `ProductMaster`** (#3675): products, variants,
 search and id enumeration. Categories (#3676), tax rate (#3677) and deletion detection (#3678) complete
-ProductMaster; InventoryMaster, OrderProcessorManager, fulfilment writeback and webhooks land in their own
-epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
+ProductMaster. `InventoryMaster` (#3686, #3687) and the `OrderProcessorManager` skeleton (#3692) are described
+below; fulfilment writeback and webhooks land in their own epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
 and the live findings recorded in `docs/plans/implementation-plan-shoper-product-master-read.md`.
 
 | | |
@@ -191,6 +191,29 @@ at create and never retro-filled, so an existing connection must be edited.
 - `reserveInventory` / `releaseInventory` are deprecated by
   ADR-061 and throw `ShoperNotSupportedException`.
 - `master.inventory.syncAll` walks OL's own product mappings, so run a ProductMaster sync first.
+
+## OrderProcessorManager (skeleton)
+
+Declared as `OrderProcessorManager` (#3692). **It is not enabled by default**: a new connection gets only
+`ProductMaster` and `InventoryMaster` (`defaultEnabledCapabilities`), because core fans every ingested order out to
+every active `OrderProcessorManager` connection and a shop meant as a catalogue / stock master must not start
+receiving orders. Enable it explicitly on the connection's `enabledCapabilities` - the list is stamped at create and
+never retro-filled. **`createOrder` is not implemented yet** and throws
+`ShoperNotSupportedException`; order creation (header + lines) and the duplicate-order guard arrive with the next
+slices of epic #3642, so do not enable the capability on a production connection before they land.
+
+What exists now is the user an order must reference. Shoper rejects `user_id = 0` on `POST /orders` and does not
+provision a guest, so `ShoperCustomerProvisioner` resolves or creates one:
+
+- an existing `Customer` identifier mapping on the connection wins;
+- otherwise, under a lock per (connection, email hash), `POST /users`; on Shoper's duplicate-email `400` the
+  existing user is found with `GET /users?filters[email]=` and reused;
+- **there is no guest fallback**, unlike WooCommerce. An order with no usable buyer email (a source that reports
+  none, or `OL_STORE_PII=false`, which keeps only an email hash) fails with
+  `ShoperCustomerUnresolvableException`, a terminal error - retrying cannot add the email.
+- Auth failures, 5xx and network errors are rethrown, never degraded to a wrong user.
+
+The `POST /users` body (`email`, `firstname`, `lastname`, `active`) has not been confirmed against a live shop yet.
 
 ## Known gaps
 

@@ -1,5 +1,6 @@
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperConfigException } from '../../../domain/exceptions/shoper-config.exception';
+import { ShoperCustomerUnresolvableException } from '../../../domain/exceptions/shoper-customer-unresolvable.exception';
 import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
@@ -15,6 +16,7 @@ describe('ShoperRetryClassifierAdapter', () => {
     ['a config exception', new ShoperConfigException('c', 'no token')],
     ['a not-supported exception', new ShoperNotSupportedException('createProduct')],
     ['a warehouses-not-supported exception', new ShoperWarehousesNotSupportedException('c')],
+    ['an unresolvable customer', new ShoperCustomerUnresolvableException('c', 'no email')],
     ['a not-mapped exception', new ShoperNotMappedException('p', 'c')],
     ['a RangeError from the adapter’s own bounds', new RangeError('window')],
   ])('should treat %s as terminal: re-running the job fails identically', (_label, cause) => {
