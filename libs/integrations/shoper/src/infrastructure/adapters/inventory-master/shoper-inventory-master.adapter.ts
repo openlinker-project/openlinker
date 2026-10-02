@@ -47,10 +47,10 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
-import { ShoperVariantRequiredException } from '../../../domain/exceptions/shoper-variant-required.exception';
 import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../domain/exceptions/shoper-stock-not-found.exception';
+import { ShoperVariantRequiredException } from '../../../domain/exceptions/shoper-variant-required.exception';
 import { ShoperWarehousesNotSupportedException } from '../../../domain/exceptions/shoper-warehouses-not-supported.exception';
 import type { ShoperStock } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
@@ -172,15 +172,21 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
     }
   }
 
-  // ─── Not supported in this task ────────────────────────────────────────────
+  // ─── Writes and unsupported methods ────────────────────────────────────────
 
   /**
    * Read, add the delta, write the absolute result. Shoper's `PUT
    * /product-stocks/:id` takes an absolute `stock` and has no conditional write
-   * or idempotency key (SPIKE-3638 M8/M9), so this is NOT atomic: a sale landing
-   * between the read and the PUT is overwritten (the level Shoper holds afterwards is read
-   * back and reported), and a retry after a lost
-   * response applies the delta again. Reported honestly as `unsupported`.
+   * or idempotency key (SPIKE-3638 M8/M9), so this is NOT atomic:
+   * - a change landing between the read and the PUT is overwritten (a lost
+   *   update), and nothing here detects it - the post-write read-back sees only
+   *   what was just written;
+   * - a retry after a lost response applies the delta again.
+   * Reported honestly as `unsupported`.
+   *
+   * The read-back after the PUT covers a different gap: it returns the level
+   * Shoper holds NOW (a change landing after the write shows up), so that is
+   * the number propagated onward rather than a computed one.
    *
    * A delta taking stock below zero is clamped to 0 with a warning (the
    * PrestaShop behaviour), so less than the requested decrease is applied.
@@ -196,9 +202,9 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
       this.connection.id,
       adjustment.productId,
     );
-    await this.productReader.read(externalId, adjustment.productId);
-
-    const stocks = await this.fetchStocks(externalId);
+    // One request fewer than a separate probe: a 404 on the listing is
+    // classified as a deletion only if the product itself is gone.
+    const stocks = await this.fetchStocksOrClassifyDeletion(externalId, adjustment.productId);
     const stock = await this.pickStockRow(stocks, adjustment);
 
     const current = readShoperStockLevel(stock);

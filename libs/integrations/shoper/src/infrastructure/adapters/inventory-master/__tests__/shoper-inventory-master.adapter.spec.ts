@@ -304,6 +304,39 @@ describe('ShoperInventoryMasterAdapter', () => {
       });
     });
 
+    it('should report the written level when the stock is unreadable after the write', async () => {
+      const { adapter, get } = withPut([buildStock({ stock: '5' })]);
+      let reads = 0;
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') return Promise.resolve({ status: 200, data: buildProduct() });
+        reads += 1;
+        return Promise.resolve({
+          status: 200,
+          data: envelope([buildStock({ stock: reads === 1 ? '5' : 'abc' })]),
+        });
+      });
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: -1 })).resolves.toMatchObject({
+        quantity: 4,
+      });
+    });
+
+    it('should report the written level when the read-back request fails', async () => {
+      const { adapter, get } = withPut([buildStock({ stock: '5' })]);
+      let reads = 0;
+      get.mockImplementation((path: string) => {
+        if (path === '/products/93') return Promise.resolve({ status: 200, data: buildProduct() });
+        reads += 1;
+        return reads === 1
+          ? Promise.resolve({ status: 200, data: envelope([buildStock({ stock: '5' })]) })
+          : Promise.reject(new ShoperNetworkError('boom'));
+      });
+
+      await expect(adapter.adjustInventory({ productId: 'ol_93', quantity: -1 })).resolves.toMatchObject({
+        quantity: 4,
+      });
+    });
+
     it('should refuse on a multi-warehouse shop without reading or writing', async () => {
       const h = setup({ ...MAP_CONTEXT, warehousesEnabled: true });
 
