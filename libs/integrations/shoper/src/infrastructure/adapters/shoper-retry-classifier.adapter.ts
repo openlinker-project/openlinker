@@ -21,6 +21,8 @@
  *     email, which a retry cannot add.
  *   - `ShoperOrderUnbuildableException` - the order cannot be expressed on this
  *     shop (missing id, unknown currency or tax); deterministic.
+ *   - `ShoperOrderModifiedException` - a matching order looks edited in the shop and
+ *     was deliberately not deleted; a retry finds the same order.
  *   - `ShoperDuplicateOrderException` - the shop already holds several orders for
  *     one sale; a retry finds the same ones. (`ShoperPartialOrderException` is
  *     deliberately NOT terminal: a retry removes the stale header and recreates.)
@@ -49,6 +51,7 @@ import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
 import { ShoperConfigException } from '../../domain/exceptions/shoper-config.exception';
 import { ShoperCustomerUnresolvableException } from '../../domain/exceptions/shoper-customer-unresolvable.exception';
+import { ShoperOrderModifiedException } from '../../domain/exceptions/shoper-order-modified.exception';
 import { ShoperOrderUnbuildableException } from '../../domain/exceptions/shoper-order-unbuildable.exception';
 import { ShoperDuplicateOrderException } from '../../domain/exceptions/shoper-duplicate-order.exception';
 import { ShoperNotMappedException } from '../../domain/exceptions/shoper-not-mapped.exception';
@@ -67,6 +70,7 @@ export class ShoperRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof ShoperCustomerUnresolvableException ||
       cause instanceof ShoperOrderUnbuildableException ||
       cause instanceof ShoperDuplicateOrderException ||
+      cause instanceof ShoperOrderModifiedException ||
       cause instanceof ShoperWarehousesNotSupportedException ||
       cause instanceof ShoperVariantRequiredException ||
       cause instanceof RangeError

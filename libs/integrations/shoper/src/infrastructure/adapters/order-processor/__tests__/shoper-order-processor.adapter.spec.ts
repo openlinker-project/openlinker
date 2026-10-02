@@ -4,6 +4,8 @@ import type { Address, OrderCreate } from '@openlinker/core/orders';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperDuplicateOrderException } from '../../../../domain/exceptions/shoper-duplicate-order.exception';
+import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
+import { ShoperOrderModifiedException } from '../../../../domain/exceptions/shoper-order-modified.exception';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperOrderUnbuildableException } from '../../../../domain/exceptions/shoper-order-unbuildable.exception';
 import { ShoperPartialOrderException } from '../../../../domain/exceptions/shoper-partial-order.exception';
@@ -167,6 +169,58 @@ describe('ShoperOrderProcessorAdapter', () => {
       expect((post.mock.calls[1] as [string, unknown])[1]).toMatchObject({ price: 123 });
     });
 
+    it('should refuse net-priced shipping the source gave no gross figure for, before any write', async () => {
+      const { adapter, post, resolveOrCreateCustomer } = setup();
+      const o = order({
+        totals: { subtotal: 100, tax: 23, shipping: 10, total: 133, currency: 'PLN', taxTreatment: 'exclusive' },
+        items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' }],
+      });
+
+      await expect(adapter.createOrder(o)).rejects.toThrow(/shipping is net-priced/);
+      expect(post).not.toHaveBeenCalled();
+      expect(resolveOrCreateCustomer).not.toHaveBeenCalled();
+    });
+
+    it('should accept zero net shipping, and use the source gross shipping when it is reported', async () => {
+      const free = setup();
+      await free.adapter.createOrder(
+        order({
+          totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+          items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' }],
+        }),
+      );
+      expect((free.post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ shipping_cost: 0 });
+
+      const gross = setup();
+      await gross.adapter.createOrder(
+        order({
+          totals: { subtotal: 100, tax: 23, shipping: 10, shippingGross: 12.3, total: 135.3, currency: 'PLN', taxTreatment: 'exclusive' },
+          items: [{ id: 'l1', productId: 'p', variantId: 'v', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' }],
+        }),
+      );
+      expect((gross.post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ shipping_cost: 12.3 });
+    });
+
+    it('should mark the order paid for exactly its sum when the source says it is paid', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.createOrder(order({ paymentStatus: 'paid' }));
+
+      // 2 x 50 + 1 x 10 + 12 shipping
+      expect((post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ paid: 122 });
+    });
+
+    it.each([['cod'], ['awaiting'], ['refunded'], [undefined]])(
+      'should send no paid amount for payment status %p',
+      async (paymentStatus) => {
+        const { adapter, post } = setup();
+
+        await adapter.createOrder(order({ paymentStatus }));
+
+        expect((post.mock.calls[0] as [string, Record<string, unknown>])[1]).not.toHaveProperty('paid');
+      },
+    );
+
     it('should refuse a net-priced line the source gave no gross price for, before any write', async () => {
       const { adapter, post, resolveOrCreateCustomer } = setup();
       const o = order({
@@ -262,12 +316,17 @@ describe('ShoperOrderProcessorAdapter', () => {
   describe('duplicate recovery', () => {
     const MARKER = 'OpenLinker order ol_order_1';
 
-    function shopWith(get: jest.Mock, existing: Array<{ id: string; lines: number }>): void {
+    function shopWith(
+      get: jest.Mock,
+      existing: Array<{ id: string; lines: number; statusId?: number }>,
+    ): void {
       get.mockImplementation((path: string, query?: Record<string, string>) => {
         if (path === '/orders') {
           return Promise.resolve({
             status: 200,
-            data: { list: existing.map((o) => ({ order_id: o.id, notes_priv: MARKER })) },
+            data: {
+              list: existing.map((o) => ({ order_id: o.id, notes_priv: MARKER, status_id: String(o.statusId ?? 1) })),
+            },
           });
         }
         const found = existing.find((o) => o.id === query?.['filters[order_id]']);
@@ -305,6 +364,38 @@ describe('ShoperOrderProcessorAdapter', () => {
       expect(del.mock.invocationCallOrder[0]).toBeLessThan(post.mock.invocationCallOrder[0]);
       expect(post).toHaveBeenCalledTimes(3);
     });
+
+    it('should NOT delete a mismatching order that has left its creation status (edited in the shop)', async () => {
+      const { adapter, get, post, del } = setup();
+      shopWith(get, [{ id: '42', lines: 1, statusId: 3 }]);
+
+      const error = await adapter.createOrder(order()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ShoperOrderModifiedException);
+      expect(error).toMatchObject({ externalOrderId: '42' });
+      expect(del).not.toHaveBeenCalled();
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it.each([[undefined], [null], ['n/a']])(
+      'should fail closed, deleting nothing, when the line count is unreadable (%p)',
+      async (count) => {
+        const { adapter, get, post, del } = setup();
+        get.mockImplementation((path: string) =>
+          Promise.resolve({
+            status: 200,
+            data:
+              path === '/orders'
+                ? { list: [{ order_id: '42', notes_priv: MARKER, status_id: '1' }] }
+                : { count },
+          }),
+        );
+
+        await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperNetworkError);
+        expect(del).not.toHaveBeenCalled();
+        expect(post).not.toHaveBeenCalled();
+      },
+    );
 
     it('should refuse, naming the ids, when several orders carry the marker', async () => {
       const { adapter, get, post, del } = setup();
@@ -366,6 +457,53 @@ describe('ShoperOrderProcessorAdapter', () => {
 
       expect(retry).toEqual(first);
       expect(shop).toHaveLength(1);
+    });
+  });
+
+  describe('DestinationOptionsReader', () => {
+    function pages(rows: unknown[]): jest.Mock {
+      return jest.fn().mockResolvedValue({ status: 200, data: { count: String(rows.length), pages: 1, page: 1, list: rows } });
+    }
+
+    it('should list shipping methods by id, labelled from the row or its first translation', async () => {
+      const h = setup();
+      h.get.mockImplementation(
+        pages([
+          { shipping_id: '8', name: 'InPost Kurier' },
+          { shipping_id: '9', translations: { pl_PL: { name: 'Odbior osobisty' } } },
+          { shipping_id: '10' },
+        ]),
+      );
+
+      await expect(h.adapter.listCarriers()).resolves.toEqual([
+        { value: '8', label: 'InPost Kurier' },
+        { value: '9', label: 'Odbior osobisty' },
+        { value: '10', label: '10' },
+      ]);
+      expect(h.get).toHaveBeenCalledWith('/shippings', expect.objectContaining({ order: 'shipping_id ASC' }));
+    });
+
+    it('should list order statuses and payment methods from their own collections', async () => {
+      const h = setup();
+      h.get.mockImplementation((path: string) => {
+        const list =
+          path === '/statuses'
+            ? [{ status_id: '1', translations: { pl_PL: { name: 'zlozone' }, en_US: { name: 'placed' } } }]
+            : [{ payment_id: '1', name: 'cash', translations: { pl_PL: { title: 'Gotowka' } } }];
+        return Promise.resolve({ status: 200, data: { count: '1', pages: 1, page: 1, list } });
+      });
+
+      await expect(h.adapter.listOrderStatuses()).resolves.toEqual([{ value: '1', label: 'zlozone' }]);
+      await expect(h.adapter.listPaymentMethods()).resolves.toEqual([{ value: '1', label: 'cash' }]);
+    });
+
+    it('should read every page', async () => {
+      const h = setup();
+      h.get
+        .mockResolvedValueOnce({ status: 200, data: { count: '2', pages: 2, page: 1, list: [{ shipping_id: '1', name: 'A' }] } })
+        .mockResolvedValueOnce({ status: 200, data: { count: '2', pages: 2, page: 2, list: [{ shipping_id: '2', name: 'B' }] } });
+
+      await expect(h.adapter.listCarriers()).resolves.toHaveLength(2);
     });
   });
 

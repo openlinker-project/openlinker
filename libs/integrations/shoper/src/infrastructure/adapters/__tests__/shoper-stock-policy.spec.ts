@@ -7,6 +7,11 @@
  * `DELETE /orders/:id`) and is wired to the REAL order and inventory adapters,
  * so "no double decrement" is asserted on the number a sync would then read
  * back, not on a mock call count.
+ *
+ * Limit of the proof: the fake mirrors what was OBSERVED (2026-10) - it proves
+ * OpenLinker adds no second decrement, but it cannot notice Shoper behaving
+ * differently (e.g. a plan that decrements at a status change). The live smoke in
+ * the PR is the evidence for the real shop.
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { OrderCreate } from '@openlinker/core/orders';
@@ -23,7 +28,9 @@ import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table
 import { ShoperInventoryMasterAdapter } from '../inventory-master/shoper-inventory-master.adapter';
 import { ShoperOrderProcessorAdapter } from '../order-processor/shoper-order-processor.adapter';
 
-const CONNECTION = { id: 'conn-1', config: { defaults: { shippingId: 8, paymentId: 1, statusId: 1 } } } as unknown as Connection;
+function connectionWith(id: string): Connection {
+  return { id, config: { defaults: { shippingId: 8, paymentId: 1, statusId: 1 } } } as unknown as Connection;
+}
 const MARKER = 'OpenLinker order ol_order_1';
 
 interface Request {
@@ -114,14 +121,14 @@ class FakeShop {
   }
 }
 
-function build(shop: FakeShop): {
+function build(shop: FakeShop, connectionId = 'conn-1'): {
   orders: ShoperOrderProcessorAdapter;
   inventory: ShoperInventoryMasterAdapter;
 } {
   const externalIds: Record<string, string> = { ol_p1: '93', ol_v1: '181' };
   const mapping = {
     getExternalIds: jest.fn((_type: string, id: string) =>
-      Promise.resolve(externalIds[id] === undefined ? [] : [{ connectionId: 'conn-1', externalId: externalIds[id] }]),
+      Promise.resolve(externalIds[id] === undefined ? [] : [{ connectionId, externalId: externalIds[id] }]),
     ),
     batchGetOrCreateInternalIds: jest.fn((reqs: Array<{ externalId: string; connectionId: string }>) =>
       Promise.resolve(new Map(reqs.map((r) => [`${r.externalId}:${r.connectionId}`, `ol_${r.externalId}`]))),
@@ -143,14 +150,14 @@ function build(shop: FakeShop): {
         getCurrencyId: () => Promise.resolve('1'),
       } as unknown as ShoperOrderOptionsProvider,
       shopContext,
-      CONNECTION,
+      connectionWith(connectionId),
     ),
     inventory: new ShoperInventoryMasterAdapter(
       shop.client,
       mapping,
       shopContext,
-      new ShoperProductReader(shop.client, 'conn-1'),
-      CONNECTION,
+      new ShoperProductReader(shop.client, connectionId),
+      connectionWith(connectionId),
     ),
   };
 }
@@ -221,7 +228,7 @@ describe('Shoper stock policy: OpenLinker never removes stock a second time', ()
   it('should not compensate, and should warn, when the shop does not decrement stock itself', async () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const shop = new FakeShop(false);
-    const { orders, inventory } = build(shop);
+    const { orders, inventory } = build(shop, 'conn-flag-off');
 
     await orders.createOrder(order(1));
 
@@ -230,6 +237,32 @@ describe('Shoper stock policy: OpenLinker never removes stock a second time', ()
     expect(shop.stockWrites()).toEqual([]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('shopping_update_stock_on_buy off'));
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(MARKER.replace('OpenLinker order ', '')));
+  });
+
+  it('should warn once per connection, then stay quiet', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const debug = jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    const shop = new FakeShop(false);
+    const { orders } = build(shop, 'conn-flag-off-twice');
+
+    await orders.createOrder(order(1));
+    shop.orders.clear();
+    await orders.createOrder(order(1));
+
+    const stockWarnings = warn.mock.calls.filter(([m]) => String(m).includes('shopping_update_stock_on_buy'));
+    expect(stockWarnings).toHaveLength(1);
+    expect(debug).toHaveBeenCalledWith(expect.stringContaining('shopping_update_stock_on_buy'));
+  });
+
+  it('should not read the shop flag, or warn, when the order could not be created', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const shop = new FakeShop(false);
+    shop.failLineNumber = 1;
+    const { orders } = build(shop, 'conn-flag-off-failed');
+
+    await expect(orders.createOrder(order(1))).rejects.toThrow('shop refused the line');
+
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('shopping_update_stock_on_buy'));
   });
 
   it('should not warn when the shop decrements stock itself', async () => {
