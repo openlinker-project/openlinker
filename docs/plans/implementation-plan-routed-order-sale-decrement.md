@@ -103,7 +103,7 @@ worker InventorySaleDecrementHandler
    `inventory` takes no `fulfillment`/`orders` edge, and `fulfillment` stays a
    zero-sibling-edge leaf (only a pure derivation is added there).
 
-### Persistence — `inventory_sale_decrements` (migration `1902000000000`)
+### Persistence — `inventory_sale_decrements` (migration `1909000000000`)
 
 | column | type | notes |
 |---|---|---|
@@ -140,7 +140,7 @@ unattributed-owner | ambiguous-owner | master-product-not-found | master-error`.
 3. `inventory/domain/entities/inventory-sale-decrement.entity.ts` + repository port
    `inventory-sale-decrement-repository.port.ts` (`claim`, `settle`, `findByKey`,
    `findByOrderId`) — no `save`.
-4. ORM entity + repository + migration `apps/api/src/migrations/1902000000000-create-inventory-sale-decrements.ts`.
+4. ORM entity + repository + migration `apps/api/src/migrations/1909000000000-create-inventory-sale-decrements.ts`.
 5. `InventoryRepositoryPort.findLiveOwnerPositions(productIds, variantIds)` + impl.
 6. `IInventorySaleDecrementService` + `InventorySaleDecrementService`; token in
    `inventory.tokens.ts`; register in `InventoryModule`. Unit spec covering every arm.

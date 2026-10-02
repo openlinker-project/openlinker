@@ -30,8 +30,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateInventorySaleDecrements1902000000000 implements MigrationInterface {
-  name = 'CreateInventorySaleDecrements1902000000000';
+export class CreateInventorySaleDecrements1909000000000 implements MigrationInterface {
+  name = 'CreateInventorySaleDecrements1909000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
