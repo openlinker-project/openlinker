@@ -3,6 +3,8 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
+import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
+import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
 import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
 
 function hostWithRegistries(): {
@@ -82,6 +84,27 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperInventoryMasterAdapter);
+  });
+
+  it('should resolve OrderProcessorManager to the Shoper order processor adapter', async () => {
+    const { host } = hostWithRegistries();
+    const deps = { customerProvisioner: {} as ShoperCustomerProvisioner };
+
+    const adapter = await createShoperPlugin(deps).createCapabilityAdapter<unknown>(
+      connection(),
+      'OrderProcessorManager',
+      host,
+    );
+
+    expect(adapter).toBeInstanceOf(ShoperOrderProcessorAdapter);
+  });
+
+  it('should refuse OrderProcessorManager when built without the customer provisioner', async () => {
+    const { host } = hostWithRegistries();
+
+    await expect(
+      createShoperPlugin().createCapabilityAdapter(connection(), 'OrderProcessorManager', host),
+    ).rejects.toThrow(/customer provisioner/);
   });
 
   it('should route the connection through the connection-bound transport', async () => {

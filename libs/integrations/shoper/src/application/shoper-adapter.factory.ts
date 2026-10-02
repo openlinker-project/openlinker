@@ -23,6 +23,8 @@ import type { FetchLike } from '@openlinker/shared/http';
 import { ShoperConfigException } from '../domain/exceptions/shoper-config.exception';
 import { parseShoperBaseUrl } from '../domain/policies/shoper-base-url.policy';
 import type { ShoperCredentials } from '../domain/types/shoper-credentials.types';
+import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
+import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
@@ -33,6 +35,8 @@ import { ShoperTaxTableProvider } from '../infrastructure/shop-context/shoper-ta
 export interface ShoperAdapters {
   readonly productMaster: ShoperProductMasterAdapter;
   readonly inventoryMaster: ShoperInventoryMasterAdapter;
+  /** Absent when the plugin was built without its Nest-provided dependencies. */
+  readonly orderProcessor: ShoperOrderProcessorAdapter | null;
 }
 
 export class ShoperAdapterFactory {
@@ -42,6 +46,7 @@ export class ShoperAdapterFactory {
     credentialsResolver: CredentialsResolverPort,
     fetchImpl: FetchLike,
     cache?: CachePort,
+    customerProvisioner?: ShoperCustomerProvisioner,
   ): Promise<ShoperAdapters> {
     const base = parseShoperBaseUrl((connection.config ?? {}).baseUrl);
     if (!base.ok) {
@@ -86,6 +91,10 @@ export class ShoperAdapterFactory {
         productReader,
         connection,
       ),
+      orderProcessor:
+        customerProvisioner === undefined
+          ? null
+          : new ShoperOrderProcessorAdapter(client, identifierMapping, customerProvisioner, connection.id),
     };
   }
 }

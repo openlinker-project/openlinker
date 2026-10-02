@@ -189,6 +189,26 @@ at create and never retro-filled, so an existing connection must be edited.
   ADR-061 and throw `ShoperNotSupportedException`.
 - `master.inventory.syncAll` walks OL's own product mappings, so run a ProductMaster sync first.
 
+## OrderProcessorManager (skeleton)
+
+Declared as `OrderProcessorManager` (#3692). Enable it on the connection's `enabledCapabilities` - the list is
+stamped at create and never retro-filled. **`createOrder` is not implemented yet** and throws
+`ShoperNotSupportedException`; order creation (header + lines) and the duplicate-order guard arrive with the next
+slices of epic #3642, so do not enable the capability on a production connection before they land.
+
+What exists now is the user an order must reference. Shoper rejects `user_id = 0` on `POST /orders` and does not
+provision a guest, so `ShoperCustomerProvisioner` resolves or creates one:
+
+- an existing `Customer` identifier mapping on the connection wins;
+- otherwise, under a lock per (connection, email hash), `POST /users`; on Shoper's duplicate-email `400` the
+  existing user is found with `GET /users?filters[email]=` and reused;
+- **there is no guest fallback**, unlike WooCommerce. An order with no usable buyer email (a source that reports
+  none, or `OL_STORE_PII=false`, which keeps only an email hash) fails with
+  `ShoperCustomerUnresolvableException`, a terminal error - retrying cannot add the email.
+- Auth failures, 5xx and network errors are rethrown, never degraded to a wrong user.
+
+The `POST /users` body (`email`, `firstname`, `lastname`, `active`) has not been confirmed against a live shop yet.
+
 ## Known gaps
 
 - **No rate limiting or retries yet.** The real request ceiling is unconfirmed (SPIKE-3638 C6); no
