@@ -4,6 +4,7 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
+import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
 import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
 
@@ -88,7 +89,10 @@ describe('Shoper plugin', () => {
 
   it('should resolve OrderProcessorManager to the Shoper order processor adapter', async () => {
     const { host } = hostWithRegistries();
-    const deps = { customerProvisioner: {} as ShoperCustomerProvisioner };
+    const deps = {
+      customerProvisioner: {} as ShoperCustomerProvisioner,
+      mappingConfigService: {} as IMappingConfigService,
+    };
 
     const adapter = await createShoperPlugin(deps).createCapabilityAdapter<unknown>(
       connection(),

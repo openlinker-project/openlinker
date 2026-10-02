@@ -135,3 +135,59 @@ export interface ShoperUserCreateRequest {
   readonly lastname: string;
   readonly active: 1;
 }
+
+/** A `GET /shippings` row (the slice the order flow reads). */
+export interface ShoperShipping {
+  readonly shipping_id: string;
+  /** The shipping method's own tax; becomes the order's `shipping_tax_id`. */
+  readonly tax_id: string;
+}
+
+/** A `GET /currencies` row. */
+export interface ShoperCurrency {
+  readonly currency_id: string;
+  readonly name: string;
+}
+
+/** Billing / delivery address of `POST /orders`. */
+export interface ShoperOrderAddress {
+  readonly firstname: string;
+  readonly lastname: string;
+  readonly company: string;
+  readonly street1: string;
+  readonly street2: string;
+  readonly city: string;
+  readonly postcode: string;
+  readonly state: string;
+  readonly country_code: string;
+  readonly phone: string;
+  readonly tax_identification_number: string;
+}
+
+/** Body of `POST /orders` (the six required fields of SPIKE-3638 O1, plus context). */
+export interface ShoperOrderCreateRequest {
+  readonly user_id: number;
+  readonly email: string;
+  readonly status_id: number;
+  readonly payment_id: number;
+  readonly shipping_id: number;
+  readonly shipping_tax_id: number;
+  readonly shipping_cost: number;
+  readonly currency_id: number;
+  readonly billing_address: ShoperOrderAddress;
+  readonly delivery_address: ShoperOrderAddress;
+  /** Private note: the OpenLinker order id, for forensic recovery only (NOT a dedup key). */
+  readonly notes_priv?: string;
+}
+
+/** Body of `POST /order-products`. `price` is GROSS and `tax` is the tax NAME. */
+export interface ShoperOrderProductCreateRequest {
+  readonly order_id: number;
+  readonly product_id: number;
+  readonly stock_id: number;
+  readonly price: number;
+  readonly quantity: number;
+  readonly name: string;
+  readonly tax: string;
+  readonly tax_value: number;
+}
