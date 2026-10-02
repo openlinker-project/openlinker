@@ -78,8 +78,9 @@ export class ShoperHttpClient {
   }
 
   /** JSON write. Same safety properties as `get`: no redirects, capped body, timeout. */
-  async put<T>(path: string, body: unknown): Promise<ShoperHttpResponse<T>> {
-    return this.request<T>('PUT', path, undefined, body);
+  async put(path: string, body: unknown): Promise<ShoperHttpResponse<unknown>> {
+    // `unknown`: the shape of Shoper's PUT answer is not confirmed on a live shop.
+    return this.request<unknown>('PUT', path, undefined, body);
   }
 
   private async request<T>(

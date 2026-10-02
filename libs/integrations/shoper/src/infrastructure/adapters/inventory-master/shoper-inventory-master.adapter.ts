@@ -47,6 +47,7 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
+import { ShoperVariantRequiredException } from '../../../domain/exceptions/shoper-variant-required.exception';
 import { ShoperInvalidStockLevelException } from '../../../domain/exceptions/shoper-invalid-stock-level.exception';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import { ShoperStockNotFoundException } from '../../../domain/exceptions/shoper-stock-not-found.exception';
@@ -177,7 +178,8 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
    * Read, add the delta, write the absolute result. Shoper's `PUT
    * /product-stocks/:id` takes an absolute `stock` and has no conditional write
    * or idempotency key (SPIKE-3638 M8/M9), so this is NOT atomic: a sale landing
-   * between the read and the PUT is overwritten, and a retry after a lost
+   * between the read and the PUT is overwritten (the level Shoper holds afterwards is read
+   * back and reported), and a retry after a lost
    * response applies the delta again. Reported honestly as `unsupported`.
    *
    * A delta taking stock below zero is clamped to 0 with a warning (the
@@ -196,13 +198,25 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
     );
     await this.productReader.read(externalId, adjustment.productId);
 
-    const stocks = await fetchShoperStocks(this.client, externalId, () => undefined);
-    const stock = await this.pickStockRow(stocks, adjustment, externalId);
+    const stocks = await this.fetchStocks(externalId);
+    const stock = await this.pickStockRow(stocks, adjustment);
 
     const current = readShoperStockLevel(stock);
     if (current === null) {
       throw new ShoperNetworkError(
         `Shoper returned no readable stock level for stock ${stock.stock_id} of product ${externalId}`,
+      );
+    }
+
+    // Ids are resolved BEFORE the write: failing after the PUT would report an
+    // error (in doubt) for a change that definitely landed.
+    const [variantIds, inventoryIds] = await this.mintIds(adjustment.productId, [stock.stock_id]);
+    const variantId = variantIds.get(`${stock.stock_id}:${this.connection.id}`);
+    const inventoryId = inventoryIds.get(`stock:${stock.stock_id}:${this.connection.id}`);
+    if (variantId === undefined || inventoryId === undefined) {
+      throw new Error(
+        `Identifier mapping returned no id for Shoper stock ${stock.stock_id} of product ${externalId} ` +
+          `(connection: ${this.connection.id})`,
       );
     }
 
@@ -223,16 +237,58 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
 
     await this.client.put(`/product-stocks/${encodeURIComponent(stock.stock_id)}`, { stock: next });
 
-    const [variantIds, inventoryIds] = await this.mintIds(adjustment.productId, [stock.stock_id]);
-    const inventory = mapShoperStockToInventory(next, {
+    const level = await this.readBackLevel(externalId, stock.stock_id, next);
+    const inventory = mapShoperStockToInventory(level, {
       productId: adjustment.productId,
-      variantId: variantIds.get(`${stock.stock_id}:${this.connection.id}`) ?? '',
-      inventoryId: inventoryIds.get(`stock:${stock.stock_id}:${this.connection.id}`) ?? '',
+      variantId,
+      inventoryId,
     });
     return {
       ...inventory,
       adjustmentOutcome: { disposition: 'applied', idempotency: 'unsupported', appliedAt: null },
     };
+  }
+
+  /**
+   * The level Shoper holds after the write. The PUT is not atomic, so a
+   * concurrent sale can make it differ from what was written; the real number is
+   * what propagates to marketplaces. A failed read-back must not turn an
+   * applied write into an error, so it falls back to the written level.
+   */
+  private async readBackLevel(externalId: string, stockId: string, written: number): Promise<number> {
+    try {
+      const row = (await this.fetchStocks(externalId)).find((s) => s.stock_id === stockId);
+      const actual = row === undefined ? null : readShoperStockLevel(row);
+      if (actual === null) {
+        this.logger.warn(
+          `Shoper stock ${stockId} of product ${externalId} unreadable after write; ` +
+            `reporting the written level ${written} (connection: ${this.connection.id})`,
+        );
+        return written;
+      }
+      if (actual !== written) {
+        this.logger.warn(
+          `Shoper stock ${stockId} of product ${externalId} reads ${actual} after writing ${written}; ` +
+            `a concurrent change was overwritten or applied (connection: ${this.connection.id})`,
+        );
+      }
+      return actual;
+    } catch (error) {
+      this.logger.warn(
+        `Shoper stock read-back failed for ${stockId} of product ${externalId}: ` +
+          `${error instanceof Error ? error.message : String(error)}; reporting the written level ${written}`,
+      );
+      return written;
+    }
+  }
+
+  private fetchStocks(externalId: string): Promise<ShoperStock[]> {
+    return fetchShoperStocks(this.client, externalId, (count) =>
+      this.logger.warn(
+        `Shoper returned ${count} stock row(s) of another product while reading product ` +
+          `${externalId}; dropped (connection: ${this.connection.id})`,
+      ),
+    );
   }
 
   private async mintIds(
@@ -266,7 +322,6 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
   private async pickStockRow(
     stocks: ShoperStock[],
     adjustment: InventoryAdjustment,
-    externalId: string,
   ): Promise<ShoperStock> {
     if (adjustment.variantId !== undefined) {
       const mappings = await this.identifierMapping.getExternalIds(
@@ -285,10 +340,10 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
     }
     // Several variants and none named: writing the first would move stock of the
     // wrong variant, so refuse rather than guess.
-    throw new ShoperStockNotFoundException(
-      stocks.length === 0 ? adjustment.productId : `${adjustment.productId} (variant required for ${externalId})`,
-      this.connection.id,
-    );
+    if (stocks.length === 0) {
+      throw new ShoperStockNotFoundException(adjustment.productId, this.connection.id);
+    }
+    throw new ShoperVariantRequiredException(adjustment.productId, this.connection.id);
   }
 
   reserveInventory(_productId: string, _quantity: number, _orderId: string): Promise<void> {

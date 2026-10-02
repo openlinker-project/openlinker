@@ -174,8 +174,15 @@ at create and never retro-filled, so an existing connection must be edited.
   and writes the result. A sale between the read and the PUT (Shoper also decrements stock by itself when an
   order line is created) is overwritten, and a retry after a lost response applies the delta twice. The outcome
   is therefore always reported `idempotency: 'unsupported'`, `appliedAt: null`. A decrease below zero is clamped
-  to 0 with a warning. A multi-variant product needs `variantId`; without it the write is refused rather than
-  moved to a guessed variant. Multi-warehouse shops are refused, as on the read side. `reason` goes to the log.
+  to 0 with a warning. A multi-variant product needs `variantId`; without it the write is refused (terminal) rather than
+  moved to a guessed variant. The level Shoper holds after the PUT is read back and reported, so a concurrent change
+  shows up as a warning and the real number is what propagates.
+- **Known gap (epic #3641): concurrent sale decrements can still oversell.** `adjustInventory` is also called by
+  `inventory.saleDecrement` / `inventory.saleReversal` (#3453), not only by return restocking. Two such jobs for one
+  Shoper variant can both read the same level and both write it minus one - a lost decrement. Shoper has no atomic
+  or conditional stock write, so this is not closable in the adapter; the read-back only makes it visible. Do not
+  enable OMS routing on a Shoper `InventoryMaster` expecting a safe decrement until a core-side per-position lock
+  exists. Multi-warehouse shops are refused, as on the read side. `reason` goes to the log.
 - `reserveInventory` / `releaseInventory` are deprecated by
   ADR-061 and throw `ShoperNotSupportedException`.
 - `master.inventory.syncAll` walks OL's own product mappings, so run a ProductMaster sync first.
