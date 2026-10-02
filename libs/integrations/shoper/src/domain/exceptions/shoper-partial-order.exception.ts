@@ -6,9 +6,10 @@
  * line is created, so the shop now holds an order that is incomplete and has
  * already moved stock.
  *
- * Terminal on purpose: a retry would create a SECOND order next to this one.
- * An operator removes order `externalOrderId` in the shop (which restores the
- * stock of its lines) and re-runs the sync.
+ * Retryable: a retry finds this header by its OpenLinker marker, sees it is
+ * incomplete, deletes it (restoring the stock of its lines) and recreates the
+ * order, so it cannot produce a second one. If the shop keeps refusing the
+ * delete, the order can be removed by hand.
  *
  * @module libs/integrations/shoper/src/domain/exceptions
  */

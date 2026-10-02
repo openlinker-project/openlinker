@@ -194,6 +194,14 @@ export interface ShoperOrderProductCreateRequest {
   readonly tax_value: number;
 }
 
+/** The slice of a `GET /orders` row the duplicate guard reads. */
+export interface ShoperOrderRef {
+  readonly order_id: string;
+  readonly notes_priv?: string | null;
+  /** The order's current status; compared with the one OpenLinker created it in. */
+  readonly status_id?: string | number | null;
+}
+
 /** Row of `/shippings`, `/payments` or `/statuses`: the id plus per-language labels. */
 export interface ShoperOptionRow {
   readonly shipping_id?: string;

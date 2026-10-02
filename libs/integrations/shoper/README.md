@@ -191,12 +191,11 @@ at create and never retro-filled, so an existing connection must be edited.
 
 ## OrderProcessorManager
 
-Declared as `OrderProcessorManager` (#3692, #3693). **It is not enabled by default**: a new connection gets only
+Declared as `OrderProcessorManager` (#3692, #3693, #3694). **It is not enabled by default**: a new connection gets only
 `ProductMaster` and `InventoryMaster` (`defaultEnabledCapabilities`), because core fans every ingested order out to
 every active `OrderProcessorManager` connection and a shop meant as a catalogue / stock master must not start
 receiving orders. Enable it explicitly on the connection's `enabledCapabilities` - the list is stamped at create and
-never retro-filled. **There is no duplicate-order guard yet (#3694): a retried `createOrder` creates a second Shoper
-order, so do not enable the capability on a production connection before that slice lands.**
+never retro-filled. The stock double-deduction policy (#3695) is not decided yet.
 
 `createOrder` resolves everything first and writes second, because Shoper decrements stock as each line is
 created: user, variants, taxes, the three required ids, currency and prices are settled before the first write.
@@ -232,11 +231,31 @@ or awaiting order stays unpaid in the shop.
 address's; an order with no phone at all is refused rather than given an invented number.
 
 **A half-built order is removed.** If a line fails after the header exists, `DELETE /orders/:id` is issued (live:
-this restores the stock the lines took). If that fails too, `ShoperPartialOrderException` names the order id and is
-terminal, because a retry would create a second order - delete it in the shop and re-run the sync.
+this restores the stock the lines took). If that fails too, `ShoperPartialOrderException` names the order id; it is
+retryable, because the retry finds that header by its marker (below), deletes it and recreates the order.
 
-The order's `notes_priv` carries `OpenLinker order <id>` as a recovery marker. It is NOT a dedup key: Shoper does
-not round-trip the order `code` and accepts two orders with the same one (SPIKE-3638 O5).
+**No duplicates on retry (#3694).** Shoper has no idempotency of its own: it does not round-trip the order `code`
+and accepts two orders with the same one (SPIKE-3638 O5). Two layers cover it:
+
+- core's `OrderSyncService` holds a per-(order, destination) lock and skips when a destination mapping is already
+  recorded - no new core seam was needed;
+- the window that leaves (the order was created on Shoper but the mapping was never written, or the response was
+  lost) is closed here. Every order carries `notes_priv = "OpenLinker order <internalOrderId>"`, and Shoper's
+  `GET /orders?filters[notes_priv]=` is an exact-match filter (verified live), so `createOrder` first asks whether
+  an order with that marker exists: a **complete** one (its `/order-products` line count equals the lines to be
+  created) is returned as the result and nothing is written; an **incomplete** one is deleted - restoring its stock -
+  and the order is created afresh, never completed in place, **but only while it is still in the status OpenLinker
+  created it in**: a line-count mismatch is also what a merchant editing the order looks like, so an order that
+  has left that status is left alone and `ShoperOrderModifiedException` (terminal) names it; **several** are refused with
+  `ShoperDuplicateOrderException` (terminal, naming the ids) because picking one silently could keep the wrong one.
+  The lookup costs one extra `GET` per order.
+- **Limits, stated plainly.** "Complete" compares the NUMBER of lines only, so an order that changed at the source
+  between two attempts is returned as it stands - `createOrder` does not re-sync content. An unreadable line count is
+  an error (retryable), never "incomplete": the guard does not delete on a value it could not read. The marker lives
+  in `notes_priv`, which a merchant can edit or clear in the admin; an edited marker turns recovery into "no hit",
+  and the retry then creates a second order. Shoper offers no other round-tripped field to carry it (SPIKE-3638 O5).
+- `createOrder` therefore requires `OrderCreate.internalOrderId` and refuses an order without it - with no key a
+  retry could not recognise its own order.
 
 **Customer.** Shoper rejects `user_id = 0` and does not provision a guest, so `ShoperCustomerProvisioner` resolves
 or creates the user: an existing `Customer` mapping wins; otherwise, under a lock per (connection, email hash),

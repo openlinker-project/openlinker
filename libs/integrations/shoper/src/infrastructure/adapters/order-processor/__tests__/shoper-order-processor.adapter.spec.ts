@@ -3,6 +3,9 @@ import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { Address, OrderCreate } from '@openlinker/core/orders';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
+import { ShoperDuplicateOrderException } from '../../../../domain/exceptions/shoper-duplicate-order.exception';
+import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
+import { ShoperOrderModifiedException } from '../../../../domain/exceptions/shoper-order-modified.exception';
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperOrderUnbuildableException } from '../../../../domain/exceptions/shoper-order-unbuildable.exception';
 import { ShoperPartialOrderException } from '../../../../domain/exceptions/shoper-partial-order.exception';
@@ -54,7 +57,7 @@ function setup(config: Record<string, unknown> = { defaults: { shippingId: 8, pa
     Promise.resolve({ status: 200, data: path === '/orders' ? 10 : 16 }),
   );
   const del = jest.fn().mockResolvedValue({ status: 200, data: 1 });
-  const get = jest.fn();
+  const get = jest.fn().mockResolvedValue({ status: 200, data: { count: '0', list: [] } });
   const mapping = {
     getExternalIds: jest.fn().mockImplementation((type: string, id: string) =>
       Promise.resolve([{ connectionId: 'conn-1', externalId: `${type}:${id}`.replace(/\D+/g, '') || '1' }]),
@@ -301,6 +304,153 @@ describe('ShoperOrderProcessorAdapter', () => {
       post.mockResolvedValue({ status: 200, data: {} });
 
       await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+    });
+  });
+
+  describe('duplicate recovery', () => {
+    const MARKER = 'OpenLinker order ol_order_1';
+
+    function shopWith(
+      get: jest.Mock,
+      existing: Array<{ id: string; lines: number; statusId?: number }>,
+    ): void {
+      get.mockImplementation((path: string, query?: Record<string, string>) => {
+        if (path === '/orders') {
+          return Promise.resolve({
+            status: 200,
+            data: {
+              list: existing.map((o) => ({ order_id: o.id, notes_priv: MARKER, status_id: String(o.statusId ?? 1) })),
+            },
+          });
+        }
+        const found = existing.find((o) => o.id === query?.['filters[order_id]']);
+        return Promise.resolve({ status: 200, data: { count: String(found?.lines ?? 0) } });
+      });
+    }
+
+    it('should look the order up by its marker before writing anything', async () => {
+      const { adapter, get, post } = setup();
+
+      await adapter.createOrder(order());
+
+      expect(get).toHaveBeenCalledWith('/orders', { 'filters[notes_priv]': MARKER });
+      expect(get.mock.invocationCallOrder[0]).toBeLessThan(post.mock.invocationCallOrder[0]);
+    });
+
+    it('should return the existing complete order and write nothing (retry after a lost mapping)', async () => {
+      const { adapter, get, post, del, resolveOrCreateCustomer } = setup();
+      shopWith(get, [{ id: '42', lines: 2 }]);
+
+      await expect(adapter.createOrder(order())).resolves.toEqual({ orderId: '42' });
+
+      expect(post).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+      expect(resolveOrCreateCustomer).not.toHaveBeenCalled();
+    });
+
+    it('should delete an incomplete order and recreate it', async () => {
+      const { adapter, get, post, del } = setup();
+      shopWith(get, [{ id: '42', lines: 1 }]);
+
+      await expect(adapter.createOrder(order())).resolves.toEqual({ orderId: '10' });
+
+      expect(del).toHaveBeenCalledWith('/orders/42');
+      expect(del.mock.invocationCallOrder[0]).toBeLessThan(post.mock.invocationCallOrder[0]);
+      expect(post).toHaveBeenCalledTimes(3);
+    });
+
+    it('should NOT delete a mismatching order that has left its creation status (edited in the shop)', async () => {
+      const { adapter, get, post, del } = setup();
+      shopWith(get, [{ id: '42', lines: 1, statusId: 3 }]);
+
+      const error = await adapter.createOrder(order()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ShoperOrderModifiedException);
+      expect(error).toMatchObject({ externalOrderId: '42' });
+      expect(del).not.toHaveBeenCalled();
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it.each([[undefined], [null], ['n/a']])(
+      'should fail closed, deleting nothing, when the line count is unreadable (%p)',
+      async (count) => {
+        const { adapter, get, post, del } = setup();
+        get.mockImplementation((path: string) =>
+          Promise.resolve({
+            status: 200,
+            data:
+              path === '/orders'
+                ? { list: [{ order_id: '42', notes_priv: MARKER, status_id: '1' }] }
+                : { count },
+          }),
+        );
+
+        await expect(adapter.createOrder(order())).rejects.toBeInstanceOf(ShoperNetworkError);
+        expect(del).not.toHaveBeenCalled();
+        expect(post).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should refuse, naming the ids, when several orders carry the marker', async () => {
+      const { adapter, get, post, del } = setup();
+      shopWith(get, [{ id: '42', lines: 2 }, { id: '43', lines: 2 }]);
+
+      const error = await adapter.createOrder(order()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ShoperDuplicateOrderException);
+      expect(error).toMatchObject({ externalOrderIds: ['42', '43'] });
+      expect(post).not.toHaveBeenCalled();
+      expect(del).not.toHaveBeenCalled();
+    });
+
+    it('should ignore a row whose marker is not an exact match', async () => {
+      const { adapter, get, post } = setup();
+      get.mockResolvedValue({
+        status: 200,
+        data: { list: [{ order_id: '42', notes_priv: `${MARKER}0` }] },
+      });
+
+      await adapter.createOrder(order());
+
+      expect(post).toHaveBeenCalledTimes(3);
+    });
+
+    it('should refuse an order with no internalOrderId, before any request', async () => {
+      const { adapter, get, post } = setup();
+
+      await expect(adapter.createOrder(order({ internalOrderId: undefined }))).rejects.toThrow(
+        /internalOrderId/,
+      );
+      expect(get).not.toHaveBeenCalled();
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('should converge on ONE order across a crash-and-retry (create succeeds, mapping never recorded)', async () => {
+      const { adapter, get, post } = setup();
+      const shop: Array<{ id: string; lines: number }> = [];
+      get.mockImplementation((path: string, query?: Record<string, string>) =>
+        Promise.resolve({
+          status: 200,
+          data:
+            path === '/orders'
+              ? { list: shop.map((o) => ({ order_id: o.id, notes_priv: MARKER })) }
+              : { count: String(shop.find((o) => o.id === query?.['filters[order_id]'])?.lines ?? 0) },
+        }),
+      );
+      post.mockImplementation((path: string, body: { order_id?: number }) => {
+        if (path === '/orders') {
+          shop.push({ id: '10', lines: 0 });
+          return Promise.resolve({ status: 200, data: 10 });
+        }
+        shop.find((o) => o.id === String(body.order_id))!.lines += 1;
+        return Promise.resolve({ status: 200, data: 16 });
+      });
+
+      const first = await adapter.createOrder(order());
+      const retry = await adapter.createOrder(order());
+
+      expect(retry).toEqual(first);
+      expect(shop).toHaveLength(1);
     });
   });
 

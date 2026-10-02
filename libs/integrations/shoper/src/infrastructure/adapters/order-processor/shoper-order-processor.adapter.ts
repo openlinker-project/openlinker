@@ -13,14 +13,15 @@
  * settled first; the only failures left after the header exists are the shop's
  * own.
  *
- * **No duplicate-order guard here (#3694).** Shoper has no idempotency of its
- * own (SPIKE-3638 O5); until that slice lands, a retried `createOrder` creates a
- * second order. `OrderSyncService` holds the per-(order, destination) lock.
+ * **Idempotency.** Shoper has none of its own (SPIKE-3638 O5). `OrderSyncService`
+ * holds the per-(order, destination) lock and skips on a recorded mapping; this
+ * adapter closes the window that leaves (created on Shoper, mapping never
+ * written) by looking the order up through its `notes_priv` marker first.
  *
  * **A half-built order is cleaned up, not left.** If a line fails after the
  * header exists, the header is deleted (live: this restores the stock the lines
- * took). If even that fails, `ShoperPartialOrderException` carries the order id
- * for the operator and is terminal - a retry would create a second order.
+ * took). If even that fails, `ShoperPartialOrderException` carries the order id;
+ * the retry finds that header by its marker, deletes it and recreates.
  *
  * The buyer email comes from `order.metadata.buyerEmail` (`OrderSyncService`
  * fills it from the source order's `customerEmail`, #948).
@@ -41,7 +42,10 @@ import type {
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
+import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
+import { ShoperDuplicateOrderException } from '../../../domain/exceptions/shoper-duplicate-order.exception';
+import { ShoperOrderModifiedException } from '../../../domain/exceptions/shoper-order-modified.exception';
 import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperOrderUnbuildableException } from '../../../domain/exceptions/shoper-order-unbuildable.exception';
 import { ShoperPartialOrderException } from '../../../domain/exceptions/shoper-partial-order.exception';
@@ -49,6 +53,7 @@ import type { ShoperOrderDefaults } from '../../../domain/types/shoper-config.ty
 import type {
   ShoperOptionRow,
   ShoperOrderCreateRequest,
+  ShoperOrderRef,
   ShoperOrderProductCreateRequest,
 } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
@@ -86,6 +91,20 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
   async createOrder(order: OrderCreate): Promise<OrderRef> {
     // Phase 1 - resolve everything; nothing is written yet except the user.
     const prepared = await this.prepare(order);
+
+    // Shoper has no idempotency of its own (SPIKE-3638 O5), and core's per-order
+    // lock only covers the window it can see: a create that succeeded on Shoper
+    // whose mapping write then failed leaves a retry with nothing to skip on.
+    // The marker we write on every order closes that window (see `recoverExisting`).
+    const existing = await this.recoverExisting(
+      prepared.marker,
+      prepared.lines.length,
+      prepared.header.status_id,
+    );
+    if (existing !== null) {
+      return { orderId: existing };
+    }
+
     const userId = await this.resolveCustomer(order);
 
     // Phase 2 - header, then lines.
@@ -125,9 +144,90 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
     });
   }
 
+  // ─── Duplicate recovery ────────────────────────────────────────────────────
+
+  /**
+   * An order already created for this marker. Complete -> its id (nothing is
+   * written). Incomplete -> deleted ONLY if it is still in the status OpenLinker
+   * created it in: that restores the stock its lines took, and null is returned so
+   * the caller recreates it (lines already written may be wrong, so a half order is
+   * never completed in place). Several -> refused.
+   *
+   * A line-count mismatch is also what a merchant editing the order looks like, so
+   * a mismatch alone never authorises a delete: an order that has since left its
+   * creation status is left alone (`ShoperOrderModifiedException`). And an
+   * unreadable line count is an error, never "incomplete" - a guard that deletes on
+   * a value it could not read would destroy good orders.
+   *
+   * "Complete" compares the NUMBER of lines only. An order that changed at the
+   * source between two attempts is therefore returned as it stands; `createOrder`
+   * does not re-sync content.
+   */
+  private async recoverExisting(
+    marker: string,
+    expectedLines: number,
+    createdInStatusId: number,
+  ): Promise<string | null> {
+    // The default page (10) is plenty for an exact marker match; it also caps the
+    // ids a duplicate report can name.
+    const found = await this.client.get<{ list?: readonly ShoperOrderRef[] }>('/orders', {
+      'filters[notes_priv]': marker,
+    });
+    const rows = (found.data.list ?? []).filter((row) => row.notes_priv === marker);
+    if (rows.length === 0) {
+      return null;
+    }
+    if (rows.length > 1) {
+      throw new ShoperDuplicateOrderException(
+        this.connection.id,
+        marker,
+        rows.map((row) => String(row.order_id)),
+      );
+    }
+
+    const orderId = String(rows[0].order_id);
+    const lines = await this.client.get<{ count?: string | number }>('/order-products', {
+      'filters[order_id]': orderId,
+    });
+    const count = Number(lines.data.count);
+    if (lines.data.count === undefined || lines.data.count === null || !Number.isFinite(count)) {
+      throw new ShoperNetworkError(
+        `Shoper returned no readable line count for order ${orderId} (${marker}); not deleting it`,
+      );
+    }
+    if (count === expectedLines) {
+      this.logger.log(
+        `Shoper order ${orderId} already exists for ${marker} (connection: ${this.connection.id}); skipping create`,
+      );
+      return orderId;
+    }
+
+    if (Number(rows[0].status_id) !== createdInStatusId) {
+      throw new ShoperOrderModifiedException(
+        this.connection.id,
+        orderId,
+        marker,
+        `${count}/${expectedLines} lines and status ${String(rows[0].status_id)} instead of ${createdInStatusId}`,
+      );
+    }
+
+    this.logger.warn(
+      `Shoper order ${orderId} for ${marker} has ${count}/${expectedLines} lines and is still in status ` +
+        `${createdInStatusId} (connection: ${this.connection.id}); deleting it and recreating`,
+    );
+    await this.client.delete(`/orders/${orderId}`);
+    return null;
+  }
+
   // ─── Preparation (no writes) ───────────────────────────────────────────────
 
   private async prepare(order: OrderCreate): Promise<PreparedOrder> {
+    if (order.internalOrderId === undefined) {
+      // No key means no way to recognise this order on a retry, i.e. an order
+      // that can be duplicated for good. Refuse rather than create one.
+      throw this.unbuildable('the order has no internalOrderId, which duplicate recovery is keyed on');
+    }
+    const marker = orderMarker(order.internalOrderId);
     const email = readBuyerEmail(order);
     if (email === undefined) {
       // The same condition the customer provisioner refuses, reported before any lookup.
@@ -175,9 +275,9 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
         : {}),
       billing_address: mapShoperOrderAddress(billing, phone),
       delivery_address: mapShoperOrderAddress(delivery, phone),
-      ...(order.internalOrderId !== undefined ? { notes_priv: `OpenLinker order ${order.internalOrderId}` } : {}),
+      notes_priv: marker,
     };
-    return { header, lines, shippingCost };
+    return { header, lines, shippingCost, marker };
   }
 
   private async buildLines(order: OrderCreate): Promise<Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>>> {
@@ -369,6 +469,12 @@ interface PreparedOrder {
   readonly header: Omit<ShoperOrderCreateRequest, 'user_id'>;
   readonly lines: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>>;
   readonly shippingCost: number;
+  /** The `notes_priv` value that recognises this order on a retry. */
+  readonly marker: string;
+}
+
+function orderMarker(internalOrderId: string): string {
+  return `OpenLinker order ${internalOrderId}`;
 }
 
 function readBuyerEmail(order: OrderCreate): string | undefined {
