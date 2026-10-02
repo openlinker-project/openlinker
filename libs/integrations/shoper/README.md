@@ -211,12 +211,22 @@ a Shoper line `price` is gross). The result is the Shoper-native order id.
 - payment: `config.defaults.paymentId` only (the order carries no payment-method name to map);
 - with none of these set the order fails before any write, naming the key to set.
 
+The adapter also implements `DestinationOptionsReader` (`GET /shippings`, `/statuses`, `/payments`, every page), so
+the connection's Mappings page can offer the shop's own rows when an operator maps a source delivery method or order
+state. The mapping value is the Shoper id `createOrder` writes. Payment methods are listed for the same screen but no
+payment mapping is consumed yet.
+
 `shipping_tax_id` is read from the chosen shipping method (`GET /shippings/:id`), `currency_id` from `/currencies`
 by ISO code, and each line's `tax`/`tax_value` from `/taxes` by the line's rate code. A currency, tax or shipping
 method the shop does not have is `ShoperOrderUnbuildableException` (terminal, before any write).
 
-**Net-priced sources:** Shoper line prices are gross and OpenLinker computes no tax (ADR-063), so a net-priced
-line needs the source-reported `unitPriceGross`; without it the order is refused.
+**Net-priced sources:** Shoper amounts are gross and OpenLinker computes no tax (ADR-063), so a net-priced line
+needs the source-reported `unitPriceGross`, and net-priced shipping needs `shippingGross` (a zero cost needs none);
+without them the order is refused rather than written with a net figure.
+
+**Payment state:** an order the source reports as `paid` is created with `paid` equal to the order sum, which Shoper
+reads as paid (verified live: `is_paid: true`). Any other or unknown state sends no `paid` amount, so a cash-on-delivery
+or awaiting order stays unpaid in the shop.
 
 **Phone is required** on both Shoper addresses (an empty one is a 400). The address's own is used, else the other
 address's; an order with no phone at all is refused rather than given an invented number.
@@ -238,7 +248,8 @@ usable buyer email (a source that reports none, or `OL_STORE_PII=false`) fails w
 Verified on a trial shop (2026-10): `POST /users` with `email`, `firstname`, `lastname`, `active` answers the bare
 user id; the order payload above creates an order whose `sum` is lines + `shipping_cost`.
 
-Not covered: the stock double-deduction policy (#3695), pickup points, order status writeback.
+Not covered: the stock double-deduction policy (#3695), **pickup points** (a locker order lands as a plain delivery to
+the buyer's address, so the warehouse must read the pickup point from the source order), order status writeback.
 
 ## Known gaps
 
