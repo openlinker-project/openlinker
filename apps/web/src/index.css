@@ -22389,21 +22389,6 @@ legend.analytics-settings-dialog__label {
   min-width: 0;
 }
 
-.impact-column {
-  position: sticky;
-  top: var(--space-4);
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-  align-self: start;
-}
-
-@media (max-width: 900px) {
-  .impact-column {
-    position: static;
-  }
-}
-
 .form-field__source {
   font-family: var(--font-mono);
   font-size: 0.6875rem;  font-weight: 400;
@@ -23923,24 +23908,9 @@ legend.analytics-settings-dialog__label {
   align-items: start;
 }
 
-.pacing-layout__after {
-  display: grid;
-  min-width: 0;
-}
-
 @media (min-width: 1024px) {
   .pacing-layout {
-    grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
-  }
-
-  .pacing-layout > .impact-column {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-  }
-
-  .pacing-layout__after {
-    grid-column: 1;
-    grid-row: 2;
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
   }
 }
 
@@ -24017,19 +23987,6 @@ legend.analytics-settings-dialog__label {
   padding-top: var(--space-5);
 }
 
-.pacing-card__footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
-  border-top: 1px solid var(--border-default);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  padding: var(--space-3) var(--space-5);
-  background: var(--bg-surface-muted);
-}
-
 .pacing-field {
   display: grid;
   gap: var(--space-2);
@@ -24062,70 +24019,350 @@ legend.analytics-settings-dialog__label {
   font-weight: 500;
 }
 
-.pacing-savebar {
+/* ── The summary rail (#3508 follow-up) ───────────────────────────────────
+ * One card beside the form that summarises every section with the live
+ * effect of the draft, and carries the save controls in its footer so they
+ * are always in reach. Sticky from 1024 px, below the 52 px topbar (and the
+ * notch inset); taller than the viewport, its body scrolls on its own while
+ * the footer stays put. Below 1024 px it is an ordinary section after the
+ * form, and `.pacing-mobilebar` keeps the save reachable instead.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* `.shell-content`'s `overflow-x: hidden` makes it a scroll container in
+   both axes (CSS Overflow 3: `hidden` with `visible` computes the other
+   axis to `auto`), and a sticky descendant resolves against its nearest
+   scroll container — one that never scrolls here, because the document
+   does. `clip` cuts off horizontal overflow exactly like `hidden` but is
+   not a scroll container, so the rail sticks to the viewport.
+   Scoped to this page on purpose: switching the shell itself would wake a
+   dozen dormant `position: sticky` rules on other pages at once (the
+   numbering-editor preview at `top: var(--space-5)` would slide under the
+   topbar, for one), and each of those needs its own look. */
+.shell-content:has(.pacing-layout) {
+  overflow-x: clip;
+}
+
+.pacing-rail {
+  --pacing-rail-top: calc(
+    var(--shell-topbar-height) + env(safe-area-inset-top, 0px) + var(--space-4)
+  );
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  flex-direction: column;
+  min-width: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: var(--space-8);
+}
+
+.pacing-rail__body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--space-4);
+  min-height: 0;
+  padding: var(--space-5);
+}
+
+.pacing-rail__header {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.pacing-rail__lede {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pacing-rail__group {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-4);
+}
+
+.pacing-rail__group-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.pacing-rail__jump {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.pacing-rail__jump::after {
+  content: '→';
+  margin-left: var(--space-1);
+  color: var(--text-muted);
+}
+
+.pacing-rail__jump:hover,
+.pacing-rail__jump:hover::after {
+  color: var(--accent-primary-hover);
+}
+
+.pacing-rail__edited {
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pacing-rail__rows {
+  display: grid;
+  margin: 0;
+}
+
+.pacing-rail__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  margin: 0 calc(-1 * var(--space-2));
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.pacing-rail__row[data-changed='true'] {
+  background: var(--accent-primary-soft);
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.pacing-rail__label {
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.pacing-rail__value {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pacing-rail__before {
+  color: var(--text-muted);
+}
+
+.pacing-rail__arrow {
+  margin: 0 var(--space-1);
+  color: var(--text-muted);
+}
+
+.pacing-rail__row[data-changed='true'] .pacing-rail__after {
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+.pacing-rail__hint {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.pacing-rail__bar {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.pacing-rail__warning {
+  margin: 0;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.pacing-rail__warning[data-tone='error'] {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+
+.pacing-rail__caveats {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.pacing-rail__caveats-summary {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pacing-rail__caveats .limits-list {
+  margin-top: var(--space-3);
+}
+
+.pacing-rail__footer {
+  display: grid;
+  flex: none;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   padding: var(--space-3) var(--space-4);
   background: var(--bg-surface-muted);
-  box-shadow: var(--shadow-xs);
 }
 
-.pacing-savebar[data-dirty='true'] {
-  border-color: var(--accent-primary-border);
-  border-left: 3px solid var(--accent-primary);
-  background: var(--bg-surface);
+.pacing-save {
+  display: grid;
+  gap: var(--space-2);
 }
 
-.pacing-savebar__text {
+.pacing-save + .pacing-save {
+  border-top: 1px dashed var(--border-default);
+  padding-top: var(--space-3);
+}
+
+.pacing-save__text {
   display: grid;
   gap: 2px;
   min-width: 0;
-  flex: 1 1 16rem;
 }
 
-.pacing-savebar__count {
+.pacing-save__count {
   margin: 0;
   color: var(--text-primary);
   font-size: 0.8125rem;
   font-weight: 600;
 }
 
-.pacing-savebar__status {
+.pacing-save[data-dirty='true'] .pacing-save__count {
+  color: var(--accent-primary-soft-strong);
+}
+
+.pacing-save__status {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.75rem;
 }
 
-.pacing-savebar__actions {
+.pacing-save__actions {
   display: flex;
-  flex: none;
+  justify-content: flex-end;
   gap: var(--space-2);
+}
+
+/* Retention's block is one line: a label and its two buttons. */
+.pacing-save--inline {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+/* Fixed, not sticky: it must sit on the viewport's bottom edge wherever the
+   page is scrolled, and it only exists while something is unsaved. */
+.pacing-mobilebar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.pacing-mobilebar__count {
+  margin: 0;
+  color: var(--accent-primary-soft-strong);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.pacing-mobilebar .pacing-mobilebar__save {
+  min-width: 8rem;
+  height: 2.75rem;
+}
+
+@media (max-width: 1023.98px) {
+  /* Room for the fixed bar, so it never covers the rail's own footer. */
+  .pacing-layout[data-mobile-bar='true'] {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 1024px) {
+  .pacing-rail {
+    position: sticky;
+    top: var(--pacing-rail-top);
+    /* --space-7 matches .shell-content's bottom padding, so at the very end of
+       the page the grid area does not push the rail up under the topbar. */
+    max-height: calc(100dvh - var(--pacing-rail-top) - var(--space-7));
+  }
+
+  .pacing-rail__body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Until the page has scrolled far enough for the rail to stick, the rail
+     starts below the page header and its foot can sit under the fold. Sticky
+     to the viewport's bottom edge, the save controls stay in view anyway,
+     over the bottom of the rail's own (scrollable) body. */
+  .pacing-rail__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    box-shadow: 0 -1px 0 var(--border-default);
+  }
+
+  .pacing-mobilebar {
+    display: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pacing-rail__body {
+    padding: var(--space-4);
+  }
+
+  .pacing-save__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pacing-save--inline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pacing-save__actions .button,
+  .pacing-save__actions button {
+    height: 2.75rem;
+  }
 }
 
 @media (max-width: 767.98px) {
   .pacing-card {
     padding: var(--space-4);
-  }
-
-  .pacing-card__footer {
-    margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .pacing-savebar__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    width: 100%;
-  }
-
-  .pacing-savebar__actions .button,
-  .pacing-savebar__actions button {
-    height: 2.75rem;
   }
 
   .pacing-nav__link {

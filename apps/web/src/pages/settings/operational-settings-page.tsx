@@ -36,9 +36,10 @@ import { useSession } from '../../shared/auth/use-session';
 import { PacingValueField } from '../../features/settings/components/pacing-value-field';
 import { SyncJobRetentionSection } from '../../features/settings/components/sync-job-retention-section';
 import { SyncPacingConfirmDialog } from '../../features/settings/components/sync-pacing-confirm-dialog';
-import { SyncPacingImpact } from '../../features/settings/components/sync-pacing-impact';
+import { SyncPacingRail } from '../../features/settings/components/sync-pacing-rail';
 import { useCatalogueSizeQuery } from '../../features/settings/hooks/use-catalogue-size-query';
 import { useOperationalSettingsQuery } from '../../features/settings/hooks/use-operational-settings-query';
+import { useSyncJobRetentionDraft } from '../../features/settings/hooks/use-sync-job-retention-draft';
 import { useUpdateOperationalSettingsMutation } from '../../features/settings/hooks/use-update-operational-settings-mutation';
 import {
   describeCadence,
@@ -149,7 +150,17 @@ export function OperationalSettingsPage(): ReactElement {
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
 
   const view = query.data ?? null;
-  const savedStamp = view === null ? null : `${view.updatedAt ?? 'none'}:${view.deletionAuditCadence.value}`;
+  const retention = useSyncJobRetentionDraft(view);
+  // Built from the pacing fields themselves (value + source), not from the
+  // row's `updatedAt`: retention saves on its own from the same rail, and a
+  // retention save bumping `updatedAt` must not discard a pacing edit.
+  const savedStamp =
+    view === null
+      ? null
+      : [
+          ...NUMERIC_FIELDS.map((key) => `${String(view[key].value)}:${view[key].source}`),
+          `${view.deletionAuditCadence.value}:${view.deletionAuditCadence.source}`,
+        ].join('|');
 
   // Adopt the server's values once, and again whenever the saved row changes
   // underneath us. Deliberately keyed on the saved stamp rather than on `view`
@@ -310,6 +321,16 @@ export function OperationalSettingsPage(): ReactElement {
   };
 
   const changeCount = diff.changes.length;
+  const totalChanges = changeCount + retention.changeCount;
+  const pacingSavable =
+    changeCount > 0 && unacknowledgedFields.length === 0 && !mutation.isPending;
+  // The bar's one button saves the pacing set first (through its confirm),
+  // then retention on the next press; it never skips the confirmation.
+  const mobileSavable = changeCount > 0 ? pacingSavable : !retention.saving;
+
+  const jumpTo = (sectionId: string): void => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const saveStatus =
     changeCount === 0
       ? 'No changes yet.'
@@ -336,9 +357,7 @@ export function OperationalSettingsPage(): ReactElement {
               onClick={(event) => {
                 // An in-page jump that leaves the router's URL alone.
                 event.preventDefault();
-                document
-                  .getElementById(link.id)
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                jumpTo(link.id);
               }}
             >
               {link.label}
@@ -360,7 +379,7 @@ export function OperationalSettingsPage(): ReactElement {
           }
         />
       ) : view !== null && draft !== null && projections !== null ? (
-        <div className="pacing-layout">
+        <div className="pacing-layout" data-mobile-bar={String(totalChanges > 0)}>
           <div className="settings-column">
             {errors.formErrors.length > 0 ? (
               <Alert tone="error" title="The change was not saved">
@@ -691,73 +710,109 @@ export function OperationalSettingsPage(): ReactElement {
               </div>
             </section>
 
-            {/* One save for the four sweep sections above, closing the form
-                they belong to. In the flow rather than sticky: `.shell-content`
-                is the overflow container a sticky descendant resolves against,
-                and the document scrolls instead of it, so a sticky offset would
-                never engage. */}
-            <div
-              className="pacing-savebar"
-              data-dirty={String(changeCount > 0)}
-              role="group"
-              aria-label="Save sync pacing"
-            >
-              <div className="pacing-savebar__text">
-                {changeCount > 0 ? (
-                  <p className="pacing-savebar__count">
-                    {`${String(changeCount)} unsaved ${changeCount === 1 ? 'change' : 'changes'}`}
-                  </p>
+            {retention.draft !== null ? (
+              <SyncJobRetentionSection
+                view={view}
+                draft={retention.draft}
+                errors={retention.errors}
+                onChange={retention.setDraft}
+              />
+            ) : null}
+          </div>
+
+          <SyncPacingRail
+            saved={toValues(view)}
+            draft={draft}
+            before={projections.before}
+            after={projections.after}
+            catalogueSweepCadence={view.catalogueSweepCadence?.value}
+            inventorySweepCadence={view.inventorySweepCadence?.value}
+            hostLimitSeconds={hostLimit}
+            catalogueLimits={limitsFor(view, 'catalogueSweepBudget')}
+            catalogueSizeKnown={catalogueSize !== null}
+            retentionSaved={retention.saved}
+            retentionDraft={retention.draft}
+            onJump={jumpTo}
+            footer={
+              <>
+                <div className="pacing-save" data-dirty={String(changeCount > 0)}>
+                  <div className="pacing-save__text">
+                    <p className="pacing-save__count">
+                      {changeCount === 0
+                        ? 'Sync pacing'
+                        : `${String(changeCount)} unsaved ${changeCount === 1 ? 'change' : 'changes'}`}
+                    </p>
+                    <p className="pacing-save__status" aria-live="polite">
+                      {saveStatus}
+                    </p>
+                  </div>
+                  <div className="pacing-save__actions">
+                    <Button
+                      tone="secondary"
+                      disabled={changeCount === 0}
+                      onClick={() => {
+                        setDraft(toValues(view));
+                      }}
+                    >
+                      Undo my edits
+                    </Button>
+                    <Button
+                      disabled={!pacingSavable}
+                      onClick={() => {
+                        setConfirmOpen(true);
+                      }}
+                    >
+                      Save changes
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Retention saves on its own, with no confirmation: it has
+                    no catalogue-size consequence to confirm. Offered only
+                    once there is something to save. */}
+                {retention.changeCount > 0 ? (
+                  <div className="pacing-save pacing-save--inline" data-dirty="true">
+                    <div className="pacing-save__text">
+                      <p className="pacing-save__count">Job retention changed</p>
+                      <p className="pacing-save__status">Saves on its own, no confirmation.</p>
+                    </div>
+                    <div className="pacing-save__actions">
+                      <Button tone="secondary" onClick={retention.reset}>
+                        Undo
+                      </Button>
+                      <Button disabled={retention.saving} onClick={retention.save}>
+                        Save retention
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
-                <p className="pacing-savebar__status" aria-live="polite">
-                  {saveStatus}
-                </p>
-              </div>
-              <div className="pacing-savebar__actions">
-                <Button
-                  tone="secondary"
-                  disabled={changeCount === 0}
-                  onClick={() => {
-                    setDraft(toValues(view));
-                  }}
-                >
-                  Undo my edits
-                </Button>
-                <Button
-                  disabled={
-                    changeCount === 0 || unacknowledgedFields.length > 0 || mutation.isPending
-                  }
-                  onClick={() => {
+              </>
+            }
+          />
+
+          {/* Below 1024px the rail is an ordinary section after the form, so
+              its footer can be a long way down: this bar keeps the save in
+              reach, and only exists while there is something to save. */}
+          {totalChanges > 0 ? (
+            <div className="pacing-mobilebar" role="region" aria-label="Unsaved changes">
+              <p className="pacing-mobilebar__count">
+                {`${String(totalChanges)} unsaved ${totalChanges === 1 ? 'change' : 'changes'}`}
+              </p>
+              <Button
+                className="pacing-mobilebar__save"
+                disabled={!mobileSavable}
+                onClick={() => {
+                  if (changeCount > 0) {
                     setConfirmOpen(true);
-                  }}
-                >
-                  Save changes
-                </Button>
-              </div>
+                  } else {
+                    retention.save();
+                  }
+                }}
+              >
+                Save
+              </Button>
             </div>
-          </div>
-
-          <aside className="impact-column" aria-label="What these values do">
-            <SyncPacingImpact
-              before={projections.before}
-              after={projections.after}
-              catalogueValue={draft.catalogueSweepBudget}
-              catalogueLimits={limitsFor(view, 'catalogueSweepBudget')}
-              hostLimitSeconds={hostLimit}
-              catalogueSizeKnown={catalogueSize !== null}
-            />
-          </aside>
-
-          {/* After the calculator in source order, so a phone reads the
-              pacing form, then what it does, then this; on a wide screen it
-              sits under the form, beside the calculator.
-              Self-contained: its own query/mutation, its own loading and
-              error states, and its own save in its own footer — a retention
-              window in days has no catalogue-size projection the way the
-              sweep budgets above do, so it deliberately does not share
-              SyncPacingValues / the confirm dialog. */}
-          <div className="pacing-layout__after">
-            <SyncJobRetentionSection />
-          </div>
+          ) : null}
 
           <SyncPacingConfirmDialog
             open={confirmOpen}

@@ -23,6 +23,33 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## `position: sticky` inside `.shell-content` never engages - `overflow-x: hidden` made the shell a scroll container that does not scroll
+
+**Context**: the sync-pacing summary rail had to stay in view while the form beside it scrolls
+(#3631 follow-up).
+
+**Problem**: `.shell-content` sets `overflow-x: hidden`, and CSS Overflow 3 computes the other axis
+of a `hidden`/`visible` pair to `auto`, so the shell is a scroll container in both axes. A sticky
+descendant resolves against its NEAREST scroll container - the shell - but the DOCUMENT is what
+scrolls, so the sticky offset never applies and the element just scrolls away. Every sticky rule
+inside the shell is dormant this way (bulk-action bar, numbering-editor preview, bench rail, ...),
+and nothing fails: the rule is valid, the computed `position` reads `sticky`, and happy-dom has
+no layout to notice.
+
+**Rule**: to make one page's element sticky, scope `overflow-x: clip` to that page
+(`.shell-content:has(.<page-root>)`) - `clip` cuts horizontal overflow exactly like `hidden` but
+is not a scroll container. Do not flip the shell globally as a drive-by: it wakes every dormant
+sticky rule at once, and some (a `top: var(--space-5)` preview) would then slide under the 52 px
+topbar. Prove stickiness in a real browser by scrolling and reading `getBoundingClientRect().top`
+before and after.
+
+**Applies to**: `apps/web/src/index.css` (`.shell-content`), any page wanting a sticky rail, bar or
+header inside the app shell.
+
+**Source**: #3631 (sync-pacing summary rail), 2026-10-04.
+
+---
+
 ## A single-class modifier loses to the global `input[type=...]` rule, and a `--modifier` class without its base class styles nothing
 
 **Context**: the sync-pacing settings page (#2653 / #2946) shipped a slider + number box per

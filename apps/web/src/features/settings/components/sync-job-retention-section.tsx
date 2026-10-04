@@ -2,27 +2,21 @@
  * Sync Job Retention Section (#2946, D16)
  *
  * How long a finished sync job's row is kept — a hygiene setting, not a
- * pacing one, so it is deliberately a SEPARATE, self-contained panel rather
- * than woven into `SyncPacingValues` / `diffSyncPacing` / `projectSyncPacing`:
- * those exist to project a value against the CATALOGUE (how long does a full
- * pass take), and a retention window in days has no such relationship. This
- * section carries its own local draft state and its own immediate save,
- * mounted once on the settings page.
+ * pacing one, so it is deliberately a SEPARATE panel rather than woven into
+ * `SyncPacingValues` / `diffSyncPacing` / `projectSyncPacing`: those exist to
+ * project a value against the CATALOGUE (how long does a full pass take), and
+ * a retention window in days has no such relationship.
  *
- * `useOperationalSettingsQuery()` / `useUpdateOperationalSettingsMutation()`
- * are the SAME hooks the sweep-pacing form uses — React Query dedups the
- * identical query key, so mounting them a second time here costs no extra
- * request, and a save from either section invalidates the same cache entry
- * so the other section picks up the fresh `source` on its next render.
+ * Presentational: the draft and its save live in `useSyncJobRetentionDraft`,
+ * owned by the page, so the summary rail can show the same draft and offer
+ * its save beside the pacing one.
  *
  * @module apps/web/src/features/settings/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
-import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
-import { Button } from '../../../shared/ui/button';
-import { useOperationalSettingsQuery } from '../hooks/use-operational-settings-query';
-import { useUpdateOperationalSettingsMutation } from '../hooks/use-update-operational-settings-mutation';
-import { mapOperationalSettingsErrors, NO_OPERATIONAL_SETTINGS_ERRORS } from '../lib/map-operational-settings-errors';
+import type { ReactElement } from 'react';
+import type { OperationalSettingsView } from '../api/operational-settings.types';
+import type { RetentionValues } from '../hooks/use-sync-job-retention-draft';
+import type { OperationalSettingsErrors } from '../lib/map-operational-settings-errors';
 import { limitsFor } from '../lib/resolve-value-limits';
 import { PacingValueField } from './pacing-value-field';
 
@@ -32,67 +26,25 @@ import { PacingValueField } from './pacing-value-field';
  */
 const RETENTION_STEP_DAYS = 5;
 
-interface RetentionDraft {
-  readonly syncJobRetentionDays: number;
-  readonly syncJobDeadRetentionDays: number;
+interface SyncJobRetentionSectionProps {
+  view: OperationalSettingsView;
+  draft: RetentionValues;
+  errors: OperationalSettingsErrors;
+  onChange: (next: RetentionValues) => void;
 }
 
-export function SyncJobRetentionSection(): ReactElement | null {
-  const query = useOperationalSettingsQuery();
-  const mutation = useUpdateOperationalSettingsMutation();
-
-  const [draft, setDraft] = useState<RetentionDraft | null>(null);
-
-  const view = query.data ?? null;
-  const savedStamp =
-    view === null
-      ? null
-      : `${String(view.syncJobRetentionDays.value)}:${view.syncJobRetentionDays.source}:${String(
-          view.syncJobDeadRetentionDays.value,
-        )}:${view.syncJobDeadRetentionDays.source}`;
-
-  // Adopt the server's values once, and again whenever the saved row changes
-  // underneath us — the same "keyed on the saved stamp, not on `view`" shape
-  // the sweep-pacing form uses, so a background refetch that changed nothing
-  // never discards an edit in progress.
-  useEffect(() => {
-    if (view !== null) {
-      setDraft({
-        syncJobRetentionDays: view.syncJobRetentionDays.value,
-        syncJobDeadRetentionDays: view.syncJobDeadRetentionDays.value,
-      });
-    }
-    // Dependency list is deliberately just the saved stamp; `view` is read
-    // inside and must not re-trigger this (the sweep-pacing form's own
-    // `useEffect` above follows the identical shape for the identical reason).
-  }, [savedStamp]);
-
-  if (query.isLoading) {
-    return <LoadingState title="Job retention" message="Loading job retention settings…" />;
-  }
-  if (query.isError || view === null || draft === null) {
-    return (
-      <ErrorState title="Job retention" message="Could not load job retention settings." />
-    );
-  }
-
-  const errors = mutation.error
-    ? mapOperationalSettingsErrors(mutation.error)
-    : NO_OPERATIONAL_SETTINGS_ERRORS;
-
-  const changed =
-    draft.syncJobRetentionDays !== view.syncJobRetentionDays.value ||
-    draft.syncJobDeadRetentionDays !== view.syncJobDeadRetentionDays.value;
-
-  const handleSave = (): void => {
-    mutation.mutate({
-      syncJobRetentionDays: draft.syncJobRetentionDays,
-      syncJobDeadRetentionDays: draft.syncJobDeadRetentionDays,
-    });
-  };
-
+export function SyncJobRetentionSection({
+  view,
+  draft,
+  errors,
+  onChange,
+}: SyncJobRetentionSectionProps): ReactElement {
   return (
-    <section className="panel pacing-card" id="pacing-retention" aria-labelledby="pacing-retention-title">
+    <section
+      className="panel pacing-card"
+      id="pacing-retention"
+      aria-labelledby="pacing-retention-title"
+    >
       <header className="pacing-card__header">
         <div>
           <p className="eyebrow">Housekeeping</p>
@@ -123,7 +75,7 @@ export function SyncJobRetentionSection(): ReactElement | null {
           }}
           error={errors.fieldErrors.syncJobRetentionDays}
           onChange={(value) => {
-            setDraft({ ...draft, syncJobRetentionDays: value });
+            onChange({ ...draft, syncJobRetentionDays: value });
           }}
         />
 
@@ -142,7 +94,7 @@ export function SyncJobRetentionSection(): ReactElement | null {
           onAcknowledgedChange={() => {}}
           error={errors.fieldErrors.syncJobDeadRetentionDays}
           onChange={(value) => {
-            setDraft({ ...draft, syncJobDeadRetentionDays: value });
+            onChange({ ...draft, syncJobDeadRetentionDays: value });
           }}
         />
       </div>
@@ -152,29 +104,6 @@ export function SyncJobRetentionSection(): ReactElement | null {
           {errors.formErrors.join(' ')}
         </p>
       ) : null}
-
-      <footer className="pacing-card__footer">
-        <p className="pacing-savebar__status" aria-live="polite">
-          {changed ? 'Retention changed, not saved yet.' : 'No retention changes.'}
-        </p>
-        <div className="pacing-savebar__actions">
-          <Button
-            tone="secondary"
-            disabled={!changed}
-            onClick={() => {
-              setDraft({
-                syncJobRetentionDays: view.syncJobRetentionDays.value,
-                syncJobDeadRetentionDays: view.syncJobDeadRetentionDays.value,
-              });
-            }}
-          >
-            Undo my edits
-          </Button>
-          <Button disabled={!changed || mutation.isPending} onClick={handleSave}>
-            Save retention
-          </Button>
-        </div>
-      </footer>
     </section>
   );
 }

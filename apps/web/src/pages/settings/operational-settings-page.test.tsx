@@ -519,11 +519,203 @@ describe('OperationalSettingsPage', () => {
       expect(box).toHaveValue(750);
     });
 
-    it('should keep the retention save button inert until something changes', async () => {
+    it('should offer no retention save until something changes', async () => {
+      const user = userEvent.setup();
       renderPage();
 
-      await screen.findByRole('spinbutton', { name: 'Days a completed sync job is kept' });
-      expect(screen.getByRole('button', { name: 'Save retention' })).toBeDisabled();
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      expect(screen.queryByRole('button', { name: 'Save retention' })).not.toBeInTheDocument();
+
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      expect(screen.getByRole('button', { name: 'Save retention' })).toBeEnabled();
+    });
+
+    it('should keep a pacing edit when retention is saved', async () => {
+      const get = vi
+        .fn()
+        .mockResolvedValueOnce(view())
+        .mockResolvedValue(
+          view({
+            syncJobRetentionDays: { ...numeric(60, 365, 365, 'Bounded.'), source: 'setting' },
+            updatedAt: '2026-10-04T12:00:00.000Z',
+          }),
+        );
+      const user = userEvent.setup();
+      renderPage({ get });
+
+      const catalogue = await screen.findByRole('spinbutton', {
+        name: 'Products per catalogue run',
+      });
+      await user.clear(catalogue);
+      await user.type(catalogue, '900');
+
+      const succeeded = screen.getByRole('spinbutton', { name: 'Days a completed sync job is kept' });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: 'Save retention' })).not.toBeInTheDocument();
+      });
+      expect(catalogue).toHaveValue(900);
+      expect(screen.getByText('changed from 500')).toBeInTheDocument();
+    });
+  });
+
+  describe('summary rail', () => {
+    function rail(): HTMLElement {
+      return screen.getByRole('complementary', { name: 'Summary of these settings' });
+    }
+
+    function railGroup(name: string): HTMLElement {
+      return within(rail()).getByRole('region', { name });
+    }
+
+    it('should summarise every section of the page, in page order', async () => {
+      renderPage();
+
+      await screen.findByRole('complementary', { name: 'Summary of these settings' });
+      const titles = within(rail())
+        .getAllByRole('heading', { level: 4 })
+        .map((heading) => heading.textContent);
+      expect(titles).toEqual([
+        'Hosting',
+        'Catalogue sweep',
+        'Stock sweep',
+        'Deletion audit',
+        'Job retention',
+      ]);
+      expect(within(railGroup('Catalogue sweep')).getByText('Shop requests per run')).toBeInTheDocument();
+      expect(within(railGroup('Deletion audit')).getByText('Full audit cycle')).toBeInTheDocument();
+      expect(
+        within(railGroup('Job retention')).getByText('Completed jobs kept for'),
+      ).toBeInTheDocument();
+      expect(within(rail()).getByText('What these numbers cannot tell you')).toBeInTheDocument();
+    });
+
+    it('should show before and after on a changed row only, and mark its group edited', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const numberBox = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+      await user.clear(numberBox);
+      await user.type(numberBox, '1500');
+
+      const catalogue = railGroup('Catalogue sweep');
+      const row = within(catalogue).getByText('Products per run').closest('.pacing-rail__row');
+      expect(row).toHaveAttribute('data-changed', 'true');
+      expect(row).toHaveTextContent('500→changes to1500');
+      expect(within(catalogue).getByText('edited')).toBeInTheDocument();
+
+      const stockRow = within(railGroup('Stock sweep'))
+        .getByText('Products per run')
+        .closest('.pacing-rail__row');
+      expect(stockRow).toHaveAttribute('data-changed', 'false');
+      expect(within(railGroup('Stock sweep')).queryByText('edited')).not.toBeInTheDocument();
+    });
+
+    it('should show a retention change in the rail as days', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      const row = within(railGroup('Job retention'))
+        .getByText('Completed jobs kept for')
+        .closest('.pacing-rail__row');
+      expect(row).toHaveTextContent('30 days→changes to60 days');
+    });
+
+    it('should save the pacing set from the rail footer, through the confirmation', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const numberBox = await screen.findByRole('spinbutton', { name: 'Products per stock run' });
+      await user.clear(numberBox);
+      await user.type(numberBox, '300');
+
+      expect(within(rail()).getByText('1 unsaved change')).toBeInTheDocument();
+      await user.click(within(rail()).getByRole('button', { name: 'Save changes' }));
+      const confirm = await screen.findByRole('dialog');
+      await user.click(within(confirm).getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({ inventorySweepBudget: 300 });
+      });
+    });
+
+    it('should save retention from the rail footer without a confirmation', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const failed = await screen.findByRole('spinbutton', {
+        name: 'Days a permanently-failed sync job is kept',
+      });
+      await user.clear(failed);
+      await user.type(failed, '120');
+      await user.click(within(rail()).getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          syncJobRetentionDays: 30,
+          syncJobDeadRetentionDays: 120,
+        });
+      });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('should scroll to a section when its rail heading is clicked', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await screen.findByRole('complementary', { name: 'Summary of these settings' });
+      const target = document.getElementById('pacing-deletions');
+      expect(target).not.toBeNull();
+      const scrollIntoView = vi.fn();
+      (target as HTMLElement).scrollIntoView = scrollIntoView;
+
+      await user.click(within(rail()).getByRole('link', { name: 'Deletion audit' }));
+
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  describe('unsaved-changes bar', () => {
+    it('should not exist while nothing has changed', async () => {
+      renderPage();
+
+      await screen.findByRole('button', { name: 'Save changes' });
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument();
+    });
+
+    it('should count pacing and retention changes together and open the pacing confirmation', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const catalogue = await screen.findByRole('spinbutton', {
+        name: 'Products per catalogue run',
+      });
+      await user.clear(catalogue);
+      await user.type(catalogue, '900');
+      const succeeded = screen.getByRole('spinbutton', { name: 'Days a completed sync job is kept' });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+      expect(within(bar).getByText('2 unsaved changes')).toBeInTheDocument();
+
+      await user.click(within(bar).getByRole('button', { name: 'Save' }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
     });
   });
 });
