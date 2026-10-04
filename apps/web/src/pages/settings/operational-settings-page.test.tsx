@@ -10,7 +10,7 @@
  *
  * @module apps/web/src/pages/settings
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../shared/api/api-error';
@@ -449,7 +449,7 @@ describe('OperationalSettingsPage', () => {
     it('should put a rejected retention value beside its own control', async () => {
       const update = vi.fn().mockRejectedValue(
         new ApiError('Bad Request', 400, {
-          message: ['syncJobRetentionDays must not be greater than 365'],
+          message: ['syncJobRetentionDays must not be greater than 200'],
         }),
       );
       const user = userEvent.setup();
@@ -459,12 +459,64 @@ describe('OperationalSettingsPage', () => {
         name: 'Days a completed sync job is kept',
       });
       await user.clear(succeeded);
-      await user.type(succeeded, '500');
+      await user.type(succeeded, '300');
       await user.click(screen.getByRole('button', { name: 'Save retention' }));
 
       expect(
-        await screen.findByText('syncJobRetentionDays must not be greater than 365'),
+        await screen.findByText('syncJobRetentionDays must not be greater than 200'),
       ).toBeInTheDocument();
+    });
+
+    // The 30-365 window is enforced in the field before it reaches the API:
+    // an out-of-range number does not move the slider, says why, and is
+    // clamped to the nearest end when the field is left.
+    it('should refuse a retention value outside 30-365 and clamp it before saving', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      const slider = screen.getByRole('slider', { name: 'Days a completed sync job is kept' });
+      await user.clear(succeeded);
+      await user.type(succeeded, '500');
+
+      expect(
+        await screen.findByText(
+          /Enter a whole number from 30 to 365\. Leaving the field sets it to 365\./,
+        ),
+      ).toBeInTheDocument();
+      expect(slider).not.toHaveValue('500');
+
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          syncJobRetentionDays: 365,
+          syncJobDeadRetentionDays: 90,
+        });
+      });
+      expect(succeeded).toHaveValue(365);
+    });
+
+    it('should keep the slider and the number box in step both ways', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const box = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+      const slider = screen.getByRole('slider', { name: 'Products per catalogue run' });
+
+      fireEvent.change(slider, { target: { value: '1520' } });
+      expect(box).toHaveValue(1500);
+      expect(await screen.findByText('changed from 500')).toBeInTheDocument();
+
+      await user.clear(box);
+      await user.type(box, '730');
+      expect(slider).toHaveValue('730');
+
+      fireEvent.keyDown(slider, { key: 'ArrowRight' });
+      expect(box).toHaveValue(750);
     });
 
     it('should keep the retention save button inert until something changes', async () => {

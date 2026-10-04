@@ -26,6 +26,12 @@ import { mapOperationalSettingsErrors, NO_OPERATIONAL_SETTINGS_ERRORS } from '..
 import { limitsFor } from '../lib/resolve-value-limits';
 import { PacingValueField } from './pacing-value-field';
 
+/**
+ * Days are dragged in fives; any whole day can still be typed. Anchored at
+ * zero, so 30 / 90 / 365 — the bounds and both defaults — sit on the grid.
+ */
+const RETENTION_STEP_DAYS = 5;
+
 interface RetentionDraft {
   readonly syncJobRetentionDays: number;
   readonly syncJobDeadRetentionDays: number;
@@ -86,21 +92,26 @@ export function SyncJobRetentionSection(): ReactElement | null {
   };
 
   return (
-    <article className="panel">
-      <div className="panel__header">
+    <section className="panel pacing-card" id="pacing-retention" aria-labelledby="pacing-retention-title">
+      <header className="pacing-card__header">
         <div>
           <p className="eyebrow">Housekeeping</p>
-          <h3 className="section-title">Job retention</h3>
+          <h3 className="section-title" id="pacing-retention-title">
+            Job retention
+          </h3>
         </div>
-      </div>
+        <span className="panel__meta">saved on its own</span>
+      </header>
 
-      <div className="field-stack">
+      <div className="pacing-card__fields">
         <PacingValueField
           label="Completed jobs kept for"
           ariaLabel="Days a completed sync job is kept"
           description="How long a finished (succeeded) sync job's record is kept for troubleshooting, and to keep it from being re-run twice by accident. Bounded 30-365 days."
           value={draft.syncJobRetentionDays}
           limits={limitsFor(view, 'syncJobRetentionDays')}
+          step={RETENTION_STEP_DAYS}
+          unit="days"
           savedValue={view.syncJobRetentionDays.value}
           savedSource={view.syncJobRetentionDays.source}
           savedAboveRecommended={false}
@@ -122,6 +133,8 @@ export function SyncJobRetentionSection(): ReactElement | null {
           description="How long a job that ran out of retries is kept. It is the only record that the work was lost, so the default is longer than a completed job's. Bounded 30-365 days."
           value={draft.syncJobDeadRetentionDays}
           limits={limitsFor(view, 'syncJobDeadRetentionDays')}
+          step={RETENTION_STEP_DAYS}
+          unit="days"
           savedValue={view.syncJobDeadRetentionDays.value}
           savedSource={view.syncJobDeadRetentionDays.source}
           savedAboveRecommended={false}
@@ -140,26 +153,28 @@ export function SyncJobRetentionSection(): ReactElement | null {
         </p>
       ) : null}
 
-      <div className="form-actions">
-        <Button
-          disabled={!changed || mutation.isPending}
-          onClick={handleSave}
-        >
-          Save retention
-        </Button>
-        <Button
-          tone="secondary"
-          disabled={!changed}
-          onClick={() => {
-            setDraft({
-              syncJobRetentionDays: view.syncJobRetentionDays.value,
-              syncJobDeadRetentionDays: view.syncJobDeadRetentionDays.value,
-            });
-          }}
-        >
-          Undo my edits
-        </Button>
-      </div>
-    </article>
+      <footer className="pacing-card__footer">
+        <p className="pacing-savebar__status" aria-live="polite">
+          {changed ? 'Retention changed, not saved yet.' : 'No retention changes.'}
+        </p>
+        <div className="pacing-savebar__actions">
+          <Button
+            tone="secondary"
+            disabled={!changed}
+            onClick={() => {
+              setDraft({
+                syncJobRetentionDays: view.syncJobRetentionDays.value,
+                syncJobDeadRetentionDays: view.syncJobDeadRetentionDays.value,
+              });
+            }}
+          >
+            Undo my edits
+          </Button>
+          <Button disabled={!changed || mutation.isPending} onClick={handleSave}>
+            Save retention
+          </Button>
+        </div>
+      </footer>
+    </section>
   );
 }

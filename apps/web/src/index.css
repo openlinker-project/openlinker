@@ -22404,19 +22404,6 @@ legend.analytics-settings-dialog__label {
   }
 }
 
-.field-stack {
-  display: grid;
-  gap: var(--space-4);
-}
-
-/* Label with the effective value + its provenance pushed to the right. */
-.form-field__label--split {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
 .form-field__source {
   font-family: var(--font-mono);
   font-size: 0.6875rem;  font-weight: 400;
@@ -23451,24 +23438,6 @@ legend.analytics-settings-dialog__label {
   color: var(--status-info-fg);
 }
 
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.field-row__slider {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--accent-primary);
-}
-
-.control--narrow {
-  width: 6.5rem;
-  flex: none;
-  text-align: right;
-}
-
 .field-changed {
   display: inline-flex;
   align-items: center;
@@ -23484,11 +23453,6 @@ legend.analytics-settings-dialog__label {
   height: 5px;
   border-radius: 50%;
   background: var(--status-warning);
-}
-
-.actions-hint {
-  color: var(--text-muted);
-  font-size: 0.75rem;
 }
 
 .form-actions {
@@ -23588,10 +23552,6 @@ legend.analytics-settings-dialog__label {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   color: var(--text-muted);
-}
-
-.impact-alert {
-  margin-top: var(--space-4);
 }
 
 /* ── Before / after ─────────────────────────────────────────────────────── */
@@ -23731,44 +23691,9 @@ legend.analytics-settings-dialog__label {
 }
 
 /* ── Two ceilings (#2653 follow-up) ──────────────────────────────────────
- * The slider runs to the ABSOLUTE ceiling, so the recommended one has to be
- * visible on the track - otherwise an operator only learns they crossed it
- * when the save is refused.
+ * The slider runs to the ABSOLUTE ceiling; the recommended one is the tick
+ * `RangeNumberInput` draws on the track (see its block below).
  * ──────────────────────────────────────────────────────────────────────── */
-
-.field-row__track {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.field-row__track .field-row__slider {
-  width: 100%;
-}
-
-.field-row__recommended-marker {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  border-radius: 1px;
-  background: var(--status-warning);
-  opacity: 0.85;
-  pointer-events: none;
-}
-
-.field-row__scale {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-}
 
 /* A value the operator deliberately pushed past our advice must not read as
    an ordinary setting when the page is reopened. */
@@ -23786,6 +23711,426 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-2);
   font-size: 0.8125rem;
   cursor: pointer;
+}
+
+/* ── RangeNumberInput (shared/ui) ────────────────────────────────────────
+ * A slider and a compact number box side by side, bound to one value. The
+ * range is fully restyled (no `.control` chrome): a 4px track in
+ * --border-default, the filled part in the accent, the part past an optional
+ * marker in the warning tone, and a 16px thumb. The `--range-*` fractions are
+ * set inline by the component; the thumb's travel is inset by half its width,
+ * so every position below is `8px + (100% - 16px) * fraction`.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.range-number {
+  --range-control-height: 2rem;
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.range-number__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.range-number__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.range-number__slider {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: var(--range-control-height);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range-number__slider:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.range-number__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0,
+    var(--accent-primary) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) 100%
+  );
+}
+
+.range-number__slider::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0,
+    var(--accent-primary) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) 100%
+  );
+}
+
+.range-number__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.range-number__slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.range-number__slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--shadow-focus);
+}
+
+.range-number__slider:focus-visible::-moz-range-thumb {
+  box-shadow: var(--shadow-focus);
+}
+
+/* Drawn UNDER the slider: the 4px track hides its middle, so it reads as a
+   notch crossing the track, and the thumb covers it when it sits on it. */
+.range-number__tick {
+  position: absolute;
+  z-index: 0;
+  top: calc(var(--range-control-height) / 2 - 7px);
+  left: calc(8px + (100% - 16px) * var(--range-mark, 1));
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--status-warning);
+  pointer-events: none;
+}
+
+.range-number__scale {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 1rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1rem;
+}
+
+.range-number__marker-label {
+  position: absolute;
+  top: 0;
+  left: calc(8px + (100% - 16px) * var(--range-mark, 1));
+  color: var(--status-warning-fg);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.range-number__marker-label[data-align='start'] {
+  transform: translateX(-4px);
+}
+
+.range-number__marker-label[data-align='end'] {
+  transform: translateX(calc(-100% + 4px));
+}
+
+.range-number__box {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Two classes so it outranks the global `input[type='number']` width rule. */
+.range-number__box .range-number__input {
+  width: 6.5rem;
+  height: var(--range-control-height);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The arrow keys still step the value; the spinner only crowds a 6rem box. */
+.range-number__box .range-number__input::-webkit-inner-spin-button,
+.range-number__box .range-number__input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range-number__box .range-number__input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.range-number__unit {
+  min-width: 2.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767.98px) {
+  .range-number {
+    --range-control-height: 2.75rem;
+  }
+
+  .range-number__box .range-number__input {
+    width: 5.5rem;
+    font-size: 1rem; /* 16px keeps iOS from zooming on focus */
+  }
+}
+
+/* ── Sync pacing page layout (#2653 rework) ───────────────────────────── */
+
+.pacing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.pacing-layout__after {
+  display: grid;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .pacing-layout {
+    grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
+  }
+
+  .pacing-layout > .impact-column {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .pacing-layout__after {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
+.pacing-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pacing-nav__link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.pacing-nav__link:hover {
+  border-color: var(--accent-primary-border);
+  color: var(--text-primary);
+}
+
+.pacing-card {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: var(--space-8);
+}
+
+.pacing-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.pacing-card__header .panel__meta {
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.pacing-card__copy {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 72ch;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.pacing-card__copy p {
+  margin: 0;
+}
+
+.pacing-card__note {
+  margin: 0;
+  border-left: 2px solid var(--border-strong);
+  padding-left: var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.pacing-card__fields {
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* One rule between sibling fields, so a card with two reads as two rows. */
+.pacing-card__fields > .pacing-field + .pacing-field {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-5);
+}
+
+.pacing-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+  border-top: 1px solid var(--border-default);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-surface-muted);
+}
+
+.pacing-field {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.pacing-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.pacing-field__source {
+  font-variant-numeric: tabular-nums;
+}
+
+.pacing-field__description {
+  max-width: 72ch;
+  line-height: 1.5;
+}
+
+.pacing-stat {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.pacing-savebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+  box-shadow: var(--shadow-xs);
+}
+
+.pacing-savebar[data-dirty='true'] {
+  border-color: var(--accent-primary-border);
+  border-left: 3px solid var(--accent-primary);
+  background: var(--bg-surface);
+}
+
+.pacing-savebar__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
+.pacing-savebar__count {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.pacing-savebar__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pacing-savebar__actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+}
+
+@media (max-width: 767.98px) {
+  .pacing-card {
+    padding: var(--space-4);
+  }
+
+  .pacing-card__footer {
+    margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .pacing-savebar__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .pacing-savebar__actions .button,
+  .pacing-savebar__actions button {
+    height: 2.75rem;
+  }
+
+  .pacing-nav__link {
+    min-height: 2.75rem;
+  }
 }
 
 /* Which ceiling a change crossed, on that change's own entry in the modal. */

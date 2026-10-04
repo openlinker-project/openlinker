@@ -23,6 +23,29 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A single-class modifier loses to the global `input[type=...]` rule, and a `--modifier` class without its base class styles nothing
+
+**Context**: the sync-pacing settings page (#2653 / #2946) shipped a slider + number box per
+value, laid out with `workspace-grid--primary` and a `control--narrow` number box.
+
+**Problem**: the reviewer saw a full-width text box with the slider's thumb squeezed to its left
+edge, and the calculator column stacked UNDER the form at 1440 px. Two CSS facts, neither visible
+in a unit test: `input[type='number'] { width: 100% }` in the form-control block has specificity
+(0,1,1) and beats any single class such as `.control--narrow` (0,1,0), so the number box took the
+whole row; and `.workspace-grid--primary` only sets `grid-template-columns` — `display: grid`
+lives on `.workspace-grid`, which the page never applied, so the two-column layout never existed.
+
+**Rule**: a class meant to size or restyle a native `<input type="number|text|…">` needs two
+classes of specificity (e.g. `.range-number__box .range-number__input`), and a BEM modifier is
+applied together with its base class or not at all. Neither failure shows in happy-dom, so a page
+whose layout is the point gets a real-browser screenshot at 1440 and 390 before review.
+
+**Applies to**: `apps/web/src/index.css`; any page composing grid / control modifiers.
+
+**Source**: #3631 (sync-pacing rework), 2026-10-04.
+
+---
+
 ## A push plan built from pre-rebase subjects silently drops commits made after it
 
 **Context**: the pack-bench stack (#3330-#3439). After rebasing fourteen

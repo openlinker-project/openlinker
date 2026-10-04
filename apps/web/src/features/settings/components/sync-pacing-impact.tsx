@@ -110,13 +110,13 @@ export function SyncPacingImpact({
 
   return (
     <>
-      <article className="panel">
-        <div className="panel__header">
+      <section className="panel pacing-card">
+        <header className="pacing-card__header">
           <div>
             <p className="eyebrow">One catalogue run</p>
             <h3 className="section-title">Will it finish?</h3>
           </div>
-        </div>
+        </header>
 
         <TickBudgetBar
           runSeconds={after.catalogueRunSeconds}
@@ -141,15 +141,15 @@ export function SyncPacingImpact({
             instead of finishing sooner.
           </Alert>
         ) : null}
-      </article>
+      </section>
 
-      <article className="panel">
-        <div className="panel__header">
+      <section className="panel pacing-card">
+        <header className="pacing-card__header">
           <div>
             <p className="eyebrow">What changes</p>
             <h3 className="section-title">Before and after</h3>
           </div>
-        </div>
+        </header>
 
         <div className="impact-rows">
           {rows.map((row) => (
@@ -188,15 +188,15 @@ export function SyncPacingImpact({
             takes cannot be worked out. The per-run figures above are still exact.
           </p>
         )}
-      </article>
+      </section>
 
-      <article className="panel">
-        <div className="panel__header">
+      <section className="panel pacing-card">
+        <header className="pacing-card__header">
           <div>
             <p className="eyebrow">Read this</p>
             <h3 className="section-title">What these numbers cannot tell you</h3>
           </div>
-        </div>
+        </header>
         <ul className="limits-list">
           <li>
             <span>
@@ -217,7 +217,7 @@ export function SyncPacingImpact({
             </span>
           </li>
         </ul>
-      </article>
+      </section>
     </>
   );
 }
