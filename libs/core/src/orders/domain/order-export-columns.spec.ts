@@ -91,6 +91,32 @@ describe('resolveOrderExportCell', () => {
     expect(resolveOrderExportCell(order, 'totalAmount')).toBeNull();
   });
 
+  it('should fall back to the record currency and total columns when the snapshot has no totals', () => {
+    const base = makeOrder({ orderNumber: 'FI-1' });
+    const order = new OrderRecord(
+      base.internalOrderId,
+      base.customerId,
+      base.sourceConnectionId,
+      base.sourceEventId,
+      base.orderSnapshot,
+      base.syncStatus,
+      base.recordStatus,
+      base.createdAt,
+      base.updatedAt,
+      base.syncAttempts,
+      base.dispatchByAt,
+      base.fulfillmentState,
+      base.mappingFailureReason,
+      base.placedAt,
+      'EUR', // currency
+      null, // taxTreatment
+      129.9, // totalAmount
+    );
+
+    expect(resolveOrderExportCell(order, 'currency')).toBe('EUR');
+    expect(resolveOrderExportCell(order, 'totalAmount')).toBe(129.9);
+  });
+
   it('reads a redacted PII field as an EMPTY cell, never the literal [REDACTED] string', () => {
     const order = makeOrder({
       billingAddress: { firstName: REDACTED_PLACEHOLDER, lastName: REDACTED_PLACEHOLDER },

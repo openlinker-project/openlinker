@@ -180,10 +180,13 @@ export function resolveOrderExportCell(
       return order.createdAt.toISOString();
     case 'recordStatus':
       return order.recordStatus;
+    // The snapshot's totals are the source of truth when they are there; the
+    // denormalized record columns (#1985) cover rows whose snapshot carries no
+    // totals at all, which otherwise exported an empty currency and total.
     case 'currency':
-      return readTotals(snapshot).currency;
+      return readTotals(snapshot).currency ?? order.currency;
     case 'totalAmount':
-      return readTotals(snapshot).total;
+      return readTotals(snapshot).total ?? order.totalAmount;
     case 'itemCount':
       return readItems(snapshot).count;
     case 'skus':
