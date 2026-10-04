@@ -23782,6 +23782,12 @@ legend.analytics-settings-dialog__label {
   list-style: none;
   margin: 0;
   padding: 0;
+  /* The list is a grid item of `.detail-section`, whose implicit column is
+     `auto`: with the default `min-width: auto` the column grows to the cards'
+     min-content width (381px on a 390px phone) and the whole panel runs off
+     the screen. Letting it shrink keeps the column at the section's width so
+     the wrapping rules below actually get to wrap. */
+  min-width: 0;
 }
 
 .fulfilment-task {
