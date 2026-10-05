@@ -79,6 +79,7 @@ describe('Order delivery-resolution projection (#1791)', () => {
       processorKind: 'ol_managed_carrier',
       processorConnectionId: inpostId,
       processorAvailable: true,
+      parcelProfile: null,
     });
 
     const list = await http
@@ -91,6 +92,7 @@ describe('Order delivery-resolution projection (#1791)', () => {
       processorKind: 'ol_managed_carrier',
       processorConnectionId: inpostId,
       processorAvailable: true,
+      parcelProfile: null,
     });
   });
 
@@ -113,6 +115,7 @@ describe('Order delivery-resolution projection (#1791)', () => {
       processorKind: 'omp_fulfilled',
       processorConnectionId: null,
       processorAvailable: true,
+      parcelProfile: null,
     });
 
     const list = await http
@@ -124,6 +127,7 @@ describe('Order delivery-resolution projection (#1791)', () => {
       processorKind: 'omp_fulfilled',
       processorConnectionId: null,
       processorAvailable: true,
+      parcelProfile: null,
     });
   });
 
