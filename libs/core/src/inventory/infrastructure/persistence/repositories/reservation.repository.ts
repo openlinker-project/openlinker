@@ -34,7 +34,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { EntityManager} from 'typeorm';
-import { DataSource, LessThan, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, LessThan, QueryFailedError, Repository } from 'typeorm';
 import { ReservationOrmEntity } from '../entities/reservation.orm-entity';
 import { Reservation } from '../../../domain/entities/reservation.entity';
 import type { ReservationRepositoryPort } from '../../../domain/ports/reservation-repository.port';
@@ -231,10 +231,18 @@ export class ReservationRepository implements ReservationRepositoryPort {
     return entity ? this.toDomainFromEntity(entity) : null;
   }
 
-  async listHeldByOrderRecordId(orderRecordId: string): Promise<readonly Reservation[]> {
+  async listHeldByOrderRecordId(
+    orderRecordId: string,
+    orderLineIds?: readonly string[]
+  ): Promise<readonly Reservation[]> {
+    if (orderLineIds !== undefined && orderLineIds.length === 0) return [];
     const entities = await this.translate(() =>
       this.repository.find({
-        where: { orderRecordId, status: 'held' },
+        where: {
+          orderRecordId,
+          status: 'held',
+          ...(orderLineIds !== undefined ? { orderLineId: In([...orderLineIds]) } : {}),
+        },
         order: { inventoryItemId: 'ASC' },
       }),
     );

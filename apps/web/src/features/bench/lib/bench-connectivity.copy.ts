@@ -1,20 +1,13 @@
 /**
- * Pack-bench topbar copy (#3423; way-out added as a #3340 follow-up)
+ * Pack-bench connectivity copy (#3422, on #3407's decision)
+ *
+ * The words of the connectivity readout. Split out of the retired bench-only
+ * topbar's copy module (#3653) - the crumb and "Leave the bench" strings went
+ * with that topbar, since `/bench` now renders the application's own.
  *
  * @module apps/web/src/features/bench/lib
  */
-export const benchTopbarCopy = {
-  parentCrumb: 'Operations',
-  currentCrumb: 'Pack bench',
-
-  /**
-   * Named for the destination, not for the gesture. "Back" says nothing about
-   * where back is, and this control is the only exit from a route that renders
-   * no sidebar — the admin pressing it wants the work list, not the previous
-   * page in their history.
-   */
-  leaveAction: 'Leave the bench',
-
+export const benchConnectivityCopy = {
   /**
    * The connectivity readout (#3422), worded to #3407's decision.
    *

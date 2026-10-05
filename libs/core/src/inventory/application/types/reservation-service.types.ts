@@ -121,6 +121,15 @@ export interface CloseForOrderInput {
    * `'released'` — the order was cancelled and gives its promise back (#2348).
    */
   readonly terminalStatus: 'consumed' | 'released';
+  /**
+   * Close only these order lines (#3480). Omitted means every held line of the
+   * order, exactly as before.
+   *
+   * The routed-order sale decrement (#3453) confirms per LINE, and a line whose
+   * decrement failed must keep its hold so stock stays reduced while the retry
+   * runs — closing the whole order would give those units back too early.
+   */
+  readonly orderLineIds?: readonly string[];
 }
 
 /**

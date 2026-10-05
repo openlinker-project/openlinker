@@ -1185,6 +1185,36 @@ textarea,
   letter-spacing: -0.02em;
 }
 
+/* A shell with no sidebar (the pack bench): the topbar and content take the
+   full width at every breakpoint, and the brand mark moves into the topbar,
+   where it sits flush instead of carrying the sidebar's padding. */
+@media (min-width: 1024px) {
+  .shell.shell--no-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'main';
+  }
+}
+
+.shell-topbar .shell-brand {
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* On a phone the rest of the app's topbar opens with a 36 px menu button and
+   the breadcrumb. The brand takes that slot here, so only the mark stays and
+   the name and environment badge give the breadcrumb its room back. */
+@media (max-width: 767px) {
+  .shell-topbar .shell-brand__name,
+  .shell-topbar .shell-brand .context-chip {
+    display: none;
+  }
+}
+
+/* The page owns its own gutters (`.bench-shell`), so the shell adds none. */
+.shell-content.shell-content--flush {
+  padding: 0;
+}
+
 /* ── Environment badge: version line (#3287) ─────────────────────────
  * The environment label (Dev/Stg/Prod) keeps its pre-existing single-line
  * layout; when a build version is available the badge stacks a second,
@@ -1628,6 +1658,18 @@ textarea,
 @media (max-width: 767px) {
   .shell-user-chip__name {
     display: none;
+  }
+
+  /* Except on the pack bench (story A4, #3653): a packer must see who the
+     system thinks they are without opening a menu, and a bench terminal may
+     well be narrow. Capped and ellipsised so a long name cannot push the
+     topbar past the viewport; the full name stays in the chip's label. */
+  .shell--bench .shell-user-chip__name {
+    display: inline-block;
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -4808,6 +4850,18 @@ a.delivery-rider-banner__button:focus-visible {
 .sales-document-country-routing-dialog__body {
   display: grid;
   gap: var(--space-5);
+}
+
+/* #3657 — the archive confirmation stacks a consequence list, the typed-name
+   field and an error alert; same grid+gap shape as the dialog bodies above. */
+.archive-connection-dialog__body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.archive-connection-dialog__list {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 /* ── Per-tier cards (review finding: tiers read as one unbroken block) ──
@@ -11439,6 +11493,272 @@ a.kpi-card:focus-visible {
 .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
 .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
 
+/* ── Connection chip (#3670) ───────────────────────────────────────────
+ * A connection's channel as one link: the platform at rest, the connection
+ * name sliding out to the right on hover / keyboard focus. It replaces a
+ * non-clickable `.channel-pill` beside a separate, truncated name link.
+ *
+ * Two boxes, one silhouette. The FACE (dot + platform) is the only thing in
+ * flow, so a row's width never depends on the name. The REVEAL is absolutely
+ * positioned behind the face's right cap and unrolls rightwards with a clip,
+ * so opening it moves nothing - it overlays the neighbouring cell for as long
+ * as the pointer is there. Both share one tint, so the open chip reads as a
+ * single pill that grew, with the face's cap left as a natural seam.
+ *
+ * `isolation` gives the reveal a stacking context of its own to sit BEHIND the
+ * face in; the raised `z-index` on the open state lifts the whole chip above
+ * whatever it overlays. */
+.connection-chip {
+  --chip-hue: var(--text-muted);
+  --chip-rest-bg: var(--bg-surface-muted);
+  --chip-rest-edge: var(--border-subtle);
+  --chip-tint: color-mix(in oklab, var(--chip-hue) 13%, var(--bg-surface));
+  --chip-tint-strong: color-mix(in oklab, var(--chip-hue) 24%, var(--bg-surface));
+  --chip-edge: color-mix(in oklab, var(--chip-hue) 55%, var(--border-subtle));
+  --chip-overlap: 12px;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  /* Several hosts are column flex stacks (`.orders-cell-stack`), which would
+   * otherwise stretch the chip across the whole cell. */
+  align-self: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.connection-chip[data-channel='allegro']     { --chip-hue: var(--channel-allegro); }
+.connection-chip[data-channel='prestashop']  { --chip-hue: var(--channel-prestashop); }
+.connection-chip[data-channel='erli']        { --chip-hue: var(--channel-erli); }
+.connection-chip[data-channel='woocommerce'] { --chip-hue: var(--channel-woocommerce); }
+.connection-chip[data-channel='amazon']      { --chip-hue: var(--channel-amazon); }
+.connection-chip[data-channel='shopify']     { --chip-hue: var(--channel-shopify); }
+
+.connection-chip__face {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 8px 0 7px;
+  border: 1px solid var(--chip-rest-edge);
+  border-radius: var(--radius-pill);
+  background: var(--chip-rest-bg);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--chip-hue);
+  transition:
+    box-shadow var(--duration-normal) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__platform {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.connection-chip__reveal {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: calc(100% - var(--chip-overlap));
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  max-width: 18rem;
+  padding: 0 8px 0 calc(var(--chip-overlap) + 7px);
+  border: 1px solid var(--chip-edge);
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  background: var(--chip-tint);
+  box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--chip-hue) 45%, transparent);
+  /* Rolled up to its left edge, i.e. entirely behind the face. */
+  clip-path: inset(-12px 100% -12px 0);
+  pointer-events: none;
+  transition:
+    clip-path var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--text-primary);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__chevron {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--chip-hue);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+/* ── Open: hover or keyboard focus ── */
+.connection-chip--link {
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+  transform-origin: left center;
+}
+
+.connection-chip--link:hover,
+.connection-chip--link:focus-visible {
+  z-index: 3;
+}
+
+.connection-chip--link:hover .connection-chip__face,
+.connection-chip--link:focus-visible .connection-chip__face {
+  border-color: var(--chip-edge);
+  background: var(--chip-tint);
+}
+
+.connection-chip--link:hover .connection-chip__dot,
+.connection-chip--link:focus-visible .connection-chip__dot {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--chip-hue) 28%, transparent);
+}
+
+/* Opening is slower and eased out, so the name reads as unrolling; closing
+ * (the base rule) is quicker, so a pointer sweeping down a column does not
+ * leave a trail of half-shut chips behind it. */
+.connection-chip--link:hover .connection-chip__reveal,
+.connection-chip--link:focus-visible .connection-chip__reveal {
+  clip-path: inset(-12px -12px -12px 0);
+  pointer-events: auto;
+  transition:
+    clip-path var(--duration-slow) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip--link:hover .connection-chip__name,
+.connection-chip--link:focus-visible .connection-chip__name {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 60ms,
+    transform var(--duration-slow) var(--ease-out) 40ms;
+}
+
+.connection-chip--link:hover .connection-chip__chevron,
+.connection-chip--link:focus-visible .connection-chip__chevron {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 120ms,
+    transform var(--duration-slow) var(--ease-out) 120ms;
+}
+
+.connection-chip--link:focus-visible {
+  outline: none;
+}
+
+.connection-chip--link:focus-visible .connection-chip__face {
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Press ── the whole chip dips and the tint deepens, so a click is felt
+ * before the route changes. Scaling the root rather than the face keeps the
+ * face and the reveal moving as one piece. */
+.connection-chip--link:active {
+  transform: scale(0.96);
+  transition-duration: 60ms;
+}
+
+.connection-chip--link:active .connection-chip__face,
+.connection-chip--link:active .connection-chip__reveal {
+  background: var(--chip-tint-strong);
+}
+
+.connection-chip--link:active .connection-chip__dot {
+  transform: scale(1.35);
+}
+
+/* ── No label known: the name is the face, nothing slides out ── */
+.connection-chip--name-only .connection-chip__name {
+  opacity: 1;
+  transform: none;
+}
+
+.connection-chip--name-only .connection-chip__chevron {
+  margin-left: -2px;
+}
+
+/* A connection that did not resolve is a statement of absence, not a name. */
+.connection-chip--unknown .connection-chip__name {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* No hover to open it: show the name statically, joined to the face, rather
+ * than hide it on the one device class that could never reveal it. */
+@media (hover: none) {
+  .connection-chip__reveal {
+    position: relative;
+    left: auto;
+    margin-left: calc(var(--chip-overlap) * -1);
+    clip-path: none;
+    pointer-events: auto;
+    box-shadow: none;
+    border-color: var(--chip-rest-edge);
+    background: var(--chip-rest-bg);
+  }
+
+  .connection-chip__name,
+  .connection-chip__chevron {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-chip,
+  .connection-chip *,
+  .connection-chip--link:hover *,
+  .connection-chip--link:focus-visible * {
+    transition: none !important;
+  }
+
+  .connection-chip--link:active {
+    transform: none;
+  }
+}
+
 /* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
 .entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
 .entity-label__thumb {
@@ -11872,8 +12192,8 @@ a.kpi-card:focus-visible {
   vertical-align: top;
 }
 
-/* Products is the only list pairing `ConnectionCell` with a TEXT adornment, and
- * the cell's 220px body cap was measured in #2027 for an adornment that is either
+/* Products paired `ConnectionCell` with a TEXT adornment before #3670, and the
+ * cell's 220px body cap was measured in #2027 for an adornment that is either
  * absent or a 14px `ConnectionDot`. A `.channel-pill` is 2px border + 16px
  * padding + a 6px dot + a 4px gap + mono 11px text at 0.6em advance, so
  * `WooCommerce` runs ~100px — leaving the connection NAME ~113px inside 220px,
@@ -14040,6 +14360,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-color: var(--border-subtle);
 }
 .bulk-editor__ean-err { color: var(--status-error-fg); font-size: 11.5px; margin-top: 5px; }
+
+/* ── EAN override (#3492) ── */
+/* One definition for the "I confirm this EAN is correct" block, shared by the
+ * simple-product and per-variant scopes so the two cannot look different. */
+.bulk-editor__ean-ack { margin-top: var(--space-2); }
+.bulk-editor__ean-ack .checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* ── end EAN override (#3492) ── */
 
 .bulk-editor__prov {
   font-family: var(--font-mono);
@@ -24664,34 +24995,6 @@ legend.analytics-settings-dialog__label {
   background: var(--bg-surface-elevated);
 }
 
-.bench-identity-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin: 0 var(--space-5);
-  padding: var(--space-3) var(--space-5);
-  background: var(--bg-surface-muted);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.875rem;
-}
-
-/* The mockup says out loud what the switch DOES, next to the control, rather
-   than leaving it to a `title` a gloved hand never hovers. */
-.bench-identity-bar__hint {
-  margin-left: auto;
-  margin-right: var(--space-4);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-wrap: pretty;
-}
-
-@media (max-width: 900px) {
-  .bench-identity-bar__hint {
-    display: none;
-  }
-}
-
 /* ── Pack bench — work list (#2416, W3b-3) ──────────────────────────────────
  *
  * Sized for a bench rather than a desk. The 44 px touch floor is unconditional
@@ -25377,7 +25680,8 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-3);
   justify-items: start;
   max-width: 42rem;
-  padding: var(--space-6) 0;
+  /* The same side gutter as the rail's search, take-next and tabs above it. */
+  padding: var(--space-6) var(--space-4);
 }
 
 .bench-work-empty__title {
@@ -26463,115 +26767,20 @@ legend.analytics-settings-dialog__label {
   overflow-y: auto;
 }
 
-/* ── Bench topbar (#3423, mockup-parity epic #3401) ──────────────────────
- * A bench-owned header, NOT `AppShell` — `/bench` stays outside
- * `AuthenticatedAppLayout` by design (#2413). Mirrors the mockup's
- * `.topbar`/`.shell-brand`/`.shell-crumbs`/`.shell-user-chip` visually. */
-.bench-topbar {
+/* ── Bench connectivity readout (#3422, moved by #3653) ──────────────────
+ * The bench carries the application's own topbar since #3653; this readout is
+ * the one part of the old bench-only topbar no other page has. Colour is never
+ * the only signal: the dot is always paired with its own word, per the rule
+ * that also governs `StatusBadge`. The middle tone is NOT "hardware" - see
+ * `bench-connectivity-indicator.tsx`. */
+.bench-status {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  height: 52px;
-  padding: 0 var(--space-5);
-  background: var(--bg-shell);
-  border-bottom: 1px solid var(--border-subtle);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-5) 0;
+  background: var(--bg-canvas);
 }
 
-.bench-topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.bench-topbar__brand-mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: var(--accent-primary);
-  display: grid;
-  place-items: center;
-  color: var(--text-on-primary);
-  font-weight: 700;
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
-.bench-topbar__brand-name {
-  font-weight: 600;
-  font-size: 0.875rem;
-  letter-spacing: -0.02em;
-}
-
-.bench-topbar__crumbs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--border-default);
-}
-
-.bench-topbar__crumbs-current {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-/* The crumb's parent, live for a viewer who can use it (#3340 follow-up).
-   Reads as text until hovered, because a breadcrumb that shouts is a
-   breadcrumb competing with the work. */
-.bench-topbar__crumbs-up {
-  color: inherit;
-  text-decoration: none;
-  border-radius: var(--radius-sm);
-}
-
-.bench-topbar__crumbs-up:hover {
-  color: var(--text-primary);
-  text-decoration: underline;
-}
-
-.bench-topbar__crumbs-up:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-/* The explicit exit. It survives the phone breakpoint that folds the crumbs
-   away, which is the width where a typed URL is least available. */
-.bench-topbar__leave {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 0.78125rem;
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.bench-topbar__leave:hover {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-}
-
-.bench-topbar__leave:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-.bench-topbar__spacer {
-  flex: 1;
-}
-
-/* #3422 - the connectivity readout. Colour is never the only signal: the dot
-   is always paired with its own word, per the accessibility rule that also
-   governs `StatusBadge`. The three tones map to #3407's three states, and the
-   middle one is NOT "hardware" - see `bench-topbar.tsx`. */
-.bench-topbar__conn {
+.bench-conn {
   align-items: center;
   display: inline-flex;
   gap: var(--space-2);
@@ -26580,7 +26789,7 @@ legend.analytics-settings-dialog__label {
   white-space: nowrap;
 }
 
-.bench-topbar__conn-dot {
+.bench-conn__dot {
   border-radius: 50%;
   flex-shrink: 0;
   height: 8px;
@@ -26588,97 +26797,22 @@ legend.analytics-settings-dialog__label {
   background: var(--status-success);
 }
 
-.bench-topbar__conn--server-unreachable .bench-topbar__conn-dot {
+.bench-conn--server-unreachable .bench-conn__dot {
   background: var(--status-warning);
 }
 
-.bench-topbar__conn--link-down .bench-topbar__conn-dot {
+.bench-conn--link-down .bench-conn__dot {
   background: var(--status-error);
 }
 
 /* The label carries the tone too, so the state survives a monochrome screen
    and a colour-blind reader. */
-.bench-topbar__conn--server-unreachable .bench-topbar__conn-label {
+.bench-conn--server-unreachable .bench-conn__label {
   color: var(--status-warning);
 }
 
-.bench-topbar__conn--link-down .bench-topbar__conn-label {
+.bench-conn--link-down .bench-conn__label {
   color: var(--status-error);
-}
-
-/* The label is the first thing to go at phone width - the dot keeps the
-   state on screen, and the `title` keeps the detail reachable. */
-@media (max-width: 560px) {
-  .bench-topbar__conn-label {
-    display: none;
-  }
-}
-
-.bench-topbar__user-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 3px 10px 3px 3px;
-  border-radius: var(--radius-pill);
-  height: 32px;
-}
-
-.bench-topbar__user-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
-  color: var(--text-inverse);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.65625rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.bench-topbar__user-name {
-  font-size: 0.78125rem;
-  font-weight: 500;
-}
-
-@media (max-width: 560px) {
-  /* `.theme-toggle` is `overflow: hidden`, so a topbar that merely ran out of
-     room CLIPPED its third option rather than scrolling — "System" became
-     unreachable with nothing to say so. The bar wraps instead, which needs
-     the fixed 52 px height released. */
-  .bench-topbar {
-    height: auto;
-    flex-wrap: wrap;
-    row-gap: var(--space-2);
-    padding-block: var(--space-2);
-  }
-
-  .bench-topbar__crumbs {
-    display: none;
-  }
-
-  .bench-topbar__user-name {
-    display: none;
-  }
-
-  /* TWO rows, not three. The spacer grows on a desk to push the trailing
-     group right; wrapping, that growth put the avatar on a line of its own. */
-  .bench-topbar__spacer {
-    flex-basis: 100%;
-    height: 0;
-  }
-
-  .bench-topbar .theme-toggle {
-    margin-left: auto;
-  }
-
-  /* The identity row follows the topbar's own gutter on a phone; the 24 px
-     inset it carries on a desk made it read as a floating strip. */
-  .bench-identity-bar {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-  }
 }
 
 /* `.order-head__ref` — the one value on the strip the mockup lifts, and only
@@ -27737,4 +27871,305 @@ legend.analytics-settings-dialog__label {
 .tab-toolbar p {
   margin: 0;
   max-width: 70ch;
+}
+
+/* ── Pack orders in OpenLinker — onboarding wizard (#3457) ── */
+.setup-stepper__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+/* The global `button` rule paints every button orange, fixes its height at 2rem
+   and gives it an orange hover; a step in the list is none of that. */
+.setup-stepper--vertical .setup-stepper__button,
+.setup-stepper--vertical .setup-stepper__button:hover,
+.setup-stepper--vertical .setup-stepper__button:active {
+  height: auto;
+  min-height: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+}
+.setup-stepper__button:disabled { cursor: not-allowed; opacity: 0.6; }
+.setup-stepper__button:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+
+/* The mockup's `.content` caps every state (wizard, waiting, status) at 1120px
+   less its padding, so the page reads as a column rather than a full-width sheet. */
+.oms-onboarding { display: flex; flex-direction: column; gap: var(--space-4); max-width: 75rem; width: 100%; }
+.oms-onboarding__stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.oms-onboarding__panel-title { margin: 0; font-size: 1.125rem; font-weight: 600; }
+.oms-onboarding__panel-title:focus { outline: none; }
+.oms-onboarding__why { margin: 0; color: var(--text-secondary); }
+.oms-onboarding__panel-body { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.oms-onboarding__panel-next { display: flex; gap: var(--space-2); }
+.oms-onboarding__subtitle { margin: 0 0 var(--space-2); font-weight: 600; }
+
+.oms-onboarding__card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.oms-onboarding__card-main { display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__card-name { font-weight: 600; }
+.oms-onboarding__card-sub { color: var(--text-secondary); }
+.oms-onboarding__badges { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+.oms-onboarding__progress { display: flex; flex-direction: column; gap: var(--space-2); }
+.oms-onboarding__progress-row { display: flex; justify-content: space-between; gap: var(--space-3); }
+.oms-onboarding__progress-track {
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+.oms-onboarding__progress-fill { height: 100%; background: var(--accent-primary); transition: width 200ms ease; }
+
+.oms-onboarding__form { display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+  /* Not stretched: a field with a hint under it is taller than one without,
+     and stretching it spreads the shorter fields' rows apart, which drops
+     their inputs below their neighbours'. */
+  align-items: start;
+}
+.oms-onboarding__copybox { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.oms-onboarding__copybox .control { flex: 1; min-width: 0; }
+.oms-onboarding__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.oms-onboarding__list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__more summary { cursor: pointer; color: var(--text-link); }
+.oms-onboarding__more p { margin: var(--space-2) 0 0; color: var(--text-secondary); }
+
+/* Today and After turn-it-on sit side by side (one column on a phone), each a
+   top-to-bottom journey, as in the mockup. */
+.oms-onboarding__flows { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+@media (min-width: 720px) {
+  .oms-onboarding__flows { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+}
+.oms-onboarding__flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__flow--after { border-color: var(--accent-primary); }
+.oms-onboarding__flow-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Each order journey reads top to bottom. */
+.oms-onboarding__chain { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.oms-onboarding__node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+}
+.oms-onboarding__node--highlight { background: var(--status-info-soft); }
+.oms-onboarding__node-title { font-weight: 600; }
+.oms-onboarding__node-body { color: var(--text-secondary); }
+.oms-onboarding__arrow { align-self: center; color: var(--text-muted); transform: rotate(90deg); }
+
+.oms-onboarding__boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); }
+.oms-onboarding__box { padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.oms-onboarding__box--in { border-color: var(--status-success-border); background: var(--status-success-soft); }
+.oms-onboarding__box-title { margin: 0 0 var(--space-2); font-weight: 600; }
+.oms-onboarding__box ul { margin: 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+
+.oms-onboarding__changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__changes li { display: flex; gap: var(--space-3); }
+.oms-onboarding__changes-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  font-weight: 700;
+}
+.oms-onboarding__changes-body { display: block; color: var(--text-secondary); }
+.oms-onboarding__ack {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.oms-onboarding__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.oms-onboarding__check + .oms-onboarding__check { border-top: 1px solid var(--border-subtle); }
+.oms-onboarding__check-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.oms-onboarding__check-title { font-weight: 600; }
+.oms-onboarding__check-detail { display: block; color: var(--text-secondary); }
+.oms-onboarding__tick {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-pill);
+}
+.oms-onboarding__tick--ok { background: var(--status-success-soft); color: var(--status-success-fg); }
+.oms-onboarding__tick--warn { background: var(--status-warning-soft); color: var(--status-warning-fg); }
+
+.oms-onboarding__banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--status-success-border);
+  border-radius: var(--radius-lg);
+  background: var(--status-success-soft);
+}
+.oms-onboarding__banner--off { border-color: var(--border-subtle); background: var(--bg-surface-muted); }
+.oms-onboarding__banner-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 600; }
+.oms-onboarding__banner-body { margin: var(--space-1) 0 0; color: var(--text-secondary); }
+.oms-onboarding__pulse {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--status-success-fg);
+}
+.oms-onboarding__banner--off .oms-onboarding__pulse { background: var(--text-muted); }
+.oms-onboarding__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.oms-onboarding__first-order { display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__event { display: flex; align-items: flex-start; gap: var(--space-3); }
+.oms-onboarding__spinner {
+  flex: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  animation: oms-onboarding-spin 900ms linear infinite;
+}
+@keyframes oms-onboarding-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .oms-onboarding__spinner { animation: none; }
+  .oms-onboarding__progress-fill { transition: none; }
+}
+.oms-onboarding__next-steps { margin: var(--space-2) 0 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__next-hint { color: var(--text-secondary); }
+
+/* The platform's own product (the OpenLinker OMS), set apart from the
+   third-party integrations around it in the platform picker. */
+.platform-picker__card--featured {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+.toolbar-chip--accent {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+/* A wizard whose step list sits beside its content (the OMS setup, per the
+   mockup's `.wizard`: a 240px list and a flexible panel). */
+.setup-stepper__text { display: flex; flex-direction: column; min-width: 0; }
+.setup-stepper__meta { font-size: 0.75rem; color: var(--text-muted); min-height: 1rem; line-height: 1rem; }
+
+.wizard-layout.wizard-layout--side {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'stepper'
+    'form';
+}
+
+@media (min-width: 800px) {
+  .wizard-layout.wizard-layout--side {
+    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-areas: 'stepper form';
+    column-gap: var(--space-7);
+    align-items: start;
+    justify-content: stretch;
+  }
+}
+
+@media (min-width: 800px) {
+  .setup-stepper--vertical { margin: 0; position: sticky; top: var(--space-6); }
+  .setup-stepper--vertical .setup-stepper__list {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+  .setup-stepper--vertical .setup-stepper__step { display: block; }
+  .setup-stepper--vertical .setup-stepper__button {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+    border-radius: var(--radius-md);
+  }
+  .setup-stepper--vertical .setup-stepper__button:hover:not(:disabled) { background: var(--bg-surface-hover); }
+  .setup-stepper--vertical .setup-stepper__button:disabled:hover { background: none; }
+  .setup-stepper--vertical .setup-stepper__indicator { width: 1.75rem; height: 1.75rem; }
+  .setup-stepper--vertical .setup-stepper__label { white-space: normal; font-size: 0.9375rem; padding-top: 2px; line-height: 1.3; }
+  .setup-stepper--vertical .setup-stepper__connector { display: none; }
 }
