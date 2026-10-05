@@ -8,6 +8,7 @@
  */
 import { Module } from '@nestjs/common';
 import { SyncModule } from '@openlinker/core/sync';
+import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
@@ -95,6 +96,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
 @Module({
   imports: [
     SyncModule, // Import SyncModule to access SYNC_JOB_REPOSITORY_TOKEN
+    EventsModule, // #2301, D48 — exposes STREAM_DEAD_LETTERS_SERVICE_TOKEN for JobIntakeConsumer's poison-entry terminal write
     IntegrationsModule, // Import IntegrationsModule to access INTEGRATIONS_SERVICE_TOKEN
     IdentifierMappingModule, // Import IdentifierMappingModule to access IDENTIFIER_MAPPING_SERVICE_TOKEN
     ProductsModule, // Import ProductsModule to access PRODUCTS_SERVICE_TOKEN

@@ -18,7 +18,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SYNC_JOB_REPOSITORY_TOKEN, SCHEDULER_TASK_REGISTRY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
-import type { JobType } from '../../domain/types/sync-job.types';
+import type { JobType, SyncJobRetentionStatus } from '../../domain/types/sync-job.types';
 import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
 import { SchedulerTaskRegistryService } from '../../infrastructure/adapters/scheduler-task-registry.service';
 import type { ISyncJobsService } from './sync-jobs.service.interface';
@@ -69,6 +69,14 @@ export class SyncJobsService implements ISyncJobsService {
 
   async requeueStuckJobs(timeoutMinutes: number): Promise<number> {
     return this.syncJobRepository.requeueStuckJobs(timeoutMinutes);
+  }
+
+  async pruneTerminalJobs(
+    status: SyncJobRetentionStatus,
+    olderThan: Date,
+    batchSize: number
+  ): Promise<number> {
+    return this.syncJobRepository.pruneTerminalJobs(status, olderThan, batchSize);
   }
 
   async findLastSucceededJob(connectionId: string, jobType: JobType): Promise<SyncJob | null> {

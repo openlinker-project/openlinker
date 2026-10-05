@@ -58,6 +58,7 @@ describe('SyncController', () => {
     markFailed: jest.fn(),
     markDead: jest.fn(),
     requeueStuckJobs: jest.fn(),
+    pruneTerminalJobs: jest.fn(),
     requeueDeadJob: jest.fn(),
     requeueDeadByIdempotencyKey: jest.fn(),
     findRecentByConnectionId: jest.fn(),

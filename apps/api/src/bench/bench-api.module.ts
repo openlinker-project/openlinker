@@ -27,6 +27,7 @@ import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
 import { ShippingModule } from '@openlinker/core/shipping';
+import { SyncModule } from '@openlinker/core/sync';
 
 import { IntegrationsModule } from '../integrations/integrations.module';
 // #3525 — the SAME dispatch-relay notifier the desktop worklist's manual
@@ -35,15 +36,18 @@ import { IntegrationsModule } from '../integrations/integrations.module';
 // imports this module back, so no cycle.
 import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
 import { BENCH_DOCUMENTS_SERVICE_TOKEN } from './application/interfaces/bench-documents.service.interface';
+import { BENCH_LABEL_SERVICE_TOKEN } from './application/interfaces/bench-label.service.interface';
 import { BENCH_PARCEL_SERVICE_TOKEN } from './application/interfaces/bench-parcel.service.interface';
 import { BENCH_PRESENCE_SERVICE_TOKEN } from './application/interfaces/bench-presence.service.interface';
 import { BENCH_WORK_SERVICE_TOKEN } from './application/interfaces/bench-work.service.interface';
 import { BenchDocumentsService } from './application/services/bench-documents.service';
 import { BenchExecutorResolver } from './application/services/bench-executor.resolver';
+import { BenchLabelService } from './application/services/bench-label.service';
 import { BenchParcelService } from './application/services/bench-parcel.service';
 import { BenchPresenceService } from './application/services/bench-presence.service';
 import { BenchWorkService } from './application/services/bench-work.service';
 import { BenchDocumentsController } from './http/bench-documents.controller';
+import { BenchLabelController } from './http/bench-label.controller';
 import { BenchParcelController } from './http/bench-parcel.controller';
 import { BenchWorkController } from './http/bench-work.controller';
 
@@ -54,6 +58,8 @@ import { BenchWorkController } from './http/bench-work.controller';
     ProductsModule,
     InvoicingModule,
     ShippingModule,
+    // #3654 - the per-work lock serialising a label replacement.
+    SyncModule,
     IntegrationsModule,
     InventoryModule,
     // #3424 - the presence heartbeat's one seam. Read-free: the bench calls
@@ -61,7 +67,7 @@ import { BenchWorkController } from './http/bench-work.controller';
     UsersApiModule,
     FulfillmentApiModule,
   ],
-  controllers: [BenchWorkController, BenchParcelController, BenchDocumentsController],
+  controllers: [BenchWorkController, BenchParcelController, BenchDocumentsController, BenchLabelController],
   providers: [
     // Shared by all three surfaces — story D2's "assigned to OpenLinker's own
     // packing executor" half, resolved once rather than restated per service.
@@ -72,6 +78,8 @@ import { BenchWorkController } from './http/bench-work.controller';
     { provide: BENCH_PARCEL_SERVICE_TOKEN, useExisting: BenchParcelService },
     BenchDocumentsService,
     { provide: BENCH_DOCUMENTS_SERVICE_TOKEN, useExisting: BenchDocumentsService },
+    BenchLabelService,
+    { provide: BENCH_LABEL_SERVICE_TOKEN, useExisting: BenchLabelService },
     BenchPresenceService,
     { provide: BENCH_PRESENCE_SERVICE_TOKEN, useExisting: BenchPresenceService },
   ],

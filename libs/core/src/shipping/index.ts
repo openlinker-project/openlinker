@@ -116,8 +116,13 @@ export {
   resolveAutoDispatchDeliveryIntent,
   resolveAutoDispatchParcel,
   resolveAutoDispatchRecipient,
+  resolveOrderDispatchTarget,
 } from './domain/auto-dispatch';
-export type { AutoDispatchRefusalReason, AutoDispatchWorkLine } from './domain/auto-dispatch';
+export type {
+  AutoDispatchRefusalReason,
+  AutoDispatchWorkLine,
+  OrderDispatchTarget,
+} from './domain/auto-dispatch';
 
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';

@@ -128,6 +128,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       inventorySweepBudget: numeric('inventorySweepBudget'),
       sweepPageSize: numeric('sweepPageSize'),
       deletionAuditBudget: numeric('deletionAuditBudget'),
+      syncJobRetentionDays: numeric('syncJobRetentionDays'),
+      syncJobDeadRetentionDays: numeric('syncJobDeadRetentionDays'),
       deletionAuditCadence: this.resolveCadence(stored?.deletionAuditCadence ?? null),
       // Read-only, and never `source: 'setting'` - there is no column for
       // either. Reported so a consumer computing a full-pass length uses the
@@ -190,6 +192,12 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         ...(input.sweepPageSize !== undefined && { sweepPageSize: input.sweepPageSize }),
         ...(input.deletionAuditBudget !== undefined && {
           deletionAuditBudget: input.deletionAuditBudget,
+        }),
+        ...(input.syncJobRetentionDays !== undefined && {
+          syncJobRetentionDays: input.syncJobRetentionDays,
+        }),
+        ...(input.syncJobDeadRetentionDays !== undefined && {
+          syncJobDeadRetentionDays: input.syncJobDeadRetentionDays,
         }),
         ...(input.deletionAuditCadence !== undefined && {
           deletionAuditCadence: input.deletionAuditCadence,
