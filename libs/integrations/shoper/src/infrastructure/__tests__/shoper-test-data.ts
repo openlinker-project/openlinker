@@ -2,11 +2,15 @@
  * Test data builders shaped like payloads captured from a live Shoper trial
  * shop (1 Oct 2026). Every numeric field is a string, as on the wire.
  *
- * The multi-variant builder is NOT live-captured - the trial shop has no such
- * product - and follows the documented grain (several `product-stocks` rows
- * under one product); its `options` content is a placeholder.
+ * The option fixtures at the bottom ARE live-captured (product 127, 5 Oct 2026,
+ * read-only GETs): a stock's `options` is `{ option_id: ovalue_id }`, ids only.
  */
-import type { ShoperProduct, ShoperStock } from '../../domain/types/shoper-api.types';
+import type {
+  ShoperOption,
+  ShoperOptionValue,
+  ShoperProduct,
+  ShoperStock,
+} from '../../domain/types/shoper-api.types';
 import type { ShoperMapContext } from '../mappers/shoper-product.mapper';
 
 export const SHOP_HOST = 'sklep729770.shoparena.pl';
@@ -75,3 +79,22 @@ export function envelope<T>(
     list,
   };
 }
+
+/** `GET /options/10`, as captured. */
+export const LIVE_OPTION_COLOUR: ShoperOption = {
+  option_id: '10',
+  translations: { pl_PL: { name: 'Kolor' } },
+};
+
+/** Two of the values `GET /option-values?filters[option_id]=10` returned, as captured. */
+export const LIVE_OPTION_VALUES: readonly ShoperOptionValue[] = [
+  { ovalue_id: '68', option_id: '10', translations: { pl_PL: { value: 'biszkoptowy' } } },
+  { ovalue_id: '76', option_id: '10', translations: { pl_PL: { value: 'Shoper blue' } } },
+];
+
+/** The three `product-stocks` rows of live product 127: one default with `[]`, two with `{ "10": id }`. */
+export const LIVE_VARIANT_STOCKS: readonly ShoperStock[] = [
+  buildStock({ stock_id: '215', product_id: '127', code: '1E72-8147C_20250917135829', ean: '', options: [] }),
+  buildStock({ stock_id: '217', product_id: '127', code: '', ean: '', default: '0', options: { '10': '68' } }),
+  buildStock({ stock_id: '218', product_id: '127', code: '', ean: '', default: '0', options: { '10': '76' } }),
+];
