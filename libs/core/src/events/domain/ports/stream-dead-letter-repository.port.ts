@@ -4,6 +4,19 @@
  * Persistence contract for `stream_dead_letters` (#2301, D48). Implemented by
  * `StreamDeadLetterRepository`; consumed by `StreamDeadLettersService`.
  *
+ * **No retention method, deliberately deferred.** Nothing prunes this table,
+ * unlike `sync_jobs` (`SyncJobRetentionService`), and that is a decision
+ * rather than an omission. The table is bounded in practice by the retry
+ * ceiling: a row exists only after one stream entry has failed
+ * `MAX_RECOVERY_ATTEMPTS` (10) recovery passes, which is at least ~50 minutes
+ * of continuous failure, and a re-write upserts the same row. So it grows with
+ * the number of distinct poisoned entries, not with traffic, which is the
+ * per-tick growth axis that made `sync_jobs` need a sweep. Add a sweep (an
+ * age bound on `lastSeenAt`, which `IDX_stream_dead_letters_last_seen_at`
+ * already serves) once rows arrive faster than operators triage them, e.g. a
+ * handler bug that poisons a whole class of entries, or once a replay/resolve
+ * action gives a row a handled state that a sweep could key on safely.
+ *
  * @module libs/core/src/events/domain/ports
  */
 import type { StreamDeadLetter } from '../entities/stream-dead-letter.entity';

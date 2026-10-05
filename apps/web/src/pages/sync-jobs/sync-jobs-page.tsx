@@ -208,7 +208,7 @@ function StreamDeadLettersSection(): ReactElement {
       </p>
 
       {listQuery.isLoading ? (
-        <DataTableSkeleton columns={DEAD_LETTER_COLUMNS} />
+        <DataTableSkeleton columns={DEAD_LETTER_COLUMNS} label="Loading poison stream entries…" />
       ) : listQuery.error ? (
         <ErrorState
           title="Unable to load poison stream entries"
@@ -368,7 +368,7 @@ export function SyncJobsPage(): ReactElement {
 
       {/* Table */}
       {query.isLoading ? (
-        <DataTableSkeleton columns={COLUMNS} />
+        <DataTableSkeleton columns={COLUMNS} label="Loading sync jobs…" />
       ) : query.error ? (
         <ErrorState
           title="Unable to load sync jobs"

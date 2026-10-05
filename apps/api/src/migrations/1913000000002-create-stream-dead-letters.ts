@@ -34,6 +34,12 @@
  * quoted everywhere) and `entry_id` together with `stream` identify the
  * Redis Pending Entries List row this record came from.
  *
+ * No retention sweep ships with the table, and that is deliberate.
+ * `IDX_stream_dead_letters_last_seen_at` serves the Diagnostics ordering and
+ * would also serve a future age-bound sweep. Rows are bounded in practice by
+ * the 10-attempt retry ceiling. The deferral and the condition that would end
+ * it are recorded on `StreamDeadLetterRepositoryPort`.
+ *
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
