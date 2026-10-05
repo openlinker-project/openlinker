@@ -180,6 +180,25 @@ describe('fulfilment work detail stylesheet coverage', () => {
       expect(body).toMatch(/padding:\s*1\.25rem var\(--space-5\)/);
     });
 
+    // e2e v2: the reused order-page panels kept their own 15 px title and inset
+    // beside the 12 px uppercase DetailSection titles.
+    it('should give the reused Shipment and Sales document panels the card title and box', () => {
+      const css = stripComments(readCss());
+      const title = ruleBody(
+        css,
+        `.${PREFIX}__slot--invoicing .sales-document-panel__header > .detail-section__title`
+      );
+      const box = ruleBody(css, `.${PREFIX}__slot--invoicing .sales-document-panel`);
+
+      expect(title).toMatch(/font-size:\s*0\.75rem/);
+      expect(title).toMatch(/font-weight:\s*700/);
+      expect(title).toMatch(/text-transform:\s*uppercase/);
+      expect(title).toMatch(/color:\s*var\(--text-muted\)/);
+      expect(box).toMatch(/padding:\s*1\.25rem var\(--space-5\)/);
+      expect(box).toMatch(/border-color:\s*var\(--border-default\)/);
+      expect(css).toContain(`.${PREFIX}__slot--shipment .order-shipment-panel__header > .detail-section__title`);
+    });
+
     it('should lay the facts out in two columns at every width', () => {
       const body = ruleBody(stripComments(readCss()), `.${PREFIX}__facts`);
 

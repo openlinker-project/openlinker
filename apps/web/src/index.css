@@ -24657,6 +24657,35 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-2);
 }
 
+/* The order page's Shipment and Sales document panels are reused here as they
+   are, because they own their actions, but they bring that page's chrome: a
+   16 px inset, the subtle border and a 15 px title-case heading. Beside the
+   DetailSection cards that read as two systems on one page (e2e v2), so on
+   this page alone they take the card's box and its 12 px uppercase title. The
+   order page itself is untouched. */
+.fulfilment-work-detail__slot--shipment .order-shipment-panel,
+.fulfilment-work-detail__slot--invoicing .sales-document-panel {
+  padding: 1.25rem var(--space-5);
+  border-color: var(--border-default);
+}
+
+@media (max-width: 479.98px) {
+  .fulfilment-work-detail__slot--shipment .order-shipment-panel,
+  .fulfilment-work-detail__slot--invoicing .sales-document-panel {
+    padding: var(--space-4) 1.25rem;
+  }
+}
+
+.fulfilment-work-detail__slot--shipment .order-shipment-panel__header > .detail-section__title,
+.fulfilment-work-detail__slot--invoicing .sales-document-panel__header > .detail-section__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 /* ── hero (the mockup's `.detail-hero`) ── */
 .fulfilment-work-detail__hero-sub {
   margin: 0 0 0.625rem;
