@@ -5,29 +5,41 @@
  * usually truncated name link: the large recognisable element did nothing and
  * the clickable one was a fragment. The chip is now the link.
  *
- * At rest it shows only the platform (`Allegro`, `Subiekt GT`); the connection
- * name slides out to the right on hover or keyboard focus. The slide-out is
- * absolutely positioned so the row never reflows, and on a device with no hover
- * it is rendered statically instead, because a name that only appears on hover
- * would otherwise never appear there at all.
+ * At rest it shows only the platform (`Allegro`, `Subiekt GT`) - plus `sandbox`
+ * for a sandbox connection, so it never reads the same as its production twin -
+ * and the connection name slides out to the right on hover or keyboard focus.
+ * The slide-out is absolutely positioned so the row never reflows, and on a
+ * device with no hover it is rendered statically instead, because a name that
+ * only appears on hover would otherwise never appear there at all.
  *
- * It keeps the three behaviours `ConnectionEntityLabel` owns for the name link,
- * because a chip that dropped them would be the drift that component exists to
- * prevent: no link on the connection's own page, `Unknown` for a connection that
- * did not resolve (full id still in `title`), and `System` for the all-zero
- * placeholder id (#2745), which is not a connection and has no page.
+ * System / Unknown / self-page are decided by `resolveConnectionLinkTarget`,
+ * the same resolver `ConnectionEntityLabel` renders from, so the chip and the
+ * name link cannot drift apart.
  *
  * @module features/connections/components
  */
 import type { ReactElement } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { SYSTEM_CONNECTION_ID } from '../api/connections.types';
+import type { ConnectionEnvironment } from '../lib/connection-environment';
+import { resolveConnectionLinkTarget } from '../lib/connection-link-target';
 
 export interface ConnectionChipChannel {
   /** Drives the dot's hue via `data-channel`; an unknown value renders the neutral hue. */
   platformType: string | null | undefined;
   /** Registry-resolved display name of the platform. Without one, the chip shows the name. */
   label: string | null | undefined;
+  /**
+   * Registry-declared compact label for the face (`resolvePlatformShortLabel`);
+   * falls back to `label`. The full `label` stays in the tooltip and accessible name.
+   */
+  shortLabel?: string | null;
+  /**
+   * The connection's environment (`readConnectionEnvironment`). A sandbox
+   * connection says so on the face: the chip is what an operator scans, and a
+   * sandbox and a production connection of one platform share both the label
+   * and the dot hue.
+   */
+  environment?: ConnectionEnvironment | null;
 }
 
 export interface ConnectionChipProps {
@@ -39,16 +51,6 @@ export interface ConnectionChipProps {
   className?: string;
 }
 
-/**
- * The chip face carries the platform, not the adapter variant: a registry
- * display name such as `Subiekt GT (Sfera GT bridge)` names the bridge it is
- * reached through, which is detail for the tooltip rather than for a row.
- */
-export function shortPlatformLabel(label: string): string {
-  const short = label.replace(/\s*\([^)]*\)\s*$/, '').trim();
-  return short.length > 0 ? short : label;
-}
-
 export function ConnectionChip({
   connectionId,
   name,
@@ -57,22 +59,27 @@ export function ConnectionChip({
   className = '',
 }: ConnectionChipProps): ReactElement {
   const location = useLocation();
-  const isSystem = connectionId === SYSTEM_CONNECTION_ID;
-  const targetPath = `/connections/${connectionId}`;
-  const linked = !isSystem && location.pathname !== targetPath;
+  const target = resolveConnectionLinkTarget({
+    connectionId,
+    name,
+    loading,
+    pathname: location.pathname,
+  });
+  const { linked, unknown, text: nameText } = target;
 
-  const label = channel.label ? channel.label : null;
-  const resolvedName = isSystem ? 'System' : name;
-  const unknown = resolvedName === null && !loading;
-  const nameText = loading && !isSystem ? '…' : (resolvedName ?? 'Unknown');
+  // Only sandbox is marked: production is the norm, and a suffix on every
+  // production row would be noise that hides the one row that differs.
+  const sandbox = channel.environment === 'sandbox';
+  const platformLabel = channel.label || null;
+  const label = platformLabel && sandbox ? `${platformLabel} (sandbox)` : platformLabel;
+  const faceLabel = platformLabel
+    ? `${channel.shortLabel || platformLabel}${sandbox ? ' sandbox' : ''}`
+    : null;
 
-  // An unresolved connection keeps its raw id reachable for a support ticket,
-  // the same place `EntityLabel`'s Unknown branch puts it.
-  const title = isSystem
-    ? 'Not tied to a specific connection'
-    : unknown
-      ? connectionId
-      : [resolvedName, label].filter(Boolean).join(' - ') || undefined;
+  // System and an unresolved connection carry the resolver's own tooltip (the
+  // latter its raw id, for a support ticket); otherwise name and full platform.
+  const title =
+    target.title ?? ([target.displayName, label].filter(Boolean).join(' - ') || undefined);
 
   const classes = [
     'connection-chip',
@@ -85,7 +92,7 @@ export function ConnectionChip({
     .join(' ');
 
   const nameNode = (
-    <span className="connection-chip__name" aria-busy={loading && !isSystem ? true : undefined}>
+    <span className="connection-chip__name" aria-busy={target.loading ? true : undefined}>
       {nameText}
     </span>
   );
@@ -96,11 +103,11 @@ export function ConnectionChip({
     </svg>
   ) : null;
 
-  const body = label ? (
+  const body = faceLabel ? (
     <>
       <span className="connection-chip__face">
         <span className="connection-chip__dot" aria-hidden="true" />
-        <span className="connection-chip__platform">{shortPlatformLabel(label)}</span>
+        <span className="connection-chip__platform">{faceLabel}</span>
       </span>
       {/* The name is always in the DOM - only its visibility is animated - so the
           link's text, and a screen reader's reading of it, never depend on hover. */}
@@ -127,7 +134,7 @@ export function ConnectionChip({
 
   return (
     <Link
-      to={targetPath}
+      to={target.targetPath}
       className={classes}
       data-channel={channel.platformType ?? undefined}
       title={title}

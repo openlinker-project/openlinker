@@ -53,7 +53,7 @@ import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { usePlatforms } from '../../shared/plugins';
-import { resolvePlatformLabel } from '../../features/mappings';
+import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import {
@@ -76,8 +76,13 @@ import {
   ProductListSortFieldValues,
   ProductStockFilterValues,
 } from '../../features/products/api/products.types';
-import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
-import type { Connection } from '../../features/connections';
+import {
+  ConnectionCell,
+  ConnectionFold,
+  readConnectionEnvironment,
+  useConnectionsQuery,
+} from '../../features/connections';
+import type { Connection, ConnectionChipChannel } from '../../features/connections';
 import { selectPublishDestinations } from '../../features/listings';
 import {
   deriveStockStatus,
@@ -336,9 +341,19 @@ export function ProductsListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
-  const platformLabel = useCallback(
-    (platformType: string): string => resolvePlatformLabel(platforms, platformType),
-    [platforms],
+  // The origin chip's channel (#3670): the registry's short label for the face,
+  // and the connection's environment so a sandbox source never reads the same
+  // as its production twin. The platformType comes off the product's own
+  // external-id row, so the chip renders even while the connection itself is
+  // still unresolved.
+  const originChipChannel = useCallback(
+    (origin: { connectionId: string; platformType: string }): ConnectionChipChannel => ({
+      platformType: origin.platformType,
+      label: resolvePlatformLabel(platforms, origin.platformType),
+      shortLabel: resolvePlatformShortLabel(platforms, origin.platformType),
+      environment: readConnectionEnvironment(connectionById.get(origin.connectionId)?.config),
+    }),
+    [platforms, connectionById],
   );
 
   // ── Server queries ─────────────────────────────────────────────────────
@@ -822,7 +837,7 @@ export function ProductsListPage(): ReactElement {
                     connectionId={origin.connectionId}
                     connection={connectionById.get(origin.connectionId) ?? null}
                     loading={connectionsQuery.isLoading}
-                    channel={{ platformType: origin.platformType, label: platformLabel(origin.platformType) }}
+                    channel={originChipChannel(origin)}
                   />
                 ) : null}
               </span>
@@ -853,10 +868,8 @@ export function ProductsListPage(): ReactElement {
               connection={connectionById.get(origin.connectionId) ?? null}
               loading={connectionsQuery.isLoading}
               // One clickable chip (#3670): the platform at rest, the
-              // connection name sliding out on hover. The platformType comes
-              // off the product's own external-id row, so the chip renders
-              // even while the connection itself is still unresolved.
-              channel={{ platformType: origin.platformType, label: platformLabel(origin.platformType) }}
+              // connection name sliding out on hover.
+              channel={originChipChannel(origin)}
             />
           );
         },
@@ -932,7 +945,7 @@ export function ProductsListPage(): ReactElement {
       renderStalenessBadge,
       connectionById,
       connectionsQuery.isLoading,
-      platformLabel,
+      originChipChannel,
       write.visible,
       hasListingGap,
       hasShopDestination,

@@ -26,13 +26,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/t
 import { ConnectionDot } from '../../../orders';
 import { resolvePlatformLabel } from '../../../mappings';
 import { usePlatforms } from '../../../../shared/plugins';
-import type { Connection, ConnectionStatus } from '../../../connections';
-import type { BulkWizardConfig } from './bulk-wizard.types';
 import {
-  buildBulkConfigRows,
-  collectBulkConfigChanges,
   readConnectionEnvironment,
-} from './bulk-config-summary';
+  type Connection,
+  type ConnectionStatus,
+} from '../../../connections';
+import type { BulkWizardConfig } from './bulk-wizard.types';
+import { buildBulkConfigRows, collectBulkConfigChanges } from './bulk-config-summary';
 
 interface BulkDestinationBarProps {
   /** The destination the batch is going to, resolved by the wizard. */

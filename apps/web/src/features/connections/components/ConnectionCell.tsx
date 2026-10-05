@@ -19,8 +19,9 @@ import type { ReactElement, ReactNode } from 'react';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { shortenId } from '../../../shared/ui/entity-label';
-import { SYSTEM_CONNECTION_ID, type ConnectionStatus } from '../api/connections.types';
+import type { ConnectionStatus } from '../api/connections.types';
 import { useConnectionQuery } from '../hooks/use-connection-query';
+import { isSystemConnectionId } from '../lib/connection-link-target';
 import { ConnectionChip, type ConnectionChipChannel } from './ConnectionChip';
 import { ConnectionEntityLabel } from './ConnectionEntityLabel';
 
@@ -87,10 +88,11 @@ export function ConnectionCell({
   className = '',
 }: ConnectionCellProps): ReactElement {
   // The all-zero placeholder id (#2745) is never a real connection - line 1
-  // already renders "System" via ConnectionEntityLabel's own special case, so
-  // line 2's copyable id + status note (which describe a real connection)
-  // are suppressed rather than shown against a placeholder.
-  const isSystem = connectionId === SYSTEM_CONNECTION_ID;
+  // already renders "System" via `resolveConnectionLinkTarget` (through the
+  // chip or `ConnectionEntityLabel`), so line 2's copyable id + status note
+  // (which describe a real connection) are suppressed rather than shown
+  // against a placeholder.
+  const isSystem = isSystemConnectionId(connectionId);
   const factsSupplied = connection !== undefined || isSystem;
   const query = useConnectionQuery(connectionId, { enabled: !factsSupplied });
 

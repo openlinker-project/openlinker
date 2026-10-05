@@ -30,8 +30,13 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { usePlatforms } from '../../shared/plugins';
-import { resolvePlatformLabel } from '../../features/mappings';
-import { ConnectionCell, useConnectionsQuery, type Connection } from '../../features/connections';
+import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
+import {
+  ConnectionCell,
+  readConnectionEnvironment,
+  useConnectionsQuery,
+  type Connection,
+} from '../../features/connections';
 import {
   InventoryLocationKindValues,
   KIND_LABEL,
@@ -292,6 +297,8 @@ export function InventoryLocationsPage(): ReactElement {
                   ? {
                       platformType: connection.platformType,
                       label: resolvePlatformLabel(platforms, connection.platformType),
+                      shortLabel: resolvePlatformShortLabel(platforms, connection.platformType),
+                      environment: readConnectionEnvironment(connection.config),
                     }
                   : undefined
               }

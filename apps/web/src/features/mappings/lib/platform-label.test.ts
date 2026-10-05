@@ -5,7 +5,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { findPlatformDisplayName, resolvePlatformLabel } from './platform-label';
+import {
+  findPlatformDisplayName,
+  resolvePlatformLabel,
+  resolvePlatformShortLabel,
+} from './platform-label';
 
 const PLATFORMS = [
   { platformType: 'allegro', displayName: 'Allegro' },
@@ -59,5 +63,31 @@ describe('findPlatformDisplayName', () => {
 
   it('returns undefined when the plugin list is empty', () => {
     expect(findPlatformDisplayName([], 'allegro')).toBeUndefined();
+  });
+});
+
+describe('resolvePlatformShortLabel', () => {
+  const WITH_SHORT = [
+    ...PLATFORMS,
+    {
+      platformType: 'subiekt-gt',
+      displayName: 'Subiekt GT (Sfera GT bridge)',
+      shortLabel: 'Subiekt GT',
+    },
+  ];
+
+  it('should return the declared short label when the plugin declares one', () => {
+    expect(resolvePlatformShortLabel(WITH_SHORT, 'subiekt-gt')).toBe('Subiekt GT');
+    expect(resolvePlatformShortLabel(WITH_SHORT, { platformType: 'subiekt-gt' })).toBe(
+      'Subiekt GT',
+    );
+  });
+
+  it('should fall back to the display name when the plugin declares no short label', () => {
+    expect(resolvePlatformShortLabel(WITH_SHORT, 'allegro')).toBe('Allegro');
+  });
+
+  it('should fall back to the raw platformType when the platform is unregistered', () => {
+    expect(resolvePlatformShortLabel(WITH_SHORT, 'shopify')).toBe('shopify');
   });
 });

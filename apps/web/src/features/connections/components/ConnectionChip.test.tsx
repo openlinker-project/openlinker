@@ -1,6 +1,6 @@
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ConnectionChip, shortPlatformLabel } from './ConnectionChip';
+import { ConnectionChip } from './ConnectionChip';
 import { SYSTEM_CONNECTION_ID } from '../api/connections.types';
 import { renderWithProviders } from '../../../test/test-utils';
 
@@ -26,12 +26,16 @@ describe('ConnectionChip', () => {
     expect(link).toHaveAttribute('title', 'Erli Demo - Erli');
   });
 
-  it('should show the platform without its adapter variant on the face', () => {
+  it('should show the registry short label on the face and the full label in the title when one is declared', () => {
     renderWithProviders(
       <ConnectionChip
         connectionId={CONNECTION_ID}
         name="Subiekt GT Demo"
-        channel={{ platformType: 'subiekt-gt', label: 'Subiekt GT (Sfera GT bridge)' }}
+        channel={{
+          platformType: 'subiekt-gt',
+          label: 'Subiekt GT (Sfera GT bridge)',
+          shortLabel: 'Subiekt GT',
+        }}
       />,
     );
 
@@ -40,9 +44,43 @@ describe('ConnectionChip', () => {
     expect(link).toHaveAttribute('title', 'Subiekt GT Demo - Subiekt GT (Sfera GT bridge)');
   });
 
-  it('should keep a label that is only a parenthetical', () => {
-    expect(shortPlatformLabel('(beta)')).toBe('(beta)');
-    expect(shortPlatformLabel('Allegro')).toBe('Allegro');
+  it('should keep the full label on the face when no short label is declared', () => {
+    renderWithProviders(
+      <ConnectionChip
+        connectionId={CONNECTION_ID}
+        name="KSeF Demo"
+        channel={{ platformType: 'ksef', label: 'KSeF (e-invoicing)' }}
+      />,
+    );
+
+    expect(screen.getByRole('link').querySelector('.connection-chip__platform')).toHaveTextContent(
+      /^KSeF \(e-invoicing\)$/,
+    );
+  });
+
+  it('should tell a sandbox connection apart from its production twin on the face', () => {
+    renderWithProviders(
+      <>
+        <ConnectionChip
+          connectionId={CONNECTION_ID}
+          name="Allegro main"
+          channel={{ platformType: 'allegro', label: 'Allegro', environment: 'production' }}
+        />
+        <ConnectionChip
+          connectionId="bb966882-0d21-4e2f-9d5a-71c4a5f14cfb"
+          name="Allegro test"
+          channel={{ platformType: 'allegro', label: 'Allegro', environment: 'sandbox' }}
+        />
+      </>,
+    );
+
+    const production = screen.getByRole('link', { name: 'Allegro main, Allegro' });
+    const sandbox = screen.getByRole('link', { name: 'Allegro test, Allegro (sandbox)' });
+    expect(production.querySelector('.connection-chip__platform')).toHaveTextContent(/^Allegro$/);
+    expect(sandbox.querySelector('.connection-chip__platform')).toHaveTextContent(
+      /^Allegro sandbox$/,
+    );
+    expect(sandbox).toHaveAttribute('title', 'Allegro test - Allegro (sandbox)');
   });
 
   it('should not render a link when already on the connection page', () => {
