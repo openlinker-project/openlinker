@@ -142,6 +142,37 @@ export function fulfillmentActionHint(action: string): string | null {
 /** Which actions need a form before they can be sent. */
 export const FULFILLMENT_ACTIONS_NEEDING_A_FORM = new Set(['hold', 'release_hold', 'force_cancel']);
 
+/**
+ * The `expeditedAt !== null` badge (#3247).
+ *
+ * Byte-identical to the pack bench's own `benchWorkCopy.row.expeditedBadge`
+ * (`bench-work.copy.ts`) — one vocabulary, two surfaces. A second wording for
+ * the same fact is how an operator comes to believe the two screens describe
+ * different things, so the match is asserted by a test rather than left to
+ * review. `expeditedAt` is display-only: which of `expedite` /
+ * `release_expedite` is offered comes from `supportedActions` alone (see the
+ * field's own docblock in `fulfillment.types.ts`), never from this constant.
+ */
+export const FULFILLMENT_EXPEDITED_BADGE = 'Moved to the front';
+
+/**
+ * The two runtime toast sentences `use-fulfillment-task-action-runner.ts`
+ * reports on success and on a non-conflict failure (#3257).
+ *
+ * They used to be template literals inline in that `.ts` hook — invisible to
+ * `check-ui-vocabulary.mjs`, which scans only `.tsx` JSX text and `*.copy.ts`
+ * literals, neither of which a plain `.ts` file's template string is. Moving
+ * them here is what closes that gap; the hook now composes these two
+ * functions instead of building the sentence itself.
+ */
+export function fulfillmentActionAppliedToast(action: string): string {
+  return `${fulfillmentActionLabel(action)} applied.`;
+}
+
+export function fulfillmentActionFailedFallback(action: string): string {
+  return `Could not ${fulfillmentActionLabel(action).toLowerCase()} this fulfilment task.`;
+}
+
 /** Orchestration-status labels. Display only — nothing branches on these. */
 const STATUS_COPY: Record<string, string> = {
   open: 'Open',

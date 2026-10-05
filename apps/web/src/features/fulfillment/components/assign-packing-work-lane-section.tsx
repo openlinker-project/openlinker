@@ -30,6 +30,12 @@
  * read through `laneLoadPercent`/`laneLoadTone` — the SAME count already
  * rendered beside it, never a second, possibly-drifting source.
  *
+ * ## The task's reference is a link now (#3096/#3259)
+ *
+ * `detailHref` is threaded through exactly like `renderActions` — a callback
+ * built by the page, which is where the URL state (filters, paging,
+ * `?groupBy=`) this link must carry forward actually lives.
+ *
  * ## Station and presence (#3424)
  *
  * The mockup's `lane__station` line — withheld until now for want of a
@@ -68,6 +74,10 @@ export interface AssignPackingWorkLaneSectionProps {
   onDropOnLane: (laneId: string) => void;
   /** #3427 — computed once, across every lane. See `lightestLoadLaneIds`. */
   lightestLoad: boolean;
+  /** #3259 — the task's own detail-page address. Threaded exactly like `renderActions`. */
+  detailHref: (task: FulfillmentTask) => string;
+  /** Whether rows name their location — only on a multi-location install (#3096). */
+  showLocation?: boolean;
 }
 
 function laneTitle(lane: AssignPackingWorkLane): string {
@@ -87,6 +97,8 @@ export function AssignPackingWorkLaneSection({
   onTaskDragStart,
   onDropOnLane,
   lightestLoad,
+  detailHref,
+  showLocation = false,
 }: AssignPackingWorkLaneSectionProps): ReactElement {
   const title = laneTitle(lane);
   const isUnassignedLane = lane.id === UNASSIGNED_LANE_ID;
@@ -229,6 +241,8 @@ export function AssignPackingWorkLaneSection({
                 // #3424 — the "Sat unassigned" badge is unassigned-lane-only;
                 // see `assign-packing-work-card.tsx`'s `badgeFor`.
                 inUnassignedLane={isUnassignedLane}
+                detailHref={detailHref(task)}
+                showLocation={showLocation}
               />
             ))}
           </ul>

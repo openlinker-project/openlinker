@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { UsersPage } from './users-page';
+import { ApiError } from '../../shared/api/api-error';
 import type { UserListFilters, UserListResponse, UserSummary } from '../../features/users/api/users.types';
 
 function makeUser(overrides: Partial<UserSummary> = {}): UserSummary {
@@ -67,6 +68,19 @@ describe('UsersPage', () => {
 
     expect(await screen.findByText('Unable to load users')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('should show the access-denied state and no Retry when the list is refused with a 403', async () => {
+    const mockApi = createMockApiClient({
+      users: { list: vi.fn().mockRejectedValue(new ApiError('Insufficient permissions', 403, null)) },
+    });
+    renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+    expect(
+      await screen.findByRole('heading', { name: 'User management is for administrators' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Unable to load users')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
   });
 
   it('should show role picker and Approve + Reject buttons for pending users', async () => {

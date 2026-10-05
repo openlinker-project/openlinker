@@ -3592,6 +3592,104 @@ a.delivery-rider-banner__button:focus-visible {
   background: var(--status-error-soft);
 }
 
+/* `AccessDeniedState` (#3096): neutral, not error-tinted - a 403 is a fact
+   about the session's role, not a fault, and it offers no Retry. */
+.state-card--denied {
+  border-color: var(--border-default);
+  background: var(--bg-surface-muted);
+}
+
+/* ── DetailSection (`shared/ui/detail-section.tsx`, #3096) ─────────────────
+   The card a detail page is built from: the mockups' `.detail-section` box
+   model, transcribed. Spacing between cards belongs to the parent stack's
+   `gap`, so the card itself carries no outer margin. */
+.detail-card {
+  min-width: 0;
+  padding: 1.25rem var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.detail-card--hero {
+  padding: 1.375rem var(--space-5);
+}
+
+.detail-card--actions {
+  padding: 1.125rem var(--space-5);
+}
+
+.detail-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.detail-card__title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.detail-card__aside {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* A narrow phone keeps the card but takes the mockup's mobile inset (16 x
+   20 px) rather than its desktop 20 x 24: with the app's 16 px page gutter the
+   wider inset leaves a 310 px measure on a 390 px screen, which the two-column
+   facts grid needs more than the card needs air. */
+@media (max-width: 479.98px) {
+  .detail-card,
+  .detail-card--hero,
+  .detail-card--actions {
+    padding: var(--space-4) 1.25rem;
+  }
+}
+
+/* `Alert density="compact"` (#3096): the mockups' `.hold-banner` - an 8 px
+   radius, a 13 x 15 px inset, no inset rule, and a 14 px title in the tone's
+   own foreground colour. */
+.alert--compact {
+  gap: var(--space-3);
+  padding: 0.8125rem 0.9375rem;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.alert--compact .alert__content {
+  gap: 0.1875rem;
+}
+
+.alert--compact .alert__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.alert--compact .alert__description {
+  font-size: 0.8125rem;
+}
+
+.alert--compact.alert--warning .alert__title {
+  color: var(--status-warning-fg);
+}
+
+.alert--compact.alert--error .alert__title {
+  color: var(--status-error-fg);
+}
+
+.alert--compact.alert--info .alert__title {
+  color: var(--status-info-fg);
+}
+
 .definition-list {
   margin: 0;
 }
@@ -6324,6 +6422,30 @@ a.kpi-card:focus-visible {
 .kpi-card--success .kpi-card__value,
 .kpi-card--success .kpi-card__description {
   color: var(--status-success-strong);
+}
+
+/* ── KpiGrid (`shared/ui/kpi-card.tsx`, #3096) ────────────────────────────
+   A row of KPI cards that WRAPS by grid track, never by flex line: a wrapped
+   flex row resolves `.kpi-card`'s `height: 100%` against the row track and
+   lets cards overlap whatever follows (measured on the fulfilment board at
+   390 px). Same tracks as the mockups' `.metric-row` and `.bench-metric-row`. */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+}
+
+/* The mockups' `.metric-card` scale: 16 px inset, 28 px value. The KPI card's
+   own 24 px / 32 px is the Insights page's, where the value is the headline. */
+.kpi-card--compact {
+  gap: var(--space-2);
+  padding: var(--space-4);
+  min-height: 0;
+}
+
+.kpi-card--compact .kpi-card__value {
+  font-size: 1.75rem;
+  line-height: 1.05;
 }
 
 /* ── Analytics KPI card extras (#1990) ───────────────────────────────
@@ -24172,10 +24294,21 @@ legend.analytics-settings-dialog__label {
 
 .fulfilment-task__lines > li {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+/* A line is a product card since #3096 (`FulfillmentLineIdentity`): the card
+   shrinks, the count stays on the same row rather than wrapping beneath it. */
+.fulfilment-task__lines > li > .order-line-item__product {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fulfilment-task__lines > li > .fulfilment-task__count {
+  flex: none;
 }
 
 .fulfilment-task__count {
@@ -24227,40 +24360,78 @@ legend.analytics-settings-dialog__label {
 
 /* ── Assign Packing Work board (#3340) ──────────────────────────────────── */
 
-/* #3428 — the metric row. Flex, not a fixed-column grid: only one of the
-   mockup's three cards is shipped, and a fixed grid would leave visibly
-   empty cells rather than a naturally-sized row. */
+/* #3428 — the metric row, on `.kpi-grid` since #3096. It was a wrapped flex
+   row of `MetricCard`s, whose `height: 100%` resolved against the wrapped
+   line at 390 px and overlapped the lanes beneath (cards 192 x 296 px). The
+   mockup's `.metric-row` margin: one `--space-5` above the lanes. */
 .assign-packing-work-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
 
-.assign-packing-work-metrics .metric-card {
-  min-width: 160px;
-}
-
 /* The board is paged, so a lane holds only this page's tasks. Stated once
-   above the lanes rather than on each — see the page's own comment. */
+   above the lanes, and only when there IS a second page — see the page. */
 .assign-packing-work-scope-note {
   margin: 0 0 var(--space-3);
   font-size: 0.8125rem;
 }
 
-/* The grouping-axis switch, and the one thing that changes with it. The note
-   sits beside the control rather than under the board, because the control is
-   what the operator just used. */
-.assign-packing-work-groupby {
+/* The board's one toolbar row: the grouping switch (multi-location installs
+   only) and the order filter. No grey `.toolbar` band — the mockup has none —
+   and no `flex-basis` on the filter: `.toolbar` turns into a column below
+   900 px, where a basis is a HEIGHT, and `flex: 0 1 20rem` drew the inputs
+   as 324 x 320 px squares on a phone (#3096, M1). A width does what the basis
+   was meant to and means the same thing in either direction. */
+.assign-packing-work-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.assign-packing-work-toolbar__filter {
+  flex: none;
+  width: min(20rem, 100%);
 }
 
 .assign-packing-work-groupby__note {
   font-size: 0.8125rem;
+}
+
+.assign-packing-work-pagination {
+  margin-top: var(--space-5);
+}
+
+/* The lane skeleton's own bars — sized to the rows they stand in for. */
+.assign-packing-work-skeleton {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.assign-packing-work-skeleton__value {
+  height: 22px;
+  width: 40%;
+}
+
+.assign-packing-work-skeleton__avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-surface-hover);
+}
+
+.assign-packing-work-skeleton__title {
+  width: 9rem;
+}
+
+.assign-packing-work-skeleton__ref {
+  flex: 0 0 6rem;
+}
+
+.assign-packing-work-skeleton__text {
+  flex: 1 1 auto;
+  max-width: 16rem;
 }
 
 .assign-packing-work-board {
@@ -24373,6 +24544,15 @@ legend.analytics-settings-dialog__label {
   font-size: 0.8125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  /* The mockup's `.lane-card__ref`: primary ink, no underline until hovered.
+     It used to be a `.link` - an orange underlined body link on every row,
+     the loudest thing on the board for the least changing fact. */
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.assign-packing-work-card__ref:hover {
+  text-decoration: underline;
 }
 
 /* A FIXED slot, so every column after it starts at the same x.
@@ -24381,20 +24561,6 @@ legend.analytics-settings-dialog__label {
    left the buyer column jumping left wherever a row had no deadline. The
    ragged edge is what reads as unfinished. `justify-content: flex-start` keeps
    a short badge from stretching. */
-/* The shared `.toolbar` is `space-between`, which is right for a bar with a
-   heading on one side and a button on the other. This one holds two sibling
-   filters, and flinging them to opposite ends of a 1100px bar left a void
-   down the middle that read as a missing control. Scoped rather than changed
-   on `.toolbar` itself, which every other screen in the app shares. */
-.assign-packing-work-filters {
-  justify-content: flex-start;
-  gap: var(--space-3);
-}
-
-.assign-packing-work-filters > * {
-  flex: 0 1 20rem;
-}
-
 .assign-packing-work-card__flag {
   flex: 0 0 7.5rem;
   display: flex;
@@ -24458,16 +24624,6 @@ legend.analytics-settings-dialog__label {
     flex: 1 1 100%;
   }
 
-  /* Full row width to stack in - see `.assign-packing-work-actions`'s own
-   * comment on why it stays `nowrap` on a desk. */
-  .assign-packing-work-actions {
-    flex-wrap: wrap;
-  }
-
-  .assign-packing-work-actions .control--select {
-    flex: 1 1 auto;
-    max-width: none;
-  }
 }
 
 /* ── Lane column heads (the mockup's `.lane__col-heads`) ──────────────────
@@ -24482,11 +24638,12 @@ legend.analytics-settings-dialog__label {
      cannot be named for one action the way the mockup's static `Hold`
      button is; the shape is what carries over. */
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
+  width: 28px;
   height: 28px;
-  min-width: 28px;
-  padding: 0 var(--space-2);
+  padding: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
@@ -24499,6 +24656,43 @@ legend.analytics-settings-dialog__label {
 .assign-packing-work-card__menu-trigger:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
+}
+
+/* A row with no server action keeps the trigger's footprint (#3096, B12), so
+   the checkbox and the menu button sit at the same x on every row instead of
+   sliding right on a closed or cancelled task. */
+.assign-packing-work-card__menu-slot {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+/* Touch: every control on the row is a 44 px target (style guide § Responsive). */
+@media (pointer: coarse) {
+  .assign-packing-work-card__menu-trigger,
+  .assign-packing-work-card__menu-slot {
+    width: 44px;
+    height: 44px;
+  }
+
+  .assign-packing-work-actions .fulfilment-assignment__trigger {
+    min-height: 44px;
+  }
+
+  .assign-packing-work-actions__self-serve {
+    min-height: 44px;
+  }
+}
+
+/* The assignment menu (`FulfillmentAssignmentControls`): the mockup's
+   `.lane-card__menu` width, and "Pull back" in the warning ink it uses to set
+   the way back apart from the destinations above the separator. */
+.fulfilment-assignment__menu {
+  min-width: 200px;
+}
+
+.fulfilment-assignment__pull-back {
+  color: var(--status-warning-fg);
 }
 
 .assign-packing-work-card__menu {
@@ -24704,21 +24898,13 @@ legend.analytics-settings-dialog__label {
   justify-content: flex-end;
 }
 
-/* Bounds the "Move to" select against its own global `width: 100%` rule -
- * see `.assign-packing-work-actions`'s own comment. Sized for the longest
- * real value seen on the board (`e2e-packer-manual`, 18 chars) with room
- * to spare; `flex-shrink: 1` so it still yields before it forces the row
- * to overflow on a narrower desk. */
-.assign-packing-work-actions .control--select {
-  flex: 0 1 11rem;
-  width: auto;
-  min-width: 0;
-  max-width: 11rem;
-}
-
 .assign-packing-work-actions__self-serve {
   align-items: center;
   display: flex;
+  /* The mockup's `.lane-card__pickable { flex: 0 0 168px }`: a fixed slot, so
+     the menu button after it starts at the same x on every row whichever of
+     the two label lengths the row carries. */
+  flex: 0 0 11rem;
   /* Quieter than the row it sits on, deliberately. It renders on EVERY card,
      and on a board of fourteen unassigned parcels it was fourteen identical
      ticks and fourteen copies of the same five words running down the page -
@@ -24731,6 +24917,482 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-1);
   white-space: nowrap;
 }
+
+/* The mockup's phone row: the checkbox on its own line, then the menu button
+   and the overflow trigger right-aligned beneath it. AFTER the base rules
+   above on purpose - a media block earlier in the file loses to them on
+   source order, which is how this row used to stay `nowrap` on a phone. */
+@media (max-width: 640px) {
+  .assign-packing-work-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .assign-packing-work-actions .assign-packing-work-actions__self-serve {
+    flex: 1 1 100%;
+  }
+}
+
+/* ── Fulfilment work detail (#3096) ───────────────────────────────────────
+   One block for the routed detail page. Declares no new custom properties —
+   every `var(--x)` here already exists, because `tokens.ts` is a second
+   shared file and `check-design-tokens.mjs` asserts the pair.
+
+   The block prefix is `fulfilment-work-detail` (British, like every other
+   class in this slice, while the folder and the route stay American), and it
+   is covered by `features/fulfillment/fulfilment-work-detail-styles.test.ts`. */
+
+/* ── #3096 layout: the order page's grid, the mockup's 22 px card rhythm ──
+   `.order-detail__primary-grid--split` + `.order-detail__stack` supply the
+   two columns (60/40 at >= 1024 px). The mockup stacks its cards 22 px apart
+   (`.detail-section { margin-top: 22px }`); the stacks' gap carries that here,
+   so no card has an outer margin. */
+.fulfilment-work-detail__layout,
+.fulfilment-work-detail__layout > .order-detail__stack {
+  gap: 1.375rem;
+}
+
+/* Below desktop the grid is one column and the stacks dissolve, so the cards
+   can take the mobile reading order: the task first, then who packs it and
+   the order's own modules, then the reference facts and the actions. */
+@media (max-width: 1023.98px) {
+  .fulfilment-work-detail__main,
+  .fulfilment-work-detail__rail {
+    display: contents;
+  }
+
+  .fulfilment-work-detail__slot--hero { order: 1; }
+  .fulfilment-work-detail__slot--holds { order: 2; }
+  .fulfilment-work-detail__slot--lines { order: 3; }
+  .fulfilment-work-detail__slot--packer { order: 4; }
+  .fulfilment-work-detail__slot--shipment { order: 5; }
+  .fulfilment-work-detail__slot--invoicing { order: 6; }
+  .fulfilment-work-detail__slot--payment { order: 7; }
+  .fulfilment-work-detail__slot--facts { order: 8; }
+  .fulfilment-work-detail__slot--actions { order: 9; }
+}
+
+/* A capability-gated panel renders nothing inside its anchor wrapper; an empty
+   wrapper must not cost the stack a gap. */
+.fulfilment-work-detail__slot--shipment:empty,
+.fulfilment-work-detail__slot--invoicing:empty {
+  display: none;
+}
+
+/* The order page lays the sales-document title beside its headline across a
+   wide column; the rail is ~40 % of that, where the side-by-side squeezes the
+   title onto two lines, so the header stacks here instead. */
+.fulfilment-work-detail__slot--invoicing .sales-document-panel__header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* The order page's Shipment and Sales document panels are reused here as they
+   are, because they own their actions, but they bring that page's chrome: a
+   16 px inset, the subtle border and a 15 px title-case heading. Beside the
+   DetailSection cards that read as two systems on one page (e2e v2), so on
+   this page alone they take the card's box and its 12 px uppercase title. The
+   order page itself is untouched. */
+.fulfilment-work-detail__slot--shipment .order-shipment-panel,
+.fulfilment-work-detail__slot--invoicing .sales-document-panel {
+  padding: 1.25rem var(--space-5);
+  border-color: var(--border-default);
+}
+
+@media (max-width: 479.98px) {
+  .fulfilment-work-detail__slot--shipment .order-shipment-panel,
+  .fulfilment-work-detail__slot--invoicing .sales-document-panel {
+    padding: var(--space-4) 1.25rem;
+  }
+}
+
+.fulfilment-work-detail__slot--shipment .order-shipment-panel__header > .detail-section__title,
+.fulfilment-work-detail__slot--invoicing .sales-document-panel__header > .detail-section__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── hero (the mockup's `.detail-hero`) ── */
+.fulfilment-work-detail__hero-sub {
+  margin: 0 0 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__hero-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+/* The two axis labels joined, at the mockup's 22 px / 700: the page's answer
+   to "what is happening to this task", so it is the largest thing in it. */
+.fulfilment-work-detail__headline {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+/* The mockup's `.expedite-badge`: an accent pill beside the headline. */
+.fulfilment-work-detail__expedited {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 2px 9px;
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-hover);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The derived sentence. Body-weight and uncoloured on purpose - colour on this
+   page marks attention, and attention here is the hold banners. */
+.fulfilment-work-detail__summary {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+/* ── #3100 lines / holds / facts ── */
+
+/* Holds stack 8 px apart, the mockup's `.hold-banner:not(:last-child)`. Each
+   banner is `Alert density="compact"`, the shared form of that shape. */
+.fulfilment-work-detail__holds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The note and the "since" line inside one banner. A wrapper rather than two
+   paragraphs, because `.alert__description p` is margin-zeroed, so stacked
+   paragraphs would touch. */
+.fulfilment-work-detail__hold-body {
+  display: grid;
+  gap: 0.1875rem;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+/* The mockup's `.item-row`: 11 px of air above and below, a hairline between
+   rows (not around them — the card already carries the boundary). One row at
+   every width: the product card shrinks, the count never wraps under it. */
+.fulfilment-work-detail__line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0.6875rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fulfilment-work-detail__line:first-child {
+  padding-top: 0;
+}
+
+.fulfilment-work-detail__line:last-child {
+  border-bottom: none;
+}
+
+.fulfilment-work-detail__line .order-line-item__product {
+  flex: 1 1 auto;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* The mockup's 15 px / 500 item name, allowed to wrap: a long product name is
+   the identity, and an ellipsis would hide the half that tells two apart. */
+.fulfilment-work-detail__line .order-line-item__name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__line-count {
+  flex: none;
+  padding-top: 0.125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+/* The variant's distinguishing attributes, under its codes ("Kolor: srebrny ·
+   Rozmiar: L") — shared by the task detail and the order page's task panel. */
+.fulfilment-line-identity__attributes {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Reinforcement only - the two equal numbers beside it already say the line is
+   complete, so colour is never the sole signal here. */
+.fulfilment-work-detail__line-done {
+  color: var(--status-success-fg);
+}
+
+.fulfilment-work-detail__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+}
+
+/* The mockup's `.fact-grid`: two columns at EVERY width (its phone render has
+   two as well), 14 px between rows and 24 px between columns; a label in
+   small muted case-as-written over a 15 px / 500 value. */
+.fulfilment-work-detail__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem var(--space-5);
+  margin: 0;
+  min-width: 0;
+}
+
+.fulfilment-work-detail__fact {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fulfilment-work-detail__fact dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fulfilment-work-detail__fact dd {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Closed but not yet settled with the channel — attention, not alarm. */
+.fulfilment-work-detail__fact-warning {
+  color: var(--status-warning-fg);
+  font-size: 0.875rem;
+}
+
+/* ── #3096 action card (the mockup's `.detail-actions`) ── */
+.fulfilment-work-detail__actions-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A small label, not a section title — the mockup draws it 12 px muted and in
+   sentence case, above the buttons. */
+.fulfilment-work-detail__actions-label {
+  width: 100%;
+  margin-bottom: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fulfilment-work-detail__actions .fulfilment-task__actions {
+  padding-top: 0;
+}
+
+/* Touch: the 32 px action buttons grow to the 44 px target. */
+@media (pointer: coarse) {
+  .fulfilment-work-detail__actions .button,
+  .fulfilment-work-packer__controls .button {
+    min-height: 44px;
+  }
+}
+
+/* ── #3096 Packer card (from `assign-packing-work.html`'s lane head) ── */
+.fulfilment-work-packer__holder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.fulfilment-work-packer__identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fulfilment-work-packer__name {
+  margin: 0;
+  font-size: 0.84375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-packer__sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.fulfilment-work-packer__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.fulfilment-work-packer .alert {
+  margin-top: var(--space-3);
+}
+
+/* ── #3096 Payment card + rail states ── */
+.fulfilment-work-detail__payment-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+
+.fulfilment-work-detail__order-unavailable {
+  margin: 0 0 var(--space-3);
+  font-size: 0.875rem;
+}
+
+.fulfilment-work-detail__skeleton-line {
+  margin-top: var(--space-2);
+}
+
+/* ── #3102 vs-Orders explainer ── */
+
+/* Why this screen is not a duplicate of Orders. ALWAYS VISIBLE - there is no
+   collapsed variant of this block and no rule here may introduce one, because
+   the reader who needs it is the one who does not know they need it. One
+   stack, one outer margin: neither part carries a margin of its own, so the
+   gap between them and the distance to the hero are each set in one place. */
+.fulfilment-work-detail__vs-orders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* The mockup's 20 px from the comparison to the hero (`.detail-hero`). */
+  margin-bottom: 1.25rem;
+  /* The mockup's own measure. Two sentences side by side are unreadable at a
+     full-width container, and this block is context rather than content. */
+  max-width: 78ch;
+}
+
+/* Two columns that REFLOW to one below 640px rather than truncating: each half
+   is a whole sentence about a different thing, so an ellipsis would hide
+   whichever happens to be second and leave the comparison half-made. */
+.fulfilment-work-detail__compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  /* The columns paint to the edge; the radius has to clip them. */
+  overflow: hidden;
+}
+
+.fulfilment-work-detail__compare-col {
+  /* The mockup's `.compare__col`: 14 x 16 px. */
+  padding: 0.875rem var(--space-4);
+  background: var(--bg-surface-muted);
+  border-right: 1px solid var(--border-default);
+}
+
+/* Positional, not semantic: the divider belongs BETWEEN the halves, so it is
+   the last column that drops it rather than the one that happens to be "this
+   task". Swapping the two would then still leave exactly one divider. */
+.fulfilment-work-detail__compare-col:last-child {
+  border-right: none;
+}
+
+/* The half the operator is actually on sits on the plain surface, so the pair
+   reads as "that one, then this one" with no second colour and no accent -
+   accent on this page marks attention, and attention here is the hold banners. */
+.fulfilment-work-detail__compare-col--this {
+  background: var(--bg-surface);
+}
+
+.fulfilment-work-detail__compare-label {
+  margin-bottom: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* `margin: 0` is load-bearing on a `dd`: the UA default indents it by 40px,
+   which would step the two sentences in from their own labels. */
+.fulfilment-work-detail__compare-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .fulfilment-work-detail__compare {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked, the divider is the one between the rows. Nothing is hidden - the
+     column that was beside the first is now beneath it. */
+  .fulfilment-work-detail__compare-col {
+    border-right: none;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .fulfilment-work-detail__compare-col:last-child {
+    border-bottom: none;
+  }
+}
+
+/* ── #3101 detail actions ── */
+/* `FulfillmentTaskActions` brings its own `.fulfilment-task__actions` flex
+   row, so this wrapper exists for the two things that row cannot carry:
+   `aria-busy` for the whole write surface of a one-task page, and a home for
+   the "nothing left" sentence when the server offers no action at all.
+   Flex-wrap so a long action set falls to a second line rather than
+   overflowing - there is nothing here worth truncating. */
+.fulfilment-work-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Deliberately quiet: it reports an absence of work, not a problem. No
+   typography-scale token family exists in this stylesheet, so the size is a
+   literal - the shape `.fulfilment-work-detail__summary` above already
+   takes. */
+.fulfilment-work-detail__actions-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+/* ── end Fulfilment work detail (#3096) ── */
 
 /* ── Sales-document glyph + headline (#2535) ───────────────────────────
    The kind is an entity axis, so the glyph inherits `currentColor` and takes

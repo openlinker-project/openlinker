@@ -28,7 +28,9 @@
  * `Pack bench` sits in the Operations group (#3108), gated
  * `requiresRole: ['admin', 'operator', 'packer']` — the same three roles every
  * `@Roles(...)` on the bench controllers admits. A packer no longer has to be
- * handed a URL.
+ * handed a URL, and does not need the entry either: since #3096 the guest and
+ * app layouts send every bench-only session here, so a packer who types any
+ * app address lands on the bench.
  *
  * What has NOT changed is the direction: the entry points AT the bench and the
  * bench still links nowhere. The sidebar is not rendered here (this route is
