@@ -48,6 +48,11 @@ function packer(): SessionUser {
   };
 }
 
+function ChangePasswordSentinel(): React.ReactElement {
+  const location = useLocation();
+  return <div>Change password page next: {location.search}</div>;
+}
+
 function demoViewer(analyticsConsent: boolean): SessionUser {
   return {
     id: 'user_2',
@@ -88,6 +93,7 @@ function renderLayout(
       { path: '/login', element: options?.loginElement ?? <LoginSentinel /> },
       { path: '/consent', element: <ConsentSentinel /> },
       { path: '/bench', element: <BenchSentinel /> },
+      { path: '/change-password', element: <ChangePasswordSentinel /> },
     ],
     { initialEntries: [options?.initialEntry ?? '/'] }
   );
@@ -134,6 +140,25 @@ describe('AuthenticatedAppLayout', () => {
         'Login page search: ?utm_source=email&utm_campaign=demo_invite_2026_07'
       )
     ).toBeInTheDocument();
+  });
+
+  // #3456 - an admin-created account owes a password change before anything.
+  it('should redirect an account owing a password change to /change-password', async () => {
+    renderLayout(
+      createAuthenticatedSessionAdapter({ ...demoViewer(true), mustChangePassword: true })
+    );
+
+    expect(await screen.findByText('Change password page next: ?next=%2F')).toBeInTheDocument();
+  });
+
+  it('should send a demo viewer owing BOTH gates to the password change first', async () => {
+    renderLayout(
+      createAuthenticatedSessionAdapter({ ...demoViewer(false), mustChangePassword: true }),
+      { apiClient: demoModeApiClient(true) }
+    );
+
+    expect(await screen.findByText('Change password page next: ?next=%2F')).toBeInTheDocument();
+    expect(screen.queryByText(/Consent page/)).not.toBeInTheDocument();
   });
 
   it('should redirect a demo viewer without consent to /consent, carrying the requested path', async () => {

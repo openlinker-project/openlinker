@@ -51,6 +51,7 @@ import { AUTH_SERVICE_TOKEN, IAuthService } from './auth.service.interface';
 import { Public } from './decorators/public.decorator';
 import { AnyRole } from './decorators/any-role.decorator';
 import { SkipAnalyticsConsent } from './decorators/skip-analytics-consent.decorator';
+import { AllowPasswordChangeRequired } from './decorators/allow-password-change-required.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { CsrfGuard } from './guards/csrf.guard';
 import { LoginDto } from './dto/login.dto';
@@ -58,6 +59,7 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { OkResponseDto } from './dto/ok-response.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ConfirmEmailDto } from './dto/confirm-email.dto';
@@ -320,8 +322,11 @@ export class AuthController {
 
   // Exempt from the demo consent gate (#1938): the frontend reads this to
   // decide whether to send the account to the consent page at all.
+  // Also exempt from the forced password change (#3456): the frontend reads
+  // `mustChangePassword` here to send the account to the change screen.
   @AnyRole()
   @SkipAnalyticsConsent()
+  @AllowPasswordChangeRequired()
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the currently authenticated user' })
@@ -337,6 +342,11 @@ export class AuthController {
   // is what a demo signup gets — must be able to change it (#1882).
   // Exempt from the demo consent gate (#1938) — gating the route that grants
   // consent would make the missing consent unresolvable.
+  // Deliberately NOT exempt from the forced password change (#3456 review): the
+  // password route skips the consent gate, so there is no deadlock, and the
+  // order is the one we want - granting consent is a legally meaningful act
+  // that must be attributable to the account holder, not performable while an
+  // admin-issued credential a second party has read is still live.
   @AnyRole()
   @SkipAnalyticsConsent()
   @Patch('me/analytics-consent')
@@ -352,6 +362,59 @@ export class AuthController {
   ): Promise<UserResponseDto> {
     const updated = await this.authService.updateAnalyticsConsent(user.id, dto.analyticsConsent);
     return UserResponseDto.fromDomain(updated);
+  }
+
+  // Self-service, so every role may call it (#3456). It is the route that
+  // clears a forced change, so it is exempt from that gate, and from the demo
+  // consent gate for the reason given on the consent route above. Afterwards
+  // the client calls /auth/refresh for a token without the claim.
+  //
+  // Limitation (#3456 review): changing the password does NOT revoke the
+  // account's other sessions. That is true of every account, not only a freshly
+  // created one - a long-standing admin with sessions on other machines keeps
+  // them - and matches `PasswordResetService`, which does not revoke either. A
+  // revoke-all primitive is tracked in #3637.
+  @AnyRole()
+  @SkipAnalyticsConsent()
+  @AllowPasswordChangeRequired()
+  @Post('me/password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Change your own password. Required first for an account created with a one-time ' +
+      'password; call /auth/refresh afterwards to drop the forced-change claim.',
+  })
+  @ApiResponse({ status: 200, description: 'Password changed', type: OkResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error, current password incorrect, or new password unchanged',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<OkResponseDto> {
+    const outcome = await this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+    // 400, never 401: a wrong current password is a form answer, and a 401
+    // would send the client's session handling into a refresh-and-retry loop.
+    if (outcome === 'incorrect-current') {
+      throw new BadRequestException({
+        code: 'CURRENT_PASSWORD_INCORRECT',
+        message: 'The current password is incorrect.',
+      });
+    }
+    if (outcome === 'unchanged') {
+      throw new BadRequestException({
+        code: 'PASSWORD_UNCHANGED',
+        message: 'Choose a password different from the current one.',
+      });
+    }
+    return { ok: true };
   }
 
   @Public()

@@ -39,6 +39,9 @@ export {
   SYSTEM_CONNECTION_ID,
 } from './api/connections.types';
 
+// #3457 — the packing onboarding wizard writes connections through its own
+// orchestrating mutation and invalidates this family afterwards.
+export { connectionsQueryKeys } from './api/connections.query-keys';
 export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
