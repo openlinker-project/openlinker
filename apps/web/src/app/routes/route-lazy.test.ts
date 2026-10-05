@@ -125,8 +125,10 @@ const lazyRoutes = collectLazyRoutes([
  *
  * #3533 (G03, epic #3507): `/settings/order-tags` — the workspace tag
  * manager — is one more authenticated lazy route, from 72 to 73.
+ *
+ * #3702 adds the guided Shoper setup route (`connections/new/shoper`), from 73 to 74.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 73;
+const EXPECTED_LAZY_ROUTE_COUNT = 74;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
