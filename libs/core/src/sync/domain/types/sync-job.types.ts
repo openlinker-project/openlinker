@@ -424,6 +424,7 @@ export const JobOutcomeReasonValues = [
   'auto_dispatch_payload_invalid',
   'auto_dispatch_not_enabled',
   'auto_dispatch_no_weight',
+  'auto_dispatch_no_dimensions',
   'auto_dispatch_no_address',
   'auto_dispatch_no_delivery_method',
   'auto_dispatch_work_not_eligible',
