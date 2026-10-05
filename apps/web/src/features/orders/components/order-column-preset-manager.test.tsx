@@ -165,6 +165,28 @@ describe('OrderColumnPresetManager (#3530, D32, #3507 PR 7)', () => {
     await waitFor(() => { expect(select).toHaveValue(''); });
   });
 
+  it('should offer Delete for a preset applied earlier when the panel opens again (e2e v2 G03-10)', async () => {
+    // The panel remounts on every open, so nothing of the earlier pick
+    // survives except the columns the preset put in effect.
+    renderManager(['b', 'a'], vi.fn(), { presets: [preset('p1', 'Packing view', ['b', 'a'])] });
+
+    expect(await screen.findByRole('option', { name: 'Packing view', selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete preset' })).toBeInTheDocument();
+  });
+
+  it('should fall back to Custom and hide Delete when the columns are edited by hand', async () => {
+    const onColumnsChange = vi.fn();
+    renderManager(['a', 'b'], onColumnsChange, { presets: [preset('p1', 'Packing view', ['b', 'a'])] });
+    const user = userEvent.setup();
+
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Preset' }), 'p1');
+    expect(screen.getByRole('button', { name: 'Delete preset' })).toBeInTheDocument();
+    await user.click(within(list()).getByRole('checkbox', { name: 'Gamma' }));
+
+    expect(screen.getByRole('option', { name: 'Custom', selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete preset' })).toBeNull();
+  });
+
   it('offers "Set as workspace default" to an admin only', async () => {
     const admin: SessionUser = { ...OPERATOR, role: 'admin', permissions: [] };
     renderManager(['a'], vi.fn(), { user: admin });

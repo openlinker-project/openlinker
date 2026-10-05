@@ -15,6 +15,13 @@
  * order IS the table's column order, and arrow buttons need no drag library),
  * then the hidden ones, greyed, at the end. Ticking a hidden column appends it.
  *
+ * The selected preset is not only the one picked in this panel: the panel
+ * remounts every time it opens, so a preset applied earlier would read as
+ * "Custom" on the next open and its Delete would vanish (e2e v2, G03-10).
+ * A preset whose columns equal the ones in effect therefore counts as
+ * selected, and editing the columns by hand drops an explicit pick, so the
+ * select never names a preset the table no longer matches.
+ *
  * @module apps/web/src/features/orders/components
  */
 import { useState, type ReactElement } from 'react';
@@ -31,6 +38,10 @@ import {
   useSetWorkspaceDefaultColumnPresetMutation,
 } from '../hooks/use-order-column-presets';
 import { ORDER_COLUMNS_PANEL_COPY as COPY } from '../lib/order-export.copy';
+
+function sameColumns(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
 
 export interface OrderColumnDescriptor {
   id: string;
@@ -65,12 +76,15 @@ export function OrderColumnPresetManager({
   const visible = columns.filter((id) => knownIds.has(id));
   const hidden = availableColumns.filter((c) => !visible.includes(c.id)).map((c) => c.id);
   const presets = presetsQuery.data ?? [];
-  const selectedPreset = presets.find((p) => p.id === selectedPresetId) ?? null;
+  const effectivePresetId =
+    selectedPresetId || (presets.find((p) => sameColumns(p.columns, columns))?.id ?? '');
+  const selectedPreset = presets.find((p) => p.id === effectivePresetId) ?? null;
 
   function replaceKnownColumns(nextVisible: string[]): void {
     // Ids from the other vocabulary ride along untouched — toggling a list
     // column must never drop an export column sitting in the same array.
     const foreign = columns.filter((id) => !knownIds.has(id));
+    setSelectedPresetId('');
     onColumnsChange([...nextVisible, ...foreign]);
   }
 
@@ -119,7 +133,7 @@ export function OrderColumnPresetManager({
       <div className="columns-panel__presets">
         <FormField label={COPY.preset} name="orders-columns-preset">
           <Select
-            value={selectedPresetId}
+            value={effectivePresetId}
             onChange={(e) => { applyPreset(e.target.value); }}
           >
             <option value="">{COPY.presetCustom}</option>
