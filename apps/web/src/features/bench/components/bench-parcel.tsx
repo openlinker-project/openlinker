@@ -173,7 +173,7 @@ export function BenchParcelView({
   // A3. Off while the idle lock covers the bench — see the hook's docblock for
   // why a locked terminal must not keep announcing the packer who walked away.
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() });
-  // A3. False while the idle lock or the handover prompt covers the bench.
+  // A3. False while the idle lock covers the bench.
   const interactive = useBenchInteractive();
 
   const [notice, setNotice] = useState<ScanNotice | null>(null);

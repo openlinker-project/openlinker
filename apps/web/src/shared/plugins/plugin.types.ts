@@ -615,6 +615,14 @@ export interface BuildContribution {
 export interface PlatformContribution {
   /** Human-readable display name (dropdown labels, etc.). */
   displayName: string;
+  /**
+   * Compact label for space-constrained surfaces such as the connection chip
+   * face (#3670). Set it only when part of `displayName` is incidental detail
+   * (`Subiekt GT (Sfera GT bridge)` → `Subiekt GT`); omitted, surfaces use
+   * `displayName`. Declared here because only the plugin knows which part of
+   * its own name is detail - see `resolvePlatformShortLabel`.
+   */
+  shortLabel?: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
   /**

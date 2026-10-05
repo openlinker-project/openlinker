@@ -18,11 +18,10 @@
  * So it sits in `standaloneRoutes`, beside `/consent` — no `AppShell`, no
  * sidebar, and no authenticated-layout gate. The bench renders its own
  * sign-in, so an anonymous session is a state it handles rather than a state it
- * must be rescued from. A full-screen terminal wants no application chrome
- * anyway.
+ * must be rescued from. It DOES carry the application's topbar, through
+ * `BenchAppLayout`, which never redirects on its own.
  *
- * It carries a crumb because the shell's crumb contract is cheap to satisfy and
- * the surface may later be reachable from one; nothing renders it today.
+ * The crumb below is what that topbar renders.
  *
  * ## There IS a nav entry now, and it points one way only
  *
@@ -53,6 +52,7 @@
  *
  * @module app/routes
  */
+import type { ReactElement } from 'react';
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
@@ -64,7 +64,18 @@ export const benchRoute: RouteObject = {
   path: '/bench',
   handle: benchCrumb,
   lazy: async () => {
-    const { BenchPage } = await import('../../pages/bench/bench-page');
-    return { Component: BenchPage };
+    const [{ BenchPage }, { BenchAppLayout }] = await Promise.all([
+      import('../../pages/bench/bench-page'),
+      import('../layouts/bench-app-layout'),
+    ]);
+    // The app's own topbar, no sidebar - see `bench-app-layout.tsx`.
+    function BenchRouteComponent(): ReactElement {
+      return (
+        <BenchAppLayout>
+          <BenchPage />
+        </BenchAppLayout>
+      );
+    }
+    return { Component: BenchRouteComponent };
   },
 };
