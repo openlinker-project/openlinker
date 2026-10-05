@@ -258,6 +258,93 @@ describe('OrderLifecycleRelayService', () => {
     });
   });
 
+  // #3526 — `delivered` and `in-progress` join the union, and a bare adapter
+  // decline is defaulted to `unsupportedReason: 'no-capability'`.
+  describe('delivered / in-progress (#3526)', () => {
+    it('maps a delivered event with its instant through to the participant', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([mapping('ps-conn', 'ps-7')]);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      const deliveredAt = new Date('2026-09-04T10:00:00Z');
+
+      await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        event: { type: 'delivered', deliveredAt },
+      });
+
+      expect(adapter.write).toHaveBeenCalledWith({
+        type: 'delivered',
+        externalOrderId: 'ps-7',
+        deliveredAt,
+      });
+    });
+
+    it('maps an in-progress event through to the participant', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([mapping('ps-conn', 'ps-7')]);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        event: { type: 'in-progress' },
+      });
+
+      expect(adapter.write).toHaveBeenCalledWith({
+        type: 'in-progress',
+        externalOrderId: 'ps-7',
+      });
+    });
+
+    // The product decision this epic states plainly: "a platform that cannot
+    // show a state declines it as no-capability; that is never an error."
+    it('defaults a BARE adapter decline to unsupportedReason: no-capability', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([mapping('ps-conn', 'ps-7')]);
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        // No `unsupportedReason` — this is what an in-tree adapter's own
+        // `default:` arm (or an explicit per-event decline) actually returns;
+        // that field belongs to the RELAY's vocabulary, never the adapter's.
+        write: jest.fn().mockResolvedValue({ outcome: 'unsupported', detail: 'no such status' }),
+      });
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        event: { type: 'delivered' },
+      });
+
+      expect(result.targets[0]).toEqual({
+        connectionId: 'ps-conn',
+        outcome: 'unsupported',
+        detail: 'no such status',
+        unsupportedReason: 'no-capability',
+      });
+    });
+
+    it('never defaults a reason onto an applied or rejected outcome', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        mapping('ps-a', 'a'),
+        mapping('ps-b', 'b'),
+      ]);
+      integrations.getCapabilityAdapter
+        .mockResolvedValueOnce({ write: jest.fn().mockResolvedValue({ outcome: 'applied' }) })
+        .mockResolvedValueOnce({
+          write: jest.fn().mockResolvedValue({ outcome: 'rejected', detail: 'no' }),
+        });
+
+      const result = await service.relay({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: origin,
+        event: { type: 'in-progress' },
+      });
+
+      for (const target of result.targets) {
+        expect(target).not.toHaveProperty('unsupportedReason');
+      }
+    });
+  });
+
   // #2401 — author exclusion. Each case asserts the TARGET LIST, not a call count:
   // a count can pass while the wrong participant was excluded.
   describe('authoredByConnectionId (#2401)', () => {

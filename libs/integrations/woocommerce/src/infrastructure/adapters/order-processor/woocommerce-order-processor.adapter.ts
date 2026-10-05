@@ -395,6 +395,11 @@ export class WooCommerceOrderProcessorAdapter
    *   its own live state, so we surface the conflict rather than force a
    *   regressive transition. Idempotent when already `cancelled`. Otherwise PUT
    *   `cancelled`. `applied`.
+   * - `delivered`  → DECLINED (`unsupported`, #3526). `WC_ORDER_STATUS_MAP` maps
+   *   both `'shipped'` and `'delivered'` onto WC's single `'completed'` status,
+   *   so this platform cannot express delivery as distinct from dispatch.
+   * - `in-progress` → set WC status `processing` (native WC vocabulary).
+   *   `applied`.
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     try {
@@ -478,6 +483,30 @@ export class WooCommerceOrderProcessorAdapter
             `/wp-json/wc/v3/orders/${event.externalOrderId}`,
             { status: wcStatus } satisfies WooCommerceOrderUpdateRequest,
           );
+          return { outcome: 'applied' };
+        }
+
+        case 'delivered': {
+          // DECLINED, deliberately (#3526). `WC_ORDER_STATUS_MAP` maps BOTH
+          // `'shipped'` and `'delivered'` onto WC's single `'completed'`
+          // status — WC core has no status distinguishing "left the
+          // warehouse" from "arrived" — so applying this would either no-op
+          // (the order is already `completed` from the `dispatched` event)
+          // or silently claim a distinction this platform's vocabulary does
+          // not have. "A platform that cannot show a state declines it as
+          // no-capability" (this epic's own product decision).
+          return {
+            outcome: 'unsupported',
+            detail: 'WooCommerce core has no order status distinct from completed for delivered',
+          };
+        }
+
+        case 'in-progress': {
+          // WC's native `processing` status IS this neutral fact.
+          await this.updateFulfillment({
+            externalOrderId: event.externalOrderId,
+            status: 'processing',
+          });
           return { outcome: 'applied' };
         }
 

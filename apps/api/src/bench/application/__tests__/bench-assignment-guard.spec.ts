@@ -56,6 +56,7 @@ import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
 import type { IUserManagementService } from '../../../users/user-management.service.interface';
+import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
 import { BenchParcelService } from '../services/bench-parcel.service';
 
@@ -173,6 +174,10 @@ function harness() {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
   } as unknown as IUserManagementService;
 
+  const parcelClosureNotifier = {
+    notifyParcelClosed: jest.fn().mockResolvedValue(undefined),
+  } as unknown as IFulfillmentParcelClosureNotifier;
+
   return {
     service: new BenchParcelService(
       executors,
@@ -182,7 +187,8 @@ function harness() {
       products,
       shipments,
       inventory,
-      users
+      users,
+      parcelClosureNotifier
     ),
     verification,
     // `claimParcel`'s write target lives here rather than on the verification
