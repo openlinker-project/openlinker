@@ -179,6 +179,11 @@ describe('BenchParcelView (#2418)', () => {
   it('should render NO control that could commit or close the box', async () => {
     mount(parcel());
     await screen.findByTestId('bench-parcel');
+    // The documents panel reads separately and arrives later. Wait for it, so
+    // the inventory below is the box as the packer sees it, not whatever had
+    // rendered by the time the parcel did — reading too early hid its two
+    // print controls and made this pass or fail on timing.
+    await screen.findByRole('button', { name: 'Print label' });
 
     // Asserts the PERMITTED set, not a denied word list (#2905 review). A grep
     // for `done|finish|commit` can only refuse the spellings somebody thought
@@ -217,6 +222,10 @@ describe('BenchParcelView (#2418)', () => {
         // recent scan on an OPEN parcel, and cannot reach a closed box. A
         // deliberate addition to this allowlist, not an oversight.
         'Undo last scan',
+        // The documents panel's two print controls. Printing makes paper; it
+        // neither commits the contents nor closes the box.
+        'Print invoice',
+        'Print label',
       ].sort()
     );
   });

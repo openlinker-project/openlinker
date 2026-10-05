@@ -534,8 +534,30 @@
 </div>
  <div class="docs" style="margin-top:0">
  <div class="doc-card"><h4>Goes INSIDE the box</h4><p>Invoice OL-INV-4471</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Ready to print</span><button class="btn btn--secondary btn--sm" type="button">Print invoice</button></div></div>
- <div class="doc-card"><h4>Goes ON the box</h4><p>Shipping label — InPost paczkomat</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Ready to print</span><button class="btn btn--secondary btn--sm" type="button">Print label</button></div></div>
+ <div class="doc-card"><h4>Goes ON the box</h4><p>Shipping label — InPost paczkomat</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Ready to print</span><button class="btn btn--secondary btn--sm" type="button">Print label</button><button class="btn btn--secondary btn--sm" type="button" data-state-btn="label-change">Change size</button></div></div>
 </div>
+</div>
+
+
+ <div data-state="label-change" hidden>
+ <div class="alert alert--info"><div><h4>Change the label size</h4>
+ <p>Tell us what this box really is. Nothing else about the order changes. Fields: Length (cm), Width (cm), Height (cm), Weight (kg) - or "Pick a size" / "Weight only". No address, recipient or carrier.</p>
+ <p><strong>The current label will be cancelled and a new one bought.</strong></p>
+ <button class="btn btn--secondary btn--sm" type="button" data-state-btn="ready">Keep the current label</button>
+ <button class="btn btn--primary btn--sm" type="button" data-state-btn="ready">Cancel it and buy a new label</button></div></div>
+</div>
+
+ <div data-state="label-refused" hidden>
+ <div class="alert alert--warning"><div><h4>Refused - the current label stays</h4>
+ <p>cannot-cancel: "This carrier does not let us cancel a label from the bench. The current label stays. Ask the office."</p>
+ <p>already-handed-over: "The carrier already has this parcel, so its label cannot be replaced. The current label stays."</p>
+ <p>parcel-completed: "This box is already marked done, so its label cannot be replaced. The current label stays."</p></div></div>
+</div>
+
+ <div data-state="label-void" hidden>
+ <div class="alert alert--warning"><div><h4>The old label is void and no new one was bought</h4>
+ <p>Do not stick the old label on the box. Tell the office - they need to buy a new label for this parcel.</p>
+ <button class="btn btn--secondary btn--sm" type="button" data-state-btn="ready">Understood</button></div></div>
 </div>
 
  <!-- #3647: the order's document is a fiscal receipt. The card says only what
@@ -616,6 +638,9 @@
       <button class="mockup-pill" data-state-btn="ready" aria-pressed="false" type="button">Parcel ready to close</button>
       <button class="mockup-pill" data-state-btn="receipt" aria-pressed="false" type="button">Order has a receipt</button>
       <button class="mockup-pill" data-state-btn="unlabelled" aria-pressed="false" type="button">Packed, no label</button>
+      <button class="mockup-pill" data-state-btn="label-change" aria-pressed="false" type="button">Change size dialog</button>
+      <button class="mockup-pill" data-state-btn="label-refused" aria-pressed="false" type="button">Change size refused</button>
+      <button class="mockup-pill" data-state-btn="label-void" aria-pressed="false" type="button">Old label void</button>
       <button class="mockup-pill" data-state-btn="hold" aria-pressed="false" type="button">Held parcel selected</button>
       <button class="mockup-pill" data-state-btn="empty" aria-pressed="false" type="button">Nothing routed</button>
       <button class="mockup-pill" data-state-btn="locked" aria-pressed="false" type="button">Bench locked</button>

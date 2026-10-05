@@ -486,6 +486,18 @@ export class SubiektOrderProcessorAdapter
           return { outcome: 'applied' };
         }
 
+        // #3526 added both events. Declined until a write is verified against
+        // a real bridge, the Allegro/Erli posture: the remarks label the
+        // bridge would get for them has never been checked by anyone reading
+        // a Subiekt document.
+        case 'delivered':
+        case 'in-progress': {
+          return {
+            outcome: 'unsupported',
+            detail: `Subiekt writeback has no verified '${event.type}' status - needs-bridge-probe`,
+          };
+        }
+
         default: {
           // Unreachable in-tree: the binding is the compile break when an
           // `OrderLifecycleEvent` member is added without an arm here

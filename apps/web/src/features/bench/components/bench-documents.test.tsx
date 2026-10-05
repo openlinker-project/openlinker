@@ -54,6 +54,7 @@ function label(over: Partial<BenchLabel> = {}): BenchLabel {
     carrierMessage: null,
     failedAt: null,
     carrierMessageRedacted: false,
+    parcelTemplates: [],
     ...over,
   };
 }

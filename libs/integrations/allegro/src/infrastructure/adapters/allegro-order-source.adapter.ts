@@ -156,6 +156,14 @@ export class AllegroOrderSourceAdapter
    * — its semantics are only safe for SENT.) Exact cancel transition rules are
    * `needs-sandbox-probe`. No refund is issued — OL is never the money book of
    * record (ADR-027).
+   *
+   * `delivered` and `in-progress` (#3526) are DECLINED (`unsupported`), rather
+   * than guessed at. The only verified members of the fulfillment-status enum
+   * `putFulfillment` writes are `SENT` and `CANCELLED` — a seller-settable
+   * "delivered" or "processing" value on this endpoint is `needs-sandbox-probe`
+   * and Allegro's own delivery confirmation is carrier-tracked rather than
+   * seller-PUT, so declining is the conservative, verified choice rather than
+   * inventing a wire value nothing in this tree has confirmed.
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     try {
@@ -167,6 +175,13 @@ export class AllegroOrderSourceAdapter
         case 'cancelled': {
           await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
           return { outcome: 'applied' };
+        }
+        case 'delivered':
+        case 'in-progress': {
+          return {
+            outcome: 'unsupported',
+            detail: `Allegro fulfillment status has no verified '${event.type}' member — needs-sandbox-probe`,
+          };
         }
         default: {
           // Unreachable in-tree: the binding is the compile break when an
