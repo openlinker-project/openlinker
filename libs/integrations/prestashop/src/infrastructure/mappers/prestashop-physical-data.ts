@@ -67,7 +67,14 @@ function toPositiveInt(value: number | null, factor: number | undefined): number
   return converted > 0 ? converted : null;
 }
 
-/** Product weight plus optional combination impact, converted to grams. */
+/**
+ * Product weight plus optional combination impact, converted to grams.
+ *
+ * An absent product weight is read as 0, so a combination's weight impact on a
+ * product with no base weight becomes the absolute weight. That is what
+ * PrestaShop itself ships with, and it is the one place this arithmetic
+ * asserts something the shop did not state outright.
+ */
 export function convertPrestashopWeightToGrams(
   productWeight: unknown,
   combinationImpact: unknown,

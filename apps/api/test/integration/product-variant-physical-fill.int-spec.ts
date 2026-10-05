@@ -69,28 +69,24 @@ describe('Product variant physical-data fill-when-NULL (#3650)', () => {
   it('should fill every column that is NULL', async () => {
     const variantId = await seedVariant(harness.getDataSource());
 
-    const filled = await productsService.fillVariantPhysicalDimensionsIfAbsent(variantId, {
-      weightGrams: 700,
-      lengthMm: 300,
-      widthMm: 200,
-      heightMm: 100,
-    });
+    const filled = await productsService.fillVariantsPhysicalDimensionsIfAbsent([
+      { variantId, weightGrams: 700, lengthMm: 300, widthMm: 200, heightMm: 100 },
+    ]);
 
     const row = await harness
       .getDataSource()
       .getRepository(ProductVariantOrmEntity)
       .findOneByOrFail({ id: variantId });
-    expect(filled).toBe(true);
+    expect(filled).toBe(1);
     expect([row.weightGrams, row.lengthMm, row.widthMm, row.heightMm]).toEqual([700, 300, 200, 100]);
   });
 
   it('should keep an existing value and fill only the empty columns', async () => {
     const variantId = await seedVariant(harness.getDataSource(), { weightGrams: 1234 });
 
-    await productsService.fillVariantPhysicalDimensionsIfAbsent(variantId, {
-      weightGrams: 999,
-      lengthMm: 300,
-    });
+    await productsService.fillVariantsPhysicalDimensionsIfAbsent([
+      { variantId, weightGrams: 999, lengthMm: 300 },
+    ]);
 
     const row = await harness
       .getDataSource()
@@ -104,30 +100,54 @@ describe('Product variant physical-data fill-when-NULL (#3650)', () => {
   it('should report nothing filled and change nothing when every supplied column already has a value', async () => {
     const variantId = await seedVariant(harness.getDataSource(), { weightGrams: 500 });
 
-    const filled = await productsService.fillVariantPhysicalDimensionsIfAbsent(variantId, {
-      weightGrams: 900,
-    });
+    const filled = await productsService.fillVariantsPhysicalDimensionsIfAbsent([
+      { variantId, weightGrams: 900 },
+    ]);
 
     const row = await harness
       .getDataSource()
       .getRepository(ProductVariantOrmEntity)
       .findOneByOrFail({ id: variantId });
-    expect(filled).toBe(false);
+    expect(filled).toBe(0);
     expect(row.weightGrams).toBe(500);
   });
 
   it('should never blank a column when the supplied value is null', async () => {
     const variantId = await seedVariant(harness.getDataSource(), { weightGrams: 500 });
 
-    await productsService.fillVariantPhysicalDimensionsIfAbsent(variantId, {
-      weightGrams: null,
-      lengthMm: null,
-    });
+    // `lengthMm` is numeric so the statement actually runs with a NULL weight
+    // bound into it - an all-null input short-circuits before any SQL.
+    await productsService.fillVariantsPhysicalDimensionsIfAbsent([
+      { variantId, weightGrams: null, lengthMm: 300 },
+    ]);
 
     const row = await harness
       .getDataSource()
       .getRepository(ProductVariantOrmEntity)
       .findOneByOrFail({ id: variantId });
     expect(row.weightGrams).toBe(500);
+    expect(row.lengthMm).toBe(300);
+  });
+
+  it('should fill several variants in one call and count only the ones actually filled', async () => {
+    const dataSource = harness.getDataSource();
+    const emptyId = await seedVariant(dataSource);
+    const fullId = await seedVariant(dataSource, { weightGrams: 500, lengthMm: 10 });
+    const partialId = await seedVariant(dataSource, { weightGrams: 400 });
+
+    const filled = await productsService.fillVariantsPhysicalDimensionsIfAbsent([
+      { variantId: emptyId, weightGrams: 700, heightMm: 100 },
+      { variantId: fullId, weightGrams: 900, lengthMm: 20, widthMm: null },
+      { variantId: partialId, weightGrams: 999, widthMm: 50 },
+    ]);
+
+    const repo = dataSource.getRepository(ProductVariantOrmEntity);
+    const empty = await repo.findOneByOrFail({ id: emptyId });
+    const full = await repo.findOneByOrFail({ id: fullId });
+    const partial = await repo.findOneByOrFail({ id: partialId });
+    expect(filled).toBe(2);
+    expect([empty.weightGrams, empty.lengthMm, empty.heightMm]).toEqual([700, null, 100]);
+    expect([full.weightGrams, full.lengthMm, full.widthMm]).toEqual([500, 10, null]);
+    expect([partial.weightGrams, partial.widthMm]).toEqual([400, 50]);
   });
 });

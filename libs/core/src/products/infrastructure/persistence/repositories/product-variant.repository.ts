@@ -23,6 +23,7 @@ import type {
   ProductVariantListFilters,
   ProductPagination,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
 } from '../../../domain/types/product.types';
 import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
 import { readTaxRateUnknownReason } from '../../../domain/types/tax-rate.types';
@@ -440,43 +441,63 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
 
   /**
    * Fill-when-NULL counterpart of `recordPhysicalDimensions` (#3650). One
-   * statement with a per-column COALESCE, so the "is it still empty" test and
-   * the write are atomic: a concurrent operator write between a read and this
-   * update can never be clobbered. The WHERE clause restricts the statement to
-   * rows where at least one supplied column is still NULL, which keeps a
-   * steady-state sweep from rewriting every row (and bumping `updatedAt`).
+   * statement for all the given variants, with a per-column COALESCE, so the
+   * "is it still empty" test and the write are atomic: a concurrent operator
+   * write between a read and this update can never be clobbered. The WHERE
+   * clause restricts the statement to rows where at least one supplied column
+   * is still NULL, which keeps a steady-state sweep from rewriting every row
+   * (and bumping `updatedAt`).
+   *
+   * Raw SQL because TypeORM's update builder has no `UPDATE ... FROM`, which is
+   * what lets one statement carry a different value set per variant. Every
+   * value travels as a bound `$n` parameter; only the fixed column names are
+   * spelled into the text.
    */
   async fillPhysicalDimensionsIfAbsent(
-    variantId: string,
-    dims: {
-      readonly weightGrams?: number | null;
-      readonly lengthMm?: number | null;
-      readonly widthMm?: number | null;
-      readonly heightMm?: number | null;
-    }
-  ): Promise<boolean> {
+    fills: readonly VariantPhysicalDimensionsFill[]
+  ): Promise<number> {
     const columns = ['weightGrams', 'lengthMm', 'widthMm', 'heightMm'] as const;
-    const provided = columns.filter((c) => typeof dims[c] === 'number');
-    if (provided.length === 0) {
-      return false;
+    const rows = fills.filter((fill) => columns.some((c) => typeof fill[c] === 'number'));
+    if (rows.length === 0) {
+      return 0;
     }
 
-    const set: Partial<Record<(typeof columns)[number], () => string>> = {};
-    const params: Record<string, number> = {};
-    for (const column of provided) {
-      set[column] = () => `COALESCE("${column}", :${column})`;
-      params[column] = dims[column] as number;
-    }
+    // A non-numeric field is bound as NULL, which the COALESCE and the WHERE
+    // below both read as "not supplied" - so it can never blank a column.
+    const params: (string | number | null)[] = [];
+    const tuples = rows.map((fill) => {
+      params.push(fill.variantId);
+      const slots = [`$${params.length}::text`];
+      for (const column of columns) {
+        const value = fill[column];
+        params.push(typeof value === 'number' ? value : null);
+        slots.push(`$${params.length}::int`);
+      }
+      return `(${slots.join(', ')})`;
+    });
+    const assignments = columns.map((c) => `"${c}" = COALESCE(pv."${c}", v."${c}")`).join(', ');
+    const fillable = columns
+      .map((c) => `(pv."${c}" IS NULL AND v."${c}" IS NOT NULL)`)
+      .join(' OR ');
 
-    const result = await this.repository
-      .createQueryBuilder()
-      .update(ProductVariantOrmEntity)
-      .set(set)
-      .setParameters(params)
-      .where('id = :variantId', { variantId })
-      .andWhere(`(${provided.map((c) => `"${c}" IS NULL`).join(' OR ')})`)
-      .execute();
-    return (result.affected ?? 0) > 0;
+    const result = (await this.repository.query(
+      `UPDATE "product_variants" AS pv
+          SET ${assignments}, "updatedAt" = now()
+         FROM (VALUES ${tuples.join(', ')})
+           AS v("id", "weightGrams", "lengthMm", "widthMm", "heightMm")
+        WHERE pv."id" = v."id"
+          AND (${fillable})
+    RETURNING pv."id"`,
+      params
+    )) as unknown;
+
+    // node-postgres surfaces an UPDATE as `[rows, affectedCount]` through
+    // TypeORM's raw query (`InventoryRepository.markSameSourceOrphanPositionsStale`
+    // documents the same shape);
+    // normalised so a driver returning the plain row array still counts right.
+    const outer = Array.isArray(result) ? result : [];
+    const returned: unknown[] = Array.isArray(outer[0]) ? outer[0] : outer;
+    return returned.length;
   }
 
   /**

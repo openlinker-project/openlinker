@@ -54,7 +54,7 @@ describe('MasterProductSyncService', () => {
       | 'recordProductTaxRate'
       | 'recordVariantTaxRate'
       | 'clearVariantTaxRate'
-      | 'fillVariantPhysicalDimensionsIfAbsent'
+      | 'fillVariantsPhysicalDimensionsIfAbsent'
     >
   >;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
@@ -87,7 +87,7 @@ describe('MasterProductSyncService', () => {
       recordProductTaxRate: jest.fn().mockResolvedValue(undefined),
       recordVariantTaxRate: jest.fn().mockResolvedValue(undefined),
       clearVariantTaxRate: jest.fn().mockResolvedValue(undefined),
-      fillVariantPhysicalDimensionsIfAbsent: jest.fn().mockResolvedValue(true),
+      fillVariantsPhysicalDimensionsIfAbsent: jest.fn().mockResolvedValue(0),
     };
 
     eventPublisher = {
@@ -220,23 +220,81 @@ describe('MasterProductSyncService', () => {
 
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      expect(productsService.fillVariantPhysicalDimensionsIfAbsent).toHaveBeenCalledWith(
-        'ol_variant_1',
-        { weightGrams: 700, lengthMm: 300, widthMm: 200, heightMm: 100 }
-      );
+      expect(productsService.fillVariantsPhysicalDimensionsIfAbsent).toHaveBeenCalledWith([
+        { variantId: 'ol_variant_1', weightGrams: 700, lengthMm: 300, widthMm: 200, heightMm: 100 },
+      ]);
+    });
+
+    it('should write every variant of the product in a single call when several carry physical data', async () => {
+      adapter.getProductVariants.mockResolvedValueOnce([
+        { ...makeVariant('ol_variant_1'), weightGrams: 700 },
+        makeVariant('ol_variant_2'),
+        { ...makeVariant('ol_variant_3'), lengthMm: 300 },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.fillVariantsPhysicalDimensionsIfAbsent).toHaveBeenCalledTimes(1);
+      expect(productsService.fillVariantsPhysicalDimensionsIfAbsent).toHaveBeenCalledWith([
+        {
+          variantId: 'ol_variant_1',
+          weightGrams: 700,
+          lengthMm: null,
+          widthMm: null,
+          heightMm: null,
+        },
+        {
+          variantId: 'ol_variant_3',
+          weightGrams: null,
+          lengthMm: 300,
+          widthMm: null,
+          heightMm: null,
+        },
+      ]);
     });
 
     it('should not call the writer when the adapter supplies no physical data', async () => {
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      expect(productsService.fillVariantPhysicalDimensionsIfAbsent).not.toHaveBeenCalled();
+      expect(productsService.fillVariantsPhysicalDimensionsIfAbsent).not.toHaveBeenCalled();
+    });
+
+    it('should log the fill count when at least one variant was filled', async () => {
+      adapter.getProductVariants.mockResolvedValueOnce([
+        { ...makeVariant('ol_variant_1'), weightGrams: 700 },
+        { ...makeVariant('ol_variant_2'), weightGrams: 800 },
+      ]);
+      productsService.fillVariantsPhysicalDimensionsIfAbsent.mockResolvedValueOnce(2);
+      const logSpy = jest.spyOn(service['logger'], 'log');
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `filled physical data on 2 variant(s): internalProductId=${internalProductId}`
+        )
+      );
+    });
+
+    it('should not log a fill line when nothing was filled', async () => {
+      adapter.getProductVariants.mockResolvedValueOnce([
+        { ...makeVariant('ol_variant_1'), weightGrams: 700 },
+      ]);
+      productsService.fillVariantsPhysicalDimensionsIfAbsent.mockResolvedValueOnce(0);
+      const logSpy = jest.spyOn(service['logger'], 'log');
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('filled physical data'));
     });
 
     it('should not fail the product sync when the physical-data write throws', async () => {
       adapter.getProductVariants.mockResolvedValueOnce([
         { ...makeVariant('ol_variant_1'), weightGrams: 500 },
       ]);
-      productsService.fillVariantPhysicalDimensionsIfAbsent.mockRejectedValueOnce(new Error('db down'));
+      productsService.fillVariantsPhysicalDimensionsIfAbsent.mockRejectedValueOnce(
+        new Error('db down')
+      );
 
       const result = await service.syncFromMasterByExternalId(connectionId, externalId);
 

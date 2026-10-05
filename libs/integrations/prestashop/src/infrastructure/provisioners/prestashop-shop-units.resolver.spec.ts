@@ -58,6 +58,36 @@ describe('PrestashopShopUnitsResolver', () => {
     await expect(new PrestashopShopUnitsResolver().resolveUnits('c1', client)).resolves.toBeNull();
   });
 
+  describe('unresolved-answer TTL', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('should keep serving a cached unresolved answer for ten minutes when neither unit is configured', async () => {
+      const { client, listResources } = makeClient({});
+      const resolver = new PrestashopShopUnitsResolver();
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+
+      await resolver.resolveUnits('c1', client);
+      now.mockReturnValue(1_000_000 + 9 * 60 * 1000);
+      await resolver.resolveUnits('c1', client);
+
+      expect(listResources).toHaveBeenCalledTimes(2);
+    });
+
+    it('should re-read an unresolved answer once ten minutes have passed', async () => {
+      const { client, listResources } = makeClient({});
+      const resolver = new PrestashopShopUnitsResolver();
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+
+      await resolver.resolveUnits('c1', client);
+      now.mockReturnValue(1_000_000 + 10 * 60 * 1000);
+      await resolver.resolveUnits('c1', client);
+
+      expect(listResources).toHaveBeenCalledTimes(4);
+    });
+  });
+
   it('should re-read after the cache is cleared', async () => {
     const { client, listResources } = makeClient({ PS_WEIGHT_UNIT: 'g', PS_DIMENSION_UNIT: 'mm' });
     const resolver = new PrestashopShopUnitsResolver();

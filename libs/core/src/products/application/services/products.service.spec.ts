@@ -345,19 +345,20 @@ describe('ProductsService', () => {
     });
   });
 
-  describe('fillVariantPhysicalDimensionsIfAbsent', () => {
+  describe('fillVariantsPhysicalDimensionsIfAbsent', () => {
     it('delegates to the fill-when-NULL repository writer, never the unconditional one (#3650)', async () => {
-      variantRepo.fillPhysicalDimensionsIfAbsent.mockResolvedValue(true);
+      variantRepo.fillPhysicalDimensionsIfAbsent.mockResolvedValue(1);
+      const fills = [
+        { variantId: 'ol_variant_1', weightGrams: 500 },
+        { variantId: 'ol_variant_2', lengthMm: 300 },
+      ];
 
-      const filled = await service.fillVariantPhysicalDimensionsIfAbsent('ol_variant_1', {
-        weightGrams: 500,
-      });
+      const filled = await service.fillVariantsPhysicalDimensionsIfAbsent(fills);
 
-      expect(variantRepo.fillPhysicalDimensionsIfAbsent).toHaveBeenCalledWith('ol_variant_1', {
-        weightGrams: 500,
-      });
+      expect(variantRepo.fillPhysicalDimensionsIfAbsent).toHaveBeenCalledTimes(1);
+      expect(variantRepo.fillPhysicalDimensionsIfAbsent).toHaveBeenCalledWith(fills);
       expect(variantRepo.recordPhysicalDimensions).not.toHaveBeenCalled();
-      expect(filled).toBe(true);
+      expect(filled).toBe(1);
     });
   });
 });

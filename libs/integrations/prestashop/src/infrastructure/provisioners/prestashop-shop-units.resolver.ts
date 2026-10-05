@@ -9,8 +9,8 @@
  * Cached per connection above the adapter (the factory holds one instance for
  * the plugin lifetime, like `PrestashopShopCurrencyResolver`), so the per-product
  * adapters a master sweep builds never issue a request per product. A resolved
- * answer is cached for an hour; an unresolved one for a minute only, so a blip
- * or a not-yet-configured shop does not pin "unknown" after it is fixed.
+ * answer is cached for an hour; an unresolved one for ten minutes (see
+ * `UNRESOLVED_CACHE_TTL_MS`).
  *
  * Never throws: any failure yields `null` units, which the mapper reads as
  * "not recorded" - physical data is enrichment and must not break product sync.
@@ -26,7 +26,13 @@ const WEIGHT_UNIT_KEY = 'PS_WEIGHT_UNIT';
 const DIMENSION_UNIT_KEY = 'PS_DIMENSION_UNIT';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
-const UNRESOLVED_CACHE_TTL_MS = 60 * 1000;
+// Shorter than the resolved TTL so a blip or a not-yet-configured shop does
+// not pin "unknown" for an hour after it is fixed - ten minutes still recovers
+// promptly. Not shorter, because a shop with neither unit configured is a
+// permanent condition: every expiry costs two `configurations` reads against
+// that shop's rate limit for an answer that will not change, and this bounds
+// that steady-state cost.
+const UNRESOLVED_CACHE_TTL_MS = 10 * 60 * 1000;
 
 interface CacheEntry {
   units: PrestashopShopUnits | null;
