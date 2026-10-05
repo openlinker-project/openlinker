@@ -8,6 +8,12 @@
  * creates a document — fetching earlier would gain nothing and would put a read
  * on the bench during the part of the job that must not be interrupted.
  *
+ * The documents read also asks again on its own (#3647): every 5 s while a
+ * document is still being made, every 30 s while there is none or it failed
+ * (the office may sort it out while the packer works), and not at all once the
+ * document is made. Without it a receipt that finished registering mid-pack
+ * stayed "on its way" until the page was reloaded.
+ *
  * The unlabelled read has no work id: it is the SAME list dispatch sees, which
  * is what stops the two disagreeing about a box on a floor. It is fetched only
  * while this bench is actually looking at an unlabelled box, so a healthy bench
@@ -20,7 +26,12 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { useSession } from '../../../shared/auth/use-session';
 import { benchQueryKeys } from '../api/bench-work.query-keys';
-import type { BenchDocuments, BenchUnlabelledParcelList } from '../api/bench-parcel.types';
+import type {
+  BenchDocuments,
+  BenchReceiptLink,
+  BenchUnlabelledParcelList,
+} from '../api/bench-parcel.types';
+import { benchDocumentsRefetchInterval } from '../lib/bench-sales-document';
 
 export function useBenchDocumentsQuery(
   workId: string | null,
@@ -35,6 +46,30 @@ export function useBenchDocumentsQuery(
     queryKey: benchQueryKeys.documents(workId ?? ''),
     queryFn: () => apiClient.bench.getDocuments(workId ?? ''),
     enabled,
+    refetchInterval: (query) => benchDocumentsRefetchInterval(query.state.data),
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * A registered receipt's link (#3647), fetched as soon as the card offers it so
+ * "Open receipt" can be a plain link. Opening a window only after an async
+ * fetch is what a browser blocks as a popup.
+ */
+export function useBenchReceiptLinkQuery(
+  workId: string,
+  options: { readonly enabled: boolean }
+): UseQueryResult<BenchReceiptLink> {
+  const apiClient = useApiClient();
+  const { session } = useSession();
+  const signedIn = session.user !== null && session.user !== undefined;
+
+  return useQuery({
+    queryKey: benchQueryKeys.receiptLink(workId),
+    queryFn: () => apiClient.bench.getReceiptLink(workId),
+    enabled: signedIn && options.enabled,
+    // One failure is reported at once; the card offers its own retry.
+    retry: false,
   });
 }
 

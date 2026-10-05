@@ -24,7 +24,8 @@ import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
 import { useNumberFormat } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
-import { buildNavGroups, navRoleOf } from './nav-registry';
+import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
+import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
@@ -355,9 +356,12 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // Permission-gated nav items (#2358 review I5) need the session's permission
   // list, not just the admin flag — `/automations` is admin + operator.
   const permissions = session.user?.permissions;
+  // `requiresOms` entries (#3505) follow the routing state; the read is only
+  // issued for a session that could see one of them.
+  const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
-    () => buildNavGroups({ isAdmin, demoMode, permissions, role }),
-    [isAdmin, demoMode, permissions, role],
+    () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting }),
+    [isAdmin, demoMode, permissions, role, omsRouting],
   );
 
   const closeDrawer = useCallback((): void => {

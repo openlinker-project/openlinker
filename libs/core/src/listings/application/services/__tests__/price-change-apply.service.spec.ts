@@ -8,6 +8,7 @@ import { PriceChangeApplyService } from '../price-change-apply.service';
 import { PriceChangeEpisode } from '../../../domain/entities/price-change-episode.entity';
 import { ListingCreationRecord } from '../../../domain/entities/listing-creation-record.entity';
 import { AvailabilityUnknownError } from '../../../domain/exceptions/availability-unknown.error';
+import { ProductPublishTargetNotFoundException } from '../../../domain/exceptions/product-publish-target-not-found.exception';
 import type { PriceChangeApplyInput } from '../../../domain/types/price-change-apply.types';
 
 function buildConnection(overrides: Partial<Connection> = {}): Connection {
@@ -98,6 +99,7 @@ describe('PriceChangeApplyService', () => {
   let syncLock: { acquire: jest.Mock; release: jest.Mock };
   let syncCursors: { getCursor: jest.Mock; advanceCursorIfNewer: jest.Mock };
   let marketplaceAdapter: { updateOfferFields: jest.Mock };
+  let productsService: { getVariant: jest.Mock; getVariantsByProductId: jest.Mock };
   let service: PriceChangeApplyService;
 
   const validInput: PriceChangeApplyInput = {
@@ -149,6 +151,10 @@ describe('PriceChangeApplyService', () => {
       getCursor: jest.fn().mockResolvedValue(null),
       advanceCursorIfNewer: jest.fn().mockResolvedValue(true),
     };
+    productsService = {
+      getVariant: jest.fn().mockResolvedValue({ id: 'ol_variant_1', productId: 'ol_product_1' }),
+      getVariantsByProductId: jest.fn().mockResolvedValue([{ id: 'ol_variant_1' }]),
+    };
 
     service = new PriceChangeApplyService(
       connections as never,
@@ -162,7 +168,8 @@ describe('PriceChangeApplyService', () => {
       listingRecords as never,
       identifierMapping as never,
       syncLock as never,
-      syncCursors as never
+      syncCursors as never,
+      productsService as never
     );
   });
 
@@ -236,13 +243,18 @@ describe('PriceChangeApplyService', () => {
       const result = await service.applyPriceChange(validInput);
 
       expect(result).toEqual({ outcome: 'ok' });
-      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+      // Only the ProductPublisher adapter is resolved (to test it for the
+      // price-only capability, #3505) — never the OfferManager one.
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'OfferManager'
+      );
       expect(productPublishExecution.executePublish).toHaveBeenCalledWith(
         expect.objectContaining({ stock: 9, status: 'published', price: { amount: 399, currency: 'PLN' } })
       );
     });
 
-    it('returns business_failure when OfferManager is enabled but the adapter does not implement OfferFieldUpdater', async () => {
+    it('returns business_failure when OfferManager is enabled but the adapter does not implement OfferFieldUpdater, and ProductPublisher is not enabled', async () => {
       integrationsService.getCapabilityAdapter.mockResolvedValue({
         // no updateOfferFields — e.g. WooCommerceOfferManagerAdapter, which
         // implements only updateOfferQuantity.
@@ -251,6 +263,69 @@ describe('PriceChangeApplyService', () => {
       const result = await service.applyPriceChange(validInput);
 
       expect(result.outcome).toBe('business_failure');
+    });
+
+    it('falls through to ProductPublisher when OfferManager is not an OfferFieldUpdater but ProductPublisher IS enabled (#3524)', async () => {
+      // WooCommerce shape: OfferManager (stock write-back only, no
+      // OfferFieldUpdater) AND ProductPublisher both enabled on one
+      // connection — the only documented exclusivity is with InventoryMaster.
+      connections.get.mockResolvedValue(
+        buildConnection({ enabledCapabilities: ['OfferManager', 'ProductPublisher'] })
+      );
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'woocommerce.restapi.v3',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['OfferManager', 'ProductPublisher'],
+      });
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        // no updateOfferFields — the stock-only WooCommerce OfferManager shape.
+      });
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, availableToPromise: 9 },
+      ]);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
+      ]);
+      productPublishExecution.executePublish.mockResolvedValue({
+        outcome: 'ok',
+        listingCreationRecord: new ListingCreationRecord(
+          'rec-1',
+          'ol_variant_1',
+          'dest-1',
+          'ext-shop-1',
+          'published',
+          null,
+          new Date(),
+          new Date()
+        ),
+      });
+
+      const result = await service.applyPriceChange(validInput);
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(productPublishExecution.executePublish).toHaveBeenCalledWith(
+        expect.objectContaining({ price: { amount: 399, currency: 'PLN' } })
+      );
+      expect(marketplaceAdapter.updateOfferFields).not.toHaveBeenCalled();
+    });
+
+    it('is unaffected when the OfferManager adapter IS an OfferFieldUpdater, even with ProductPublisher also enabled (Allegro/Erli shape)', async () => {
+      connections.get.mockResolvedValue(
+        buildConnection({ enabledCapabilities: ['OfferManager', 'ProductPublisher'] })
+      );
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'allegro.publicapi.v1',
+        platformType: 'allegro',
+        supportedCapabilities: ['OfferManager', 'ProductPublisher'],
+      });
+      // marketplaceAdapter (the default getCapabilityAdapter resolution) DOES
+      // implement updateOfferFields — the Allegro/Erli shape.
+
+      const result = await service.applyPriceChange(validInput);
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(marketplaceAdapter.updateOfferFields).toHaveBeenCalled();
+      expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
     });
 
     it('returns business_failure when neither capability is enabled', async () => {
@@ -369,6 +444,90 @@ describe('PriceChangeApplyService', () => {
       identifierMapping.getExternalIds.mockResolvedValue([
         { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
       ]);
+    });
+
+    // #3505 (G01-10) — a full publish re-sends stock and content, which on
+    // WooCommerce overwrote the shop's stock, name and description on every
+    // price change. An adapter that can write the price alone gets exactly that.
+    describe('price-only shop write (ShopProductPriceUpdater)', () => {
+      let shopAdapter: { publishProduct: jest.Mock; updateShopProductPrice: jest.Mock };
+
+      beforeEach(() => {
+        shopAdapter = {
+          publishProduct: jest.fn(),
+          updateShopProductPrice: jest.fn().mockResolvedValue(undefined),
+        };
+        integrationsService.getCapabilityAdapter.mockResolvedValue(shopAdapter);
+      });
+
+      it('should write only the price and never publish, read stock or take the stock lock when the adapter can', async () => {
+        const result = await service.applyPriceChange({ ...validInput, episodeId: undefined });
+
+        expect(result).toEqual({ outcome: 'ok' });
+        expect(shopAdapter.updateShopProductPrice).toHaveBeenCalledWith({
+          externalProductId: 'ext-shop-1',
+          price: { amount: '399.00', currency: 'PLN' },
+          idempotencyKey: expect.stringContaining('pricing:apply:ol_variant_1:dest-1:ext-shop-1'),
+        });
+        expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
+        expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
+        expect(syncLock.acquire).not.toHaveBeenCalled();
+        expect(syncCursors.advanceCursorIfNewer).not.toHaveBeenCalled();
+      });
+
+      it('should address the variation under its parent when the variant belongs to a grouped publish', async () => {
+        productsService.getVariantsByProductId.mockResolvedValue([
+          { id: 'ol_variant_1' },
+          { id: 'ol_variant_2' },
+        ]);
+        identifierMapping.getExternalIds.mockImplementation((_entityType: string, internalId: string) =>
+          Promise.resolve([
+            {
+              externalId: internalId === 'ol_product_1' ? 'ext-parent-1' : 'ext-shop-1',
+              platformType: 'woocommerce',
+              connectionId: 'dest-1',
+              entityType: 'ShopProduct',
+            },
+          ])
+        );
+
+        await service.applyPriceChange(validInput);
+
+        expect(shopAdapter.updateShopProductPrice).toHaveBeenCalledWith(
+          expect.objectContaining({
+            externalProductId: 'ext-shop-1',
+            externalParentProductId: 'ext-parent-1',
+          })
+        );
+      });
+
+      it('should resolve to business_failure without creating a product when the shop product is gone', async () => {
+        shopAdapter.updateShopProductPrice.mockRejectedValue(
+          new ProductPublishTargetNotFoundException('woocommerce.restapi.v3', 'ext-shop-1')
+        );
+
+        const result = await service.applyPriceChange(validInput);
+
+        expect(result.outcome).toBe('business_failure');
+        expect(shopAdapter.publishProduct).not.toHaveBeenCalled();
+        expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
+      });
+
+      it('should propagate a transient failure for the runner to retry', async () => {
+        const cause = new Error('socket hang up');
+        shopAdapter.updateShopProductPrice.mockRejectedValue(cause);
+
+        await expect(service.applyPriceChange(validInput)).rejects.toBe(cause);
+      });
+
+      it('should refuse when no ShopProduct mapping exists, before touching the adapter', async () => {
+        identifierMapping.getExternalIds.mockResolvedValue([]);
+
+        const result = await service.applyPriceChange(validInput);
+
+        expect(result.outcome).toBe('business_failure');
+        expect(shopAdapter.updateShopProductPrice).not.toHaveBeenCalled();
+      });
     });
 
     it('throws AvailabilityUnknownError (transient) rather than defaulting stock to 0 when ATP is null (#3161 review, BLOCKING)', async () => {

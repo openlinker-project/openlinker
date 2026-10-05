@@ -27,6 +27,7 @@ import {
   parseBenchPackedTodayList,
   parseBenchParcel,
   parseBenchPresence,
+  parseBenchReceiptLink,
   parseBenchReopenResult,
   parseBenchUndoCompletionResult,
   parseBenchUndoResult,
@@ -45,6 +46,7 @@ import type {
   BenchPackedTodayList,
   BenchParcel,
   BenchPresence,
+  BenchReceiptLink,
   BenchReopenResult,
   BenchUndoCompletionResult,
   BenchUndoResult,
@@ -113,6 +115,13 @@ export interface BenchApi {
   getDocuments: (workId: string) => Promise<BenchDocuments>;
   /** The rendered invoice for this parcel's own order. Creates nothing. */
   downloadInvoice: (workId: string) => Promise<Blob>;
+  /**
+   * A registered receipt's link for this parcel's own order (#3646). The route
+   * answers JSON for a link artefact, so the bench can render a plain link.
+   */
+  getReceiptLink: (workId: string) => Promise<BenchReceiptLink>;
+  /** A registered receipt's file for this parcel's own order (#3646). Creates nothing. */
+  downloadReceipt: (workId: string) => Promise<Blob>;
   /**
    * The rendered label for this parcel's own shipment (#3340).
    *
@@ -218,6 +227,12 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
     },
     async downloadInvoice(workId): Promise<Blob> {
       return requestBlob(`${work(workId)}/documents/invoice`);
+    },
+    async getReceiptLink(workId): Promise<BenchReceiptLink> {
+      return parseBenchReceiptLink(await request<unknown>(`${work(workId)}/documents/receipt`));
+    },
+    async downloadReceipt(workId): Promise<Blob> {
+      return requestBlob(`${work(workId)}/documents/receipt`);
     },
     async downloadLabel(workId): Promise<Blob> {
       return requestBlob(`${work(workId)}/documents/label`);

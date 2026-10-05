@@ -950,6 +950,11 @@ export function createMockApiClient(
           blockReason: null,
           unresolvedReason: null,
         },
+        // #3646: no sales document of any kind, and no reason recorded.
+        document: null,
+        documentKind: null,
+        blockReason: null,
+        unresolvedReason: null,
         label: {
           state: 'none',
           shipmentId: null,
@@ -964,6 +969,12 @@ export function createMockApiClient(
       downloadInvoice: vi
         .fn<BenchApi['downloadInvoice']>()
         .mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
+      getReceiptLink: vi
+        .fn<BenchApi['getReceiptLink']>()
+        .mockRejectedValue(new Error('bench.getReceiptLink not stubbed')),
+      downloadReceipt: vi
+        .fn<BenchApi['downloadReceipt']>()
+        .mockRejectedValue(new Error('bench.downloadReceipt not stubbed')),
       // #3340 — the ONLY print call that stamps `labelPrintedAt`. Reachable
       // through the work, never the shipment id.
       downloadLabel: vi

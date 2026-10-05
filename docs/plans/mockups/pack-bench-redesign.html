@@ -560,6 +560,26 @@
  <button class="btn btn--secondary btn--sm" type="button" data-state-btn="ready">Understood</button></div></div>
 </div>
 
+ <!-- #3647: the order's document is a fiscal receipt. The card says only what
+      OpenLinker knows: nothing about paper or the box, nothing about the buyer
+      receiving it. The other two cards are the receipt's in-progress and
+      not-confirmed states, shown side by side so all three can be compared. -->
+ <div data-state="receipt" hidden>
+ <div class="order-head">
+ <div class="order-head__field"><dt>Order</dt><dd class="order-head__ref">OL-4471</dd></div>
+ <div class="order-head__field"><dt>Buyer</dt><dd>Anna Nowak</dd></div>
+ <div class="order-head__field"><dt>Parcel</dt><dd>1 of 1</dd></div>
+ <div class="order-head__spacer"></div>
+ <span class="status-badge status-badge--success">Closed</span>
+</div>
+ <div class="docs">
+ <div class="doc-card"><h4>Receipt for this order</h4><p>Receipt 16240. Open with the link below.</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Receipt made</span><a class="btn btn--secondary btn--sm" href="#" target="_blank" rel="noopener noreferrer">Open receipt</a></div></div>
+ <div class="doc-card"><h4>Goes ON the box</h4><p>Shipping label — InPost paczkomat</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Ready to print</span><button class="btn btn--secondary btn--sm" type="button">Print label</button></div></div>
+ <div class="doc-card"><h4>Receipt for this order</h4><p>Receipt on its way. It does not stop the box going out.</p><div class="doc-card__footer"><span class="status-badge status-badge--info">Being registered</span></div></div>
+ <div class="doc-card"><h4>Receipt for this order</h4><p>Receipt not confirmed. OpenLinker does not know if this receipt was made. It does not stop the box going out. Mention it to the office.</p><div class="doc-card__footer"><span class="status-badge status-badge--warning">Not confirmed</span></div></div>
+</div>
+</div>
+
  <div data-state="unlabelled" hidden>
  <div class="order-head">
  <div class="order-head__field"><dt>Order</dt><dd class="order-head__ref">OL-9012</dd></div>
@@ -616,6 +636,7 @@
       <span class="mockup-bar__label">Mockup · jump to a state</span>
       <button class="mockup-pill" data-state-btn="working" aria-pressed="true" type="button">Working the queue</button>
       <button class="mockup-pill" data-state-btn="ready" aria-pressed="false" type="button">Parcel ready to close</button>
+      <button class="mockup-pill" data-state-btn="receipt" aria-pressed="false" type="button">Order has a receipt</button>
       <button class="mockup-pill" data-state-btn="unlabelled" aria-pressed="false" type="button">Packed, no label</button>
       <button class="mockup-pill" data-state-btn="label-change" aria-pressed="false" type="button">Change size dialog</button>
       <button class="mockup-pill" data-state-btn="label-refused" aria-pressed="false" type="button">Change size refused</button>
@@ -636,7 +657,7 @@
     </div>
 
     <div class="legend" style="margin-top:-8px">
-      <span class="legend__item"><code>working</code> / <code>ready</code> / <code>unlabelled</code> / <code>hold</code> → <code>main [data-state="…"]</code>, toggled via <code>hidden</code></span>
+      <span class="legend__item"><code>working</code> / <code>ready</code> / <code>receipt</code> / <code>unlabelled</code> / <code>hold</code> → <code>main [data-state="…"]</code>, toggled via <code>hidden</code></span>
       <span class="legend__item"><code>empty</code> → <code>[data-bench-body="empty"]</code> vs <code>[data-bench-body="grid"]</code></span>
       <span class="legend__item"><code>locked</code> → <code>#lockOverlay[data-open="true"]</code>, layered over whichever <code>[data-state]</code> was active before the lock fired</span>
     </div>

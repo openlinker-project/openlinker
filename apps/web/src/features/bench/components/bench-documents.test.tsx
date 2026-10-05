@@ -5,7 +5,7 @@
  * not block anything, and a label this bench cannot do anything about must not
  * offer a control that cannot succeed.
  */
-import { screen } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -13,7 +13,14 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../../test/test-utils';
-import type { BenchDocuments, BenchInvoice, BenchLabel } from '../api/bench-parcel.types';
+import type { OpenLinkerPlugin } from '../../../shared/plugins';
+import { parseBenchReceiptLink } from '../api/bench-parcel.schema';
+import type {
+  BenchDocuments,
+  BenchInvoice,
+  BenchLabel,
+  BenchSalesDocument,
+} from '../api/bench-parcel.types';
 import { BenchDocumentsPanel } from './bench-documents';
 
 const PACKER = {
@@ -56,6 +63,10 @@ function mount(
   documents: Partial<BenchDocuments> = {},
   unlabelledTotal = 0,
   packStationLabel: string | null = null,
+  options: {
+    readonly plugins?: readonly OpenLinkerPlugin[];
+    readonly getReceiptLink?: (workId: string) => Promise<{ url: string }>;
+  } = {},
 ) {
   const apiClient = createMockApiClient({
     bench: {
@@ -65,6 +76,10 @@ function mount(
         label: label(),
         ...documents,
       }),
+      getReceiptLink:
+        options.getReceiptLink ??
+        vi.fn().mockResolvedValue({ url: 'https://receipts.example.test/r/16240' }),
+      downloadReceipt: vi.fn().mockResolvedValue(new Blob(['%PDF'])),
       listUnlabelledParcels: vi
         .fn()
         .mockResolvedValue({ parcels: [], total: unlabelledTotal, truncated: false }),
@@ -78,6 +93,7 @@ function mount(
     apiClient,
     ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} />, {
       apiClient,
+      ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
       sessionAdapter: createAuthenticatedSessionAdapter({
         ...PACKER,
         permissions: [],
@@ -199,7 +215,11 @@ describe('BenchDocumentsPanel (#2418)', () => {
   it('should say there is nothing to print when the document is not printable', async () => {
     mount({ invoice: invoice({ state: 'issued-not-printable' }) });
 
-    expect(await screen.findByText(/There is nothing to print for this one/i)).toBeInTheDocument();
+    // A neutral fact, not a warning: the invoice exists, it just cannot be
+    // printed here - so the card names it and its number.
+    expect(await screen.findByText('Issued, not printable')).toBeInTheDocument();
+    expect(screen.getByText('Invoice FV/2026/09/0412')).toBeInTheDocument();
+    expect(screen.getByText('Issued, but it cannot be printed here.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /print invoice/i })).toBeNull();
   });
 
@@ -339,3 +359,315 @@ describe('BenchDocumentsPanel (#2418)', () => {
     });
   });
 });
+
+// ── #3647: every sales document, in every status ─────────────────────────────
+function receiptDoc(over: Partial<BenchSalesDocument> = {}): BenchSalesDocument {
+  return {
+    kind: 'fiscal-receipt',
+    recordId: 'fis-1',
+    connectionId: 'conn-ep',
+    platformType: 'eparagony',
+    status: 'registered',
+    failureMode: null,
+    documentNumber: '16240',
+    completedAt: '2026-09-30T09:00:00Z',
+    printable: false,
+    artefacts: [{ medium: 'link', disposition: 'send', label: 'Receipt', contentType: null }],
+    ...over,
+  };
+}
+
+function invoiceDoc(over: Partial<BenchSalesDocument> = {}): BenchSalesDocument {
+  return {
+    kind: 'invoice',
+    recordId: 'inv-1',
+    connectionId: 'conn-ksef',
+    platformType: null,
+    status: 'issued',
+    failureMode: null,
+    documentNumber: 'FV/2026/09/0412',
+    completedAt: null,
+    printable: true,
+    artefacts: null,
+    ...over,
+  };
+}
+
+/** The shape the API sends since #3646: a `document` slot beside the legacy invoice. */
+function withDocument(
+  document: BenchSalesDocument | null,
+  over: Partial<BenchDocuments> = {},
+): Partial<BenchDocuments> {
+  return {
+    // The legacy slot says "missing" for every non-issued state; the card must
+    // ignore it whenever `document` is present.
+    invoice: invoice({ state: 'missing', invoiceId: null, blockReason: 'trigger-model-manual' }),
+    document,
+    documentKind: null,
+    blockReason: null,
+    unresolvedReason: null,
+    ...over,
+  };
+}
+
+describe('BenchDocumentsPanel - sales documents (#3647)', () => {
+  it('should never say no invoice was made for an order with a registered receipt', async () => {
+    mount(withDocument(receiptDoc()));
+
+    expect(await screen.findByText('Receipt 16240')).toBeInTheDocument();
+    expect(screen.getByText('Receipt made')).toBeInTheDocument();
+    expect(screen.getByText('Receipt for this order')).toBeInTheDocument();
+    expect(screen.queryByText(/No invoice was made/i)).toBeNull();
+    expect(screen.queryByText(/Issued on request/i)).toBeNull();
+    expect(screen.queryByText(/tell the office/i)).toBeNull();
+  });
+
+  it('should offer a link receipt as a plain new-tab link, and not as ready to print', async () => {
+    mount(withDocument(receiptDoc()));
+
+    const link = await screen.findByRole('link', { name: 'Open receipt' });
+    expect(link).toHaveAttribute('href', 'https://receipts.example.test/r/16240');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByText('Open with the link below.')).toBeInTheDocument();
+    const card = screen.getByTestId('bench-documents-receipt');
+    expect(within(card).queryByText('Ready to print')).toBeNull();
+    expect(screen.queryByRole('button', { name: /print receipt/i })).toBeNull();
+  });
+
+  it('should say nothing about paper, the box, or the buyer receiving the receipt', async () => {
+    mount(withDocument(receiptDoc()));
+
+    const card = await screen.findByTestId('bench-documents-receipt');
+    expect(card.textContent ?? '').not.toMatch(/paper|inside the box|in the box|sent|delivered|received/i);
+  });
+
+  it('should keep Open receipt disabled until the link arrives', async () => {
+    mount(withDocument(receiptDoc()), 0, null, {
+      getReceiptLink: vi
+        .fn<(workId: string) => Promise<{ url: string }>>()
+        .mockReturnValue(new Promise(() => undefined)),
+    });
+
+    const button = await screen.findByRole('button', { name: 'Open receipt' });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole('link', { name: 'Open receipt' })).toBeNull();
+  });
+
+  it('should say the link is on its way while it is fetched, never that there is nothing to open', async () => {
+    mount(withDocument(receiptDoc()), 0, null, {
+      getReceiptLink: vi
+        .fn<(workId: string) => Promise<{ url: string }>>()
+        .mockReturnValue(new Promise(() => undefined)),
+    });
+
+    const pending = await screen.findByText('Getting the link. One moment.');
+    expect(pending).toHaveAttribute('role', 'status');
+    expect(screen.queryByText('There is no link to this receipt in OpenLinker.')).toBeNull();
+    expect(screen.queryByText(/The link did not load/)).toBeNull();
+  });
+
+  it('should show the pending state, not the old failure, while a retry is in flight', async () => {
+    const getReceiptLink = vi
+      .fn<(workId: string) => Promise<{ url: string }>>()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockReturnValue(new Promise(() => undefined));
+    mount(withDocument(receiptDoc()), 0, null, { getReceiptLink });
+
+    expect(await screen.findByText(/The link did not load/)).toBeInTheDocument();
+    act(() => {
+      screen.getByRole('button', { name: 'Try again' }).click();
+    });
+    expect(await screen.findByText('Getting the link. One moment.')).toBeInTheDocument();
+    expect(screen.queryByText(/The link did not load/)).toBeNull();
+  });
+
+  it.each(['javascript:alert(document.domain)', 'data:text/html,<script>alert(1)</script>'])(
+    'should never render a %s receipt link as an href, and report the link as failed',
+    async (url) => {
+      mount(withDocument(receiptDoc()), 0, null, {
+        // Through the real boundary parser, which is where a hostile scheme is refused.
+        getReceiptLink: () => Promise.resolve().then(() => parseBenchReceiptLink({ url })),
+      });
+
+      expect(await screen.findByText(/The link did not load/)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Open receipt' })).toBeNull();
+    }
+  );
+
+  it('should offer a retry when the link fails to load', async () => {
+    const getReceiptLink = vi
+      .fn<(workId: string) => Promise<{ url: string }>>()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ url: 'https://receipts.example.test/r/16240' });
+    mount(withDocument(receiptDoc()), 0, null, { getReceiptLink });
+
+    expect(await screen.findByText(/The link did not load/)).toBeInTheDocument();
+    act(() => {
+      screen.getByRole('button', { name: 'Try again' }).click();
+    });
+    expect(await screen.findByRole('link', { name: 'Open receipt' })).toBeInTheDocument();
+  });
+
+  it('should print a receipt that came as a file', async () => {
+    const { apiClient } = mount(
+      withDocument(
+        receiptDoc({
+          artefacts: [
+            { medium: 'document', disposition: 'print', label: 'Receipt', contentType: 'application/pdf' },
+          ],
+        })
+      )
+    );
+
+    const button = await screen.findByRole('button', { name: 'Print receipt' });
+    act(() => {
+      button.click();
+    });
+    await waitFor(() => {
+      expect(apiClient.bench.downloadReceipt).toHaveBeenCalledWith('w-1');
+    });
+  });
+
+  it('should show a registered receipt with nothing attached as made, with no action', async () => {
+    mount(withDocument(receiptDoc({ artefacts: [] })));
+
+    expect(await screen.findByText('There is no link to this receipt in OpenLinker.')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open receipt' })).toBeNull();
+  });
+
+  it('should show a receipt that is still being registered as on its way', async () => {
+    mount(withDocument(receiptDoc({ status: 'registering', artefacts: null, documentNumber: null })));
+
+    expect(await screen.findByText('Receipt on its way')).toBeInTheDocument();
+    expect(screen.getByText('Being registered')).toBeInTheDocument();
+    expect(screen.getByText('It does not stop the box going out.')).toBeInTheDocument();
+  });
+
+  it('should tell a rejected receipt apart from an unconfirmed one', async () => {
+    mount(withDocument(receiptDoc({ status: 'failed', failureMode: 'rejected', artefacts: null })));
+    expect(await screen.findByText('The receipt did not go through')).toBeInTheDocument();
+    expect(screen.getByText(/Mention it to the office/)).toBeInTheDocument();
+  });
+
+  it('should not claim an in-doubt receipt did not go through', async () => {
+    mount(withDocument(receiptDoc({ status: 'failed', failureMode: 'in-doubt', artefacts: null })));
+
+    expect(await screen.findByText('Receipt not confirmed')).toBeInTheDocument();
+    expect(screen.getByText(/OpenLinker does not know if this receipt was made/)).toBeInTheDocument();
+    expect(screen.queryByText(/did not go through/)).toBeNull();
+  });
+
+  it.each([
+    [{ status: 'issuing' }, 'Invoice on its way'],
+    [{ status: 'failed', failureMode: 'rejected' }, 'The invoice did not go through'],
+    [{ status: 'failed', failureMode: 'in-doubt' }, 'Invoice not confirmed'],
+  ] as const)('should show an invoice %o as %s, never as missing', async (over, title) => {
+    mount(withDocument(invoiceDoc({ ...over, printable: false })));
+
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(screen.queryByText(/No invoice was made/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /print invoice/i })).toBeNull();
+  });
+
+  it('should render an issued printable invoice exactly as before', async () => {
+    mount(withDocument(invoiceDoc()));
+
+    expect(await screen.findByText('Invoice FV/2026/09/0412')).toBeInTheDocument();
+    expect(screen.getByText('Goes INSIDE the box')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /print invoice/i })).toBeInTheDocument();
+  });
+
+  it('should report the block reason only when there is no document of any kind', async () => {
+    mount(withDocument(null, { blockReason: 'trigger-model-manual' }));
+
+    expect(await screen.findByText(/No invoice was made for this order/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nobody is told automatically/i)).toBeInTheDocument();
+  });
+
+  it('should render a neutral card for a document kind this build does not know', async () => {
+    mount(withDocument(receiptDoc({ kind: 'credit-memo' })));
+
+    expect(await screen.findByText('This screen cannot show this document')).toBeInTheDocument();
+    expect(screen.queryByText(/No invoice was made/i)).toBeNull();
+  });
+
+  describe('the per-integration slot', () => {
+    const slotPlugin = (platformType: string): OpenLinkerPlugin => ({
+      id: `test-${platformType}`,
+      platformType,
+      platform: {
+        displayName: platformType,
+        benchReceiptSection: ({ documentReference, defaultBody }) => (
+          <div data-testid="plugin-receipt-body">
+            Plugin body for {documentReference}
+            {defaultBody}
+          </div>
+        ),
+      },
+    });
+
+    it('should let a registered plugin replace the body while the host keeps the frame', async () => {
+      mount(withDocument(receiptDoc()), 0, null, { plugins: [slotPlugin('eparagony')] });
+
+      expect(await screen.findByTestId('plugin-receipt-body')).toHaveTextContent('Plugin body for 16240');
+      // Badge, top line and title are the host's, never the plugin's.
+      expect(screen.getByText('Receipt made')).toBeInTheDocument();
+      expect(screen.getByText('Receipt for this order')).toBeInTheDocument();
+      expect(screen.getByText('Receipt 16240')).toBeInTheDocument();
+    });
+
+    it('should use the host default when the receipt belongs to a different integration', async () => {
+      mount(withDocument(receiptDoc()), 0, null, { plugins: [slotPlugin('another-provider')] });
+
+      expect(await screen.findByText('Open with the link below.')).toBeInTheDocument();
+      expect(screen.queryByTestId('plugin-receipt-body')).toBeNull();
+    });
+  });
+
+  describe('refreshing on its own', () => {
+    it('should ask again while the receipt is being registered, and stop once it is made', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const getDocuments = vi
+          .fn()
+          .mockResolvedValueOnce({
+            workId: 'w-1',
+            label: label(),
+            ...withDocument(receiptDoc({ status: 'registering', artefacts: null })),
+          })
+          .mockResolvedValue({ workId: 'w-1', label: label(), ...withDocument(receiptDoc()) });
+        const apiClient = createMockApiClient({
+          bench: {
+            getDocuments,
+            listUnlabelledParcels: vi.fn().mockResolvedValue({ parcels: [], total: 0, truncated: false }),
+            getReceiptLink: vi.fn().mockResolvedValue({ url: 'https://receipts.example.test/r/16240' }),
+          },
+        });
+        renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={1} />, {
+          apiClient,
+          sessionAdapter: createAuthenticatedSessionAdapter({
+            ...PACKER,
+            permissions: [],
+            packStationLabel: null,
+          }),
+        });
+
+        expect(await screen.findByText('Receipt on its way')).toBeInTheDocument();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5_000);
+        });
+        expect(await screen.findByText('Receipt 16240')).toBeInTheDocument();
+
+        const callsWhenMade = getDocuments.mock.calls.length;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(60_000);
+        });
+        expect(getDocuments.mock.calls.length).toBe(callsWhenMade);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+});
+
