@@ -603,6 +603,25 @@ describe('AssignPackingWorkPage', () => {
     });
   });
 
+  // e2e v2 (F-10) read a board that kept old rows after a failed read; that
+  // was the query cache answering without a refetch. A refetch that DOES fail
+  // must say so rather than leave rows the server can no longer vouch for.
+  it('should show the error state, not the previous rows, when a refetch fails', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce(page([task({ id: 'a', assignedToUserId: 'u_a' })]))
+      .mockRejectedValue(new ApiError('boom', 500, null));
+    const user = userEvent.setup();
+    renderPage({ list });
+
+    await findMenus();
+    await chooseAssignee(user, /packer-a|Unassign|Back to/i);
+
+    expect(await screen.findByText('Could not load packing work')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: ASSIGN_MENU })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
   it('degrades to a roster-error banner without blocking the board on a failed packer read', async () => {
     renderPage({ listPackers: vi.fn().mockRejectedValue(new Error('boom')) });
 
