@@ -80,6 +80,7 @@ describe('ProductsService', () => {
     clearTaxRate: jest.fn(),
     findTaxRate: jest.fn(),
     recordPhysicalDimensions: jest.fn(),
+    fillPhysicalDimensionsIfAbsent: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -341,6 +342,23 @@ describe('ProductsService', () => {
         'ol_variant_keep',
       ]);
       expect(marked).toEqual(['ol_variant_gone']);
+    });
+  });
+
+  describe('fillVariantsPhysicalDimensionsIfAbsent', () => {
+    it('delegates to the fill-when-NULL repository writer, never the unconditional one (#3650)', async () => {
+      variantRepo.fillPhysicalDimensionsIfAbsent.mockResolvedValue(1);
+      const fills = [
+        { variantId: 'ol_variant_1', weightGrams: 500 },
+        { variantId: 'ol_variant_2', lengthMm: 300 },
+      ];
+
+      const filled = await service.fillVariantsPhysicalDimensionsIfAbsent(fills);
+
+      expect(variantRepo.fillPhysicalDimensionsIfAbsent).toHaveBeenCalledTimes(1);
+      expect(variantRepo.fillPhysicalDimensionsIfAbsent).toHaveBeenCalledWith(fills);
+      expect(variantRepo.recordPhysicalDimensions).not.toHaveBeenCalled();
+      expect(filled).toBe(1);
     });
   });
 });

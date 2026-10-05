@@ -21,6 +21,7 @@ export * from './domain/exceptions/duplicate-identifier-mapping.error';
 export * from './domain/exceptions/mapping-already-exists.error';
 export { ConnectionNotFoundException } from './domain/exceptions/connection-not-found.exception';
 export { ConnectionDisabledException } from './domain/exceptions/connection-disabled.exception';
+export { ConnectionInUseException } from './domain/exceptions/connection-in-use.exception';
 export { IdentifierMappingConflictException } from './domain/exceptions/identifier-mapping-conflict.exception';
 export * from './application/services/identifier-mapping.service.interface';
 export * from './application/services/identifier-mapping.service';

@@ -53,6 +53,20 @@ Three reasons, in order of weight:
 - **Terminal switching exceeds a few times per shift.** Password friction then defeats attribution, and the PIN option returns.
 - **#2079 is judged too large to precede this wave.** The device principal becomes the cheaper path, and this decision should be re-taken rather than worked around.
 
+## Amendment (#3653, 2026-10-05): the in-bench handover is retired; D13 is stated at sign-in
+
+**What changed.** The bench's own two-step "Switch packer" handover (#2413) is removed. The bench now renders the application's topbar, and a packer leaves the way they leave any page: **Sign out** in the user menu, which clears the session and the query cache and goes to `/login`. The next packer signs in, and a packer's session is sent back to `/bench`. The idle lock (A3) is unchanged: it still clears the session in place and keeps the bench body mounted under the sign-in overlay.
+
+**How D13 is satisfied without it.** D13 itself is unchanged: the last verifier owns the parcel. What the handover screen added was *telling* the incoming packer so before they took a box on. That statement now lives on the bench's sign-in overlay (`benchIdentityCopy.signIn.attribution`): *the next person to finish an open box is the one recorded as having packed it; check what has already been verified before you take it on.* That overlay is where a packer signs in whenever the bench locked under someone else. That is the idle-lock case, the one this ADR's Consequences name as the mis-attribution risk at an unattended shared terminal.
+
+**What is given up, stated so it is not rediscovered as a regression.**
+
+- **The explicit pause is gone.** The handover screen showed the incoming packer what had been verified *before* the outgoing session cleared. Nothing already verified is lost on the round trip, because each unit is recorded server-side as it is scanned (E1), so the parcel reopens with its verified lines. But no screen now makes the incoming packer stop and look before scanning.
+- **The explicit sign-out path does not show the line.** `/login` is the application-wide sign-in page and stays bench-agnostic. An incoming packer reaches the D13 statement only when the bench locked first, not when the outgoing packer signed out deliberately.
+- **Story A2 is satisfied by the round trip, not in place.** "Switching user is reachable from the packing surface without returning to the application shell" now holds only for the lock path. The user menu is on the bench's own topbar, but signing out leaves `/bench` for `/login`.
+
+**Revisit when** inherited boxes are found closed under a packer who did not know they were taking them on, or terminal switching outgrows D16's "a few times a shift". Either brings back an in-bench switch, and the D13 statement must move with it.
+
 ## References
 
 - #2080 (this decision), #2079 (the guard), #1032 § 6C/6D (the superseded design)

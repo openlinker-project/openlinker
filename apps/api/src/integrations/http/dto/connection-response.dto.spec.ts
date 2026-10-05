@@ -156,6 +156,48 @@ describe('ConnectionResponseDto.fromDomain', () => {
       expect(dto2.credentialsBacked).toBe(false);
     });
 
+    it('should report archivable, defaulting to true (#3657)', () => {
+      const dflt = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', null, 'admin');
+      expect(dflt.archivable).toBe(true);
+      const oms = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+        'parent-child', null, 'admin', false, false, false);
+      expect(oms.archivable).toBe(false);
+    });
+
+    describe('credentials after an archive / restore (#3657)', () => {
+      it('should report a db-backed credential as editable and stored', () => {
+        const dto = ConnectionResponseDto.fromDomain(baseConnection, supportedCapabilities,
+          'parent-child', null, 'admin', false, true);
+        expect(dto.credentialsBacked).toBe(true);
+        expect(dto.credentialsStored).toBe(true);
+      });
+
+      it('should report an empty ref as editable but not stored when the adapter needs credentials', () => {
+        const restored: Connection = { ...baseConnection, status: 'disabled', credentialsRef: '' };
+        const dto = ConnectionResponseDto.fromDomain(restored, supportedCapabilities,
+          'parent-child', null, 'admin', false, true);
+        expect(dto.credentialsBacked).toBe(true);
+        expect(dto.credentialsStored).toBe(false);
+      });
+
+      it('should report an empty ref as not editable when the adapter takes no credentials', () => {
+        const credentialLess: Connection = { ...baseConnection, credentialsRef: '' };
+        const dto = ConnectionResponseDto.fromDomain(credentialLess, supportedCapabilities,
+          'parent-child', null, 'admin', false, false);
+        expect(dto.credentialsBacked).toBe(false);
+        expect(dto.credentialsStored).toBe(false);
+      });
+
+      it('should keep an environment-variable ref not editable and not stored', () => {
+        const envBacked: Connection = { ...baseConnection, credentialsRef: 'env:PRESTASHOP_KEY' };
+        const dto = ConnectionResponseDto.fromDomain(envBacked, supportedCapabilities,
+          'parent-child', null, 'admin', false, true);
+        expect(dto.credentialsBacked).toBe(false);
+        expect(dto.credentialsStored).toBe(false);
+      });
+    });
+
     it('should project the resolved variantGrouping regardless of role (#1924)', () => {
       const dto = ConnectionResponseDto.fromDomain(
         baseConnection,

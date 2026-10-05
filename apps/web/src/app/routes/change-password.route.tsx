@@ -14,7 +14,7 @@ import type { RouteObject } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 
 import { ChangePasswordForm } from '../../features/auth';
-import { resolveNextPath } from '../../features/demo';
+import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { ChangePasswordLayout } from '../layouts/change-password-layout';
 
 function ChangePasswordPage(): ReactElement {

@@ -65,8 +65,15 @@ function ToneIcon({ tone }: { tone: KpiCardTone }): ReactNode {
 
 export type KpiCardTone = 'error' | 'neutral' | 'success' | 'warning';
 
+/**
+ * `compact` is the mockups' metric-card scale (16 px inset, 28 px value) used
+ * by operational boards; `default` is the Insights headline scale.
+ */
+export type KpiCardDensity = 'default' | 'compact';
+
 interface KpiCardBaseProps {
   className?: string;
+  density?: KpiCardDensity;
   description?: ReactNode;
   label: ReactNode;
   sparkline?: readonly number[];
@@ -98,6 +105,7 @@ const SPARKLINE_TONE: Record<KpiCardTone, SparklineTone> = {
 export const KpiCard = forwardRef<HTMLElement, KpiCardProps>(function KpiCard(
   {
     className = '',
+    density = 'default',
     description,
     label,
     sparkline,
@@ -109,7 +117,14 @@ export const KpiCard = forwardRef<HTMLElement, KpiCardProps>(function KpiCard(
   },
   ref,
 ): ReactElement {
-  const classes = ['kpi-card', TONE_CLASS[tone], className].filter(Boolean).join(' ');
+  const classes = [
+    'kpi-card',
+    TONE_CLASS[tone],
+    density === 'compact' ? 'kpi-card--compact' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const body = (
     <>
@@ -159,3 +174,24 @@ export const KpiCard = forwardRef<HTMLElement, KpiCardProps>(function KpiCard(
     </div>
   );
 });
+
+export interface KpiGridProps {
+  children: ReactNode;
+  className?: string;
+  /** Names the row for assistive technology when the cards need a group label. */
+  'aria-label'?: string;
+}
+
+/**
+ * The row a set of `KpiCard`s sits in: `repeat(auto-fit, minmax(160px, 1fr))`
+ * grid tracks, so the cards wrap by track and share one height per row instead
+ * of overlapping what follows them, which a wrapped flex row did (#3096).
+ */
+export function KpiGrid({ children, className = '', 'aria-label': ariaLabel }: KpiGridProps): ReactElement {
+  const classes = ['kpi-grid', className].filter(Boolean).join(' ');
+  return (
+    <div className={classes} role={ariaLabel ? 'group' : undefined} aria-label={ariaLabel}>
+      {children}
+    </div>
+  );
+}
