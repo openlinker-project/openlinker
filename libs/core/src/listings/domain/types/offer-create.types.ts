@@ -97,8 +97,9 @@ export interface CreateOfferOverrides {
    */
   ean?: string;
   /**
-   * Operator confirmation that `ean` above is correct despite failing
-   * OpenLinker's own GS1 check-digit validation (#3492). Lets
+   * Operator confirmation that the EFFECTIVE EAN - the `ean` override above
+   * when present, otherwise the variant's master barcode - is correct despite
+   * failing OpenLinker's own GS1 check-digit validation (#3492). Lets
    * `BulkListingSubmitService.enforceIdentifierRules` skip the checksum-only
    * exclusion for this one job and forward the barcode unchanged, so the
    * destination is the real judge rather than OpenLinker guessing. Never

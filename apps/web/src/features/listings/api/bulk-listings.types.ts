@@ -53,10 +53,11 @@ export interface BulkOfferOverrides {
    */
   ean?: string;
   /**
-   * Operator confirmation that `ean` above is correct despite failing the
-   * wizard's own GS1 checksum (#3492) - "I confirm this EAN is correct,
-   * submit anyway". Lets the backend skip its checksum-only exclusion for
-   * this one variant and let the destination judge it for real. Never
+   * Operator confirmation that the EFFECTIVE EAN - the `ean` override above
+   * when present, otherwise the variant's master barcode - is correct despite
+   * failing the wizard's own GS1 checksum (#3492) - "I confirm this EAN is
+   * correct, submit anyway". Lets the backend skip its checksum-only exclusion
+   * for this one variant and let the destination judge it for real. Never
    * rescues a length-invalid EAN.
    */
   eanOverrideAcknowledged?: boolean;
@@ -132,6 +133,16 @@ export interface BulkOfferCreateResponse {
   jobIds: string[];
   /** Count of already-listed variants the backend skipped rather than duplicated (#1933). */
   skippedAlreadyListedCount: number;
+  /**
+   * Count of variants the backend skipped because it could not resolve their
+   * availability (#2323) - transient, worth re-submitting.
+   */
+  skippedAvailabilityUnknownCount: number;
+  /**
+   * Count of variants the backend skipped because their effective EAN failed
+   * the GS1 check digit without an operator acknowledgement (#3492).
+   */
+  skippedInvalidEanCount: number;
 }
 
 export interface BulkBatchRecordSummary {

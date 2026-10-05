@@ -55,6 +55,7 @@ import {
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
 import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
+import { describeBulkSubmitOutcome } from './bulk-submit-summary';
 import {
   computeResolvedPrice,
   computeResolvedStock,
@@ -587,15 +588,10 @@ export function BulkWizard({
           request,
         });
         const selectedCount = Object.keys(perVariantOverrides).length;
-        const skipped = result.skippedAlreadyListedCount;
-        const queuedCount = selectedCount - skipped;
         showToast({
           tone: 'success',
           title: 'Batch submitted',
-          description:
-            skipped > 0
-              ? `${queuedCount.toLocaleString()} offers queued for creation (${skipped.toLocaleString()} already listed, skipped).`
-              : `${queuedCount.toLocaleString()} offers queued for creation.`,
+          description: describeBulkSubmitOutcome(selectedCount, result),
         });
         void navigate(`/listings/bulk-batches/${result.batchId}`);
       } catch {
