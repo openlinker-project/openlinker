@@ -298,6 +298,9 @@ export class InventoryRepository implements InventoryRepositoryPort {
     if (filters.locationId) {
       where.locationId = filters.locationId;
     }
+    if (filters.excludeStale) {
+      where.isStale = false;
+    }
     // Strict equality, never the write path's claim rule (#2320): a read must
     // not report another connection's unattributed rows as this one's.
     if (filters.sourceConnectionId) {

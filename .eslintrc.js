@@ -348,6 +348,13 @@ module.exports = {
                   '**/oms/components/**',
                   '**/oms/lib/**',
                   '**/oms/types/**',
+                  // #3457 — the packing onboarding wizard. `oms-onboarding` is its
+                  // own slug: `**/oms/**` above does not match it.
+                  '**/oms-onboarding/api/**',
+                  '**/oms-onboarding/hooks/**',
+                  '**/oms-onboarding/components/**',
+                  '**/oms-onboarding/lib/**',
+                  '**/oms-onboarding/types/**',
                   // Added on the #2761 tech-review pass — `features/orders`
                   // imports `resolveSalesDocumentReasonCopy` /
                   // `SalesDocumentReasonTone` from `features/sales-documents`'
@@ -637,6 +644,13 @@ module.exports = {
                   '**/oms/components/**',
                   '**/oms/lib/**',
                   '**/oms/types/**',
+                  // #3457 — the packing onboarding wizard. `oms-onboarding` is its
+                  // own slug: `**/oms/**` above does not match it.
+                  '**/oms-onboarding/api/**',
+                  '**/oms-onboarding/hooks/**',
+                  '**/oms-onboarding/components/**',
+                  '**/oms-onboarding/lib/**',
+                  '**/oms-onboarding/types/**',
                   // Added on the #2761 tech-review pass — `features/orders`
                   // reaches `features/sales-documents`' public barrel
                   // (`resolveSalesDocumentReasonCopy`, `SalesDocumentReasonTone`),
