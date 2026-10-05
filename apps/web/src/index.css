@@ -11451,6 +11451,272 @@ a.kpi-card:focus-visible {
 .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
 .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
 
+/* ── Connection chip (#3670) ───────────────────────────────────────────
+ * A connection's channel as one link: the platform at rest, the connection
+ * name sliding out to the right on hover / keyboard focus. It replaces a
+ * non-clickable `.channel-pill` beside a separate, truncated name link.
+ *
+ * Two boxes, one silhouette. The FACE (dot + platform) is the only thing in
+ * flow, so a row's width never depends on the name. The REVEAL is absolutely
+ * positioned behind the face's right cap and unrolls rightwards with a clip,
+ * so opening it moves nothing - it overlays the neighbouring cell for as long
+ * as the pointer is there. Both share one tint, so the open chip reads as a
+ * single pill that grew, with the face's cap left as a natural seam.
+ *
+ * `isolation` gives the reveal a stacking context of its own to sit BEHIND the
+ * face in; the raised `z-index` on the open state lifts the whole chip above
+ * whatever it overlays. */
+.connection-chip {
+  --chip-hue: var(--text-muted);
+  --chip-rest-bg: var(--bg-surface-muted);
+  --chip-rest-edge: var(--border-subtle);
+  --chip-tint: color-mix(in oklab, var(--chip-hue) 13%, var(--bg-surface));
+  --chip-tint-strong: color-mix(in oklab, var(--chip-hue) 24%, var(--bg-surface));
+  --chip-edge: color-mix(in oklab, var(--chip-hue) 55%, var(--border-subtle));
+  --chip-overlap: 12px;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  /* Several hosts are column flex stacks (`.orders-cell-stack`), which would
+   * otherwise stretch the chip across the whole cell. */
+  align-self: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.connection-chip[data-channel='allegro']     { --chip-hue: var(--channel-allegro); }
+.connection-chip[data-channel='prestashop']  { --chip-hue: var(--channel-prestashop); }
+.connection-chip[data-channel='erli']        { --chip-hue: var(--channel-erli); }
+.connection-chip[data-channel='woocommerce'] { --chip-hue: var(--channel-woocommerce); }
+.connection-chip[data-channel='amazon']      { --chip-hue: var(--channel-amazon); }
+.connection-chip[data-channel='shopify']     { --chip-hue: var(--channel-shopify); }
+
+.connection-chip__face {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 8px 0 7px;
+  border: 1px solid var(--chip-rest-edge);
+  border-radius: var(--radius-pill);
+  background: var(--chip-rest-bg);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--chip-hue);
+  transition:
+    box-shadow var(--duration-normal) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__platform {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.connection-chip__reveal {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: calc(100% - var(--chip-overlap));
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  max-width: 18rem;
+  padding: 0 8px 0 calc(var(--chip-overlap) + 7px);
+  border: 1px solid var(--chip-edge);
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  background: var(--chip-tint);
+  box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--chip-hue) 45%, transparent);
+  /* Rolled up to its left edge, i.e. entirely behind the face. */
+  clip-path: inset(-12px 100% -12px 0);
+  pointer-events: none;
+  transition:
+    clip-path var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--text-primary);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__chevron {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--chip-hue);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+/* ── Open: hover or keyboard focus ── */
+.connection-chip--link {
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+  transform-origin: left center;
+}
+
+.connection-chip--link:hover,
+.connection-chip--link:focus-visible {
+  z-index: 3;
+}
+
+.connection-chip--link:hover .connection-chip__face,
+.connection-chip--link:focus-visible .connection-chip__face {
+  border-color: var(--chip-edge);
+  background: var(--chip-tint);
+}
+
+.connection-chip--link:hover .connection-chip__dot,
+.connection-chip--link:focus-visible .connection-chip__dot {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--chip-hue) 28%, transparent);
+}
+
+/* Opening is slower and eased out, so the name reads as unrolling; closing
+ * (the base rule) is quicker, so a pointer sweeping down a column does not
+ * leave a trail of half-shut chips behind it. */
+.connection-chip--link:hover .connection-chip__reveal,
+.connection-chip--link:focus-visible .connection-chip__reveal {
+  clip-path: inset(-12px -12px -12px 0);
+  pointer-events: auto;
+  transition:
+    clip-path var(--duration-slow) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip--link:hover .connection-chip__name,
+.connection-chip--link:focus-visible .connection-chip__name {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 60ms,
+    transform var(--duration-slow) var(--ease-out) 40ms;
+}
+
+.connection-chip--link:hover .connection-chip__chevron,
+.connection-chip--link:focus-visible .connection-chip__chevron {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 120ms,
+    transform var(--duration-slow) var(--ease-out) 120ms;
+}
+
+.connection-chip--link:focus-visible {
+  outline: none;
+}
+
+.connection-chip--link:focus-visible .connection-chip__face {
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Press ── the whole chip dips and the tint deepens, so a click is felt
+ * before the route changes. Scaling the root rather than the face keeps the
+ * face and the reveal moving as one piece. */
+.connection-chip--link:active {
+  transform: scale(0.96);
+  transition-duration: 60ms;
+}
+
+.connection-chip--link:active .connection-chip__face,
+.connection-chip--link:active .connection-chip__reveal {
+  background: var(--chip-tint-strong);
+}
+
+.connection-chip--link:active .connection-chip__dot {
+  transform: scale(1.35);
+}
+
+/* ── No label known: the name is the face, nothing slides out ── */
+.connection-chip--name-only .connection-chip__name {
+  opacity: 1;
+  transform: none;
+}
+
+.connection-chip--name-only .connection-chip__chevron {
+  margin-left: -2px;
+}
+
+/* A connection that did not resolve is a statement of absence, not a name. */
+.connection-chip--unknown .connection-chip__name {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* No hover to open it: show the name statically, joined to the face, rather
+ * than hide it on the one device class that could never reveal it. */
+@media (hover: none) {
+  .connection-chip__reveal {
+    position: relative;
+    left: auto;
+    margin-left: calc(var(--chip-overlap) * -1);
+    clip-path: none;
+    pointer-events: auto;
+    box-shadow: none;
+    border-color: var(--chip-rest-edge);
+    background: var(--chip-rest-bg);
+  }
+
+  .connection-chip__name,
+  .connection-chip__chevron {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-chip,
+  .connection-chip *,
+  .connection-chip--link:hover *,
+  .connection-chip--link:focus-visible * {
+    transition: none !important;
+  }
+
+  .connection-chip--link:active {
+    transform: none;
+  }
+}
+
 /* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
 .entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
 .entity-label__thumb {
@@ -11884,8 +12150,8 @@ a.kpi-card:focus-visible {
   vertical-align: top;
 }
 
-/* Products is the only list pairing `ConnectionCell` with a TEXT adornment, and
- * the cell's 220px body cap was measured in #2027 for an adornment that is either
+/* Products paired `ConnectionCell` with a TEXT adornment before #3670, and the
+ * cell's 220px body cap was measured in #2027 for an adornment that is either
  * absent or a 14px `ConnectionDot`. A `.channel-pill` is 2px border + 16px
  * padding + a 6px dot + a 4px gap + mono 11px text at 0.6em advance, so
  * `WooCommerce` runs ~100px — leaving the connection NAME ~113px inside 220px,
