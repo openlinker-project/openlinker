@@ -188,6 +188,10 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
    * unreadable line count is an error, never "incomplete" - a guard that deletes on
    * a value it could not read would destroy good orders.
    *
+   * The status check is best-effort, not atomic with the `DELETE`: the status is read
+   * here and the delete is a separate call, and Shoper offers no conditional delete.
+   * A merchant who advances the order inside that window loses the guard.
+   *
    * "Complete" compares the NUMBER of lines only. An order that changed at the
    * source between two attempts is therefore returned as it stands; `createOrder`
    * does not re-sync content.
