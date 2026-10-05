@@ -418,6 +418,30 @@ describe('ShipmentStatusSyncService', () => {
       expect(result.propagated).toBe(1);
     });
 
+    // #3365 audit: `OrderLifecycleRelayService` answers with NO targets when no
+    // participant resolves - an order whose `Order` identifier mapping is
+    // missing, most commonly. `transientlyUnreached` was then empty, so the
+    // code fell through to the success path and reported `'relayed'` with the
+    // claim already taken and never released: the waybill claim burnt on the
+    // first tick, the failure counter reading 0, the badge never rendering, and
+    // the claim unable to be re-taken. Ever.
+    it('releases the claim when the relay reached NOBODY at all', async () => {
+      relay.relay.mockResolvedValue({ targets: [] });
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ reason: 'adapter-unresolved', connectionId: null }),
+      );
+      // And it must NOT be reported as a success, which is what cleared the
+      // history and made the burnt claim look healthy.
+      expect(shipments.clearWaybillRelayFailures).not.toHaveBeenCalled();
+    });
+
     it('a relay THROW releases the claim and does not discard the rest of the patch', async () => {
       // The relay reports per-target outcomes rather than throwing, but it CAN
       // throw before its loop (identifier resolution). An unhandled throw would

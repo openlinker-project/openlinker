@@ -31,7 +31,11 @@
  *
  * @module support
  */
-import { Client } from 'pg';
+// `pg` is CommonJS, so a NAMED import of `Client` resolves to `undefined` under
+// Node's ESM loader and the module throws on load - taking every project in the
+// run down with it, not just the spec that needed the seed. Default-import and
+// reach through the namespace, which is what the five sibling seeds already do.
+import pg from 'pg';
 import { resolveEnv } from '../config/env';
 import { assertSeedableDatabase } from './assert-seedable-database';
 
@@ -55,7 +59,7 @@ function orderSnapshot(customerName: string): string {
 export async function seedInvoiceRegulatoryStatuses(): Promise<void> {
   assertSeedableDatabase('seedInvoiceRegulatoryStatuses');
   const env = resolveEnv();
-  const client = new Client({ connectionString: env.databaseUrl });
+  const client = new pg.Client({ connectionString: env.databaseUrl });
   await client.connect();
   try {
     await client.query('BEGIN');

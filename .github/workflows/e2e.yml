@@ -62,6 +62,24 @@ on:
           - label-download-errors
           - analytics
           - perf
+          # #3365 - four projects existed and could not be CHOSEN from here.
+          # `full-flow` was swept in with them by mistake and is removed again
+          # (#3365 review): it pauses for a real purchase, so a dispatch of it
+          # would hang until the job timed out. The header above already said it
+          # was deliberately absent, and the list contradicted it.
+          # `subiekt` additionally needs `test_subiekt: true` below, because it
+          # talks to a live Subiekt GT bridge on a Windows host; without that
+          # flag every one of its tests skips and the run is green and empty.
+          - subiekt
+          - sales-documents
+          - bench
+      test_subiekt:
+        description: >-
+          Run the `subiekt` project for real (needs a reachable Subiekt GT
+          bridge). Off, every test in that project skips.
+        required: false
+        default: false
+        type: boolean
       web_url:
         description: 'OL web URL (overrides the OL_WEB_URL secret).'
         required: false
@@ -103,6 +121,22 @@ jobs:
       OL_PS_WEBSERVICE_KEY: ${{ secrets.E2E_OL_PS_WEBSERVICE_KEY }}
       OL_WC_CONSUMER_KEY: ${{ secrets.E2E_OL_WC_CONSUMER_KEY }}
       OL_WC_CONSUMER_SECRET: ${{ secrets.E2E_OL_WC_CONSUMER_SECRET }}
+      # #3365 - the `subiekt` project is opt-in on top of being chosen, because
+      # it needs a reachable Subiekt GT bridge on a Windows host. Set nowhere
+      # before this, so choosing the project (which was also impossible) would
+      # have produced a run in which every test skipped and the result was
+      # green - see E2E_REQUIRE_EXECUTED below for why that is now a failure.
+      E2E_TEST_SUBIEKT: ${{ inputs.test_subiekt && 'true' || '' }}
+      # A chosen project that executed NOTHING fails the run. Playwright reports
+      # an all-skipped suite as `ok`, and nothing downstream contradicted it.
+      #
+      # #3365 review: scoped to a DISPATCH. At job level this also caught the
+      # weekly scheduled run, which chooses no project and is gated on
+      # `E2E_SCHEDULED_ENABLED` precisely so it stays dormant rather than failing
+      # every week until a target stack exists - and an all-skipped dormant run
+      # is exactly what that gate is for. An operator who picked a project, on
+      # the other hand, asked for something to run.
+      E2E_REQUIRE_EXECUTED: ${{ github.event_name == 'workflow_dispatch' && 'true' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2

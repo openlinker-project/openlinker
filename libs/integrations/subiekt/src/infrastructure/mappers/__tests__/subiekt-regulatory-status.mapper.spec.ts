@@ -12,8 +12,15 @@ describe('toNeutralRegulatoryStatus', () => {
     expect(toNeutralRegulatoryStatus('none')).toBe('not-applicable');
   });
 
-  it("maps 'pending' -> 'submitted'", () => {
-    expect(toNeutralRegulatoryStatus('pending')).toBe('submitted');
+  // #3351: 'queued' (GT 1/2, not yet sent) and 'error' (GT 8, comms failure
+  // on a send attempt) both mean KSeF has NOT received the document, so both
+  // route to core's 'pending-submission' — never the old false 'submitted'.
+  it("maps 'queued' -> 'pending-submission'", () => {
+    expect(toNeutralRegulatoryStatus('queued')).toBe('pending-submission');
+  });
+
+  it("maps 'error' -> 'pending-submission'", () => {
+    expect(toNeutralRegulatoryStatus('error')).toBe('pending-submission');
   });
 
   it("maps 'sent' -> 'submitted'", () => {

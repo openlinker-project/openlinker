@@ -405,6 +405,42 @@ export interface InvoiceLine {
    */
   unit?: string;
   /**
+   * The OL-internal product id this line sells, when the caller knows it - the
+   * same id `OrderItem.productId` carries, so a provider resolves it to its own
+   * catalogue key through `identifier_mappings` exactly as the order-creation
+   * path already does.
+   *
+   * OPTIONAL and provider-ignorable, the `unit` precedent above: a line that is
+   * not a catalogue item at all (a shipping charge, a manual adjustment) has no
+   * product and legitimately omits it, and a provider whose documents carry no
+   * catalogue concept never reads it.
+   *
+   * It exists because a document whose lines name a product only in free text
+   * is not linked to the goods: on Subiekt such a line is a "usługa
+   * jednorazowa" (one-time service) and therefore moves no stock, so the seller
+   * sells an item and their warehouse never registers it leaving. Carrying the
+   * id lets the provider emit a real catalogue line instead. NEVER a substitute
+   * for `name`, which stays the human-readable text the document prints.
+   */
+  productId?: string;
+
+  /**
+   * The OL-internal VARIANT id this line sells, when the caller knows it -
+   * the same id `OrderItem.variantId` carries.
+   *
+   * Optional and provider-ignorable on exactly the terms `productId` above is,
+   * and it exists because for some destinations `productId` is not enough to
+   * name a catalogue item. A Subiekt MODEL is one OL product standing for
+   * several towary, so its product-level external id is a grouping key
+   * (`model:{id}`) rather than a `tw_Symbol`; only the variant names goods the
+   * warehouse can release. Without it such a line does not degrade to free
+   * text - it is sent as the grouping key and the document fails outright.
+   *
+   * A provider whose catalogue has no variant concept ignores it and reads
+   * `productId`, exactly as before.
+   */
+  variantId?: string;
+  /**
    * The order line (`OrderItem.id`) this invoice line was built from (#3312).
    * Present only for a line minted from an `OrderItem` (`toInvoiceLine`) -
    * absent for a synthesized line such as shipping (`toShippingLines`), since
@@ -869,6 +905,75 @@ export interface IssueInvoiceResult {
    * source document omit it.
    */
   sourceDocument?: StoredDocument;
+  /**
+   * How many of the document's lines the provider could NOT link to a record in
+   * its own catalogue, and therefore issued as free text.
+   *
+   * TRI-STATE, and the distinction is the point:
+   *   - `undefined` — this provider does not report linkage at all. Most do
+   *     not: a provider with no catalogue and no warehouse has nothing to say.
+   *   - `0` — every line was linked.
+   *   - `> 0` — that many lines were not, so anything the provider derives
+   *     from its catalogue does not reflect them. On a warehouse-backed
+   *     provider that means the goods left and the stock never moved.
+   *
+   * It exists because such a document looks completely normal — correct name,
+   * quantity, price and VAT on every line — while the seller's warehouse never
+   * registers the sale. The only previous signal was a log line.
+   *
+   * It is the provider's PRE-SUBMIT belief about linkage, not a confirmation
+   * from the provider that the lines were filed as linked. `0` therefore means
+   * "we sent a catalogue key for every line", NOT "the provider accepted every
+   * key" — a bridge or API can still drop one downstream.
+   */
+  unlinkedCatalogueLines?: number;
+  /**
+   * Whether the goods this document billed for actually LEFT the seller's
+   * warehouse in the provider's own books, and under which document number.
+   *
+   * TRI-STATE in the same spirit as {@link unlinkedCatalogueLines}, and for the
+   * same reason - a document that looks entirely normal while the warehouse
+   * never registers the sale:
+   *
+   *   - `undefined` — this provider does not report a release at all. Most do
+   *     not: a provider with no warehouse has nothing to say.
+   *   - `'not-applicable'` — there was nothing to release. A manually issued,
+   *     order-less invoice has no order document behind it.
+   *   - `'released'` — a release document exists; `number` names it.
+   *   - `'not-released'` — the caller expected one and the provider reported
+   *     none. THIS is the state the field exists for: the money is billed and
+   *     the stock has not moved.
+   *
+   * The distinction between the last two cannot come from the provider alone.
+   * A bridge that answers "no release document" cannot know whether one was
+   * due; the ADAPTER can, because it knows whether it handed the provider an
+   * order document to release against. So an adapter resolves the answer and
+   * reports it, rather than passing a raw wire value through.
+   *
+   * Like `unlinkedCatalogueLines`, this is the provider's belief at issue time,
+   * not a later confirmation.
+   */
+  warehouseRelease?: WarehouseRelease;
+}
+
+/** The four answers a provider can give about releasing a document's goods. */
+export const WarehouseReleaseOutcomeValues = [
+  'released',
+  'not-applicable',
+  'not-released',
+] as const;
+
+export type WarehouseReleaseOutcome = (typeof WarehouseReleaseOutcomeValues)[number];
+
+/** What a provider did about releasing the sold goods from its warehouse. */
+export interface WarehouseRelease {
+  readonly outcome: WarehouseReleaseOutcome;
+  /**
+   * The release document's own number, verbatim (Subiekt: `WZ 67/2026`).
+   * `null` on every outcome but `'released'` - and a surface must therefore
+   * branch on the outcome rather than on this being present.
+   */
+  readonly documentNumber: string | null;
 }
 
 /** Query for an issued document by either internal order id or provider id. */
@@ -994,6 +1099,12 @@ export interface PaginatedInvoiceRecords {
  */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
+  /** See {@link IssueInvoiceResult.unlinkedCatalogueLines}. Written on the issued patch only. */
+  unlinkedCatalogueLines?: number | null;
+  /** See {@link WarehouseRelease}. Written on the issued patch only. */
+  warehouseReleaseOutcome?: WarehouseReleaseOutcome | null;
+  /** The release document's number, stored only on the `'released'` outcome. */
+  warehouseReleaseNumber?: string | null;
   /**
    * Authoritative provider identifier resolved at issue time (e.g. `subiekt`).
    * The pending row is created with `providerType: ''` (the connection's

@@ -106,6 +106,7 @@ export {
   MarketplaceOfferPauseStaleSweepPayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
   MarketplaceShipmentSyncByExternalIdPayloadV1,
+  ShippingShipmentNotifyDispatchedPayloadV1,
   MarketplaceFulfillmentStatusSyncPayloadV1,
   OfferDescriptionTone,
 } from './domain/types/marketplace-job-payloads.types';

@@ -243,7 +243,7 @@ export const AUTOMATION_COMPOSER_COPY = {
   actionLabel: 'Step',
   /** §5.3b A1 — it takes no parameters, and the copy says why. */
   a1Note:
-    'Which document gets issued, and by which provider, is decided by your Sales documents rules. This automation only decides when.',
+    'Which document gets issued, and by which provider, is decided by your Document routing rules. This automation only decides when.',
   /** §5.3b A3 — no selectable status vocabulary. */
   a3Note:
     'OpenLinker relays what it knows. If no label has been bought yet, the marketplace is told the order shipped without a tracking number.',
