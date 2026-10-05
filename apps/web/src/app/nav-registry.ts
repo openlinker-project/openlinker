@@ -81,10 +81,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
         requiresPermission: 'orders:write',
         requiresOms: true,
       },
-      // The bench itself (#2413) had no way in but a typed URL. A packer still
-      // reaches it that way — they get no sidebar at all, since `/bench` renders
-      // outside `AuthenticatedAppLayout` on purpose — but an admin or operator
-      // checking the floor had to know the path by heart.
+      // The bench itself (#2413) had no way in but a typed URL. A packer never
+      // needs this entry: since #3096 every app address redirects a bench-only
+      // session to `/bench` (`AuthenticatedAppLayout`), and `/bench` renders
+      // outside that layout on purpose, so they get no sidebar at all - but an
+      // admin or operator checking the floor had to know the path by heart.
       //
       // Gated on `bench:write` (#3439/#3424), held by exactly admin + operator
       // + packer — the same set as the bench's own routes,

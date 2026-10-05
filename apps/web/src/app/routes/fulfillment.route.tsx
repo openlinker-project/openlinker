@@ -1,8 +1,23 @@
 /**
- * The fulfilment screen (#3340, ADR-074; merged onto `/fulfillment`)
+ * The fulfilment screen (#3340, ADR-074; merged onto `/fulfillment`; detail
+ * child added by #3098)
  *
- * One screen at `/fulfillment`, answering two questions about one read
- * through a grouping switch: who packs a task, and where it is packed from.
+ * `/fulfillment` (the merged screen, answering two questions about one read
+ * through a grouping switch: who packs a task, and where it is packed from)
+ * and `/fulfillment/works/:workId` (one task, #3096). Both are lazy page
+ * chunks and both carry their own breadcrumb — the crumb-contract test
+ * asserts every lazy leaf does, and a parent that only groups children has no
+ * semantic title of its own, so this route DROPPED its own `handle` when the
+ * screen became an INDEX child. That is the shape `returns.route.tsx`
+ * already uses, copied rather than re-derived; `coreChildren` still spreads
+ * this one object, so `root.route.tsx` needed no edit.
+ *
+ * The child path keeps the `works/` segment the API and the mockup both use
+ * (`GET /fulfillment/works/:workId`), rather than collapsing to a bare
+ * `:workId`. A bare param would make `/fulfillment/anything` a detail
+ * address, so a future sibling page under this prefix (there was one,
+ * `/fulfillment/assign`, until the merge below) could not be added without
+ * shadowing.
  *
  * ## It used to be two screens
  *
@@ -33,17 +48,38 @@ import { Navigate } from 'react-router-dom';
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
+const fulfillmentScreenCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Operations', title: 'Fulfilment' },
+};
+
+const fulfillmentWorkDetailCrumb: RouteCrumbHandle = {
+  crumb: { group: 'Operations', title: 'Fulfilment task' },
+};
+
 export const fulfillmentRoute: RouteObject = {
   path: 'fulfillment',
-  handle: {
-    crumb: { group: 'Operations', title: 'Fulfilment' },
-  } satisfies RouteCrumbHandle,
-  lazy: async () => {
-    const { AssignPackingWorkPage } = await import(
-      '../../pages/fulfillment/assign-packing-work-page'
-    );
-    return { Component: AssignPackingWorkPage };
-  },
+  children: [
+    {
+      index: true,
+      handle: fulfillmentScreenCrumb,
+      lazy: async () => {
+        const { AssignPackingWorkPage } = await import(
+          '../../pages/fulfillment/assign-packing-work-page'
+        );
+        return { Component: AssignPackingWorkPage };
+      },
+    },
+    {
+      path: 'works/:workId',
+      handle: fulfillmentWorkDetailCrumb,
+      lazy: async () => {
+        const { FulfillmentWorkDetailPage } = await import(
+          '../../pages/fulfillment/fulfillment-work-detail-page'
+        );
+        return { Component: FulfillmentWorkDetailPage };
+      },
+    },
+  ],
 };
 
 /**

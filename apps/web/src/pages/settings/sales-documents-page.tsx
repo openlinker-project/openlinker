@@ -1,7 +1,7 @@
 /**
  * Sales Documents Page (#2159)
  *
- * Admin-only page hosting the centralized "Settings -> Document routing" view.
+ * Admin-only page hosting the centralized "Settings -> Sales documents routing" view.
  * The route path keeps its original `/settings/sales-documents` spelling: it is
  * a persisted link target, and #3307 renamed only what an operator reads.
  * Mirrors `McpTokensPage`'s admin-gating shape.
@@ -32,7 +32,7 @@ export function SalesDocumentsPage(): ReactElement {
 
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
-      <PageLayout eyebrow="Settings" title="Document routing" description="Admin-only access.">
+      <PageLayout eyebrow="Settings" title="Sales documents routing" description="Admin-only access.">
         <ErrorState
           title="Admin role required"
           message="This page routes fiscal documents to a connection — it requires an admin session."
@@ -44,7 +44,7 @@ export function SalesDocumentsPage(): ReactElement {
   return (
     <PageLayout
       eyebrow="Settings"
-      title="Document routing"
+      title="Sales documents routing"
       description="Choose what each market issues, per country, and what each connected provider may issue. OpenLinker never decides which document an order legally needs."
       backTo={{ to: '/settings', label: 'Settings' }}
     >

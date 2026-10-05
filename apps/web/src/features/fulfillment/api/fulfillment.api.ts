@@ -20,12 +20,17 @@
  *
  * @module apps/web/src/features/fulfillment/api
  */
-import { parseFulfillmentTask, parseFulfillmentTaskPage } from './fulfillment.schema';
+import {
+  parseFulfillmentTask,
+  parseFulfillmentTaskPage,
+  parseFulfillmentTaskShipments,
+} from './fulfillment.schema';
 import type {
   ApplyFulfillmentTaskActionRequest,
   FulfillmentTask,
   FulfillmentTaskFilters,
   FulfillmentTaskPage,
+  FulfillmentTaskShipment,
   UpdateFulfillmentWorkAssignmentRequest,
 } from './fulfillment.types';
 
@@ -42,6 +47,11 @@ export interface FulfillmentApi {
   listByOrder: (orderId: string) => Promise<FulfillmentTaskPage>;
   /** One fulfilment task by id. */
   get: (workId: string) => Promise<FulfillmentTask>;
+  /**
+   * The shipment(s) dispatched for one fulfilment task (#3292). An empty
+   * array is the normal "nothing dispatched yet" state, not a failure.
+   */
+  listShipments: (workId: string) => Promise<FulfillmentTaskShipment[]>;
   /**
    * Apply one action. `expectedVersion` is required by the contract; a stale
    * token answers 409 `version_conflict` (retryable), an illegal action answers
@@ -73,6 +83,9 @@ export function buildFulfillmentWorksPath(filters: FulfillmentTaskFilters = {}):
   const params = new URLSearchParams();
   if (filters.orderId !== undefined) params.set('orderId', filters.orderId);
   if (filters.locationId !== undefined) params.set('locationId', filters.locationId);
+  // Only ever `true`: `false` and absent mean the same thing to the server,
+  // so emitting `active=false` would be a second spelling of "unfiltered".
+  if (filters.active === true) params.set('active', 'true');
   if (filters.limit !== undefined) params.set('limit', String(filters.limit));
   if (filters.offset !== undefined) params.set('offset', String(filters.offset));
   const query = params.toString();
@@ -95,6 +108,12 @@ export function createFulfillmentApi(request: ApiRequest): FulfillmentApi {
         `/fulfillment/works/${encodeURIComponent(workId)}`
       );
       return parseFulfillmentTask(payload);
+    },
+    async listShipments(workId): Promise<FulfillmentTaskShipment[]> {
+      const payload = await request<unknown>(
+        `/fulfillment/works/${encodeURIComponent(workId)}/shipments`
+      );
+      return parseFulfillmentTaskShipments(payload);
     },
     async applyAction(workId, action, body): Promise<FulfillmentTask> {
       const payload = await request<unknown>(

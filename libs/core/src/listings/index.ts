@@ -467,6 +467,7 @@ export type {
 } from './application/types/offer-stock-restore.types';
 export { OfferStockRestoreOutcomeValues } from './application/types/offer-stock-restore.types';
 export { OfferStockRestoreReleaseIncompleteError } from './domain/exceptions/offer-stock-restore-release-incomplete.error';
+export { OfferStockRestoreReversalIncompleteError } from './domain/exceptions/offer-stock-restore-reversal-incomplete.error';
 export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
 export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';

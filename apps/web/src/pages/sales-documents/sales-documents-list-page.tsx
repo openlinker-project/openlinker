@@ -30,6 +30,7 @@
  */
 import { useEffect, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useIsAdmin } from '../../shared/auth/use-permission';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -103,6 +104,7 @@ function statusOptionsForKind(kind: ConcreteDocumentKind | undefined): readonly 
 
 export function SalesDocumentsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  const isAdmin = useIsAdmin();
 
   const rawKind = searchParams.get('kind');
   const kind = isSalesDocumentKind(rawKind) ? rawKind : undefined;
@@ -274,12 +276,21 @@ export function SalesDocumentsListPage(): ReactElement {
       title="Sales documents"
       description="Every issued invoice and registered fiscal receipt across connections, in one place."
       actions={
-        // Bulk actions (batch retry, bulk issue) live only on the per-kind
-        // `/invoices` list today — see the file header — so this stays
-        // reachable rather than silently dropped.
-        <Link className="button button--secondary" to="/invoices">
-          Manage invoices
-        </Link>
+        <div className="toolbar__group">
+          {/* Admin-only because the routing page is (#3656): anyone else would
+              click through to "Admin role required". */}
+          {isAdmin ? (
+            <Link className="button button--secondary" to="/settings/sales-documents">
+              Manage routing
+            </Link>
+          ) : null}
+          {/* Bulk actions (batch retry, bulk issue) live only on the per-kind
+              `/invoices` list today — see the file header — so this stays
+              reachable rather than silently dropped. */}
+          <Link className="button button--secondary" to="/invoices">
+            Manage invoices
+          </Link>
+        </div>
       }
     >
       <div className="toolbar">

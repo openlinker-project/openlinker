@@ -50,6 +50,64 @@ any shop/marketplace adapter `publishProduct`-style upsert.
 
 ---
 
+## Compare a screen with its mockup by computed box model, not by the text it renders
+
+**Context**: the fulfilment task detail (#3096) shipped with every sentence of
+its mockup on screen, and every class-presence and copy test green.
+
+**Problem**: the mockup draws each section as a CARD — a `--border-default`
+border, `--radius-lg`, 20 x 24 px of padding, `--shadow-xs`, 22 px between
+cards — and the page rendered the same sections as flat blocks on the page
+background with a 24 px bottom margin. Nothing a text query, a snapshot of
+class names or a copy audit checks could see the difference; a reviewer
+looking at both side by side called the page "a sketch". The same review
+found facts in five columns where the mockup has two, 28 px buttons where it
+has 32 px, and a UUID in the Delivery row — all invisible to the tests,
+because the tests asserted presence.
+
+**Rule**: when a screen has a committed mockup, assert the box model the
+mockup is drawn with — the declarations on the card, the grid tracks, the
+control heights — either in a stylesheet test against the rule bodies
+(`fulfilment-work-detail-styles.test.ts` § "the mockup box model") or by
+measuring computed style on both renders at the same viewport. Build the card
+as a shared primitive (`DetailSection`) the first time a second page needs it,
+so the next page cannot re-derive it flatter.
+
+**Applies to**: any page implemented from `docs/plans/mockups/*`; detail pages
+especially.
+
+**Source**: #3096 review (epic #3096 UI rework, 2026-10-01).
+
+---
+
+## In a container that turns into a column, a flex-basis is a height
+
+**Context**: the fulfilment board's filter inputs (#3096) sat in `.toolbar`,
+which switches to `flex-direction: column` below 900 px, with
+`.assign-packing-work-filters > * { flex: 0 1 20rem }` written for the row.
+
+**Problem**: in a column the main axis is vertical, so `flex-basis: 20rem`
+became the inputs' HEIGHT — 324 x 320 px squares on a phone, overriding the
+control's own `height: 2rem`. The same board's metric cards had
+`height: 100%` inside a wrapped flex row; on the wrapped lines the percentage
+resolved against the row track and the cards overlapped the lanes below.
+Both rules were correct at the width they were written at.
+
+**Rule**: size a control in a direction-switching container with `width` (and
+`flex: none`), never with a `flex-basis` meant for one axis; and lay out a
+wrapping row of cards on grid tracks (`.kpi-grid`,
+`repeat(auto-fit, minmax(160px, 1fr))`) rather than a wrapped flex line with
+`height: 100%` children. When a media block overrides a rule, put it AFTER the
+base rule — an earlier block loses on source order at equal specificity (the
+board's phone row stayed `nowrap` for exactly that reason).
+
+**Applies to**: `apps/web/src/index.css`, any toolbar, filter bar or metric row
+that reflows on mobile.
+
+**Source**: #3096 review (board mobile defects M1–M2).
+
+---
+
 ## `triggerAndWait` on a SWEEP waits for the fan-out, not for the work
 
 **Context**: an e2e asserting that a Subiekt model product carries the VAT rate

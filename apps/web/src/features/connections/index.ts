@@ -39,6 +39,9 @@ export {
   SYSTEM_CONNECTION_ID,
 } from './api/connections.types';
 
+// #3457 — the packing onboarding wizard writes connections through its own
+// orchestrating mutation and invalidates this family afterwards.
+export { connectionsQueryKeys } from './api/connections.query-keys';
 export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
@@ -97,6 +100,10 @@ export {
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { ConnectionCell } from './components/ConnectionCell';
 export { ConnectionFold } from './components/ConnectionFold';
+export { ConnectionChip } from './components/ConnectionChip';
+export type { ConnectionChipChannel, ConnectionChipProps } from './components/ConnectionChip';
+export { readConnectionEnvironment } from './lib/connection-environment';
+export type { ConnectionEnvironment } from './lib/connection-environment';
 export type { ConnectionFoldProps } from './components/ConnectionFold';
 export type { ConnectionCellProps, ConnectionCellFacts } from './components/ConnectionCell';
 export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-readout';
