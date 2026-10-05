@@ -5,6 +5,7 @@
  */
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { PARCEL_PROFILE_BOUNDS } from '@openlinker/core/mappings';
 
 import { RoutingRuleInputDto } from './routing-rule-input.dto';
 
@@ -44,5 +45,29 @@ describe('RoutingRuleInputDto parcelProfile', () => {
 
   it('should reject a non-positive default weight', async () => {
     expect(await errorsFor({ ...base, parcelProfile: { defaultWeightGrams: 0 } })).toBeGreaterThan(0);
+  });
+
+  it('should accept a profile when every value sits exactly on a bound', async () => {
+    const { dimensionMmMin, dimensionMmMax, defaultWeightGramsMin, defaultWeightGramsMax } =
+      PARCEL_PROFILE_BOUNDS;
+    for (const profile of [
+      {
+        lengthMm: dimensionMmMin,
+        widthMm: dimensionMmMin,
+        heightMm: dimensionMmMin,
+        defaultWeightGrams: defaultWeightGramsMin,
+      },
+      {
+        lengthMm: dimensionMmMax,
+        widthMm: dimensionMmMax,
+        heightMm: dimensionMmMax,
+        defaultWeightGrams: defaultWeightGramsMax,
+      },
+    ]) {
+      expect(await errorsFor({ ...base, parcelProfile: profile })).toBe(0);
+    }
+    expect(
+      await errorsFor({ ...base, parcelProfile: { defaultWeightGrams: defaultWeightGramsMax + 1 } })
+    ).toBeGreaterThan(0);
   });
 });

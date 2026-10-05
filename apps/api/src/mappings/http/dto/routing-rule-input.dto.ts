@@ -44,21 +44,21 @@ export class ParcelProfileInputDto {
   @ApiPropertyOptional({ nullable: true, description: 'Box length in millimetres' })
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(PARCEL_PROFILE_BOUNDS.dimensionMmMin)
   @Max(PARCEL_PROFILE_BOUNDS.dimensionMmMax)
   lengthMm?: number | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'Box width in millimetres' })
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(PARCEL_PROFILE_BOUNDS.dimensionMmMin)
   @Max(PARCEL_PROFILE_BOUNDS.dimensionMmMax)
   widthMm?: number | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'Box height in millimetres' })
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(PARCEL_PROFILE_BOUNDS.dimensionMmMin)
   @Max(PARCEL_PROFILE_BOUNDS.dimensionMmMax)
   heightMm?: number | null;
 
@@ -68,7 +68,7 @@ export class ParcelProfileInputDto {
   })
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(PARCEL_PROFILE_BOUNDS.defaultWeightGramsMin)
   @Max(PARCEL_PROFILE_BOUNDS.defaultWeightGramsMax)
   defaultWeightGrams?: number | null;
 }

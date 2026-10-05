@@ -78,9 +78,15 @@ export interface FulfillmentParcelProfile {
   defaultWeightGrams: number | null;
 }
 
-/** Wire-level bounds shared by the API DTO and the persistence layer (mm / g). */
+/**
+ * Wire-level bounds shared by the API DTO and the persistence layer (mm / g).
+ * Both ends of each numeric range live here so the DTO's `@Min`/`@Max` read one
+ * constant; the browser mirrors these in operator units (cm / kg).
+ */
 export const PARCEL_PROFILE_BOUNDS = {
+  dimensionMmMin: 1,
   dimensionMmMax: 5000,
+  defaultWeightGramsMin: 1,
   defaultWeightGramsMax: 100000,
   parcelTemplateMaxLength: 32,
 } as const;
