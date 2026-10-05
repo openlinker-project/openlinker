@@ -106,11 +106,11 @@ function marketRow(page: Page, country: string): Locator {
 
 async function openRoutingDialog(page: Page): Promise<void> {
   await page.goto('/settings/sales-documents');
-  // "Document routing", not "Sales documents": #3307 renamed this page
+  // "Sales documents routing", not "Sales documents": #3307 (then #3656) renamed this page
   // precisely so it stops sharing a name with the merged /sales-documents LIST
   // page it is unrelated to. (The two older specs in this directory still
   // assert the pre-#3307 name and are stale against it.)
-  await expect(page.getByRole('heading', { name: 'Document routing' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Sales documents routing' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(
