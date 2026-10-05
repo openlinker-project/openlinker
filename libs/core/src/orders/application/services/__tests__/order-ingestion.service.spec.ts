@@ -2319,6 +2319,105 @@ describe('OrderIngestionService', () => {
       });
     });
 
+    // #3487 — an order from the operator's own shop (a product master) is not
+    // routed: it stays in the shop and is packed there. Otherwise the same
+    // parcel would be on the pack bench AND in the shop's back office.
+    describe('an order from the operator\'s own shop (#3487)', () => {
+      const router = { route: jest.fn() };
+
+      /** The connection the order was ingested through. */
+      const sourceConnection = (enabledCapabilities: string[]) => ({
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities,
+        config: {},
+      });
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+      });
+
+      it('should not route the order and should follow today\'s path when its source has ProductMaster enabled', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['ProductMaster', 'InventoryMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(resolveRouterMock).not.toHaveBeenCalled();
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(
+          jobQueue.enqueue.mock.calls.filter(
+            ([request]) => request.type === 'fulfillment.work.dispatch'
+          )
+        ).toEqual([]);
+      });
+
+      // #3480 x #3487 — the own-shop rule is part of the ONE routing answer the
+      // hold's insert-only `atpEffect` is decided from. Checked only in the
+      // intercept, the hold would be stamped `published` for an order that is
+      // never routed, while the shop has already lowered its own stock.
+      it('should not hold the own-shop order as published', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+        expect(connections.list).toHaveBeenCalledTimes(1);
+      });
+
+      it('should persist no fulfilment block when the own-shop order is not routed', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        for (const [, block] of markBlock().mock.calls) {
+          expect(block).toBeNull();
+        }
+      });
+
+      // Checked BEFORE router selection, so an A2 ambiguity is not even
+      // consulted for an order that is never routed.
+      it('should follow today\'s path for an own-shop order even when the A2 claim is ambiguous', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-a'),
+          routerConnection('conn-b'),
+          sourceConnection(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still route a marketplace order whose source has no ProductMaster', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          sourceConnection(['OrderSource', 'OfferManager']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+    });
+
     describe('the selected arm', () => {
       const router = { route: jest.fn() };
 
