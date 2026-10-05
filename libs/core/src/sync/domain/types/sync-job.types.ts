@@ -424,6 +424,7 @@ export const JobOutcomeReasonValues = [
   'auto_dispatch_payload_invalid',
   'auto_dispatch_not_enabled',
   'auto_dispatch_no_weight',
+  'auto_dispatch_no_dimensions',
   'auto_dispatch_no_address',
   'auto_dispatch_no_delivery_method',
   'auto_dispatch_work_not_eligible',
@@ -456,6 +457,21 @@ export type JobOutcomeReason = (typeof JobOutcomeReasonValues)[number];
 export interface SyncJobHandlerResult {
   outcome: JobOutcome;
   outcomeReason?: JobOutcomeReason;
+}
+
+/**
+ * Sync Job Dead Failure (#3505, G01-2)
+ *
+ * What the runner hands `SyncJobHandler.onDead` once a job has been marked
+ * `dead`. `nonRetryable` separates "a classifier called the error terminal"
+ * from "the retry ladder ran out" — a handler may word its own record
+ * differently for the two, but must treat both as final.
+ */
+export interface SyncJobDeadFailure {
+  /** The error message the runner persisted on the job. */
+  message: string;
+  /** `true` when the job died on a non-retryable error; `false` when attempts ran out. */
+  nonRetryable: boolean;
 }
 
 /**

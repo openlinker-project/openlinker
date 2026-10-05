@@ -15,6 +15,17 @@
 export type WooCommerceProductStatus = 'publish' | 'draft' | 'pending' | 'private';
 
 /**
+ * The price-only PUT body (#3505, G01-10) for `products/{id}` or
+ * `products/{parentId}/variations/{id}`. Exactly these fields and no others:
+ * anything else here (stock, `manage_stock`, name, description) is what made
+ * a price change overwrite the shop's own values.
+ */
+export interface WooCommercePriceOnlyUpdateRequest {
+  regular_price: string;
+  sale_price?: string;
+}
+
+/**
  * Price/schedule/tax/dimension fields shared verbatim between the top-level
  * product body and the per-variation body — WooCommerce accepts the same
  * field names on both resources. Extracted so `applyCommerce` (adapter) has

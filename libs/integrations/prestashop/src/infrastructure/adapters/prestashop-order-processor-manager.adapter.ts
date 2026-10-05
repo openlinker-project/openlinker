@@ -64,12 +64,35 @@ import type { PrestashopTaxRateUnknown } from '../provisioners/prestashop-tax-ra
 import { allocateByLargestRemainder } from '@openlinker/shared/money';
 import { isTruthyStateFlag } from '../mappers/prestashop-order-state-semantics';
 import { toPrestashopProductAttributeId } from '../mappers/prestashop-variant-id';
+import { derivePrestashopOrderReference } from '../mappers/prestashop-order-reference';
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
-import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
+import {
+  PrestashopOlCarrierMissingException,
+  PrestashopOlModuleException,
+} from '../../domain/exceptions/prestashop-ol-module.exception';
+import { PrestashopAmbiguousWriteException } from '../../domain/exceptions/prestashop-ambiguous-write.exception';
 import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
 import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
 import { hashEmail } from '@openlinker/shared/config';
+
+/**
+ * Whether a caught `importOrder` failure is AMBIGUOUS — a network-level
+ * failure (`PrestashopOpenLinkerModuleClient.signedPost` stamps `status: 0`
+ * with a `'network: ...'` reason) or a `5xx`-shaped module response — either
+ * of which may mean PrestaShop already committed the order despite the
+ * client-side failure (#3469 IMPORTANT-1 review). A deterministic 4xx-shaped
+ * refusal (bad signature, invalid body, payment module unavailable, …) is
+ * NOT ambiguous — PrestaShop's own answer says nothing was created, so no
+ * recovery lookup is warranted and the original error should propagate
+ * unchanged.
+ */
+function isAmbiguousModuleFailure(error: unknown): error is PrestashopOlModuleException {
+  if (!(error instanceof PrestashopOlModuleException)) {
+    return false;
+  }
+  return error.status === 0 || error.status >= 500;
+}
 
 /**
  * Subset of PS `/api/carriers` row fields used by `discoverDynamicCarrierId`.
@@ -150,7 +173,18 @@ export class PrestashopOrderProcessorManagerAdapter
         `status=${order.status}, items=${order.items.length}, total=${order.totals.total} ${order.totals.currency}`
     );
 
-    this.logger.debug(`order: ${JSON.stringify(order)}`);
+    // #3474 — this used to log the WHOLE order via JSON.stringify(order),
+    // which includes buyer name, street address, phone and tax id, and did
+    // so unconditionally (OL_STORE_PII governs what OpenLinker PERSISTS, not
+    // what an adapter may log). Log a redacted projection instead — ids,
+    // counts and totals are enough to diagnose a create without ever writing
+    // a name, address, phone or tax id to the log.
+    this.logger.debug(
+      `order (redacted): customerId=${order.customerId ?? '<none>'} ` +
+        `items=${order.items.length} productIds=${JSON.stringify(order.items.map((i) => i.productId))} ` +
+        `hasShippingAddress=${Boolean(order.shippingAddress)} hasBillingAddress=${Boolean(order.billingAddress)} ` +
+        `totals=${JSON.stringify(order.totals)}`
+    );
 
     // Step 0: Refuse an order that carries no currency, before ANY PrestaShop
     // write (#2139).
@@ -299,10 +333,25 @@ export class PrestashopOrderProcessorManagerAdapter
             (e: { connectionId: string }) => e.connectionId === this.connection.id
           );
 
-          if (prestashopVariantId) {
-            externalVariantIds.set(item.variantId, prestashopVariantId.externalId);
+          if (!prestashopVariantId) {
+            // #3472 — a genuinely missing mapping used to fall through silently
+            // and `toPrestashopProductAttributeId(undefined)` collapsed it to 0
+            // ("no combination"), so a size-M order for a product WITH
+            // combinations was created against the base/default combination:
+            // the wrong item, the wrong stock decrement, possibly the wrong
+            // price, with no error raised. `0` is legitimate only for the
+            // synthetic simple-product marker (#923, `product:<n>`), which
+            // always HAS a mapping — this branch is reached only when no
+            // mapping exists at all, so it is always the error case.
+            throw new PrestashopApiException(
+              `Variant not found in PrestaShop: ${item.variantId} (no external ID mapping ` +
+                `for connection ${this.connection.id}) — refusing to create the order against ` +
+                `the base product instead of the requested combination.`,
+              undefined,
+              undefined
+            );
           }
-          // If variant mapping not found, we'll use 0 (no variant) in the mapper
+          externalVariantIds.set(item.variantId, prestashopVariantId.externalId);
         }
       }
 
@@ -381,129 +430,26 @@ export class PrestashopOrderProcessorManagerAdapter
         olDynamicCarrierId
       );
 
-      // Step 6: Create cart in PrestaShop (required for order creation).
-      // The carrier MUST be set on the cart, not just the order body — PS
-      // resolves the order's id_carrier from the cart at POST /orders time
-      // and ignores the order body's field (#503).
-      this.logger.debug(`Creating cart in PrestaShop for order creation`);
-      const prestashopCartData = this.orderMapper.mapCartCreate(
-        order,
-        externalCustomerId,
-        externalProductIds,
-        externalVariantIds,
-        externalShippingAddressId,
-        externalBillingAddressId,
-        externalCurrencyId,
-        externalLangId,
-        externalCarrierId
-      );
+      // Step 5d: derive the PrestaShop-safe order reference (#3473) — at most
+      // `PRESTASHOP_ORDER_REFERENCE_MAX_LENGTH` characters, so what is SENT to
+      // `importorder` and what the recovery lookup below SEARCHES BY can never
+      // disagree. A 36-character Allegro checkoutFormId sent verbatim is
+      // stored truncated by `ps_orders.reference` (VARCHAR(9), non-strict
+      // MySQL), so an exact lookup on the full value never matched it.
+      const referenceKey = order.orderNumber
+        ? derivePrestashopOrderReference(order.orderNumber)
+        : undefined;
 
-      let externalCartId: string | number;
-      try {
-        const createdCart = await this.httpClient.createResource<{ id: string | number }>(
-          'carts',
-          prestashopCartData
-        );
-        externalCartId = createdCart.id;
-        this.logger.debug(`PrestaShop cart created successfully: cartId=${externalCartId}`);
-      } catch (cartError) {
-        const errorMessage = cartError instanceof Error ? cartError.message : String(cartError);
-        this.logger.error(`Failed to create cart in PrestaShop: ${errorMessage}`);
-        throw new PrestashopProvisioningException(
-          `Failed to create cart in PrestaShop: ${errorMessage}`
-        );
-      }
-
-      // Step 6.5: Sidecar write for the OL Dynamic carrier path (#516).
-      // When the resolved carrier matches the OL Dynamic carrier id, write
-      // the buyer-paid amount into the module's sidecar table BEFORE
-      // POST /orders so PS can read the authoritative value via
-      // getOrderShippingCostExternal() at order-total time. Static PS
-      // carriers don't need this — PS computes shipping from their own
-      // range tables. Throws PrestashopOlModuleException on non-2xx
-      // (NOT best-effort; abort before order create rather than ship at
-      // zero).
-      if (externalCarrierId === olDynamicCarrierId) {
-        const idCart = Number.parseInt(String(externalCartId), 10);
-        // Free-text debug label — not load-bearing. We don't know the source
-        // platform type from OrderSourceRef (only `connectionId` + `eventId`),
-        // so the label leans on whichever neutral identifier is available.
-        const sourceLabel = order.source
-          ? `connection:${order.source.connectionId}` +
-            (order.source.eventId ? `:event:${order.source.eventId}` : '') +
-            (order.orderNumber ? `:order:${order.orderNumber}` : '')
-          : order.orderNumber
-            ? `order:${order.orderNumber}`
-            : undefined;
-        await this.openlinkerModuleClient.writeCartShipping({
-          idCart,
-          amountTaxExcl: order.totals.shipping,
-          amountTaxIncl: order.totals.shipping,
-          source: sourceLabel,
-        });
-        this.logger.debug(
-          `OL sidecar written: idCart=${idCart} amountTaxIncl=${order.totals.shipping} ` +
-            `source=${sourceLabel ?? '<none>'}`
-        );
-      }
-
-      // Step 6.6: Resolve every line's buyer-paid (source-authoritative) net
-      // unit price, to be pinned as cart-scoped `specific_prices` before the
-      // order is created (#895 / ADR-014). PS prices the order's
-      // `order_detail` from the cart; without
-      // this it would use the catalog price and land the order in
-      // `Payment error`. Per the createOrder invariant, a line we cannot pin
-      // MUST fail (throw) rather than silently mis-price — `pinLinePrices`
-      // records created ids into `pinnedPriceIds` as it goes, so the outer
-      // catch cleans up any partial pins before the error propagates.
-      const linePins = await this.resolveLinePins(order, externalProductIds, externalVariantIds);
-
-      // A module that advertises `line_prices` pins the whole set inside the
-      // order-import request below, which is two fewer Webservice calls per
-      // line - sixteen of twenty-seven on an eight-line order (#2597). The
-      // capability is learned from a previous import response, so the first
-      // order after a restart still takes this path.
-      const moduleWritesLinePins =
-        linePins.length > 0 && this.openlinkerModuleClient.supportsLinePrices();
-      if (linePins.length > 0 && !moduleWritesLinePins) {
-        await this.postLinePins(
-          linePins,
-          externalCartId,
-          externalCustomerId,
-          externalCurrencyId,
-          pinnedPriceIds
-        );
-      }
-
-      // Step 7+8: Create the order through PrestaShop's canonical flow —
-      // PaymentModule::validateOrder via the OL module's `importorder` endpoint
-      // (ADR-016 / #905), NOT the raw WS POST /orders, which bypasses
-      // validateOrder and silently drops the carrier + recomputes shipping
-      // (root of #503/#467/#513/#898). The cart (carrier + delivery address),
-      // the OL sidecar (#516), and the cart-scoped specific_prices (#895) are
-      // already in place; the module sets the cart's delivery_option then calls
-      // validateOrder with $dont_touch_amount so OL's total is authoritative.
-      const stateId = await this.resolveStateId(order.status);
-      await this.warnIfUnpaidOrderBooksAsSettled(order, stateId);
-      let externalOrderId: string;
-      let resolvedReference: string;
-
-      // Reconciliation sanity-check (ADR-016): `amountPaid` is sent with
-      // `$dont_touch_amount=true`, so PS records it verbatim as `total_paid_real`
-      // while `total_paid` is recomputed from the cart (pinned lines + sidecar
-      // shipping). If the two diverge, validateOrder re-raises the exact
-      // "X paid instead of Y" Payment-error banner #898 set out to kill. We
-      // can't see the PS-side cart total without a round-trip, but we CAN catch
-      // the common cause — an order-level discount/adjustment not represented in
-      // `subtotal + shipping` — from OrderCreate's own totals. Warn (not throw):
-      // this is observability, the int-spec is the hard gate.
-      const expectedCartTotal = order.totals.subtotal + order.totals.shipping;
-      if (Math.abs(expectedCartTotal - order.totals.total) > 0.01) {
+      // Without an orderNumber the reference recovery below is unavailable AND
+      // validateOrder mints its own random reference. Source orders always carry
+      // an orderNumber (e.g. Allegro checkoutFormId), so this is a
+      // should-not-happen guard — warn so the drift is detectable. The
+      // OrderSyncService lock + source-id mapping remain the primary idempotency.
+      if (!order.orderNumber) {
         this.logger.warn(
-          `Order total reconciliation drift for orderNumber=${order.orderNumber ?? 'N/A'}: ` +
-            `subtotal(${order.totals.subtotal}) + shipping(${order.totals.shipping}) = ${expectedCartTotal} ` +
-            `≠ total(${order.totals.total}). validateOrder may flag a payment mismatch — ` +
-            `an order-level discount/adjustment is likely not reflected in the rebuilt cart.`
+          `createOrder invoked without order.orderNumber (connection=${this.connection.id}) ` +
+            `— reference-based duplicate recovery is unavailable; relying on OrderSyncService ` +
+            `lock + source-id mapping for idempotency.`
         );
       }
 
@@ -511,32 +457,153 @@ export class PrestashopOrderProcessorManagerAdapter
       // adapter creates unconditionally — idempotency proper (skip-if-exists +
       // the external↔internal mapping write) is owned by OrderSyncService under
       // a per-(order, destination) lock. This reference lookup only recovers the
-      // existing order on a retry that rebuilt the cart (new id_cart, so the
-      // endpoint's own cart-keyed idempotency can't see the prior order).
-      const preexistingOrder = order.orderNumber
-        ? await this.findExistingOrderByReference(order.orderNumber)
+      // existing order on a retry whose earlier attempt's response was lost
+      // after PrestaShop already committed it.
+      //
+      // Runs BEFORE cart, sidecar and pin creation (#3473) — moved here from
+      // just ahead of the import call, where every retry that found nothing
+      // (because the earlier attempt's exact-reference lookup missed a
+      // truncated match) had already created — and abandoned — a fresh cart,
+      // sidecar row and set of `specific_prices` pins on its way to
+      // discovering the reuse candidate too late to avoid them.
+      const preexistingOrder = referenceKey
+        ? await this.findExistingOrderByReference(referenceKey)
         : null;
 
-      // Without an orderNumber the reference recovery above is unavailable AND
-      // validateOrder mints its own random reference. Source orders always carry
-      // an orderNumber (e.g. Allegro checkoutFormId), so this is a
-      // should-not-happen guard — warn so the drift is detectable. The
-      // OrderSyncService lock + source-id mapping remain the primary idempotency.
-      if (!order.orderNumber) {
-        this.logger.warn(
-          `createOrder invoked without order.orderNumber for externalCartId=${externalCartId} ` +
-            `connection=${this.connection.id} — reference-based duplicate recovery is unavailable; ` +
-            `relying on OrderSyncService lock + source-id mapping for idempotency.`
-        );
-      }
+      let externalOrderId: string;
+      let resolvedReference: string;
 
       if (preexistingOrder) {
         externalOrderId = String(preexistingOrder.id);
-        resolvedReference = preexistingOrder.reference || order.orderNumber || externalOrderId;
+        resolvedReference = preexistingOrder.reference || referenceKey || externalOrderId;
         this.logger.log(
-          `Reusing existing PrestaShop order by reference=${order.orderNumber}: externalOrderId=${externalOrderId}`
+          `Reusing existing PrestaShop order by reference=${referenceKey}: externalOrderId=${externalOrderId}`
         );
       } else {
+        // Step 6: Create cart in PrestaShop (required for order creation).
+        // The carrier MUST be set on the cart, not just the order body — PS
+        // resolves the order's id_carrier from the cart at POST /orders time
+        // and ignores the order body's field (#503).
+        this.logger.debug(`Creating cart in PrestaShop for order creation`);
+        const prestashopCartData = this.orderMapper.mapCartCreate(
+          order,
+          externalCustomerId,
+          externalProductIds,
+          externalVariantIds,
+          externalShippingAddressId,
+          externalBillingAddressId,
+          externalCurrencyId,
+          externalLangId,
+          externalCarrierId
+        );
+
+        let externalCartId: string | number;
+        try {
+          const createdCart = await this.httpClient.createResource<{ id: string | number }>(
+            'carts',
+            prestashopCartData
+          );
+          externalCartId = createdCart.id;
+          this.logger.debug(`PrestaShop cart created successfully: cartId=${externalCartId}`);
+        } catch (cartError) {
+          const errorMessage = cartError instanceof Error ? cartError.message : String(cartError);
+          this.logger.error(`Failed to create cart in PrestaShop: ${errorMessage}`);
+          throw new PrestashopProvisioningException(
+            `Failed to create cart in PrestaShop: ${errorMessage}`
+          );
+        }
+
+        // Step 6.5: Sidecar write for the OL Dynamic carrier path (#516).
+        // When the resolved carrier matches the OL Dynamic carrier id, write
+        // the buyer-paid amount into the module's sidecar table BEFORE
+        // POST /orders so PS can read the authoritative value via
+        // getOrderShippingCostExternal() at order-total time. Static PS
+        // carriers don't need this — PS computes shipping from their own
+        // range tables. Throws PrestashopOlModuleException on non-2xx
+        // (NOT best-effort; abort before order create rather than ship at
+        // zero).
+        if (externalCarrierId === olDynamicCarrierId) {
+          const idCart = Number.parseInt(String(externalCartId), 10);
+          // Free-text debug label — not load-bearing. We don't know the source
+          // platform type from OrderSourceRef (only `connectionId` + `eventId`),
+          // so the label leans on whichever neutral identifier is available.
+          const sourceLabel = order.source
+            ? `connection:${order.source.connectionId}` +
+              (order.source.eventId ? `:event:${order.source.eventId}` : '') +
+              (order.orderNumber ? `:order:${order.orderNumber}` : '')
+            : order.orderNumber
+              ? `order:${order.orderNumber}`
+              : undefined;
+          await this.openlinkerModuleClient.writeCartShipping({
+            idCart,
+            amountTaxExcl: order.totals.shipping,
+            amountTaxIncl: order.totals.shipping,
+            source: sourceLabel,
+          });
+          this.logger.debug(
+            `OL sidecar written: idCart=${idCart} amountTaxIncl=${order.totals.shipping} ` +
+              `source=${sourceLabel ?? '<none>'}`
+          );
+        }
+
+        // Step 6.6: Resolve every line's buyer-paid (source-authoritative) net
+        // unit price, to be pinned as cart-scoped `specific_prices` before the
+        // order is created (#895 / ADR-014). PS prices the order's
+        // `order_detail` from the cart; without
+        // this it would use the catalog price and land the order in
+        // `Payment error`. Per the createOrder invariant, a line we cannot pin
+        // MUST fail (throw) rather than silently mis-price — `pinLinePrices`
+        // records created ids into `pinnedPriceIds` as it goes, so the outer
+        // catch cleans up any partial pins before the error propagates.
+        const linePins = await this.resolveLinePins(order, externalProductIds, externalVariantIds);
+
+        // A module that advertises `line_prices` pins the whole set inside the
+        // order-import request below, which is two fewer Webservice calls per
+        // line - sixteen of twenty-seven on an eight-line order (#2597). The
+        // capability is learned from a previous import response, so the first
+        // order after a restart still takes this path.
+        const moduleWritesLinePins =
+          linePins.length > 0 && this.openlinkerModuleClient.supportsLinePrices();
+        if (linePins.length > 0 && !moduleWritesLinePins) {
+          await this.postLinePins(
+            linePins,
+            externalCartId,
+            externalCustomerId,
+            externalCurrencyId,
+            pinnedPriceIds
+          );
+        }
+
+        // Step 7+8: Create the order through PrestaShop's canonical flow —
+        // PaymentModule::validateOrder via the OL module's `importorder` endpoint
+        // (ADR-016 / #905), NOT the raw WS POST /orders, which bypasses
+        // validateOrder and silently drops the carrier + recomputes shipping
+        // (root of #503/#467/#513/#898). The cart (carrier + delivery address),
+        // the OL sidecar (#516), and the cart-scoped specific_prices (#895) are
+        // already in place; the module sets the cart's delivery_option then calls
+        // validateOrder with $dont_touch_amount so OL's total is authoritative.
+        const stateId = await this.resolveStateId(order.status);
+        await this.warnIfUnpaidOrderBooksAsSettled(order, stateId);
+
+        // Reconciliation sanity-check (ADR-016): `amountPaid` is sent with
+        // `$dont_touch_amount=true`, so PS records it verbatim as `total_paid_real`
+        // while `total_paid` is recomputed from the cart (pinned lines + sidecar
+        // shipping). If the two diverge, validateOrder re-raises the exact
+        // "X paid instead of Y" Payment-error banner #898 set out to kill. We
+        // can't see the PS-side cart total without a round-trip, but we CAN catch
+        // the common cause — an order-level discount/adjustment not represented in
+        // `subtotal + shipping` — from OrderCreate's own totals. Warn (not throw):
+        // this is observability, the int-spec is the hard gate.
+        const expectedCartTotal = order.totals.subtotal + order.totals.shipping;
+        if (Math.abs(expectedCartTotal - order.totals.total) > 0.01) {
+          this.logger.warn(
+            `Order total reconciliation drift for orderNumber=${order.orderNumber ?? 'N/A'}: ` +
+              `subtotal(${order.totals.subtotal}) + shipping(${order.totals.shipping}) = ${expectedCartTotal} ` +
+              `≠ total(${order.totals.total}). validateOrder may flag a payment mismatch — ` +
+              `an order-level discount/adjustment is likely not reflected in the rebuilt cart.`
+          );
+        }
+
         this.logger.debug(`Submitting order import (validateOrder) request to PrestaShop`);
         try {
           const imported = await this.openlinkerModuleClient.importOrder({
@@ -546,7 +613,7 @@ export class PrestashopOrderProcessorManagerAdapter
             // Matches the payment provenance the WS path recorded — the module
             // delegates to ps_checkpayment::validateOrder.
             paymentMethod: 'Check payment',
-            orderReference: order.orderNumber ?? '',
+            orderReference: referenceKey ?? '',
             ...(moduleWritesLinePins ? { linePrices: linePins } : {}),
           });
           externalOrderId = String(imported.idOrder);
@@ -560,7 +627,48 @@ export class PrestashopOrderProcessorManagerAdapter
           this.logger.error(
             `Failed to create order via OL module importOrder: ${formatBodyForLog(msg)}`
           );
-          throw createError;
+
+          // #3469 IMPORTANT-1 review — importOrder is a non-idempotent write
+          // with no internal retry (PrestashopOpenLinkerModuleClient.signedPost
+          // makes exactly one attempt). An AMBIGUOUS failure (network, or a
+          // 5xx-shaped module response) may mean PrestaShop already
+          // committed the order — the same condition #3473's recovery
+          // lookup exists to resolve, just discovered a moment later than
+          // the pre-cart-creation check. Try it again, once, before giving
+          // up: this call's own importOrder may be the one that actually
+          // created the order, not merely a retry of an earlier attempt.
+          if (isAmbiguousModuleFailure(createError) && referenceKey) {
+            const recovered = await this.findExistingOrderByReference(referenceKey);
+            if (recovered) {
+              this.logger.log(
+                `Recovered PrestaShop order after an ambiguous importOrder failure: ` +
+                  `reference=${referenceKey} externalOrderId=${recovered.id}`
+              );
+              externalOrderId = String(recovered.id);
+              resolvedReference = recovered.reference || referenceKey || externalOrderId;
+              // Deliberately does NOT throw — falls through past this
+              // try/catch to the post-creation cleanup + return below,
+              // exactly as the pre-existing `if (preexistingOrder)` branch
+              // does.
+            } else {
+              // Recovery failed too — raised non-retryable (not the bare
+              // createError) so a job-level retry does not re-send the same
+              // importOrder call: it already tried to recover once here, and
+              // a blind repeat can only either duplicate the order (if it DID
+              // commit and the lookup missed it — e.g. a transient read
+              // failure) or fail identically (if it genuinely never
+              // committed). Either way this needs an operator, not another
+              // attempt.
+              throw new PrestashopAmbiguousWriteException(
+                msg,
+                'POST',
+                'importorder',
+                createError instanceof PrestashopOlModuleException ? createError.status : undefined
+              );
+            }
+          } else {
+            throw createError;
+          }
         }
       }
 
@@ -780,8 +888,11 @@ export class PrestashopOrderProcessorManagerAdapter
         }
       } catch (error) {
         // Fail loudly (createOrder invariant, ADR-014): do NOT let the order be
-        // created at the catalog price. Throw so the idempotency-guarded retry
-        // re-attempts; the caller's catch cleans up any pins created so far.
+        // created at the catalog price. Throw so the caller's catch cleans up
+        // any pins created so far; this is NOT retried automatically (#3474)
+        // — `OrderSyncService.syncOrder` isolates a per-destination
+        // `createOrder` failure and reports the sync job as succeeded, so the
+        // operator must use the destination Retry action.
         // Surface the upstream PrestaShop body (the real validation reason lives
         // in `responseBody`, not `message`) — capped via `formatBodyForLog` (#923).
         const detail =
@@ -843,9 +954,16 @@ export class PrestashopOrderProcessorManagerAdapter
       : `PrestaShop product #${externalProductId}`;
 
     if (resolution.reason === 'transport') {
+      // #3474 — this used to claim "the sync job retries on its own", which
+      // is false: `OrderSyncService.syncOrder` isolates a per-destination
+      // `createOrder` failure under `Promise.allSettled` and reports the
+      // overall sync job as succeeded, so nothing here re-invokes
+      // `createOrder` automatically. An operator reading the old message
+      // waited for a retry that was never going to happen.
       return new PrestashopApiException(
         `${productLabel}: tax rate could not be read - ${resolution.evidence}. ` +
-          `No order was created; the sync job retries on its own.`,
+          `No order was created. This is not retried automatically — use the destination ` +
+          `Retry action on the order once the read succeeds.`,
         resolution.statusCode,
         undefined,
         this.connection.id
@@ -1265,12 +1383,18 @@ export class PrestashopOrderProcessorManagerAdapter
 
   /**
    * Best-effort lookup of an existing PrestaShop order by its `reference`
-   * (the OL order number). Returns the first match, or null when none / on
-   * error. Dedup net on the validateOrder create path (ADR-016 / #905): a job
-   * retry that rebuilds the cart gets a new `id_cart`, so the endpoint's
-   * cart-keyed idempotency can't see the prior order — this reference check
-   * (plus Step 0's identifier-mapping guard) prevents a duplicate. Never
-   * throws: a lookup failure falls through to create.
+   * (the derived, PrestaShop-safe order reference — #3473, see
+   * `derivePrestashopOrderReference`). Returns the first match, or null when
+   * none / on error. Dedup net on the validateOrder create path (ADR-016 /
+   * #905): a job retry that rebuilds the cart gets a new `id_cart`, so the
+   * endpoint's cart-keyed idempotency can't see the prior order — this
+   * reference check is what recovers it instead. Real idempotency (skip-if-
+   * exists + the external↔internal mapping write) is owned by
+   * `OrderSyncService`'s per-(order, destination) lock (#906) and its
+   * update-or-create mapping check (#909); this lookup is defense-in-depth,
+   * called from `createOrder` BEFORE cart/sidecar/pin creation (#3473) so a
+   * successful recovery leaves no abandoned rows behind. Never throws: a
+   * lookup failure falls through to create.
    */
   private async findExistingOrderByReference(reference: string): Promise<PrestashopOrder | null> {
     try {
@@ -1395,7 +1519,8 @@ export class PrestashopOrderProcessorManagerAdapter
         }
         this.logger.warn(
           `Order-state mapping resolved to non-positive "${mapped}" for status='${status}' ` +
-            `(connection ${this.connection.id}) — ignoring; falling back to default-install map.`
+            `(connection ${this.connection.id}) — ignoring; falling back to the shop's own ` +
+            `state catalogue (#2607, the default-install map was removed).`
         );
       }
     }

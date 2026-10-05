@@ -23,6 +23,33 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Never route a one-field change through a full-upsert port
+
+**Context**: price-change propagation to a WooCommerce shop (#3144) reused
+`ShopProductManagerPort.publishProduct`, because the port had no narrower write.
+
+**Problem**: `publishProduct` is a full upsert. The WooCommerce body always sends
+`manage_stock: true` + `stock_quantity`, and name / description whenever content
+is present, so every price change overwrote the shop's stock (and switched stock
+management on for products the shop did not manage), and its title and
+description whenever no earlier publish snapshot existed. Reusing the last
+snapshot and wrapping the call in the stock lock made the write *consistent*,
+not *narrow* — it still wrote fields nobody asked to change. The e2e run caught
+it only because stock 30 came back as OL's number (G01-10).
+
+**Rule**: a change to one field needs a write that carries only that field. If
+the port has none, add an optional sub-capability with a type guard
+(`ShopProductPriceUpdater`) and fall back to the full write only for adapters
+that lack it. Assert the adapter body with `toEqual` on the exact object, so a
+field sneaking back in fails the spec.
+
+**Applies to**: `libs/core/src/listings/application/services/price-change-apply.service.ts`,
+any shop/marketplace adapter `publishProduct`-style upsert.
+
+**Source**: #3505 (G01-10), 2026-10-01.
+
+---
+
 ## `position: sticky` inside `.shell-content` never engages - `overflow-x: hidden` made the shell a scroll container that does not scroll
 
 **Context**: the sync-pacing summary rail had to stay in view while the form beside it scrolls
@@ -2089,6 +2116,51 @@ or the fixture's row order changes.
 `DEFAULT_INSTALL_ORDER_STATES` for a status that isn't `shipped`/`delivered`/`cancelled`.
 
 **Source**: #3526 (epic #3506), 2026-09-28.
+
+---
+
+## An HTTP client's default retry loop is opt-out only for methods that are idempotent by definition
+
+**Context**: #3505 (epic G01) found that the InPost, Allegro, WooCommerce and PrestaShop HTTP
+clients all retried a POST on an ambiguous `5xx` or a network/timeout error exactly like a GET —
+the retry loop keyed on status code and error type, never on the HTTP method. `POST
+/v1/organizations/{id}/shipments` (InPost label create), `POST /sale/product-offers` (Allegro offer
+create), `POST /orders` (WooCommerce), and every PrestaShop Webservice `createResource` call
+inherited this. A committed-but-lost response — the request succeeded on the platform, but the
+client never saw the 2xx — is indistinguishable from a genuine failure, so the retry re-sent an
+identical create: a second paid shipping label, a second live marketplace offer, a second shop
+order. The correct precedent already existed in the same tree (DPD, eParagony, Erli, KSeF all
+gated retry by method), so this was an inconsistency, not a missing pattern.
+
+**Problem, restated as the rule that was missing**: a shared retry loop's default must be
+"idempotent methods retry, everything else does not," with a per-call opt-in
+(`{ idempotent: true }`) for the rare POST that is genuinely safe (the platform holds its own
+dedup key, or the call is a read dressed as a POST). `429` is the one exception that retries
+*regardless* of method or the opt-in, because a 429 means the platform refused the request before
+doing any work — there is nothing to double.
+
+**A shared test fixture that predates the fix can itself become the regression surface.** Fixing
+this exposed a second-order defect: `PrestashopOrderProcessorManagerAdapter` sends `order.orderNumber`
+verbatim as `ps_orders.reference`, a `VARCHAR(9)` column under non-strict MySQL — so a 36-character
+Allegro `checkoutFormId` was silently truncated, and the duplicate-recovery lookup's *exact* filter
+on the untruncated value could never match what was actually stored. The shared
+`createTestOrder()` fixture's default `orderNumber: 'TEST-ORDER-001'` (14 characters) had been
+exercising this truncation-unsafe path in every test that used it, unnoticed, because no test
+asserted on the literal reference sent — only on the mocked response. Once the fix derived a
+column-safe reference, every assertion of the literal shape `orderReference: order.orderNumber`
+had to become `orderReference: derivePrestashopOrderReference(order.orderNumber)`.
+
+**Rule**: when a shared fixture's default value happens to sit on the safe side of a boundary
+(≤ 9 chars, a `0`/exempt tax rate, an always-`false` flag), a later correctness fix that makes that
+boundary load-bearing will pass against the fixture and still ship a genuine bug — or, as here,
+break silently because the fixture was ALREADY on the wrong side, worked around by no test
+depending on the literal value. Audit a shared fixture's defaults against the new boundary
+explicitly, not just "do the existing tests still pass."
+
+**Applies to**: any shared retry-loop implementation (`libs/integrations/*/src/infrastructure/http/*-client.ts`)
+and to `createTestOrder()` / equivalent shared order fixtures across the integration packages.
+
+**Source**: #3469, #3470, #3472, #3473 (epic #3505).
 
 ---
 
