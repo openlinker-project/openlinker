@@ -59,8 +59,11 @@ function fail(...issues: string[]): ShoperBaseUrlParseResult {
 
 /**
  * Parses the operator-supplied `baseUrl`. Returns the normalised lowercase
- * host, or the reasons the value was refused (all of them, so an operator
- * fixing a value sees every problem at once).
+ * host, or the reasons the value was refused. The credentials / port / path
+ * checks accumulate so an operator sees every problem at once; the host checks
+ * report only the first that fires, since several complaints about one host
+ * value are noise. A trailing-dot FQDN (`shop.example.com.`) is refused on
+ * purpose: the value is stored and compared as written.
  */
 export function parseShoperBaseUrl(raw: unknown): ShoperBaseUrlParseResult {
   if (typeof raw !== 'string' || raw.trim().length === 0) {

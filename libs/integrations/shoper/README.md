@@ -21,8 +21,11 @@ InventoryMaster, OrderProcessorManager, fulfilment writeback and webhooks land i
 ```
 
 `baseUrl` is the shop's own host. An `https://` URL naming only that host is accepted and normalised.
-Rejected: `http://`, a path / query / port / credentials, IP addresses, `localhost` and single-label
-hosts. The token travels on every request, so HTTPS is the only transport.
+Rejected: `http://`, a path / query / port / credentials, IP addresses, `localhost`, single-label
+hosts and reserved / private suffixes (`.internal`, `.local`, `.lan`, ...). The token travels on every request, so HTTPS is the only transport.
+
+To create the connection through the API, send `platformType: "shoper"` and
+`adapterKey: "shoper.restapi.v1"` (the web UI does not list Shoper yet).
 
 ## Credentials
 

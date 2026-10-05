@@ -11,11 +11,13 @@
  * for any capability fails with the SDK's uniform "does not support" error.
  *
  * Not declared, and each for a stated reason:
- *   - `defaultRateLimit` - Shoper's real request ceiling is unconfirmed
- *     (SPIKE-3638 C6: a 25-request burst was never throttled; the shop only
- *     reports `x-shop-api-limit: 10`, unit unknown). Inventing a number is
- *     worse than none; absent means unlimited until the operator sets
- *     `config.rateLimit`.
+ *   - `defaultRateLimit` - Shoper's real request ceiling is UNKNOWN, not
+ *     "unreached": every response carries `x-shop-api-limit: 10` (SPIKE-3638
+ *     C5), unit unstated, and the 25-request burst that was never throttled
+ *     (C6) is explicitly not evidence of no limit (open risk 2). Inventing a
+ *     number is worse than none, so a connection whose operator never sets
+ *     `config.rateLimit` is paced by nothing on OpenLinker's side. Revisit once
+ *     the longer sustained-rate test risk 2 asks for has run.
  *   - a retry classifier - nothing here enqueues work yet.
  *   - Sales documents (invoice / receipt) - confirmed absent from Shoper's API
  *     (SPIKE-3638), a deliberate scope boundary, not a gap.
