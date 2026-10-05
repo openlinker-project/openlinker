@@ -1,9 +1,12 @@
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
+import { canArchive, hasMissingCredentials } from '../api/connections.types';
 import { useDisableConnectionMutation } from '../hooks/use-disable-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import { EnableConnectionButton } from './EnableConnectionButton';
+import { ArchiveConnectionButton } from './archive-connection-button';
+import { RestoreConnectionButton } from './restore-connection-button';
 import { usePlatform } from '../../../shared/plugins';
 import { TriggerSyncDialog } from '../../sync-jobs';
 import { Button } from '../../../shared/ui/button';
@@ -18,9 +21,11 @@ import { captureDemoEvent } from '../../demo';
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
+  /** Replaces "Edit connection" for a connection configured elsewhere (the OMS). */
+  settingsLink?: { to: string; label: string };
 }
 
-export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelProps): ReactElement {
+export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionActionsPanelProps): ReactElement {
   const disableConnection = useDisableConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -34,6 +39,10 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
   const sync = useWriteAccess('sync:write', demoMode);
 
   const isDisabled = connection.status === 'disabled';
+  // #3657 — an archived connection has no credential and resolves no adapter,
+  // so Test / Trigger sync / Disable / Enable would all fail. Restore is the
+  // only action that means anything there.
+  const isArchived = connection.status === 'archived';
 
   async function handleTest(): Promise<void> {
     try {
@@ -56,6 +65,36 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
         description: (error as Error).message,
       });
     }
+  }
+
+  if (isArchived) {
+    return (
+      <div className="panel panel--dense">
+        <div className="panel__header">
+          <div>
+            <p className="eyebrow">Operator</p>
+            <h3 className="section-title">Actions</h3>
+          </div>
+          <span className="panel__meta">Manage connection</span>
+        </div>
+        <div className="action-list">
+          {write.visible ? (
+            <div className="action-list__item">
+              <div>
+                <strong>Restore connection</strong>
+                <p className="muted-text">
+                  Bring it back as a disabled connection. Its credentials were deleted when it was
+                  archived, so you will need to enter them again before enabling it.
+                </p>
+              </div>
+              <RestoreConnectionButton connection={connection} />
+            </div>
+          ) : (
+            <p className="muted-text">This connection is archived.</p>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -102,7 +141,19 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
         ) : null}
 
-        {write.visible ? (
+        {write.visible && settingsLink ? (
+          <div className="action-list__item">
+            <div>
+              <strong>{settingsLink.label}</strong>
+              <p className="muted-text">This connection is configured from its own settings page.</p>
+            </div>
+            <Link className="button button--secondary" to={settingsLink.to}>
+              Open
+            </Link>
+          </div>
+        ) : null}
+
+        {write.visible && !settingsLink ? (
           <div className="action-list__item">
             <div>
               <strong>Edit connection</strong>
@@ -157,7 +208,7 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
         ) : null}
 
-        {write.visible && isDisabled ? (
+        {write.visible && isDisabled && !hasMissingCredentials(connection) ? (
           <div className="action-list__item">
             <div>
               <strong>Enable connection</strong>
@@ -167,6 +218,31 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
               </p>
             </div>
             <EnableConnectionButton connection={connection} />
+          </div>
+        ) : null}
+
+        {write.visible && isDisabled && !canArchive(connection) ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Archive connection</strong>
+              <p className="muted-text">
+                This connection can be disabled but not archived. It holds settings other parts of
+                OpenLinker rely on, so it stays on your connections list.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {write.visible && canArchive(connection) ? (
+          <div className="action-list__item">
+            <div>
+              <strong>Archive connection</strong>
+              <p className="muted-text">
+                Hide it from your connections and delete its saved credentials. Mappings and history
+                are kept, and it can be restored later.
+              </p>
+            </div>
+            <ArchiveConnectionButton connection={connection} />
           </div>
         ) : null}
       </div>

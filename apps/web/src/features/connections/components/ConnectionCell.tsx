@@ -77,6 +77,7 @@ const STATUS_NOTES: Record<Exclude<ConnectionStatus, 'active'>, string> = {
   disabled: 'Disabled',
   error: 'Error',
   needs_reauth: 'Re-auth',
+  archived: 'Archived',
 };
 
 export function ConnectionCell({

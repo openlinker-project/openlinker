@@ -150,8 +150,14 @@ export interface ReservationRepositoryPort {
    *
    * `releaseHeld` is keyed, so cancelling an order (#2346/#2347) and the expiry
    * sweep (#2349) both have to discover the keys before they can release them.
+   *
+   * `orderLineIds` narrows the read in SQL (#3491 review): omitted means every
+   * held line, an explicit empty array means none.
    */
-  listHeldByOrderRecordId(orderRecordId: string): Promise<readonly Reservation[]>;
+  listHeldByOrderRecordId(
+    orderRecordId: string,
+    orderLineIds?: readonly string[]
+  ): Promise<readonly Reservation[]>;
 
   /**
    * EVERY row for one order, whatever its status — the terminal ones included.

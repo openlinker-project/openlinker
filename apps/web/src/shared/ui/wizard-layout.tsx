@@ -14,6 +14,8 @@ interface WizardLayoutProps extends PropsWithChildren {
   stepper: ReactNode;
   summary?: ReactNode;
   className?: string;
+  /** Puts the stepper in a column beside the form instead of above it. */
+  stepperPlacement?: 'top' | 'side';
 }
 
 export function WizardLayout({
@@ -21,8 +23,11 @@ export function WizardLayout({
   className,
   stepper,
   summary,
+  stepperPlacement = 'top',
 }: WizardLayoutProps): ReactElement {
-  const classes = ['wizard-layout', className].filter(Boolean).join(' ');
+  const classes = ['wizard-layout', stepperPlacement === 'side' ? 'wizard-layout--side' : '', className]
+    .filter(Boolean)
+    .join(' ');
   return (
     <div className={classes}>
       <div className="wizard-layout__stepper">{stepper}</div>

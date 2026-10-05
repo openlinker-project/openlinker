@@ -50,6 +50,7 @@ const STATUS_COPY: Record<Exclude<ConnectionStatus, 'active'>, { label: string; 
   needs_reauth: { label: 'Needs re-auth', tone: 'error' },
   error: { label: 'Connection error', tone: 'error' },
   disabled: { label: 'Disabled', tone: 'neutral' },
+  archived: { label: 'Archived', tone: 'neutral' },
 };
 
 export function BulkDestinationBar({

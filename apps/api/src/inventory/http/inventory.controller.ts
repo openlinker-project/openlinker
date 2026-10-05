@@ -38,7 +38,7 @@ export class InventoryController {
   @ApiOperation({
     summary: 'List inventory items',
     description:
-      'Returns a paginated list of inventory items. Supports filtering by productId, productVariantId, and locationId.',
+      'Returns a paginated list of inventory items. Supports filtering by productId, productVariantId, and locationId, and excludeStale=true to leave out stale rows.',
   })
   @ApiResponse({
     status: 200,
@@ -49,10 +49,10 @@ export class InventoryController {
   async listInventory(
     @Query() query: ListInventoryQueryDto
   ): Promise<PaginatedInventoryResponseDto> {
-    const { productId, productVariantId, locationId, limit = 20, offset = 0 } = query;
+    const { productId, productVariantId, locationId, excludeStale, limit = 20, offset = 0 } = query;
 
     const { items, total } = await this.queryService.listInventoryItems(
-      { productId, productVariantId, locationId },
+      { productId, productVariantId, locationId, excludeStale },
       { limit, offset }
     );
 
