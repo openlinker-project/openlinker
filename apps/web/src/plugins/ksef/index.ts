@@ -50,6 +50,7 @@ export const ksefPlugin: OpenLinkerPlugin = definePlugin({
   },
   platform: {
     displayName: 'KSeF (e-invoicing)',
+    shortLabel: 'KSeF',
     setupCard: {
       title: 'KSeF',
       description:

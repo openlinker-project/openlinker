@@ -167,6 +167,7 @@ One pointer per section, identical format every time.
 | [ADR-073](./073-buyer-tax-identity-and-dual-role-document-connections.md) | Buyer tax identity, the fiscalization/invoicing split, and dual-role connections | Accepted | 2026-09-11 |
 | [ADR-074](./074-fulfillment-work-pre-assignment.md) | Pre-assigning a `FulfillmentWork` to a packer | Proposed | 2026-09-21 |
 | [ADR-075](./075-per-destination-relay-claims.md) | Per-destination relay claims | Proposed | 2026-09-25 |
+| [ADR-076](./076-frontend-display-derivation-over-server-vocabularies.md) | A frontend may derive a display sentence from server-owned vocabularies, never legality | Accepted | 2026-09-28 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

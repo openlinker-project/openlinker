@@ -103,7 +103,7 @@ import {
   isParcelClosed,
   parcelTotals,
 } from '../lib/bench-parcel-presentation';
-import { distinguishingAttributeKeys } from '../lib/bench-parcel-attributes';
+import { distinguishingAttributeKeys } from '../../../shared/lib/variant-attributes';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import {
   isBenchAudioMuted,
@@ -173,7 +173,7 @@ export function BenchParcelView({
   // A3. Off while the idle lock covers the bench — see the hook's docblock for
   // why a locked terminal must not keep announcing the packer who walked away.
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() });
-  // A3. False while the idle lock or the handover prompt covers the bench.
+  // A3. False while the idle lock covers the bench.
   const interactive = useBenchInteractive();
 
   const [notice, setNotice] = useState<ScanNotice | null>(null);
@@ -639,7 +639,7 @@ export function BenchParcelView({
   /**
    * Computed once for the whole box, never per row: which attribute actually
    * tells these items apart is a fact about the box's contents. See
-   * `bench-parcel-attributes.ts` for why the full set is the wrong thing to
+   * `shared/lib/variant-attributes.ts` for why the full set is the wrong thing to
    * print — the demo catalogue sends three attributes identical on every line.
    */
   const distinguishingAttributes = distinguishingAttributeKeys(parcel.lines);
