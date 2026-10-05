@@ -152,7 +152,7 @@ any other shop platform in this repo.
 
 ```
 GET /webapi/rest/product-stocks?limit=1
-Authorization: Bearer e81e3b3820419373ffd496fbbc121b2cea35b82270c4aac0f0b11fd908602f26
+Authorization: Bearer <REDACTED>
 
 HTTP/2 200
 x-shop-api-calls: 1
