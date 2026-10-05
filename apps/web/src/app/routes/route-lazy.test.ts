@@ -116,8 +116,10 @@ const lazyRoutes = collectLazyRoutes([
  * and Subiekt nexo speak different bridges, so a connection created under the
  * wrong identity points at an adapter that cannot talk to it. That is one more
  * plugin route (12 -> 13), giving 70.
+ * #3457: `/settings/packing` (the OMS onboarding wizard) adds one lazy
+ * route - from 70 to 71.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 70;
+const EXPECTED_LAZY_ROUTE_COUNT = 71;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

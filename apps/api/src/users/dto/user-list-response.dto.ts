@@ -29,6 +29,22 @@ export class UserSummaryDto {
   })
   packStationLabel!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The person's name as an admin typed it at account creation (#3456), or null. " +
+      'Display only; render `username` when null.',
+  })
+  displayName!: string | null;
+
+  @ApiProperty({
+    description:
+      'Still has to replace an admin-issued one-time password (#3456) — i.e. has not ' +
+      'signed in and changed it yet.',
+  })
+  mustChangePassword!: boolean;
+
   static fromDomain(user: User): UserSummaryDto {
     const dto = new UserSummaryDto();
     dto.id = user.id;
@@ -38,6 +54,8 @@ export class UserSummaryDto {
     dto.status = user.status;
     dto.createdAt = user.createdAt;
     dto.packStationLabel = user.packStationLabel;
+    dto.displayName = user.displayName;
+    dto.mustChangePassword = user.mustChangePassword;
     return dto;
   }
 }

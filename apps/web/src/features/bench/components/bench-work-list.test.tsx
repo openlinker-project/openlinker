@@ -187,9 +187,10 @@ describe('BenchWorkList (#2416)', () => {
     );
     const notRouted = await screen.findByTestId('bench-work-empty-not-routed');
     expect(notRouted).toBeInTheDocument();
-    // B3: the second one names its remedy. Without this the screen states a
-    // problem a packer can do nothing about.
-    expect(notRouted.textContent?.toLowerCase()).toContain('settings');
+    // B3: the second one names its remedy, and where to find it (the OMS is set
+    // up from Connections). Without this the screen states a problem a packer
+    // can do nothing about.
+    expect(notRouted.textContent?.toLowerCase()).toContain('openlinker oms');
   });
 
   it('should report an unrecognised scan and record NOTHING (story C3)', async () => {

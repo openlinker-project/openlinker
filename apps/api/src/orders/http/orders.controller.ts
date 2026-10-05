@@ -1170,6 +1170,12 @@ export class OrdersController {
       // `holdHistory` stay detail-only because those ARE a query per row.
       // #2340's display cache: a badge may render it, no gate may read it.
       activeHoldReason: order.activeHoldReason,
+      // #3455 — free for the same reason: the column is already loaded, and the
+      // entity has already coerced it through core's guard.
+      fulfillmentRoutingSkipReason: order.fulfillmentRoutingSkipReason,
+      // #3485 — free for the same reason; the entity coerced the reason already.
+      fulfillmentBlockReason: order.fulfillmentBlock?.reason ?? null,
+      fulfillmentBlockDetail: order.fulfillmentBlock?.detail ?? null,
     };
   }
 
