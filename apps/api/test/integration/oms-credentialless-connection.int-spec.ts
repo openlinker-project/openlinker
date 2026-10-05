@@ -96,10 +96,11 @@ describe('Credential-less OMS connection (#2405)', () => {
     expect(oms).not.toHaveProperty('credentialsRef');
   });
 
-  it('should REFUSE credential rotation on a credential-less connection, naming the db-backed reason', async () => {
-    // Pins `updateCredentials`'s guard — the second unguarded
-    // `.startsWith('db:')` site — rather than merely noting it as unchanged.
-    // Asserting the MESSAGE matters: this route can 400 for several unrelated
+  it('should REFUSE credentials on a credential-less connection, naming the adapter reason', async () => {
+    // Pins `updateCredentials`'s guard for an empty `credentialsRef`: since
+    // #3657 an empty ref means "store the first credential", and that path
+    // refuses an adapter that takes none (ADR-055) instead of writing a row
+    // nothing reads. Asserting the MESSAGE matters: this route can 400 for several unrelated
     // reasons, so a bare status check would prove nothing about which branch ran.
     const http = harness.getHttp();
     const dataSource = harness.getDataSource();
@@ -117,7 +118,7 @@ describe('Credential-less OMS connection (#2405)', () => {
       .send({ credentials: { anything: 'X' } })
       .expect(400);
 
-    expect(JSON.stringify(response.body)).toMatch(/does not have a db-backed credentials reference/);
+    expect(JSON.stringify(response.body)).toMatch(/uses an adapter that takes no credentials/);
   });
 
   it('should STILL reject a credential-requiring platform created with no credentials', async () => {

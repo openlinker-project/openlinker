@@ -1,5 +1,7 @@
 import type {
   ApproveUserInput,
+  CreateUserRequest,
+  CreateUserResponse,
   PackerListResponse,
   UpdatePackStationLabelInput,
   UserListFilters,
@@ -12,6 +14,8 @@ interface ApiRequest {
 
 export interface UsersApi {
   list: (filters?: UserListFilters) => Promise<UserListResponse>;
+  /** `POST /users` (#3456) — admin only; the account must change its password at first sign-in. */
+  create: (input: CreateUserRequest) => Promise<CreateUserResponse>;
   /** `GET /users/packers` (#3340) — admin+operator, minimal roster. */
   listPackers: () => Promise<PackerListResponse>;
   approve: (userId: string, input: ApproveUserInput) => Promise<void>;
@@ -37,6 +41,12 @@ export function createUsersApi(request: ApiRequest): UsersApi {
   return {
     list(filters): Promise<UserListResponse> {
       return request<UserListResponse>(`/users${buildQuery(filters)}`);
+    },
+    create(input): Promise<CreateUserResponse> {
+      return request<CreateUserResponse>('/users', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
     },
     listPackers(): Promise<PackerListResponse> {
       return request<PackerListResponse>('/users/packers');

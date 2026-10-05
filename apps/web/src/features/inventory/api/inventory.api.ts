@@ -97,6 +97,7 @@ function buildQuery(filters?: InventoryFilters, pagination?: InventoryPagination
   if (filters?.productId) params.set('productId', filters.productId);
   if (filters?.productVariantId) params.set('productVariantId', filters.productVariantId);
   if (filters?.locationId) params.set('locationId', filters.locationId);
+  if (filters?.excludeStale) params.set('excludeStale', 'true');
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();
