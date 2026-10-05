@@ -26,7 +26,7 @@ before the code was written, not discovered by whichever reviewer reads it first
 
 **The frontend may derive a DISPLAY sentence from server-owned vocabularies, and may never derive
 LEGALITY.** Controls keep coming from `supportedActions` alone, exactly as before — nothing about
-this ADR touches that. `summariseFulfillmentWork` takes a narrow six-field struct (never the whole
+this ADR touches that. `summariseFulfillmentWork` takes a narrow seven-field struct (never the whole
 `FulfillmentTask`, so `supportedActions` is structurally unreachable from inside it) and returns a
 sentence or `null`. A `(status, requestStatus)` combination this build does not recognise renders
 **no sentence**, never a guessed or hedged one — the same fail-safe direction `fulfillmentActionHint`
@@ -63,11 +63,12 @@ nothing about this decision asks it to stop.
   re-justified at each call site that needs it.
 
 **Cons / trade-offs:**
-- Three real, reachable states currently render no sentence at all (`open` + `unsubmitted` with a
-  location and no holds — the commonest state a freshly routed task is in; `open` + `accepted`; and
+- Two real, reachable states currently render no sentence at all (`open` + `unsubmitted` with a
+  location and no holds — the commonest state a freshly routed task is in; and
   `requestStatus: 'rejected'`). This is accepted rather than closed by inventing copy for states the
   design of record has no worked example for; a later slice may add sentences for them without
-  touching this ADR.
+  touching this ADR. `open` + `accepted` was a third until #3096 gave it `acceptedWaiting`, because
+  it is the state most live tasks sit in and a hero with nothing under its headline read as broken.
 - A sixth, seventh, … axis value the backend adds silently produces no sentence here until a
   frontend change adds one. That degradation (silence, not a crash and not a wrong claim) is the
   entire point of the rule, so it is not treated as a gap to close.

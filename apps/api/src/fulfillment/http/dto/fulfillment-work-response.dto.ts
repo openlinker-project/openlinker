@@ -8,22 +8,23 @@
  *
  * ## `buyerNameMasked` is the only buyer PII here, and may not gain a sibling
  *
- * #3425 reversed ADR-062's buyer-PII exclusion for ONE value, on ONE
- * condition: it is masked to an initial plus surname, server-side, at
- * projection time, from a value the read already loads. The full name is
+ * #3425 made a deliberate disclosure of ONE value, on ONE condition: it is
+ * masked to an initial plus surname, server-side, at projection time, from a
+ * value the read already loads (architecture-overview § 28, "Two PII
+ * disclosures are deliberate"). The full name is
  * never resolved on this path, so there is no unmasked value present for a
  * later change to leak.
  *
  * The concrete risk this note exists for is a `buyerName` added "just for the
  * detail view". That would not be a widening of this field, it would be a new
- * reversal, and it needs the argument made again rather than inherited. The
+ * disclosure, and it needs the argument made again rather than inherited. The
  * three exclusions that did NOT move are address, email and phone.
  *
- * Note also what does not protect this: ADR-062's allowlist machinery guards
- * projections crossing to a PLUGIN (#2393's `RoutingInput`). This is an HTTP
- * response to a signed-in operator, so none of those guards apply to it and a
- * reader must not assume they do. `apps/api/src/auth/packer-exclusion.spec.ts`
- * is the authority for what these surfaces disclose.
+ * ADR-062 is not the authority here: its subject is what crosses to a PLUGIN
+ * (#2393's `RoutingInput`), and none of its guards apply to an HTTP response
+ * read by a signed-in admin or operator. This route admits no packer, so the
+ * packer-exclusion spec does not cover it either; the masking decision on
+ * #3425 is the whole of the argument.
  *
  * @module apps/api/src/fulfillment/http/dto
  */
@@ -55,12 +56,14 @@ export class FulfillmentWorkLineResponseDto {
   productName!: string | null;
   @ApiPropertyOptional({
     nullable: true,
-    description: "The variant's SKU (#3096); null when it has none or is absent from the catalogue.",
+    description:
+      "The variant's SKU (#3096); null when it has none or is absent from the catalogue.",
   })
   sku!: string | null;
   @ApiPropertyOptional({
     nullable: true,
-    description: "The variant's EAN (#3096); null when it has none or is absent from the catalogue.",
+    description:
+      "The variant's EAN (#3096); null when it has none or is absent from the catalogue.",
   })
   ean!: string | null;
   @ApiPropertyOptional({
@@ -144,7 +147,8 @@ export class FulfillmentWorkResponseDto {
   @ApiProperty({ enum: FulfillmentWorkStatusValues }) status!: FulfillmentWorkStatus;
   @ApiProperty({ enum: FulfillmentRequestStatusValues }) requestStatus!: FulfillmentRequestStatus;
   @ApiProperty() assignmentAttempt!: number;
-  @ApiPropertyOptional({ nullable: true }) cancellationReason!: FulfillmentCancellationReason | null;
+  @ApiPropertyOptional({ nullable: true })
+  cancellationReason!: FulfillmentCancellationReason | null;
   @ApiPropertyOptional({ nullable: true }) externalWorkId!: string | null;
   @ApiPropertyOptional({ nullable: true }) acceptedAt!: Date | null;
   @ApiPropertyOptional({ nullable: true }) cancelledAt!: Date | null;
@@ -159,19 +163,19 @@ export class FulfillmentWorkResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      "The buyer's name, MASKED to a first initial plus surname (e.g. \"A. Kowalska\") — #3425, " +
-      "a deliberate reversal of ADR-062's buyer-PII exclusion, conditional on the masking. " +
+      'The buyer\'s name, MASKED to a first initial plus surname (e.g. "A. Kowalska") — #3425, ' +
+      'a deliberate disclosure, conditional on the masking. ' +
       'The masking happens SERVER-SIDE at projection time from a value this endpoint already ' +
       'loads: the full name is never resolved here, so it is not a display convention a caller ' +
-      'may undo. This field may NOT gain an unmasked sibling — see the module docblock and ' +
-      "ADR-062's scope amendment.",
+      'may undo. This field may NOT gain an unmasked sibling — see the module docblock.',
   })
   buyerNameMasked!: string | null;
   @ApiPropertyOptional({ nullable: true, description: "The order's dispatch deadline (#3425)" })
   dispatchByAt!: string | null;
   @ApiPropertyOptional({
     nullable: true,
-    description: "The source's own delivery-method label (#3425); null when the source reports none",
+    description:
+      "The source's own delivery-method label (#3425); null when the source reports none",
   })
   carrierName!: string | null;
   @ApiPropertyOptional({
