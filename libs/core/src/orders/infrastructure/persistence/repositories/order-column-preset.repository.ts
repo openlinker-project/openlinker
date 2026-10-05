@@ -3,10 +3,14 @@
  *
  * TypeORM implementation of `OrderColumnPresetRepositoryPort`.
  *
- * The workspace default is upserted through the SAME partial unique index the
- * ORM entity declares (`UQ_order_column_presets_workspace_default`), so two
- * admins saving the default concurrently converge on one row rather than
- * racing an insert.
+ * The workspace default is written update-first under a transaction-scoped
+ * advisory lock, not through `ON CONFLICT`: Postgres treats NULLs as distinct
+ * in a unique index, so `ON CONFLICT ("userId") WHERE "userId" IS NULL` never
+ * fires against a plain partial index and every save inserted another
+ * "default" row. The migration's index is `NULLS NOT DISTINCT` (the hard
+ * guarantee in a migrated schema), but TypeORM 0.3.17 cannot declare that on
+ * the entity, so the synchronize-built test schema lacks it - the lock is what
+ * makes two admins saving at once converge on one row in either schema.
  *
  * @module libs/core/src/orders/infrastructure/persistence/repositories
  */
@@ -70,15 +74,24 @@ export class OrderColumnPresetRepository implements OrderColumnPresetRepositoryP
   }
 
   async upsertWorkspaceDefault(columns: string[]): Promise<OrderColumnPreset> {
-    await this.ormRepository.query(
-      `
-        INSERT INTO "order_column_presets" ("userId", "name", "columns")
-        VALUES (NULL, 'Workspace default', $1::jsonb)
-        ON CONFLICT ("userId") WHERE "userId" IS NULL
-        DO UPDATE SET "columns" = EXCLUDED."columns", "updatedAt" = now()
-      `,
-      [JSON.stringify(columns)]
-    );
+    await this.ormRepository.manager.transaction(async (manager) => {
+      await manager.query(
+        `SELECT pg_advisory_xact_lock(hashtext('order_column_presets.workspace_default'))`
+      );
+      const updated = await manager
+        .createQueryBuilder()
+        .update(OrderColumnPresetOrmEntity)
+        .set({ columns, updatedAt: () => 'now()' })
+        .where('"userId" IS NULL')
+        .execute();
+      if (!updated.affected) {
+        await manager.insert(OrderColumnPresetOrmEntity, {
+          userId: null,
+          name: 'Workspace default',
+          columns,
+        });
+      }
+    });
     const row = await this.findWorkspaceDefault();
     if (!row) {
       throw new Error('Workspace default preset vanished immediately after upsert');

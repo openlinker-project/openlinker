@@ -34,9 +34,14 @@ export class CreateOrderColumnPresets1920000002000 implements MigrationInterface
       )
     `);
 
+    // NULLS NOT DISTINCT: without it two NULL `userId`s never collide, and the
+    // index would allow any number of workspace defaults. Dropped first because
+    // a database that ran this migration under an earlier number holds the
+    // plain version under the same name, which IF NOT EXISTS would keep.
+    await queryRunner.query(`DROP INDEX IF EXISTS "UQ_order_column_presets_workspace_default"`);
     await queryRunner.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_order_column_presets_workspace_default"
-        ON "order_column_presets" ("userId")
+      CREATE UNIQUE INDEX "UQ_order_column_presets_workspace_default"
+        ON "order_column_presets" ("userId") NULLS NOT DISTINCT
         WHERE "userId" IS NULL
     `);
 

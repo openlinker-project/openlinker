@@ -8,6 +8,9 @@
  * schema by `synchronize`, not by migration, so an unnamed decorator would
  * produce a hash name there and the two schemas would diverge on the exact
  * constraint the "at most one workspace default" guarantee relies on).
+ * The migration builds it `NULLS NOT DISTINCT`, which TypeORM 0.3.17 cannot
+ * declare here; the repository's locked update-first write keeps a single
+ * default in the synchronize-built schema too.
  *
  * No FK to `users` — a plain uuid reference by value, mirroring
  * `OrderRecordOrmEntity.packedByUserId`: this table FKs across no context, and
