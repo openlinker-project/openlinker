@@ -371,7 +371,7 @@ This means FE-001 intentionally preserves the adapter boundary while avoiding an
 
 The session's `permissions[]` array (derived backend-side from `ROLE_PERMISSIONS`, `libs/core/src/users/domain/types/role.types.ts`) is the authorization input the frontend reads **wherever a permission exists to read**. `session.user.role` is typed `string` and must never be compared inline — a typo type-checks and silently evaluates false. Backend endpoint authorization is a **separate** axis (`@Roles(...)` guards); a permission drives UI visibility only, and some permissions exist for exactly that purpose (`shipments:write` is documented display-only, #1826).
 
-Four primitives cover every case, chosen by **what** is being gated:
+Four primitives cover every case, chosen by **what** is being gated, plus one role helper for the case the fifth row names:
 
 | Gating | Primitive | Behaviour for a session lacking it |
 |---|---|---|
@@ -379,6 +379,7 @@ Four primitives cover every case, chosen by **what** is being gated:
 | A write affordance — button, checkbox, form, menu item | `useWriteAccess` (`shared/auth/use-permission.ts`) + `ReadOnlyLock` (`shared/ui/read-only-lock.tsx`) | in demo mode: rendered **disabled** with a tooltip; otherwise hidden |
 | Anything that is not a subtree — a query's `enabled:`, a computed `disabled`, derived copy | `usePermission` (`shared/auth/use-permission.ts`) | plain `false` |
 | A nav entry whose audience has **no permission to gate on** | `LiveNavItem.requiresRole` (`app/nav-registry.types.ts`), applied by `isNavItemVisible` | the item is hidden — from the sidebar *and* ⌘K, which read the same function |
+| A control whose endpoint's `@Roles(...)` is strictly narrower than any permission that implies it (e.g. an admin-only route under `orders:write`) | `useIsAdmin` (`shared/auth/use-permission.ts`), **paired with** the permission, never replacing it | plain `false`, including while the session hydrates — render the affordance or nothing, never a denial |
 
 **The fourth row is the exception the first sentence now allows for, and it is narrow.** `packer` (ADR-071/#2413) holds an intentionally EMPTY `ROLE_PERMISSIONS` grant — its access is enforced route-by-route by `@Roles(...)` and nothing else — so there is no permission in existence that "a packer may open the pack bench" could be expressed as. `requiresPermission` is still the default and still correct everywhere a permission exists; reach for `requiresRole` only when none does.
 
