@@ -19,6 +19,8 @@ import type {
 export interface ConnectionsApi {
   create: (input: CreateConnectionInput) => Promise<Connection>;
   disable: (connectionId: string) => Promise<Connection>;
+  archive: (connectionId: string) => Promise<Connection>;
+  restore: (connectionId: string) => Promise<Connection>;
   getBankAccounts: (connectionId: string) => Promise<BankAccount[]>;
   getSubiektBankAccounts: (connectionId: string) => Promise<SubiektBankAccount[]>;
   getSubiektCashRegisters: (connectionId: string) => Promise<SubiektCashRegister[]>;
@@ -70,6 +72,16 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     disable(connectionId): Promise<Connection> {
       return request<Connection>(`/connections/${connectionId}/disable`, {
+        method: 'PATCH',
+      });
+    },
+    archive(connectionId): Promise<Connection> {
+      return request<Connection>(`/connections/${connectionId}/archive`, {
+        method: 'PATCH',
+      });
+    },
+    restore(connectionId): Promise<Connection> {
+      return request<Connection>(`/connections/${connectionId}/restore`, {
         method: 'PATCH',
       });
     },
