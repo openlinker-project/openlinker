@@ -14053,6 +14053,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .bulk-editor__ean-err { color: var(--status-error-fg); font-size: 11.5px; margin-top: 5px; }
 
+/* ── EAN override (#3492) ── */
+/* One definition for the "I confirm this EAN is correct" block, shared by the
+ * simple-product and per-variant scopes so the two cannot look different. */
+.bulk-editor__ean-ack { margin-top: var(--space-2); }
+.bulk-editor__ean-ack .checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* ── end EAN override (#3492) ── */
+
 .bulk-editor__prov {
   font-family: var(--font-mono);
   font-size: 10px;
