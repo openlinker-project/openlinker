@@ -2,7 +2,10 @@
  * BenchLabelService (#3654)
  */
 import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
-import type { IIntegrationsService } from '@openlinker/core/integrations';
+import {
+  CapabilityNotEnabledException,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import type {
   IShipmentCancellationService,
@@ -91,6 +94,7 @@ describe('BenchLabelService', () => {
 
     expect(result).toEqual({
       outcome: 'replaced', cancelledShipmentId: 'ship-1', newShipmentId: 'ship-2', cancelledAfterDispatch: false,
+      keptTemplate: null,
     });
     expect(cancellation.cancel).toHaveBeenCalledWith('ship-1');
     const arg = dispatch.dispatch.mock.calls[0][0];
@@ -110,6 +114,24 @@ describe('BenchLabelService', () => {
   it('should keep the configured size when only the weight is corrected', async () => {
     await service.replaceLabel(input({ kind: 'weight', weightGrams: 1200 }));
     expect(dispatch.dispatch.mock.calls[0][0].parcel).toEqual({ template: 'small', weightGrams: 1200 });
+  });
+
+  it('should report the configured size it bought with when only the weight is corrected', async () => {
+    const result = await service.replaceLabel(input({ kind: 'weight', weightGrams: 1200 }));
+    expect(result).toMatchObject({ outcome: 'replaced', keptTemplate: 'small' });
+  });
+
+  it('should report no kept size when the packer named a size or measured the box', async () => {
+    expect(
+      await service.replaceLabel(input({ kind: 'template', template: 'large' }))
+    ).toMatchObject({
+      keptTemplate: null,
+    });
+    expect(
+      await service.replaceLabel(
+        input({ kind: 'box', lengthMm: 1, widthMm: 1, heightMm: 1, weightGrams: 1 })
+      )
+    ).toMatchObject({ keptTemplate: null });
   });
 
   it('should refuse parcel-size-unknown without cancelling when weight-only has no configured size', async () => {
@@ -138,6 +160,25 @@ describe('BenchLabelService', () => {
     integrations.getCapabilityAdapter.mockResolvedValue({} as never);
     const result = await service.replaceLabel(input({ kind: 'template', template: 'a' }));
     expect(result).toEqual({ outcome: 'refused', reason: 'cannot-cancel' });
+    expect(cancellation.cancel).not.toHaveBeenCalled();
+    expect(dispatch.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('should refuse cannot-cancel when the connection does not carry the shipping capability', async () => {
+    integrations.getCapabilityAdapter.mockRejectedValue(
+      new CapabilityNotEnabledException('conn-carrier', 'inpost', 'ShippingProviderManager')
+    );
+    const result = await service.replaceLabel(input({ kind: 'template', template: 'a' }));
+    expect(result).toEqual({ outcome: 'refused', reason: 'cannot-cancel' });
+    expect(cancellation.cancel).not.toHaveBeenCalled();
+  });
+
+  it('should refuse adapter-unresolved, not cannot-cancel, when the connection cannot be resolved right now', async () => {
+    integrations.getCapabilityAdapter.mockRejectedValue(
+      new Error('connection conn-carrier is disabled')
+    );
+    const result = await service.replaceLabel(input({ kind: 'template', template: 'a' }));
+    expect(result).toEqual({ outcome: 'refused', reason: 'adapter-unresolved' });
     expect(cancellation.cancel).not.toHaveBeenCalled();
     expect(dispatch.dispatch).not.toHaveBeenCalled();
   });
@@ -174,9 +215,40 @@ describe('BenchLabelService', () => {
     dispatch.dispatch.mockRejectedValue(new Error('carrier down'));
     const result = await service.replaceLabel(input({ kind: 'template', template: 'a' }));
     expect(result).toEqual({
-      outcome: 'cancelled-not-replaced', cancelledShipmentId: 'ship-1', cancelledAfterDispatch: false,
+      outcome: 'cancelled-not-replaced',
+      cancelledShipmentId: 'ship-1',
+      cancelledAfterDispatch: false,
+      voidState: 'confirmed',
+      keptTemplate: null,
     });
     expect(lock.release).toHaveBeenCalled();
+  });
+
+  it('should report the void as in-doubt and buy nothing when the cancel itself throws', async () => {
+    cancellation.cancel.mockRejectedValue(new Error('carrier timeout'));
+    const result = await service.replaceLabel(input({ kind: 'weight', weightGrams: 1200 }));
+    expect(result).toEqual({
+      outcome: 'cancelled-not-replaced',
+      cancelledShipmentId: 'ship-1',
+      cancelledAfterDispatch: false,
+      voidState: 'in-doubt',
+      keptTemplate: 'small',
+    });
+    expect(dispatch.dispatch).not.toHaveBeenCalled();
+    expect(lock.release).toHaveBeenCalledWith('bench:label-replace:work:work-1', 'tok');
+  });
+
+  it('should carry the dispatched state into an in-doubt void when the old label was already dispatched', async () => {
+    shipments.findByFulfillmentWorkIds.mockResolvedValue(
+      new Map([['work-1', [shipment({ status: 'dispatched' as never })]]])
+    );
+    cancellation.cancel.mockRejectedValue(new Error('carrier timeout'));
+    const result = await service.replaceLabel(input({ kind: 'template', template: 'a' }));
+    expect(result).toMatchObject({
+      outcome: 'cancelled-not-replaced',
+      voidState: 'in-doubt',
+      cancelledAfterDispatch: true,
+    });
   });
 
   it('should refuse replace-in-progress and touch nothing when the per-work lock is held', async () => {

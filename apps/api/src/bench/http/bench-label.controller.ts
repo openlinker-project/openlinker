@@ -16,7 +16,8 @@
  *
  * Status mapping: 404 = not a parcel of this bench / no shipment on it;
  * 409 = a named refusal with nothing changed; 201 = `replaced` or
- * `cancelled-not-replaced` (the old label IS void; the body says so).
+ * `cancelled-not-replaced` (the old label is void, or with `voidState:
+ * 'in-doubt'` may be; the body says which).
  *
  * @module apps/api/src/bench/http
  */
@@ -60,9 +61,11 @@ export class BenchLabelController {
     description:
       'Voids the work’s current label and buys a new one with the given parcel data. The ' +
       'recipient is never sent; it is derived from the order. Refused 409 (reason in body, ' +
-      'nothing changed): cannot-cancel, already-handed-over, parcel-completed, no-label, ' +
-      'recipient-unavailable, parcel-size-unknown, replace-in-progress. A re-buy that fails ' +
-      'after the void answers 201 `cancelled-not-replaced`.',
+      'nothing changed): cannot-cancel, adapter-unresolved, already-handed-over, ' +
+      'parcel-completed, no-label, recipient-unavailable, parcel-size-unknown, ' +
+      'replace-in-progress. A re-buy that fails after the void answers 201 ' +
+      '`cancelled-not-replaced` (`voidState: confirmed`); a cancel whose outcome is unknown ' +
+      'answers the same with `voidState: in-doubt` and buys nothing.',
   })
   @ApiResponse({ status: 201, type: BenchReplaceLabelResponseDto })
   @ApiResponse({ status: 400, description: 'Body is not exactly one parcel shape' })
@@ -101,6 +104,8 @@ export class BenchLabelController {
       cancelledShipmentId: result.cancelledShipmentId,
       newShipmentId: result.outcome === 'replaced' ? result.newShipmentId : null,
       cancelledAfterDispatch: result.cancelledAfterDispatch,
+      voidState: result.outcome === 'replaced' ? 'confirmed' : result.voidState,
+      keptTemplate: result.keptTemplate,
     };
   }
 }

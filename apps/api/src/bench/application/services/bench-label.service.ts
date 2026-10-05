@@ -14,9 +14,25 @@
  *   unreachable.
  * - Every refusal is decided BEFORE the old label is cancelled.
  *
+ * ## A cancel that throws is in doubt, not a failure
+ *
+ * `cancel()` crosses the carrier boundary, so a throw from it leaves OpenLinker
+ * not knowing whether the old label is void. That is answered as
+ * `cancelled-not-replaced` with `voidState: 'in-doubt'` - never a 500 the
+ * caller could read either way, and never followed by a re-buy (two possibly
+ * live labels for one box).
+ *
  * ## Serialisation
  *
- * A per-work lock wraps cancel + re-buy so two clicks cannot buy two labels.
+ * A per-work lock wraps cancel + re-buy so two clicks cannot buy two labels -
+ * for as long as the lock lives, which is its TTL
+ * ({@link BENCH_LABEL_REPLACE_LOCK_TTL_MS}), not the operation. It is NOT a
+ * durable at-most-once guarantee: a cancel plus purchase slow enough to outlast
+ * the TTL lets a second click re-enter, find the NEW label live, void it and
+ * buy a third. The real fix is a persisted claim on the shipment (the
+ * conditional-claim idiom `Shipment.waybillRelayedAt` uses, #1947), not a
+ * longer TTL.
+ *
  * It cannot be the per-order dispatch lock itself: `dispatch()` acquires that
  * lock internally and it is not re-entrant, so holding it here would make the
  * re-buy refuse. The inner dispatch still takes the per-order lock, so this
@@ -33,7 +49,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { readAutoDispatchConfig } from '@openlinker/core/identifier-mapping';
 import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
-import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
+import {
+  CapabilityNotSupportedException,
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
@@ -51,6 +71,7 @@ import {
   type IShipmentDispatchService,
   type IShipmentQueryService,
   type Shipment,
+  type ShipmentCancellationResult,
   type ShippingProviderManagerPort,
   type ShipmentDispatchInput,
   type ShipmentParcel,
@@ -78,7 +99,11 @@ export class BenchLabelShipmentNotFoundError extends Error {
   }
 }
 
-/** Long enough for cancel + a multi-second label purchase; released in `finally`. */
+/**
+ * Long enough for cancel + a multi-second label purchase; released in `finally`.
+ * The bound of the lock's protection, not of the operation - see the module
+ * docblock's "Serialisation".
+ */
 export const BENCH_LABEL_REPLACE_LOCK_TTL_MS = 180_000;
 
 export function benchLabelReplaceLockKey(workId: string): string {
@@ -159,7 +184,28 @@ export class BenchLabelService implements IBenchLabelService {
     await this.assertCancellable(current);
     const dispatchInput = await this.buildDispatchInput(work, input.parcel);
 
-    const cancelled = await this.cancellation.cancel(current.id);
+    // Only "keep the current size" resolves a template the packer did not name.
+    const keptTemplate =
+      input.parcel.kind === 'weight' ? dispatchInput.parcel.template ?? null : null;
+
+    let cancelled: ShipmentCancellationResult;
+    try {
+      cancelled = await this.cancellation.cancel(current.id);
+    } catch (error) {
+      // In doubt: the carrier may or may not have voided it. No re-buy.
+      this.logger.error(
+        `bench_label_void_in_doubt workId=${work.id} shipmentId=${current.id} ` +
+          `actor=${input.actorUserId}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return {
+        outcome: 'cancelled-not-replaced',
+        cancelledShipmentId: current.id,
+        // The state the cancel was attempted from, as the cancellation itself would report it.
+        cancelledAfterDispatch: current.status === SHIPMENT_STATUS.Dispatched,
+        voidState: 'in-doubt',
+        keptTemplate,
+      };
+    }
     this.logger.log(
       `bench_label_cancelled workId=${work.id} shipmentId=${current.id} actor=${input.actorUserId}`
     );
@@ -172,7 +218,7 @@ export class BenchLabelService implements IBenchLabelService {
           `bench_label_cancelled_not_replaced workId=${work.id} cancelled=${current.id} ` +
             `actor=${input.actorUserId} reason=no-label-processor`
         );
-        return this.notReplaced(cancelled.shipment.id, cancelled.cancelledAfterDispatch);
+        return this.notReplaced(cancelled, keptTemplate);
       }
       this.logger.log(
         `bench_label_replaced workId=${work.id} old=${current.id} new=${result.shipment.id} ` +
@@ -183,6 +229,7 @@ export class BenchLabelService implements IBenchLabelService {
         cancelledShipmentId: cancelled.shipment.id,
         newShipmentId: result.shipment.id,
         cancelledAfterDispatch: cancelled.cancelledAfterDispatch,
+        keptTemplate,
       };
     } catch (error) {
       // dispatch() persists a `failed` shipment row for a label-generation
@@ -191,15 +238,21 @@ export class BenchLabelService implements IBenchLabelService {
         `bench_label_cancelled_not_replaced workId=${work.id} cancelled=${current.id} ` +
           `actor=${input.actorUserId}: ${error instanceof Error ? error.message : String(error)}`
       );
-      return this.notReplaced(cancelled.shipment.id, cancelled.cancelledAfterDispatch);
+      return this.notReplaced(cancelled, keptTemplate);
     }
   }
 
   private notReplaced(
-    cancelledShipmentId: string,
-    cancelledAfterDispatch: boolean
+    cancelled: ShipmentCancellationResult,
+    keptTemplate: string | null
   ): BenchReplaceLabelResult {
-    return { outcome: 'cancelled-not-replaced', cancelledShipmentId, cancelledAfterDispatch };
+    return {
+      outcome: 'cancelled-not-replaced',
+      cancelledShipmentId: cancelled.shipment.id,
+      cancelledAfterDispatch: cancelled.cancelledAfterDispatch,
+      voidState: 'confirmed',
+      keptTemplate,
+    };
   }
 
   /** Newest labelled, still-live shipment; refuses when there is none. */
@@ -226,8 +279,16 @@ export class BenchLabelService implements IBenchLabelService {
         shipment.connectionId,
         CAPABILITY
       );
-    } catch {
-      throw new Refusal('cannot-cancel');
+    } catch (error) {
+      // Structural (no such capability on this connection) vs transient (the
+      // connection is disabled or its credentials do not resolve right now).
+      // `CapabilityNotEnabledException` extends the not-supported one.
+      if (error instanceof CapabilityNotSupportedException) throw new Refusal('cannot-cancel');
+      this.logger.warn(
+        `bench_label_adapter_unresolved shipmentId=${shipment.id} connection=${shipment.connectionId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      throw new Refusal('adapter-unresolved');
     }
     if (!isShipmentCanceller(adapter)) throw new Refusal('cannot-cancel');
   }

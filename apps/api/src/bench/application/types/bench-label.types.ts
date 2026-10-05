@@ -31,9 +31,18 @@ export interface BenchReplaceLabelInput {
 /**
  * Why a replacement was refused. Every one of these has NO side effect: the
  * checks all run before the old label is cancelled.
+ *
+ * `cannot-cancel` is STRUCTURAL: the carrier connection does not offer a cancel
+ * at all, so retrying will not help. `adapter-unresolved` is TRANSIENT: the
+ * connection could not be resolved right now (disabled, credentials failing),
+ * and the same request may succeed once the office fixes it. The split is the
+ * one #1947 made on the relay path, for the same reason: a packer told the
+ * carrier cannot do this stops trying, one told the connection is unavailable
+ * escalates.
  */
 export const BenchReplaceLabelRefusalReasonValues = [
   'cannot-cancel',
+  'adapter-unresolved',
   'already-handed-over',
   'parcel-completed',
   'no-label',
@@ -43,12 +52,43 @@ export const BenchReplaceLabelRefusalReasonValues = [
 ] as const;
 export type BenchReplaceLabelRefusalReason = (typeof BenchReplaceLabelRefusalReasonValues)[number];
 
+/**
+ * Whether the old label is KNOWN to be void.
+ *
+ * - `confirmed` - the cancel returned; the old label is void.
+ * - `in-doubt` - the cancel call itself threw. It crossed the carrier boundary,
+ *   so OpenLinker does not know whether the carrier voided the label, and holds
+ *   that as in doubt rather than resolving it by a guess (the ADR-042 decision 7
+ *   vocabulary). Nothing is re-bought in this state: buying while the old label
+ *   may still be live risks two paid labels for one box.
+ *
+ * Either way the old label must not be used.
+ */
+export const BenchLabelVoidStateValues = ['confirmed', 'in-doubt'] as const;
+export type BenchLabelVoidState = (typeof BenchLabelVoidStateValues)[number];
+
 export type BenchReplaceLabelResult =
-  | { readonly outcome: 'replaced'; readonly cancelledShipmentId: string; readonly newShipmentId: string; readonly cancelledAfterDispatch: boolean }
+  | {
+      readonly outcome: 'replaced';
+      readonly cancelledShipmentId: string;
+      readonly newShipmentId: string;
+      readonly cancelledAfterDispatch: boolean;
+      /**
+       * The connection's configured size the new label was bought with when the
+       * packer kept the current size (weight only); `null` when the packer named
+       * a size or measured the box. A shipment does not persist its parcel, so
+       * "keep the size" is really "use the configured template" - reported so
+       * the bench can name the size it bought rather than leave it unnamed.
+       */
+      readonly keptTemplate: string | null;
+    }
   | { readonly outcome: 'refused'; readonly reason: BenchReplaceLabelRefusalReason }
   | {
-      /** The old label is void and no new one was bought: the office must buy one. */
+      /** The old label is void (or may be) and no new one was bought: the office must buy one. */
       readonly outcome: 'cancelled-not-replaced';
       readonly cancelledShipmentId: string;
       readonly cancelledAfterDispatch: boolean;
+      readonly voidState: BenchLabelVoidState;
+      /** As on `replaced`: the size the re-buy would have used. */
+      readonly keptTemplate: string | null;
     };

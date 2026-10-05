@@ -65,18 +65,63 @@ describe('BenchLabelController — POST work/:workId/label/replace (#3654)', () 
   it('should pass the token user and the parcel, never body identity', async () => {
     labels.replaceLabel.mockResolvedValue({
       outcome: 'replaced', cancelledShipmentId: 'a', newShipmentId: 'b', cancelledAfterDispatch: false,
+      keptTemplate: null,
     });
     const res = await controller.replaceLabel('work-1', { template: 'small' } as ReplaceLabelDto, user);
     expect(labels.replaceLabel).toHaveBeenCalledWith({
       workId: 'work-1', parcel: { kind: 'template', template: 'small' }, actorUserId: 'user-1',
     });
-    expect(res).toEqual({ outcome: 'replaced', cancelledShipmentId: 'a', newShipmentId: 'b', cancelledAfterDispatch: false });
+    expect(res).toEqual({
+      outcome: 'replaced',
+      cancelledShipmentId: 'a',
+      newShipmentId: 'b',
+      cancelledAfterDispatch: false,
+      voidState: 'confirmed',
+      keptTemplate: null,
+    });
   });
 
   it('should answer cancelled-not-replaced as a result with newShipmentId null', async () => {
-    labels.replaceLabel.mockResolvedValue({ outcome: 'cancelled-not-replaced', cancelledShipmentId: 'a', cancelledAfterDispatch: true });
-    const res = await controller.replaceLabel('work-1', { weightGrams: 5 } as ReplaceLabelDto, user);
-    expect(res).toEqual({ outcome: 'cancelled-not-replaced', cancelledShipmentId: 'a', newShipmentId: null, cancelledAfterDispatch: true });
+    labels.replaceLabel.mockResolvedValue({
+      outcome: 'cancelled-not-replaced',
+      cancelledShipmentId: 'a',
+      cancelledAfterDispatch: true,
+      voidState: 'confirmed',
+      keptTemplate: 'small',
+    });
+    const res = await controller.replaceLabel(
+      'work-1',
+      { weightGrams: 5 } as ReplaceLabelDto,
+      user
+    );
+    expect(res).toEqual({
+      outcome: 'cancelled-not-replaced',
+      cancelledShipmentId: 'a',
+      newShipmentId: null,
+      cancelledAfterDispatch: true,
+      voidState: 'confirmed',
+      keptTemplate: 'small',
+    });
+  });
+
+  it('should answer an in-doubt void as a 2xx result, never an error', async () => {
+    labels.replaceLabel.mockResolvedValue({
+      outcome: 'cancelled-not-replaced',
+      cancelledShipmentId: 'a',
+      cancelledAfterDispatch: false,
+      voidState: 'in-doubt',
+      keptTemplate: null,
+    });
+    const res = await controller.replaceLabel(
+      'work-1',
+      { template: 'small' } as ReplaceLabelDto,
+      user
+    );
+    expect(res).toMatchObject({
+      outcome: 'cancelled-not-replaced',
+      newShipmentId: null,
+      voidState: 'in-doubt',
+    });
   });
 
   it('should answer 409 with the reason for a refusal', async () => {
