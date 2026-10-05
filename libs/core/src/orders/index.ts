@@ -446,6 +446,7 @@ export type { OrderSummary } from './domain/order-summary-projection';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
+export type { HeldOrderRef } from './domain/ports/order-record-repository.port';
 
 // ADR-044 change proposals (#2333) — the Wave-2 gate. `OrderChangeRepositoryPort`
 // is deliberately NOT exported: it is intra-context, and a sibling reaches the
@@ -475,6 +476,12 @@ export type {
   PlaceOrderHoldInput,
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
+// #3455 — why the fulfilment intercept deliberately did not route an order.
+export {
+  FulfillmentRoutingSkipReasonValues,
+  isFulfillmentRoutingSkipReason,
+  type FulfillmentRoutingSkipReason,
+} from './domain/types/fulfillment-routing-eligibility.types';
 export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
 export { TestFixturesDisabledException } from './domain/exceptions/test-fixtures-disabled.exception';
 export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';

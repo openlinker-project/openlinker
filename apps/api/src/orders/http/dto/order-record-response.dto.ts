@@ -18,6 +18,8 @@ import {
   SlaState,
   FulfillmentRollupState,
   BuyerTaxId,
+  FulfillmentRoutingSkipReasonValues,
+  type FulfillmentRoutingSkipReason,
 } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
@@ -26,6 +28,10 @@ import {
   type HoldReason,
 } from '@openlinker/core/order-lifecycle';
 import { OrderHoldDto } from './order-hold-response.dto';
+import {
+  FulfillmentBlockReasonValues,
+  type FulfillmentBlockReason,
+} from '@openlinker/core/fulfillment';
 import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
@@ -359,6 +365,41 @@ export class OrderRecordResponseDto {
       'IOrderHoldService.getOpenHold against order_holds (the epic\'s L4 exit criterion).',
   })
   activeHoldReason!: HoldReason | null;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentRoutingSkipReasonValues,
+    nullable: true,
+    description:
+      'Why OpenLinker deliberately did NOT route this order to the pack bench while the OMS is on ' +
+      '(#3455): `own-shop-order` (placed in the operator\'s own shop), `shipped-by-other-system` (a ' +
+      'fulfilment routing rule sends its delivery method to another system), `mirrored-before-routing` ' +
+      '(the product master already had it before routing was switched on). null when the order was ' +
+      'routed, has not been decided yet, or no connection claims sourcing (the OMS is off). NOT a hold: ' +
+      'a skipped order follows today\'s path and is mirrored to its destinations as usual.',
+  })
+  fulfillmentRoutingSkipReason!: FulfillmentRoutingSkipReason | null;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentBlockReasonValues,
+    nullable: true,
+    description:
+      'Why fulfilment routing is HOLDING this order in OpenLinker with no work object explaining it ' +
+      '(#2396, readable since #3485), or null. A held order is not mirrored to any destination. ' +
+      'With the OMS on: `routing-refused` (the plan could not be committed, typically a line out of ' +
+      'stock; re-routed automatically), `routing-no-shipping-address` (clears when the source sends ' +
+      'an address), `routing-failed` (re-routed automatically). The others are transient routing ' +
+      'states. Opposite of `fulfillmentRoutingSkipReason`, which is NOT a hold.',
+  })
+  fulfillmentBlockReason!: FulfillmentBlockReason | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'PII-free elaboration of `fulfillmentBlockReason` (ids and causes only), rendered verbatim; ' +
+      'null when there is no block or nothing to add.',
+  })
+  fulfillmentBlockDetail!: string | null;
 
   @ApiPropertyOptional({
     type: OrderHoldDto,

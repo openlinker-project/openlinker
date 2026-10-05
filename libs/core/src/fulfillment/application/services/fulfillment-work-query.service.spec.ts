@@ -15,12 +15,28 @@ function makeWork(id: string, orderId = 'ol_order_1'): FulfillmentWork {
 }
 
 describe('FulfillmentWorkQueryService', () => {
-  let works: jest.Mocked<Pick<FulfillmentWorkRepositoryPort, 'findByOrderId'>>;
+  let works: jest.Mocked<Pick<FulfillmentWorkRepositoryPort, 'findByOrderId' | 'findById'>>;
   let service: FulfillmentWorkQueryService;
 
   beforeEach(() => {
-    works = { findByOrderId: jest.fn() };
+    works = { findByOrderId: jest.fn(), findById: jest.fn() };
     service = new FulfillmentWorkQueryService(works as unknown as FulfillmentWorkRepositoryPort);
+  });
+
+  describe('findWorkById (#3453)', () => {
+    it('should return the work when it exists', async () => {
+      const work = makeWork('ol_fulfillmentwork_1');
+      works.findById.mockResolvedValue(work);
+
+      await expect(service.findWorkById('ol_fulfillmentwork_1')).resolves.toBe(work);
+      expect(works.findById).toHaveBeenCalledWith('ol_fulfillmentwork_1');
+    });
+
+    it('should return null when no such work exists', async () => {
+      works.findById.mockResolvedValue(null);
+
+      await expect(service.findWorkById('ol_fulfillmentwork_missing')).resolves.toBeNull();
+    });
   });
 
   describe('resolveLinkForOrder', () => {

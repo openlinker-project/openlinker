@@ -13,6 +13,23 @@
 import type { User } from '@openlinker/core/users';
 import type { UserRole, UserStatus } from '@openlinker/core/users';
 
+/** Input for {@link IUserManagementService.createUser} (#3456). */
+export interface CreateUserInput {
+  readonly displayName: string;
+  readonly username: string;
+  readonly email: string | null;
+  readonly role: UserRole;
+}
+
+/**
+ * The created account and its one-time password (#3456). The password is
+ * returned to the caller exactly once and exists nowhere else in plain text.
+ */
+export interface CreatedUser {
+  readonly id: string;
+  readonly temporaryPassword: string;
+}
+
 export interface IUserManagementService {
   listUsers(opts?: {
     status?: UserStatus;
@@ -21,6 +38,25 @@ export interface IUserManagementService {
     page?: number;
     pageSize?: number;
   }): Promise<{ users: User[]; total: number }>;
+  /**
+   * Create an ACTIVE account directly, with a server-generated one-time
+   * password it must replace at first sign-in (#3456). The admin path for a
+   * packer who has no work email and cannot self-register.
+   *
+   * Throws `UserAlreadyExistsException` with `field` set when the username or
+   * email is taken — including by a concurrent create that won the race.
+   */
+  createUser(input: CreateUserInput): Promise<CreatedUser>;
+  /**
+   * Re-issue the one-time password of an account that has not yet replaced its
+   * first one (#3456 review) - the remedy for a lost slip or a packer who never
+   * signed in, without delete-and-recreate (which would leave
+   * `fulfillment_works.assignedToUserId` pointing at nobody).
+   *
+   * Throws `UserNotFoundException`, or `UserNotAwaitingFirstSignInException`
+   * when the person has already set their own password.
+   */
+  reissueTemporaryPassword(userId: string): Promise<CreatedUser>;
   approveUser(userId: string, role: UserRole): Promise<void>;
   rejectUser(userId: string): Promise<void>;
   updateRole(userId: string, role: UserRole, actorId: string): Promise<void>;

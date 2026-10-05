@@ -23,7 +23,8 @@ import type {
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
   AuthorityAttentionOutcome,
@@ -46,6 +47,17 @@ import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
 } from '../types/order-search-text-reindex.types';
+
+/**
+ * A held order and when its CURRENT hold began (#3485 review). The age bounds
+ * how often the reroute sweep re-drives an order that stays refused.
+ * `blockedAt` is `null` for a row held before the column existed: "not asserted",
+ * never a guess.
+ */
+export interface HeldOrderRef {
+  readonly orderId: string;
+  readonly blockedAt: Date | null;
+}
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -580,6 +592,36 @@ export interface OrderRecordRepositoryPort {
   updateFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * #3485 — one keyset page of internal order ids whose fulfilment block is one
+   * of `reasons`, ascending by `internalOrderId`, starting strictly after
+   * `afterOrderId` (`null` = from the start).
+   *
+   * Keyset, never offset: the set shrinks as orders are re-routed, and an offset
+   * over a shrinking set steps over rows. And keyset, never oldest-`updatedAt`:
+   * a re-refused order rewrites an identical block, the `IS DISTINCT FROM` guard
+   * (correctly) leaves `updatedAt` alone, so an oldest-first page would re-read
+   * the same head for ever and starve everything behind it.
+   */
+  listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]>;
+
+  /**
+   * #3455 — record why the ingestion intercept deliberately did NOT route the
+   * order while the OMS is on, or clear it with `null`. Level-triggered: the
+   * intercept re-decides on every ingestion and writes the answer including
+   * `null`. Outside the ingestion write set, so a re-poll cannot reset it; a
+   * no-change write costs no `updatedAt` bump.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
   ): Promise<void>;
 
   /**

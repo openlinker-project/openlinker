@@ -221,6 +221,14 @@ export const JobTypeValues = [
   // stock drop puts at risk, as persisted episodes. Reads OL's own tables and
   // repairs nothing; no platform call.
   'inventory.reservations.shortfall',
+  // #3453 — the routed-order SALE DECREMENT. With the OMS on, a routed order is
+  // never created in the product master, so OpenLinker lowers each line's stock
+  // in the master that owns it. One job per routed work; the per-line
+  // at-most-once guarantee is a Postgres claim, not this job's dedupe key.
+  // Unlike its `inventory.*` neighbours it DOES call a platform
+  // (`InventoryMasterPort.adjustInventory`). `connectionId` is the order's
+  // source connection, never a synthetic id (#2609).
+  'inventory.saleDecrement',
   // Repairs the `order_records.activeHoldReason` cache against `order_holds`
   // (#2340). Deliberately NOT named `marketplace.*`: it makes zero platform
   // calls and reads only OL's own tables - `inventory.provenance.backfill` is
@@ -283,6 +291,14 @@ export const JobTypeValues = [
   // is forbidden: that key is permanent memory (#2400). Global scope under the
   // nil-UUID system connection id, like its timeout-sweep sibling.
   'fulfillment.work.relaySweep',
+
+  // The reroute sweep (#3485, epic #3460). With the OMS on, an order the router
+  // refused (a line out of stock) or failed to route is HELD in OpenLinker
+  // rather than created in every product master; this pass re-enters routing
+  // for those orders by enqueueing `fulfillment.work.route`, so they route once
+  // stock arrives. Global scope under the nil-UUID system connection id, like
+  // its timeout- and relay-sweep siblings.
+  'fulfillment.work.rerouteSweep',
 
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is

@@ -85,6 +85,8 @@ import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-disp
 import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
+import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
@@ -187,6 +189,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkRouteHandler,
     FulfillmentWorkTimeoutSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    InventorySaleDecrementHandler,
+    FulfillmentWorkRerouteSweepHandler,
     HandlerRegistrationService,
   ],
 })

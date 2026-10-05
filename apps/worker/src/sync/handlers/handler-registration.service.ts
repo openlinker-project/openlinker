@@ -68,7 +68,9 @@ import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.hand
 import { FulfillmentWorkAutoDispatchHandler } from './fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
+import { InventorySaleDecrementHandler } from './inventory-sale-decrement.handler';
 
 @Injectable()
 export class HandlerRegistrationService implements OnModuleInit {
@@ -133,7 +135,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly fulfillmentWorkAutoDispatchHandler: FulfillmentWorkAutoDispatchHandler,
     private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler,
     private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
-    private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler
+    private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
+    private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
+    private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler
   ) {}
 
   onModuleInit(): void {
@@ -156,14 +160,15 @@ export class HandlerRegistrationService implements OnModuleInit {
     // alone: it raised the `fan-out` lane's caps instead of moving a job out of
     // it. `fulfillment.work.timeoutSweep` joined `bulk` (#2712) and
     // `fulfillment.work.relaySweep` beside it (#2728) — both cron-paced
-    // reconcilers over work that is already stalled by definition.
-    // `fulfillment.work.autoDispatch` is the newest `realtime` member (#3340,
-    // closing #2729) — a NEW job type, not a reclassified one, joining its
-    // `fulfillment.work.dispatch` producer for the identical cost-of-starvation
-    // reason. The tripwire in `handler-registration.service.spec.ts` is the
-    // authority on these counts — this comment had drifted from it before
-    // #2330, and again before #2728, which is why it is restated here rather
-    // than only appended to.
+    // reconcilers over work that is already stalled by definition — and
+    // `fulfillment.work.rerouteSweep` (#3485) is a third, over orders held
+    // because routing could not place them.
+    // `fulfillment.work.autoDispatch` (#3340, closing #2729) and
+    // `inventory.saleDecrement` (#3453) are the newest `realtime` members —
+    // both NEW job types. The tripwire in `handler-registration.service.spec.ts`
+    // is the authority on these counts — this comment had drifted from it
+    // before #2330, and again before #2728, which is why it is restated here
+    // rather than only appended to.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -636,6 +641,35 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.relaySweep',
       this.fulfillmentWorkRelaySweepHandler,
+      'bulk'
+    );
+
+    // Routed-order sale decrement (#3453).
+    //
+    // 'realtime', by ADR-050's cost-of-starvation rule. Until this job runs, the
+    // product master and every other marketplace still show the sold units as in
+    // stock, so every minute of delay is a window in which the last unit can sell
+    // twice. That is the class of `inventory.propagateToMarketplaces`'s urgency,
+    // but this job makes ONE bounded write per line rather than emitting a wave,
+    // so `fan-out` is the wrong profile; and it must not queue behind a
+    // catalogue sweep in `bulk`. #2594's split-by-trigger has nothing to
+    // separate: one trigger (a routing commit), one cost.
+    this.handlerRegistry.register(
+      'inventory.saleDecrement',
+      this.inventorySaleDecrementHandler,
+      'realtime'
+    );
+
+    // Reroute sweep for orders held because routing could not place them (#3485).
+    //
+    // 'bulk', like its timeout- and relay-sweep siblings: a cron-paced catch-up
+    // over orders that have ALREADY been waiting (for stock, typically), so a
+    // lane slot's delay adds minutes to a condition measured in hours. The heavy
+    // part — the route itself — runs in the `fulfillment.work.route` children it
+    // enqueues, on 'realtime', where routing always runs.
+    this.handlerRegistry.register(
+      'fulfillment.work.rerouteSweep',
+      this.fulfillmentWorkRerouteSweepHandler,
       'bulk'
     );
 

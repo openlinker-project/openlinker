@@ -4,7 +4,7 @@
  * #2413 reviewed all 76 `@AnyRole()` routes against the new `packer` role and
  * narrowed 45 of them to `@Roles('admin', 'operator', 'viewer')` — the same
  * audience they had, named explicitly so the fourth role is excluded by
- * construction. The 31 that remain are listed below, one per line.
+ * construction. The 32 that remain are listed below, one per line.
  *
  * ## Why an ALLOW-LIST and not a list of excluded controllers
  *
@@ -67,6 +67,10 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   // signed-in name, visible without opening a menu. Excluding it breaks A4.
   'AuthController.getMe',
   'AuthController.updateAnalyticsConsent',
+  // Replacing the one-time password an admin issued (#3456). The account that
+  // flow creates is typically a packer's, and the session is gated on the
+  // change until it happens, so excluding the role would lock that user out.
+  'AuthController.changePassword',
 
   // Item identity — what a packer scans against.
   'ProductsController.listProducts',

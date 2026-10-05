@@ -12,10 +12,13 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { salesDocumentRulesQueryKeys } from '../api/sales-document-rules.query-keys';
 import type { SalesDocumentCountrySummary } from '../api/sales-document-rules.types';
 
-export function useSalesDocumentCountriesQuery(): UseQueryResult<SalesDocumentCountrySummary[]> {
+export function useSalesDocumentCountriesQuery(options?: {
+  enabled?: boolean;
+}): UseQueryResult<SalesDocumentCountrySummary[]> {
   const apiClient = useApiClient();
   return useQuery({
     queryKey: salesDocumentRulesQueryKeys.countries(),
     queryFn: () => apiClient.salesDocumentRules.listConfiguredCountries(),
+    ...options,
   });
 }
