@@ -106,11 +106,13 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     restockAttestations: [],
     refunds: [],
     orderCurrency: 'PLN',
-    restockTarget: {
-      status: 'resolved',
-      connectionId: 'conn_master',
-      connectionName: 'Main PrestaShop',
-      candidateCount: null,
+    restockTargets: {
+      [LINE_ID]: {
+        status: 'resolved',
+        connectionId: 'conn_master',
+        connectionName: 'Main PrestaShop',
+        candidateCount: null,
+      },
     },
     ...overrides,
   };
