@@ -13,7 +13,7 @@
  * @see {@link PrestashopProductSyncHandler} for an example implementation
  */
 import type { SyncJob } from '../entities/sync-job.entity';
-import type { SyncJobHandlerResult } from '../types/sync-job.types';
+import type { SyncJobDeadFailure, SyncJobHandlerResult } from '../types/sync-job.types';
 
 /**
  * Sync Job Handler Port
@@ -38,4 +38,18 @@ export interface SyncJobHandler {
    * @throws Error for unexpected errors (will also trigger retry)
    */
   execute(job: SyncJob): Promise<SyncJobHandlerResult>;
+
+  /**
+   * Optional hook the runner calls AFTER it has marked the job `dead`
+   * (#3505, G01-2) — on a non-retryable error or once attempts run out, never
+   * on a retry or a deferral.
+   *
+   * For a handler that owns a record outside `sync_jobs` which would
+   * otherwise stay "in progress" for ever once nothing will run the job again
+   * (an `OfferCreationRecord` left `pending`). Best-effort: the job is already
+   * dead and stays dead whatever this does; the runner logs and swallows a
+   * throw, so an implementation should not rely on throwing to signal
+   * anything.
+   */
+  onDead?(job: SyncJob, failure: SyncJobDeadFailure): Promise<void>;
 }

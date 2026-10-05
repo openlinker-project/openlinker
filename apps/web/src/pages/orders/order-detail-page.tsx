@@ -60,6 +60,7 @@ import {
   useOrderReturnEventsQuery,
 } from '../../features/returns';
 import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
+import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
@@ -89,6 +90,9 @@ export function OrderDetailPage(): ReactElement {
   // Non-fatal by design: a returns read that could not answer must not take the
   // order's own timeline down with it — the page renders one section shorter.
   const returnEventsQuery = useOrderReturnEventsQuery(internalOrderId || null);
+  // #3505 — whether fulfilment routing is on decides whether an order with no
+  // fulfilment tasks gets a section saying so.
+  const omsRouting = useOmsRoutingState();
   const { session } = useSession();
   // The order timeline's automation half (#2385). Its own read rather than a
   // field on `GET /orders/:id`: every order-detail load would otherwise pay for
@@ -528,14 +532,20 @@ export function OrderDetailPage(): ReactElement {
       {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
           order can carry several fulfilment tasks, each with its own lines and
           holds, which is more than a rail column can hold without wrapping into
-          nonsense on a tablet. Rendered unconditionally, and keyed per order so
-          the panel's dialog state cannot leak onto a cached next order (the
-          OrderHoldPanel precedent) — an order with no fulfilment tasks SAYS so
-          rather than silently disappearing, which is what a reader needs when
-          routing is switched on and an order was not routed. */}
+          nonsense on a tablet. Keyed per order so the panel's dialog state
+          cannot leak onto a cached next order (the OrderHoldPanel precedent).
+          With routing on, an order with no fulfilment tasks SAYS so — what a
+          reader needs when an order was not routed. With routing off (or its
+          state not known) the section appears only for an order that has tasks
+          from when routing was on (#3505); it is never hidden outright, since
+          those tasks still carry actions. */}
+      {/* The key is namespaced: `OrderReturnsPanel` below is keyed on the same
+          order id, and two siblings sharing a key let React duplicate this
+          panel's DOM once it can render nothing (`hideWhenEmpty`). */}
       <OrderFulfillmentTasksPanel
-        key={order.internalOrderId}
+        key={`fulfilment-tasks:${order.internalOrderId}`}
         internalOrderId={order.internalOrderId}
+        hideWhenEmpty={omsRouting !== 'on'}
       />
 
       {/* #2640 — returns spec § 5.4's third surface. Rendered UNCONDITIONALLY

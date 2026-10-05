@@ -239,6 +239,11 @@ export class OrderSyncService implements IOrderSyncService {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
+        // Destinations that convert a gross-priced line to net (WooCommerce) need
+        // the per-line rate settled at ingestion; absence must stay absence so
+        // they refuse rather than guess.
+        ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
+        ...(item.taxRateCountry !== undefined ? { taxRateCountry: item.taxRateCountry } : {}),
         // #3365 - the source-reported gross unit price. A destination whose
         // document is gross-priced reads this when `price` is net; without it
         // the order is refused for not reporting a figure the source DID
@@ -607,5 +612,4 @@ export class OrderSyncService implements IOrderSyncService {
     this.logger.warn(`Unknown order status: ${status}, defaulting to 'pending'`);
     return 'pending';
   }
-
 }
