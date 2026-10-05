@@ -224,7 +224,9 @@ export class EparagonyInvoicingAdapter
    * has ever applied - but leaving the type unnarrowed keeps the absence of a
    * config path visible at the declaration, the day one is added.
    */
-  readonly numberingTimeZone = DEFAULT_NUMBERING_TIME_ZONE;
+  // `: string` is what keeps it unnarrowed: a `readonly` property does not
+  // widen its initializer, so without it the type would be the literal.
+  readonly numberingTimeZone: string = DEFAULT_NUMBERING_TIME_ZONE;
 
   // `maxDocumentNumberLength` (#11) is deliberately UNDECLARED, not merely
   // forgotten: `EparagonyCreateInvoiceMetadata.invoiceNumber` is a bare
