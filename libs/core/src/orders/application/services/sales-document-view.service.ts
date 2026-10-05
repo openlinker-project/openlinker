@@ -40,6 +40,7 @@ import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoici
 import type { InvoiceRecord, InvoiceRecordFilters, InvoiceStatus } from '@openlinker/core/invoicing';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationRecordNotFoundException,
   IFiscalRegistrationService,
   selectHandoverArtefact,
   summarizeFiscalArtefacts,
@@ -353,7 +354,17 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     if (document === null || document.kind !== 'fiscal-receipt' || document.status !== 'registered') {
       return null;
     }
-    const record = await this.fiscalRegistrations.getById(document.identity.recordId);
+    let record: FiscalRegistrationRecord;
+    try {
+      record = await this.fiscalRegistrations.getById(document.identity.recordId);
+    } catch (error) {
+      // A record gone between the projection read and this one is a receipt
+      // that no longer exists - the route's advertised 404, not a 500.
+      if (error instanceof FiscalRegistrationRecordNotFoundException) {
+        return null;
+      }
+      throw error;
+    }
     return selectHandoverArtefact(record.artefacts);
   }
 
@@ -593,6 +604,9 @@ function toRankedInvoice(record: InvoiceRecord): RankedRecord {
 }
 
 function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
+  // The count is read off the summaries so the two are one fact: a future
+  // filter on the summaries cannot leave the count describing a different list.
+  const artefacts = summarizeFiscalArtefacts(record.artefacts);
   return {
     orderId: record.orderId,
     connectionId: record.connectionId,
@@ -606,8 +620,8 @@ function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
       failureReason: record.failureReason,
       // `0` on a registered row is a SUCCESS - a pure reporting regime returns
       // identifiers and no artefact at all.
-      artefactCount: record.artefacts?.length ?? 0,
-      artefacts: summarizeFiscalArtefacts(record.artefacts),
+      artefactCount: artefacts?.length ?? 0,
+      artefacts,
       identity: toIdentity({
         recordId: record.id,
         connectionId: record.connectionId,

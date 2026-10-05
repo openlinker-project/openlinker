@@ -286,6 +286,48 @@ describe('BenchDocumentsController — receipt (#3646)', () => {
     expect(body.toString()).toBe('%PDF');
   });
 
+  it.each(['application/pdf', 'image/png', 'image/jpeg', 'Application/PDF; charset=binary'])(
+    'should open the receipt inline when its content type is %s',
+    async (contentType) => {
+      const { res, setHeader } = makeRes();
+      salesDocuments.getReceiptHandoverArtefact.mockResolvedValue({
+        medium: 'document',
+        disposition: 'print',
+        content: Buffer.from('bytes').toString('base64'),
+        contentType,
+        label: 'Receipt',
+      });
+
+      await controller.downloadReceipt('work-1', res);
+
+      expect(setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'inline; filename="receipt-ol_order_1"'
+      );
+    }
+  );
+
+  it.each(['text/html', 'image/svg+xml', 'application/xhtml+xml', null])(
+    'should serve the receipt as a download when its content type is %s',
+    async (contentType) => {
+      const { res, setHeader } = makeRes();
+      salesDocuments.getReceiptHandoverArtefact.mockResolvedValue({
+        medium: 'document',
+        disposition: 'print',
+        content: Buffer.from('<script>alert(1)</script>').toString('base64'),
+        contentType,
+        label: 'Receipt',
+      });
+
+      await controller.downloadReceipt('work-1', res);
+
+      expect(setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="receipt-ol_order_1"'
+      );
+    }
+  );
+
   it('should 404 when the order has no receipt to hand over', async () => {
     const { res } = makeRes();
 
@@ -354,5 +396,67 @@ describe('BenchDocumentsController — receipt (#3646)', () => {
     expect(dto.document).toBeNull();
     expect(dto.documentKind).toBe('invoice');
     expect(dto.blockReason).toBe('trigger-model-manual');
+  });
+});
+
+describe('BenchDocumentsController — invoice Content-Disposition (#3646 review)', () => {
+  let getRegulatoryDocument: jest.Mock;
+  let controller: BenchDocumentsController;
+
+  beforeEach(() => {
+    getRegulatoryDocument = jest.fn();
+    const invoices = {
+      getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue({
+        id: 'inv-1',
+        connectionId: 'conn-invoicing',
+        regulatoryStatus: 'accepted',
+      }),
+    } as unknown as IInvoiceService;
+    const integrations = {
+      getCapabilityAdapter: jest.fn().mockResolvedValue({ getRegulatoryDocument }),
+    } as unknown as IIntegrationsService;
+    controller = new BenchDocumentsController(
+      {} as IBenchDocumentsService,
+      {
+        getWorkForDocuments: jest.fn().mockResolvedValue(work()),
+      } as unknown as IBenchParcelService,
+      invoices,
+      integrations,
+      { markInvoicePrinted: jest.fn() } as unknown as IFulfillmentVerificationService,
+      {} as IShipmentLabelService,
+      {} as ISalesDocumentViewService
+    );
+  });
+
+  it('should open the invoice inline when the provider renders a PDF', async () => {
+    const { res, setHeader } = makeRes();
+    getRegulatoryDocument.mockResolvedValue({
+      contentType: 'application/pdf',
+      content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+    });
+
+    await controller.downloadInvoice('work-1', res);
+
+    expect(setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+    expect(setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      'inline; filename="invoice-inv-1"'
+    );
+  });
+
+  it('should serve the invoice as a download when the provider renders HTML', async () => {
+    const { res, setHeader } = makeRes();
+    getRegulatoryDocument.mockResolvedValue({
+      contentType: 'text/html; charset=utf-8',
+      content: new TextEncoder().encode('<html></html>'),
+    });
+
+    await controller.downloadInvoice('work-1', res);
+
+    expect(setHeader).toHaveBeenCalledWith('Content-Type', 'text/html; charset=utf-8');
+    expect(setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      'attachment; filename="invoice-inv-1"'
+    );
   });
 });
