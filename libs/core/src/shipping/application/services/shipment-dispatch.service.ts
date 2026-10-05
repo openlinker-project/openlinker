@@ -607,6 +607,16 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       // structured `providerCode` (#1918) is persisted alongside the
       // free-text message so triage grouping can key on it instead of
       // fuzzy-matching prose.
+      //
+      // An ambiguous write (5xx / network error after the POST may have been
+      // applied, e.g. `InpostAmbiguousWriteException`) also lands here as
+      // `Failed`, though "failed" and "we do not know" are different facts: a
+      // label may already exist and be paid for. Kept deliberately (#3630
+      // review): the reference-lookup adoption above (#1917) heals the row on
+      // the operator's next retry instead of minting a second label. If the
+      // dispatch surface ever grows an in-doubt state - as #3654/#3663 added
+      // `voidState: 'in-doubt'` for bench voids - this branch is its first
+      // consumer.
       await this.shipments.update(shipment.id, {
         status: SHIPMENT_STATUS.Failed,
         failedAt: new Date(),

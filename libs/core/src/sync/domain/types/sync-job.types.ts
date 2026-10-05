@@ -460,6 +460,21 @@ export interface SyncJobHandlerResult {
 }
 
 /**
+ * Sync Job Dead Failure (#3505, G01-2)
+ *
+ * What the runner hands `SyncJobHandler.onDead` once a job has been marked
+ * `dead`. `nonRetryable` separates "a classifier called the error terminal"
+ * from "the retry ladder ran out" — a handler may word its own record
+ * differently for the two, but must treat both as final.
+ */
+export interface SyncJobDeadFailure {
+  /** The error message the runner persisted on the job. */
+  message: string;
+  /** `true` when the job died on a non-retryable error; `false` when attempts ran out. */
+  nonRetryable: boolean;
+}
+
+/**
  * Enqueue Job Result
  *
  * Returned by JobEnqueuePort.enqueueJob. Separates the job ID from the
