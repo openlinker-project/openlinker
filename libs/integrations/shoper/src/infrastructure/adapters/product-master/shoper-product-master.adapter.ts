@@ -161,6 +161,15 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         this.logger.warn(`No internal id for Shoper stock ${stock.stock_id}`);
         continue;
       }
+      if (stock.options.length > 0) {
+        // Not guessed at (the shape is not live-verified), but not silent either:
+        // an attribute-less sibling groups with no distinguishing values on an
+        // explicit-grouping destination (#1065 / #986).
+        this.logger.warn(
+          `Shoper stock ${stock.stock_id} carries variant options that are not mapped; ` +
+            'its variant syncs without attributes'
+        );
+      }
       variants.push({ ...mapShoperStockToVariant(stock, productId, ctx), id: internalId });
     }
     return variants;

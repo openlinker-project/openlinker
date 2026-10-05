@@ -157,7 +157,9 @@ Paging (all observed on a live shop):
   `defaultRateLimit` is declared. Set `config.rateLimit` on the connection if a shop needs a cap.
 - The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
 - **Multi-variant products are not live-verified**: the trial shop has none, so a variant's `options` are not
-  mapped to `attributes` yet (they stay `null`) rather than guessed at.
+  mapped to `attributes` yet (they stay `null`) rather than guessed at; the adapter logs a warning per stock
+  that carries `options`. **Prerequisite before enabling the catalogue sweep on a live install**: probe a
+  multi-variant shop and map `options` (otherwise Erli's explicit variant grouping gets no distinguishing values).
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
 - Only the main image is exposed; the rest need `product-images` (one extra call per product).
