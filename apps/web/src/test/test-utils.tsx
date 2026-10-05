@@ -1138,6 +1138,16 @@ export function createMockApiClient(
       }),
       ...overrides.syncJobs,
     } as ApiClient['syncJobs'],
+    streamDeadLetters: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      count: vi.fn().mockResolvedValue({ count: 0 }),
+      ...overrides.streamDeadLetters,
+    } as ApiClient['streamDeadLetters'],
     webhookDeliveries: {
       list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       getById: vi.fn().mockResolvedValue(null),
