@@ -8,7 +8,10 @@ import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
-import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
+import {
+  FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationRecordNotFoundException,
+} from '@openlinker/core/fiscalization';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
@@ -130,7 +133,11 @@ describe('SalesDocumentViewService', () => {
   let service: SalesDocumentViewService;
   let orderRecords: { findByIds: jest.Mock };
   let invoices: { listInvoicesForOrders: jest.Mock; listInvoicesKeyset: jest.Mock };
-  let fiscalRegistrations: { getByOrderIds: jest.Mock; listRegistrationsKeyset: jest.Mock };
+  let fiscalRegistrations: {
+    getByOrderIds: jest.Mock;
+    listRegistrationsKeyset: jest.Mock;
+    getById: jest.Mock;
+  };
   let connections: { list: jest.Mock };
   let rules: { resolveRoutingBatch: jest.Mock; getRulesByIds: jest.Mock };
 
@@ -143,6 +150,7 @@ describe('SalesDocumentViewService', () => {
     fiscalRegistrations = {
       getByOrderIds: jest.fn().mockResolvedValue([]),
       listRegistrationsKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      getById: jest.fn(),
     };
     connections = { list: jest.fn().mockResolvedValue([]) };
     rules = {
@@ -225,6 +233,7 @@ describe('SalesDocumentViewService', () => {
       failureMode: null,
       failureReason: null,
       artefactCount: 0,
+      artefacts: [],
       identity: {
         recordId: 'fis-1',
         connectionId: 'conn-fiscal',
@@ -236,6 +245,102 @@ describe('SalesDocumentViewService', () => {
       },
     });
     expect(view?.document && 'regulatoryStatus' in view.document).toBe(false);
+  });
+
+  it('should summarise a receipt link artefact without its payload', async () => {
+    orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+    fiscalRegistrations.getByOrderIds.mockResolvedValue([
+      fiscalRecord({
+        artefacts: [
+          {
+            medium: 'link',
+            disposition: 'send',
+            content: 'https://receipts.example.test/r/16240',
+            contentType: null,
+            label: 'Receipt',
+          },
+        ],
+      }),
+    ]);
+
+    const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+    expect(view?.document?.kind === 'fiscal-receipt' && view.document.artefacts).toEqual([
+      { medium: 'link', disposition: 'send', label: 'Receipt', contentType: null },
+    ]);
+    expect(JSON.stringify(view)).not.toContain('receipts.example.test');
+  });
+
+  it('should keep an unfinished registration as `artefacts: null`, not an empty list', async () => {
+    orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+    fiscalRegistrations.getByOrderIds.mockResolvedValue([
+      fiscalRecord({ status: 'registering', artefacts: null, registeredAt: null }),
+    ]);
+
+    const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+    expect(view?.document?.kind === 'fiscal-receipt' && view.document.artefacts).toBeNull();
+  });
+
+  describe('getReceiptHandoverArtefact (#3646)', () => {
+    const link = {
+      medium: 'link' as const,
+      disposition: 'send' as const,
+      content: 'https://receipts.example.test/r/16240',
+      contentType: null,
+      label: 'Receipt',
+    };
+
+    it('should serve the winning registered receipt artefact, re-read by its record id', async () => {
+      const record = fiscalRecord({ artefacts: [link] });
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([record]);
+      fiscalRegistrations.getById.mockResolvedValue(record);
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toEqual(link);
+      expect(fiscalRegistrations.getById).toHaveBeenCalledWith('fis-1');
+    });
+
+    it('should serve nothing while the receipt is still being registered', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([
+        fiscalRecord({ status: 'registering', artefacts: null }),
+      ]);
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toBeNull();
+      expect(fiscalRegistrations.getById).not.toHaveBeenCalled();
+    });
+
+    it('should serve nothing when the order has no document at all', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toBeNull();
+      expect(fiscalRegistrations.getById).not.toHaveBeenCalled();
+    });
+
+    it('should serve nothing for an order OpenLinker has never seen', async () => {
+      await expect(service.getReceiptHandoverArtefact('ol_order_missing')).resolves.toBeNull();
+    });
+
+    it('should serve nothing when the record disappears between the projection read and the re-read', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscalRecord({ artefacts: [link] })]);
+      fiscalRegistrations.getById.mockRejectedValue(
+        new FiscalRegistrationRecordNotFoundException('fis-1'),
+      );
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should propagate any other failure of the re-read when it is not a not-found', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscalRecord({ artefacts: [link] })]);
+      fiscalRegistrations.getById.mockRejectedValue(new Error('connection reset'));
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).rejects.toThrow(
+        'connection reset',
+      );
+    });
   });
 
   it('should return the persisted block reasons verbatim', async () => {
