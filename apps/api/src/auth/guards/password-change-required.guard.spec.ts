@@ -34,7 +34,7 @@ const FLAGGED_PACKER: AuthenticatedUser = {
 describe('PasswordChangeRequiredGuard', () => {
   function makeGuard(allowed = false): PasswordChangeRequiredGuard {
     const reflector = new Reflector();
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(allowed);
+    jest.spyOn(reflector, 'get').mockReturnValue(allowed);
     return new PasswordChangeRequiredGuard(reflector);
   }
 

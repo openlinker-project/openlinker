@@ -23,8 +23,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddUserDisplayNameAndMustChangePassword1906000000000 implements MigrationInterface {
-  name = 'AddUserDisplayNameAndMustChangePassword1906000000000';
+export class AddUserDisplayNameAndMustChangePassword1912000000000 implements MigrationInterface {
+  name = 'AddUserDisplayNameAndMustChangePassword1912000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "display_name" VARCHAR`);

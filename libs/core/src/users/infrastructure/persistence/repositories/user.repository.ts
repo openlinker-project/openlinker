@@ -143,10 +143,18 @@ export class UserRepository implements UserRepositoryPort {
       return this.toDomain(saved);
     } catch (error) {
       if (error instanceof QueryFailedError) {
-        const pgErr = error as QueryFailedError & { code?: string; detail?: string };
+        const pgErr = error as QueryFailedError & { code?: string; detail?: string; constraint?: string };
         if (pgErr.code === '23505') {
           const detail = pgErr.detail ?? '';
-          const isEmail = detail.includes('(email)');
+          // Constraint name first (stable); `detail` is localised, human-readable
+          // text, so it is only the fallback for a schema built without our names.
+          const named =
+            pgErr.constraint === 'UQ_users_email'
+              ? 'email'
+              : pgErr.constraint === 'UQ_users_username'
+                ? 'username'
+                : null;
+          const isEmail = named ? named === 'email' : detail.includes('(email)');
           const identifier = isEmail ? (normalizedEmail ?? 'email') : user.username;
           throw new UserAlreadyExistsException(identifier, isEmail ? 'email' : 'username');
         }

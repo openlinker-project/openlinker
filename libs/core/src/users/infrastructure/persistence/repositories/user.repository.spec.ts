@@ -184,6 +184,26 @@ describe('UserRepository', () => {
       ).rejects.toMatchObject({ field });
     });
 
+    it('should prefer the constraint name over the detail text when naming the field', async () => {
+      const error = new QueryFailedError('duplicate key value violates unique constraint', [], '');
+      Object.assign(error, {
+        code: '23505',
+        constraint: 'UQ_users_email',
+        detail: 'Schlüssel (username)=(alice) existiert bereits.',
+      });
+      ormRepository.save.mockRejectedValue(error);
+
+      await expect(
+        repository.save({
+          username: 'alice',
+          email: 'alice@example.com',
+          passwordHash: 'hash',
+          role: 'packer',
+          status: 'active',
+        })
+      ).rejects.toMatchObject({ field: 'email' });
+    });
+
     it('should persist the display name and the forced-change flag when given (#3456)', async () => {
       ormRepository.save.mockResolvedValue(
         buildOrm({ displayName: 'Anna Kowalska', mustChangePassword: true })

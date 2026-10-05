@@ -11,6 +11,7 @@
  * `@Public()` routes (refresh, logout) need no decorator: they carry no
  * session principal, and the guard lets a principal-less request through.
  *
+ * Method-level only: the guard reads the handler's metadata, never the class's.
  * Mirrors `@SkipAnalyticsConsent()` (`SetMetadata` + `Reflector` lookup).
  *
  * @module apps/api/src/auth/decorators
