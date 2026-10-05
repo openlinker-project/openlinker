@@ -41,6 +41,7 @@ import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.typ
 import { isPricingDestination } from '../lib/pricing-destination';
 import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
+import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -520,7 +521,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // read by nothing: the configuration-that-decides-nothing shape #2407
   // refuses. Gating here also stops `StockAndPricingSection` from firing its
   // `GET /inventory/locations` read on every connection-edit page load.
+  //
+  // #3634 — the override only feeds OMS routing, so it is also withheld unless
+  // the build opts into that UI. Hiding the group does not drop a stored value:
+  // `stockLocationOverride` is hydrated from config and written back unchanged.
   const isInventoryMaster = connection.enabledCapabilities.includes('InventoryMaster');
+  const offersStockLocationOverride = isInventoryMaster && isOmsRoutingUiEnabled();
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
   // structured inputs so typing in them can't silently drop custom keys that
@@ -918,7 +924,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
         syncStockLocationOverrideToJson={syncStockLocationOverrideToJson}
-        stockLocationOverrideCapable={isInventoryMaster}
+        stockLocationOverrideCapable={offersStockLocationOverride}
         pricingRuleManagedElsewhere={
           needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
         }

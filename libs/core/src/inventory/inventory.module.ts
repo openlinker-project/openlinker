@@ -18,6 +18,7 @@ import { LocationRepository } from './infrastructure/persistence/repositories/lo
 import { ReservationRepository } from './infrastructure/persistence/repositories/reservation.repository';
 import { ReservationShortfallRepository } from './infrastructure/persistence/repositories/reservation-shortfall.repository';
 import { InventoryService } from './application/services/inventory.service';
+import { PostSaleInventoryRefreshService } from './application/services/post-sale-inventory-refresh.service';
 import { InventorySyncService } from './application/services/inventory-sync.service';
 import { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 import { InventoryQueryService } from './application/services/inventory-query.service';
@@ -47,6 +48,7 @@ import {
   LOCATION_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
   INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
+  POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -90,6 +92,7 @@ export {
     // Provide classes directly first
     InventoryRepository,
     InventoryService,
+    PostSaleInventoryRefreshService,
     InventorySyncService,
     MasterInventorySyncService,
     InventoryQueryService,
@@ -222,8 +225,13 @@ export {
       provide: INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
       useExisting: InventoryProvenanceBackfillService,
     },
+    {
+      provide: POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
+      useExisting: PostSaleInventoryRefreshService,
+    },
   ],
   exports: [
+    POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
     INVENTORY_REPOSITORY_TOKEN,
     INVENTORY_SERVICE_TOKEN,
     INVENTORY_SYNC_SERVICE_TOKEN,

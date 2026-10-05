@@ -51,6 +51,8 @@ import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
+import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
+import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
@@ -549,6 +551,13 @@ export function OrderDetailPage(): ReactElement {
               (`/orders/{id}#invoicing`, orders-list-page.tsx). */}
           <div id="invoicing" tabIndex={-1}>
             <SalesDocumentPanel order={order} />
+            {/* Beside the panel, not inside it: the panel renders from the
+                LIVE invoice query while this reads the snapshot projection the
+                orders row also reads, so the two surfaces state the fact from
+                one source and cannot drift. It renders nothing unless a
+                document really went out with unmatched lines. */}
+            <UnlinkedCatalogueLinesBadge invoice={snapshot.invoice} />
+            <WarehouseReleaseBadge invoice={snapshot.invoice} />
           </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>

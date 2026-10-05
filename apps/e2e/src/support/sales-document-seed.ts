@@ -54,6 +54,19 @@ export const SEED_ORDER_IDS = {
 
 export type SeedOrderKey = keyof typeof SEED_ORDER_IDS;
 
+/**
+ * The two countries this seed gives a routing default (see the PL/DE insert
+ * below). Also the cleanup key: `sales_document_country_defaults` is unique
+ * on `country` ALONE since #3177 (one routing default per country, never
+ * per-`document_kind`), so a delete keyed on `connection_id` - this seed's
+ * OWN fixed ids - does not remove a stale row for 'PL' or 'DE' left behind
+ * under a DIFFERENT connection id, and the INSERT below then hits
+ * `UQ_sales_document_country_defaults_country`. Cleaning by the same column
+ * the unique index uses is what makes re-seeding idempotent regardless of
+ * which connection wrote the row last.
+ */
+const COUNTRY_DEFAULT_COUNTRIES = ['PL', 'DE'] as const;
+
 function orderSnapshot(country: string, city: string, customerName: string): string {
   return JSON.stringify({
     customer: { name: customerName },
@@ -101,8 +114,8 @@ export async function seedSalesDocumentStates(): Promise<void> {
       orderIds,
     ]);
     await client.query(
-      `DELETE FROM sales_document_country_defaults WHERE connection_id = ANY($1::uuid[])`,
-      [Object.values(SEED_CONNECTION_IDS)],
+      `DELETE FROM sales_document_country_defaults WHERE country = ANY($1::text[])`,
+      [COUNTRY_DEFAULT_COUNTRIES],
     );
     await client.query(`DELETE FROM connections WHERE id = ANY($1::uuid[])`, [
       Object.values(SEED_CONNECTION_IDS),

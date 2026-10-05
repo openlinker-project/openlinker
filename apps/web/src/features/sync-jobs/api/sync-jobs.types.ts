@@ -131,6 +131,8 @@ export const JOB_TYPE_VALUES = [
   'orders.taxRate.backfill', // Internal job — tax-rate backfill for older order lines (#2440).
   'orders.export', // Orders CSV/XLSX export run (#3534) — the export dialog links here.
   'analytics.currency.recalculate', // Internal job — Data Coverage currency restatement (#2468).
+  'shipping.shipment.notifyDispatched', // Tells the source marketplace a parcel left, with its waybill.
+  'subiekt.bridge.reachabilitySweep', // Internal job — periodic Subiekt bridge probe (#3358).
   'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.
   'marketplace.offer.pauseStaleSweep',
 ] as const;

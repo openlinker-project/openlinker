@@ -1,0 +1,100 @@
+// IdempotencyLock.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/IdempotencyLock.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
+
+/*
+ * Per-key serialization for the check-then-act idempotency guards every write
+ * endpoint in this bridge relies on (InventoryEndpoints.AdjustInventory,
+ * OrdersEndpoints.CreateOrder, Invoicing.IssueInvoice/IssueCorrection,
+ * FiscalizationEndpoints).
+ *
+ * Every one of those follows the same shape: a plain SQL SELECT against
+ * dok_NrPelnyOryg for an existing document, and only if not found, a COM
+ * write via Sfera.Run. The lookup and the write are two separate steps with
+ * no lock in between - two overlapping calls under the same idempotency key
+ * (a caller retry racing the original request still in flight; Sfera.Run's
+ * COM-side wait is NOT tied to the HTTP request's cancellation, so a caller
+ * that gave up can still have its original call land) can both observe "not
+ * found" and both write. On this bridge that means a duplicate fiscal
+ * document (FS/PA/KFS) and/or a duplicate stock movement (PW/RW/WZ) - a real
+ * legal/financial defect, not a cosmetic one.
+ *
+ * There is no DB unique constraint on dok_NrPelnyOryg to fall back on (it is
+ * a free-text audit field on an accounting schema this bridge does not own)
+ * and no cross-process lock is available on a single bridge instance, so
+ * this is an in-process mutex keyed on the SAME reduced string that is
+ * actually compared against dok_NrPelnyOryg - two callers racing under the
+ * same logical key but a differently-shaped raw string (e.g. one already
+ * hashed, one not) still serialize together as long as both sides reduce it
+ * the same way before calling in.
+ */
+using System.Collections.Concurrent;
+
+public static class IdempotencyLock
+{
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Locks = new();
+
+    /// <summary>
+    /// Runs `body` with exclusive access for `key`. A blank key means the
+    /// caller has nothing to serialize on (no idempotency key supplied, and
+    /// no natural fallback either) - runs unlocked, exactly as before this
+    /// existed.
+    /// </summary>
+    public static async Task<T> RunExclusive<T>(string key, Func<Task<T>> body)
+    {
+        if (string.IsNullOrEmpty(key)) return await body();
+
+        var gate = Locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            return await body();
+        }
+        finally
+        {
+            gate.Release();
+            // THE CLEANUP IS GONE, and its removal is the fix (PR #7 review).
+            //
+            // It used to read `if (gate.CurrentCount == 1) Locks.TryRemove(...)`
+            // under a comment asserting that a race there "can never mean two
+            // callers hold the gate at once, because removal only ever happens
+            // after Release()". It can, and it takes three overlapping calls on
+            // one key - which is exactly the traffic this lock was added for,
+            // a retry racing the original still in flight:
+            //
+            //   1. A releases; CurrentCount == 1 (no waiter at that instant).
+            //   2. A evaluates the check as true, and is preempted here.
+            //   3. B does GetOrAdd -> still this gate, WaitAsync succeeds,
+            //      CurrentCount -> 0. B is INSIDE the critical section.
+            //   4. A resumes and removes the entry: the dictionary still maps
+            //      the key to this gate, so the compare-and-remove succeeds.
+            //   5. C does GetOrAdd -> absent -> mints a NEW semaphore, enters
+            //      immediately.
+            //
+            // B and C are now both inside `body()` on different semaphores.
+            // The consequence is the one this class exists to prevent: two
+            // `FindExistingZk` / `FindByIdempotencyKey` reads both answering
+            // "not found", and two fiscal documents for one sale.
+            //
+            // A ConcurrentDictionary cannot express "acquire-or-create, and
+            // remove-if-idle" atomically, so the choice is a lock around both
+            // halves or no removal at all. No removal is chosen: entries are
+            // keyed on reduced idempotency keys and each holds one
+            // SemaphoreSlim, so the growth is bounded in practice by the
+            // distinct keys one process lifetime sees, and it is strictly
+            // cheaper than the correctness it was buying.
+            //
+            // Worth stating plainly, because it is the assumption that breaks
+            // silently: this is an IN-PROCESS mutex. It serializes one bridge
+            // instance and nothing else, so two bridges against one Subiekt are
+            // not protected by it.
+        }
+    }
+}

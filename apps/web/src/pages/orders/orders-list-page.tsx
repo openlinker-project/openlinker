@@ -66,6 +66,8 @@ import { OrderIdentityCell } from '../../features/orders';
 import { useOrderTagsQuery } from '../../features/orders/hooks/use-order-tags-query';
 import { SalesDocumentCell } from '../../features/orders/components/sales-document-cell';
 import { TaxRateConflictBadge } from '../../features/orders/components/tax-rate-conflict-badge';
+import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
+import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
@@ -920,6 +922,12 @@ export function OrdersListPage(): ReactElement {
                   document cell above: a conflict does not stop the invoice,
                   so it can be true alongside any document state. */}
               {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
+              {/* Same independent-line rule as the conflict badge above, and
+                  for a sharper reason: the document was ISSUED, so anything
+                  keyed on "a document exists" would hide it on every order it
+                  is about. */}
+              <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
+              <WarehouseReleaseBadge invoice={parsed.invoice} />
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
@@ -1462,6 +1470,8 @@ export function OrdersListPage(): ReactElement {
                             connectionNames={connectionNames}
                           />
                           {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
+                          <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
+                          <WarehouseReleaseBadge invoice={parsed.invoice} />
                         </dd>
                       </div>
                       <div>

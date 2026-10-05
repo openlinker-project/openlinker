@@ -230,7 +230,7 @@ describe('ConnectionCapabilitiesPanel', () => {
       const note = screen.getByTestId('capability-routing-note');
       expect(note).toHaveTextContent('Enabling a role does not route anything to it');
       expect(note).toHaveTextContent('per country');
-      expect(within(note).getByRole('link', { name: 'Sales documents' })).toHaveAttribute(
+      expect(within(note).getByRole('link', { name: 'Document routing' })).toHaveAttribute(
         'href',
         '/settings/sales-documents',
       );

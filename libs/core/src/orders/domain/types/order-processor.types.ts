@@ -45,6 +45,24 @@ export interface OrderCreate {
   orderNumber?: string;
 
   /**
+   * OpenLinker's own id for this order - the one identifier that is ALWAYS
+   * present, whatever the source reported.
+   *
+   * It exists because `orderNumber` is optional and a destination that needs a
+   * stable idempotency key had nothing else to reach for. The Subiekt adapter
+   * stamps `orderRef` from it, and the bridge uses that value both to serialize
+   * a create and to find an already-created document - so an absent key there
+   * means an UNLOCKED, UNDEDUPED create, and a timeout retry mints a second
+   * sales order for one sale. Erli's order source reports no `orderNumber` at
+   * all (zero occurrences in the package), so that was not hypothetical.
+   *
+   * Optional on the TYPE so an out-of-tree caller compiled against the older
+   * shape still satisfies it; every in-tree caller populates it, and an adapter
+   * that needs a key should refuse rather than fall back to an empty one.
+   */
+  internalOrderId?: string;
+
+  /**
    * Order status
    */
   status: OrderStatus;

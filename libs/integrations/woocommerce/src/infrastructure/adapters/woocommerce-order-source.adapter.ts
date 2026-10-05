@@ -19,8 +19,9 @@ import type {
   IncomingOrderAddress,
   IncomingOrderTotals,
   OrderFeedEventType,
+  PaymentStatus,
 } from '@openlinker/core/orders';
-import { readSourceBuyerTaxId } from '@openlinker/core/orders';
+import { readSourceBuyerTaxId, PAYMENT_STATUS } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
@@ -157,6 +158,10 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       externalOrderId,
       orderNumber: order.number,
       status: order.status,
+      ...(() => {
+        const paymentStatus = deriveWooCommercePaymentStatus(order);
+        return paymentStatus === undefined ? {} : { paymentStatus };
+      })(),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),
@@ -208,6 +213,72 @@ function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEvent
   return 'updated';
 }
 
+/**
+ * What this WooCommerce order says about the MONEY.
+ *
+ * ## Why it exists
+ *
+ * This adapter reported no `paymentStatus` at all, and an `auto-on-paid`
+ * connection reads exactly that field - so a WooCommerce sale never issued an
+ * invoice or a receipt, never produced a warehouse release, and never moved
+ * stock, silently and with no block reason, because "not paid yet" is
+ * legitimately not a block. The same gap was found and fixed on the PrestaShop
+ * source in the same change (#3365).
+ *
+ * ## `date_paid` is the evidence; the status is the fallback
+ *
+ * WooCommerce stamps `date_paid` when a gateway confirms payment, so its
+ * presence is the store's own answer rather than a reading of a label. It is
+ * not universal - a store settling orders by hand, or a plugin that skips the
+ * stamp, leaves it null on an order the merchant considers paid - so the two
+ * core statuses that mean money arrived stand in for it.
+ *
+ * ## It reports `'paid'` or NOTHING, and the silence is load-bearing
+ *
+ * A first version returned `'awaiting'` for the core unpaid statuses. That is
+ * true about the store and wrong about OpenLinker, because
+ * `DISPATCH_BLOCKING_PAYMENT_STATUSES` holds `awaiting` and `refunded` - either
+ * one REFUSES a label with a 422 - and the label form hides its manual
+ * cash-on-delivery amount field for any status other than unknown or `cod`.
+ * Both were explicitly load-bearing on this source reporting NOTHING; the
+ * form's own docblock names WooCommerce among the sources that "keep the
+ * manual-COD path".
+ *
+ * WooCommerce cannot express cash on delivery here either: the method is
+ * `payment_method`, a free-text slug a plugin chooses. So an unpaid COD order
+ * would report `'awaiting'` and OpenLinker would refuse to ship it until it was
+ * paid, while the buyer pays the courier on delivery - a deadlock with no
+ * escape state. `'cancelled'` and `'failed'` would block a re-dispatch for the
+ * same reason.
+ *
+ * The rule is about the SOURCE's vocabulary rather than about the gate: a
+ * source that cannot distinguish "unpaid, prepay expected" from "unpaid, pays
+ * the courier" must not report a status that assumes the first. `'paid'` blocks
+ * nothing and is the only value the auto-issue gate needs.
+ *
+ * A status this adapter has never seen answers nothing for a second reason: a
+ * plugin's own word is not evidence about anybody's money.
+ */
+export function deriveWooCommercePaymentStatus(
+  order: Pick<WooCommerceOrder, 'status' | 'date_paid' | 'date_paid_gmt'>,
+): PaymentStatus | undefined {
+  const status = order.status.toLowerCase();
+  // Withheld, not reported: `refunded` is a dispatch-blocking status, and the
+  // money question a refund raises is not one this seam should answer with a
+  // value that refuses a label.
+  if (status === 'refunded') {
+    return undefined;
+  }
+  const paidAt = order.date_paid_gmt ?? order.date_paid;
+  if (typeof paidAt === 'string' && paidAt.trim().length > 0) {
+    return PAYMENT_STATUS.Paid;
+  }
+  if (status === 'processing' || status === 'completed') {
+    return PAYMENT_STATUS.Paid;
+  }
+  return undefined;
+}
+
 function mapLineItem(item: WooCommerceLineItem): IncomingOrderItem {
   const productRef: IncomingOrderItemRef =
     item.variation_id > 0
@@ -226,7 +297,41 @@ function mapLineItem(item: WooCommerceLineItem): IncomingOrderItem {
     sku: item.sku || undefined,
     name: item.name || undefined,
     imageUrl: item.image?.src || undefined,
+    ...toUnitPriceGross(item),
   };
+}
+
+/**
+ * The gross UNIT price for a WooCommerce line (#3365).
+ *
+ * WooCommerce reports LINE totals net (`total`) with the tax beside them
+ * (`total_tax`), and no gross unit price of its own - unlike PrestaShop, which
+ * stores `unit_price_tax_incl` directly. So this sums two figures the platform
+ * reported and divides by the quantity. Both operations are what ADR-063 § 5
+ * permits; what it forbids is `net * (1 + rate)`, and no rate is read here.
+ *
+ * Dividing is also what makes the result faithful to a DISCOUNTED line: `total`
+ * is post-discount, so `unitPriceGross * quantity` reproduces what the buyer
+ * actually paid, which `price` (the pre-discount unit price) would not.
+ *
+ * Returns nothing - never a zero - when `total_tax` is absent or either side is
+ * unreadable, and when the quantity is not a positive number. An absent tax
+ * component silently read as zero would label a net figure gross, and a
+ * non-positive quantity has no unit price to speak of.
+ */
+function toUnitPriceGross(item: WooCommerceLineItem): { unitPriceGross?: number } {
+  if (item.total_tax === undefined) {
+    return {};
+  }
+  const lineNet = Number(item.total);
+  const lineTax = Number(item.total_tax);
+  if (!Number.isFinite(lineNet) || !Number.isFinite(lineTax)) {
+    return {};
+  }
+  if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+    return {};
+  }
+  return { unitPriceGross: roundCurrency((lineNet + lineTax) / item.quantity) };
 }
 
 function mapBaseAddress(
@@ -331,6 +436,22 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     // rule condition can trust it without also relabeling the (still net)
     // line prices as gross (#2836).
     totalTaxTreatment: 'inclusive',
+    // #3365: gross shipping, so a fiscal document's shipping line carries what
+    // the buyer paid rather than the net figure `shipping` holds. Summing two
+    // amounts WooCommerce itself reported is not computing tax (ADR-063 § 5
+    // permits grouping and division; it forbids `net * (1 + rate)`), and
+    // nothing here reads a rate. Left ABSENT when `shipping_tax` is missing or
+    // unreadable - an absent component must not be silently read as zero tax,
+    // which would publish a net figure while claiming it was gross.
+    ...(((): { shippingGross?: number } => {
+      const shippingTax = Number(order.shipping_tax);
+      if (order.shipping_tax === undefined || !Number.isFinite(shippingTax)) {
+        return {};
+      }
+      return Number.isFinite(shipping)
+        ? { shippingGross: roundCurrency(shipping + shippingTax) }
+        : {};
+    })()),
   };
 }
 

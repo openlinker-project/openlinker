@@ -25,6 +25,8 @@ import type {
   TaxIdentifier,
 } from '@openlinker/core/invoicing';
 import type { LoggerPort } from '@openlinker/shared/logging';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { InMemoryIdentifierMappingAdapter } from '@openlinker/core/identifier-mapping/testing';
 import type { SubiektConnectionConfig } from '../../../domain/types/subiekt-connection-config.types';
 import { FakeSubiektBridgeAdapter } from '../../../testing/fake-subiekt-bridge.adapter';
 import {
@@ -76,14 +78,18 @@ function makeLogger(): LoggerPort {
   return { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() };
 }
 
-function makeAdapter(bridge = new FakeSubiektBridgeAdapter()): {
+function makeAdapter(
+  bridge = new FakeSubiektBridgeAdapter(),
+  identifierMapping = new InMemoryIdentifierMappingAdapter(),
+): {
   adapter: SubiektInvoicingAdapter;
   bridge: FakeSubiektBridgeAdapter;
   logger: LoggerPort;
+  identifierMapping: InMemoryIdentifierMappingAdapter;
 } {
   const logger = makeLogger();
-  const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', logger);
-  return { adapter, bridge, logger };
+  const adapter = new SubiektInvoicingAdapter(bridge, identifierMapping, 'conn-1', logger);
+  return { adapter, bridge, logger, identifierMapping };
 }
 
 const BASE_CONFIG: SubiektConnectionConfig = { bridgeBaseUrl: 'http://localhost:5000' };
@@ -97,10 +103,16 @@ function makeConfiguredAdapter(
   logger: LoggerPort;
 } {
   const logger = makeLogger();
-  const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', logger, {
-    ...BASE_CONFIG,
-    ...config,
-  });
+  const adapter = new SubiektInvoicingAdapter(
+    bridge,
+    new InMemoryIdentifierMappingAdapter(),
+    'conn-1',
+    logger,
+    {
+      ...BASE_CONFIG,
+      ...config,
+    },
+  );
   return { adapter, bridge, logger };
 }
 
@@ -168,7 +180,7 @@ describe('SubiektInvoicingAdapter', () => {
       const result = await adapter.issueInvoice(command());
       const record = result.record;
       expect(record.providerType).toBe(SUBIEKT_PROVIDER_TYPE);
-      expect(SUBIEKT_PROVIDER_TYPE).toBe('subiekt');
+      expect(SUBIEKT_PROVIDER_TYPE).toBe('subiekt-gt');
       // NEUTRAL, never the bridge-native 'faktura'.
       expect(record.documentType).toBe('invoice');
     });
@@ -210,6 +222,143 @@ describe('SubiektInvoicingAdapter', () => {
         SubiektBridgeTransportError,
       );
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'idem-xyz' }));
+    });
+
+    describe('resolveZkId (order-number vs. order-id mismatch fix)', () => {
+      it('resolves the ZK dok_Id via identifier_mappings and passes it as zkId', async () => {
+        const { adapter, bridge, identifierMapping } = makeAdapter();
+        identifierMapping.seed({
+          entityType: CORE_ENTITY_TYPE.Order,
+          externalId: '42', // the Subiekt ZK's numeric dok_Id, as a string
+          connectionId: 'conn-1',
+          internalId: 'ol_order_1', // matches command()'s default orderId
+        });
+        await adapter.issueInvoice(command());
+        expect(bridge.getLastIssueInvoiceRequest()).toMatchObject({ zkId: 42 });
+      });
+
+      it('omits zkId when no mapping exists for the order (order-less/manual invoice, or pre-fix data)', async () => {
+        const { adapter, bridge } = makeAdapter();
+        await adapter.issueInvoice(command());
+        expect(bridge.getLastIssueInvoiceRequest()).not.toHaveProperty('zkId');
+      });
+
+      it("ignores a mapping row that belongs to a DIFFERENT connection", async () => {
+        const { adapter, bridge, identifierMapping } = makeAdapter();
+        identifierMapping.seed({
+          entityType: CORE_ENTITY_TYPE.Order,
+          externalId: '42',
+          connectionId: 'some-other-connection',
+          internalId: 'ol_order_1',
+        });
+        await adapter.issueInvoice(command());
+        expect(bridge.getLastIssueInvoiceRequest()).not.toHaveProperty('zkId');
+      });
+
+      it('omits zkId when the identifier-mapping lookup throws (fiscal-safe: never blocks issuance)', async () => {
+        const { adapter, bridge, identifierMapping } = makeAdapter();
+        jest.spyOn(identifierMapping, 'getExternalIds').mockRejectedValueOnce(new Error('db down'));
+        const result = await adapter.issueInvoice(command());
+        expect(result.record.status).toBe('issued');
+        expect(bridge.getLastIssueInvoiceRequest()).not.toHaveProperty('zkId');
+      });
+    });
+
+    describe('unlinkedCatalogueLines (free-text lines that never move stock)', () => {
+      const linesFor = (...productIds: (string | undefined)[]): IssueInvoiceCommand['lines'] =>
+        productIds.map((productId, i) => ({
+          name: `Widget ${String(i)}`,
+          quantity: 1,
+          unitPriceGross: 10,
+          taxRate: '23',
+          ...(productId === undefined ? {} : { productId }),
+        }));
+
+      const seedProduct = (
+        identifierMapping: InMemoryIdentifierMappingAdapter,
+        internalId: string,
+        symbol: string,
+      ): void => {
+        identifierMapping.seed({
+          entityType: CORE_ENTITY_TYPE.Product,
+          externalId: symbol,
+          connectionId: 'conn-1',
+          internalId,
+        });
+      };
+
+      it('reports 0 when every line resolved to a catalogue symbol', async () => {
+        const { adapter, identifierMapping } = makeAdapter();
+        seedProduct(identifierMapping, 'ol_product_a', 'DZSO100');
+        const result = await adapter.issueInvoice(
+          command({ lines: linesFor('ol_product_a') }),
+        );
+        // Reported, not omitted: on this provider "all linked" is a real
+        // answer, and `undefined` would read as "linkage not reported".
+        expect(result.unlinkedCatalogueLines).toBe(0);
+      });
+
+      it('counts LINES, not distinct products', async () => {
+        const { adapter } = makeAdapter();
+        // One unmapped product on two lines is two lines the warehouse will
+        // not see, and two lines is what the operator is looking at.
+        const result = await adapter.issueInvoice(
+          command({ lines: linesFor('ol_product_missing', 'ol_product_missing') }),
+        );
+        expect(result.unlinkedCatalogueLines).toBe(2);
+      });
+
+      it('counts only the unmapped lines on a mixed document', async () => {
+        const { adapter, identifierMapping } = makeAdapter();
+        seedProduct(identifierMapping, 'ol_product_a', 'DZSO100');
+        const result = await adapter.issueInvoice(
+          command({ lines: linesFor('ol_product_a', 'ol_product_missing') }),
+        );
+        expect(result.unlinkedCatalogueLines).toBe(1);
+      });
+
+      it('counts a line whose productId is the empty string', async () => {
+        const { adapter } = makeAdapter();
+        // It names a product and supplies no id for it, so it goes out
+        // free-text exactly like an unmapped one. Reporting it as linked
+        // would be the silent case this field exists to remove.
+        const result = await adapter.issueInvoice(command({ lines: linesFor('') }));
+        expect(result.unlinkedCatalogueLines).toBe(1);
+      });
+
+      it('does not count a line that carries no productId at all', async () => {
+        const { adapter } = makeAdapter();
+        // A shipping or hand-written line has no product to map; calling it
+        // "unlinked" would put a permanent badge on every document.
+        const result = await adapter.issueInvoice(command({ lines: linesFor(undefined) }));
+        expect(result.unlinkedCatalogueLines).toBe(0);
+      });
+
+      it('still issues the document when nothing could be mapped', async () => {
+        const { adapter, logger } = makeAdapter();
+        const result = await adapter.issueInvoice(
+          command({ lines: linesFor('ol_product_missing') }),
+        );
+        // The document is the operator's obligation; the badge is how they
+        // learn the warehouse did not follow.
+        expect(result.record.status).toBe('issued');
+        expect(result.unlinkedCatalogueLines).toBe(1);
+        expect(logger.warn).toHaveBeenCalled();
+      });
+
+      it('counts a line whose product is mapped on a DIFFERENT connection as unlinked', async () => {
+        const { adapter, identifierMapping } = makeAdapter();
+        identifierMapping.seed({
+          entityType: CORE_ENTITY_TYPE.Product,
+          externalId: 'DZSO100',
+          connectionId: 'some-other-connection',
+          internalId: 'ol_product_a',
+        });
+        expect(
+          (await adapter.issueInvoice(command({ lines: linesFor('ol_product_a') })))
+            .unlinkedCatalogueLines,
+        ).toBe(1);
+      });
     });
 
     it('translates seedFailure(subiekt-rejected) -> SubiektInvoiceRejectedError (terminal)', async () => {
@@ -472,6 +621,50 @@ describe('SubiektInvoicingAdapter', () => {
       await expect(adapter.issueCorrection(correctionCommand())).rejects.toBeInstanceOf(
         SubiektBridgeTransportError,
       );
+    });
+
+    // #3365 review — issueCorrection was returning no warehouseRelease signal
+    // at all, unlike issueInvoice, even though the bridge has always answered
+    // stockAutoReleased/quantityDeltas for this endpoint.
+    describe('warehouseRelease (mirrors issueInvoice, #3365 review)', () => {
+      it('reports released when Subiekt auto-released the stock movement', async () => {
+        const { adapter, bridge } = makeAdapter();
+        bridge.seedCorrection({ stockAutoReleased: true });
+        const { warehouseRelease } = await adapter.issueCorrection(correctionCommand());
+        expect(warehouseRelease).toEqual({ outcome: 'released', documentNumber: null });
+      });
+
+      it('reports not-applicable when nothing was due (no quantity deltas)', async () => {
+        const { adapter, bridge } = makeAdapter();
+        bridge.seedCorrection({ stockAutoReleased: false, quantityDeltas: [] });
+        const { warehouseRelease } = await adapter.issueCorrection(
+          correctionCommand({ lines: [{ originalLineNumber: 2, newUnitPriceGross: 80.5 }] }),
+        );
+        expect(warehouseRelease).toEqual({ outcome: 'not-applicable', documentNumber: null });
+      });
+
+      // THE ALARM: quantity changed and Subiekt did not auto-release — the
+      // credit note is issued and the stock has not moved.
+      it('reports not-released and logs an error when a release was due and Subiekt did not auto-apply it', async () => {
+        const { adapter, bridge, logger } = makeAdapter();
+        bridge.seedCorrection({
+          stockAutoReleased: false,
+          quantityDeltas: [{ lp: 1, delta: 2 }],
+        });
+        const { warehouseRelease } = await adapter.issueCorrection(correctionCommand());
+        expect(warehouseRelease).toEqual({ outcome: 'not-released', documentNumber: null });
+        expect(logger.error).toHaveBeenCalledWith(
+          expect.stringContaining('subiekt_correction_warehouse_release_missing'),
+        );
+      });
+
+      // An older bridge build omits the field entirely — "not reported", never
+      // a manufactured failure, mirroring readWarehouseRelease's same rule.
+      it('reports nothing at all when the bridge omits the field', async () => {
+        const { adapter } = makeAdapter();
+        const { warehouseRelease } = await adapter.issueCorrection(correctionCommand());
+        expect(warehouseRelease).toBeUndefined();
+      });
     });
   });
 
@@ -879,6 +1072,162 @@ describe('SubiektInvoicingAdapter', () => {
     });
   });
 
+  // A Subiekt MODEL is ONE OL product standing for several towary, so its
+  // product-level external id is `model:{mdt_Id}` - a grouping key, not a
+  // `tw_Symbol`. Sending it reaches `d.Pozycje.Dodaj("model:5")` bridge-side,
+  // inside a try that carries no catch, so the whole issuance fails with a raw
+  // COM message. It never looked unmapped either: the mapping exists and is
+  // non-empty, so nothing warned and nothing counted it.
+  describe('a model product names its towar through the variant (#3365)', () => {
+    async function capturedLines(
+      cmd: IssueInvoiceCommand,
+      idMapping: InMemoryIdentifierMappingAdapter,
+    ): Promise<{ name: string; towarSymbol?: string }[]> {
+      const { adapter, bridge } = makeAdapter(new FakeSubiektBridgeAdapter(), idMapping);
+      const spy = jest.spyOn(bridge, 'issueInvoice');
+      await adapter.issueInvoice(cmd);
+      return (spy.mock.calls[0][0] as unknown as { lines: { name: string; towarSymbol?: string }[] })
+        .lines;
+    }
+
+    function seedModel(idMapping: InMemoryIdentifierMappingAdapter): void {
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'model:5',
+        connectionId: 'conn-1',
+        internalId: 'ol_product_model',
+      });
+    }
+
+    it('sends the towar symbol, never the model grouping key', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      seedModel(idMapping);
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK100::variant',
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+      });
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: 'Black Tiger 100ml',
+              quantity: 1,
+              unitPriceGross: 551.02,
+              taxRate: '23',
+              productId: 'ol_product_model',
+              variantId: 'ol_variant_1',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines[0].towarSymbol).toBe('WOBLACK100');
+      expect(lines[0].towarSymbol).not.toContain('model:');
+    });
+
+    // Two members of ONE model share a productId and are different towary. A
+    // product-keyed symbol map gave them both whichever resolved last.
+    it('gives each member of one model its OWN symbol', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      seedModel(idMapping);
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK100::variant',
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+      });
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK50::variant',
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_2',
+      });
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: '100ml',
+              quantity: 1,
+              unitPriceGross: 551.02,
+              taxRate: '23',
+              productId: 'ol_product_model',
+              variantId: 'ol_variant_1',
+            },
+            {
+              name: '50ml',
+              quantity: 1,
+              unitPriceGross: 309.94,
+              taxRate: '23',
+              productId: 'ol_product_model',
+              variantId: 'ol_variant_2',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines.map((l) => l.towarSymbol)).toEqual(['WOBLACK100', 'WOBLACK50']);
+    });
+
+    // Without a resolvable towar the line goes out free-text, which is the
+    // documented degradation - the document still issues and the operator sees
+    // the count. What must NOT happen is the grouping key reaching the bridge.
+    it('falls back to a free-text line when the variant names no towar', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      seedModel(idMapping);
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: 'Black Tiger 100ml',
+              quantity: 1,
+              unitPriceGross: 551.02,
+              taxRate: '23',
+              productId: 'ol_product_model',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines[0].towarSymbol).toBeUndefined();
+    });
+
+    // An ordinary towar is untouched by any of this.
+    it('leaves a non-model product resolving through its own mapping', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'SYM-1',
+        connectionId: 'conn-1',
+        internalId: 'ol_product_x',
+      });
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: 'Widget',
+              quantity: 1,
+              unitPriceGross: 123.0,
+              taxRate: '23',
+              productId: 'ol_product_x',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines[0].towarSymbol).toBe('SYM-1');
+    });
+  });
+
   describe('issueInvoice payment + cash-register field stamping (#1324)', () => {
     async function capturedRequest(
       config: Partial<SubiektConnectionConfig>,
@@ -964,5 +1313,152 @@ describe('SubiektInvoicingAdapter', () => {
       expect(req.bankAccountId).toBe(100007);
       expect(req.stanowiskoKasoweId).toBe(100067);
     });
+  });
+});
+
+/**
+ * The warehouse release the bridge always answered and OpenLinker threw away
+ * (#3365 audit).
+ *
+ * A repo-wide search for `warehouseReleaseNumber` found a type declaration,
+ * three specs, and no production reader - while `resolveZkId` returns `null` on
+ * two paths and the bridge's own fallback for that case is documented in this
+ * adapter as never matching a natural order. So an invoice could issue with the
+ * correct money while the stock never left, and the only way to notice was to
+ * open Subiekt.
+ *
+ * The four states are asserted, because three of them are quiet and correct and
+ * only one is the alarm.
+ */
+describe('SubiektInvoicingAdapter — the warehouse release', () => {
+  type Release = { outcome: string; documentNumber: string | null } | undefined;
+
+  /**
+   * `zkMapped` is what decides the two silent states apart: the adapter passes
+   * a `zkId` only when the order carries a Subiekt `Order` mapping, so seeding
+   * one is what makes a release DUE.
+   */
+  function buildWarehouseReleaseHarness(input: {
+    warehouseReleaseNumber?: string | null;
+    zkMapped: boolean;
+  }): { adapter: SubiektInvoicingAdapter; cmd: IssueInvoiceCommand; logger: LoggerPort } {
+    const bridge = new FakeSubiektBridgeAdapter();
+    if (input.warehouseReleaseNumber !== undefined) {
+      bridge.seed({ warehouseReleaseNumber: input.warehouseReleaseNumber });
+    }
+    const identifierMapping = new InMemoryIdentifierMappingAdapter();
+    const logger = makeLogger();
+    const adapter = new SubiektInvoicingAdapter(bridge, identifierMapping, 'conn-1', logger);
+    const cmd = command();
+    if (input.zkMapped) {
+      void identifierMapping.createMapping('Order', '4242', 'conn-1', cmd.orderId);
+    }
+    return { adapter, cmd, logger };
+  }
+
+  function readRelease(
+    adapter: { issueInvoice: (cmd: never) => Promise<{ warehouseRelease?: unknown }> },
+    cmd: unknown,
+  ): Promise<Release> {
+    return adapter.issueInvoice(cmd as never).then((r) => r.warehouseRelease as Release);
+  }
+
+  it('reports released, with the number, when the bridge names a WZ', async () => {
+    const { adapter, cmd } = buildWarehouseReleaseHarness({
+      warehouseReleaseNumber: 'WZ 67/2026',
+      zkMapped: true,
+    });
+    await expect(readRelease(adapter, cmd)).resolves.toEqual({
+      outcome: 'released',
+      documentNumber: 'WZ 67/2026',
+    });
+  });
+
+  // Quiet and correct: a manually issued, order-less invoice has nothing to
+  // release, and the bridge's `null` says exactly that.
+  it('reports not-applicable when no order document was handed over', async () => {
+    const { adapter, cmd } = buildWarehouseReleaseHarness({
+      warehouseReleaseNumber: null,
+      zkMapped: false,
+    });
+    await expect(readRelease(adapter, cmd)).resolves.toEqual({
+      outcome: 'not-applicable',
+      documentNumber: null,
+    });
+  });
+
+  // THE ALARM. The same `null` on a real sale means the release did not happen:
+  // the client is billed and the stock has not moved.
+  it('reports not-released when a ZK was handed over and no WZ came back', async () => {
+    const { adapter, cmd, logger } = buildWarehouseReleaseHarness({
+      warehouseReleaseNumber: null,
+      zkMapped: true,
+    });
+    await expect(readRelease(adapter, cmd)).resolves.toEqual({
+      outcome: 'not-released',
+      documentNumber: null,
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('subiekt_warehouse_release_missing'),
+    );
+  });
+
+  // An older bridge omits the field entirely. "Not reported" is the truthful
+  // answer, never a manufactured failure.
+  it('reports nothing at all when the bridge omits the field', async () => {
+    const { adapter, cmd } = buildWarehouseReleaseHarness({ zkMapped: true });
+    await expect(readRelease(adapter, cmd)).resolves.toBeUndefined();
+  });
+});
+
+describe('unlinkedCatalogueLines for a MODEL product (#3365 review)', () => {
+  it('counts only the sibling line whose variant failed to resolve, not both', async () => {
+    // A Subiekt model is ONE OL product standing for several towary, so two of
+    // its members on one document share a `productId` and differ only by
+    // `variantId`. The resolver keys on the variant; the unmapped set used to
+    // record the bare PRODUCT, so one unresolved variant marked BOTH lines
+    // unlinked - over-reporting a line that was linked perfectly well.
+    const { adapter, identifierMapping } = makeAdapter();
+    // The product resolves to a MODEL grouping, which is never a towar, so each
+    // line falls through to its own variant - which is the shape that exposes
+    // the bug.
+    identifierMapping.seed({
+      entityType: CORE_ENTITY_TYPE.Product,
+      externalId: 'model:5',
+      connectionId: 'conn-1',
+      internalId: 'ol_product_model',
+    });
+    // Variant A has a towar; variant B has none.
+    identifierMapping.seed({
+      entityType: CORE_ENTITY_TYPE.ProductVariant,
+      externalId: 'TOWAR-A',
+      connectionId: 'conn-1',
+      internalId: 'ol_variant_a',
+    });
+
+    const result = await adapter.issueInvoice(
+      command({
+        lines: [
+          {
+            name: 'A',
+            quantity: 1,
+            unitPriceGross: 10,
+            taxRate: '23',
+            productId: 'ol_product_model',
+            variantId: 'ol_variant_a',
+          },
+          {
+            name: 'B',
+            quantity: 1,
+            unitPriceGross: 10,
+            taxRate: '23',
+            productId: 'ol_product_model',
+            variantId: 'ol_variant_b',
+          },
+        ],
+      }),
+    );
+
+    expect(result.unlinkedCatalogueLines).toBe(1);
   });
 });

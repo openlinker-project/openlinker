@@ -1,7 +1,9 @@
 /**
  * Sales Documents Page (#2159)
  *
- * Admin-only page hosting the centralized "Settings → Sales documents" view.
+ * Admin-only page hosting the centralized "Settings -> Document routing" view.
+ * The route path keeps its original `/settings/sales-documents` spelling: it is
+ * a persisted link target, and #3307 renamed only what an operator reads.
  * Mirrors `McpTokensPage`'s admin-gating shape.
  *
  * TWO SECTIONS, IN THIS ORDER (mockup `sales-document-routing.html`):

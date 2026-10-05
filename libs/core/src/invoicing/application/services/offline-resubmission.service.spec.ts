@@ -44,7 +44,7 @@ function makeRecord(
     overrides.id ?? 'rec-1',
     CONNECTION_ID,
     'order-1',
-    'subiekt',
+    'subiekt-gt',
     'invoice',
     'issued',
     overrides.providerInvoiceId ?? null,

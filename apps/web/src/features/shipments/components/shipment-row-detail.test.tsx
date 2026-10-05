@@ -301,6 +301,45 @@ describe('ShipmentRowDetail — generated', () => {
     await waitFor(() => expect(cancel).toHaveBeenCalledWith('ol_shipment_1'));
   });
 
+  // #3365: a dispatched shipment is cancellable, and the dialog says what
+  // that leaves outstanding BEFORE the operator confirms - the channel was
+  // told the parcel shipped and OpenLinker sends nothing to withdraw it.
+  it('offers Cancel on a dispatched shipment and warns that the channel was already told', async () => {
+    const cancel = vi.fn().mockResolvedValue({
+      shipment: generatedShipment({ status: 'cancelled' }),
+      cancelledAfterDispatch: true,
+    });
+    renderWithProviders(
+      <ShipmentRowDetail
+        shipment={generatedShipment({ status: 'dispatched' })}
+        canWrite
+        canReviewConnection
+      />,
+      { apiClient: createMockApiClient({ shipments: { cancel } }) },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByText('Cancel this shipment?')).toBeInTheDocument();
+    expect(screen.getByText(/cannot take that back/i)).toBeInTheDocument();
+    expect(cancel).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel shipment' }));
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith('ol_shipment_1'));
+  });
+
+  // The warning is specific to having been dispatched; showing it on every
+  // cancellation would train an operator to read past it.
+  it('does not warn about the channel when cancelling before dispatch', async () => {
+    renderWithProviders(
+      <ShipmentRowDetail shipment={generatedShipment()} canWrite canReviewConnection />,
+      { apiClient: createMockApiClient({ shipments: { cancel: vi.fn() } }) },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await screen.findByText('Cancel this shipment?');
+    expect(screen.queryByText(/cannot take that back/i)).not.toBeInTheDocument();
+  });
+
   it('Cancel dismissed via Keep does not fire the mutation', async () => {
     const cancel = vi.fn();
     renderWithProviders(
@@ -515,16 +554,21 @@ describe('ShipmentRowDetail — omp/branch-1', () => {
 });
 
 describe('ShipmentRowDetail — empty-content fallback (#1826)', () => {
-  it('renders a fallback message for a dispatched, non-omp shipment with no label ref and no resolvable carrier yet', () => {
-    // A common transitional state: `dispatched` before the carrier
-    // status-sync poll has backfilled `carrier` (no tracking link) and with
+  it('renders a fallback message for an in-transit, non-omp shipment with no label ref and no resolvable carrier yet', () => {
+    // A common transitional state: the carrier has reported movement before
+    // the status-sync poll backfilled `carrier` (no tracking link) and with
     // no persisted `labelPdfRef` (no Download action either). Not `failed`
-    // (no failure block) and not `generated`/`in-transit`/`delivered`-eligible
-    // for any of the write actions — an empty accordion otherwise.
+    // (no failure block) and eligible for no write action — an empty accordion
+    // otherwise.
+    //
+    // This used to use `dispatched`, which stopped being actionless when
+    // #3365 made a dispatched shipment cancellable. `in-transit` is the
+    // nearest state that still is, and the distinction is the parcel: at
+    // `dispatched` the label exists and nothing has moved.
     renderWithProviders(
       <ShipmentRowDetail
         shipment={makeShipment({
-          status: 'dispatched',
+          status: 'in-transit',
           errorMessage: null,
           failedAt: null,
           labelPdfRef: null,

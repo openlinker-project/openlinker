@@ -398,7 +398,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
   });
 
-  it('opens the mobile drawer when the hamburger is clicked', () => {
+  it('opens the mobile drawer when the hamburger is clicked', async () => {
     renderShell({ pathname: '/' });
 
     const drawer = getDrawer();
@@ -408,7 +408,12 @@ describe('AppShell', () => {
     expect(drawer.open).toBe(true);
 
     const mobileNav = screen.getByRole('navigation', { name: 'Primary (mobile)' });
-    expect(within(mobileNav).getByText('Orders')).toBeInTheDocument();
+    // `/orders` is role-gated (#3221) on `session.user?.role`, which resolves
+    // asynchronously (`SessionProvider` starts at `isReady: false`) — a bare
+    // synchronous `getByText` right after the click can race that resolution
+    // and see the item hidden. `findByText` waits for it, matching the
+    // pattern already used elsewhere in this file for role-gated content.
+    expect(await within(mobileNav).findByText('Orders')).toBeInTheDocument();
   });
 
   it('closes the drawer when the Close button is clicked', () => {

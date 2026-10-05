@@ -136,10 +136,10 @@ describe('SalesDocumentStatusSection', () => {
     expect(screen.getByText(/inFakt is already primary\./)).toBeInTheDocument();
   });
 
-  it('should link to the centralized Settings → Sales documents page', () => {
+  it('should link to the centralized Settings → Document routing page', () => {
     renderSection(makeConnection());
 
-    expect(screen.getByRole('link', { name: /Manage in Settings → Sales documents/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Manage in Settings → Document routing/i })).toHaveAttribute(
       'href',
       '/settings/sales-documents',
     );

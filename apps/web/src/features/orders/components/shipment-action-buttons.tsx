@@ -27,6 +27,7 @@ import {
   CAN_CANCEL,
   CAN_NOTIFY_DISPATCHED,
   CAN_DOWNLOAD_LABEL,
+  cancelShipmentCopy,
   type Shipment,
 } from '../../shipments';
 import { Button } from '../../../shared/ui/button';
@@ -190,6 +191,7 @@ export function ShipmentActionButtons({
   };
 
   const carrierName = getCarrierDisplayName(shipment?.carrier ?? null) ?? 'the carrier';
+  const cancelCopy = cancelShipmentCopy(shipment?.status ?? 'draft', carrierName);
 
   return (
     <>
@@ -249,8 +251,13 @@ export function ShipmentActionButtons({
             title="Cancel this shipment?"
             description={
               <>
-                The label will be voided with {carrierName}. This cannot be undone — to ship
-                this order again you&apos;ll need to generate a new label.
+                {cancelCopy.effect}
+                {cancelCopy.alsoOutstanding ? (
+                  <>
+                    {' '}
+                    <strong>{cancelCopy.alsoOutstanding}</strong>
+                  </>
+                ) : null}
               </>
             }
             confirmLabel={cancelMutation.isPending ? 'Cancelling…' : 'Cancel shipment'}
