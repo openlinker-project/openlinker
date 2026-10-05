@@ -63,6 +63,12 @@ export interface MeResponse {
    * carrying it.
    */
   packStationLabel?: string | null;
+  /**
+   * The account was created by an admin with a one-time password and must
+   * replace it before doing anything else (#3456). Optional so a payload from an
+   * API predating the field is tolerated; absent reads as `false`.
+   */
+  mustChangePassword?: boolean;
 }
 
 export interface SessionUser {
@@ -75,6 +81,8 @@ export interface SessionUser {
   analyticsConsent?: boolean;
   /** The signed-in user's own bench/printer label (#3404). Absent/null ⇒ unset. */
   packStationLabel?: string | null;
+  /** Forced first-sign-in password change is pending (#3456). Absent ⇒ false. */
+  mustChangePassword?: boolean;
 }
 
 export interface Session {

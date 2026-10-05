@@ -76,6 +76,11 @@ const harness = createIntegrationTestHarness({
     // about a position and must outlive it), so they are invisible to the
     // CASCADE closure walk and must be listed explicitly.
     'reservation_shortfall_episodes',
+    // #3453 — routed-order sale decrements. No foreign key (an audit record
+    // outlives the order and the work it describes), so the CASCADE closure walk
+    // cannot reach it; a claim left by one case would otherwise make the next
+    // case's decrement a no-op.
+    'inventory_sale_decrements',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the

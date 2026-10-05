@@ -709,6 +709,7 @@ Every slot is optional. A plugin contributes only the affordances its platform a
 |---|---|---|---|
 | `displayName` | `string` | dropdowns, alerts | Human-readable label. Required. |
 | `setupCard` | `PlatformSetupCard` | `PlatformPicker` (`features/connections`) | One card on `/connections/new`. Omit for advanced-only platforms. |
+| `hideFromCreateConnection` | `boolean` | `PlatformPicker`, `CreateConnectionForm` (`features/connections`) | When true, the platform is omitted from the create-connection platform list and inline form because its connection is created by a dedicated flow, not by hand (#3457: the `openlinker` OMS connection, created by the onboarding wizard's Confirm step). Independent of `setupCard`; a platform with no `setupCard` is already absent from the picker, and this flag additionally keeps it out of the inline form's platform select. |
 | `requiresExternalAuthRedirect` | `boolean` | `CreateConnectionForm` | When true, the inline create form swaps in an Alert linking to the guided wizard (today: Allegro OAuth). Named broadly so non-OAuth redirect flows can opt in. |
 | `getCallbackUrlDefault` | `() => string \| undefined` | `EditConnectionForm` | Default for the OL callback URL field when the connection has none stored. PrestaShop uses `window.location.origin`. |
 | `StructuredConfigSection` | `ComponentType<StructuredConfigSectionProps>` | `EditConnectionForm` | Platform-specific structured-config inputs (PS: shop URL / storefront / shop ID / OL callback / fallback carrier). When absent, the form falls back to raw JSON. |

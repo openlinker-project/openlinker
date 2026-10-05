@@ -9,13 +9,24 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlatforms } from '../../../shared/plugins';
+import { useConnectionsQuery } from '../hooks/use-connections-query';
 import { captureDemoEvent } from '../../demo';
 
 export function PlatformPicker(): ReactElement {
   const plugins = usePlatforms();
+  const connectionsQuery = useConnectionsQuery();
+  // A featured platform (the OMS) is a single setup, not one card per
+  // account: once its connection exists the card says so and leads to it.
+  const configuredTypes = new Set((connectionsQuery.data ?? []).map((c) => c.platformType));
   const cards = plugins
-    .filter((p) => p.setupCard !== undefined)
-    .map((p) => ({ platformType: p.platformType, ...p.setupCard! }));
+    .filter(
+      (p) =>
+        p.setupCard !== undefined &&
+        (p.hideFromCreateConnection !== true || p.setupCard.featured === true)
+    )
+    .map((p) => ({ platformType: p.platformType, ...p.setupCard! }))
+    // Stable: featured cards first, every other card keeps its registry order.
+    .sort((a, b) => Number(b.featured === true) - Number(a.featured === true));
 
   return (
     <div className="platform-picker">
@@ -24,7 +35,11 @@ export function PlatformPicker(): ReactElement {
           <li key={card.platformType}>
             <Link
               to={card.to}
-              className="platform-picker__card"
+              className={
+                card.featured === true
+                  ? 'platform-picker__card platform-picker__card--featured'
+                  : 'platform-picker__card'
+              }
               onClick={() =>
                 captureDemoEvent('demo_connection_platform_selected', {
                   platformType: card.platformType,
@@ -33,11 +48,15 @@ export function PlatformPicker(): ReactElement {
             >
               <div className="platform-picker__card-header">
                 <h3 className="platform-picker__card-title">{card.title}</h3>
-                <span className="toolbar-chip">{card.badge}</span>
+                <span className={card.featured === true ? 'toolbar-chip toolbar-chip--accent' : 'toolbar-chip'}>
+                  {card.badge}
+                </span>
               </div>
               <p className="platform-picker__card-description">{card.description}</p>
               <span className="platform-picker__card-cta" aria-hidden="true">
-                Continue →
+                {card.featured === true && configuredTypes.has(card.platformType)
+                  ? 'Already set up — click to edit →'
+                  : 'Continue →'}
               </span>
             </Link>
           </li>

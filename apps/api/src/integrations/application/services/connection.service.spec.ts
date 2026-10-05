@@ -10,7 +10,11 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConnectionService, STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE } from './connection.service';
+import {
+  ConnectionService,
+  ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+  STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+} from './connection.service';
 import type {
   ConnectionPort,
   ConnectionUpdate,
@@ -2148,6 +2152,22 @@ describe('ConnectionService', () => {
           /at least one active inventory location/i
         );
         expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should carry a machine-readable code on the refusal (#3457)', async () => {
+        // The OMS onboarding wizard branches on this field, never on the prose,
+        // so a reworded message cannot silently turn its inline remedy into a
+        // generic error banner.
+        locations.countActiveLocations.mockResolvedValue(0);
+
+        const error = await service
+          .create(claiming({ sourcingAuthority: true }))
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toEqual(
+          expect.objectContaining({ error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE })
+        );
       });
 
       it('should allow the same claim once a location exists', async () => {
