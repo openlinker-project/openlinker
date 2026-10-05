@@ -50,8 +50,9 @@ export interface OrderSearchTextOptions {
 
 /**
  * Letters NFD does NOT decompose — see `normalizeCategorySearchText`'s
- * docblock for the full rationale (the `ł` / `Artykuły` trap). Kept in sync by
- * inspection; both lists are short and rarely change.
+ * docblock for the full rationale (the `ł` / `Artykuły` trap). Must stay
+ * identical to that table — `scripts/check-non-decomposing-letters-mirror.mjs`
+ * fails `pnpm lint` when the two drift.
  */
 const NON_DECOMPOSING_LETTERS: ReadonlyArray<readonly [RegExp, string]> = [
   [/ł/g, 'l'],

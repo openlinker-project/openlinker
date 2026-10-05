@@ -1,11 +1,19 @@
 /**
  * Recompute `order_records.searchText` for every row (#3507 G03-1, G03-14)
  *
- * Data repair, no DDL. Until G03-1 the frozen-attribution upsert
+ * Data only, no DDL. This is the ONE full-table pass that writes
+ * `searchText`: `1914000000000-add-order-record-search-text.ts` adds the column
+ * with no backfill (#3633 review — a backfill there would index buyer PII on
+ * an `OL_STORE_PII=false` install before this pass stripped it again), so on a
+ * fresh install every pre-existing row is populated here, under the correct
+ * flag.
+ *
+ * It also repairs databases that ran this epic's migrations before they were
+ * renumbered from `1912…`: there the old first migration backfilled without
+ * the flag, and until G03-1 the frozen-attribution upsert
  * (`OrderRecordRepository.buildFrozenAttributionUpsert`) enumerated its
- * columns without `searchText`, so every order ingested after
- * `1912000000000-add-order-record-search-text.ts` kept the column default `''`
- * (unsearchable), and a re-ingested row kept whatever the backfill gave it —
+ * columns without `searchText`, so an order ingested afterwards kept `''`
+ * (unsearchable) and a re-ingested row kept whatever the backfill gave it —
  * including the PREVIOUS buyer's name for a row whose snapshot was since
  * rewritten. Every row is therefore re-derived, not only the empty ones.
  *
@@ -15,8 +23,9 @@
  * with the same semantics the application uses (`getEnvBoolean('OL_STORE_PII',
  * true)` — `libs/shared/src/config/index.ts`, the read `getPiiConfig()` makes
  * in `libs/shared/src/config/pii-config.ts`), copied below rather than
- * imported. The worker's `OrderSearchTextReindexService` re-applies the same
- * rule later if the flag is flipped after this migration ran.
+ * imported. The worker's `OrderSearchTextReindexService` exists for the
+ * RUNTIME case — the flag flipped after this migration ran — and re-applies
+ * the same rule then; it is not what populates the column on deploy.
  *
  * **The derivation is COPIED, never imported** (`docs/lessons.md`, "A
  * migration backfill must copy application logic, never call it"): a
@@ -29,17 +38,34 @@
  *   `NON_DECOMPOSING_LETTERS` in `libs/core/src/orders/domain/order-search-text.ts`;
  * - `getEnvBoolean` in `libs/shared/src/config/index.ts`.
  *
- * Keyset-paged over the text primary key, 1000 rows per page, in TypeScript
- * (never `unaccent()`); a row whose stored text already equals the derivation
- * is not written. `updatedAt` is left alone — the text is derived data, not a
- * change to the order.
+ * The derivation runs in TypeScript, never `unaccent()`: that is an optional
+ * contrib extension not guaranteed on every managed Postgres, and it does not
+ * fold the same letters as the application's normalizer (the `ł`/`ø`/`ß`
+ * class NFD leaves alone — `destination-category-search.ts`'s docblock).
+ *
+ * Keyset-paged over the text primary key (there is no numeric id),
+ * `PAGE_SIZE` rows per page. Each page is written with ONE set-based
+ * statement — `UPDATE … FROM (VALUES …)` with bound parameters, the shape
+ * #3660 adopted — rather than one `UPDATE` per row, so a large install pays
+ * one round-trip per page, not per order (#3633 review). Rows whose stored
+ * text already equals the derivation are left out of the `VALUES` list, and
+ * the `IS DISTINCT FROM` predicate keeps the statement a no-op for them even
+ * so. `updatedAt` is left alone — the text is derived data, not a change to
+ * the order. A plain row-level `UPDATE` takes no table lock beyond `ROW
+ * EXCLUSIVE`, so concurrent reads of `order_records` are not blocked.
  *
  * Timestamp: this epic's synthetic block (#3507), one step after
- * `1912000006000-create-order-exports.ts`.
+ * `1914000006000-create-order-exports.ts`. Renumbered from `1912000007000`
+ * (#3633 review); it carries no DDL, and re-running it is a no-op by
+ * construction (every unchanged row is skipped).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-const BATCH_SIZE = 1000;
+/**
+ * 500 rows → at most 1000 bound parameters per `UPDATE`, far below Postgres'
+ * 65535-parameter ceiling while keeping each statement's row locks short.
+ */
+const PAGE_SIZE = 500;
 
 /** Copy of `getEnvBoolean` (`libs/shared/src/config/index.ts`) as of #3507 G03-14. */
 function getEnvBoolean(key: string, defaultValue: boolean): boolean {
@@ -144,7 +170,44 @@ interface OrderRecordRow {
   searchText: string | null;
 }
 
-export class RecomputeOrderRecordSearchText1912000007000 implements MigrationInterface {
+interface SearchTextRewrite {
+  internalOrderId: string;
+  searchText: string;
+}
+
+/**
+ * One set-based `UPDATE` for a page's changed rows. Every value is a bound
+ * parameter (`$n::text`) — never interpolated — so a snapshot-derived string
+ * cannot alter the statement.
+ */
+async function writePage(
+  queryRunner: QueryRunner,
+  rewrites: readonly SearchTextRewrite[]
+): Promise<void> {
+  if (rewrites.length === 0) {
+    return;
+  }
+
+  const tuples: string[] = [];
+  const params: string[] = [];
+  for (const rewrite of rewrites) {
+    tuples.push(`($${params.length + 1}::text, $${params.length + 2}::text)`);
+    params.push(rewrite.internalOrderId, rewrite.searchText);
+  }
+
+  await queryRunner.query(
+    `UPDATE "order_records" AS r
+        SET "searchText" = v."searchText"
+       FROM (VALUES ${tuples.join(', ')}) AS v("internalOrderId", "searchText")
+      WHERE r."internalOrderId" = v."internalOrderId"
+        AND r."searchText" IS DISTINCT FROM v."searchText"`,
+    params
+  );
+}
+
+export class RecomputeOrderRecordSearchText1914000007000 implements MigrationInterface {
+  name = 'RecomputeOrderRecordSearchText1914000007000';
+
   public async up(queryRunner: QueryRunner): Promise<void> {
     const storePii = getEnvBoolean('OL_STORE_PII', true);
 
@@ -157,7 +220,7 @@ export class RecomputeOrderRecordSearchText1912000007000 implements MigrationInt
                  FROM "order_records"
                 ORDER BY "internalOrderId" ASC
                 LIMIT $1`,
-              [BATCH_SIZE]
+              [PAGE_SIZE]
             )) as OrderRecordRow[])
           : ((await queryRunner.query(
               `SELECT "internalOrderId", "orderSnapshot", "searchText"
@@ -165,31 +228,29 @@ export class RecomputeOrderRecordSearchText1912000007000 implements MigrationInt
                 WHERE "internalOrderId" > $1
                 ORDER BY "internalOrderId" ASC
                 LIMIT $2`,
-              [cursor, BATCH_SIZE]
+              [cursor, PAGE_SIZE]
             )) as OrderRecordRow[]);
 
       if (rows.length === 0) {
         break;
       }
 
+      const rewrites: SearchTextRewrite[] = [];
       for (const row of rows) {
         const snapshot =
           typeof row.orderSnapshot === 'object' && row.orderSnapshot !== null
             ? (row.orderSnapshot as Record<string, unknown>)
             : {};
         const searchText = deriveOrderSearchText(snapshot, { storePii });
-        if (searchText === (row.searchText ?? '')) {
-          continue;
+        if (searchText !== (row.searchText ?? '')) {
+          rewrites.push({ internalOrderId: row.internalOrderId, searchText });
         }
-        await queryRunner.query(
-          `UPDATE "order_records" SET "searchText" = $1 WHERE "internalOrderId" = $2`,
-          [searchText, row.internalOrderId]
-        );
       }
+      await writePage(queryRunner, rewrites);
 
       cursor = rows[rows.length - 1].internalOrderId;
 
-      if (rows.length < BATCH_SIZE) {
+      if (rows.length < PAGE_SIZE) {
         break;
       }
     }
@@ -197,7 +258,7 @@ export class RecomputeOrderRecordSearchText1912000007000 implements MigrationInt
 
   public async down(): Promise<void> {
     // Intentionally a no-op. `searchText` is derived data: the "before" state
-    // was a defect (empty or stale text), not a value worth restoring, and the
-    // column itself belongs to `1912000000000`, whose own `down` drops it.
+    // was empty or stale text, not a value worth restoring, and the column
+    // itself belongs to `1914000000000`, whose own `down` drops it.
   }
 }

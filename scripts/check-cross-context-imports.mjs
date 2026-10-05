@@ -455,24 +455,11 @@ const ALLOW_LIST = new Map([
   ],
   // #3527/#3528 — trigram search + diacritic folding + the tracking-number OR
   // arm are claims about the repository's real SQL predicate, not about
-  // anything IOrderRecordService exposes distinctly.
+  // anything IOrderRecordService exposes distinctly. Like the #2944 row above,
+  // this has no rewire target and must NOT be swept when #722 lands.
   [
     'apps/api/test/integration/order-search-text.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
-  ],
-  // #3531 — the note repository's own transactional applyEdit (revision +
-  // update in one commit) and its partial unique pin index are repository
-  // behaviour, with no service-level equivalent to assert them through.
-  ['apps/api/test/integration/order-note.int-spec.ts', new Set(['OrderNoteRepositoryPort'])],
-  // #3532 — UQ_order_tags_name and UQ_order_tag_assignments_tag_order are
-  // real unique indexes; only the repository can be asked to violate them.
-  ['apps/api/test/integration/order-tag.int-spec.ts', new Set(['OrderTagRepositoryPort'])],
-  // #3530, D32 — UQ_order_column_presets_workspace_default (partial, `WHERE
-  // "userId" IS NULL`) is the whole guarantee behind "one workspace default";
-  // asserting it needs the repository, not IOrderColumnPresetService.
-  [
-    'apps/api/test/integration/order-column-preset.int-spec.ts',
-    new Set(['OrderColumnPresetRepositoryPort']),
   ],
   [
     'apps/api/test/integration/order-dispatch-sla.int-spec.ts',

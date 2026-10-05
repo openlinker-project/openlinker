@@ -12,16 +12,23 @@
  * (`order_holds`, `order_changes`, `refund_records`).
  *
  * Timestamp: this epic's synthetic block (#3507), one step after
- * `1912000002000-create-order-column-presets.ts`.
+ * `1914000002000-create-order-column-presets.ts`.
+ *
+ * Renumbered from `1912000003000` (#3633 review — `main` took the `1912` prefix).
+ * TypeORM decides pending by class name, so it re-runs this migration on any
+ * database that applied it under its old name; every DDL statement is
+ * therefore guarded with `IF NOT EXISTS` (`docs/migrations.md`).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrderNotes1912000003000 implements MigrationInterface {
+export class CreateOrderNotes1914000003000 implements MigrationInterface {
+  name = 'CreateOrderNotes1914000003000';
+
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
 
     await queryRunner.query(`
-      CREATE TABLE "order_notes" (
+      CREATE TABLE IF NOT EXISTS "order_notes" (
         "id"               uuid NOT NULL DEFAULT uuid_generate_v4(),
         "internalOrderId"  text NOT NULL,
         "authorUserId"     uuid NOT NULL,
@@ -36,14 +43,14 @@ export class CreateOrderNotes1912000003000 implements MigrationInterface {
       )
     `);
     await queryRunner.query(`
-      CREATE INDEX "IDX_order_notes_internalOrderId" ON "order_notes" ("internalOrderId")
+      CREATE INDEX IF NOT EXISTS "IDX_order_notes_internalOrderId" ON "order_notes" ("internalOrderId")
     `);
     await queryRunner.query(`
-      CREATE INDEX "IDX_order_notes_showToPacker" ON "order_notes" ("showToPacker")
+      CREATE INDEX IF NOT EXISTS "IDX_order_notes_showToPacker" ON "order_notes" ("showToPacker")
     `);
 
     await queryRunner.query(`
-      CREATE TABLE "order_note_revisions" (
+      CREATE TABLE IF NOT EXISTS "order_note_revisions" (
         "id"            uuid NOT NULL DEFAULT uuid_generate_v4(),
         "noteId"        uuid NOT NULL,
         "body"          text NOT NULL,
@@ -53,7 +60,7 @@ export class CreateOrderNotes1912000003000 implements MigrationInterface {
       )
     `);
     await queryRunner.query(`
-      CREATE INDEX "IDX_order_note_revisions_noteId" ON "order_note_revisions" ("noteId")
+      CREATE INDEX IF NOT EXISTS "IDX_order_note_revisions_noteId" ON "order_note_revisions" ("noteId")
     `);
   }
 
