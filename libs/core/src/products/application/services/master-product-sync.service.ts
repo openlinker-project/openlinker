@@ -284,6 +284,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     await this.productsService.upsertProduct(product);
     if (variants.length > 0) {
       await this.productsService.upsertVariants(internalProductId, variants);
+      await this.fillPhysicalData(variants, internalProductId, connectionId, correlationId);
     }
 
     let priceChangeObserverFailures = 0;
@@ -852,6 +853,58 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       description: sanitizeStoredHtml(product.description ?? null),
       images: product.images ?? null,
     };
+  }
+
+  /**
+   * Persist the master's weight/dimensions onto variants that have none (#3650).
+   *
+   * Fill-when-NULL through a dedicated writer rather than the upsert, so a value
+   * already present - typed by an operator or filled by an earlier pass - is
+   * never overwritten (#3403's single-writer rule). Best-effort: the catalogue
+   * body is already durable, and physical data is an enrichment, so a failure
+   * here is logged and never fails the product sync.
+   *
+   * One statement for all of the product's variants: the catalogue sweep runs
+   * this for every product on every tick, so a statement per variant would be
+   * a standing per-tick cost on the path #2593/#2648 keep cheap. A non-zero
+   * fill count is logged so adoption is observable - otherwise a shop whose
+   * units resolved looks identical to one whose units did not.
+   */
+  private async fillPhysicalData(
+    variants: ProductVariant[],
+    internalProductId: string,
+    connectionId: string,
+    correlationId: string
+  ): Promise<void> {
+    const fills = variants
+      .filter((v) =>
+        [v.weightGrams, v.lengthMm, v.widthMm, v.heightMm].some((d) => typeof d === 'number')
+      )
+      .map((v) => ({
+        variantId: v.id,
+        weightGrams: v.weightGrams ?? null,
+        lengthMm: v.lengthMm ?? null,
+        widthMm: v.widthMm ?? null,
+        heightMm: v.heightMm ?? null,
+      }));
+    if (fills.length === 0) {
+      return;
+    }
+    try {
+      const filled = await this.productsService.fillVariantsPhysicalDimensionsIfAbsent(fills);
+      if (filled > 0) {
+        this.logger.log(
+          `[master-sync] filled physical data on ${filled} variant(s): ` +
+            `internalProductId=${internalProductId} connectionId=${connectionId} correlationId=${correlationId}`
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `[master-sync] could not fill physical data: internalProductId=${internalProductId} ` +
+          `variants=${fills.length} connectionId=${connectionId} correlationId=${correlationId}: ` +
+          `${(error as Error).message}`
+      );
+    }
   }
 
   /**

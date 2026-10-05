@@ -494,6 +494,7 @@ export class SchedulerService implements OnModuleDestroy {
       this.registerReservationSweepTasks();
       this.registerFulfillmentTimeoutSweepTask();
       this.registerFulfillmentRelaySweepTask();
+      this.registerFulfillmentRerouteSweepTask();
       this.registerOrderHoldReconcileTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
@@ -1139,6 +1140,46 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `fulfillment:work:relay-sweep:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the reroute sweep (#3485, epic #3460).
+   *
+   * Its own method beside its two fulfilment-sweep siblings, for their stated
+   * reason: coupling a task's REGISTRATION to a foreign concern's flag is how
+   * switching one thing off silently switches another off.
+   *
+   * With the OMS on, an order the router refused (a line out of stock) or failed
+   * to route is HELD in OpenLinker instead of being created in every product
+   * master. Nothing about the order changes when stock arrives, so without this
+   * pass it would stay held for ever. Global scope under the nil-UUID system
+   * connection id; the route children it enqueues carry the selected router's
+   * connection.
+   *
+   * **Default ON**, and safe to be: it makes no platform call (the route children
+   * call the OL router, which reads OpenLinker's own tables), and it is INERT on
+   * every install that has not opted into routing — no order carries a reroutable
+   * block there, and with no router selected the pass enqueues nothing.
+   *
+   * Every 15 minutes rather than hourly: this is the path by which an order gets
+   * back to the pack bench once stock arrives, so its delay is a customer's
+   * delay. Minutes 7/22/37/52 avoid every other system-scoped sweep (the
+   * every-10 and every-20-minute ones, and minutes 15, 35 and 50).
+   */
+  private registerFulfillmentRerouteSweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'fulfillment-reroute-sweep',
+      jobType: 'fulfillment.work.rerouteSweep',
+      cronExpression: '7,22,37,52 * * * *',
+      enabledEnvVar: 'OL_FULFILLMENT_REROUTE_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `fulfillment:work:reroute-sweep:${timestamp}`,
     });
   }
 
