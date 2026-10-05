@@ -59,7 +59,7 @@ describe('PrestashopOrderProcessorManagerAdapter — getFulfillmentStatus', () =
             return Promise.resolve([
               { id: '4', name: 'Awaiting payment', deleted: '0' },
               { id: '5', name: 'Shipped', deleted: '0', shipped: '1' },
-              { id: '6', name: 'Delivered', deleted: '0', delivered: '1', shipped: '1' },
+              { id: '6', name: 'Delivered', deleted: '0', delivery: '1', shipped: '1' },
               { id: '7', name: 'Cancelled', deleted: '0' },
             ]);
           }

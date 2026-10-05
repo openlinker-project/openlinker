@@ -25,7 +25,10 @@
  * synced destination; (b) push-first ordering — if the OMP push throws, the
  * patch drops `trackingNumber` so the next poll retries; (c) the `>= dispatched`
  * push-gate — at `generated` the service backfills `Shipment.trackingNumber`
- * but does NOT fire the destination OMP (deferred to #837's `notifyDispatched`).
+ * but does NOT fire the destination OMP (deferred to #837's `notifyDispatched`);
+ * (d) the retryable `delivered` relay (#3506, G02-7) — a participant rejection
+ * leaves the relay owed on the row, and a later tick's re-drive pass delivers
+ * it once and stamps it.
  *
  * @module apps/api/test/integration
  */
@@ -317,6 +320,82 @@ describe('Shipment Status Sync Integration (#838)', () => {
     persisted = await queryService().getById(shipmentId);
     expect(persisted?.trackingNumber).toBe('RETRY-ME');
     expect(stubs.source.writebackCalls).toHaveLength(2);
+  });
+
+  describe('delivered relay retry (#3506, G02-7)', () => {
+    const readRelayColumns = async (
+      shipmentId: string,
+    ): Promise<{ deliveredRelayedAt: Date | null; deliveredRelayFailureCount: number }> => {
+      const rows: Array<{ deliveredRelayedAt: Date | null; deliveredRelayFailureCount: number }> =
+        await harness
+          .getDataSource()
+          .query(
+            `SELECT "deliveredRelayedAt", "deliveredRelayFailureCount" FROM "shipments" WHERE "id" = $1`,
+            [shipmentId],
+          );
+      return rows[0];
+    };
+    const deliveredWrites = (): number =>
+      stubs.source.writebackCalls.filter((call) => call.type === 'delivered').length;
+
+    it('should re-drive a rejected delivered relay on a later tick and stamp it once it lands', async () => {
+      const { carrierConnectionId, shipmentId } = await seedShipment('ol_order_statussync_deliv', {
+        advanceToDispatched: true,
+      });
+      // Recent, so the re-drive's age bound admits it.
+      const deliveredAt = new Date(Date.now() - 60 * 60 * 1000);
+      stubs.carrier.setNextSnapshot({ status: 'delivered', providerStatus: 'delivered', deliveredAt });
+      stubs.source.enqueueOutcomes([{ throw: new Error('no delivered state on the shop') }]);
+
+      // Tick 1: the transition lands, the relay is rejected and left owed.
+      await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+
+      expect((await queryService().getById(shipmentId))?.status).toBe('delivered');
+      expect(deliveredWrites()).toBe(1);
+      expect(await readRelayColumns(shipmentId)).toEqual({
+        deliveredRelayedAt: null,
+        deliveredRelayFailureCount: 1,
+      });
+
+      // Same tick's back-off: an immediate re-run does not re-drive.
+      await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+      expect(deliveredWrites()).toBe(1);
+
+      // Age the failure past the back-off; the next tick re-drives and lands.
+      await harness
+        .getDataSource()
+        .query(
+          `UPDATE "shipments" SET "deliveredRelayLastFailureAt" = now() - interval '1 hour' WHERE "id" = $1`,
+          [shipmentId],
+        );
+      const tick2 = await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+
+      expect(tick2).toMatchObject({ deliveredRelaysRetried: 1, deliveredRelaysRecovered: 1 });
+      expect(deliveredWrites()).toBe(2);
+      expect((await readRelayColumns(shipmentId)).deliveredRelayedAt).not.toBeNull();
+
+      // Stamped: no further delivered writes.
+      await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+      expect(deliveredWrites()).toBe(2);
+    });
+
+    it('should stamp the delivered relay on the transition tick when it lands first time', async () => {
+      const { carrierConnectionId, shipmentId } = await seedShipment('ol_order_statussync_deliv_ok', {
+        advanceToDispatched: true,
+      });
+      stubs.carrier.setNextSnapshot({
+        status: 'delivered',
+        providerStatus: 'delivered',
+        deliveredAt: new Date(Date.now() - 60 * 60 * 1000),
+      });
+
+      await statusSyncService().sync(carrierConnectionId, { limit: 10 });
+
+      expect(deliveredWrites()).toBe(1);
+      const columns = await readRelayColumns(shipmentId);
+      expect(columns.deliveredRelayedAt).not.toBeNull();
+      expect(columns.deliveredRelayFailureCount).toBe(0);
+    });
   });
 
   it('at `generated` backfills the tracking number but notifies nobody (deferred to the dispatch path)', async () => {

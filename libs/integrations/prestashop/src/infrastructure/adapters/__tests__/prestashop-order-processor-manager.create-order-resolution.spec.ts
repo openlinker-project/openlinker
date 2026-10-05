@@ -685,7 +685,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
         mockHttpClient.listResources = jest.fn().mockResolvedValue([
           { id: '1', name: 'Awaiting check payment', deleted: '0', paid: '0' },
           { id: '2', name: 'Payment accepted', deleted: '0', paid: '1' },
-          { id: '5', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivered: '1' },
+          { id: '5', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivery: '1' },
         ]);
 
         const result = await adapter.listOrderStatuses();

@@ -479,5 +479,74 @@ describe('FulfillmentHandshakeService', () => {
       expect(result.outcome).toBe('no-op');
       expect(harness.executor.requestCancellation).not.toHaveBeenCalled();
     });
+
+    /**
+     * #2738 — the guard reads the wrong axis. `requestStatus` stays `accepted`
+     * for the work's whole life once a holder takes it, so it alone cannot
+     * tell "still cancellable" from "already closed". These pin the EXECUTION
+     * axis guard directly: remove `isTerminalFulfillmentWorkStatus` from
+     * `requestCancellation` and every one of these goes red, because the
+     * executor's own unconditional `accepted` (the OL-OMS shape) would then
+     * be recorded as `cancellation_accepted` for work that already shipped.
+     */
+    describe('the execution axis refuses a cancellation the negotiation axis would allow', () => {
+      it.each(['closed', 'cancelled', 'incomplete'] as const)(
+        'should answer not-cancellable and never reach the executor when status=%s',
+        async (status) => {
+          const harness = buildHarness({
+            works: [buildWork({ status, requestStatus: 'accepted', assignmentAttempt: 1 })],
+          });
+
+          const result = await harness.service.requestCancellation({
+            workId: 'ol_fulfillmentwork_abc',
+            reason: 'operator_forced',
+            executor: harness.executor,
+          });
+
+          expect(result).toEqual({
+            outcome: 'not-cancellable',
+            idempotencyKey: null,
+            assignmentAttempt: null,
+            rejectionReason: null,
+            blocking: null,
+          });
+          expect(harness.executor.requestCancellation).not.toHaveBeenCalled();
+          // No transition was attempted either — the refusal is BEFORE any write.
+          expect(harness.repository.transitionRequestStatus).not.toHaveBeenCalled();
+        }
+      );
+
+      it('should still reach the executor for in-progress work — the ordinary cancellable case', async () => {
+        const harness = buildHarness({
+          works: [
+            buildWork({ status: 'in_progress', requestStatus: 'accepted', assignmentAttempt: 1 }),
+          ],
+        });
+
+        const result = await harness.service.requestCancellation({
+          workId: 'ol_fulfillmentwork_abc',
+          reason: 'operator_forced',
+          executor: harness.executor,
+        });
+
+        expect(result.outcome).toBe('cancellation-accepted');
+        expect(harness.executor.requestCancellation).toHaveBeenCalledTimes(1);
+      });
+
+      it('should NOT confuse not-cancellable with no-op (a distinct, named outcome)', async () => {
+        const harness = buildHarness({
+          works: [buildWork({ status: 'closed', requestStatus: 'accepted', assignmentAttempt: 1 })],
+        });
+
+        const result = await harness.service.requestCancellation({
+          workId: 'ol_fulfillmentwork_abc',
+          reason: 'operator_forced',
+          executor: harness.executor,
+        });
+
+        expect(result.outcome).not.toBe('no-op');
+        expect(result.outcome).toBe('not-cancellable');
+      });
+    });
   });
 });

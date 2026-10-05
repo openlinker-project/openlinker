@@ -29,6 +29,15 @@ export interface IFulfillmentHandshakeService {
    *
    * The holder may refuse — that is a normal outcome, not an error, and is why
    * `cancellation_rejected` exists on the negotiation axis.
+   *
+   * Never reaches the executor at all when the EXECUTION axis has already
+   * reached a TERMINAL status — `closed` / `cancelled` / `incomplete`, i.e.
+   * `isTerminalFulfillmentWorkStatus(work.status)` (#2738) — and answers
+   * `not-cancellable` instead, because a holder with no independent will to
+   * refuse with (the OL-OMS executor) would otherwise honestly answer
+   * `accepted` for work that has already closed. `in_progress` (a pick
+   * genuinely in flight) is deliberately NOT terminal and stays cancellable
+   * here, matching `deriveSupportedActions`'s own `!terminal` rule.
    */
   requestCancellation(
     input: RequestFulfillmentCancellationInput

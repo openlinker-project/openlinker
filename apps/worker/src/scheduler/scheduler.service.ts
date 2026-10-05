@@ -1116,10 +1116,13 @@ export class SchedulerService implements OnModuleDestroy {
    * **Default ON**, and safe to be. It writes no OL row of its own; what it does is
    * re-enter a relay OL already decided to send, through the SAME
    * `claimDispatchRelay` an ordinary progress event would take, so the worst a
-   * spurious run can do is answer `already-relayed`. It is also INERT on every
-   * install today: `IFulfillmentProgressService.record` has no production caller,
-   * so no `shipped` progress claim exists and the frontier returns nothing. What it
-   * replaces is a marketplace that silently never learns an order shipped.
+   * spurious run can do is answer `already-relayed`. No longer inert since #3525:
+   * `IFulfillmentProgressService.record` now has a production caller
+   * (`FulfillmentParcelClosureNotifierService`, fired when an OL-executed parcel
+   * closes at the bench or through the desktop worklist), so a `shipped` progress
+   * claim IS created and this frontier can find real candidates once a dispatch
+   * relay fails transiently. What it replaces is a marketplace that silently never
+   * learns an order shipped.
    *
    * Hourly at `50 * * * *`, offset from the timeout sweep's `35` for that task's own
    * reason — both are system-scoped `bulk` passes and would otherwise contend for
