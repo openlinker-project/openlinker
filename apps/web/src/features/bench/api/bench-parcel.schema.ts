@@ -28,6 +28,7 @@ import type {
   BenchCompleteResult,
   BenchDocuments,
   BenchMetrics,
+  BenchReceiptLink,
   BenchPackedTodayList,
   BenchParcel,
   BenchPresence,
@@ -125,16 +126,55 @@ export const benchCompleteResultSchema = z.object({
   parcel: benchParcelSchema,
 });
 
+const benchFiscalArtefactSchema = z.object({
+  medium: z.string(),
+  disposition: z.string(),
+  label: nullableString,
+  contentType: nullableString,
+});
+
+// #3646. Kind and status stay open strings: a value this build does not know
+// must reach the card logic, which renders a neutral state for it, rather than
+// fail the whole parse and blank the label beside it.
+const benchSalesDocumentSchema = z.object({
+  kind: z.string(),
+  recordId: z.string(),
+  connectionId: z.string(),
+  platformType: nullableString,
+  status: z.string(),
+  failureMode: nullableString,
+  documentNumber: nullableString,
+  completedAt: nullableString,
+  printable: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? false),
+  artefacts: z
+    .array(benchFiscalArtefactSchema)
+    .nullish()
+    .transform((value) => value ?? null),
+});
+
 export const benchDocumentsSchema = z.object({
   workId: z.string(),
-  invoice: z.object({
-    state: z.string(),
-    invoiceId: nullableString,
-    documentNumber: nullableString,
-    issuedAt: nullableString,
-    blockReason: nullableString,
-    unresolvedReason: nullableString,
-  }),
+  // Deprecated since #3646; tolerated as absent so a later API may drop it.
+  invoice: z
+    .object({
+      state: z.string(),
+      invoiceId: nullableString,
+      documentNumber: nullableString,
+      issuedAt: nullableString,
+      blockReason: nullableString,
+      unresolvedReason: nullableString,
+    })
+    .nullish()
+    .transform((value) => value ?? null),
+  // NOT normalised to `null`: `undefined` is how an API older than #3646 says it
+  // sends no slot, which is a different fact from "this order has no document".
+  document: benchSalesDocumentSchema.nullable().optional(),
+  documentKind: nullableString,
+  blockReason: nullableString,
+  unresolvedReason: nullableString,
   label: z.object({
     state: z.string(),
     shipmentId: nullableString,
@@ -203,6 +243,20 @@ export function parseBenchUndoCompletionResult(payload: unknown): BenchUndoCompl
 
 export function parseBenchDocuments(payload: unknown): BenchDocuments {
   return benchDocumentsSchema.parse(payload);
+}
+
+/**
+ * The link is a fiscal provider's own string, served verbatim, and it becomes an
+ * `href`. `target="_blank"` does not neutralise a `javascript:` href - the
+ * browser runs it in this document - so only an absolute http(s) URL parses. A
+ * `javascript:`, `data:` or relative value fails here and the card shows the
+ * link-failed state it already has, rather than a link that runs provider code
+ * on the OpenLinker origin.
+ */
+export const benchReceiptLinkSchema = z.object({ url: z.url({ protocol: /^https?$/ }) });
+
+export function parseBenchReceiptLink(payload: unknown): BenchReceiptLink {
+  return benchReceiptLinkSchema.parse(payload);
 }
 
 export function parseBenchUnlabelledParcelList(payload: unknown): BenchUnlabelledParcelList {

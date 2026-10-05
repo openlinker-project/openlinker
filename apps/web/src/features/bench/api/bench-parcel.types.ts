@@ -209,10 +209,65 @@ export interface BenchLabel {
   readonly failedAt: string | null;
 }
 
+/**
+ * What a registered receipt produced, WITHOUT its content (#3646). `disposition`
+ * is the adapter's hint and never evidence that the buyer received anything.
+ */
+export interface BenchFiscalArtefact {
+  /** `document` | `link` | `markup` | `code` | `text`, or something newer. */
+  readonly medium: string;
+  readonly disposition: string;
+  readonly label: string | null;
+  readonly contentType: string | null;
+}
+
+/**
+ * The order's sales document, of either kind and in any status (#3646). One
+ * nullable shape for both kinds, exactly as the API sends it.
+ */
+export interface BenchSalesDocument {
+  /** `invoice` | `fiscal-receipt`, or a kind this build does not know. */
+  readonly kind: string;
+  readonly recordId: string;
+  readonly connectionId: string;
+  /** Receipts only: which integration registered it, for its presentation slot. */
+  readonly platformType: string | null;
+  /** On the kind's own axis: `pending` | `issuing` | `issued` | `failed`, or `pending` | `registering` | `registered` | `failed`. */
+  readonly status: string;
+  /** `rejected` | `in-doubt`, or `null`. A failed record with none means `in-doubt`. */
+  readonly failureMode: string | null;
+  /** The invoice number, or the receipt number. */
+  readonly documentNumber: string | null;
+  readonly completedAt: string | null;
+  /** Invoices only: issued AND printable. */
+  readonly printable: boolean;
+  /** Receipts only. `null` = nothing produced yet; `[]` = registered with nothing attached. */
+  readonly artefacts: readonly BenchFiscalArtefact[] | null;
+}
+
 export interface BenchDocuments {
   readonly workId: string;
-  readonly invoice: BenchInvoice;
+  /**
+   * @deprecated since #3646 - invoice-only. Read only when {@link document} is
+   * absent, i.e. from an API older than #3646.
+   */
+  readonly invoice: BenchInvoice | null;
+  /**
+   * The order's sales document. `null` = none of any kind; `undefined` = an API
+   * older than #3646 that does not send the slot at all.
+   */
+  readonly document?: BenchSalesDocument | null;
+  /** The kind routing resolved for an order with no document. */
+  readonly documentKind: string | null;
+  /** Why there is no document. Only ever set when {@link document} is `null`. */
+  readonly blockReason: string | null;
+  readonly unresolvedReason: string | null;
   readonly label: BenchLabel;
+}
+
+/** A registered receipt's link, from the work-scoped receipt route (#3646). */
+export interface BenchReceiptLink {
+  readonly url: string;
 }
 
 /** One finished box with no label on it. Read by this bench and by dispatch alike. */
