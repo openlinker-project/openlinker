@@ -346,12 +346,24 @@ export type BenchLabelReplaceInput =
   | { readonly weightGrams: number };
 
 /**
+ * Whether the old label is KNOWN to be void (#3654's `voidState`).
+ * `in-doubt` - the cancel failed at the carrier boundary, so it may or may not
+ * be void; nothing was re-bought. Either way the old label must not be used.
+ */
+export type BenchLabelVoidState = 'confirmed' | 'in-doubt';
+
+/**
  * `replaced` - a new label was bought.
- * `refused` - nothing changed; `reason` is `cannot-cancel`, `already-handed-over`,
- *   `parcel-completed` or an unrecognised value from a newer API.
- * `cancelled-not-replaced` - the old label is void and no new one exists.
+ * `refused` - nothing changed; `reason` is a refusal code (see the dialog's
+ *   `REFUSAL_COPY`) or an unrecognised value from a newer API.
+ * `cancelled-not-replaced` - the old label is void (or, `in-doubt`, may be) and
+ *   no new one exists.
  */
 export interface BenchLabelReplaceResult {
   readonly outcome: 'replaced' | 'refused' | 'cancelled-not-replaced';
   readonly reason: string | null;
+  /** `null` on a refusal, where nothing was cancelled. */
+  readonly voidState: BenchLabelVoidState | null;
+  /** The configured size bought with when only the weight was corrected; else `null`. */
+  readonly keptTemplate: string | null;
 }

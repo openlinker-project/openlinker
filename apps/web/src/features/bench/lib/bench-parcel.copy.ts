@@ -582,6 +582,9 @@ export const benchParcelCopy = {
     cancelAction: 'Keep the current label',
     refusedCannotCancel:
       'This carrier does not let us cancel a label from the bench. The current label stays. Ask the office.',
+    /** Transient, unlike `refusedCannotCancel`: the connection, not the carrier (#1947's split). */
+    refusedAdapterUnresolved:
+      'We cannot reach the carrier connection right now, so the label cannot be replaced. The current label stays. Try again in a minute - ask the office if it keeps happening.',
     refusedAlreadyHandedOver:
       'The carrier already has this parcel, so its label cannot be replaced. The current label stays.',
     refusedParcelCompleted:
@@ -594,12 +597,24 @@ export const benchParcelCopy = {
     refusedReplaceInProgress: 'A new label for this box is already being bought. Wait a moment, then look again.',
     refusedUnknown:
       'That did not go through and the current label stays. Show this screen to your supervisor.',
-    failed: 'That did not go through. Nothing was cancelled - try again.',
+    /**
+     * Any non-2xx that is not a refusal. Deliberately says nothing about the
+     * old label: this arm cannot know whether it was cancelled, and a retry is
+     * safe because the server re-reads the box and refuses if it changed.
+     */
+    failed: 'That did not go through - try again.',
     voidTitle: 'The old label is void and no new one was bought',
     voidBody:
       'Do not stick the old label on the box. Tell the office - they need to buy a new label for this parcel.',
+    /** `voidState: 'in-doubt'`: the cancel's outcome is unknown, so neither answer is claimed. */
+    voidDoubtTitle: 'The old label may already be void, and no new one was bought',
+    voidDoubtBody:
+      'The carrier did not confirm whether it cancelled the old label, so do not use it - do not stick it on the box. Tell the office - they need to check it and buy a new label for this parcel.',
     voidDismiss: 'Understood',
     replacedNotice: 'New label bought. Print it now.',
+    /** The weight-only path keeps the connection's configured size; named so it is not a guess. */
+    replacedKeptSizeNotice: (template: string): string =>
+      `New label bought in size ${template}. Print it now.`,
   },
 
   unlabelled: {

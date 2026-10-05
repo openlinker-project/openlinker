@@ -5,7 +5,9 @@
  * one it was. Only the two outcomes that changed something invalidate the
  * documents read: on `replaced` the card must show the new label, and on
  * `cancelled-not-replaced` the old one is void and must stop offering a print.
- * A refusal leaves the old label untouched, so nothing is refetched.
+ * A refusal leaves the old label untouched, so nothing is refetched. A failure
+ * (non-2xx, non-409) refetches too: it may have landed after the old label was
+ * cancelled, and the card must show what the server now holds, not a guess.
  *
  * @module apps/web/src/features/bench/hooks
  */
@@ -33,6 +35,9 @@ export function useBenchReplaceLabelMutation(): UseMutationResult<
       apiClient.bench.replaceLabel(workId, input),
     onSuccess: (result, variables) => {
       if (result.outcome === 'refused') return;
+      void queryClient.invalidateQueries({ queryKey: benchQueryKeys.documents(variables.workId) });
+    },
+    onError: (_error, variables) => {
       void queryClient.invalidateQueries({ queryKey: benchQueryKeys.documents(variables.workId) });
     },
   });

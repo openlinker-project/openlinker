@@ -235,6 +235,8 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
           return {
             outcome: 'refused',
             reason: readReplaceRefusalReason(error.details),
+            voidState: null,
+            keptTemplate: null,
           };
         }
         throw error;

@@ -44,9 +44,12 @@ import { useState, type ReactElement } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { useDemoMode } from '../../system';
 import type { BenchLabel, BenchLabelReplaceResult } from '../api/bench-parcel.types';
 import { useBenchDocumentsQuery, useBenchUnlabelledQuery } from '../hooks/use-bench-documents-query';
 import {
@@ -112,7 +115,20 @@ export function BenchDocumentsPanel({
   // after `cancelled-not-replaced` there is no card to hang it on.
   const [changeSizeOpen, setChangeSizeOpen] = useState(false);
   const [replaceOutcome, setReplaceOutcome] = useState<BenchLabelReplaceResult | null>(null);
-  const write = useWriteAccess('bench:write', false);
+  // `bench:write` with the real demo flag, as `bench-work-list.tsx` does: a demo
+  // viewer sees Change size disabled under `ReadOnlyLock` rather than not at
+  // all, so the capability is advertised (#1615).
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('bench:write', demoMode);
+  const voidNotice =
+    replaceOutcome?.outcome === 'cancelled-not-replaced'
+      ? replaceOutcome.voidState === 'confirmed'
+        ? { title: benchParcelCopy.changeSize.voidTitle, body: benchParcelCopy.changeSize.voidBody }
+        : {
+            title: benchParcelCopy.changeSize.voidDoubtTitle,
+            body: benchParcelCopy.changeSize.voidDoubtBody,
+          }
+      : null;
   // #3404 — the signed-in PACKER's own binding, never the order's. `?? null`
   // rather than `undefined`: a session predating this field must read as
   // "unset" the same way an explicit clear does.
@@ -167,10 +183,11 @@ export function BenchDocumentsPanel({
     <section className="bench-documents" data-testid="bench-documents">
       {printError === null ? null : <Alert tone="warning">{printError}</Alert>}
 
-      {/* Never a success state: the old label is void and nothing replaced it. */}
-      {replaceOutcome?.outcome === 'cancelled-not-replaced' ? (
-        <Alert tone="warning" title={benchParcelCopy.changeSize.voidTitle} data-testid="bench-label-void">
-          <p>{benchParcelCopy.changeSize.voidBody}</p>
+      {/* Never a success state: the old label is void (or, in doubt, may be)
+          and nothing replaced it. */}
+      {voidNotice === null ? null : (
+        <Alert tone="warning" title={voidNotice.title} data-testid="bench-label-void">
+          <p>{voidNotice.body}</p>
           <Button
             tone="secondary"
             className="bench-documents__touch"
@@ -181,10 +198,12 @@ export function BenchDocumentsPanel({
             {benchParcelCopy.changeSize.voidDismiss}
           </Button>
         </Alert>
-      ) : null}
+      )}
       {replaceOutcome?.outcome === 'replaced' ? (
         <Alert tone="success" data-testid="bench-label-replaced">
-          {benchParcelCopy.changeSize.replacedNotice}
+          {replaceOutcome.keptTemplate === null
+            ? benchParcelCopy.changeSize.replacedNotice
+            : benchParcelCopy.changeSize.replacedKeptSizeNotice(replaceOutcome.keptTemplate)}
         </Alert>
       ) : null}
 
@@ -301,8 +320,10 @@ export function BenchDocumentsPanel({
       </div>
 
       {/* ── The label: on the box. Suppressed while unlabelled, which has its
-             own treatment above. ──────────────────────────────────────────── */}
-      {label.state === 'ready' ? (
+             own treatment above, and while the void notice is up: an in-doubt
+             void leaves the shipment row looking live, and a Print control
+             beside "do not use the old label" would contradict it. ────────── */}
+      {label.state === 'ready' && voidNotice === null ? (
         <div
           className="bench-documents__card bench-documents__label"
           data-testid="bench-documents-label"
@@ -328,16 +349,19 @@ export function BenchDocumentsPanel({
             >
               {benchParcelCopy.documents.printLabelAction}
             </Button>
-            {label.shipmentId !== null && write.canWrite ? (
-              <Button
-                tone="secondary"
-                className="bench-documents__touch"
-                onClick={() => {
-                  setChangeSizeOpen(true);
-                }}
-              >
-                {benchParcelCopy.documents.changeSizeAction}
-              </Button>
+            {label.shipmentId !== null && write.visible ? (
+              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                <Button
+                  tone="secondary"
+                  className="bench-documents__touch"
+                  disabled={write.demoReadOnly}
+                  onClick={() => {
+                    setChangeSizeOpen(true);
+                  }}
+                >
+                  {benchParcelCopy.documents.changeSizeAction}
+                </Button>
+              </ReadOnlyLock>
             ) : null}
           </div>
         </div>

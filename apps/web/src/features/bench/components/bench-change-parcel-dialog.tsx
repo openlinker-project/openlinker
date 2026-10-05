@@ -10,7 +10,10 @@
  * time rather than behind a second step, and the submit is disabled while the
  * request is in flight, with a ref guard for the frame before React re-renders.
  * A refusal keeps the dialog open and the old label in place; success and
- * `cancelled-not-replaced` are handed to the caller, which owns the card.
+ * `cancelled-not-replaced` (confirmed or in-doubt void) are handed to the
+ * caller, which owns the card. Any other failure says only that it did not go
+ * through: it cannot know whether the old label was cancelled, so it does not
+ * claim either answer.
  *
  * @module apps/web/src/features/bench/components
  */
@@ -92,6 +95,7 @@ const schema = z
 
 const REFUSAL_COPY: Record<string, string> = {
   'cannot-cancel': copy.refusedCannotCancel,
+  'adapter-unresolved': copy.refusedAdapterUnresolved,
   'already-handed-over': copy.refusedAlreadyHandedOver,
   'parcel-completed': copy.refusedParcelCompleted,
   'no-label': copy.refusedNoLabel,

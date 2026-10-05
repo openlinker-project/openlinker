@@ -20,7 +20,11 @@ export interface ChangeSizeFormValues {
   readonly weightKg: string;
 }
 
-/** Sane maxima (mirrors what the backend validates loosely; the server is the gate). */
+/**
+ * Sane maxima. Must stay at or below the API's `REPLACE_LABEL_MAX_DIMENSION_MM`
+ * / `REPLACE_LABEL_MAX_WEIGHT_GRAMS` once converted (`cmToMm`, `kgToGrams`):
+ * the browser cannot import that DTO (#591) and the server is the gate.
+ */
 export const MAX_SIDE_CM = 300;
 export const MAX_WEIGHT_KG = 100;
 
