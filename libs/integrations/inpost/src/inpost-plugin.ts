@@ -17,6 +17,7 @@ import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { createInpostShippingAdapter } from './application/inpost-adapter.factory';
 import { InpostAuthFailureClassifierAdapter } from './infrastructure/adapters/inpost-auth-failure-classifier.adapter';
+import { InpostRetryClassifierAdapter } from './infrastructure/adapters/inpost-retry-classifier.adapter';
 import { InpostConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/inpost-connection-config-shape-validator.adapter';
 import { InpostConnectionTesterAdapter } from './infrastructure/adapters/inpost-connection-tester.adapter';
 import { InpostInboundWebhookDecoderAdapter } from './infrastructure/adapters/inpost-inbound-webhook-decoder.adapter';
@@ -79,6 +80,15 @@ export function createInpostPlugin(): AdapterPlugin {
       host.authFailureClassifierRegistry.register(
         inpostAdapterManifest.adapterKey,
         new InpostAuthFailureClassifierAdapter(),
+      );
+
+      // #3469 IMPORTANT-1 review — InPost registered no RetryClassifierPort
+      // at all before this, so every InPost failure (including an ambiguous
+      // write InpostHttpClient had already refused to retry internally) was
+      // retryable by default at the job level.
+      host.retryClassifierRegistry.register(
+        inpostAdapterManifest.adapterKey,
+        new InpostRetryClassifierAdapter(),
       );
 
       // #768 / ADR-021 — third-party-native webhook ingress. The decoder
