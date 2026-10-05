@@ -519,6 +519,20 @@ export class OrderRecordOrmEntity {
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockDetail!: string | null;
 
+  /**
+   * Why OpenLinker deliberately did NOT route this order while the OMS is on
+   * (#3455; also #3487 / #3488). `null` means routed, not yet decided, or the OMS
+   * is off. Distinct from `fulfillmentBlockReason`: a skipped order is not held,
+   * it follows today's path.
+   *
+   * Sole writer `updateFulfillmentRoutingSkipReason`, level-triggered by the
+   * ingestion intercept and outside the ingestion write set. Plain `text` with no
+   * check constraint - the union is enforced in TypeScript and coerced on read by
+   * `isFulfillmentRoutingSkipReason`. No index: nothing filters on it yet.
+   */
+  @Column({ type: 'text', nullable: true })
+  fulfillmentRoutingSkipReason!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
