@@ -592,6 +592,23 @@ describe('ShipmentRepository', () => {
       expect(params).toEqual([ID, failedAt, 'rejected', '00000000-0000-0000-0000-0000000000aa']);
     });
 
+    it('should count the failure but keep the claim when the relay is given up on (#3506)', async () => {
+      ormRepository.query.mockResolvedValue([]);
+      const failedAt = new Date('2026-10-05T11:00:00Z');
+
+      await repository.giveUpWaybillRelay(ID, {
+        reason: 'rejected',
+        connectionId: '00000000-0000-0000-0000-0000000000aa',
+        failedAt,
+      });
+
+      const [sql, params] = ormRepository.query.mock.calls[0] as [string, unknown[]];
+      // The whole point: the claim stays taken, so no later tick re-drives it.
+      expect(sql).not.toContain('"waybillRelayedAt"');
+      expect(sql).toContain('"waybillRelayFailureCount" = "waybillRelayFailureCount" + 1');
+      expect(params).toEqual([ID, failedAt, 'rejected', '00000000-0000-0000-0000-0000000000aa']);
+    });
+
     it('should clear the failure history only when a run is in progress', async () => {
       // Guarded on `> 0`, so a relay that has never failed writes nothing.
       ormRepository.update.mockResolvedValue(buildUpdateResult(0));
@@ -637,6 +654,11 @@ describe('ShipmentRepository', () => {
         waybillRelayLastFailedAt: new Date('2026-05-21T15:00:00Z'),
         waybillRelayLastFailureReason: 'adapter-unresolved',
         waybillRelayLastFailureConnectionId: '00000000-0000-0000-0000-0000000000aa',
+        // Non-null for the same reason again: the delivered-relay state (#3506)
+        // is three columns that must all reach the value object.
+        deliveredRelayedAt: new Date('2026-05-21T17:00:00Z'),
+        deliveredRelayFailureCount: 2,
+        deliveredRelayLastFailureAt: new Date('2026-05-21T16:30:00Z'),
         status: 'delivered',
       });
       ormRepository.findOne.mockResolvedValue(fullyPopulated);
@@ -674,6 +696,11 @@ describe('ShipmentRepository', () => {
           lastFailedAt: fullyPopulated.waybillRelayLastFailedAt,
           reason: 'adapter-unresolved',
           connectionId: '00000000-0000-0000-0000-0000000000aa',
+        },
+        deliveredRelay: {
+          relayedAt: fullyPopulated.deliveredRelayedAt,
+          failureCount: 2,
+          lastFailureAt: fullyPopulated.deliveredRelayLastFailureAt,
         },
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
