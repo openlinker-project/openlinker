@@ -513,6 +513,7 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 - `Input` / `Textarea` / native `Select` — 32 px height, `var(--radius-md)`. Invalid state via `aria-invalid` or the `invalid` prop (mirrors danger-tone focus ring).
 - Native `<input type="checkbox|radio">` — styled via `accent-color: var(--accent-primary)`. The form-controls rule excludes non-text input types so checkboxes keep their native 14 px size.
 - `FormField` — label + control + description + error wiring (`aria-invalid`, `aria-describedby`)
+- `RangeNumberInput` — a bounded whole number as a restyled range slider (4 px `--border-default` track, accent fill, 16 px thumb, `--shadow-focus` ring on the thumb) beside a 6.5 rem number box, kept in step both ways. Drag and keyboard snap to a zero-anchored `step` grid (native `step` stays 1); typed out-of-range / empty text shows an inline error and leaves the slider alone until blur / Enter clamps it. An optional `marker` draws a "suggested" tick on the track and tints the fill past it in the warning tone. 44 px tall below 768 px. Never put `.control` on the range itself.
 - `FieldError`, `FormErrorSummary`
 - `Alert` — tonal variants matching status tokens, left-rule accent
 

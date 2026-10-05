@@ -248,6 +248,14 @@ const harness = createIntegrationTestHarness({
     // by one case makes every later case's `openRun` throw
     // OpenRemediationRunExistsError. Truncate explicitly.
     'analytics_remediation_runs',
+    // stream_dead_letters (#2301, D48) — the durable terminal state for a
+    // Redis Stream PEL entry that exhausted recovery. No FK anywhere (stream +
+    // consumer_group + entry_id are plain text, the exchange_rates/
+    // analytics_remediation_runs precedent), so nothing cascades into it; a
+    // row written by one case would otherwise collide on
+    // IDX_stream_dead_letters_stream_group_entry in the next. Truncate
+    // explicitly.
+    'stream_dead_letters',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',

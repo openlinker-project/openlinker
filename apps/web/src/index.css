@@ -837,6 +837,33 @@ button:disabled,
   .button--bare.button--bare::after { content: ''; position: absolute; inset: -14px; }
 }
 
+/* ── Contextual help link (#81) ───────────────────────────────────── */
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.help-link:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.help-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.help-link__glyph {
+  font-size: 0.6875rem;
+  line-height: 1;
+  font-weight: 600;
+}
+
 /* ── Keyboard shortcut affordance inside a button (#775) ─────────── */
 .button__shortcut {
   display: inline-flex;
@@ -1817,6 +1844,15 @@ textarea,
 .state-card__title {
   margin: 0;
   color: var(--text-primary);
+}
+
+/* A page/section title carrying an inline HelpLink (#81) — same title
+   styling, plus a small gap so the "?" badge doesn't crowd the text. */
+.page-title__with-help,
+.section-title__with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .page-description,
@@ -23379,34 +23415,6 @@ legend.analytics-settings-dialog__label {
   min-width: 0;
 }
 
-.impact-column {
-  position: sticky;
-  top: var(--space-4);
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-  align-self: start;
-}
-
-@media (max-width: 900px) {
-  .impact-column {
-    position: static;
-  }
-}
-
-.field-stack {
-  display: grid;
-  gap: var(--space-4);
-}
-
-/* Label with the effective value + its provenance pushed to the right. */
-.form-field__label--split {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
 .form-field__source {
   font-family: var(--font-mono);
   font-size: 0.6875rem;  font-weight: 400;
@@ -24441,24 +24449,6 @@ legend.analytics-settings-dialog__label {
   color: var(--status-info-fg);
 }
 
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.field-row__slider {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--accent-primary);
-}
-
-.control--narrow {
-  width: 6.5rem;
-  flex: none;
-  text-align: right;
-}
-
 .field-changed {
   display: inline-flex;
   align-items: center;
@@ -24474,11 +24464,6 @@ legend.analytics-settings-dialog__label {
   height: 5px;
   border-radius: 50%;
   background: var(--status-warning);
-}
-
-.actions-hint {
-  color: var(--text-muted);
-  font-size: 0.75rem;
 }
 
 .form-actions {
@@ -24578,10 +24563,6 @@ legend.analytics-settings-dialog__label {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   color: var(--text-muted);
-}
-
-.impact-alert {
-  margin-top: var(--space-4);
 }
 
 /* ── Before / after ─────────────────────────────────────────────────────── */
@@ -24721,44 +24702,9 @@ legend.analytics-settings-dialog__label {
 }
 
 /* ── Two ceilings (#2653 follow-up) ──────────────────────────────────────
- * The slider runs to the ABSOLUTE ceiling, so the recommended one has to be
- * visible on the track - otherwise an operator only learns they crossed it
- * when the save is refused.
+ * The slider runs to the ABSOLUTE ceiling; the recommended one is the tick
+ * `RangeNumberInput` draws on the track (see its block below).
  * ──────────────────────────────────────────────────────────────────────── */
-
-.field-row__track {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.field-row__track .field-row__slider {
-  width: 100%;
-}
-
-.field-row__recommended-marker {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  border-radius: 1px;
-  background: var(--status-warning);
-  opacity: 0.85;
-  pointer-events: none;
-}
-
-.field-row__scale {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-}
 
 /* A value the operator deliberately pushed past our advice must not read as
    an ordinary setting when the page is reopened. */
@@ -24776,6 +24722,678 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-2);
   font-size: 0.8125rem;
   cursor: pointer;
+}
+
+/* ── RangeNumberInput (shared/ui) ────────────────────────────────────────
+ * A slider and a compact number box side by side, bound to one value. The
+ * range is fully restyled (no `.control` chrome): a 4px track in
+ * --border-default, the filled part in the accent, the part past an optional
+ * marker in the warning tone, and a 16px thumb. The `--range-*` fractions are
+ * set inline by the component; the thumb's travel is inset by half its width,
+ * so every position below is `8px + (100% - 16px) * fraction`.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.range-number {
+  --range-control-height: 2rem;
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.range-number__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.range-number__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.range-number__slider {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: var(--range-control-height);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range-number__slider:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.range-number__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0,
+    var(--accent-primary) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) 100%
+  );
+}
+
+.range-number__slider::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0,
+    var(--accent-primary) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) 100%
+  );
+}
+
+.range-number__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.range-number__slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.range-number__slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--shadow-focus);
+}
+
+.range-number__slider:focus-visible::-moz-range-thumb {
+  box-shadow: var(--shadow-focus);
+}
+
+/* Drawn UNDER the slider: the 4px track hides its middle, so it reads as a
+   notch crossing the track, and the thumb covers it when it sits on it. */
+.range-number__tick {
+  position: absolute;
+  z-index: 0;
+  top: calc(var(--range-control-height) / 2 - 7px);
+  left: calc(8px + (100% - 16px) * var(--range-mark, 1));
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--status-warning);
+  pointer-events: none;
+}
+
+.range-number__scale {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 1rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1rem;
+}
+
+.range-number__marker-label {
+  position: absolute;
+  top: 0;
+  left: calc(8px + (100% - 16px) * var(--range-mark, 1));
+  color: var(--status-warning-fg);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.range-number__marker-label[data-align='start'] {
+  transform: translateX(-4px);
+}
+
+.range-number__marker-label[data-align='end'] {
+  transform: translateX(calc(-100% + 4px));
+}
+
+.range-number__box {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Two classes so it outranks the global `input[type='number']` width rule. */
+.range-number__box .range-number__input {
+  width: 6.5rem;
+  height: var(--range-control-height);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The arrow keys still step the value; the spinner only crowds a 6rem box. */
+.range-number__box .range-number__input::-webkit-inner-spin-button,
+.range-number__box .range-number__input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range-number__box .range-number__input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.range-number__unit {
+  min-width: 2.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767.98px) {
+  .range-number {
+    --range-control-height: 2.75rem;
+  }
+
+  .range-number__box .range-number__input {
+    width: 5.5rem;
+    font-size: 1rem; /* 16px keeps iOS from zooming on focus */
+  }
+}
+
+/* ── Sync pacing page layout (#2653 rework) ───────────────────────────── */
+
+.pacing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .pacing-layout {
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  }
+}
+
+.pacing-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pacing-nav__link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.pacing-nav__link:hover {
+  border-color: var(--accent-primary-border);
+  color: var(--text-primary);
+}
+
+.pacing-card {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: var(--space-8);
+}
+
+.pacing-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.pacing-card__header .panel__meta {
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.pacing-card__copy {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 72ch;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.pacing-card__copy p {
+  margin: 0;
+}
+
+.pacing-card__note {
+  margin: 0;
+  border-left: 2px solid var(--border-strong);
+  padding-left: var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.pacing-card__fields {
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* One rule between sibling fields, so a card with two reads as two rows. */
+.pacing-card__fields > .pacing-field + .pacing-field {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-5);
+}
+
+.pacing-field {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.pacing-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.pacing-field__source {
+  font-variant-numeric: tabular-nums;
+}
+
+.pacing-field__description {
+  max-width: 72ch;
+  line-height: 1.5;
+}
+
+.pacing-stat {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* ── The summary rail (#3508 follow-up) ───────────────────────────────────
+ * One card beside the form that summarises every section with the live
+ * effect of the draft, and carries the save controls in its footer so they
+ * are always in reach. Sticky from 1024 px, below the 52 px topbar (and the
+ * notch inset); taller than the viewport, its body scrolls on its own while
+ * the footer stays put. Below 1024 px it is an ordinary section after the
+ * form, and `.pacing-mobilebar` keeps the save reachable instead.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* `.shell-content`'s `overflow-x: hidden` makes it a scroll container in
+   both axes (CSS Overflow 3: `hidden` with `visible` computes the other
+   axis to `auto`), and a sticky descendant resolves against its nearest
+   scroll container — one that never scrolls here, because the document
+   does. `clip` cuts off horizontal overflow exactly like `hidden` but is
+   not a scroll container, so the rail sticks to the viewport.
+   Scoped to this page on purpose: switching the shell itself would wake a
+   dozen dormant `position: sticky` rules on other pages at once (the
+   numbering-editor preview at `top: var(--space-5)` would slide under the
+   topbar, for one), and each of those needs its own look. */
+.shell-content:has(.pacing-layout) {
+  overflow-x: clip;
+}
+
+.pacing-rail {
+  --pacing-rail-top: calc(
+    var(--shell-topbar-height) + env(safe-area-inset-top, 0px) + var(--space-4)
+  );
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: var(--space-8);
+}
+
+.pacing-rail__body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--space-4);
+  min-height: 0;
+  padding: var(--space-5);
+}
+
+.pacing-rail__header {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.pacing-rail__lede {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pacing-rail__group {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-4);
+}
+
+.pacing-rail__group-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.pacing-rail__jump {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.pacing-rail__jump::after {
+  content: '→';
+  margin-left: var(--space-1);
+  color: var(--text-muted);
+}
+
+.pacing-rail__jump:hover,
+.pacing-rail__jump:hover::after {
+  color: var(--accent-primary-hover);
+}
+
+.pacing-rail__edited {
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pacing-rail__rows {
+  display: grid;
+  margin: 0;
+}
+
+.pacing-rail__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  margin: 0 calc(-1 * var(--space-2));
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.pacing-rail__row[data-changed='true'] {
+  background: var(--accent-primary-soft);
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.pacing-rail__label {
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.pacing-rail__value {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pacing-rail__before {
+  color: var(--text-muted);
+}
+
+.pacing-rail__arrow {
+  margin: 0 var(--space-1);
+  color: var(--text-muted);
+}
+
+.pacing-rail__row[data-changed='true'] .pacing-rail__after {
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+.pacing-rail__hint {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.pacing-rail__bar {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.pacing-rail__warning {
+  margin: 0;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.pacing-rail__warning[data-tone='error'] {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+
+.pacing-rail__caveats {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.pacing-rail__caveats-summary {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pacing-rail__caveats .limits-list {
+  margin-top: var(--space-3);
+}
+
+.pacing-rail__footer {
+  display: grid;
+  flex: none;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+}
+
+.pacing-save {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.pacing-save + .pacing-save {
+  border-top: 1px dashed var(--border-default);
+  padding-top: var(--space-3);
+}
+
+.pacing-save__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pacing-save__count {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.pacing-save[data-dirty='true'] .pacing-save__count {
+  color: var(--accent-primary-soft-strong);
+}
+
+.pacing-save__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pacing-save__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Retention's block is one line: a label and its two buttons. */
+.pacing-save--inline {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+/* Fixed, not sticky: it must sit on the viewport's bottom edge wherever the
+   page is scrolled, and it only exists while something is unsaved. */
+.pacing-mobilebar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.pacing-mobilebar__count {
+  margin: 0;
+  color: var(--accent-primary-soft-strong);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.pacing-mobilebar .pacing-mobilebar__save {
+  min-width: 8rem;
+  height: 2.75rem;
+}
+
+@media (max-width: 1023.98px) {
+  /* Room for the fixed bar, so it never covers the rail's own footer. */
+  .pacing-layout[data-mobile-bar='true'] {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 1024px) {
+  .pacing-rail {
+    position: sticky;
+    top: var(--pacing-rail-top);
+    /* --space-7 matches .shell-content's bottom padding, so at the very end of
+       the page the grid area does not push the rail up under the topbar. */
+    max-height: calc(100dvh - var(--pacing-rail-top) - var(--space-7));
+  }
+
+  .pacing-rail__body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Until the page has scrolled far enough for the rail to stick, the rail
+     starts below the page header and its foot can sit under the fold. Sticky
+     to the viewport's bottom edge, the save controls stay in view anyway,
+     over the bottom of the rail's own (scrollable) body. */
+  .pacing-rail__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    box-shadow: 0 -1px 0 var(--border-default);
+  }
+
+  .pacing-mobilebar {
+    display: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pacing-rail__body {
+    padding: var(--space-4);
+  }
+
+  .pacing-save__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pacing-save--inline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pacing-save__actions .button,
+  .pacing-save__actions button {
+    height: 2.75rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pacing-card {
+    padding: var(--space-4);
+  }
+
+  .pacing-nav__link {
+    min-height: 2.75rem;
+  }
 }
 
 /* Which ceiling a change crossed, on that change's own entry in the modal. */

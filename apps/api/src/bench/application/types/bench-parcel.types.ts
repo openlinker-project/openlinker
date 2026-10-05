@@ -50,7 +50,14 @@ import {
 } from '@openlinker/core/fulfillment';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type {
+  FiscalArtefactSummary,
+  FiscalRegistrationFailureMode,
+  FiscalRegistrationStatus,
+} from '@openlinker/core/fiscalization';
+import type { InvoiceFailureMode, InvoiceStatus } from '@openlinker/core/invoicing';
+import type {
   SalesDocumentGateBlockReason,
+  SalesDocumentKind,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
 
@@ -370,10 +377,86 @@ export type BenchLabelView =
  * so.
  */
 
+/**
+ * The order's sales document, whichever kind it is, on the status axis that
+ * belongs to that kind (#3646).
+ *
+ * Read from the per-order sales-document projection (ADR-065), so the bench,
+ * the `/orders` row and the order panel name the SAME document. Every status is
+ * carried, not only the finished ones: a document still being made, or one that
+ * failed, is a different fact from "no document", and reporting it as missing
+ * told the packer something false.
+ */
+export type BenchSalesDocumentView =
+  | {
+      readonly kind: 'invoice';
+      readonly recordId: string;
+      readonly connectionId: string;
+      readonly status: InvoiceStatus;
+      /**
+       * `null` unless `failed`. An ABSENT mode on a failed row means the same as
+       * `in-doubt`: OpenLinker does not know whether a document exists.
+       */
+      readonly failureMode: InvoiceFailureMode | null;
+      readonly documentNumber: string | null;
+      readonly completedAt: string | null;
+      /**
+       * Issued AND the provider can render something to put in the box - the
+       * same test the invoice print route applies, so "print" is never offered
+       * and then refused.
+       */
+      readonly printable: boolean;
+    }
+  | {
+      readonly kind: 'fiscal-receipt';
+      readonly recordId: string;
+      readonly connectionId: string;
+      /**
+       * The registering connection's `platformType`, so the frontend can pick a
+       * per-integration presentation. A packer cannot read `GET /connections`.
+       * `null` when the connection could not be resolved (disabled or gone) -
+       * the surface then falls back to its neutral default.
+       */
+      readonly platformType: string | null;
+      readonly status: FiscalRegistrationStatus;
+      readonly failureMode: FiscalRegistrationFailureMode | null;
+      /** The number the receipt bears; `null` until one is assigned. */
+      readonly documentReference: string | null;
+      readonly completedAt: string | null;
+      /**
+       * Payload-free summaries (ADR-042 #2523). `null` = nothing produced yet;
+       * `[]` = registered and produced nothing. Never evidence of delivery.
+       */
+      readonly artefacts: readonly FiscalArtefactSummary[] | null;
+    };
+
+/**
+ * Why the order has no sales document, present ONLY when it has none (#3646).
+ *
+ * The persisted block reason is left over from before a document existed as
+ * soon as one does, so it is reported here and nowhere else - never beside a
+ * document it would contradict.
+ */
+export interface BenchNoSalesDocumentView {
+  /** The kind routing resolved for the order; `null` when routing has not decided. */
+  readonly documentKind: SalesDocumentKind | null;
+  readonly blockReason: SalesDocumentGateBlockReason | null;
+  readonly unresolvedReason: SalesDocumentUnresolvedReason | null;
+}
+
 /** What goes INSIDE the box, and what goes ON it. */
 export interface BenchDocumentsView {
   readonly workId: string;
+  /**
+   * @deprecated since #3646 - invoice-only, and reports every non-issued state as
+   * `missing`. Kept unchanged so a frontend built before `document` still
+   * renders; read {@link document} / {@link noDocument} instead.
+   */
   readonly invoice: BenchInvoiceView;
+  /** The order's sales document, or `null` when it has none of any kind. */
+  readonly document: BenchSalesDocumentView | null;
+  /** Present exactly when {@link document} is `null`. */
+  readonly noDocument: BenchNoSalesDocumentView | null;
   readonly label: BenchLabelView;
 }
 

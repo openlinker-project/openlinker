@@ -113,7 +113,7 @@ function registrationRecord(
 describe('FiscalizationController', () => {
   let controller: FiscalizationController;
   let service: jest.Mocked<IFiscalRegistrationService>;
-  let orders: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord'>>;
+  let orders: jest.Mocked<Pick<IOrderRecordService, 'getOrderRecord' | 'markSalesDocumentBlock'>>;
 
   beforeEach(async () => {
     service = {
@@ -135,7 +135,10 @@ describe('FiscalizationController', () => {
       getInFlightRegistration: jest.fn().mockResolvedValue(null),
       listRegistrationsKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
     };
-    orders = { getOrderRecord: jest.fn() };
+    orders = {
+      getOrderRecord: jest.fn(),
+      markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
+    };
 
     const moduleRef = await Test.createTestingModule({
       controllers: [FiscalizationController],
@@ -225,6 +228,45 @@ describe('FiscalizationController', () => {
       await expect(
         controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should clear the persisted block reason once the registration is accepted (#3646)', async () => {
+      // Without this, `trigger-model-manual` outlived the receipt it described
+      // and every surface kept saying no document was made.
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+
+      expect(orders.markSalesDocumentBlock).toHaveBeenCalledWith(ORDER_ID, null, {
+        action: 'preserve',
+      });
+    });
+
+    it('should still accept the registration when clearing the block fails (#3646)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      orders.markSalesDocumentBlock.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).resolves.toBeDefined();
+    });
+
+    it('should leave the block alone when the registration is refused (#3646)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      service.requestRegistration.mockRejectedValue(
+        new OrderAlreadyRegisteredException(
+          ORDER_ID,
+          'conn-other',
+          CONNECTION_ID,
+          'registered',
+          'rec-first',
+        ),
+      );
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(orders.markSalesDocumentBlock).not.toHaveBeenCalled();
     });
 
     it('should compose the sale lines server-side from the order snapshot', async () => {
