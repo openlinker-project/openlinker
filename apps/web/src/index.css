@@ -5100,6 +5100,18 @@ a.delivery-rider-banner__button:focus-visible {
   gap: var(--space-5);
 }
 
+/* #3657 — the archive confirmation stacks a consequence list, the typed-name
+   field and an error alert; same grid+gap shape as the dialog bodies above. */
+.archive-connection-dialog__body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.archive-connection-dialog__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
 /* ── Per-tier cards (review finding: tiers read as one unbroken block) ──
  * Each fallback-ladder tier is a discrete decision an operator can act on
  * independently, but a bare heading + content with only vertical `gap`
@@ -14605,6 +14617,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-color: var(--border-subtle);
 }
 .bulk-editor__ean-err { color: var(--status-error-fg); font-size: 11.5px; margin-top: 5px; }
+
+/* ── EAN override (#3492) ── */
+/* One definition for the "I confirm this EAN is correct" block, shared by the
+ * simple-product and per-variant scopes so the two cannot look different. */
+.bulk-editor__ean-ack { margin-top: var(--space-2); }
+.bulk-editor__ean-ack .checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* ── end EAN override (#3492) ── */
 
 .bulk-editor__prov {
   font-family: var(--font-mono);

@@ -11,7 +11,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { ConnectionController } from './connection.controller';
 import { ConnectionService } from '../application/services/connection.service';
-import { Connection } from '@openlinker/core/identifier-mapping';
+import { Connection, ConnectionInUseException } from '@openlinker/core/identifier-mapping';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import {
@@ -82,6 +82,8 @@ describe('ConnectionController', () => {
         testPingTriggered: true,
       }),
       disable: jest.fn(),
+      archive: jest.fn(),
+      restore: jest.fn(),
     } as unknown as jest.Mocked<ConnectionService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -489,6 +491,69 @@ describe('ConnectionController', () => {
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.status).toBe('disabled');
       expect(service.disable).toHaveBeenCalledWith('connection-123');
+    });
+  });
+
+  describe('archive / restore (#3657)', () => {
+    const withState = (status: Connection['status'], credentialsRef: string): Connection =>
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        status,
+        {},
+        credentialsRef,
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+    it('should archive through the service and return the archived DTO', async () => {
+      service.archive.mockResolvedValue(withState('archived', ''));
+
+      const result = await controller.archive('connection-123', mockAdminUser);
+
+      expect(service.archive).toHaveBeenCalledWith('connection-123');
+      expect(result).toBeInstanceOf(ConnectionResponseDto);
+      expect(result.status).toBe('archived');
+      expect(result.credentialsStored).toBe(false);
+    });
+
+    it('should let ConnectionInUseException reach the global filter when the connection is still a catalog', async () => {
+      // The 409 body (reason + referrers) is ConnectionExceptionFilter's job;
+      // a local catch here would protect this route alone and drop the referrers.
+      const refusal = new ConnectionInUseException('connection-123', 'master-catalog-referenced', [
+        { id: 'connection-allegro', name: 'Allegro PL' },
+      ]);
+      service.archive.mockRejectedValue(refusal);
+
+      await expect(controller.archive('connection-123', mockAdminUser)).rejects.toBe(refusal);
+    });
+
+    it('should restore through the service and report the credentials as re-enterable', async () => {
+      service.restore.mockResolvedValue(withState('disabled', ''));
+
+      const result = await controller.restore('connection-123', mockAdminUser);
+
+      expect(service.restore).toHaveBeenCalledWith('connection-123');
+      expect(result.status).toBe('disabled');
+      expect(result.credentialsBacked).toBe(true);
+      expect(result.credentialsStored).toBe(false);
+    });
+
+    it('should report no editable credentials for a credential-less adapter', async () => {
+      integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+        adapterKey: 'openlinker.oms.v1',
+        platformType: 'openlinker',
+        supportedCapabilities: [],
+        requiresCredentials: false,
+      });
+      service.restore.mockResolvedValue(withState('disabled', ''));
+
+      const result = await controller.restore('connection-123', mockAdminUser);
+
+      expect(result.credentialsBacked).toBe(false);
     });
   });
 
