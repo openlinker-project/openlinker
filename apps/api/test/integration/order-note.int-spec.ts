@@ -13,7 +13,12 @@
  */
 import type { IntegrationTestHarness } from './setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
-import type { OrderNoteRepositoryPort } from '@openlinker/core/orders';
+import type {
+  CreateOrderNoteInput,
+  OrderNote,
+  OrderNoteTimelineEntry,
+  UpdateOrderNoteInput,
+} from '@openlinker/core/orders';
 import { ORDER_NOTE_REPOSITORY_TOKEN } from '@openlinker/core/orders';
 
 const ORDER_ID = 'ol_order_note_test_1';
@@ -21,11 +26,22 @@ const AUTHOR_ID = '33333333-3333-4333-8333-333333333333';
 
 describe('order notes — revisions, soft delete, pin (integration, #3531)', () => {
   let harness: IntegrationTestHarness;
-  let repository: OrderNoteRepositoryPort;
+  // Typed structurally rather than by the port interface, which is
+  // intra-context and deliberately not exported from the barrel (the
+  // order-holds.int-spec.ts precedent).
+  let repository: {
+    findByOrderId(internalOrderId: string): Promise<OrderNote[]>;
+    create(input: CreateOrderNoteInput): Promise<OrderNote>;
+    applyEdit(id: string, patch: UpdateOrderNoteInput, editedAt: Date): Promise<OrderNote>;
+    softDelete(id: string, deletedAt: Date): Promise<OrderNote>;
+    pin(id: string, internalOrderId: string, pinnedAt: Date): Promise<OrderNote>;
+    findPackerVisibleForOrders(internalOrderIds: readonly string[]): Promise<Map<string, OrderNote[]>>;
+    findTimelineForOrder(internalOrderId: string): Promise<OrderNoteTimelineEntry[]>;
+  };
 
   beforeAll(async () => {
     harness = await getTestHarness();
-    repository = harness.getApp().get<OrderNoteRepositoryPort>(ORDER_NOTE_REPOSITORY_TOKEN);
+    repository = harness.getApp().get<typeof repository>(ORDER_NOTE_REPOSITORY_TOKEN);
   });
 
   afterEach(async () => {

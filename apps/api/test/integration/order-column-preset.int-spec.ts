@@ -12,7 +12,7 @@
  */
 import type { IntegrationTestHarness } from './setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
-import type { OrderColumnPresetRepositoryPort } from '@openlinker/core/orders';
+import type { CreateOrderColumnPresetInput, OrderColumnPreset } from '@openlinker/core/orders';
 import { ORDER_COLUMN_PRESET_REPOSITORY_TOKEN } from '@openlinker/core/orders';
 
 const USER_A = '55555555-5555-4555-8555-555555555555';
@@ -20,13 +20,22 @@ const USER_B = '66666666-6666-4666-8666-666666666666';
 
 describe('order column presets — personal vs workspace default (integration, #3530, D32)', () => {
   let harness: IntegrationTestHarness;
-  let repository: OrderColumnPresetRepositoryPort;
+  // Typed structurally rather than by the port interface, which is
+  // intra-context and deliberately not exported from the barrel (the
+  // order-holds.int-spec.ts precedent).
+  let repository: {
+    findByUserId(userId: string): Promise<OrderColumnPreset[]>;
+    findWorkspaceDefault(): Promise<OrderColumnPreset | null>;
+    create(input: CreateOrderColumnPresetInput): Promise<OrderColumnPreset>;
+    upsertWorkspaceDefault(columns: string[]): Promise<OrderColumnPreset>;
+    delete(id: string): Promise<void>;
+  };
 
   beforeAll(async () => {
     harness = await getTestHarness();
     repository = harness
       .getApp()
-      .get<OrderColumnPresetRepositoryPort>(ORDER_COLUMN_PRESET_REPOSITORY_TOKEN);
+      .get<typeof repository>(ORDER_COLUMN_PRESET_REPOSITORY_TOKEN);
   });
 
   afterEach(async () => {

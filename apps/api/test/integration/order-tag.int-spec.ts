@@ -13,7 +13,7 @@
  */
 import type { IntegrationTestHarness } from './setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
-import type { OrderTagRepositoryPort } from '@openlinker/core/orders';
+import type { BulkAssignOrderTagResult, OrderTag, OrderTagColor } from '@openlinker/core/orders';
 import { ORDER_TAG_REPOSITORY_TOKEN, ORDER_TAG_WORKSPACE_LIMIT } from '@openlinker/core/orders';
 
 const ORDER_A = 'ol_order_tag_test_a';
@@ -22,11 +22,27 @@ const USER_ID = '44444444-4444-4444-8444-444444444444';
 
 describe('order tags — workspace limit, assignment upsert (integration, #3532)', () => {
   let harness: IntegrationTestHarness;
-  let repository: OrderTagRepositoryPort;
+  // Typed structurally rather than by the port interface, which is
+  // intra-context and deliberately not exported from the barrel (the
+  // order-holds.int-spec.ts precedent).
+  let repository: {
+    findById(id: string): Promise<OrderTag | null>;
+    count(): Promise<number>;
+    create(input: { name: string; color: OrderTagColor }): Promise<OrderTag>;
+    delete(id: string): Promise<void>;
+    findTagIdsForOrder(internalOrderId: string): Promise<string[]>;
+    findTagIdsForOrders(internalOrderIds: readonly string[]): Promise<Map<string, string[]>>;
+    assign(tagId: string, internalOrderId: string, assignedByUserId: string): Promise<void>;
+    bulkAssign(
+      tagId: string,
+      internalOrderIds: readonly string[],
+      assignedByUserId: string
+    ): Promise<BulkAssignOrderTagResult>;
+  };
 
   beforeAll(async () => {
     harness = await getTestHarness();
-    repository = harness.getApp().get<OrderTagRepositoryPort>(ORDER_TAG_REPOSITORY_TOKEN);
+    repository = harness.getApp().get<typeof repository>(ORDER_TAG_REPOSITORY_TOKEN);
   });
 
   afterEach(async () => {
