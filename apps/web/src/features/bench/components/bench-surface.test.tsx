@@ -16,7 +16,7 @@
  * @module apps/web/src/features/bench/components
  */
 import { useState, type ReactElement } from 'react';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,6 +27,7 @@ import type { Session } from '../../../shared/auth/session.types';
 import { useSession } from '../../../shared/auth/use-session';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useScannerInput } from '../hooks/use-scanner-input';
+import { benchIdentityCopy } from '../lib/bench-identity.copy';
 import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
 import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchSurface } from './bench-surface';
@@ -268,6 +269,22 @@ describe('BenchSurface (#2413)', () => {
     expect(body).toHaveAttribute('aria-hidden', 'true');
     expect(body).toHaveAttribute('inert');
     expect(body.className).toContain('bench-body--concealed');
+  });
+
+  it('should tell the incoming packer they become the recorded packer of an open box when the bench asks them to sign in (D13)', async () => {
+    // The retired two-step handover was the only place this was said (#3653
+    // review). The sign-in overlay is now where the next packer reads it, so
+    // the line must be in the OVERLAY - not in the concealed body behind it.
+    render();
+    await awaitSignedIn();
+
+    await advanceIdlePeriod();
+    const overlay = await screen.findByTestId('bench-locked');
+
+    expect(within(overlay).getByTestId('bench-attribution-notice')).toHaveTextContent(
+      benchIdentityCopy.signIn.attribution
+    );
+    expect(benchIdentityCopy.signIn.attribution).toMatch(/recorded as having packed it/);
   });
 
   it('A3 — locking discards no progress', async () => {

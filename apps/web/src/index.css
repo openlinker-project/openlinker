@@ -1659,6 +1659,18 @@ textarea,
   .shell-user-chip__name {
     display: none;
   }
+
+  /* Except on the pack bench (story A4, #3653): a packer must see who the
+     system thinks they are without opening a menu, and a bench terminal may
+     well be narrow. Capped and ellipsised so a long name cannot push the
+     topbar past the viewport; the full name stays in the chip's label. */
+  .shell--bench .shell-user-chip__name {
+    display: inline-block;
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .shell-user-chip__menu {

@@ -35,6 +35,17 @@
  * the idle lock clears the session - destroying the half-packed box that the
  * lock exists to protect (A3). Only the topbar may remount here.
  *
+ * Mounting the provider unconditionally (and only hiding the trigger) would
+ * keep the topbar stable across a lock, but `CommandPaletteProvider` issues its
+ * four list reads at mount, open or not - so for a packer it would fire exactly
+ * the 403s above. The remount is the cheaper cost.
+ *
+ * ## The packer's name at every width
+ *
+ * `shell--bench` scopes the one rule that differs from the rest of the app: the
+ * user chip's name, hidden below 768 px everywhere else, stays visible here
+ * (story A4), since a bench terminal may be narrow.
+ *
  * @module app/layouts
  */
 import { useCallback, type PropsWithChildren, type ReactElement } from 'react';
@@ -71,7 +82,7 @@ export function BenchAppLayout({ children }: PropsWithChildren): ReactElement {
   const showSearch = role !== undefined && role !== 'packer';
 
   return (
-    <div className="shell shell--no-sidebar">
+    <div className="shell shell--no-sidebar shell--bench">
       <div className="shell-main">
         {showSearch ? (
           <CommandPaletteProvider>

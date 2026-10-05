@@ -70,6 +70,9 @@ export function BenchIdentityOverlay({
           <Alert tone="info">{benchIdentityCopy.locked.progressReassurance}</Alert>
           <h3>{benchIdentityCopy.signIn.title}</h3>
           <p>{benchIdentityCopy.signIn.body}</p>
+          {/* Spec D13: the warning the retired handover screen carried. The
+              next packer signs in here, so this is where they must read it. */}
+          <p data-testid="bench-attribution-notice">{benchIdentityCopy.signIn.attribution}</p>
           {/* The ordinary account form. ADR-071 rejects a PIN pad and a badge
               reader, so there is deliberately nothing else here. */}
           <LoginForm />

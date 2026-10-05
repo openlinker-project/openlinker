@@ -106,6 +106,18 @@ describe('BenchAppLayout (#3653)', () => {
     ).toBeInTheDocument();
   });
 
+  it('should render the packer name inside the bench-scoped shell when signed in (A4)', async () => {
+    // jsdom applies no stylesheet, so the narrow-width half of A4 is asserted
+    // against `index.css` in `bench-app-layout-styles.test.ts`; this pins the
+    // other half - the class that rule is scoped to is really on the bench.
+    const { container } = renderWithUser(PACKER);
+
+    await screen.findByRole('button', { name: /Account menu for jon_smith_packer/i });
+    expect(container.querySelector('.shell--bench .shell-user-chip__name')).toHaveTextContent(
+      'jon_smith_packer'
+    );
+  });
+
   it('offers a packer no search, since every other page sends them back here', async () => {
     renderWithUser(PACKER);
 

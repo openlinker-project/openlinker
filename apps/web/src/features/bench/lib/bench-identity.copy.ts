@@ -30,6 +30,14 @@ export const benchIdentityCopy = {
   signIn: {
     title: 'Sign in to this bench',
     body: 'Use your own account. It works at any bench in this warehouse.',
+    /**
+     * Spec D13, ADR-071 § Amendment (#3653). Whoever finishes a box is recorded
+     * as having packed it, and with the in-bench handover retired this sign-in
+     * screen is where the incoming packer is told so. Generic on purpose: the
+     * locked screen names nothing about the order.
+     */
+    attribution:
+      'The next person to finish an open box is the one recorded as having packed it. Check what has already been verified before you take it on.',
     submitAction: 'Sign in',
   },
   /** #3408 — the pre-lock countdown warning. Advisory, never a fourth screen. */
