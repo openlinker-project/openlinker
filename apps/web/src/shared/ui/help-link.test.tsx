@@ -20,9 +20,9 @@ describe('HelpLink', () => {
   });
 
   it('is labelled for screen readers via aria-label naming the surface', () => {
-    render(<HelpLink surfaceKey="mailer-settings" />);
-    const link = screen.getByRole('link', { name: HELP_LINK_LABELS['mailer-settings'] });
-    expect(link).toHaveAccessibleName(HELP_LINK_LABELS['mailer-settings']);
+    render(<HelpLink surfaceKey="connection-stock-and-pricing" />);
+    const link = screen.getByRole('link', { name: HELP_LINK_LABELS['connection-stock-and-pricing'] });
+    expect(link).toHaveAccessibleName(HELP_LINK_LABELS['connection-stock-and-pricing']);
   });
 
   it('hides the visual glyph from the accessibility tree so it does not double up the name', () => {

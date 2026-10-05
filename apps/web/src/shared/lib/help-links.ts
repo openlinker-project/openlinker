@@ -1,35 +1,24 @@
 /**
  * Help Links (#81)
  *
- * One small config map from a surface key to a `docs.openlinker.io` page, so
- * a moved docs page is fixed in one place rather than hunted down across
- * every screen that links to it. `HelpLink` (`shared/ui/help-link.tsx`) reads
- * this map; nothing renders a docs URL that isn't listed here.
+ * One small config map from a surface key to a section of a `docs.openlinker.io`
+ * page, so a moved docs section is fixed in one place rather than hunted down
+ * across every screen that links to it. `HelpLink` (`shared/ui/help-link.tsx`)
+ * reads this map; nothing renders a docs URL that isn't listed here.
  *
- * Every entry resolves to a SPECIFIC page, never the docs homepage — the
- * point of a contextual link is that it answers the question this screen
- * raises, not that it dumps the operator at a table of contents.
+ * Every entry names a PAGE and an ANCHOR, never a bare page: the point of a
+ * contextual link is that it answers the question this screen raises, and a
+ * link that lands on the top of a long page answers nothing. A surface with no
+ * section to point at gets no icon (the mailer dialog, today) rather than a
+ * link to a page's top.
  *
- * **Anchor honesty (2026-09).** `docs.openlinker.io` is a curated static
- * build, not a 1:1 mirror of this repo's `docs/` tree — a live check found
- * exactly four published top-level pages (`getting-started`, `demo-setup`,
- * `plugin-author-guide`, `architecture-overview`); a same-named root file
- * elsewhere in `docs/` (e.g. `docs/sales-documents-how-routing-decides.md`)
- * 404s. `architecture-overview` is this repo's single largest and most
- * current reference doc, so every surface below links into it. Two of the
- * five link to a SECTION anchor that already exists in `docs/architecture-
- * overview.md` on this branch (`§ 17 Sales Documents`, `§ 20 Fulfillment
- * Authority`) — the live site's published copy lagged behind at check time
- * and had neither section yet, so the anchor is a well-founded bet on the
- * site catching up post-merge (the slug format itself IS confirmed live:
- * `## 11. Logging & Monitoring` on the published page resolves at
- * `#11-logging--monitoring`, and the same numbering + slugify rule is
- * applied here). The remaining three surfaces (mailer, rate limit, stock &
- * pricing) have no dedicated heading anywhere in `docs/` yet, so they link
- * to the `architecture-overview` page itself rather than a guessed anchor —
- * still a specific, relevant page, honest about not yet having its own
- * section. Giving each of those three a real anchor is docs-authoring work,
- * explicitly out of scope for this (frontend-only) issue.
+ * The site (`openlinker-project/openlinker-docs`, Astro + Starlight) builds
+ * each page from a file in THIS repo, fetched from `main` at deploy time, and
+ * slugs every heading the github-slugger way (`### 17. Sales Documents` →
+ * `#17-sales-documents`). `scripts/check-help-links.mjs` therefore checks
+ * every anchor below against the source markdown on the same commit, under
+ * `pnpm check:invariants`; a renamed or renumbered heading fails the build
+ * instead of silently landing the operator on the top of the page.
  *
  * @module apps/web/src/shared/lib
  */
@@ -37,28 +26,42 @@
 export const HELP_SURFACE_KEYS = [
   'sales-documents-routing',
   'who-decides',
-  'mailer-settings',
   'connection-rate-limit',
   'connection-stock-and-pricing',
 ] as const;
 
 export type HelpSurfaceKey = (typeof HELP_SURFACE_KEYS)[number];
 
-const ARCHITECTURE_OVERVIEW = 'https://docs.openlinker.io/architecture-overview/';
+/** A docs-site page (its route, as the docs repo's SOURCES map names it) and a heading anchor on it. */
+export interface HelpLinkTarget {
+  page: string;
+  anchor: string;
+}
 
-export const HELP_LINKS: Readonly<Record<HelpSurfaceKey, string>> = {
-  'sales-documents-routing': `${ARCHITECTURE_OVERVIEW}#17-sales-documents`,
-  'who-decides': `${ARCHITECTURE_OVERVIEW}#20-fulfillment-authority`,
-  'mailer-settings': ARCHITECTURE_OVERVIEW,
-  'connection-rate-limit': ARCHITECTURE_OVERVIEW,
-  'connection-stock-and-pricing': ARCHITECTURE_OVERVIEW,
+const DOCS_ORIGIN = 'https://docs.openlinker.io';
+
+/** Read by `scripts/check-help-links.mjs`: keep each entry on one line, `page` before `anchor`. */
+export const HELP_LINK_TARGETS: Readonly<Record<HelpSurfaceKey, HelpLinkTarget>> = {
+  'sales-documents-routing': { page: 'architecture-overview', anchor: '17-sales-documents' },
+  'who-decides': { page: 'architecture-overview', anchor: '20-fulfillment-authority' },
+  // The only outbound-rate-limit section in the docs is PrestaShop's; its
+  // defaults are PrestaShop's, but the two fields it explains are the same on
+  // every connection.
+  'connection-rate-limit': { page: 'integrations/prestashop', anchor: 'outbound-rate-limit' },
+  'connection-stock-and-pricing': { page: 'architecture-overview', anchor: '3-inventory' },
 };
+
+export const HELP_LINKS: Readonly<Record<HelpSurfaceKey, string>> = Object.fromEntries(
+  HELP_SURFACE_KEYS.map((key) => {
+    const { page, anchor } = HELP_LINK_TARGETS[key];
+    return [key, `${DOCS_ORIGIN}/${page}/#${anchor}`];
+  })
+) as Record<HelpSurfaceKey, string>;
 
 /** The accessible label rendered for each surface's link. */
 export const HELP_LINK_LABELS: Readonly<Record<HelpSurfaceKey, string>> = {
   'sales-documents-routing': 'Help: how sales document routing works',
   'who-decides': 'Help: how fulfilment authority is decided',
-  'mailer-settings': 'Help: mailer settings',
   'connection-rate-limit': 'Help: connection rate limiting',
   'connection-stock-and-pricing': 'Help: stock and pricing controls',
 };

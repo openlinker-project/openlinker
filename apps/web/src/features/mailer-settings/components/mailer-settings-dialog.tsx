@@ -26,7 +26,6 @@ import {
 } from '../../../shared/ui/dialog';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
-import { HelpLink } from '../../../shared/ui/help-link';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -156,10 +155,9 @@ export function MailerSettingsDialog({
       }}
     >
       <DialogContent>
-        <div className="page-title__with-help">
-          <DialogTitle>Edit mailer settings</DialogTitle>
-          <HelpLink surfaceKey="mailer-settings" />
-        </div>
+        {/* No help icon: the docs have no mailer section to point at, and a
+            link to a page's top answers nothing (#81, help-links.ts). */}
+        <DialogTitle>Edit mailer settings</DialogTitle>
         <DialogDescription>
           Choose how outbound mail is sent. The SMTP password is write-only — it is never returned by
           the API.

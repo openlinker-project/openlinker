@@ -11,7 +11,7 @@
  * @module apps/web/src/shared/lib
  */
 import { describe, expect, it } from 'vitest';
-import { HELP_LINKS, HELP_LINK_LABELS, HELP_SURFACE_KEYS } from './help-links';
+import { HELP_LINKS, HELP_LINK_LABELS, HELP_LINK_TARGETS, HELP_SURFACE_KEYS } from './help-links';
 
 describe('HELP_LINKS', () => {
   it('should carry exactly the declared surface keys, no more and no fewer', () => {
@@ -19,12 +19,13 @@ describe('HELP_LINKS', () => {
     expect(Object.keys(HELP_LINK_LABELS).sort()).toEqual([...HELP_SURFACE_KEYS].sort());
   });
 
-  it('should resolve every surface to a specific docs.openlinker.io page, never the bare homepage', () => {
+  it('should resolve every surface to a section of a docs.openlinker.io page, never a page top', () => {
     for (const key of HELP_SURFACE_KEYS) {
       const url = HELP_LINKS[key];
-      expect(url.startsWith('https://docs.openlinker.io/')).toBe(true);
-      expect(url).not.toBe('https://docs.openlinker.io/');
-      expect(url.length).toBeGreaterThan('https://docs.openlinker.io/'.length);
+      const { page, anchor } = HELP_LINK_TARGETS[key];
+      expect(page.length).toBeGreaterThan(0);
+      expect(anchor).toMatch(/^[a-z0-9-]+$/);
+      expect(url).toBe(`https://docs.openlinker.io/${page}/#${anchor}`);
     }
   });
 
