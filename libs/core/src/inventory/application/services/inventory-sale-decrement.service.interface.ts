@@ -61,6 +61,18 @@ export interface DecrementForWorkResult {
    * re-claims exactly these lines.
    */
   readonly retryableLineIds: readonly string[];
+  /**
+   * Lines whose decrement SETTLED (applied, deduplicated or skipped) but whose
+   * advisory hold could not be consumed afterwards (#3480, #3491 review). The
+   * decrement itself is durable and must never be undone for this — the caller
+   * throws a retryable error instead, and the NEXT run's replay path re-enters
+   * the consume against the now-settled row, which is idempotent
+   * (`releaseHeld` is guarded on `held`). Without reporting this, a failed
+   * close is permanent: nothing else in the system re-enters it, and the
+   * order's `published` reservation keeps subtracting from ATP for a sale the
+   * master already lowered.
+   */
+  readonly holdCloseFailedLineIds: readonly string[];
   /** The order's attention verdict, folded over ALL its decrement rows. */
   readonly attention: SaleDecrementAttention;
 }

@@ -16,8 +16,9 @@
  *
  * | Result | Outcome |
  * |---|---|
- * | every line settled, skipped, blocked or in doubt | `ok` — each is durable on its row, and a blocked or in-doubt line is surfaced on the order, never retried |
+ * | every line settled, skipped, blocked or in doubt, and every settled line's hold closed | `ok` — each is durable on its row, and a blocked or in-doubt line is surfaced on the order, never retried |
  * | a line is `retryable` (the owner's adapter could not be built, or a peer decrement held the position lock) | **throws** (retryable) — nothing crossed the boundary, so a retry is safe and re-claims exactly that line |
+ * | a settled line's advisory hold could not be closed (#3480, #3491 review) | **throws** (retryable) — the decrement is already durable and is never re-sent, but the next run's replay path re-enters the (idempotent) hold consume and heals it; nothing else in the system does |
  * | the order record is missing | **throws** (retryable) — a read race with ingestion |
  * | the work does not exist, or the payload is malformed | `business_failure` — no retry can change it |
  * | the order was cancelled before the job ran | `ok`, nothing lowered — there is no sale to account for |
@@ -132,6 +133,17 @@ export class InventorySaleDecrementHandler implements SyncJobHandler {
         job,
         `the product master could not be reached before the write for ` +
           `line(s) [${result.retryableLineIds.join(',')}] of workId=${work.id}; retrying`
+      );
+    }
+
+    if (result.holdCloseFailedLineIds.length > 0) {
+      // The decrement already landed and is never re-sent — the retry's only
+      // job is to re-enter the (idempotent) hold consume for these lines, the
+      // one path that can heal a failed close (#3480, #3491 review).
+      throw this.retryable(
+        job,
+        `the advisory hold could not be closed after its sale decrement for ` +
+          `line(s) [${result.holdCloseFailedLineIds.join(',')}] of workId=${work.id}; retrying`
       );
     }
 
