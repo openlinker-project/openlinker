@@ -61,6 +61,19 @@ deliberate underselling trade-off, stated rather than hidden.
 re-opens the scoped-subtraction rule; a master adapter that can implement a hold primitive
 un-defers `MasterReservationWriter`.
 
+## Amendment (#3453): OpenLinker now lowers the master's own stock for a routed sale
+
+Decision (1)'s `never a decrement` binds the **hold** — that rule is unchanged, and nothing here
+touches `reservations`. What moved is the premise underneath it
+(`architecture-overview.md`: *"OpenLinker does not own on-hand stock"*): with the OMS routing an
+order, the order is never created in the product master, so the master's own order flow never
+lowers its stock for the sale. OpenLinker now does, once per routed work line, through the
+master's own `InventoryMasterPort.adjustInventory` — under the master's own authority, exactly as
+if its own checkout had done it. The advisory hold stays exactly what it was: a promise OL makes
+on ATP, never on-hand stock. The decrement is a durable, at-most-once write (Postgres-claimed
+before the boundary), and is the thing that finally lets a routed order's hold be consumed
+(`#3480`) rather than double-subtracting ATP for the life of the order.
+
 ## References
 
 - Related ADRs: [ADR-058](./058-multi-location-positions-reservations-availability-authority.md), [ADR-028](./028-order-cancellation-stock-restore.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md), [ADR-062](./062-trust-posture-authority-holding-capabilities.md)

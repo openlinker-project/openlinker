@@ -47,6 +47,11 @@ function ConsentSentinel(): React.ReactElement {
   return <div>Consent page next: {location.search}</div>;
 }
 
+function ChangePasswordSentinel(): React.ReactElement {
+  const location = useLocation();
+  return <div>Change password page next: {location.search}</div>;
+}
+
 function demoViewer(analyticsConsent: boolean): SessionUser {
   return {
     id: 'user_2',
@@ -91,6 +96,7 @@ function renderLayout(
       { path: '/bench', element: <BenchSentinel /> },
       { path: '/login', element: options?.loginElement ?? <LoginSentinel /> },
       { path: '/consent', element: <ConsentSentinel /> },
+      { path: '/change-password', element: <ChangePasswordSentinel /> },
     ],
     { initialEntries: [options?.initialEntry ?? '/'] }
   );
@@ -137,6 +143,25 @@ describe('AuthenticatedAppLayout', () => {
         'Login page search: ?utm_source=email&utm_campaign=demo_invite_2026_07'
       )
     ).toBeInTheDocument();
+  });
+
+  // #3456 - an admin-created account owes a password change before anything.
+  it('should redirect an account owing a password change to /change-password', async () => {
+    renderLayout(
+      createAuthenticatedSessionAdapter({ ...demoViewer(true), mustChangePassword: true })
+    );
+
+    expect(await screen.findByText('Change password page next: ?next=%2F')).toBeInTheDocument();
+  });
+
+  it('should send a demo viewer owing BOTH gates to the password change first', async () => {
+    renderLayout(
+      createAuthenticatedSessionAdapter({ ...demoViewer(false), mustChangePassword: true }),
+      { apiClient: demoModeApiClient(true) }
+    );
+
+    expect(await screen.findByText('Change password page next: ?next=%2F')).toBeInTheDocument();
+    expect(screen.queryByText(/Consent page/)).not.toBeInTheDocument();
   });
 
   it('should redirect a demo viewer without consent to /consent, carrying the requested path', async () => {
@@ -194,6 +219,13 @@ describe('AuthenticatedAppLayout', () => {
       expect(await screen.findByText('Bench page')).toBeInTheDocument();
       expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeInTheDocument();
       expect(screen.queryByText('Loading application shell')).not.toBeInTheDocument();
+    });
+
+    it('should send a packer owing a password change to /change-password, not the bench (#3456)', async () => {
+      renderLayout(createAuthenticatedSessionAdapter({ ...PACKER, mustChangePassword: true }));
+
+      expect(await screen.findByText(/Change password page next:/)).toBeInTheDocument();
+      expect(screen.queryByText('Bench page')).not.toBeInTheDocument();
     });
 
     it('should keep a viewer in the app when they hold orders:read', async () => {

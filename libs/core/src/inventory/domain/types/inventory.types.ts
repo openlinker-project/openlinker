@@ -44,7 +44,12 @@ export const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
  *
  * `return_restock` is #2370's (`W2-33`) sole value — the units an operator put
  * back on the shelf after a return. `manual_correction` is the operator-driven
- * stock-take correction named in #2368.
+ * stock-take correction named in #2368. `order_sale` is #3453's — the units a
+ * routed order sold, lowered in the product master that owns each line because,
+ * with the OMS on, the order is never created there and so the master's own
+ * order flow never lowers them. `order_sale_reversal` is #3479's — the exact
+ * inverse, raised back into the same master when a routed, not-yet-dispatched
+ * order carrying an `order_sale` decrement is cancelled.
  *
  * **Narrowed from `string` (#2368).** The field already existed as free text and
  * was written by nobody and read by nobody in this tree. An audit-bearing value
@@ -54,7 +59,12 @@ export const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
  * implementers: an adapter reading `adjustment.reason` as a string still
  * compiles, because a narrower type is still assignable to a string read.
  */
-export const InventoryAdjustmentReasonValues = ['return_restock', 'manual_correction'] as const;
+export const InventoryAdjustmentReasonValues = [
+  'return_restock',
+  'manual_correction',
+  'order_sale',
+  'order_sale_reversal',
+] as const;
 
 /**
  * Reason type derived from {@link InventoryAdjustmentReasonValues}.
@@ -215,6 +225,11 @@ export interface InventoryFilters {
    * unattributed rows would misreport whose stock the operator is looking at.
    */
   sourceConnectionId?: string;
+  /**
+   * Leave out positions marked stale (the master no longer reports them).
+   * Absent keeps every row, so existing callers read what they always did.
+   */
+  excludeStale?: boolean;
 }
 
 /**
@@ -536,6 +551,29 @@ export interface ProvenanceBackfillStatus {
  * Only live (`isStale = false`) rows are ever reported — a stale position must
  * not accept new promises, matching § 6I's claim predicate.
  */
+/**
+ * One live position with its OWNER and quantity (#3453).
+ *
+ * {@link InventoryPositionCandidate} answers "which rows could a reservation
+ * name"; this answers "which connection's book does this stock belong to", which
+ * is what a sale decrement needs to decide where to write. Kept as its own shape
+ * rather than widening the candidate, because the reservation path must not start
+ * depending on provenance by accident.
+ *
+ * `sourceConnectionId` is returned verbatim, including `null` and
+ * {@link LEGACY_SOURCE_CONNECTION_ID}: an unattributed owner is a refusal the
+ * caller must be able to SEE, not a row filtered out of sight.
+ */
+export interface InventoryOwnerPosition {
+  inventoryItemId: string;
+  productId: string;
+  productVariantId: string | null;
+  locationId: string | null;
+  sourceConnectionId: string | null;
+  availableQuantity: number;
+  reservedQuantity: number;
+}
+
 export interface InventoryPositionCandidate {
   productId: string;
   /** `null` for a product-level position (no variant). */

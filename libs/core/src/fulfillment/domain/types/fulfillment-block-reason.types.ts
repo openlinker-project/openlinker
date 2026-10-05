@@ -22,11 +22,25 @@
  *
  * Hence: the `ambiguous` arm persists NOTHING, and neither does `routed` (work
  * exists, and `IFulfillmentWorkQueryService` (#2402) is the answer to "why is
- * this order not mirroring") or `refused` (the refusal is already durable on
- * the `routing_decisions` row). What is left is the genuinely novel fact this
- * issue introduces and nothing else reports:
+ * this order not mirroring"). What is left is the genuinely novel fact this
+ * union exists to report:
  *
  * > this order is held, and no work object explains why.
+ *
+ * ## #3485: once the OMS routes, a non-routed outcome is a HOLD too
+ *
+ * #2396 let a `refused` plan, a missing shipping address and an intercept error
+ * fall back to the destination mirror ("the order must keep its ordinary
+ * destination path"). With OpenLinker's OMS as the router that fallback created
+ * the order in EVERY product master — two masters, two copies, one of them
+ * failing after it had created a guest customer. Epic #3460 decides the order
+ * stays in OpenLinker, so those three outcomes are held and named below, and
+ * each stays re-routable: `refused` terminalises the decision to `abandoned`,
+ * which frees the live-decision index, and `fulfillment.work.rerouteSweep`
+ * re-enters routing for `routing-refused` / `routing-failed`.
+ *
+ * The routing decision row still records WHY a plan was refused; the block
+ * answers the operator's question — why is this order waiting — on the order.
  *
  * ## Not `AUTHORITY_ATTENTION_PRODUCER_REASONS.routing`
  *
@@ -57,9 +71,39 @@ export const FulfillmentBlockReasonValues = [
    * double-ship an order some other route already owns.
    */
   'routing-already-live-elsewhere',
+  /**
+   * #3485 — the OMS router answered and OpenLinker could not commit the plan
+   * (typically a line out of stock at every location). The detail names the
+   * decision's abandon reason. Re-routed by `fulfillment.work.rerouteSweep`.
+   */
+  'routing-refused',
+  /**
+   * #3485 — the order carries no shipping address, so there is nothing to route
+   * to. Clears on the re-ingestion that brings the address; not swept.
+   */
+  'routing-no-shipping-address',
+  /**
+   * #3485 — routing failed after the OMS router was selected. Held rather than
+   * mirrored, because the claim is known to be on. The detail is the error NAME
+   * only. Re-routed by `fulfillment.work.rerouteSweep`.
+   */
+  'routing-failed',
 ] as const;
 
 export type FulfillmentBlockReason = (typeof FulfillmentBlockReasonValues)[number];
+
+/**
+ * The held states `fulfillment.work.rerouteSweep` re-enters routing for (#3485).
+ *
+ * `routing-no-shipping-address` is deliberately absent: only a source update can
+ * supply an address, and that re-ingests the order on its own. The three #2396
+ * states are absent too — in-doubt and contended resolve through the decision
+ * row, and already-live-elsewhere is a guard, not a failure.
+ */
+export const REROUTABLE_FULFILLMENT_BLOCK_REASONS = [
+  'routing-refused',
+  'routing-failed',
+] as const satisfies readonly FulfillmentBlockReason[];
 
 /**
  * Read-side coercion, mirroring `isHoldReason` / `isSalesDocumentGateBlockReason`.

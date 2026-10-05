@@ -36,7 +36,14 @@ export function AuthenticatedAppLayout(): ReactElement {
   // layout (`bench.route.tsx`), so the redirect cannot loop, and because every
   // core and plugin route is a child of this layout, this one check closes all
   // of them without a list of allowed paths.
-  if (resolveSessionSurface(isReady, session) === 'bench-only') {
+  //
+  // Except a packer still owing a password change (#3456): the API refuses
+  // every route but the change itself, the bench included, so the
+  // change-password redirect below must win.
+  if (
+    resolveSessionSurface(isReady, session) === 'bench-only' &&
+    session.user?.mustChangePassword !== true
+  ) {
     return <Navigate to={BENCH_PATH} replace />;
   }
 
@@ -65,6 +72,20 @@ export function AuthenticatedAppLayout(): ReactElement {
     // the order or task they were opening rather than to Analytics; the guest
     // layout sanitises it through `resolveNextPath`.
     return <Navigate to={{ pathname: '/login', search: loginSearch(location) }} replace />;
+  }
+
+  // An account created by an admin with a one-time password must replace it
+  // before anything else (#3456). Checked BEFORE the consent gate: consent is a
+  // legally meaningful act and must be attributable to the account holder, not
+  // performable while a credential a second party has read is still live. The
+  // API's `PasswordChangeRequiredGuard` refuses every other route regardless.
+  if (session.user?.mustChangePassword === true) {
+    return (
+      <Navigate
+        to={{ pathname: '/change-password', search: `?next=${encodeURIComponent(location.pathname)}` }}
+        replace
+      />
+    );
   }
 
   // A demo account that has not consented to session recording gets no shell
