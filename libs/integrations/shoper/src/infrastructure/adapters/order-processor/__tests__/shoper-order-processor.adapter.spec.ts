@@ -624,6 +624,17 @@ describe('ShoperOrderProcessorAdapter', () => {
       expect(h.post).not.toHaveBeenCalled();
     });
 
+    it('should reject, writing nothing, when a parcel exists under a different tracking number', async () => {
+      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: 'T1' }]);
+
+      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T2' });
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toContain('different tracking number');
+      expect(h.post).not.toHaveBeenCalled();
+      expect(h.put).not.toHaveBeenCalled();
+    });
+
     it('should write nothing on a re-delivered dispatch without tracking when a parcel exists', async () => {
       const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: null }]);
 

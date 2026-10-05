@@ -50,12 +50,12 @@ describe('shoper-parcel.mapper', () => {
       });
     });
 
-    it('should create when the order only has parcels tracked under other numbers', () => {
-      expect(planShoperParcelWrite([parcel('5', 'T1')], 'T2')).toEqual({ kind: 'create' });
+    it('should report a conflict when the order only has parcels tracked under other numbers', () => {
+      expect(planShoperParcelWrite([parcel('5', 'T1')], 'T2')).toEqual({ kind: 'conflict' });
     });
 
     it('should not guess between several untracked parcels', () => {
-      expect(planShoperParcelWrite([parcel('5', null), parcel('6', null)], 'T2')).toEqual({ kind: 'create' });
+      expect(planShoperParcelWrite([parcel('5', null), parcel('6', null)], 'T2')).toEqual({ kind: 'conflict' });
     });
   });
 

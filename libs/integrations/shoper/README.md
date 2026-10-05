@@ -323,6 +323,14 @@ When OpenLinker ships an order it pushed into Shoper, the lifecycle relay (ADR-0
   already on a parcel, or a dispatch without tracking once a parcel exists, writes nothing. A tracking number
   arriving after the parcel (the late-waybill path, #1947) is attached to the single untracked parcel with
   `PUT /parcels/:id` instead of creating a second one.
+- A parcel under **another** tracking number (a carrier change, a reprinted label) is refused as `rejected`:
+  without `products[]` a second parcel would ship a remainder of zero, and the event carries no lines to say what
+  a second shipment contains.
+- A dispatch without a tracking number still creates the parcel with `sent: true`. On Shoper that typically
+  advances the order status and may email the buyer, so the buyer can receive a message with an empty number; the
+  number arrives later as a silent `PUT`.
+- There is no lock around the read-then-write: the relay's conditional claim (`waybillRelayedAt`, #1947) already
+  serialises the status poll and the carrier webhook.
 - `cancelled` answers `unsupported` (no Shoper cancel OpenLinker can drive), so the operator sees it, never silence.
 - Any failed call answers `rejected` with the reason; the relay surfaces it.
 

@@ -32,6 +32,7 @@ export function buildShoperParcelCreateRequest(
  * - the same tracking number already on a parcel -> nothing to do;
  * - a tracking number arriving for an order whose only parcel has none -> attach it;
  * - no tracking number and a parcel already exists -> nothing to do;
+ * - parcels exist under other tracking numbers (or several are untracked) -> conflict;
  * - otherwise -> create the parcel.
  */
 export function planShoperParcelWrite(
@@ -52,8 +53,9 @@ export function planShoperParcelWrite(
     return { kind: 'attach-tracking', parcelId: String(untracked[0].parcel_id) };
   }
   // A new tracking number on an order that already has tracked parcels is a
-  // second shipment; without lines OpenLinker cannot say what it carries.
-  return { kind: 'create' };
+  // second shipment; without lines OpenLinker cannot say what it carries, and a
+  // parcel without products[] would ship a remainder of zero. Refused, not guessed.
+  return { kind: 'conflict' };
 }
 
 export function normalizeTrackingNumber(value: string | undefined): string | undefined {

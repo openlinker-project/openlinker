@@ -27,7 +27,7 @@ When a parcel is bought/dispatched in OpenLinker for an order that was pushed in
   - A missing tracking number still creates the parcel (`shipping_code` omitted), matching the late-waybill backfill (#1947) that re-relays when the number arrives.
 - Unit specs: happy path, idempotent replay, 404 on the order, `cancelled` unsupported, invalid id, missing tracking, API failure -> `rejected` with detail.
 - A plugin spec asserting the adapter resolved as `OrderProcessorManager` passes `isOrderStatusWriteback`, which is exactly how the relay reaches a destination. (Changed from "a fixture spec driving the relay": the relay's fan-out is core's and already tested there; reproducing it inside the plugin package would test core, not Shoper.)
-- README + `docs/architecture-overview.md` Shoper notes updated.
+- README Shoper notes updated (the architecture overview is not touched: it carries no per-adapter Shoper section to extend).
 
 ### Out (follow-ups, to be filed)
 - **Partial shipment**: needs (a) optional `lines` on the `dispatched` event (non-breaking widening, `OrderLifecycleEvent` union members unchanged) fed from `shipment_lines` (#2727), and (b) persisting `order_product_id` per OL line at `createOrder`. Both are new surfaces and deserve their own issue.

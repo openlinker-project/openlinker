@@ -530,7 +530,20 @@ export class ShoperOrderProcessorAdapter
       'filters[order_id]': externalOrderId,
     });
     const existing = (parcels.data.list ?? []).filter((p) => String(p.order_id) === externalOrderId);
+    // No lock around read-then-write, deliberately: the relay's conditional claim
+    // (`waybillRelayedAt`, #1947) is already the serialisation point between the
+    // status poll and the carrier webhook, so two triggers for one dispatch cannot
+    // both reach this method.
     const plan = planShoperParcelWrite(existing, trackingNumber);
+
+    if (plan.kind === 'conflict') {
+      return {
+        outcome: 'rejected',
+        detail:
+          `Shoper order ${externalOrderId} already has a parcel under a different tracking number; ` +
+          'a second shipment cannot be written because partial shipment is not supported',
+      };
+    }
 
     if (plan.kind === 'already-applied') {
       this.logger.debug(
