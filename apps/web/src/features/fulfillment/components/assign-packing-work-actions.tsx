@@ -1,84 +1,57 @@
 /**
- * Assign Packing Work row controls (#3340, ADR-074)
+ * Assign Packing Work row controls (#3340, ADR-074; menu + stable slot #3096)
  *
- * The controls for one task on the merged fulfilment screen: a "Move to"
- * select (the whole reassignment surface — no drag-and-drop via THIS control;
- * #3426 added the additive drag shortcut elsewhere), a self-serve checkbox,
- * and the server-declared action set.
+ * The controls for one task on the fulfilment board: the self-serve checkbox
+ * and the `Assign to…` / `Move to…` menu (both from
+ * `FulfillmentAssignmentControls`, shared with the task detail's Packer card),
+ * then the server-declared action set behind a `⋮` trigger. #3426's drag
+ * between lanes stays an additive shortcut elsewhere; the menu is the real,
+ * keyboard-reachable path.
  *
  * ## It renders `FulfillmentTaskActions`, and that reverses an earlier call
  *
  * This file used to argue that a staffing surface is not an execution one and
- * should therefore render none of those controls, citing ADR-074. Two things
- * were wrong with it. ADR-074 is about the `assignedToUserId` FIELD and says
- * nothing about screen topology — the argument lived only here. And the split
- * produced a one-way gate: this screen offered Hold and had no way to take a
- * hold off, because `release_hold` existed on exactly one other surface, the
- * worklist this screen has now absorbed.
- *
- * The rule that replaces it: a screen offers the inverse of what it offers.
- * Since the worklist is gone, that means the full `supportedActions` set —
+ * should therefore render none of those controls, citing ADR-074. ADR-074 is
+ * about the `assignedToUserId` FIELD and says nothing about screen topology,
+ * and the split produced a one-way gate: this screen offered Hold and had no
+ * way to take a hold off. The rule that replaces it: a screen offers the
+ * inverse of what it offers, so the full `supportedActions` set renders —
  * whatever the server says is legal on this task right now, including an
  * action this build has no copy for.
  *
- * The select fires on change — click-only means one click plus one selection,
- * never a second "confirm" step, matching the mockup's own accessibility
- * argument that the menu IS the real interaction path.
- *
- * ## The checkbox renders ONLY on an unassigned task (#3429)
- *
- * Verified against the mockup's own `makeCard(item, isUnassigned)`: every
- * static packer-lane card in the demo markup carries a "Move to…" button
- * alone, and the self-serve checkbox is emitted only when `isUnassigned` is
- * true — i.e. only for cards built from the Unassigned lane's own pool.
- * `task.assignedToUserId === null` is exactly that condition (the pinned
- * lane's own membership test, `groupTasksByPacker`'s), so no extra "which
- * lane is this" prop is threaded in — the task already carries the answer.
- * The "Move to" select is unaffected and stays on every task in every lane,
- * matching the mockup's own button on every card.
- *
- * The action set is NOT under that gate — the mockup predates this screen
- * carrying actions at all, and gating them on the lane would reinstate the
- * one-way hold in a narrower form.
- *
  * ## The action set lives behind an overflow menu, not inline
  *
- * A live board carries the full `supportedActions` set inline — up to five
- * buttons (Schedule / Put on hold / Mark in progress / Force cancel / Move
- * to the front) beside the checkbox beside the select — and only the
- * Unassigned lane's cards carry the checkbox, so a plain packer's card was
- * shorter than an unassigned one. Two different row heights on the SAME
- * component is most of what read as a board whose rows do not line up.
+ * Up to five inline buttons made every card a different height and the rows
+ * stopped lining up. The mockup's own answer is `.lane-card__menu`: a single
+ * trigger per card, a popover holding the rest. Every one of
+ * `FulfillmentTaskActions`' callbacks is wrapped to close the menu first: a
+ * menu that stays open after the action it held was clicked would still cover
+ * the row underneath it.
  *
- * The mockup's own answer is `.lane-card__menu`: a single trigger per card,
- * a popover holding the rest. This borrows that shape for the SERVER-
- * declared action set specifically — the "Move to" select and the
- * self-serve checkbox stay inline, matching the mockup's own inline
- * `__pickable`, because those two are this screen's own staffing controls
- * and not part of what `FulfillmentTaskActions` renders.
+ * ## The `⋮` slot is always there (#3096)
  *
- * `FulfillmentTaskActions` itself is unchanged — same server-declared list,
- * same per-hold `release_hold` fan-out, same unrecognised-action fallback —
- * it is only relocated into the popover's content, and every one of its own
- * callbacks is wrapped to close the menu first: a menu that stays open after
- * the action it held was clicked would still cover the row underneath it.
+ * A closed or cancelled task carries no action, and with no trigger the
+ * checkbox and the menu button shifted ~35 px right on exactly those rows —
+ * the columns of a lane no longer lined up. An empty slot of the trigger's
+ * width keeps them still. It is `aria-hidden` and focusable by nothing, so it
+ * costs a screen reader nothing.
  *
  * @module apps/web/src/features/fulfillment/components
  */
-import { useState, type ChangeEvent, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 
 import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
-import { Select } from '../../../shared/ui/select';
 import type { PackerSummary } from '../../users';
 import type { FulfillmentTask, FulfillmentTaskHold } from '../api/fulfillment.types';
 import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
+import { FulfillmentAssignmentControls } from './fulfillment-assignment-controls';
 import { FulfillmentTaskActions } from './fulfillment-task-actions';
-
-const UNASSIGNED_OPTION_VALUE = '';
 
 export interface AssignPackingWorkActionsProps {
   task: FulfillmentTask;
   packers: readonly PackerSummary[];
+  /** Tasks per packer on this page, shown beside each packer in the menu. */
+  queueCounts?: ReadonlyMap<string, number>;
   /** Whether the staffing controls should render at all. */
   visible: boolean;
   /** Rendered but disabled — the demo-viewer state (#1615). */
@@ -96,6 +69,7 @@ export interface AssignPackingWorkActionsProps {
 export function AssignPackingWorkActions({
   task,
   packers,
+  queueCounts,
   visible,
   readOnly,
   busy,
@@ -112,72 +86,24 @@ export function AssignPackingWorkActions({
 
   if (!visible) return null;
 
-  const disabled = busy || readOnly;
-  const isUnassigned = task.assignedToUserId === null;
-  // Rendered but disabled — see `ReadOnlyLock` inside `FulfillmentTaskActions`
-  // — never hidden. Hiding a legal action set on demoReadOnly would say
-  // "nothing is legal here" when the truth is "you may not do it".
+  // Rendered but disabled on demoReadOnly — never hidden. Hiding a legal
+  // action set would say "nothing is legal here" when the truth is "you may
+  // not do it".
   const hasActions = task.supportedActions.length > 0;
-
-  const handleMoveTo = (event: ChangeEvent<HTMLSelectElement>): void => {
-    const value = event.target.value;
-    onMoveTo(value === UNASSIGNED_OPTION_VALUE ? null : value);
-  };
 
   return (
     <div className="assign-packing-work-actions">
-      <Select
-        aria-label={ASSIGN_PACKING_WORK_COPY.row.moveToLabel}
-        value={task.assignedToUserId ?? UNASSIGNED_OPTION_VALUE}
-        disabled={disabled}
-        onChange={handleMoveTo}
-      >
-        <option value={UNASSIGNED_OPTION_VALUE}>
-          {ASSIGN_PACKING_WORK_COPY.row.moveToUnassigned}
-        </option>
-        {packers.map((packer) => (
-          <option key={packer.id} value={packer.id}>
-            {packer.username}
-          </option>
-        ))}
-      </Select>
+      <FulfillmentAssignmentControls
+        task={task}
+        packers={packers}
+        queueCounts={queueCounts}
+        busy={busy}
+        readOnly={readOnly}
+        onMoveTo={onMoveTo}
+        onToggleSelfServe={onToggleSelfServe}
+        order="checkbox-first"
+      />
 
-      {/* Rendered on EVERY row, assigned or not. It used to be gated on
-          `isUnassigned`, justified by "anyone may claim this means nothing
-          once somebody has it" - which is the opposite of what ADR-074 says.
-          Assignment there is ADVISORY: an assigned parcel stays claimable by
-          any packer, and unticking this is named in the ADR as the explicit
-          escape hatch for a supervisor who wants a HARD assignment. The
-          server agrees - `isClaimableByViewer` reads `selfServeEligible`
-          first, on assigned rows included. So the gate made the one control
-          the ADR provides for hard assignment unreachable from the only
-          screen that assigns anything.
-
-          The label changes with the row's state because the question does:
-          on a pooled row it is about who may pick it up, on an owned one
-          about whether the owner is the only one who may. The action set
-          below is still deliberately NOT gated on it - what is legal is the
-          server's answer, not the lane's. */}
-      <label className="assign-packing-work-actions__self-serve">
-        <input
-          type="checkbox"
-          checked={task.selfServeEligible}
-          disabled={disabled}
-          onChange={(event) => {
-            onToggleSelfServe(event.target.checked);
-          }}
-        />
-        {isUnassigned
-          ? ASSIGN_PACKING_WORK_COPY.row.selfServeLabel
-          : ASSIGN_PACKING_WORK_COPY.row.selfServeAssignedLabel}
-      </label>
-
-      {/* One control per entry of `task.supportedActions`, and nothing else
-          decides — unchanged from before this menu existed, only relocated.
-          This screen used to render a single hardcoded Hold button gated on
-          `isUnassigned`, which meant it could put work on hold and could
-          not take it off again — `release_hold` had no path in the product
-          outside the worklist this screen replaced. */}
       {hasActions ? (
         <Popover open={menuOpen} onOpenChange={setMenuOpen} dismissOnViewportChange>
           <PopoverTrigger asChild>
@@ -214,7 +140,13 @@ export function AssignPackingWorkActions({
             />
           </PopoverContent>
         </Popover>
-      ) : null}
+      ) : (
+        <span
+          className="assign-packing-work-card__menu-slot"
+          aria-hidden="true"
+          data-testid="assign-packing-work-menu-slot"
+        />
+      )}
     </div>
   );
 }

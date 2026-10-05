@@ -39,7 +39,7 @@
  * @module libs/core/src/shipping/domain
  */
 import { REDACTED_PLACEHOLDER } from '@openlinker/core/orders';
-import type { Address, OrderPickupPoint, OrderShipping } from '@openlinker/core/orders';
+import type { Address, Order, OrderPickupPoint, OrderShipping } from '@openlinker/core/orders';
 
 import type { DeliveryIntent } from './types/delivery-intent.types';
 import { DELIVERY_INTENT } from './types/delivery-intent.types';
@@ -285,4 +285,33 @@ export function resolveAutoDispatchRecipient(input: {
   if (address?.lastName) recipient.lastName = address.lastName;
   if (shipmentAddress) recipient.address = shipmentAddress;
   return recipient;
+}
+
+/**
+ * Recipient + delivery shape for one order, derived server-side (#3654).
+ *
+ * The single derivation shared by the auto-dispatch worker and the bench's
+ * label replacement, so a re-bought label is addressed by exactly the rule the
+ * first one was. A caller never supplies a recipient: the bench's request body
+ * carries parcel data only, which is what keeps a `packer` session from
+ * steering a label to an address of its choosing.
+ *
+ * `recipient` is `null` on refusal (`no-address`).
+ */
+export interface OrderDispatchTarget {
+  readonly deliveryIntent: DeliveryIntent;
+  readonly recipient: ShipmentRecipient | null;
+  readonly paczkomatId: string | undefined;
+}
+
+export function resolveOrderDispatchTarget(
+  order: Pick<Order, 'shipping' | 'pickupPoint' | 'shippingAddress' | 'customerEmail'>,
+): OrderDispatchTarget {
+  const deliveryIntent = resolveAutoDispatchDeliveryIntent(order.shipping, order.pickupPoint);
+  const recipient = resolveAutoDispatchRecipient({
+    address: order.shippingAddress,
+    customerEmail: order.customerEmail,
+    deliveryIntent,
+  });
+  return { deliveryIntent, recipient, paczkomatId: order.pickupPoint?.id };
 }

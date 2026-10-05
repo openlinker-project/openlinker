@@ -14,6 +14,7 @@ import type {
   ProductVariantListFilters,
   ProductPagination,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
 } from '../types/product.types';
 import type { StoredTaxRate } from '../types/tax-rate.types';
 
@@ -247,4 +248,19 @@ export interface ProductVariantRepositoryPort {
       readonly heightMm?: number | null;
     }
   ): Promise<void>;
+
+  /**
+   * Fill-when-NULL writer for the four physical columns (#3650): each column
+   * is set only while it is still NULL, so a value already present - typed by
+   * an operator or filled by an earlier sync - is never overwritten. Distinct
+   * from `recordPhysicalDimensions`, which is the unconditional operator
+   * writer. Absent/`null` fields are skipped, never written as NULL.
+   *
+   * Takes every variant of a product at once and writes them in ONE statement:
+   * the catalogue sweep calls this per product on every tick, so a statement
+   * per variant would be a per-tick cost for the life of the install.
+   * Returns how many variants had at least one column actually filled; empty
+   * input (or input with no numeric field) returns 0 without a round-trip.
+   */
+  fillPhysicalDimensionsIfAbsent(fills: readonly VariantPhysicalDimensionsFill[]): Promise<number>;
 }

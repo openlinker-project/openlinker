@@ -109,12 +109,14 @@ export {
   resolveAutoDispatchDeliveryIntent,
   resolveAutoDispatchParcel,
   resolveAutoDispatchRecipient,
+  resolveOrderDispatchTarget,
   mergeAutoDispatchParcelOptions,
   findMissingParcelRequirement,
 } from './domain/auto-dispatch';
 export type {
   AutoDispatchRefusalReason,
   AutoDispatchWorkLine,
+  OrderDispatchTarget,
   AutoDispatchParcelProfile,
   AutoDispatchParcelOptions,
 } from './domain/auto-dispatch';

@@ -73,12 +73,12 @@ import {
   findMissingParcelRequirement,
   isParcelRequirementsReader,
   mergeAutoDispatchParcelOptions,
-  resolveAutoDispatchDeliveryIntent,
   resolveAutoDispatchParcel,
   resolveCarrierMethod,
-  resolveAutoDispatchRecipient,
+  resolveOrderDispatchTarget,
   type IShipmentDispatchService,
   type AutoDispatchParcelProfile,
+  type DeliveryIntent,
   type IShipmentQueryService,
   type ShippingProviderManagerPort,
   type ShipmentDispatchInput,
@@ -193,14 +193,9 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
     // `resolveAutoDispatchRecipient` (reported as `no-address` — a missing
     // street/city/postcode/country is a recipient defect, not a routing
     // one). This resolves only WHICH shape (locker vs courier) to attempt.
-    const deliveryIntent = resolveAutoDispatchDeliveryIntent(order.shipping, order.pickupPoint);
+    const { deliveryIntent, recipient, paczkomatId } = resolveOrderDispatchTarget(order);
 
     // `no-address`
-    const recipient = resolveAutoDispatchRecipient({
-      address: order.shippingAddress,
-      customerEmail: order.customerEmail,
-      deliveryIntent,
-    });
     if (recipient === null) {
       this.logger.warn(
         `fulfillment.work.autoDispatch refused (no-address): workId=${payload.workId} ` +
@@ -224,7 +219,7 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
       sourceConnectionId: record.sourceConnectionId,
       sourceDeliveryMethodId: record.sourceDeliveryMethodId,
       deliveryIntent,
-      paczkomatId: order.pickupPoint?.id,
+      paczkomatId,
       orderId: payload.orderId,
       recipient,
       parcel,
@@ -358,7 +353,7 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
   private async isMissingRequiredDimensions(
     job: SyncJob,
     resolution: Awaited<ReturnType<IFulfillmentRoutingService['resolve']>>,
-    deliveryIntent: ReturnType<typeof resolveAutoDispatchDeliveryIntent>,
+    deliveryIntent: DeliveryIntent,
     parcel: NonNullable<ShipmentDispatchInput['parcel']>
   ): Promise<boolean> {
     // An OMP-fulfilled resolution buys no label here, so nothing to require.
