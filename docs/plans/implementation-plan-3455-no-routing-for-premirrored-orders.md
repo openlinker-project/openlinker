@@ -71,7 +71,7 @@ order not on the pack bench?"), one answer.
 
 1. `fulfillment-routing-eligibility.types.ts` (+ spec) — vocabulary, guard,
    `isOrderMirroredBeforeRouting`.
-2. Migration `apps/api/src/migrations/1904000000000-add-order-fulfillment-routing-skip-reason.ts`
+2. Migration `apps/api/src/migrations/1910000000000-add-order-fulfillment-routing-skip-reason.ts`
    — nullable `text`, no index.
 3. ORM entity column; domain entity field (last constructor param).
 4. Repository: `toDomain` coercion, `toOrm` exclusion note,

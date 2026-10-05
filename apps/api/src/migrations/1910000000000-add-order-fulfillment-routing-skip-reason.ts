@@ -26,8 +26,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderFulfillmentRoutingSkipReason1904000000000 implements MigrationInterface {
-  name = 'AddOrderFulfillmentRoutingSkipReason1904000000000';
+export class AddOrderFulfillmentRoutingSkipReason1910000000000 implements MigrationInterface {
+  name = 'AddOrderFulfillmentRoutingSkipReason1910000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
