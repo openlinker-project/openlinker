@@ -6,7 +6,7 @@ OpenLinker can issue fiscal documents for orders and, where the connected provid
 
 ## Prerequisites
 
-Invoicing is capability-gated per connection, the same way ProductMaster or OfferManager are. Before you can issue an invoice you need at least one **active** connection with the `Invoicing` capability enabled — for example a KSeF connection (`ksef.publicapi.v2`), Subiekt (`subiekt.invoicing.v1`), or inFakt (`infakt.accounting.v1`). See [Connecting a Platform](./02-connecting-a-platform.md#invoicing-providers) for how to add and activate one.
+Invoicing is capability-gated per connection, the same way ProductMaster or OfferManager are. Before you can issue an invoice you need at least one **active** connection with the `Invoicing` capability enabled — for example a KSeF connection (`ksef.publicapi.v2`), Subiekt GT (`subiekt.gt.v1`), Subiekt nexo (`subiekt.nexo.v1`), or inFakt (`infakt.accounting.v1`). See [Connecting a Platform](./02-connecting-a-platform.md#invoicing-providers) for how to add and activate one.
 
 If no active invoicing connection exists, the **Invoice** panel on an order's detail page does not render at all, and the **Invoices** list shows no data. If a connection exists but is in `error` or `needs_reauth` status, the panel shows a **Re-authenticate** prompt linking to that connection instead.
 
@@ -114,4 +114,4 @@ Where the invoicing connection supports it, an issued invoice can be emailed to 
 
 → **[Listings & Offers](./05-listings.md)** — create marketplace offers from your synced catalog
 
-Don't have an invoicing connection yet? See **[Connecting a Platform → Invoicing providers](./02-connecting-a-platform.md#invoicing-providers)** to add one (KSeF, Subiekt, inFakt).
+Don't have an invoicing connection yet? See **[Connecting a Platform → Invoicing providers](./02-connecting-a-platform.md#invoicing-providers)** to add one (KSeF, Subiekt GT, Subiekt nexo, inFakt).

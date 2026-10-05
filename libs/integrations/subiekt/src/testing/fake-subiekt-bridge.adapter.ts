@@ -4,7 +4,7 @@
  * In-memory double of `SubiektBridgeClient` — a **plugin-internal contract**,
  * not a core `*.port.ts` (a deliberate, novel use of the `/testing` seam). It
  * lets Mac/Linux contributors develop and unit-test the real Subiekt adapter
- * (#753) without a Windows VM or a live Sfera bridge — Subiekt nexo is
+ * (#753) without a Windows VM or a live Sfera bridge — Subiekt GT is
  * Windows-only and cannot be containerized, so the real dependency is
  * categorically un-runnable here (the textbook case for an in-memory fake).
  *
@@ -111,6 +111,8 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   private customerCounter = 0;
   private seededFailure: SeededFailure | null = null;
   private issueOverride: Partial<BridgeIssueInvoiceResponse> | null = null;
+  /** Overrides for `issueCorrection` alone (#3365, `stockAutoReleased`/`quantityDeltas`) — a korekta response carries fields `issueOverride` cannot express. */
+  private correctionOverride: Partial<BridgeKorektaResponse> | null = null;
   // Keyed by the STRING form of the numeric providerInvoiceId (matches how the
   // status read keys its lookup).
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
@@ -124,11 +126,14 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   private readonly paidIds = new Set<string>();
   /** The most recent korekta request body (for passthrough assertions in tests). */
   private lastKorektaRequest: BridgeKorektaRequest | null = null;
+  /** The most recent issue-invoice request body (for passthrough assertions in tests). */
+  private lastIssueInvoiceRequest: BridgeIssueInvoiceRequest | null = null;
   /** Discovery state (bank accounts / cash registers), #1324. */
   private bankAccounts: BridgeBankAccount[] = defaultBankAccounts();
   private cashRegisters: BridgeCashRegister[] = defaultCashRegisters();
 
   issueInvoice(req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
+    this.lastIssueInvoiceRequest = req;
     const failure = this.failureError();
     if (failure) {
       return Promise.reject(failure);
@@ -141,6 +146,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       state: 'issued',
       regulatoryStatus: 'sent',
       pdfUrl: null,
+      clearanceReference: null,
       ...this.issueOverride,
     };
     this.issuedById.set(String(response.providerInvoiceId), response);
@@ -171,6 +177,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       korygowanyId: origId,
       przyczyna: req.przyczyna ?? null,
       state,
+      ...this.correctionOverride,
     };
     // Remember a status-shaped entry so a subsequent status read-back resolves
     // (the korekta response itself carries no regulatoryStatus).
@@ -180,6 +187,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       state,
       regulatoryStatus: this.issueOverride?.regulatoryStatus ?? 'sent',
       pdfUrl: null,
+      clearanceReference: this.issueOverride?.clearanceReference ?? null,
     };
     this.issuedById.set(String(response.providerInvoiceId), statusEntry);
     if (req.idempotencyKey !== undefined) {
@@ -214,9 +222,10 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
         ? {
             state: known.state,
             regulatoryStatus: known.regulatoryStatus,
+            clearanceReference: known.clearanceReference,
             paid: this.paidIds.has(req.providerInvoiceId),
           }
-        : { state: 'failed', regulatoryStatus: 'none', paid: false },
+        : { state: 'failed', regulatoryStatus: 'none', clearanceReference: null, paid: false },
     );
   }
 
@@ -294,9 +303,19 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.issueOverride = issueResponse;
   }
 
+  /** Override fields on the next (and subsequent) `issueCorrection` response until `clear()`. */
+  seedCorrection(correctionResponse: Partial<BridgeKorektaResponse>): void {
+    this.correctionOverride = correctionResponse;
+  }
+
   /** The body passed to the most recent `issueCorrection` call (passthrough assertions). */
   getLastKorektaRequest(): BridgeKorektaRequest | null {
     return this.lastKorektaRequest;
+  }
+
+  /** The body passed to the most recent `issueInvoice` call (passthrough assertions). */
+  getLastIssueInvoiceRequest(): BridgeIssueInvoiceRequest | null {
+    return this.lastIssueInvoiceRequest;
   }
 
   /** Mark a provider invoice id as paid (#3390) for a subsequent `getInvoiceStatus` read. */
@@ -320,8 +339,10 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.customerCounter = 0;
     this.seededFailure = null;
     this.issueOverride = null;
+    this.correctionOverride = null;
     this.issuedById.clear();
     this.lastKorektaRequest = null;
+    this.lastIssueInvoiceRequest = null;
     this.bankAccounts = defaultBankAccounts();
     this.cashRegisters = defaultCashRegisters();
   }

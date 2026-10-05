@@ -50,7 +50,9 @@ import { inpostPlugin } from './inpost';
 import { ksefPlugin } from './ksef';
 import { omsPlugin } from './oms';
 import { prestashopPlugin } from './prestashop';
-import { subiektPlugin } from './subiekt';
+import { subiektPlugin } from './subiekt-gt';
+// Two SEPARATE InsERT products, two bridges, two wire contracts - never joined.
+import { subiektNexoPlugin } from './subiekt-nexo';
 import { woocommercePlugin } from './woocommerce';
 
 export const plugins: readonly OpenLinkerPlugin[] = [
@@ -61,6 +63,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   woocommercePlugin,
   erliPlugin,
   subiektPlugin,
+  subiektNexoPlugin,
   ksefPlugin,
   infaktPlugin,
   eparagonyPlugin,

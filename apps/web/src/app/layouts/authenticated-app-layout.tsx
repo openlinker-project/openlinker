@@ -27,7 +27,9 @@ export function AuthenticatedAppLayout(): ReactElement {
   const demoMode = systemConfigQuery.data?.demoMode ?? false;
   const isAuthenticated = isReady && session.status === 'authenticated';
 
-  // #3096 (F-9) — a bench-only session (a packer) never renders this shell.
+  // #3096 (F-9) — a bench-only session (a packer) never renders this shell,
+  // not even the `@AnyRole()` reads #3221's nav gate leaves reachable (the
+  // #3221 follow-up asked for exactly this, by role; this one check is it).
   // Decided BEFORE the loading branch below, because that branch already
   // renders `AppShell` — its sidebar would flash a packer the full admin
   // navigation while the system config loads. `/bench` sits outside this

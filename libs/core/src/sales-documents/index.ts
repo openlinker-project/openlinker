@@ -79,6 +79,7 @@ export * from './sales-documents.tokens';
 // #2252). Lives here because BOTH document contexts consume it and a fiscal
 // receipt is not an invoice - the same reason the reason vocabularies do.
 export * from './domain/types/shipping-tax-split.types';
+export * from './domain/types/line-total-mismatch.types';
 // The per-line tax-rate enforcement switch and the pre-rollout era marker
 // (#2245 review, ADR-063 § Consequences). Here for the same reason the shipping
 // split is: both document contexts and both channel adapters need one answer,

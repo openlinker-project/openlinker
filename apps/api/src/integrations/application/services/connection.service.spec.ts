@@ -781,6 +781,11 @@ describe('ConnectionService', () => {
           'Invoicing',
           'RegulatoryStatusReader',
         ],
+        defaultEnabledCapabilities: [
+          'Fiscalization',
+          'FiscalRegistrationLocator',
+          'RegulatoryStatusReader',
+        ],
       };
 
       it('should exclude Invoicing from defaulted capabilities when the manifest also declares Fiscalization', async () => {

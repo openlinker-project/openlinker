@@ -165,7 +165,7 @@ export function resolveSalesDocumentBlockCopy(
         ),
         body: t(
           'salesDocument.panel.blockNoCountryConfigBody',
-          `Neither this order's own country nor "★ Rest of world" has any sales-document rule or default configured. Set up rules for this country (or a Rest of world default) in Settings → Sales documents, or ${v.actionVerb} this one by hand.`,
+          `Neither this order's own country nor "★ Rest of world" has any sales-document rule or default configured. Set up rules for this country (or a Rest of world default) in Settings → Document routing, or ${v.actionVerb} this one by hand.`,
         ),
         detail,
         offerSetPrimary: false,

@@ -7,6 +7,7 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
+import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import { FiscalizationRegisterHandler, MAX_FISCAL_LINES } from '../fiscalization-register.handler';
 import {
   MissingIdempotencyKeyException,
@@ -57,11 +58,12 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('FiscalizationRegisterHandler', () => {
   let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
   let handler: FiscalizationRegisterHandler;
+  let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
     fiscalRegistrations = {
-      register: jest.fn().mockResolvedValue({} as never),
+      register: jest.fn().mockResolvedValue({ id: 'fiscal-record-1' } as never),
       // The three reads added with asynchronous registration (#2525/#2526).
       // This handler is the path that PERFORMS the work, so none of them is
       // exercised here; they are present because the interface has them.
@@ -76,7 +78,10 @@ describe('FiscalizationRegisterHandler', () => {
       getInFlightRegistration: jest.fn().mockResolvedValue(null),
       listRegistrationsKeyset: jest.fn(),
     };
-    handler = new FiscalizationRegisterHandler(fiscalRegistrations);
+    postSaleInventoryRefresh = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
+    handler = new FiscalizationRegisterHandler(fiscalRegistrations, postSaleInventoryRefresh);
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
@@ -299,6 +304,72 @@ describe('FiscalizationRegisterHandler', () => {
       await expect(handler.execute(makeJob(makePayload()))).rejects.toBeInstanceOf(
         SyncJobExecutionError,
       );
+    });
+  });
+
+  describe('post-receipt master inventory refresh', () => {
+    it('enqueues a refresh keyed on the registered record id, with productIds from the payload lines, when status is registered', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'registered',
+      } as never);
+
+      await handler.execute(
+        makeJob(
+          makePayload({
+            lines: [
+              {
+                name: 'Widget',
+                quantity: 1,
+                unitPriceGross: 10,
+                taxRate: '',
+                sku: null,
+                productId: 'ol_product_1',
+              },
+              // A line with no product (e.g. a manual charge) carries no
+              // productId — must be filtered out, not passed through blank.
+              { name: 'Shipping', quantity: 1, unitPriceGross: 5, taxRate: '', sku: null },
+              {
+                name: 'Gadget',
+                quantity: 1,
+                unitPriceGross: 20,
+                taxRate: '',
+                sku: null,
+                productId: '',
+              },
+            ],
+          }),
+        ),
+      );
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith({
+        productIds: ['ol_product_1'],
+        keyScope: 'receipt:fiscal-record-99',
+      });
+    });
+
+    it('does not enqueue when the record did not reach registered (nothing moved to re-read)', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'failed',
+        failureMode: 'rejected',
+      } as never);
+
+      await handler.execute(makeJob(makePayload()));
+
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('a rejecting enqueue does not change the returned outcome', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'registered',
+      } as never);
+      postSaleInventoryRefresh.enqueue.mockRejectedValue(new Error('queue unavailable'));
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'ok' });
     });
   });
 

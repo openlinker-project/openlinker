@@ -9,12 +9,12 @@
  */
 import type {
   BulkDispatchResult,
+  CancelShipmentResult,
   BulkGenerateLabelsInput,
   DispatchResult,
   GenerateLabelInput,
   NotifyDispatchedResult,
   PaginatedShipments,
-  Shipment,
   ShipmentFilters,
   ShipmentPagination,
 } from './shipments.types';
@@ -34,8 +34,11 @@ export interface ShipmentsApi {
    *  the OMP-fulfilled branch (no OL-side label). */
   generateLabel: (input: GenerateLabelInput) => Promise<DispatchResult>;
 
-  /** `POST /shipments/:id/cancel` — voids a not-yet-dispatched shipment. */
-  cancel: (id: string) => Promise<Shipment>;
+  /** `POST /shipments/:id/cancel` — voids the label with the carrier.
+   *  Covers `generated` and, since #3365, `dispatched`; the latter reports
+   *  `cancelledAfterDispatch` because the channel was already told the parcel
+   *  shipped and OpenLinker sends nothing to withdraw that. */
+  cancel: (id: string) => Promise<CancelShipmentResult>;
 
   /** `POST /shipments/:id/notify-dispatched` (#769) — fires the #837 source
    *  notify + destination OMP projection. Idempotent: re-firing on an
@@ -103,8 +106,8 @@ export function createShipmentsApi(
         body: JSON.stringify(input),
       });
     },
-    cancel(id): Promise<Shipment> {
-      return request<Shipment>(`/shipments/${encodeURIComponent(id)}/cancel`, {
+    cancel(id): Promise<CancelShipmentResult> {
+      return request<CancelShipmentResult>(`/shipments/${encodeURIComponent(id)}/cancel`, {
         method: 'POST',
         headers: JSON_HEADERS,
       });

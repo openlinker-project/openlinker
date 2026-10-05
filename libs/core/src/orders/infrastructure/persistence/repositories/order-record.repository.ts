@@ -68,6 +68,7 @@ import type {
 } from '@openlinker/core/fulfillment-authority';
 import {
   SalesDocumentAttentionReasonValues,
+  SalesDocumentUncountedUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
   isTaxRateEra,
@@ -1444,9 +1445,48 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
 
-  private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
-    (reason) => `'${reason}'`
-  ).join(', ')})`;
+  private static readonly IS_SALES_DOCUMENT_BLOCKED =
+    OrderRecordRepository.buildSalesDocumentBlockedPredicate();
+
+  /**
+   * The counted/filtered "this order is blocked" predicate.
+   *
+   * Two clauses, and the second one is the #3365 review fix.
+   * `'unresolved-routing'` is attention-worthy as a GATE reason and stays in
+   * `SalesDocumentAttentionReasonValues` - `'ambiguous-connection-no-primary'`
+   * is a real misconfiguration. But it is also the gate reason for
+   * `'no-connection-declares-document-kind'`, which fires exactly when NO
+   * connection declares `config.salesDocument.documentKind` - the state every
+   * install is in until an operator opts into routing, since #2156 deliberately
+   * never back-fills that key. Counting it put a red "Invoicing blocked N" on a
+   * healthy install, the same defect `'trigger-model-manual'` is already
+   * excluded for.
+   *
+   * The whole thing is BRACKETED because it composes into `NOT (...)` and into
+   * callers that may add their own `OR` group, and an unbracketed `a AND b`
+   * beside an `OR` re-associates into a different question (#2320's lesson, one
+   * table over).
+   *
+   * The second clause is OMITTED rather than emitted empty when the exclusion
+   * list is: `NOT IN ()` is a Postgres PARSE error, which would take down the
+   * orders list, the summary aggregate and the filter chip together rather than
+   * merely counting wrong.
+   */
+  private static buildSalesDocumentBlockedPredicate(): string {
+    const counted = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
+      (reason) => `'${reason}'`
+    ).join(', ')})`;
+
+    if (SalesDocumentUncountedUnresolvedReasonValues.length === 0) {
+      return `(${counted})`;
+    }
+
+    const excluded = `COALESCE(rec."salesDocumentUnresolvedReason", '') NOT IN (${SalesDocumentUncountedUnresolvedReasonValues.map(
+      (reason) => `'${reason}'`
+    ).join(', ')})`;
+
+    return `(${counted} AND ${excluded})`;
+  }
 
   /**
    * Does this order carry at least one COUNTED OMS inert state (#2352)?

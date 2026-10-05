@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import { plugins } from '../../plugins';
 import { guestRoutes, standaloneRoutes } from '../router';
-import { coreChildren } from './root.route';
+import { buildCoreChildren } from './root.route';
 
 /**
  * Walk the route tree depth-first and collect every node that defines a
@@ -37,7 +37,9 @@ function collectLazyRoutes(routes: RouteObject[]): RouteObject[] {
 }
 
 const lazyRoutes = collectLazyRoutes([
-  ...coreChildren,
+  // Flag ON (#3634): the contract covers every route the build can register,
+  // including the OMS routing pages the default build withholds.
+  ...buildCoreChildren(true),
   ...guestRoutes,
   // #2413: `/bench` renders outside `AuthenticatedAppLayout` (its idle lock
   // clears the session, which that layout answers with a redirect), so it is
@@ -85,10 +87,10 @@ const lazyRoutes = collectLazyRoutes([
  *     (#2413), which carries no nav entry and is reached by URL at a
  *     terminal, and renders outside `AuthenticatedAppLayout` (see the
  *     `standaloneRoutes` comment above)
- *   - 12 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
- *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, ksef
- *     invoice numbering (#1577), inpost setup, infakt setup (#1282), eparagony
- *     setup (#1909))
+ *   - 13 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
+ *     woocommerce setup, erli setup, subiekt GT setup and subiekt nexo setup
+ *     (#1199, split into two by #3464), ksef setup, ksef invoice numbering
+ *     (#1577), inpost setup, infakt setup (#1282), eparagony setup (#1909))
  *
  * Routes that are intentionally eager (no page module to defer):
  *   - login (first-paint optimization — see `login.route.tsx`)
@@ -110,11 +112,16 @@ const lazyRoutes = collectLazyRoutes([
  * `<Navigate>` shim on the old path. A redirect loads nothing, so it joins
  * the eager list above rather than this count — net −1, from 70 to 69.
  *
+ * #3464 split the single Subiekt wizard into two, one per product: Subiekt GT
+ * and Subiekt nexo speak different bridges, so a connection created under the
+ * wrong identity points at an adapter that cannot talk to it. That is one more
+ * plugin route (12 -> 13), giving 70.
+ *
  * The task detail page (#3098): `/fulfillment` became an INDEX child so
  * `/fulfillment/works/:workId` could sit beside it — one node became two,
- * net +1, from 69 to 70.
+ * net +1, from 70 to 71.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 70;
+const EXPECTED_LAZY_ROUTE_COUNT = 71;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

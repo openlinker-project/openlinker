@@ -114,6 +114,11 @@ export const SALES_DOCUMENT_UNRESOLVED_REASON_COPY = {
     detail:
       'A rule sets its limit in a different currency from this order. Amounts are never converted when routing decides, so the order is held.',
   },
+  'no-connection-declares-document-kind': {
+    short: 'No document kind set',
+    detail:
+      'This system can issue documents, but no connection says which kind it should issue. Pick one in Settings, Document routing, and orders start getting invoices.',
+  },
 } satisfies Record<SalesDocumentUnresolvedReasonValue, SalesDocumentReasonCopy>;
 
 /**
@@ -134,6 +139,33 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
     short: 'No buyer tax ID',
     detail: 'This document needs the buyer tax ID, and the order does not have one.',
     tone: 'warning',
+    keepsAction: false,
+  },
+  /**
+   * #3365. The refusal is upstream of any provider: the order's own lines do
+   * not add up to the total it reports, so no document could state an amount
+   * without contradicting itself.
+   *
+   * `keepsAction: false`, for a different reason from `missing-tax-rate` beside
+   * it. That one is closed by an explicit server-side refusal. This one is
+   * closed by arithmetic: the manual issue path runs the IDENTICAL
+   * `assertLinesSumToTotal` check and answers 400
+   * (`invoicing.controller.ts` maps `InvalidInvoiceLineError`), so the button
+   * could only ever produce the same refusal the badge already states. The
+   * remedy is upstream - correct the order, or teach its adapter to report the
+   * discount that explains the gap - and the badge clears on the next
+   * transition once it is.
+   *
+   * The copy says what to look at rather than what the gap is - the `detail`
+   * carried on the block already states both amounts, and repeating a number
+   * here that a row cannot recompute would be a second, drifting answer.
+   */
+  'line-total-mismatch': {
+    short: 'Amounts do not add up',
+    detail:
+      "The order's items do not add up to the total it reports, so no document can be issued " +
+      'automatically. A discount the marketplace applied to the whole order is the usual cause.',
+    tone: 'error',
     keepsAction: false,
   },
   /**

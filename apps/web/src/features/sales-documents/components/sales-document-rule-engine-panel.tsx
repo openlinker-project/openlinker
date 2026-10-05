@@ -3,8 +3,10 @@
  *
  * Composes the market list (#2540/#2542, filtered — see below), the
  * starter-template "Review & adopt" screen (Poland only), and the
- * per-country routing dialog (#2188) into the "Settings → Sales documents"
- * page's rule-engine section.
+ * per-country routing dialog (#2188) into the rule-engine section of the
+ * "Settings -> Document routing" page. That title is what an operator reads
+ * since #3307; the route path keeps its original `/settings/sales-documents`
+ * spelling, because it is a persisted link target and only the wording moved.
  *
  * A row's action (and "Add a market") reaches
  * `SalesDocumentCountryRoutingDialog` via `handleSelectCountry` — the country
@@ -133,7 +135,7 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
   return (
     <div className="page-section" style={{ marginTop: 'var(--space-6)' }}>
       <header style={{ marginBottom: 'var(--space-4)' }}>
-        <p className="eyebrow">Sales documents</p>
+        <p className="eyebrow">Document routing</p>
         <h3 className="detail-section__title">What each market issues</h3>
         <p className="page-description">
           Legal responsibility for what a sale requires stays with the operator — OpenLinker

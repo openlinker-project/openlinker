@@ -2,8 +2,15 @@
 /**
  * check-permission-mirror.mjs
  *
- * Lint-time invariant for the hand-maintained frontend mirror of the backend's
- * permission vocabulary.
+ * Lint-time invariant for the hand-maintained frontend mirrors of the backend's
+ * permission and role vocabularies.
+ *
+ * Two pairs are checked, with one parser and one differ:
+ *   - `PermissionValues` (core) vs `PermissionValues` (apps/web session.types.ts)
+ *   - `UserRoleValues`   (core) vs `RoleValues`       (apps/web nav-registry.types.ts)
+ *     The role copy is the one a nav gate reads; a role missing from it fails
+ *     CLOSED (the item is hidden), so the drift is silent rather than loud,
+ *     which is exactly why it needs a build-time comparison.
  *
  * Rule. `PermissionValues` in
  *   libs/core/src/users/domain/types/role.types.ts   (backend, authoritative)
@@ -33,6 +40,8 @@ const repoRoot = join(__dirname, '..');
 
 const BACKEND_FILE = join('libs', 'core', 'src', 'users', 'domain', 'types', 'role.types.ts');
 const FRONTEND_FILE = join('apps', 'web', 'src', 'shared', 'auth', 'session.types.ts');
+
+const FRONTEND_ROLE_FILE = join('apps', 'web', 'src', 'app', 'nav-registry.types.ts');
 
 const DOCS_REF = 'docs/engineering-standards.md#union-types-as-const-pattern-default';
 
@@ -80,7 +89,12 @@ function blankComments(source) {
  * declaration's own close and truncates everything after it (#3002).
  */
 export function parsePermissionValues(content) {
-  const declRe = /export\s+const\s+PermissionValues\s*=\s*\[/;
+  return parseConstArray(content, 'PermissionValues');
+}
+
+/** Same parse for any `export const <name> = [...] as const;` declaration. */
+export function parseConstArray(content, name) {
+  const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
   const declMatch = declRe.exec(content);
   if (!declMatch) return null;
 
@@ -109,7 +123,7 @@ export function parsePermissionValues(content) {
  * Pure differ. Returns `{ ok, issues }` where each issue is a human-readable
  * reason string describing one asymmetric difference.
  */
-export function diffPermissionValues(backend, frontend) {
+export function diffPermissionValues(backend, frontend, noun = 'permission') {
   const issues = [];
 
   const backendSet = new Set(backend);
@@ -122,80 +136,104 @@ export function diffPermissionValues(backend, frontend) {
     issues.push(
       `present in the backend but MISSING from the frontend mirror: ${missingInFrontend
         .map((v) => `'${v}'`)
-        .join(', ')}`,
+        .join(', ')}`
     );
   }
   if (missingInBackend.length > 0) {
     issues.push(
       `present in the frontend mirror but MISSING from the backend: ${missingInBackend
         .map((v) => `'${v}'`)
-        .join(', ')}`,
+        .join(', ')}`
     );
   }
   if (issues.length === 0 && backend.join('|') !== frontend.join('|')) {
     // Same membership, different order. Not a functional break today, but the
     // files are read side-by-side when adding a permission - keep them aligned.
     issues.push(
-      `same permissions but different order (backend: ${backend.join(', ')} / frontend: ${frontend.join(', ')})`,
+      `same ${noun}s but different order (backend: ${backend.join(', ')} / frontend: ${frontend.join(', ')})`
     );
   }
 
   return { ok: issues.length === 0, issues };
 }
 
+const PAIRS = [
+  {
+    noun: 'permission',
+    backendName: 'PermissionValues',
+    frontendName: 'PermissionValues',
+    backendFile: BACKEND_FILE,
+    frontendFile: FRONTEND_FILE,
+  },
+  {
+    noun: 'role',
+    backendName: 'UserRoleValues',
+    frontendName: 'RoleValues',
+    backendFile: BACKEND_FILE,
+    frontendFile: FRONTEND_ROLE_FILE,
+  },
+];
+
 async function main() {
-  const backendPath = join(repoRoot, BACKEND_FILE);
-  const frontendPath = join(repoRoot, FRONTEND_FILE);
+  const failures = [];
+  const summaries = [];
 
-  const [backendContent, frontendContent] = await Promise.all([
-    readFile(backendPath, 'utf8'),
-    readFile(frontendPath, 'utf8'),
-  ]);
+  for (const pair of PAIRS) {
+    const [backendContent, frontendContent] = await Promise.all([
+      readFile(join(repoRoot, pair.backendFile), 'utf8'),
+      readFile(join(repoRoot, pair.frontendFile), 'utf8'),
+    ]);
+    const backend = parseConstArray(backendContent, pair.backendName);
+    const frontend = parseConstArray(frontendContent, pair.frontendName);
 
-  const backend = parsePermissionValues(backendContent);
-  const frontend = parsePermissionValues(frontendContent);
+    const fatal = [];
+    for (const [side, parsed, file, name] of [
+      ['backend', backend, pair.backendFile, pair.backendName],
+      ['frontend', frontend, pair.frontendFile, pair.frontendName],
+    ]) {
+      if (!parsed) {
+        fatal.push(`${file}: no 'export const ${name} = [...]' found`);
+      } else if (parsed.values.length === 0) {
+        fatal.push(
+          `${file}: ${name} parsed to ZERO values - the PARSER is broken (a ` +
+            `bracket inside a comment likely truncated the array), not the ${side} union legitimately empty`
+        );
+      }
+    }
+    if (fatal.length > 0) {
+      failures.push(
+        `could not locate both ${pair.noun} declarations.\n` + fatal.map((f) => `  ${f}`).join('\n')
+      );
+      continue;
+    }
 
-  const fatal = [];
-  if (!backend) {
-    fatal.push(`${BACKEND_FILE}: no 'export const PermissionValues = [...]' found`);
-  } else if (backend.values.length === 0) {
-    fatal.push(
-      `${BACKEND_FILE}: PermissionValues parsed to ZERO values - the PARSER is broken (a ` +
-        'bracket inside a comment likely truncated the array), not the union legitimately empty',
+    const { ok, issues } = diffPermissionValues(backend.values, frontend.values, pair.noun);
+    if (ok) {
+      summaries.push(
+        `${backend.values.length} ${pair.noun}(s) identical in ${pair.backendFile} and ${pair.frontendFile}`
+      );
+      continue;
+    }
+    failures.push(
+      [
+        `${issues.length} ${pair.noun} drift(s).`,
+        `  ${pair.backendFile}:${backend.line}  (authoritative, ${pair.backendName})`,
+        `  ${pair.frontendFile}:${frontend.line}  (hand-maintained mirror, ${pair.frontendName})`,
+        ...issues.map(
+          (issue) =>
+            `    rule: ${pair.backendName} and ${pair.frontendName} must be identical - ${issue}`
+        ),
+        `    docs: ${DOCS_REF}`,
+      ].join('\n')
     );
   }
-  if (!frontend) {
-    fatal.push(`${FRONTEND_FILE}: no 'export const PermissionValues = [...]' found`);
-  } else if (frontend.values.length === 0) {
-    fatal.push(
-      `${FRONTEND_FILE}: PermissionValues parsed to ZERO values - the PARSER is broken (a ` +
-        'bracket inside a comment likely truncated the array), not the union legitimately empty',
-    );
-  }
-  if (fatal.length > 0) {
-    console.error('✗ check-permission-mirror: could not locate both declarations.\n');
-    for (const f of fatal) console.error(`  ${f}`);
-    console.error('');
-    process.exit(1);
-  }
 
-  const { ok, issues } = diffPermissionValues(backend.values, frontend.values);
-
-  if (ok) {
-    console.log(
-      `✓ check-permission-mirror: ${backend.values.length} permission(s) identical in ${BACKEND_FILE} and ${FRONTEND_FILE}.`,
-    );
+  if (failures.length === 0) {
+    console.log(`✓ check-permission-mirror: ${summaries.join('; ')}.`);
     process.exit(0);
   }
-
-  console.error(`✗ check-permission-mirror: ${issues.length} drift(s).\n`);
-  console.error(`  ${BACKEND_FILE}:${backend.line}  (authoritative)`);
-  console.error(`  ${FRONTEND_FILE}:${frontend.line}  (hand-maintained mirror)`);
-  for (const issue of issues) {
-    console.error(`    rule: PermissionValues must be identical in both files - ${issue}`);
-  }
-  console.error(`    docs: ${DOCS_REF}`);
-  console.error('');
+  console.error('✗ check-permission-mirror:\n');
+  for (const f of failures) console.error(`${f}\n`);
   process.exit(1);
 }
 
@@ -214,7 +252,7 @@ function selfCheck() {
   expect('reports the declaration line', parsed?.line, 2);
 
   const commented = parsePermissionValues(
-    file("  'a:read',\n  // DISPLAY-ONLY: not 'ghost:write'\n  'a:write',"),
+    file("  'a:read',\n  // DISPLAY-ONLY: not 'ghost:write'\n  'a:write',")
   );
   expect('strips line comments', commented?.values.join(','), 'a:read,a:write');
 
@@ -227,34 +265,51 @@ function selfCheck() {
   // the array. Red-first against the pre-fix `indexOf(']', openBracket)` on
   // raw content: that stopped at the comment's own `]`.
   const lineCommentWithBracket = parsePermissionValues(
-    file("  'a:read', // e.g. permissions: []\n  'a:write',"),
+    file("  'a:read', // e.g. permissions: []\n  'a:write',")
   );
   expect(
     'a "]" inside a line comment does not truncate the array',
     lineCommentWithBracket?.values.join(','),
-    'a:read,a:write',
+    'a:read,a:write'
   );
 
   const blockCommentWithBracket = parsePermissionValues(
-    file("  'a:read', /* e.g. permissions: [] */\n  'a:write',"),
+    file("  'a:read', /* e.g. permissions: [] */\n  'a:write',")
   );
   expect(
     'a "]" inside a block comment does not truncate the array',
     blockCommentWithBracket?.values.join(','),
-    'a:read,a:write',
+    'a:read,a:write'
   );
 
   const commentedBeforeDecl = `// mentions a bracket like foo(): []\n${file("  'a:read',")}`;
   expect(
     'a "]" inside a comment BEFORE the declaration does not shift the reported line',
     parsePermissionValues(commentedBeforeDecl)?.line,
-    3, // leading comment (1) + the helper's own `/** header */` (2) + the decl (3)
+    3 // leading comment (1) + the helper's own `/** header */` (2) + the decl (3)
   );
 
   expect(
     'a declaration whose every entry is commented out parses to zero values',
     parsePermissionValues(file("  // 'a:read',\n"))?.values.length,
-    0,
+    0
+  );
+
+  const roleFile = `export const RoleValues = ['admin', 'packer'] as const;\n`;
+  expect(
+    'parseConstArray reads a differently-named declaration',
+    parseConstArray(roleFile, 'RoleValues')?.values.join(','),
+    'admin,packer'
+  );
+  expect(
+    'parseConstArray does not match a name that merely CONTAINS the target',
+    parseConstArray(roleFile, 'Values'),
+    null
+  );
+  expect(
+    'a role diff names the noun in the reorder issue',
+    diffPermissionValues(['a', 'b'], ['b', 'a'], 'role').issues[0].startsWith('same roles'),
+    true
   );
 
   expect('identical arrays → ok', diffPermissionValues(['a', 'b'], ['a', 'b']).ok, true);

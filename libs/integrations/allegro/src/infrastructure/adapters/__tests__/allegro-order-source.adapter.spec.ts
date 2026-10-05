@@ -49,6 +49,222 @@ describe('AllegroOrderSourceAdapter', () => {
     adapter = new AllegroOrderSourceAdapter(connectionId, httpClient, connection);
   });
 
+  // The read half of `write`. Nothing in this repository could assert what
+  // Allegro itself says about an order - the relay is fire-and-forget by
+  // ADR-027, so every "the marketplace was told" check asserts an OpenLinker
+  // row or a mock. `GET /order/checkout-forms/{id}` returns the very
+  // `fulfillment.status` field `PUT .../fulfillment` writes.
+  // The refusal that blocked these orders was correct and it named no cause,
+  // because nothing here ever populated the field `describeDiscountCause`
+  // reads. Allegro composes `total` from `summary.totalToPay` while `subtotal`
+  // is summed from the lines - so any whole-order coupon moves one and not the
+  // other.
+  describe('totals.discountTotal - naming the cause of a line-vs-total gap (#3365)', () => {
+    function checkoutForm(overrides: Record<string, unknown>): unknown {
+      return {
+        id: 'cf-1',
+        status: 'READY_FOR_PROCESSING',
+        buyer: { id: 'b1', email: 'b@example.com', login: 'b' },
+        payment: { type: 'ONLINE', finishedAt: '2026-09-01T10:00:00Z' },
+        lineItems: [
+          {
+            id: 'li-1',
+            offer: { id: 'off-1', name: 'Widget' },
+            quantity: 2,
+            price: { amount: '50.00', currency: 'PLN' },
+            boughtAt: '2026-09-01T09:00:00Z',
+          },
+        ],
+        summary: { totalToPay: { amount: '100.00', currency: 'PLN' } },
+        ...overrides,
+      };
+    }
+
+    async function totalsOf(overrides: Record<string, unknown>): Promise<Record<string, number>> {
+      (httpClient.get as jest.Mock).mockResolvedValue({ data: checkoutForm(overrides) });
+      const order = await adapter.getOrder({ externalOrderId: 'cf-1' });
+      return order.totals as unknown as Record<string, number>;
+    }
+
+    it('reports the discount a whole-order coupon left behind', async () => {
+      // 2 x 50 = 100 of lines, 15 of shipping, but the buyer paid 95.
+      const totals = await totalsOf({
+        delivery: { cost: { amount: '15.00', currency: 'PLN' } },
+        summary: { totalToPay: { amount: '95.00', currency: 'PLN' } },
+      });
+
+      expect(totals.subtotal).toBe(100);
+      expect(totals.shipping).toBe(15);
+      expect(totals.total).toBe(95);
+      expect(totals.discountTotal).toBe(20);
+    });
+
+    // An order that adds up must not grow a field, or every order on every
+    // install starts carrying a `0` that reads as "a discount of nothing".
+    it('reports NO discount when the lines already add up', async () => {
+      const totals = await totalsOf({
+        delivery: { cost: { amount: '15.00', currency: 'PLN' } },
+        summary: { totalToPay: { amount: '115.00', currency: 'PLN' } },
+      });
+
+      expect(totals.total).toBe(115);
+      expect(totals).not.toHaveProperty('discountTotal');
+    });
+
+    // A negative gap is a surcharge, not a discount. Filing it as one would be
+    // a false statement about the order rather than a missing one.
+    it('reports NO discount when the buyer paid MORE than the lines', async () => {
+      const totals = await totalsOf({
+        delivery: { cost: { amount: '15.00', currency: 'PLN' } },
+        summary: { totalToPay: { amount: '130.00', currency: 'PLN' } },
+      });
+
+      expect(totals).not.toHaveProperty('discountTotal');
+    });
+
+    // Without `delivery.cost` the adapter derives shipping as
+    // `max(0, total - subtotal)`, which clamps to 0 under a discount - so the
+    // whole gap is attributable and must be reported.
+    it('reports the discount when Allegro names no delivery cost', async () => {
+      const totals = await totalsOf({
+        summary: { totalToPay: { amount: '80.00', currency: 'PLN' } },
+      });
+
+      expect(totals.shipping).toBe(0);
+      expect(totals.discountTotal).toBe(20);
+    });
+  });
+
+  describe('readFulfillment - OrderFulfillmentReadback (#3365)', () => {
+    // Two different resources now: the checkout form carries the status, the
+    // shipments resource carries the waybills.
+    function answerWith(fulfillment: unknown, shipments?: unknown): void {
+      (httpClient.get as jest.Mock).mockImplementation((path: string) =>
+        path.endsWith('/shipments')
+          ? shipments === undefined
+            ? Promise.reject(new Error('no shipments fixture'))
+            : Promise.resolve({ data: { shipments } })
+          : Promise.resolve({ data: { fulfillment } })
+      );
+    }
+
+    it('reports what Allegro said, verbatim, from the order read it already makes', async () => {
+      answerWith({ status: 'SENT' });
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledWith('/order/checkout-forms/cf-1');
+      expect(result.outcome).toBe('read');
+      expect(result.rawStatus).toBe('SENT');
+      expect(result.dispatched).toBe(true);
+    });
+
+    // The seller panel documents this field with a Polish vocabulary while the
+    // write path sends `SENT`. Which spelling a READ returns is unestablished,
+    // so both are accepted rather than one being guessed at.
+    it('accepts the Polish spelling the seller panel sets', async () => {
+      answerWith({ status: 'WYSLANE' });
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        rawStatus: 'WYSLANE',
+        dispatched: true,
+      });
+    });
+
+    it('reports a not-yet-sent order as not dispatched', async () => {
+      answerWith({ status: 'NEW' });
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        rawStatus: 'NEW',
+        dispatched: false,
+      });
+    });
+
+    // The one that matters: an unknown word must never be read as "not sent",
+    // or an operator is told their parcel never went out on the strength of a
+    // vocabulary this build has never seen.
+    it('answers UNKNOWN, never false, for a status it does not recognise', async () => {
+      answerWith({ status: 'SOME_FUTURE_STATUS' });
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.rawStatus).toBe('SOME_FUTURE_STATUS');
+      expect(result.dispatched).toBeNull();
+      expect(result.outcome).toBe('read');
+    });
+
+    it('carries the answer when Allegro names no status at all', async () => {
+      answerWith(undefined);
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        outcome: 'read',
+        rawStatus: null,
+        dispatched: null,
+      });
+    });
+
+    // The read was PROBED live on the sandbox (#3365) before this was written:
+    // two orders OpenLinker had dispatched itself answered 200 with both
+    // tracking numbers under carrierId INPOST. The repository had previously
+    // struck down ASSUMING this endpoint exists, which was the right call then.
+    it('reports the waybills Allegro says are attached', async () => {
+      answerWith({ status: 'SENT' }, [
+        { waybill: '602222927611300011874668', carrierId: 'INPOST' },
+      ]);
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.waybills).toEqual([
+        { waybill: '602222927611300011874668', carrierId: 'INPOST' },
+      ]);
+    });
+
+    // An order the seller has not shipped yet: the source ANSWERED and listed
+    // none. That is a different and stronger claim than "not reported".
+    it('distinguishes an answered-and-empty list from not reported', async () => {
+      answerWith({ status: 'NEW' }, []);
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        waybills: [],
+      });
+    });
+
+    // The one that keeps the second call from costing the first: a status that
+    // WAS read must survive a waybill read that was not.
+    it('still reports the status when the waybill read fails', async () => {
+      answerWith({ status: 'SENT' }); // no shipments fixture -> that call rejects
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.outcome).toBe('read');
+      expect(result.rawStatus).toBe('SENT');
+      expect(result.dispatched).toBe(true);
+      expect(result.waybills).toBeNull();
+    });
+
+    // A blank tracking number rendered on an operator's screen is worse than
+    // an absent one, and Allegro's own model permits a shipment without one.
+    it('skips a shipment carrying no waybill rather than reporting an empty string', async () => {
+      answerWith({ status: 'SENT' }, [
+        { carrierId: 'INPOST' },
+        { waybill: '   ' },
+        { waybill: '602222927611300019379731', carrierId: 'INPOST' },
+      ]);
+
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        waybills: [{ waybill: '602222927611300019379731', carrierId: 'INPOST' }],
+      });
+    });
+
+    // The caller is a read surface: a momentarily unreachable marketplace must
+    // not become a 500 an operator cannot act on.
+    it('reports an unreachable Allegro as an outcome rather than throwing', async () => {
+      (httpClient.get as jest.Mock).mockRejectedValue(new Error('ECONNRESET'));
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.outcome).toBe('unavailable');
+      expect(result.rawStatus).toBeNull();
+      expect(result.dispatched).toBeNull();
+    });
+  });
+
   describe('write — OrderStatusWriteback (#1159 / #1168)', () => {
     it('dispatched: marks sent + attaches the waybill and returns applied', async () => {
       const result = await adapter.write({

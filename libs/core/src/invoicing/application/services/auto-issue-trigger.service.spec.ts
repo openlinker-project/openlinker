@@ -100,14 +100,14 @@ function makeConnection(triggerModel: string | undefined, overrides: Partial<Con
   };
   return {
     id: overrides.id ?? 'conn-inv-1',
-    platformType: 'subiekt',
+    platformType: 'subiekt-gt',
     name: 'Invoicing conn',
     status: 'active',
     config: overrides.config ?? defaultConfig,
     credentialsRef: 'cred-1',
     createdAt: new Date(),
     updatedAt: new Date(),
-    adapterKey: 'subiekt',
+    adapterKey: 'subiekt-gt',
     enabledCapabilities: ['Invoicing'],
     ...overrides,
   } as Connection;
@@ -234,6 +234,51 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
+    // #3365 audit: an order whose source reports NO payment status is a
+    // different fact from one reporting it unpaid, and the difference was
+    // invisible. `waiting` is legitimately not a block, so nothing is
+    // persisted and no badge renders - a connection whose source never
+    // populates the field waits for ever with no document, no warehouse
+    // release and no stock movement, and nothing anywhere says so.
+    it('auto-on-paid: warns ONCE per connection when the source reports no payment status', async () => {
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => undefined);
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: undefined }), 'src-1');
+      await service.onOrderTransition(makeOrder({ paymentStatus: undefined }), 'src-1');
+
+      const viability = warn.mock.calls.filter((call) =>
+        String(call[0]).includes('reports NO payment status'),
+      );
+      expect(viability).toHaveLength(1);
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    // An order the source says IS unpaid is the ordinary, correct wait. Warning
+    // on it would bury the one above under every unpaid order on the stack.
+    it('auto-on-paid: does NOT warn for an order reported unpaid', async () => {
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => undefined);
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'awaiting' }), 'src-1');
+
+      expect(
+        warn.mock.calls.filter((call) => String(call[0]).includes('reports NO payment status')),
+      ).toHaveLength(0);
+      warn.mockRestore();
+    });
+
     it('auto-on-shipped: order.status === shipped enqueues', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-shipped')]);
       await service.onOrderTransition(makeOrder({ status: 'shipped' }), 'src-1');
@@ -321,15 +366,20 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('fiscalization.register');
     });
 
-    it('a connection carrying no config.salesDocument.documentKind is NOT a routing candidate', async () => {
+    it('a connection carrying no config.salesDocument.documentKind is NOT a routing candidate, and says so', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'unconfigured', config: { invoicing: { triggerModel: 'auto-on-paid' } } }),
       ]);
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      // Zero eligible candidates short-circuits before the resolver — no
-      // spurious "ambiguous" error either.
-      expect(errorSpy).not.toHaveBeenCalled();
+      // Zero eligible candidates still short-circuits before the resolver, so
+      // there is no spurious "ambiguous" reason - but since #3365 the exit is
+      // REPORTED rather than silent, because the remedy is one operator
+      // action on a screen that exists.
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: { unresolvedReason: 'no-connection-declares-document-kind' },
+      });
     });
   });
 
@@ -584,7 +634,7 @@ describe('AutoIssueTriggerService', () => {
         const outcome = await service.onOrderTransition(
           makeOrder({
             paymentStatus: 'paid',
-            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
             // Totals kept consistent with the single line, or the compose step
             // fails its own sum check and the outcome is `indeterminate` rather
             // than the block this test is about.
@@ -1019,7 +1069,7 @@ describe('AutoIssueTriggerService', () => {
         const outcome = await service.onOrderTransition(
           makeOrder({
             paymentStatus: 'paid',
-            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
           }),
           'src-1',
         );
@@ -1044,7 +1094,7 @@ describe('AutoIssueTriggerService', () => {
         const outcome = await service.onOrderTransition(
           makeOrder({
             paymentStatus: 'paid',
-            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
           }),
           'src-1',
         );
@@ -1064,7 +1114,7 @@ describe('AutoIssueTriggerService', () => {
         makeOrder({
           paymentStatus: 'paid',
           items: [
-            { id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Book', taxRate: '0' },
+            { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Book', taxRate: '0' },
           ],
         }),
         'src-1',
@@ -1279,6 +1329,65 @@ describe('AutoIssueTriggerService', () => {
       expect(fiscalRegistrations.getByOrderId).toHaveBeenCalledWith('order-1');
     });
 
+    // #3365. The refusal was already correct and already invisible: the error
+    // reached the catch below and returned `indeterminate`, which deliberately
+    // leaves the persisted reason untouched - so the operator got no invoice,
+    // no job, no badge and one log line. The condition is a fact about the
+    // order's own numbers and throws identically on every future transition, so
+    // it earns a persisted reason.
+    it('should BLOCK with line-total-mismatch when the order contradicts its own total', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 50, name: 'Widget' }],
+          // 2 x 50 = 100 of lines against a total of 95: the shape an
+          // Allegro-side coupon produces.
+          totals: {
+            subtotal: 100,
+            tax: 0,
+            shipping: 0,
+            total: 95,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'line-total-mismatch' } });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    // The whole point of populating `discountTotal` upstream: the block an
+    // operator reads must say WHY, not merely that two numbers differ.
+    it('should name the discount in the block detail when it accounts for the gap', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 50, name: 'Widget' }],
+          totals: {
+            subtotal: 100,
+            tax: 0,
+            shipping: 0,
+            total: 95,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+            discountTotal: 5,
+          },
+        }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'line-total-mismatch' } });
+      const detail = (outcome as { block: { detail?: string } }).block.detail ?? '';
+      expect(detail).toContain('whole-order discount');
+      expect(detail).toContain('5.00');
+    });
+
     it('should report `indeterminate` when the document read fails — never a clear', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('manual')]);
       invoices.getLatestInvoiceForOrder.mockRejectedValue(new Error('db down'));
@@ -1490,7 +1599,12 @@ describe('AutoIssueTriggerService', () => {
       });
     });
 
-    it('reports `none` (not a block) when the rule engine has nothing AND the operator-configured pool is also empty', async () => {
+    // #3365: this used to answer `{kind:'none'}` and persist nothing, so an
+    // order reached its destination, carried no document, and no surface said
+    // why. A connection that CAN issue but does not say WHICH kind is an
+    // operator-fixable misconfiguration on this order, today - which is the
+    // same test the zero-connections arm passes in the other direction.
+    it('reports a block when the rule engine has nothing AND no connection declares a document kind', async () => {
       salesDocumentRules.resolveRouting.mockResolvedValue({
         kind: 'unresolved',
         reason: 'no-configuration-for-country',
@@ -1509,8 +1623,16 @@ describe('AutoIssueTriggerService', () => {
       );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(outcome).toEqual({ kind: 'none' });
-      expect(errorSpy).not.toHaveBeenCalled();
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'no-connection-declares-document-kind',
+          // The count an operator can act on is the pool they go and fix, not
+          // the empty eligible set.
+          detail: '1 capable connection, none declaring a document kind',
+        },
+      });
     });
   });
 
