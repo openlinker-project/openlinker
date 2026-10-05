@@ -8,22 +8,23 @@
  *
  * ## `buyerNameMasked` is the only buyer PII here, and may not gain a sibling
  *
- * #3425 reversed ADR-062's buyer-PII exclusion for ONE value, on ONE
- * condition: it is masked to an initial plus surname, server-side, at
- * projection time, from a value the read already loads. The full name is
+ * #3425 made a deliberate disclosure of ONE value, on ONE condition: it is
+ * masked to an initial plus surname, server-side, at projection time, from a
+ * value the read already loads (architecture-overview § 28, "Two PII
+ * disclosures are deliberate"). The full name is
  * never resolved on this path, so there is no unmasked value present for a
  * later change to leak.
  *
  * The concrete risk this note exists for is a `buyerName` added "just for the
  * detail view". That would not be a widening of this field, it would be a new
- * reversal, and it needs the argument made again rather than inherited. The
+ * disclosure, and it needs the argument made again rather than inherited. The
  * three exclusions that did NOT move are address, email and phone.
  *
- * Note also what does not protect this: ADR-062's allowlist machinery guards
- * projections crossing to a PLUGIN (#2393's `RoutingInput`). This is an HTTP
- * response to a signed-in operator, so none of those guards apply to it and a
- * reader must not assume they do. `apps/api/src/auth/packer-exclusion.spec.ts`
- * is the authority for what these surfaces disclose.
+ * ADR-062 is not the authority here: its subject is what crosses to a PLUGIN
+ * (#2393's `RoutingInput`), and none of its guards apply to an HTTP response
+ * read by a signed-in admin or operator. This route admits no packer, so the
+ * packer-exclusion spec does not cover it either; the masking decision on
+ * #3425 is the whole of the argument.
  *
  * @module apps/api/src/fulfillment/http/dto
  */
@@ -53,6 +54,34 @@ export class FulfillmentWorkLineResponseDto {
       'because productVariantId is still on the row and a fabricated label is not actionable.',
   })
   productName!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The variant's SKU (#3096); null when it has none or is absent from the catalogue.",
+  })
+  sku!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The variant's EAN (#3096); null when it has none or is absent from the catalogue.",
+  })
+  ean!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The API's own proxy path for the parent product's first image (#3096) — " +
+      '`productImageProxyPath`, the same path the pack bench reads. Relative, and behind the ' +
+      'ordinary route guard, so a browser fetches it with its bearer token. null when the ' +
+      'product has no image.',
+  })
+  imageUrl!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: "The variant's own attributes, e.g. { Size: 'L' } (#3096); null when it has none.",
+  })
+  attributes!: Record<string, string> | null;
   @ApiProperty() totalQuantity!: number;
   @ApiProperty({
     description:
@@ -118,7 +147,8 @@ export class FulfillmentWorkResponseDto {
   @ApiProperty({ enum: FulfillmentWorkStatusValues }) status!: FulfillmentWorkStatus;
   @ApiProperty({ enum: FulfillmentRequestStatusValues }) requestStatus!: FulfillmentRequestStatus;
   @ApiProperty() assignmentAttempt!: number;
-  @ApiPropertyOptional({ nullable: true }) cancellationReason!: FulfillmentCancellationReason | null;
+  @ApiPropertyOptional({ nullable: true })
+  cancellationReason!: FulfillmentCancellationReason | null;
   @ApiPropertyOptional({ nullable: true }) externalWorkId!: string | null;
   @ApiPropertyOptional({ nullable: true }) acceptedAt!: Date | null;
   @ApiPropertyOptional({ nullable: true }) cancelledAt!: Date | null;
@@ -133,21 +163,48 @@ export class FulfillmentWorkResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      "The buyer's name, MASKED to a first initial plus surname (e.g. \"A. Kowalska\") — #3425, " +
-      "a deliberate reversal of ADR-062's buyer-PII exclusion, conditional on the masking. " +
+      'The buyer\'s name, MASKED to a first initial plus surname (e.g. "A. Kowalska") — #3425, ' +
+      'a deliberate disclosure, conditional on the masking. ' +
       'The masking happens SERVER-SIDE at projection time from a value this endpoint already ' +
       'loads: the full name is never resolved here, so it is not a display convention a caller ' +
-      'may undo. This field may NOT gain an unmasked sibling — see the module docblock and ' +
-      "ADR-062's scope amendment.",
+      'may undo. This field may NOT gain an unmasked sibling — see the module docblock.',
   })
   buyerNameMasked!: string | null;
   @ApiPropertyOptional({ nullable: true, description: "The order's dispatch deadline (#3425)" })
   dispatchByAt!: string | null;
   @ApiPropertyOptional({
     nullable: true,
-    description: "The source's own delivery-method label (#3425); null when the source reports none",
+    description:
+      "The source's own delivery-method label (#3425); null when the source reports none",
   })
   carrierName!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the pack bench shut the box (#2418), or null while it is open. Not status: ' +
+      'packing is part of the executor job, not the end of it (#3096, G02-3).',
+  })
+  parcelClosedAt!: Date | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'The user id of the last verifier who shut the box, or null while it is open.',
+  })
+  packedByUserId!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When an operator declared the parcel finished and off the bench, or null until then. ' +
+      'A distinct instant from parcelClosedAt.',
+  })
+  completedAt!: Date | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the dispatch fact was settled with the sales channel (#3096, G02-3), or null while ' +
+      'it is not. Marks the relay as RESOLVED, which includes a channel that accepts no ' +
+      'dispatch notice - do not word it as an acknowledgement.',
+  })
+  channelNotifiedAt!: Date | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiProperty({ type: [FulfillmentWorkLineResponseDto] })

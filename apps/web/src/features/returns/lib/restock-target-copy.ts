@@ -34,8 +34,8 @@ export function describeRestockTarget(target: ReturnRestockTarget): string {
       : RETURN_RESTOCK_TARGET_COPY.resolved.replace('{name}', target.connectionName);
   }
 
-  if (target.status === 'ambiguous-inventory-master') {
-    return RETURN_RESTOCK_TARGET_COPY['ambiguous-inventory-master'].replace(
+  if (target.status === 'ambiguous-inventory-master' || target.status === 'ambiguous-owner') {
+    return RETURN_RESTOCK_TARGET_COPY[target.status].replace(
       '{n}',
       String(target.candidateCount ?? 0),
     );

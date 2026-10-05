@@ -53,6 +53,7 @@ import {
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
+import { omsOnboardingRoute } from './oms-onboarding.route';
 import { whoDecidesRoute } from './who-decides.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
@@ -99,6 +100,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     operationalSettingsRoute,
     salesDocumentsRoute,
     ...(omsRoutingUiEnabled ? [sourcingRulesRoute] : []),
+    omsOnboardingRoute,
     whoDecidesRoute,
     promptTemplatesListRoute,
     promptTemplateDetailRoute,

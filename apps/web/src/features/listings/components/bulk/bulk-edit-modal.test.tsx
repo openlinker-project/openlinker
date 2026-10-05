@@ -561,6 +561,187 @@ describe('BulkEditModal', () => {
     expect(baseOverride.overrides?.ean).toBe('5901234123457');
   });
 
+  // #3492 review: the acknowledgement is keyed to the digits it was given for,
+  // so no edit path - the RHF base field or a per-variant input - can carry it
+  // onto a different EAN.
+  describe('EAN checksum override acknowledgement (#3492)', () => {
+    // Same body as the valid `5901234123457`, wrong check digit.
+    const INVALID_A = '5901234123450';
+    const INVALID_B = '5901234123451';
+    const ACK_NAME = /I confirm this EAN is correct/;
+    const ackBox = (): HTMLElement => screen.getByRole('checkbox', { name: ACK_NAME });
+
+    type SavedOverride = { overrides?: { ean?: string; eanOverrideAcknowledged?: boolean } };
+
+    it('should emit the acknowledgement for a simple product when the box is ticked on an invalid EAN', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeRow()}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={onSave}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText('EAN (GTIN)'), { target: { value: INVALID_A } });
+      fireEvent.click(ackBox());
+      expect(ackBox()).toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const baseOverride = onSave.mock.calls[0][1] as SavedOverride;
+      expect(baseOverride.overrides?.ean).toBe(INVALID_A);
+      expect(baseOverride.overrides?.eanOverrideAcknowledged).toBe(true);
+    });
+
+    it('should drop a simple-product acknowledgement when the base EAN is edited to different digits', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeRow()}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={onSave}
+        />,
+      );
+
+      const eanField = screen.getByLabelText('EAN (GTIN)');
+      fireEvent.change(eanField, { target: { value: INVALID_A } });
+      fireEvent.click(ackBox());
+      fireEvent.change(eanField, { target: { value: INVALID_B } });
+      expect(ackBox()).not.toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const baseOverride = onSave.mock.calls[0][1] as SavedOverride;
+      expect(baseOverride.overrides?.ean).toBe(INVALID_B);
+      expect(baseOverride.overrides?.eanOverrideAcknowledged).toBeUndefined();
+    });
+
+    it('should not emit the acknowledgement when the EAN is corrected to a valid one after ticking', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeRow()}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={onSave}
+        />,
+      );
+
+      const eanField = screen.getByLabelText('EAN (GTIN)');
+      fireEvent.change(eanField, { target: { value: INVALID_A } });
+      fireEvent.click(ackBox());
+      fireEvent.change(eanField, { target: { value: '5901234123457' } });
+      expect(screen.queryByRole('checkbox', { name: ACK_NAME })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const baseOverride = onSave.mock.calls[0][1] as SavedOverride;
+      expect(baseOverride.overrides?.eanOverrideAcknowledged).toBeUndefined();
+    });
+
+    it('should restore a persisted acknowledgement for an unchanged checksum-invalid master barcode', async () => {
+      const onSave = vi.fn();
+      const row = makeRow();
+      row.variants[0].variant.ean = INVALID_A;
+      row.variants[0].override = { overrides: { eanOverrideAcknowledged: true } };
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={row}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          onSave={onSave}
+        />,
+      );
+
+      expect(ackBox()).toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      // The flag applies to the EFFECTIVE EAN - here the master barcode, with no
+      // `ean` override emitted at all.
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const baseOverride = onSave.mock.calls[0][1] as SavedOverride;
+      expect(baseOverride.overrides?.ean).toBeUndefined();
+      expect(baseOverride.overrides?.eanOverrideAcknowledged).toBe(true);
+    });
+
+    it('should drop a per-variant acknowledgement when that variant EAN is edited to different digits', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeMultiRow()}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={onSave}
+        />,
+      );
+
+      const eanField = screen.getByLabelText('EAN for Rozmiar: M');
+      fireEvent.change(eanField, { target: { value: INVALID_A } });
+      fireEvent.click(ackBox());
+      expect(ackBox()).toBeChecked();
+      fireEvent.change(eanField, { target: { value: INVALID_B } });
+      expect(ackBox()).not.toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const perVariant = onSave.mock.calls[0][2] as Record<string, SavedOverride>;
+      expect(perVariant.var_m?.overrides?.ean).toBe(INVALID_B);
+      expect(perVariant.var_m?.overrides?.eanOverrideAcknowledged).toBeUndefined();
+    });
+
+    it('should emit a per-variant acknowledgement when the box is ticked on the current invalid EAN', async () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeMultiRow()}
+          connection={connection}
+          canBrowseCategories={false}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={onSave}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText('EAN for Rozmiar: M'), {
+        target: { value: INVALID_B },
+      });
+      fireEvent.click(ackBox());
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+      const perVariant = onSave.mock.calls[0][2] as Record<string, SavedOverride>;
+      expect(perVariant.var_m?.overrides?.eanOverrideAcknowledged).toBe(true);
+      expect(perVariant.var_s?.overrides?.eanOverrideAcknowledged).toBeUndefined();
+    });
+  });
+
   it('opens the Choose-category modal from the chip and Select sets the category (#1741)', async () => {
     const onSave = vi.fn();
     const apiClient = createMockApiClient({

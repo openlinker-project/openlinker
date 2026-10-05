@@ -66,8 +66,19 @@ export class UserRepository implements UserRepositoryPort {
     return { users: entities.map((e) => this.toDomain(e)), total };
   }
 
-  async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
-    await this.ormRepository.update({ id: userId }, { passwordHash });
+  async updatePasswordHash(
+    userId: string,
+    passwordHash: string,
+    opts?: { readonly mustChangePassword?: 'clear' | 'force' }
+  ): Promise<void> {
+    // One UPDATE either way: the flag change rides with the hash (#3456).
+    const flag =
+      opts?.mustChangePassword === 'clear'
+        ? { mustChangePassword: false }
+        : opts?.mustChangePassword === 'force'
+          ? { mustChangePassword: true }
+          : {};
+    await this.ormRepository.update({ id: userId }, { passwordHash, ...flag });
   }
 
   async updateStatus(userId: string, status: UserStatus): Promise<void> {
@@ -114,7 +125,7 @@ export class UserRepository implements UserRepositoryPort {
 
   async save(
     user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
-      Partial<Pick<User, 'analyticsConsent'>>
+      Partial<Pick<User, 'analyticsConsent' | 'displayName' | 'mustChangePassword'>>
   ): Promise<User> {
     const normalizedEmail = this.normalizeEmail(user.email);
     const entity = this.ormRepository.create({
@@ -124,17 +135,28 @@ export class UserRepository implements UserRepositoryPort {
       role: user.role,
       status: user.status,
       analyticsConsent: user.analyticsConsent ?? false,
+      displayName: user.displayName ?? null,
+      mustChangePassword: user.mustChangePassword ?? false,
     });
     try {
       const saved = await this.ormRepository.save(entity);
       return this.toDomain(saved);
     } catch (error) {
       if (error instanceof QueryFailedError) {
-        const pgErr = error as QueryFailedError & { code?: string; detail?: string };
+        const pgErr = error as QueryFailedError & { code?: string; detail?: string; constraint?: string };
         if (pgErr.code === '23505') {
           const detail = pgErr.detail ?? '';
-          const identifier = detail.includes('(email)') ? (normalizedEmail ?? 'email') : user.username;
-          throw new UserAlreadyExistsException(identifier);
+          // Constraint name first (stable); `detail` is localised, human-readable
+          // text, so it is only the fallback for a schema built without our names.
+          const named =
+            pgErr.constraint === 'UQ_users_email'
+              ? 'email'
+              : pgErr.constraint === 'UQ_users_username'
+                ? 'username'
+                : null;
+          const isEmail = named ? named === 'email' : detail.includes('(email)');
+          const identifier = isEmail ? (normalizedEmail ?? 'email') : user.username;
+          throw new UserAlreadyExistsException(identifier, isEmail ? 'email' : 'username');
         }
       }
       throw error;
@@ -201,7 +223,9 @@ export class UserRepository implements UserRepositoryPort {
       entity.updatedAt,
       entity.analyticsConsent ?? false,
       entity.packStationLabel ?? null,
-      entity.lastActiveAt ?? null
+      entity.lastActiveAt ?? null,
+      entity.displayName ?? null,
+      entity.mustChangePassword ?? false
     );
   }
 }

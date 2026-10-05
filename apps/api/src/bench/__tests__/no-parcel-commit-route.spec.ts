@@ -58,14 +58,17 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
  * `verifications/undo` case one act up: it is the OPPOSITE of a commit,
  * clearing `completedAt` alone while every scan and `parcelClosedAt` stand,
  * and it exists because a completion was otherwise a one-way door whose only
- * exit was `reopen` - which unpacks a box that was packed correctly. All
- * listed as deliberate writes rather than silently exempted from the guard
- * this file exists to be.
+ * exit was `reopen` - which unpacks a box that was packed correctly.
+ * `label/replace` (#3654) is a shipping write, not a packing one: it voids the
+ * label already on the box and buys one for the new parcel size, and never
+ * touches `parcelClosedAt` or any scan. All listed as deliberate writes rather
+ * than silently exempted from the guard this file exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
   'POST bench/work/:workId/claim',
   'POST bench/work/:workId/complete',
   'POST bench/work/:workId/complete/undo',
+  'POST bench/work/:workId/label/replace',
   'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
   'POST bench/work/:workId/verifications',
