@@ -503,7 +503,7 @@ export function createMockApiClient(
       // separate probe the sourcing-rules gate reads (`total` only), so the two
       // are defaulted together or a test would set one and silently keep the
       // other's stale answer.
-      listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 200 }),
+      listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       ...overrides.inventory,

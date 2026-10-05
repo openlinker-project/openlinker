@@ -113,7 +113,8 @@ describe('ShipmentCancellationService', () => {
       'ol_shipment_1',
       expect.objectContaining({ status: 'cancelled', cancelledAt: expect.any(Date) }),
     );
-    expect(result).toBe(cancelled);
+    expect(result.shipment).toBe(cancelled);
+    expect(result.cancelledAfterDispatch).toBe(false);
   });
 
   it('should skip the provider call for a draft with no provider shipment', async () => {
@@ -137,7 +138,9 @@ describe('ShipmentCancellationService', () => {
 
     const result = await service.cancel('ol_shipment_1');
 
-    expect(result).toBe(cancelled);
+    expect(result.shipment).toBe(cancelled);
+    // A replay cancelled nothing, so it has nothing outstanding to report.
+    expect(result.cancelledAfterDispatch).toBe(false);
     expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
     expect(repository.update).not.toHaveBeenCalled();
   });
@@ -148,7 +151,11 @@ describe('ShipmentCancellationService', () => {
     await expect(service.cancel('missing')).rejects.toBeInstanceOf(ShipmentNotFoundException);
   });
 
-  it.each<ShipmentStatus>(['dispatched', 'in-transit', 'delivered', 'failed'])(
+  // `dispatched` is NOT in this list any more (#3365) - see the test below it.
+  // `in-transit` still is, and the distinction is the parcel: at `dispatched`
+  // the label is bought and the carrier has not moved anything, while
+  // `in-transit` is the carrier reporting that it has.
+  it.each<ShipmentStatus>(['in-transit', 'delivered', 'failed'])(
     'should throw ShipmentNotCancellableException when status is %s',
     async (status) => {
       repository.findById.mockResolvedValue(makeShipment({ status }));
@@ -160,6 +167,62 @@ describe('ShipmentCancellationService', () => {
       expect(repository.update).not.toHaveBeenCalled();
     },
   );
+
+  describe('cancelling after dispatch (#3365)', () => {
+    // The window used to close here, within seconds of a label being bought,
+    // because the automatic dispatch notification advances the row. An
+    // operator who bought the wrong label could not void it at all.
+    it('voids a dispatched shipment at the provider and persists cancelled', async () => {
+      repository.findById.mockResolvedValue(
+        makeShipment({ status: 'dispatched', providerShipmentId: 'shipx-9' }),
+      );
+      repository.update.mockResolvedValue(makeShipment({ status: 'cancelled' }));
+
+      const result = await service.cancel('ol_shipment_1');
+
+      expect(cancellerAdapter.cancelShipment).toHaveBeenCalledWith({
+        providerShipmentId: 'shipx-9',
+      });
+      expect(repository.update).toHaveBeenCalledWith(
+        'ol_shipment_1',
+        expect.objectContaining({ status: 'cancelled' }),
+      );
+      expect(result.cancelledAfterDispatch).toBe(true);
+    });
+
+    // The point of the flag. OpenLinker has no event that withdraws
+    // "dispatched" - `cancelled` means the buyer's ORDER was cancelled - so
+    // sending one would put a false statement about somebody's order on a
+    // marketplace. It reports instead.
+    it('sends nothing to the marketplace, and reports that it did not', async () => {
+      repository.findById.mockResolvedValue(
+        makeShipment({ status: 'dispatched', providerShipmentId: 'shipx-9' }),
+      );
+      repository.update.mockResolvedValue(makeShipment({ status: 'cancelled' }));
+
+      const result = await service.cancel('ol_shipment_1');
+
+      // The service holds no relay seam at all, which is what makes this
+      // structural rather than a promise: there is nothing here that could
+      // send an order event even by accident.
+      expect(result.cancelledAfterDispatch).toBe(true);
+      expect(Object.keys(service)).not.toContain('relay');
+    });
+
+    // A provider that refuses a post-dispatch void is the documented case
+    // (`ShipmentCanceller`: "often a no-op or a 4xx"). The row must stay as it
+    // was so the operator can see the refusal and retry, not silently become
+    // cancelled while the carrier still holds a live label.
+    it('leaves the row untouched when the provider refuses the void', async () => {
+      repository.findById.mockResolvedValue(
+        makeShipment({ status: 'dispatched', providerShipmentId: 'shipx-9' }),
+      );
+      cancellerAdapter.cancelShipment.mockRejectedValue(new Error('too late to cancel'));
+
+      await expect(service.cancel('ol_shipment_1')).rejects.toThrow('too late to cancel');
+      expect(repository.update).not.toHaveBeenCalled();
+    });
+  });
 
   it('should throw ShipmentCancellationNotSupportedException when the adapter lacks ShipmentCanceller', async () => {
     repository.findById.mockResolvedValue(makeShipment({ status: 'generated' }));

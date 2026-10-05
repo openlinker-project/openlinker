@@ -69,6 +69,23 @@ export const SalesDocumentUnresolvedReasonValues = [
    * so a currency mismatch here is exactly as terminal as `net-priced-order`.
    */
   'threshold-currency-mismatch',
+  /**
+   * Connections capable of issuing exist, but not one of them declares
+   * `config.salesDocument.documentKind`, so there was no routing candidate to
+   * choose between (#3365).
+   *
+   * Distinct from `'ambiguous-connection-no-primary'`, which is the opposite
+   * shape - SEVERAL candidates and no primary - and whose own docblock in
+   * `resolve-sales-document-routing.ts` says a caller holding ZERO eligible
+   * connections is expected to short-circuit instead. It short-circuited into
+   * silence: `{kind:'none'}` with no persisted reason, so an order carried a
+   * destination record and no document, and every operator surface agreed
+   * that nothing was wrong.
+   *
+   * The remedy is one operator action - set the document kind on Settings ->
+   * Sales documents - which is why this must reach a badge rather than a log.
+   */
+  'no-connection-declares-document-kind',
 ] as const;
 
 export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReasonValues)[number];
@@ -92,6 +109,28 @@ export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReaso
  * panel's issue button, the receipt's register button, and bulk issue — which
  * no other reason does.
  *
+ * ALSO WRITTEN (#3365): `'line-total-mismatch'` - the order's own lines do not
+ * sum to the total it reports, so no document could state an amount without
+ * contradicting itself.
+ *
+ * It exists because the refusal was already correct and already INVISIBLE.
+ * `assertLinesSumToTotal` raises `InvalidInvoiceLineError`, which reaches
+ * `AutoIssueTriggerService`'s catch and returns `indeterminate` - and
+ * `indeterminate` deliberately leaves the persisted reason untouched. The
+ * operator got no invoice, no job, no badge and one log line. That reading of
+ * `indeterminate` is right for the errors it was written for (a compose or
+ * enqueue error that may well not recur), and wrong for this one: the condition
+ * is a fact about the order's own numbers and throws identically on every
+ * future transition. A permanent condition deserves a permanent, visible
+ * reason. Note the distinction from the comment that argues for
+ * `indeterminate`: it defends against CLEARING a true reason, and this SETS
+ * one.
+ *
+ * Like `'missing-tax-rate'`, this one means "this cannot be issued as it
+ * stands" rather than "auto-issue did not happen" - but unlike it, the remedy
+ * is upstream (correct the order, or teach its adapter to report the discount
+ * that explains the gap), not a provider configuration change.
+ *
  * DECLARED BUT NEVER WRITTEN, each blocked on a prerequisite ADR-041 names:
  *   - `'missing-required-tax-id'` — needs a buyer tax id on the order contract;
  *     no such field exists on `Order` today.
@@ -108,6 +147,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-required-tax-id',
   'missing-tax-rate',
   'tax-rate-conflict',
+  'line-total-mismatch',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;
@@ -189,6 +229,33 @@ export type SalesDocumentBlockOutcome =
  */
 export const SalesDocumentAttentionReasonValues: readonly SalesDocumentGateBlockReason[] =
   SalesDocumentGateBlockReasonValues.filter((reason) => reason !== 'trigger-model-manual');
+
+/**
+ * Unresolved reasons that are the DEFAULT STATE of an install which never opted
+ * into sales-document routing, rather than a misconfiguration of one that did.
+ *
+ * `'unresolved-routing'` is attention-worthy as a gate reason and must stay so -
+ * `'ambiguous-connection-no-primary'` is a real misconfiguration with a real
+ * remedy. But it is the gate reason for `'no-connection-declares-document-kind'`
+ * too, and that one fires precisely when NO connection declares
+ * `config.salesDocument.documentKind` - which #2156 deliberately never
+ * back-fills, so it is what every upgraded install looks like until an operator
+ * chooses to configure routing.
+ *
+ * Counting it put a red "Invoicing blocked N" on an install whose operator had
+ * simply not turned the feature on, which is the same defect
+ * {@link SalesDocumentAttentionReasonValues} already excludes
+ * `'trigger-model-manual'` for, and the same one `architecture-overview.md` §14
+ * describes as "no error, no candidate". The distinction is not "is there an
+ * operator action that fixes it" - there is one for manual too - it is whether
+ * the state is what an unconfigured install looks like.
+ *
+ * The per-order badge and the timeline entry are UNAFFECTED: the reason is still
+ * persisted and still rendered, exactly as manual is. Only the install-level
+ * count and its filter chip skip it.
+ */
+export const SalesDocumentUncountedUnresolvedReasonValues: readonly SalesDocumentUnresolvedReason[] =
+  ['no-connection-declares-document-kind'];
 
 // Emptiness matters here — a consumer builds a SQL `IN (…)` list from this array
 // at class-definition time and `IN ()` is a Postgres syntax error — but the guard

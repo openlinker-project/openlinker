@@ -20,7 +20,7 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     id: 'inv-1',
     orderId: 'order-1',
     connectionId: 'conn-1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'pending',
     providerInvoiceId: null,

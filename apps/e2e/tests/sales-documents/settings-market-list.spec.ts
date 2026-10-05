@@ -77,7 +77,13 @@ const VIEWPORTS = [
 
 async function gotoSettings(page: Page): Promise<void> {
   await page.goto('/settings/sales-documents');
-  await expect(page.getByRole('heading', { name: 'Sales documents' })).toBeVisible({
+  // 'Document routing', not 'Sales documents' - #3309 renamed this heading when
+  // it introduced the `/sales-documents` LIST page, so the SETTINGS page needed
+  // a name that could not be confused with it. These specs were not updated,
+  // and nobody noticed because the whole suite could not start (the `pg`
+  // named-import defect) - so a deliberate product rename sat on four broken
+  // tests for a week without a red run anywhere.
+  await expect(page.getByRole('heading', { name: 'Document routing' })).toBeVisible({
     timeout: 30_000,
   });
   // The market section loads via its own query — wait for its list, not just

@@ -133,6 +133,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-required-tax-id',
   'missing-tax-rate',
   'tax-rate-conflict',
+  'line-total-mismatch',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;
@@ -147,6 +148,8 @@ export const SalesDocumentUnresolvedReasonValues = [
   // #2170 rule-engine additions — see the backend file for the full rationale.
   'no-configuration-for-country',
   'threshold-currency-mismatch',
+  // #3365 — capable connections exist but none declares a document kind.
+  'no-connection-declares-document-kind',
 ] as const;
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];

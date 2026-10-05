@@ -23,8 +23,10 @@ import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 import {
+  describeDiscountCause,
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
+  quantityScaledReconciliationEpsilon,
   splitShippingAcrossRates,
 } from '@openlinker/core/sales-documents';
 
@@ -125,8 +127,20 @@ export function toIssueInvoiceCommand(
   // resolves its tax rate the same way it does for product lines; core never
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
   lines.push(
-    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName)
+    ...toShippingLines(
+      // The gross shipping the source reported, when it reported one (#3365);
+      // otherwise `shipping`, which on a gross-priced source already is gross.
+      // Same shape as the per-line choice above, and guarded by the same gate:
+      // a net-priced order charging shipping with no gross figure never gets
+      // here.
+      order.totals.shippingGross ?? order.totals.shipping,
+      order.items,
+      order.totals.currency,
+      shippingLineName
+    )
   );
+
+  assertLinesSumToTotal(lines, order.totals, order.id);
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -245,6 +259,66 @@ function toBuyerAddress(address: Address): BuyerAddress {
 }
 
 /**
+ * Refuse to compose an invoice whose own lines do not add up to what the order
+ * says the buyer paid.
+ *
+ * The mirror of the fiscal-receipt mapper's guard, which has had one since it
+ * shipped; the invoicing mapper had none, so an order whose lines and total
+ * disagreed produced a perfectly well-formed invoice for the wrong amount. The
+ * realistic cause is a whole-order discount: PrestaShop applies a `CartRule`
+ * outside `OrderDetail::setSpecificPrice()`, so the line prices are the
+ * pre-discount ones while `total` is net of it, and the invoice then asks the
+ * buyer for more than they were charged - with every figure on it internally
+ * consistent and nothing downstream able to notice.
+ *
+ * Blocking is the right answer rather than adjusting: OpenLinker does not know
+ * WHICH lines the discount belonged to, and FA(3) can only express a discount
+ * per line (`P_10` appears once, inside `FaWiersz`), so folding it would mean
+ * inventing an attribution for a legal document. A held order with a stated
+ * reason is recoverable; a filed invoice for the wrong amount is not.
+ *
+ * Arithmetic on figures the SOURCE reported - a sum and a comparison. It
+ * neither computes nor infers a tax rate.
+ */
+function assertLinesSumToTotal(
+  lines: readonly InvoiceLine[],
+  totals: Order['totals'],
+  orderId: string
+): void {
+  const total = totals.total;
+  if (!Number.isFinite(total)) {
+    throw new InvalidInvoiceLineError(
+      `Order ${orderId} reports a non-finite total; cannot compose an invoice`
+    );
+  }
+
+  const summed = lines.reduce((sum, line) => sum + line.quantity * line.unitPriceGross, 0);
+  if (!Number.isFinite(summed)) {
+    throw new InvalidInvoiceLineError(
+      `Order ${orderId} has a line with a non-finite amount; cannot compose an invoice`
+    );
+  }
+
+  // #3365 review: scale the tolerance by total quantity. A composer that rounds
+  // a per-unit price and then multiplies it back out carries up to half a minor
+  // unit of error PER UNIT - WooCommerce's order source does exactly that - so a
+  // flat one-minor-unit bound refused ordinary multi-line orders and told the
+  // operator their own shop contradicted itself. The bound is the exact worst
+  // case of that round trip rather than a number picked to make a case pass, and
+  // it stays too narrow for a whole-order discount to hide inside.
+  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const epsilon = quantityScaledReconciliationEpsilon(totals.currency, totalQuantity);
+  const gap = summed - total;
+  if (Math.abs(gap) > epsilon) {
+    throw new InvalidInvoiceLineError(
+      `Order ${orderId} lines sum to ${summed.toFixed(2)} but the order reports a total of ` +
+        `${total.toFixed(2)}; an invoice may not state an amount its own lines contradict` +
+        describeDiscountCause(totals.discountTotal, gap, epsilon)
+    );
+  }
+}
+
+/**
  * Map an {@link OrderItem} onto an {@link InvoiceLine}. `unitPriceGross` is the
  * line price (gross — see treatment guard above). `name` falls back to
  * `sku` then `productId` when the source omitted a label.
@@ -270,8 +344,22 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
   return {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
-    unitPriceGross: item.price,
+    // `price` alone was right only while every issuable order priced its lines
+    // gross. A net-priced source now reports its own gross beside the net one
+    // (#3365, `OrderItem.unitPriceGross`), and the eligibility guard above has
+    // already refused the order unless EVERY line carries it - so the fallback
+    // is reached only on a gross-priced source, where `price` IS the gross
+    // figure. No arithmetic either way: one of two reported numbers is chosen.
+    unitPriceGross: item.unitPriceGross ?? item.price,
     taxRate: item.taxRate?.trim() ?? '',
+    // Carried so a provider can emit a real catalogue line rather than a
+    // free-text one - see `InvoiceLine.productId`. The shipping lines composed
+    // below deliberately omit it: a delivery charge is not a catalogue item.
+    productId: item.productId,
+    // Present-only, because it genuinely is absent for a simple product. A
+    // destination whose catalogue item is the VARIANT rather than the product
+    // cannot name the goods without it - see `InvoiceLine.variantId`.
+    ...(item.variantId !== undefined && { variantId: item.variantId }),
     orderLineId: item.id,
   };
 }
@@ -315,7 +403,14 @@ function toShippingLines(
     shipping,
     items.map((item) => ({
       taxRate: item.taxRate?.trim() ?? null,
-      gross: item.price * item.quantity,
+      // The field is named `gross` and must be given one. On a gross-priced
+      // source `price` already is; on a net-priced one that reports its own
+      // gross figure (#3365) it is not, and a net weight is wrong here for a
+      // specific reason: the split is proportional, so a uniform-rate basket
+      // is unaffected, but a MIXED-rate one shifts, because net scales to
+      // gross by a different factor per rate. The shipping then lands under
+      // the wrong rate - silently, with the total still adding up.
+      gross: (item.unitPriceGross ?? item.price) * item.quantity,
     })),
     // The order's own currency decides how many decimals the parts round to, so
     // they sum exactly in the units the buyer paid in (#2260 review).

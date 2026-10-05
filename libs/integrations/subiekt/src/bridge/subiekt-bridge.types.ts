@@ -30,12 +30,23 @@
  * #753 adapter — it is not referenced here. Observed live values: `none` (PA),
  * `pending` (FV pre-KSeF); the rest are the documented KSeF lifecycle.
  */
+/**
+ * #3351: widened from the original 5-value set. GT's `StatusKSeF` enum
+ * (Pomoc/gta.chm/StatusKSeFEnum.htm) has 9 values, and the bridge's original
+ * `MapKsefStatus` collapsed "not yet sent" (GT 1/2) AND "comms error on a
+ * send attempt" (GT 8) into the same `'pending'` — which the mapper below
+ * then read as core's `'submitted'`, a false claim (KSeF had not received
+ * the document). `'queued'` and `'error'` are told apart from `'sent'` (GT
+ * 3/4, genuinely in flight) so both route to core's `'pending-submission'`
+ * instead.
+ */
 export const BridgeRegulatoryStatusValues = [
   'none',
-  'pending',
+  'queued',
   'sent',
   'accepted',
   'rejected',
+  'error',
 ] as const;
 export type BridgeRegulatoryStatus = (typeof BridgeRegulatoryStatusValues)[number];
 
@@ -133,6 +144,27 @@ export interface BridgeIssueInvoiceRequest {
    * session-bound branch).
    */
   stanowiskoKasoweId?: number;
+  /**
+   * The Subiekt ZK's own numeric `dok_Id`, resolved by the adapter via
+   * `identifier_mappings` (the same row `OrderSyncService.persistDestinationMapping`
+   * writes when the order was created). When present the bridge's #3431
+   * warehouse-release step uses it DIRECTLY instead of searching
+   * `dok_NrPelnyOryg` by `orderId` — that search keys on the OL-internal order
+   * id, which was NEVER what got written there (the ZK's `dok_NrPelnyOryg` is
+   * stamped with the marketplace order NUMBER at create time, #3369). Absent
+   * (order-less/manual invoice, or a pre-fix mapping) falls back to the
+   * pre-existing string-matching lookup.
+   */
+  zkId?: number;
+  /**
+   * #3365 - which Subiekt warehouse this document moves stock in
+   * (`sl_Magazyn.mag_Id`), from `SubiektConnectionConfig.stockMagazynId`.
+   *
+   * Absent means the Sfera SESSION decides, which is what every document did
+   * before: `stockMagazynId` steered only the stock READ, so a two-warehouse
+   * install published one warehouse's figure and released from another.
+   */
+  magazynId?: number;
 }
 
 /**
@@ -146,6 +178,23 @@ export interface BridgeIssueInvoiceResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
   pdfUrl: string | null;
+  /**
+   * KSeF-assigned number (#3352). `null` until KSeF actually assigns one —
+   * before this field existed the bridge read it locally (`dok_NumerKSeF`)
+   * but never put it on the wire, so `clearanceReference` was `null` on
+   * every Subiekt document forever.
+   */
+  clearanceReference: string | null;
+  /**
+   * #3431: the warehouse-release (WZ, Wydanie Zewnętrzne) document number
+   * the bridge created (or detected Subiekt already auto-created) alongside
+   * this invoice, releasing the order's stock in Subiekt's own bookkeeping.
+   * `null` means no linked ZK was found for this order (a manually-issued,
+   * order-less invoice has nothing to release) — never a failure signal;
+   * a genuine release failure is a thrown request error, not a null here.
+   * Optional/additive on the wire — an older bridge build omits it entirely.
+   */
+  warehouseReleaseNumber?: string | null;
 }
 
 /**
@@ -178,11 +227,31 @@ export interface BridgeKorektaRequest {
 }
 
 /**
+ * One line's quantity movement Subiekt did NOT itself apply for a korekta
+ * (`Program.cs.ready`'s `#4-review fix`) — the bridge has no confirmed-live way
+ * to reverse a warehouse movement on a KFS, so a quantity-reducing line reports
+ * the delta here instead of silently having no stock effect.
+ */
+export interface BridgeKorektaQuantityDelta {
+  lp: number;
+  delta: number;
+}
+
+/**
  * Issue-CORRECTION response — the `data` payload of the bridge's `ResponseEnvelope`
  * for `POST /api/invoices/{origId}/corrections`. Distinct from the issue-invoice
  * response: it carries `korygowanyId` (the corrected original's numeric id) and a
  * nullable `przyczyna`, and it carries NEITHER a `regulatoryStatus` NOR a `pdfUrl`
  * (a correction's KSeF status is read back later via the status endpoint).
+ *
+ * `stockAutoReleased` / `quantityDeltas` are the correction-side counterpart of
+ * `BridgeIssueInvoiceResponse.warehouseReleaseNumber` — but the shape is not the
+ * same, because a korekta carries no confirmed-live way to reverse a warehouse
+ * movement: Subiekt reports whether it auto-adjusted stock as a BOOLEAN
+ * (`dok_JestRuchMag` on the KFS), never a numbered WZ document. `stockAutoReleased:
+ * false` with a non-empty `quantityDeltas` means the caller must move the stock
+ * itself (`POST /api/inventory/adjust`) for each reported delta.
+ * Optional/additive on the wire — an older bridge build omits both entirely.
  */
 export interface BridgeKorektaResponse {
   providerInvoiceId: number;
@@ -190,6 +259,8 @@ export interface BridgeKorektaResponse {
   korygowanyId: number;
   przyczyna: string | null;
   state: BridgeInvoiceState;
+  stockAutoReleased?: boolean;
+  quantityDeltas?: BridgeKorektaQuantityDelta[] | null;
 }
 
 /**
@@ -232,6 +303,8 @@ export interface BridgeInvoiceStatusRequest {
 export interface BridgeInvoiceStatusResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
+  /** KSeF-assigned number (#3352) — `null` until KSeF assigns one. */
+  clearanceReference: string | null;
   paid: boolean;
 }
 
@@ -327,4 +400,26 @@ export interface BridgeEnvelopeError {
   code: string;
   reason: string;
   correlationId: string | null;
+  /**
+   * The bridge's own answer to "did this definitely create nothing?" (bridge
+   * PR #7 review).
+   *
+   * `'rejected'` means it provably did not; `'in-doubt'` means it may have -
+   * a `Sfera.Run` timeout, a COM call whose outcome the bridge could not
+   * observe. The bridge emits both and, until this was read, OpenLinker mapped
+   * every non-2xx to the terminal rejected class.
+   *
+   * That discard landed exactly where ADR-041 §3a matters:
+   * `InvoiceRecord.blocksIssuanceElsewhere` treats a `failed` record as
+   * blocking UNLESS its failure mode is `rejected`, because only a terminal
+   * rejection means another connection is free to issue. So a timeout that may
+   * already have committed an FS was recorded as `rejected`, the
+   * one-document-per-order guard released, and a second fiscal document became
+   * possible for one sale.
+   *
+   * Optional, because a bridge older than the field omits it - and an absent
+   * value is read as `'rejected'`, which is the pre-existing behaviour rather
+   * than a new assumption.
+   */
+  failureMode?: string;
 }

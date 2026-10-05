@@ -27,6 +27,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'net-priced-order',
       'no-configuration-for-country',
       'threshold-currency-mismatch',
+      'no-connection-declares-document-kind',
     ]);
   });
 
@@ -36,6 +37,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-required-tax-id',
       'missing-tax-rate',
       'tax-rate-conflict',
+      'line-total-mismatch',
       'trigger-model-manual',
       'trigger-model-batched',
     ]);
@@ -62,6 +64,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-required-tax-id',
       'missing-tax-rate',
       'tax-rate-conflict',
+      'line-total-mismatch',
       'trigger-model-batched',
     ]);
     expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');

@@ -60,6 +60,7 @@ const SCAN_ROOTS = [
   'libs/integrations/inpost',
   'libs/integrations/ksef',
   'libs/integrations/subiekt',
+  'libs/integrations/subiekt-nexo',
   'libs/integrations/woocommerce',
   // #2390 / ADR-055: the OL-OMS answers from OpenLinker's own tables, not a
   // vendor API — there is no network boundary to adapt across, and adding one

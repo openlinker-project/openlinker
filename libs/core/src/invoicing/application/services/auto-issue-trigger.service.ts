@@ -130,6 +130,10 @@ import {
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
 } from '@openlinker/core/sync';
+import { InvalidInvoiceLineError } from '../mappers/errors/invalid-invoice-line.error';
+// Same-context relative reach into `fiscalization`'s mapper error is not
+// available (cross-context), so the fiscal arm narrows by NAME rather than by
+// `instanceof` - see `isFiscalLineError` below.
 import { IInvoiceService } from './invoice.service.interface';
 import { INVOICE_SERVICE_TOKEN } from '../../invoicing.tokens';
 import type { Order } from '@openlinker/core/orders';
@@ -155,7 +159,10 @@ import type {
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import {
+  SalesDocumentUncountedUnresolvedReasonValues,
+  isTaxRateEnforced,
+} from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
@@ -240,6 +247,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   private readonly shippedViabilityWarned = new Set<string>();
 
   /**
+   * Connections warned once about an `auto-on-paid` order whose source reports
+   * no payment status at all. Same shape and same reason as
+   * {@link shippedViabilityWarned}: the condition is connection-level, so one
+   * warning carries it and per-order logging would bury it.
+   */
+  private readonly paidViabilityWarned = new Set<string>();
+
+  /**
    * One-time diagnosis: connection ids already warned about being the chosen
    * winner while carrying a `manual` trigger model on an install that has
    * OTHER sales-document candidates. Routing resolves the winning connection
@@ -250,6 +265,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * connection, not per order.
    */
   private readonly manualWinnerWarned = new Set<string>();
+
+  /**
+   * Latch for the once-per-process "nobody declared a document kind" warning.
+   * Not keyed by connection, unlike {@link manualWinnerWarned}: the condition is a
+   * property of the WHOLE install (no connection declares a kind), so there is no
+   * one connection it is about.
+   */
+  private unconfiguredRoutingWarned = false;
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
@@ -449,11 +472,28 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
     const decision = await this.resolveSalesDocumentDecision(order, candidates);
     if (decision === null) {
-      // Neither the rule engine nor the operator-configured resolver has
-      // anything to route with — mirrors the pre-#2173 zero-eligible-candidate
-      // short-circuit below, NOT a block, same reasoning as the
-      // zero-connections case above.
-      return { kind: 'none' };
+      // Connections that CAN issue exist - the zero-connections arm above
+      // already returned - but not one of them declares
+      // `config.salesDocument.documentKind`, so there was no candidate to
+      // route to.
+      //
+      // This used to `return { kind: 'none' }` with nothing persisted, and
+      // that silence was the defect (#3365). An order reached its destination,
+      // carried no document, and every operator surface agreed nothing was
+      // wrong: no badge, no counter, no failed job, one log line nobody reads.
+      // A Subiekt connection created through the guided wizard was in exactly
+      // this state from the moment it was created.
+      //
+      // It is a genuine block rather than a "nothing to do", by the same test
+      // the zero-connections arm passes in the opposite direction: there IS an
+      // operator action that fixes it, on this order, today - name the kind on
+      // Settings -> Sales documents.
+      return this.reportUnresolved(
+        'no-connection-declares-document-kind',
+        candidates,
+        order,
+        sourceEventId,
+      );
     }
 
     switch (decision.kind) {
@@ -552,16 +592,36 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     const eligible = candidates.filter((candidate) => candidate.documentKind !== null);
     const candidateIds = eligible.map((candidate) => candidate.connectionId);
 
-    this.logger.error(
-      `Auto-issue skipped: sales-document routing unresolved (reason=${reason}) — issuing nothing ` +
-        `rather than issuing on an ambiguous or unsupported pick. orderId=${order.id} ` +
-        `candidateConnectionIds=${candidateIds.join(',')} sourceEventId=${sourceEventId ?? 'n/a'}. ` +
-        `Set config.salesDocument.documentKind and config.invoicing.isPrimary appropriately.`,
-    );
+    // #3365 review: `'no-connection-declares-document-kind'` is what an install
+    // that never opted into sales-document routing looks like - #2156 does not
+    // back-fill `config.salesDocument.documentKind` - so logging it at ERROR on
+    // every order told a healthy install that something was broken, once per
+    // order, forever. It is warned ONCE (the `warnOnceIfManualWinnerDisablesInstall`
+    // shape, for the same reason), while a genuine misconfiguration such as
+    // `'ambiguous-connection-no-primary'` keeps its per-order error.
+    if (SalesDocumentUncountedUnresolvedReasonValues.includes(reason)) {
+      if (!this.unconfiguredRoutingWarned) {
+        this.unconfiguredRoutingWarned = true;
+        this.logger.warn(
+          `Auto-issue is not running: no connection declares config.salesDocument.documentKind, ` +
+            `so there is nothing to route to (${candidates.length} capable connection(s)). This is ` +
+            `the normal state of an install that has not configured sales documents - orders still ` +
+            `carry the per-order reason, and this is logged once rather than per order. Set the ` +
+            `document kind on Settings -> Sales documents to turn issuing on.`,
+        );
+      }
+    } else {
+      this.logger.error(
+        `Auto-issue skipped: sales-document routing unresolved (reason=${reason}) — issuing nothing ` +
+          `rather than issuing on an ambiguous or unsupported pick. orderId=${order.id} ` +
+          `candidateConnectionIds=${candidateIds.join(',')} sourceEventId=${sourceEventId ?? 'n/a'}. ` +
+          `Set config.salesDocument.documentKind and config.invoicing.isPrimary appropriately.`,
+      );
+    }
 
     // PII-free detail: a count and the neutral routing reason only. It reaches
     // an operator screen verbatim, so it must never carry buyer data.
-    const detail = this.describeUnresolvedDetail(reason, eligible);
+    const detail = this.describeUnresolvedDetail(reason, eligible, candidates);
 
     return this.reportBlock(
       { reason: 'unresolved-routing', unresolvedReason: reason, detail },
@@ -586,7 +646,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   private describeUnresolvedDetail(
     reason: SalesDocumentUnresolvedReason,
     eligible: readonly SalesDocumentRoutingCandidate[],
+    candidates: readonly SalesDocumentRoutingCandidate[],
   ): string {
+    if (reason === 'no-connection-declares-document-kind') {
+      // `eligible` is empty by construction here, so the count that means
+      // anything to an operator is the pool they can go and fix.
+      const noun = candidates.length === 1 ? 'connection' : 'connections';
+      return `${candidates.length} capable ${noun}, none declaring a document kind`;
+    }
     if (reason === 'ambiguous-connection-no-primary') {
       const primaryCount = eligible.filter((candidate) => candidate.isPrimary).length;
       const qualifier = primaryCount === 0 ? 'none marked primary' : 'more than one marked primary';
@@ -842,10 +909,24 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           matchedRuleId,
         );
       }
-      // Anything else is `indeterminate`, NOT a clear (#2100 review). Three of the
+      if (error instanceof InvalidInvoiceLineError) {
+        // #3365 - the order's own lines do not sum to its own total, so no
+        // document could state an amount without contradicting itself. This is
+        // a fact about the order's numbers and will throw identically on every
+        // future transition, so it earns a persisted, visible reason instead of
+        // the silence below. Note this does not weaken the `indeterminate`
+        // argument in the next comment: that one defends against CLEARING a
+        // true reason, and this SETS one.
+        return await this.reportBlock(
+          { reason: 'line-total-mismatch', detail: describeLineTotalMismatch(error) },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      // Anything else is `indeterminate`, NOT a clear (#2100 review). Two of the
       // four errors this class allow-lists as deterministic and PII-clean
-      // (`InvalidBuyerProfileError`, `InvalidInvoiceLineError`,
-      // `UnsupportedPriceTreatmentError`) come out of command composition here and
+      // (`InvalidBuyerProfileError`, `UnsupportedPriceTreatmentError`) come out
+      // of command composition here and
       // will throw identically on every future transition. Clearing on them would
       // erase a true reason — say, the ambiguity the operator has just fixed — and
       // replace it with nothing at all: no invoice, no badge, no count, and no
@@ -955,9 +1036,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           matchedRuleId,
         );
       }
-      // Same reasoning as dispatchInvoice's catch: InvalidFiscalLineError /
-      // UnsupportedFiscalPriceTreatmentError are deterministic and will throw
-      // identically on every future transition, so clearing on them would
+      if (isFiscalLineError(error)) {
+        // #3365 - the receipt half of the same fact. A fiscal registration may
+        // not transmit lines that contradict their own total either, and the
+        // condition is equally permanent, so it earns the same persisted
+        // reason rather than the silence below.
+        return await this.reportBlock(
+          { reason: 'line-total-mismatch', detail: describeLineTotalMismatch(error) },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      // Same reasoning as dispatchInvoice's catch:
+      // UnsupportedFiscalPriceTreatmentError is deterministic and will throw
+      // identically on every future transition, so clearing on it would
       // erase a true reason and replace it with nothing at all.
       return { kind: 'indeterminate' };
     }
@@ -1060,12 +1152,39 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     connectionId: string,
   ): TriggerGateOutcome {
     switch (triggerModel) {
-      case 'auto-on-paid':
+      case 'auto-on-paid': {
         // D3 level-evaluated: qualifies iff the order is currently paid. An unpaid
         // order is `waiting`, never `blocked` — the next transition re-evaluates it.
-        return order.paymentStatus === PAYMENT_STATUS.Paid
-          ? { kind: 'proceed' }
-          : { kind: 'waiting' };
+        if (order.paymentStatus === PAYMENT_STATUS.Paid) {
+          return { kind: 'proceed' };
+        }
+        // An order whose source reports NO payment status at all is a different
+        // fact from one reporting it unpaid, and the difference is invisible
+        // without this (#3365 audit). A connection whose source never populates
+        // the field waits for ever: no document, no warehouse release, no stock
+        // movement, and nothing written anywhere - because `waiting` is
+        // legitimately not a block, so no reason is persisted and no badge
+        // renders.
+        //
+        // That is exactly the shape a shop source was in before it learnt to
+        // report `paid`, and it survives for any source whose vocabulary an
+        // adapter does not know: a WooCommerce store running a custom
+        // order-status plugin, or a PrestaShop state id the shop does not have.
+        //
+        // Warned ONCE per connection, mirroring the `auto-on-shipped` viability
+        // warning twelve lines below, so the silence is diagnosable without
+        // per-poll spam. PII-clean: connection id and the absence itself.
+        if (order.paymentStatus === undefined && !this.paidViabilityWarned.has(connectionId)) {
+          this.paidViabilityWarned.add(connectionId);
+          this.logger.warn(
+            `auto-on-paid connection has seen an order whose source reports NO payment status: ` +
+              `connectionId=${connectionId}. If this source never populates it, the connection ` +
+              `will never auto-issue - and because an unpaid order is 'waiting' rather than ` +
+              `blocked, nothing else will say so.`,
+          );
+        }
+        return { kind: 'waiting' };
+      }
       case 'auto-on-shipped':
         // D6: honored only where the source surfaces 'shipped' inbound.
         if (order.status === 'shipped') {
@@ -1309,4 +1428,46 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       return undefined;
     }
   }
+}
+
+/**
+ * Turn a line-vs-total refusal into the PII-FREE `detail` the operator reads
+ * beside the block badge (#3365).
+ *
+ * The message these errors carry is composed entirely from the order id, two
+ * amounts and, where the adapter reported one, the discount that explains the
+ * gap (`describeDiscountCause`) - ids, numbers and neutral vocabulary, which is
+ * exactly what `SalesDocumentBlock.detail` permits. It carries no buyer data
+ * and no provider error text; both errors are already on this class's
+ * `PII_SAFE_ERROR_NAMES` allow-list for the same reason.
+ *
+ * Truncated because `detail` reaches a badge rather than a log, and a sentence
+ * an operator cannot finish reading is not a better answer than a short one.
+ */
+function describeLineTotalMismatch(error: Error): string {
+  const message = error.message.trim();
+  return message.length > LINE_TOTAL_MISMATCH_DETAIL_MAX
+    ? `${message.slice(0, LINE_TOTAL_MISMATCH_DETAIL_MAX - 1)}\u2026`
+    : message;
+}
+
+const LINE_TOTAL_MISMATCH_DETAIL_MAX = 400;
+
+/**
+ * Recognise the fiscal twin of `InvalidInvoiceLineError` by NAME.
+ *
+ * `InvalidFiscalLineError` lives in `@openlinker/core/fiscalization`, and this
+ * service already reaches that context only through a lazy `ModuleRef` so the
+ * module graph stays acyclic (`fiscalization` imports `invoicing`, never the
+ * reverse). A top-level `import` for an `instanceof` would reverse that edge
+ * for one error class.
+ *
+ * Narrowing by name is weaker than `instanceof` and the weakness is bounded:
+ * the worst case is that a same-named error from elsewhere is reported as a
+ * line-total mismatch, which is a mislabelled block rather than a missed one -
+ * and the class is already on this file's `PII_SAFE_ERROR_NAMES` allow-list by
+ * the same name, so the two agree.
+ */
+function isFiscalLineError(error: unknown): error is Error {
+  return error instanceof Error && error.name === 'InvalidFiscalLineError';
 }

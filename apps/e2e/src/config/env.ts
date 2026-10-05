@@ -168,9 +168,13 @@ export interface E2eEnv {
    */
   freshAllegroCategoryPath: string[];
   /**
-   * Optional InPost locker id override for label generation (S6). Used when the
-   * buyer-selected pickup point is unusable — Allegro-sandbox lockers are known
-   * not to exist in the InPost sandbox.
+   * InPost locker id used for label generation (S6), when the buyer-selected
+   * pickup point is unusable — Allegro-sandbox lockers are known not to exist
+   * in the InPost sandbox.
+   *
+   * Defaults to a real sandbox APM rather than to `null`, because unset meant
+   * every real-label spec skipped. Set `E2E_PACZKOMAT_ID=none` to get `null`
+   * back on a stack that genuinely has no usable locker.
    */
   paczkomatId: string | null;
   /** Directory holding the `resume` sentinel the manual checkpoints wait on. */
@@ -216,6 +220,17 @@ export interface E2eEnv {
    * variant on (mirrors the `E2E_TEST_RATE_LIMIT` opt-in precedent).
    */
   allowDestructivePrune: boolean;
+  /**
+   * Opt-in for the Subiekt GT suite (`tests/subiekt/**`).
+   *
+   * That suite triggers a real catalogue sweep against a live Subiekt GT
+   * through the bridge - a Windows-only dependency that no CI runner has, and
+   * one whose data is somebody's actual warehouse. It reads and never writes,
+   * but a full sweep on an unsuspecting stack is still load nobody asked for,
+   * so it is opt-in rather than skip-if-absent (`E2E_TEST_RATE_LIMIT`
+   * precedent). Set `E2E_TEST_SUBIEKT=true` to run it.
+   */
+  testSubiekt: boolean;
   /**
    * Direct Postgres connection string, used ONLY by `tests/sales-documents/`
    * (#2563 M10) to seed rows for states no HTTP API can put the stack into on
@@ -322,7 +337,25 @@ export function resolveEnv(): E2eEnv {
       .split('|')
       .map((s) => s.trim())
       .filter((s) => s.length > 0),
-    paczkomatId: optional(process.env.E2E_PACZKOMAT_ID),
+    // Defaulted rather than left optional (#3365 audit). Unset, every spec that
+    // must buy a REAL label skipped - and because the ShipX sandbox enrolls no
+    // courier carrier, a locker is the only way to buy one at all. The single
+    // assertion that the marketplace relay fires without an operator click had
+    // therefore never executed on any run, while the project reported green.
+    // `BIK01M` is a real InPost-sandbox APM this suite has used successfully;
+    // a stack whose organization serves a different set overrides it.
+    //
+    // `none` is the SENTINEL for "this stack has no usable locker", and it
+    // exists because defaulting took that state away: `optional()` maps a blank
+    // value to `undefined`, so an operator clearing the variable to disable
+    // locker dispatch silently got `BIK01M` back. A stack that genuinely cannot
+    // buy a locker label has to be able to say so, and the skip it then
+    // produces is a true statement about the stack rather than the accident
+    // this default was added to remove.
+    paczkomatId:
+      optional(process.env.E2E_PACZKOMAT_ID)?.toLowerCase() === 'none'
+        ? null
+        : (optional(process.env.E2E_PACZKOMAT_ID) ?? 'BIK01M'),
     resumeDir: process.env.E2E_RESUME_DIR?.trim() || DEFAULTS.resumeDir,
     psWebserviceKey: optional(process.env.OL_PS_WEBSERVICE_KEY),
     psAdminUrl: optional(process.env.OL_PS_ADMIN_URL)
@@ -338,6 +371,7 @@ export function resolveEnv(): E2eEnv {
     testRateLimit: process.env.E2E_TEST_RATE_LIMIT?.trim() === 'true',
     testInpostWebhook: process.env.E2E_TEST_INPOST_WEBHOOK?.trim() === 'true',
     allowDestructivePrune: process.env.E2E_ALLOW_DESTRUCTIVE_PRUNE?.trim() === 'true',
+    testSubiekt: process.env.E2E_TEST_SUBIEKT?.trim() === 'true',
     databaseUrl: process.env.E2E_DATABASE_URL?.trim() || DEFAULTS.databaseUrl,
   };
 }

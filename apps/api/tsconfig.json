@@ -40,6 +40,8 @@
       "@openlinker/integrations-eparagony/*": ["../../libs/integrations/eparagony/src/*"],
       "@openlinker/integrations-infakt": ["../../libs/integrations/infakt/src/index.ts"],
       "@openlinker/integrations-infakt/*": ["../../libs/integrations/infakt/src/*"],
+      "@openlinker/integrations-subiekt-nexo": ["../../libs/integrations/subiekt-nexo/src/index.ts"],
+      "@openlinker/integrations-subiekt-nexo/*": ["../../libs/integrations/subiekt-nexo/src/*"],
       "@openlinker/oms": ["../../libs/oms/src/index.ts"],
       "@openlinker/oms/*": ["../../libs/oms/src/*"],
       "@openlinker/plugin-sdk": ["../../libs/plugin-sdk/src/index.ts"],

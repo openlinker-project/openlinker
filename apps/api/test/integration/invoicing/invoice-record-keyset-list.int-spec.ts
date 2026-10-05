@@ -39,7 +39,7 @@ function row(
     {
       connectionId: CONNECTION_ID,
       orderId,
-      providerType: 'subiekt',
+      providerType: 'subiekt-gt',
       documentType: 'invoice',
       status: 'issued',
       idempotencyKey: null,

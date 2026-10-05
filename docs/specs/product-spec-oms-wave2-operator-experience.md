@@ -273,7 +273,7 @@ row shows the **question**, the **current answer**, **why** that is the answer, 
 | **What state is an order in?** | `OpenLinker` · `My other system` · `OpenLinker can't tell` | *OpenLinker works it out from what it can see — the shipment, the invoice, any hold you placed.* |
 | **What happens to returned goods?** | `OpenLinker` · `The marketplace` · `My other system` · `OpenLinker can't tell` | *Nothing decides yet — you handle returns by hand.* (until returns ship) |
 | **Who issues refunds?** | `OpenLinker` — **always** | *Only OpenLinker holds the payment credentials, so only OpenLinker can do it. This one can't be handed over.* |
-| **Who issues invoices and receipts?** | *(link)* `Set up under Sales documents →` | *Configured per country under Sales documents.* |
+| **Who issues invoices and receipts?** | *(link)* `Set up under Document routing →` | *Configured per country under Document routing.* |
 
 Notes that are load-bearing rather than cosmetic:
 
@@ -647,7 +647,7 @@ composer where `( action parameters render here )` appears.
 
 | Parameter | Control | Default | Copy |
 |---|---|---|---|
-| — | none | — | *"Which document gets issued, and by which provider, is decided by your Sales documents rules. This automation only decides **when**."* + link to `/settings/sales-documents` |
+| — | none | — | *"Which document gets issued, and by which provider, is decided by your Document routing rules. This automation only decides **when**."* + link to `/settings/sales-documents` |
 
 A1 deliberately takes **no** parameters. ADR-041 routing already owns document-kind selection, and a
 second place to choose it is a second answer that can disagree with the first.
