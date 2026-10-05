@@ -24,6 +24,12 @@
  *   weightKgMax       x 1000  == defaultWeightGramsMax
  *   templateMaxLength x 1     == parcelTemplateMaxLength
  *
+ * AWAITING ITS SIBLING, not abandoned: `PARCEL_PROFILE_BOUNDS` arrives with
+ * #3661 (#3651), so until that is on main this script cannot pass and is NOT
+ * in `check:invariants`. When #3661 has merged, the change that updates #3662
+ * to main also adds both invocations to `check:invariants`, before #3662
+ * merges (#3662's description, "Merge order").
+ *
  * SCOPE — what this does NOT catch:
  *   1. Floors. The server's `*Min` bounds are not mirrored as constants; the
  *      dialog's "greater than zero" rule is checked in wire units directly.
