@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 32 bulk / 5 fiscal / 7 fan-out across 63 job types —
+ * table (19 realtime / 33 bulk / 5 fiscal / 7 fan-out across 64 job types —
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -29,7 +29,8 @@
  * `fulfillment.work.dispatch` producer, for the identical
  * cost-of-starvation reason. `inventory.saleDecrement` joined `realtime`
  * with #3453 (a late decrement is an oversell window), and
- * `fulfillment.work.rerouteSweep` joined `bulk` with #3485.
+ * `fulfillment.work.rerouteSweep` joined `bulk` with #3485, and `orders.export`
+ * beside it with #3534.
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -62,7 +63,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 63 job types 19/32/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 64 job types 19/33/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -143,8 +144,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // reason: its candidates are orders ALREADY held because routing could not
     // place them (out of stock, typically), so a tick of delay is immaterial.
     // The routing itself happens in the `fulfillment.work.route` children it
-    // enqueues, which stay `realtime`.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(32);
+    // enqueues, which stay `realtime`. #3534's `orders.export` is the
+    // thirty-third: an operator-requested CSV/XLSX export is a query-then-write
+    // job, not a buyer-facing write, the restatement driver's reasoning.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(33);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
