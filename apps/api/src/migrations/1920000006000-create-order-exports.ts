@@ -9,7 +9,7 @@
  * (the `invoice_records.sourceDocument` `StoredDocument` pattern).
  *
  * Timestamp: this epic's synthetic block (#3507), one step after
- * `1914000005000-add-order-note-pinned-at.ts`.
+ * `1920000005000-add-order-note-pinned-at.ts`.
  *
  * Renumbered from `1912000006000` (#3633 review — `main` took the `1912` prefix).
  * TypeORM decides pending by class name, so it re-runs this migration on any
@@ -18,8 +18,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrderExports1914000006000 implements MigrationInterface {
-  name = 'CreateOrderExports1914000006000';
+export class CreateOrderExports1920000006000 implements MigrationInterface {
+  name = 'CreateOrderExports1920000006000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

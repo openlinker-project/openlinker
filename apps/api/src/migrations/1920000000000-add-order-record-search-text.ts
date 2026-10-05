@@ -11,7 +11,7 @@
  * (`1833000000000-add-destination-categories-table.ts`).
  *
  * **There is deliberately no backfill here.** Existing rows keep the column
- * default `''` until `1914000007000-recompute-order-record-search-text.ts`,
+ * default `''` until `1920000007000-recompute-order-record-search-text.ts`,
  * which re-derives every row under the CURRENT `OL_STORE_PII` setting — a
  * strict superset of anything a backfill here could do. A backfill in this
  * migration could not honour that flag without duplicating the recompute, and
@@ -25,14 +25,14 @@
  * that prefix), so TypeORM, which decides pending by class name, re-runs it on
  * any database that applied it under its old name.
  *
- * Timestamp is this epic's synthetic block (#3507): 1914000000000 -
+ * Timestamp is this epic's synthetic block (#3507): 1920000000000 -
  * 1914999999999, above `main`'s `1912000000000` tail and #3631's
  * `1913000000000`–`1913000000002`.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordSearchText1914000000000 implements MigrationInterface {
-  name = 'AddOrderRecordSearchText1914000000000';
+export class AddOrderRecordSearchText1920000000000 implements MigrationInterface {
+  name = 'AddOrderRecordSearchText1920000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Provisioned for the `searchText LIKE '%…%'` predicate via gin_trgm_ops —

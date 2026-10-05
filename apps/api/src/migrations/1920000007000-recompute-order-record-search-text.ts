@@ -2,7 +2,7 @@
  * Recompute `order_records.searchText` for every row (#3507 G03-1, G03-14)
  *
  * Data only, no DDL. This is the ONE full-table pass that writes
- * `searchText`: `1914000000000-add-order-record-search-text.ts` adds the column
+ * `searchText`: `1920000000000-add-order-record-search-text.ts` adds the column
  * with no backfill (#3633 review — a backfill there would index buyer PII on
  * an `OL_STORE_PII=false` install before this pass stripped it again), so on a
  * fresh install every pre-existing row is populated here, under the correct
@@ -55,7 +55,7 @@
  * EXCLUSIVE`, so concurrent reads of `order_records` are not blocked.
  *
  * Timestamp: this epic's synthetic block (#3507), one step after
- * `1914000006000-create-order-exports.ts`. Renumbered from `1912000007000`
+ * `1920000006000-create-order-exports.ts`. Renumbered from `1912000007000`
  * (#3633 review); it carries no DDL, and re-running it is a no-op by
  * construction (every unchanged row is skipped).
  */
@@ -205,8 +205,8 @@ async function writePage(
   );
 }
 
-export class RecomputeOrderRecordSearchText1914000007000 implements MigrationInterface {
-  name = 'RecomputeOrderRecordSearchText1914000007000';
+export class RecomputeOrderRecordSearchText1920000007000 implements MigrationInterface {
+  name = 'RecomputeOrderRecordSearchText1920000007000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     const storePii = getEnvBoolean('OL_STORE_PII', true);
@@ -259,6 +259,6 @@ export class RecomputeOrderRecordSearchText1914000007000 implements MigrationInt
   public async down(): Promise<void> {
     // Intentionally a no-op. `searchText` is derived data: the "before" state
     // was empty or stale text, not a value worth restoring, and the column
-    // itself belongs to `1914000000000`, whose own `down` drops it.
+    // itself belongs to `1920000000000`, whose own `down` drops it.
   }
 }

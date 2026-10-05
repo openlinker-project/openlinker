@@ -18,7 +18,7 @@
  * search box and not the other, with nothing failing.
  *
  * NOT compared: the copy frozen inside
- * `apps/api/src/migrations/1914000007000-recompute-order-record-search-text.ts`.
+ * `apps/api/src/migrations/1920000007000-recompute-order-record-search-text.ts`.
  * A migration keeps meaning what it meant when it ran, so that copy must NOT
  * follow later edits to the live pair (`docs/lessons.md`, "A migration
  * backfill must copy application logic, never call it").

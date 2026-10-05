@@ -8,7 +8,7 @@
  * `order_changes`, `refund_records`).
  *
  * Timestamp: this epic's synthetic block (#3507), one step after
- * `1914000003000-create-order-notes.ts`.
+ * `1920000003000-create-order-notes.ts`.
  *
  * Renumbered from `1912000004000` (#3633 review — `main` took the `1912` prefix).
  * TypeORM decides pending by class name, so it re-runs this migration on any
@@ -17,8 +17,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrderTags1914000004000 implements MigrationInterface {
-  name = 'CreateOrderTags1914000004000';
+export class CreateOrderTags1920000004000 implements MigrationInterface {
+  name = 'CreateOrderTags1920000004000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);

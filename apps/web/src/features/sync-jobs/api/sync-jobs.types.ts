@@ -50,10 +50,12 @@ export const JOB_OUTCOME_REASON_VALUES = [
   'master_deleted',
   // Auto-dispatch (#3415) — six settled refusals that used to render as one
   // undifferentiated "business failure". Mirrors `JobOutcomeReasonValues` in
-  // `@openlinker/core/sync`, which this bundle cannot import (#591).
+  // `@openlinker/core/sync`, which this bundle cannot import (#591);
+  // `scripts/check-job-outcome-reason-mirror.mjs` fails the build on drift.
   'auto_dispatch_payload_invalid',
   'auto_dispatch_not_enabled',
   'auto_dispatch_no_weight',
+  'auto_dispatch_no_dimensions',
   'auto_dispatch_no_address',
   'auto_dispatch_no_delivery_method',
   'auto_dispatch_work_not_eligible',

@@ -20,6 +20,7 @@ import { ReturnsModule } from '@openlinker/core/returns';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
+import { MappingsModule } from '@openlinker/core/mappings';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -110,6 +111,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     // @Optional() injection resolves under this role.
     PriceChangeObserverBindingModule,
     ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
+    MappingsModule, // #3651 — exposes FULFILLMENT_ROUTING_SERVICE_TOKEN for the auto-dispatch handler's parcel profile
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
     // #2399 — exposes FULFILLMENT_HANDSHAKE_SERVICE_TOKEN. A leaf module: it
     // imports no sibling context, so this edge adds no cycle risk.

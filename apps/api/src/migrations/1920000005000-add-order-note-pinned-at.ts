@@ -5,14 +5,14 @@
  *
  * A partial unique index on `internalOrderId`, scoped to `pinnedAt IS NOT
  * NULL AND deletedAt IS NULL` — the `order_column_presets` workspace-default
- * precedent (`1914000002000-create-order-column-presets.ts`). `pin()` clears
+ * precedent (`1920000002000-create-order-column-presets.ts`). `pin()` clears
  * whichever note previously held the order's pin in the SAME transaction as
  * setting the new one, so this index never actually refuses a legitimate
  * pin; it is the backstop against a concurrent writer bypassing that
  * discipline.
  *
  * Timestamp: this epic's synthetic block (#3507), one step after
- * `1914000004000-create-order-tags.ts`.
+ * `1920000004000-create-order-tags.ts`.
  *
  * Renumbered from `1912000005000` (#3633 review — `main` took the `1912` prefix).
  * TypeORM decides pending by class name, so it re-runs this migration on any
@@ -21,8 +21,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderNotePinnedAt1914000005000 implements MigrationInterface {
-  name = 'AddOrderNotePinnedAt1914000005000';
+export class AddOrderNotePinnedAt1920000005000 implements MigrationInterface {
+  name = 'AddOrderNotePinnedAt1920000005000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
