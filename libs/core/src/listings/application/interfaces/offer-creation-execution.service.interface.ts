@@ -12,6 +12,7 @@
  * @module libs/core/src/listings/application/interfaces
  */
 
+import type { OfferCreationRecord } from '../../domain/entities/offer-creation-record.entity';
 import type {
   ExecuteOfferCreationInput,
   ExecuteOfferCreationResult,
@@ -32,4 +33,15 @@ export interface IOfferCreationExecutionService {
    * can schedule a retry.
    */
   executeCreation(input: ExecuteOfferCreationInput): Promise<ExecuteOfferCreationResult>;
+
+  /**
+   * Settle a record whose creation job died (#3505, G01-2): nothing will run
+   * the create again, so a record still `pending` moves to `failed` with an
+   * error saying so — and that the marketplace MAY already have the offer,
+   * since a job that died on an ambiguous write cannot tell.
+   *
+   * Conditional: a record already past `pending` is left exactly as it is.
+   * Resolves with the record when it was moved, `null` when it was not.
+   */
+  abandonCreation(recordId: string, reason: string): Promise<OfferCreationRecord | null>;
 }

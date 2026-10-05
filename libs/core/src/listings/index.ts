@@ -525,6 +525,15 @@ export type { ShopAttribute, ShopAttributeTerm } from './domain/types/shop-attri
 export type { ShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
 export { isShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
 export type { IShopAttributeReadService } from './application/interfaces/shop-attribute-read.service.interface';
+// Price-only shop write (#3505, G01-10): change an already-published product's
+// price without re-sending stock / name / description. Narrowed from the
+// `ProductPublisher` adapter via `isShopProductPriceUpdater`.
+export type { ShopProductPriceUpdater } from './domain/ports/capabilities/shop-product-price-updater.capability';
+export { isShopProductPriceUpdater } from './domain/ports/capabilities/shop-product-price-updater.capability';
+export type {
+  ShopProductPriceAmount,
+  UpdateShopProductPriceCommand,
+} from './domain/types/shop-product-price-update.types';
 // Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
