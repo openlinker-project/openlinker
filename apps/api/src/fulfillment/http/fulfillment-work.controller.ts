@@ -273,10 +273,15 @@ export class FulfillmentWorkController {
       // `BenchParcelService.verifyUnit`. Best-effort and after the action has
       // already committed, so a notify failure never turns a successful
       // close into a failed response.
-      if (action === 'close') {
-        await this.notifyParcelClosed(work);
+      let current = work;
+      if (action === 'close' && (await this.notifyParcelClosed(work))) {
+        // The notify claims and/or releases the work's dispatch-relay slot,
+        // and each of those bumps `version`, so the close's own view now
+        // carries a stale token: an operator acting on it next would be
+        // refused as a version conflict. Re-read, as the bench's close does.
+        current = await this.worklist.get(work.id);
       }
-      return this.toDto(work, await this.loadFacts([work]));
+      return this.toDto(current, await this.loadFacts([current]));
     } catch (error) {
       throw this.toHttp(error);
     }
@@ -294,12 +299,12 @@ export class FulfillmentWorkController {
    * and skipped rather than notified against a connection that does not
    * exist.
    */
-  private async notifyParcelClosed(work: FulfillmentWorkView): Promise<void> {
+  private async notifyParcelClosed(work: FulfillmentWorkView): Promise<boolean> {
     if (work.assignedConnectionId === null) {
       this.logger.warn(
         `Fulfilment work ${work.id} closed with no assigned connection; nothing to notify`
       );
-      return;
+      return false;
     }
     await this.parcelClosureNotifier.notifyParcelClosed({
       workId: work.id,
@@ -311,6 +316,7 @@ export class FulfillmentWorkController {
       // stale one.
       closedAt: work.updatedAt,
     });
+    return true;
   }
 
   @Patch(':workId/assignment')

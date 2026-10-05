@@ -696,6 +696,11 @@ describe('BenchParcelService (#2418)', () => {
       const markPacked = jest.fn().mockRejectedValue(new Error('order record vanished'));
       const { service, verification } = harness({ markPacked });
       (verification.verifyUnit as jest.Mock).mockImplementation(closingVerification());
+      // A close re-reads the state after notifying the channel (#3525), so the
+      // re-read must see the box closed too.
+      (verification.getState as jest.Mock).mockResolvedValue(
+        state({ closedAt: new Date('2026-09-04T10:00:00Z'), packedByUserId: 'user-1' })
+      );
 
       const result = await service.verifyUnit({
         workId: 'work-1',
@@ -740,6 +745,32 @@ describe('BenchParcelService (#2418)', () => {
         connectionId: EXECUTOR_ID,
         closedAt,
       });
+    });
+
+    it('should answer with the post-notify token when the notify moved the version after the close', async () => {
+      // The notify's dispatch-relay claim bumps `version` after the close
+      // returned its state. Answering with the close's own token would make
+      // the packer's very next reopen bounce as stale.
+      const closedAt = new Date('2026-09-04T10:00:00Z');
+      const { service, verification } = harness({});
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt, packedByUserId: 'user-1', version: 5 }),
+      });
+      (verification.getState as jest.Mock).mockResolvedValue(
+        state({ closedAt, packedByUserId: 'user-1', version: 6 })
+      );
+
+      const result = await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(verification.getState).toHaveBeenCalledWith('work-1');
+      expect(result.parcel.version).toBe(6);
+      expect(result.parcel.closedAt).not.toBeNull();
     });
 
     it('notifies NOTHING when the verification did not close the parcel', async () => {

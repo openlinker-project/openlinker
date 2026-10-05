@@ -180,6 +180,7 @@ describe('FulfillmentWorkController', () => {
         updatedAt: new Date('2026-09-04T10:00:00Z'),
       });
       worklist.applyAction.mockResolvedValue(closedWork);
+      worklist.get.mockResolvedValue(closedWork);
       const { controller: c, parcelClosureNotifier } = build(worklist);
 
       await c.applyAction('work-1', 'close', body(), user);
@@ -189,6 +190,21 @@ describe('FulfillmentWorkController', () => {
         connectionId: '11111111-1111-1111-1111-111111111111',
         closedAt: new Date('2026-09-04T10:00:00Z'),
       });
+    });
+
+    it('should answer with the post-notify version when the notify moved it after the close', async () => {
+      worklist.applyAction.mockResolvedValue(
+        view({ status: 'closed', assignedConnectionId: '11111111-1111-1111-1111-111111111111', version: 5 })
+      );
+      worklist.get.mockResolvedValue(
+        view({ status: 'closed', assignedConnectionId: '11111111-1111-1111-1111-111111111111', version: 6 })
+      );
+      const { controller: c } = build(worklist);
+
+      const res = await c.applyAction('work-1', 'close', body(), user);
+
+      expect(worklist.get).toHaveBeenCalledWith('work-1');
+      expect(res.version).toBe(6);
     });
 
     it('does NOT notify for any other action', async () => {
