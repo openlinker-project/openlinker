@@ -18,8 +18,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderFulfillmentBlockedAt1908000000000 implements MigrationInterface {
-  name = 'AddOrderFulfillmentBlockedAt1908000000000';
+export class AddOrderFulfillmentBlockedAt1911000000000 implements MigrationInterface {
+  name = 'AddOrderFulfillmentBlockedAt1911000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
