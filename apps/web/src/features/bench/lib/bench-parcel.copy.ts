@@ -528,6 +528,7 @@ export const benchParcelCopy = {
       madeBadge: 'Receipt made',
       linkBody: 'Open with the link below.',
       openAction: 'Open receipt',
+      linkPending: 'Getting the link. One moment.',
       linkFailed: 'The link did not load.',
       retryAction: 'Try again',
       printAction: 'Print receipt',

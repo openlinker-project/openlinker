@@ -268,7 +268,9 @@ export function BenchDocumentsPanel({
               : renderDefaultReceiptBody(receiptMade, {
                   printReceipt,
                   linkUrl: receiptLink.data?.url ?? null,
-                  linkFailed: receiptLink.isError,
+                  // A retry keeps the query in `error` while it refetches, so
+                  // the card shows the pending state for it, not the old failure.
+                  linkFailed: receiptLink.isError && !receiptLink.isFetching,
                   retryLink: () => {
                     void receiptLink.refetch();
                   },
@@ -574,10 +576,17 @@ function renderDefaultReceiptBody(
             </Button>
           </p>
         ) : (
-          // Disabled until the link arrives, so what is pressed is always a real link.
-          <Button tone="secondary" disabled>
-            {copy.openAction}
-          </Button>
+          // Disabled until the link arrives, so what is pressed is always a real
+          // link; the status line says it is on its way, so a slow fetch never
+          // reads as "nothing to open" or as a failure.
+          <>
+            <p className="bench-documents__receipt-link-pending" role="status">
+              {copy.linkPending}
+            </p>
+            <Button tone="secondary" disabled>
+              {copy.openAction}
+            </Button>
+          </>
         )}
       </>
     );

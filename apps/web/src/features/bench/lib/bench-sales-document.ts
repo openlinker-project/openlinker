@@ -26,6 +26,8 @@ import type { BenchDocuments, BenchFiscalArtefact } from '../api/bench-parcel.ty
  * What a receipt can be handed over as, in the order one is preferred. Mirrors
  * `FiscalHandoverMediumValues` in `libs/core` (the browser cannot import core,
  * #591), so the card offers exactly the artefact the receipt route serves.
+ * `scripts/check-receipt-handover-medium-mirror.mjs` holds the two identical,
+ * values and order, under `check:invariants`.
  */
 const RECEIPT_HANDOVER_MEDIUMS = ['document', 'link'] as const;
 export type BenchReceiptHandover = (typeof RECEIPT_HANDOVER_MEDIUMS)[number];

@@ -232,7 +232,15 @@ export function parseBenchDocuments(payload: unknown): BenchDocuments {
   return benchDocumentsSchema.parse(payload);
 }
 
-export const benchReceiptLinkSchema = z.object({ url: z.string().min(1) });
+/**
+ * The link is a fiscal provider's own string, served verbatim, and it becomes an
+ * `href`. `target="_blank"` does not neutralise a `javascript:` href - the
+ * browser runs it in this document - so only an absolute http(s) URL parses. A
+ * `javascript:`, `data:` or relative value fails here and the card shows the
+ * link-failed state it already has, rather than a link that runs provider code
+ * on the OpenLinker origin.
+ */
+export const benchReceiptLinkSchema = z.object({ url: z.url({ protocol: /^https?$/ }) });
 
 export function parseBenchReceiptLink(payload: unknown): BenchReceiptLink {
   return benchReceiptLinkSchema.parse(payload);

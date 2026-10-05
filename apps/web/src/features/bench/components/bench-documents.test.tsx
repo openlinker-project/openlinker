@@ -14,6 +14,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import type { OpenLinkerPlugin } from '../../../shared/plugins';
+import { parseBenchReceiptLink } from '../api/bench-parcel.schema';
 import type {
   BenchDocuments,
   BenchInvoice,
@@ -451,6 +452,47 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
     expect(button).toBeDisabled();
     expect(screen.queryByRole('link', { name: 'Open receipt' })).toBeNull();
   });
+
+  it('should say the link is on its way while it is fetched, never that there is nothing to open', async () => {
+    mount(withDocument(receiptDoc()), 0, null, {
+      getReceiptLink: vi
+        .fn<(workId: string) => Promise<{ url: string }>>()
+        .mockReturnValue(new Promise(() => undefined)),
+    });
+
+    const pending = await screen.findByText('Getting the link. One moment.');
+    expect(pending).toHaveAttribute('role', 'status');
+    expect(screen.queryByText('There is no link to this receipt in OpenLinker.')).toBeNull();
+    expect(screen.queryByText(/The link did not load/)).toBeNull();
+  });
+
+  it('should show the pending state, not the old failure, while a retry is in flight', async () => {
+    const getReceiptLink = vi
+      .fn<(workId: string) => Promise<{ url: string }>>()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockReturnValue(new Promise(() => undefined));
+    mount(withDocument(receiptDoc()), 0, null, { getReceiptLink });
+
+    expect(await screen.findByText(/The link did not load/)).toBeInTheDocument();
+    act(() => {
+      screen.getByRole('button', { name: 'Try again' }).click();
+    });
+    expect(await screen.findByText('Getting the link. One moment.')).toBeInTheDocument();
+    expect(screen.queryByText(/The link did not load/)).toBeNull();
+  });
+
+  it.each(['javascript:alert(document.domain)', 'data:text/html,<script>alert(1)</script>'])(
+    'should never render a %s receipt link as an href, and report the link as failed',
+    async (url) => {
+      mount(withDocument(receiptDoc()), 0, null, {
+        // Through the real boundary parser, which is where a hostile scheme is refused.
+        getReceiptLink: () => Promise.resolve().then(() => parseBenchReceiptLink({ url })),
+      });
+
+      expect(await screen.findByText(/The link did not load/)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Open receipt' })).toBeNull();
+    }
+  );
 
   it('should offer a retry when the link fails to load', async () => {
     const getReceiptLink = vi
