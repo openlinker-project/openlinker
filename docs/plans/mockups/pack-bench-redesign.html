@@ -56,7 +56,12 @@
 
  /* ── Real shell topbar (mirrors AppShell's .shell-topbar / .shell-brand /
  .shell-crumbs / .shell-user-chip — no sidebar, since the bench route
- sits outside AuthenticatedAppLayout by design, #2413) ─────────────── */
+ sits outside AuthenticatedAppLayout by design, #2413). Since #3653 the
+ real bench renders the SAME ShellTopbar component every other page does,
+ with the logo in it because there is no sidebar to carry one. The
+ connectivity readout sits above the bench body instead, and there is no
+ separate "Signed in / Switch packer" strip: the user chip names the
+ packer, and its menu's Sign out goes to /login. ─────────────────────── */
  .topbar { display: flex; align-items: center; gap: var(--space-4); height: 52px; margin: 0 calc(var(--space-5) * -1) 0; padding: 0 var(--space-5); background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
  .shell-brand { display: flex; align-items: center; gap: 8px; }
  .shell-brand__mark { width: 24px; height: 24px; border-radius: 6px; background: var(--accent-primary); display: grid; place-items: center; color: var(--text-on-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; }
@@ -71,12 +76,6 @@
  .shell-user-chip__avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--status-review)); color: var(--text-inverse); display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 600; flex-shrink: 0; }
  .shell-user-chip__name { font-size: 12.5px; font-weight: 500; }
 
- /* ── Identity bar (real component: bench-identity-bar.tsx) ─────────── */
- .identity-bar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); background: var(--bg-surface-muted); border-bottom: 1px solid var(--border-subtle); }
- .identity-bar__who { font-size: 13px; color: var(--text-secondary); }
- .identity-bar__who strong { color: var(--text-primary); font-weight: 600; }
- .identity-bar__spacer { flex: 1; }
- .identity-bar__hint { font-size: 11.5px; color: var(--text-muted); }
 
  /* ── Buttons ─────────────────────────────────────────────────────── */
  .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); padding: 0 var(--space-4); height: 32px; background: var(--accent-primary); color: var(--text-on-primary); font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow-xs), var(--shadow-inset-top); }
@@ -301,12 +300,6 @@
 </button>
 </header>
 
- <div class="identity-bar">
- <span class="identity-bar__who" id="identityWho">Signed in <strong>Marta Kowalczyk</strong></span>
- <span class="identity-bar__spacer"></span>
- <span class="identity-bar__hint">Switch packer clears this session — the next person signs themself in</span>
- <button class="btn btn--secondary btn--sm" type="button">Switch packer</button>
-</div>
 
  <div id="connBanner" class="alert alert--warning" style="border-radius:0; border-left:none; border-right:none; border-top:none; margin:0; display:none; align-items:center;">
  <p id="connBannerText" style="margin:0"></p>
@@ -1109,12 +1102,6 @@
       if (key === 'c') { document.getElementById('confirmManualBtn').click(); }
       else if (key === 'u') { document.getElementById('undoScanBtn').click(); }
       else if (key === 'n') { document.querySelector('.rail__search').nextElementSibling.querySelector('.btn--lg').click(); }
-    });
-
-    // Switch packer really does what its own hint says — it's a logout,
-    // dressed for a shared kiosk, so it opens the same lock/sign-in screen.
-    document.querySelectorAll('.identity-bar .btn--secondary').forEach(function (btn) {
-      btn.addEventListener('click', function () { setState('locked'); });
     });
 
     // Turn the sound off — a real toggle now wired to a real distinct

@@ -234,4 +234,31 @@ describe('plugin registry', () => {
       }).toThrow(/missing the required top-level `platformType`/);
     });
   });
+
+  describe('platform short labels (#3670)', () => {
+    const shortLabelFor = (platformType: string): string | undefined =>
+      plugins.find((p) => p.platformType === platformType)?.platform?.shortLabel;
+
+    it('should declare every short label as a non-empty label that differs from the display name', () => {
+      // A short label equal to the display name is noise, and an empty one would
+      // render a blank chip face; both mean the field should simply be omitted.
+      for (const plugin of plugins) {
+        const platform = plugin.platform;
+        if (platform?.shortLabel === undefined) continue;
+        expect(platform.shortLabel.trim()).not.toBe('');
+        expect(platform.shortLabel).not.toBe(platform.displayName);
+      }
+    });
+
+    it('should drop the incidental bridge detail from the Subiekt short labels', () => {
+      expect(shortLabelFor('subiekt-gt')).toBe('Subiekt GT');
+      expect(shortLabelFor('subiekt-nexo')).toBe('Subiekt nexo');
+    });
+
+    it('should leave Allegro without a short label so its chip face is the display name', () => {
+      // The sandbox/production distinction is per connection (`config.environment`),
+      // not per platform, so it is the chip that adds it - not a registry label.
+      expect(shortLabelFor('allegro')).toBeUndefined();
+    });
+  });
 });

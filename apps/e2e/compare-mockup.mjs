@@ -45,7 +45,6 @@ async function probe(page, map) {
 
 const MOCKUP_MAP = {
   topbar: '.topbar',
-  identityBar: '.identity-bar',
   metricRow: '.metric-row',
   metricCard: '.metric-card',
   metricLabel: '.metric-card__label',
@@ -86,8 +85,7 @@ const MOCKUP_MAP = {
 };
 
 const APP_MAP = {
-  topbar: '.bench-topbar',
-  identityBar: '.bench-identity-bar',
+  topbar: '.shell-topbar',
   metricRow: '.bench-metric-row',
   metricCard: '.bench-metric-card',
   metricLabel: '.bench-metric-card__label',
