@@ -63,6 +63,7 @@ function setup(
     Promise.resolve({ status: 200, data: path === '/orders' ? 10 : 16 }),
   );
   const del = jest.fn().mockResolvedValue({ status: 200, data: 1 });
+  const put = jest.fn().mockResolvedValue({ status: 200, data: 1 });
   const get = jest.fn().mockResolvedValue({ status: 200, data: { count: '0', list: [] } });
   const mapping = {
     getExternalIds: jest.fn().mockImplementation((type: string, id: string) =>
@@ -79,7 +80,7 @@ function setup(
     resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
   };
   const adapter = new ShoperOrderProcessorAdapter(
-    { post, delete: del, get } as unknown as ShoperHttpClient,
+    { post, put, delete: del, get } as unknown as ShoperHttpClient,
     mapping as unknown as IdentifierMappingPort,
     { resolveOrCreateCustomer } as unknown as ShoperCustomerProvisioner,
     { get: () => Promise.resolve(TAXES) } as unknown as ShoperTaxTableProvider,
@@ -93,12 +94,13 @@ function setup(
     { id: 'conn-1', config } as unknown as Connection,
     mappingConfig as unknown as IMappingConfigService,
   );
-  return { adapter, post, del, get, options, mappingConfig, resolveOrCreateCustomer };
+  return { adapter, post, put, del, get, options, mappingConfig, resolveOrCreateCustomer };
 }
 
 interface Harness {
   adapter: ShoperOrderProcessorAdapter;
   post: jest.Mock;
+  put: jest.Mock;
   del: jest.Mock;
   get: jest.Mock;
   options: { getShippingTaxId: jest.Mock; getCurrencyId: jest.Mock };
@@ -549,6 +551,149 @@ describe('ShoperOrderProcessorAdapter', () => {
       expect(resolveOrCreateCustomer).toHaveBeenCalledWith(
         expect.objectContaining({ firstName: 'Anna', lastName: 'Nowak' }),
       );
+    });
+  });
+
+  describe('write (OrderStatusWriteback, #3643)', () => {
+    function shopWith(parcels: readonly Record<string, unknown>[], shippingId: unknown = '8'): Harness {
+      const h = setup();
+      h.get.mockImplementation((path: string) => {
+        if (path === '/parcels') return Promise.resolve({ status: 200, data: { list: parcels } });
+        if (path === '/orders/10') {
+          return Promise.resolve({ status: 200, data: { order_id: '10', shipping_id: shippingId } });
+        }
+        return Promise.resolve({ status: 200, data: {} });
+      });
+      return h;
+    }
+
+    it("should create a parcel with the tracking number and the order's own shipping method", async () => {
+      const h = shopWith([]);
+
+      await expect(
+        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: ' 6200000000001 ' }),
+      ).resolves.toEqual({ outcome: 'applied' });
+
+      expect(h.get).toHaveBeenCalledWith('/parcels', { 'filters[order_id]': '10' });
+      expect(h.post).toHaveBeenCalledWith('/parcels', {
+        order_id: 10,
+        shipping_id: 8,
+        shipping_code: '6200000000001',
+        sent: true,
+      });
+    });
+
+    it('should not send products, so Shoper ships the whole remainder', async () => {
+      const h = shopWith([]);
+
+      await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      const body = (h.post.mock.calls[0] as [string, Record<string, unknown>])[1];
+      expect(body).not.toHaveProperty('products');
+    });
+
+    it('should create a parcel without a tracking number when none is known yet', async () => {
+      const h = shopWith([]);
+
+      await expect(h.adapter.write({ type: 'dispatched', externalOrderId: '10' })).resolves.toEqual({
+        outcome: 'applied',
+      });
+
+      expect(h.post).toHaveBeenCalledWith('/parcels', { order_id: 10, shipping_id: 8, sent: true });
+    });
+
+    it('should write nothing when a parcel already carries the same tracking number', async () => {
+      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: 'T1' }]);
+
+      await expect(
+        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
+      ).resolves.toEqual({ outcome: 'applied' });
+
+      expect(h.post).not.toHaveBeenCalled();
+      expect(h.put).not.toHaveBeenCalled();
+    });
+
+    it('should attach a late tracking number to the untracked parcel instead of creating another', async () => {
+      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: '' }]);
+
+      await expect(
+        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T2' }),
+      ).resolves.toEqual({ outcome: 'applied' });
+
+      expect(h.put).toHaveBeenCalledWith('/parcels/5', { shipping_code: 'T2', sent: true });
+      expect(h.post).not.toHaveBeenCalled();
+    });
+
+    it('should write nothing on a re-delivered dispatch without tracking when a parcel exists', async () => {
+      const h = shopWith([{ parcel_id: '5', order_id: '10', shipping_code: null }]);
+
+      await expect(h.adapter.write({ type: 'dispatched', externalOrderId: '10' })).resolves.toEqual({
+        outcome: 'applied',
+      });
+
+      expect(h.post).not.toHaveBeenCalled();
+      expect(h.put).not.toHaveBeenCalled();
+    });
+
+    it('should ignore parcels of other orders the filter returned', async () => {
+      const h = shopWith([{ parcel_id: '9', order_id: '11', shipping_code: 'T1' }]);
+
+      await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(h.post).toHaveBeenCalledWith('/parcels', expect.objectContaining({ order_id: 10 }));
+    });
+
+    it('should reject when the Shoper order does not exist', async () => {
+      const h = setup();
+      h.get.mockImplementation((path: string) =>
+        path === '/parcels'
+          ? Promise.resolve({ status: 200, data: { list: [] } })
+          : Promise.reject(new ShoperApiError(404, 'invalid_request', 'not found')),
+      );
+
+      await expect(
+        h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
+      ).resolves.toEqual({ outcome: 'rejected', detail: 'Shoper order 10 not found' });
+      expect(h.post).not.toHaveBeenCalled();
+    });
+
+    it('should reject when the order has no shipping method', async () => {
+      const h = shopWith([], null);
+
+      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(result.outcome).toBe('rejected');
+      expect(h.post).not.toHaveBeenCalled();
+    });
+
+    it('should report a failed parcel write as rejected with the reason', async () => {
+      const h = shopWith([]);
+      h.post.mockRejectedValue(new ShoperApiError(400, 'invalid_request', 'shipping_id invalid'));
+
+      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(result.outcome).toBe('rejected');
+      expect(result.detail).toContain('shipping_id invalid');
+    });
+
+    it('should reject a non-numeric order id without calling the shop', async () => {
+      const h = setup();
+
+      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '../users', trackingNumber: 'T1' });
+
+      expect(result.outcome).toBe('rejected');
+      expect(h.get).not.toHaveBeenCalled();
+    });
+
+    it('should report cancellation as unsupported and write nothing', async () => {
+      const h = setup();
+
+      const result = await h.adapter.write({ type: 'cancelled', externalOrderId: '10' });
+
+      expect(result.outcome).toBe('unsupported');
+      expect(result.detail).toBeDefined();
+      expect(h.get).not.toHaveBeenCalled();
+      expect(h.post).not.toHaveBeenCalled();
     });
   });
 });

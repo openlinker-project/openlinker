@@ -307,8 +307,31 @@ at a status change, or a `DELETE` whose restore depends on order status). The li
 evidence for the real shop.
 
 Not covered: **pickup points** (a locker order lands as a plain delivery to the buyer's address, so the warehouse
-must read the pickup point from the source order), order status writeback, cancelling a Shoper order from
-OpenLinker (see the gap above).
+must read the pickup point from the source order), cancelling a Shoper order from OpenLinker (see the gap above).
+
+### Fulfillment writeback (#3643)
+
+When OpenLinker ships an order it pushed into Shoper, the lifecycle relay (ADR-027) sends the Shoper connection a
+`dispatched` event like any other order participant, and the adapter records it as a **Shoper parcel**:
+
+- `POST /parcels { order_id, shipping_id, shipping_code, sent: true }`. `shipping_code` is the tracking number;
+  `shipping_id` is read from the Shoper order itself (`GET /orders/:id`), so it matches the method the order uses.
+- **No `products[]`.** Shoper then ships exactly the quantity still unshipped on each line, which is the whole
+  order the first time (#3638). Creating the parcel advances the order status per the shop's own
+  `shopping_parcel_send_status_id`; no separate status call is made.
+- **Idempotent.** The order's parcels are read first (`GET /parcels?filters[order_id]=`). The same tracking number
+  already on a parcel, or a dispatch without tracking once a parcel exists, writes nothing. A tracking number
+  arriving after the parcel (the late-waybill path, #1947) is attached to the single untracked parcel with
+  `PUT /parcels/:id` instead of creating a second one.
+- `cancelled` answers `unsupported` (no Shoper cancel OpenLinker can drive), so the operator sees it, never silence.
+- Any failed call answers `rejected` with the reason; the relay surfaces it.
+
+**Not verified live**: the parcel calls follow the #3638 spike as recorded in the issue; `PUT /parcels/:id` and the
+`filters[order_id]` filter on `/parcels` were not exercised against a shop from this branch.
+
+**Partial shipment is not expressed.** The `dispatched` event carries no lines, and the line -> `order_product_id`
+mapping is not persisted at `createOrder`, so a parcel always ships the remainder. Shoper itself supports
+`products: [{ order_product_id, quantity }]`; using it needs both of those first.
 
 ## Known gaps
 

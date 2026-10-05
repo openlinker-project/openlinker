@@ -29,8 +29,15 @@
  * The buyer email comes from `order.metadata.buyerEmail` (`OrderSyncService`
  * fills it from the source order's `customerEmail`, #948).
  *
+ * **Fulfillment writeback (#3643).** As an order participant the adapter
+ * implements `OrderStatusWriteback`: the lifecycle relay (ADR-027) hands it the
+ * `dispatched` event OpenLinker emits when a parcel ships, and it records that as
+ * a Shoper parcel carrying the tracking number. Partial shipment is not
+ * expressed: the event carries no lines, so the parcel ships the whole remainder.
+ *
  * @module libs/integrations/shoper/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
+ * @implements {OrderStatusWriteback}
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -40,8 +47,11 @@ import type {
   MappingOption,
   OrderCreate,
   OrderItem,
+  OrderLifecycleEvent,
   OrderProcessorManagerPort,
   OrderRef,
+  OrderStatusWriteback,
+  OrderWritebackResult,
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -59,6 +69,9 @@ import type {
   ShoperOrderCreateRequest,
   ShoperOrderRef,
   ShoperOrderProductCreateRequest,
+  ShoperOrderShipping,
+  ShoperParcel,
+  ShoperParcelTrackingUpdate,
 } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
 import { SHOPER_MAX_PAGE_SIZE, fetchShoperPage } from '../../http/shoper-pagination';
@@ -77,6 +90,11 @@ import {
   requireDefault,
   toPositiveInt,
 } from '../../mappers/shoper-order-input.mapper';
+import {
+  buildShoperParcelCreateRequest,
+  normalizeTrackingNumber,
+  planShoperParcelWrite,
+} from '../../mappers/shoper-parcel.mapper';
 import type { ShoperCustomerProvisioner } from '../../provisioners/shoper-customer.provisioner';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 import type { ShoperOrderOptionsProvider } from '../../shop-context/shoper-order-options.provider';
@@ -85,7 +103,9 @@ import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table
 /** Shoper rounds to cents, so a smaller gap is not a real mismatch. */
 const SUM_TOLERANCE = 0.011;
 
-export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, DestinationOptionsReader {
+export class ShoperOrderProcessorAdapter
+  implements OrderProcessorManagerPort, DestinationOptionsReader, OrderStatusWriteback
+{
   private readonly logger = new Logger(ShoperOrderProcessorAdapter.name);
 
   constructor(
@@ -455,6 +475,108 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
         return options;
       }
     }
+  }
+
+  // ─── OrderStatusWriteback (#3643) ──────────────────────────────────────────
+
+  async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    // Path-traversal defence: the id is interpolated into a URL path.
+    if (!/^\d+$/.test(event.externalOrderId)) {
+      return {
+        outcome: 'rejected',
+        detail: `Invalid externalOrderId "${event.externalOrderId}" - expected a Shoper order id`,
+      };
+    }
+
+    try {
+      switch (event.type) {
+        case 'dispatched':
+          return await this.writeDispatched(event.externalOrderId, normalizeTrackingNumber(event.trackingNumber));
+
+        case 'cancelled':
+          // Shoper exposes no cancel OpenLinker can drive, and deleting the order
+          // would rewrite the shop's history. Surfaced, never silent.
+          return {
+            outcome: 'unsupported',
+            detail: 'Shoper has no order cancellation OpenLinker can write; cancel the order in the shop',
+          };
+
+        default: {
+          // Compile break when a lifecycle member is added (#2286); returns rather
+          // than throws so a widened union degrades to a surfaced no-op (ADR-055).
+          const unhandled: never = event;
+          return {
+            outcome: 'unsupported',
+            detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
+          };
+        }
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `OrderStatusWriteback '${event.type}' failed for Shoper order ${event.externalOrderId}: ` +
+          `${detail} (connection: ${this.connection.id})`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return { outcome: 'rejected', detail };
+    }
+  }
+
+  private async writeDispatched(
+    externalOrderId: string,
+    trackingNumber: string | undefined,
+  ): Promise<OrderWritebackResult> {
+    const parcels = await this.client.get<{ list?: readonly ShoperParcel[] }>('/parcels', {
+      'filters[order_id]': externalOrderId,
+    });
+    const existing = (parcels.data.list ?? []).filter((p) => String(p.order_id) === externalOrderId);
+    const plan = planShoperParcelWrite(existing, trackingNumber);
+
+    if (plan.kind === 'already-applied') {
+      this.logger.debug(
+        `Shoper order ${externalOrderId} already has a parcel for this dispatch (connection: ${this.connection.id})`,
+      );
+      return { outcome: 'applied' };
+    }
+
+    if (plan.kind === 'attach-tracking' && trackingNumber !== undefined) {
+      const body: ShoperParcelTrackingUpdate = { shipping_code: trackingNumber, sent: true };
+      await this.client.put(`/parcels/${plan.parcelId}`, body);
+      this.logger.log(
+        `Attached tracking to Shoper parcel ${plan.parcelId} of order ${externalOrderId} ` +
+          `(connection: ${this.connection.id})`,
+      );
+      return { outcome: 'applied' };
+    }
+
+    // The parcel takes the order's own shipping method, so it matches what the
+    // buyer chose rather than a configured default.
+    let shippingId: number | null;
+    try {
+      const order = await this.client.get<ShoperOrderShipping>(`/orders/${externalOrderId}`);
+      shippingId = toPositiveInt(order.data.shipping_id);
+    } catch (error) {
+      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
+        return { outcome: 'rejected', detail: `Shoper order ${externalOrderId} not found` };
+      }
+      throw error;
+    }
+    if (shippingId === null) {
+      return {
+        outcome: 'rejected',
+        detail: `Shoper order ${externalOrderId} has no shipping method, which a parcel requires`,
+      };
+    }
+
+    await this.client.post<unknown>(
+      '/parcels',
+      buildShoperParcelCreateRequest(Number(externalOrderId), shippingId, trackingNumber),
+    );
+    this.logger.log(
+      `Created Shoper parcel for order ${externalOrderId}` +
+        `${trackingNumber === undefined ? ' without a tracking number' : ''} (connection: ${this.connection.id})`,
+    );
+    return { outcome: 'applied' };
   }
 
   // ─── Failure handling ──────────────────────────────────────────────────────
