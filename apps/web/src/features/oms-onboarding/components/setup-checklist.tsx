@@ -18,6 +18,22 @@ export interface SetupChecklistRow {
   readonly action: ReactNode;
 }
 
+/**
+ * The order the setup is shown in, the wizard's own: what the shop sells, then
+ * which documents it issues, then who packs, then the rest. Every list reads it
+ * through this one place, so the summary and the status page cannot order the
+ * same setup differently from the steps that made it.
+ */
+const CHECKLIST_ORDER = ['masters', 'stock', 'salesDocuments', 'packers', 'automations', 'whoDecides'];
+
+export function orderChecklistRows(rows: readonly SetupChecklistRow[]): SetupChecklistRow[] {
+  const position = (key: string): number => {
+    const index = CHECKLIST_ORDER.indexOf(key);
+    return index === -1 ? CHECKLIST_ORDER.length : index;
+  };
+  return [...rows].sort((a, b) => position(a.key) - position(b.key));
+}
+
 export function SetupChecklist({
   rows,
   testId,
@@ -27,7 +43,7 @@ export function SetupChecklist({
 }): ReactElement {
   return (
     <ul className="oms-onboarding__checks" data-testid={testId}>
-      {rows.map((row) => (
+      {orderChecklistRows(rows).map((row) => (
         <li key={row.key} className="oms-onboarding__check">
           <span
             className={row.ok ? 'oms-onboarding__tick oms-onboarding__tick--ok' : 'oms-onboarding__tick oms-onboarding__tick--warn'}

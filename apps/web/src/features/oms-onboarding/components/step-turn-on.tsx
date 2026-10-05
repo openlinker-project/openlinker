@@ -1,5 +1,5 @@
 /**
- * Step 4 — Turn it on (#3457)
+ * The last step — Turn it on (#3457)
  *
  * One write: the packing connection's sourcing claim, switched on. Two
  * refusals are handled rather than thrown past the step:
@@ -12,7 +12,7 @@
  * - **No active warehouse** (#2407). Step 1 creates one, so this is reachable
  *   only if it was retired since; mapped by code, never by message.
  *
- * State (mockup vocabulary): `step-4-turn-on`.
+ * State (mockup vocabulary): `step-7-turn-on`.
  *
  * @module features/oms-onboarding/components
  */
@@ -23,7 +23,10 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode'
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { SETUP_STEP_NUMBERS, TURN_ON_STEP, WIZARD_STEPS } from '../lib/onboarding-state';
 import { isRoutingRequiresLocationError } from '../lib/routing-requires-location-error';
+import type { SetupStepsView } from '../hooks/use-setup-steps';
+import { SetupStepKeys, describeSetupStep } from '../lib/setup-steps';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
 import { StepPanel } from './step-panel';
 
@@ -33,6 +36,8 @@ export interface StepTurnOnProps {
   readonly stockDetail: string;
   readonly stockComplete: boolean;
   readonly packerNames: string | null;
+  /** The steps between "See what changes" and this one; `null` when this viewer cannot read them. */
+  readonly setup: SetupStepsView | null;
   readonly otherSystemDecides: boolean;
   readonly canWrite: boolean;
   readonly demoReadOnly: boolean;
@@ -57,31 +62,53 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
       ok: true,
       title: COPY.step4.masters(props.masterCount),
       detail: props.masterNames,
-      action: <RowLink testId="btn-go-step-1" label={COPY.step4.view} onClick={() => props.onGoToStep(1)} />,
+      action: <RowLink testId="btn-go-step-1" label={COPY.step4.view} onClick={() => props.onGoToStep(WIZARD_STEPS.productMaster)} />,
     },
     {
       key: 'stock',
       ok: props.stockComplete,
       title: COPY.step4.stock,
       detail: props.stockComplete ? props.stockDetail : `${props.stockDetail} · ${COPY.step4.stillFilling}`,
-      action: <RowLink testId="btn-go-step-1-stock" label={COPY.step4.view} onClick={() => props.onGoToStep(1)} />,
+      action: <RowLink testId="btn-go-step-1-stock" label={COPY.step4.view} onClick={() => props.onGoToStep(WIZARD_STEPS.productMaster)} />,
     },
     {
       key: 'packers',
       ok: true,
       title: COPY.step4.packers,
       detail: props.packerNames ?? COPY.step4.noPackers,
-      action: <RowLink testId="btn-go-step-2" label={COPY.step4.change} onClick={() => props.onGoToStep(2)} />,
+      action: <RowLink testId="btn-go-step-2" label={COPY.step4.change} onClick={() => props.onGoToStep(WIZARD_STEPS.packers)} />,
     },
   ];
+
+  // The decisions made on the way here, ticked by where they stand now: the
+  // summary is the last look before anything changes.
+  if (props.setup !== null) {
+    for (const key of SetupStepKeys) {
+      const state = props.setup.states[key];
+      const { title, detail } = describeSetupStep(key, state);
+      rows.push({
+        key,
+        ok: state === 'done' || state === 'skipped',
+        title,
+        detail,
+        action: (
+          <RowLink
+            testId={`btn-go-step-${key}`}
+            label={state === 'done' || state === 'skipped' ? COPY.step4.change : COPY.status.steps.setUp}
+            onClick={() => props.onGoToStep(SETUP_STEP_NUMBERS[key])}
+          />
+        ),
+      });
+    }
+  }
 
   const noLocation = props.turnOnError !== null && isRoutingRequiresLocationError(props.turnOnError);
 
   return (
     <StepPanel
-      step={4}
+      step={TURN_ON_STEP}
       why={COPY.step4.why}
-      onBack={() => props.onGoToStep(3)}
+      onBack={() => props.onGoToStep(SETUP_STEP_NUMBERS.whoDecides)}
       next={
         <Button
           type="button"

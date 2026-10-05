@@ -34,6 +34,7 @@ import {
   type PackerSummary,
 } from '../../users';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { WIZARD_STEPS } from '../lib/onboarding-state';
 import {
   ADD_PACKER_DEFAULTS,
   addPackerFormSchema,
@@ -234,7 +235,7 @@ export function PackerCreator({ packers, canWrite, demoReadOnly }: PackerCreator
 export function StepPackers({ packers, canWrite, demoReadOnly, onBack, onContinue }: StepPackersProps): ReactElement {
   return (
     <StepPanel
-      step={2}
+      step={WIZARD_STEPS.packers}
       why={COPY.step2.why}
       onBack={onBack}
       next={

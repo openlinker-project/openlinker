@@ -5,6 +5,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../test/test-utils';
+import { WIZARD_STEPS } from '../lib/onboarding-state';
 import { StepTurnOn, type StepTurnOnProps } from '../components/step-turn-on';
 
 function baseProps(overrides: Partial<StepTurnOnProps> = {}): StepTurnOnProps {
@@ -14,6 +15,7 @@ function baseProps(overrides: Partial<StepTurnOnProps> = {}): StepTurnOnProps {
     stockDetail: '100 of 100 products',
     stockComplete: true,
     packerNames: 'anna',
+    setup: null,
     otherSystemDecides: false,
     canWrite: true,
     demoReadOnly: false,
@@ -40,7 +42,7 @@ describe('StepTurnOn', () => {
     renderWithProviders(<StepTurnOn {...baseProps({ onGoToStep })} />);
 
     fireEvent.click(screen.getByTestId('btn-go-step-2'));
-    expect(onGoToStep).toHaveBeenCalledWith(2);
+    expect(onGoToStep).toHaveBeenCalledWith(WIZARD_STEPS.packers);
   });
 
   it('should disable turning on when another system already decides', () => {
