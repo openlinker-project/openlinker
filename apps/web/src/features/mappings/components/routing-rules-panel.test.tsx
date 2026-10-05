@@ -378,6 +378,49 @@ describe('RoutingRulesPanel', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(/together/);
     });
 
+    it('should refuse a box above the server ceiling in the dialog in its own words', async () => {
+      renderPanel(buildApiClient({ rules: [RULE] }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Set parcel' }));
+      fireEvent.change(screen.getByLabelText('Length (cm)'), { target: { value: '30' } });
+      fireEvent.change(screen.getByLabelText('Width (cm)'), { target: { value: '20' } });
+      fireEvent.change(screen.getByLabelText('Height (cm)'), { target: { value: '9999' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Length, width and height must each be 500 cm or less.',
+      );
+    });
+
+    it('should save a typed carrier code when the operator picks the other-code option', async () => {
+      const replace = vi.fn().mockResolvedValue([]);
+      renderPanel(buildApiClient({ rules: [RULE], replace }));
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Set parcel' }));
+      fireEvent.change(screen.getByLabelText('Size'), { target: { value: '__other__' } });
+      fireEvent.change(screen.getByLabelText('Carrier size code'), { target: { value: 'A' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+
+      await waitFor(() => {
+        expect(replace).toHaveBeenCalledWith('conn_1', {
+          items: [expect.objectContaining({ sourceDeliveryMethodId: 'm1', parcelTemplate: 'A' })],
+        });
+      });
+    });
+
+    it('should refuse an empty carrier code when the other-code option is chosen', async () => {
+      renderPanel(buildApiClient({ rules: [RULE] }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Set parcel' }));
+      fireEvent.change(screen.getByLabelText('Size'), { target: { value: '__other__' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Enter the carrier size code/);
+    });
+
+    it('should open a stored code outside the listed sizes in the free-text field', async () => {
+      renderPanel(buildApiClient({ rules: [{ ...RULE, parcelTemplate: 'paczkomat-B' }] }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit parcel' }));
+      expect(screen.getByLabelText('Carrier size code')).toHaveValue('paczkomat-B');
+    });
+
     it('should not send profile keys for a rule that never had one', async () => {
       const replace = vi.fn().mockResolvedValue([]);
       renderPanel(buildApiClient({ replace }));

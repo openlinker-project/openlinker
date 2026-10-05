@@ -9,11 +9,13 @@ import {
   draftFromFields,
   draftToFields,
   gramsToKg,
+  isListedParcelTemplate,
   kgToGrams,
   mmToCm,
   summarizeParcelProfile,
   validateDraft,
   EMPTY_PARCEL_DRAFT,
+  PARCEL_PROFILE_LIMITS,
 } from './parcel-profile';
 
 describe('parcel profile unit conversion', () => {
@@ -66,6 +68,63 @@ describe('validateDraft', () => {
     expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, lengthCm: '30' })).toMatch(/together/);
     expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, weightKg: '0' })).toMatch(/greater than zero/);
     expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, weightKg: '-1' })).toMatch(/greater than zero/);
+  });
+
+  it('should accept values exactly at the server ceilings when they are entered in cm and kg', () => {
+    expect(
+      validateDraft({
+        ...EMPTY_PARCEL_DRAFT,
+        lengthCm: String(PARCEL_PROFILE_LIMITS.dimensionCmMax),
+        widthCm: '1',
+        heightCm: '1',
+        weightKg: String(PARCEL_PROFILE_LIMITS.weightKgMax),
+      }),
+    ).toBeNull();
+  });
+
+  it('should refuse a dimension above the ceiling when it is one digit too long', () => {
+    expect(
+      validateDraft({ ...EMPTY_PARCEL_DRAFT, lengthCm: '30', widthCm: '20', heightCm: '1000' }),
+    ).toBe('Length, width and height must each be 500 cm or less.');
+    // 500.1 cm rounds to 5001 mm, which the server's @Max(5000) refuses.
+    expect(
+      validateDraft({ ...EMPTY_PARCEL_DRAFT, lengthCm: '500,1', widthCm: '20', heightCm: '10' }),
+    ).toMatch(/500 cm or less/);
+  });
+
+  it('should refuse a weight above the ceiling when it exceeds 100 kg', () => {
+    expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, weightKg: '100.001' })).toBe(
+      'Weight must be 100 kg or less.',
+    );
+  });
+
+  it('should refuse a size code longer than the server allows when it is typed', () => {
+    const tooLong = 'x'.repeat(PARCEL_PROFILE_LIMITS.templateMaxLength + 1);
+    expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, template: tooLong }, { customTemplate: true })).toBe(
+      'The size code must be 32 characters or fewer.',
+    );
+    const atLimit = 'x'.repeat(PARCEL_PROFILE_LIMITS.templateMaxLength);
+    expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, template: atLimit }, { customTemplate: true })).toBeNull();
+  });
+
+  it('should refuse an empty carrier code when the operator chose to type one', () => {
+    expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, template: '  ' }, { customTemplate: true })).toMatch(
+      /Enter the carrier size code/,
+    );
+    expect(validateDraft({ ...EMPTY_PARCEL_DRAFT, template: '  ' })).toBeNull();
+  });
+});
+
+describe('parcel template codes', () => {
+  it('should tell the listed sizes from a free-text carrier code', () => {
+    expect(isListedParcelTemplate('medium')).toBe(true);
+    expect(isListedParcelTemplate('A')).toBe(false);
+  });
+
+  it('should send a typed carrier code trimmed', () => {
+    expect(draftToFields({ ...EMPTY_PARCEL_DRAFT, template: ' paczkomat-A ' }).parcelTemplate).toBe(
+      'paczkomat-A',
+    );
   });
 });
 

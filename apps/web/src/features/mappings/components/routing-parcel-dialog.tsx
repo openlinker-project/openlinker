@@ -1,8 +1,8 @@
 /**
  * RoutingParcelDialog (#3652)
  *
- * Edits one routing rule's default parcel (size template, box in cm, weight in
- * kg). Values are staged into the panel's draft state on Apply and only sent
+ * Edits one routing rule's default parcel (size template - a listed size or a
+ * typed carrier code - box in cm, weight in kg). Values are staged into the panel's draft state on Apply and only sent
  * with "Save routing". An empty draft clears the profile.
  *
  * @module apps/web/src/features/mappings/components
@@ -22,10 +22,15 @@ import { Select } from '../../../shared/ui/select';
 import {
   PARCEL_TEMPLATE_OPTIONS,
   isDraftEmpty,
+  isListedParcelTemplate,
   validateDraft,
   type ParcelProfileDraft,
 } from '../lib/parcel-profile';
 import { PARCEL_COPY } from '../lib/parcel-profile.copy';
+
+// Select value for the free-text escape hatch. It never reaches the draft: the
+// draft's `template` holds the typed code, the select only tracks the mode.
+const OTHER_TEMPLATE_OPTION = '__other__';
 
 interface RoutingParcelDialogProps {
   open: boolean;
@@ -43,6 +48,11 @@ export function RoutingParcelDialog({
   onOpenChange,
 }: RoutingParcelDialogProps): ReactElement {
   const [draft, setDraft] = useState<ParcelProfileDraft>(initial);
+  // A stored code outside the listed sizes opens in free-text mode, so opening
+  // the dialog never silently rewrites it.
+  const [customTemplate, setCustomTemplate] = useState<boolean>(
+    initial.template !== '' && !isListedParcelTemplate(initial.template)
+  );
   const [error, setError] = useState<string | null>(null);
 
   const set =
@@ -52,15 +62,18 @@ export function RoutingParcelDialog({
       setError(null);
     };
 
-  // Keep a stored size code this build does not list selectable, so opening
-  // the dialog never silently rewrites it.
-  const templateOptions: string[] = [...PARCEL_TEMPLATE_OPTIONS];
-  if (draft.template !== '' && !templateOptions.includes(draft.template)) {
-    templateOptions.push(draft.template);
+  function handleTemplateSelect(value: string): void {
+    if (value === OTHER_TEMPLATE_OPTION) {
+      setCustomTemplate(true);
+      set('template')('');
+      return;
+    }
+    setCustomTemplate(false);
+    set('template')(value);
   }
 
   function handleApply(): void {
-    const problem = validateDraft(draft);
+    const problem = validateDraft(draft, { customTemplate });
     if (problem) {
       setError(problem);
       return;
@@ -78,15 +91,25 @@ export function RoutingParcelDialog({
         </DialogDescription>
 
         <FormField label={PARCEL_COPY.templateLabel} name="parcelTemplate">
-          <Select value={draft.template} onChange={(e) => set('template')(e.target.value)}>
+          <Select
+            value={customTemplate ? OTHER_TEMPLATE_OPTION : draft.template}
+            onChange={(e) => handleTemplateSelect(e.target.value)}
+          >
             <option value="">{PARCEL_COPY.templateNone}</option>
-            {templateOptions.map((t) => (
+            {PARCEL_TEMPLATE_OPTIONS.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
             ))}
+            <option value={OTHER_TEMPLATE_OPTION}>{PARCEL_COPY.templateOther}</option>
           </Select>
         </FormField>
+
+        {customTemplate && (
+          <FormField label={PARCEL_COPY.customTemplateLabel} name="parcelTemplateCode">
+            <Input value={draft.template} onChange={(e) => set('template')(e.target.value)} />
+          </FormField>
+        )}
 
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <FormField label={PARCEL_COPY.lengthLabel} name="parcelLength">
@@ -143,6 +166,7 @@ export function RoutingParcelDialog({
             tone="ghost"
             onClick={() => {
               setDraft({ template: '', lengthCm: '', widthCm: '', heightCm: '', weightKg: '' });
+              setCustomTemplate(false);
               setError(null);
             }}
             disabled={isDraftEmpty(draft)}

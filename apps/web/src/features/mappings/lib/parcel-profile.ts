@@ -27,8 +27,32 @@ export const EMPTY_PARCEL_DRAFT: ParcelProfileDraft = {
   weightKg: '',
 };
 
-/** Size codes offered in the template select (carrier size codes are free strings on the wire). */
+/**
+ * Size codes offered in the template select. These three are a convention this
+ * product chooses, NOT a carrier contract: on the wire `parcelTemplate` is an
+ * opaque carrier size code, and the valid codes are each carrier's own. The
+ * dialog therefore also accepts a free-text code beside the list, until a
+ * carrier declares its own list (the `ParcelRequirementsReader` sub-capability
+ * of the shipping port is where that would arrive).
+ */
 export const PARCEL_TEMPLATE_OPTIONS = ['small', 'medium', 'large'] as const;
+
+/**
+ * Upper bounds in operator units (cm / kg). Mirrors the server's
+ * `PARCEL_PROFILE_BOUNDS` (mm / g, `@openlinker/core/mappings`), which this
+ * bundle cannot import (#591): 500 cm = 5000 mm, 100 kg = 100000 g. Mirrored so
+ * the dialog refuses an out-of-range value in its own words instead of
+ * surfacing the API's 400; `scripts/check-parcel-profile-bounds-mirror.mjs`
+ * compares the two across the unit conversion.
+ */
+export const PARCEL_PROFILE_LIMITS = {
+  dimensionCmMax: 500,
+  weightKgMax: 100,
+  templateMaxLength: 32,
+} as const;
+
+const MM_PER_CM = 10;
+const GRAMS_PER_KG = 1000;
 
 function parseDecimal(value: string): number | null {
   const trimmed = value.trim().replace(',', '.');
@@ -40,13 +64,13 @@ function parseDecimal(value: string): number | null {
 /** "30" cm -> 300 mm. Null for blank / non-numeric input. */
 export function cmToMm(value: string): number | null {
   const n = parseDecimal(value);
-  return n === null ? null : Math.round(n * 10);
+  return n === null ? null : Math.round(n * MM_PER_CM);
 }
 
 /** "0.5" kg -> 500 g. Null for blank / non-numeric input. */
 export function kgToGrams(value: string): number | null {
   const n = parseDecimal(value);
-  return n === null ? null : Math.round(n * 1000);
+  return n === null ? null : Math.round(n * GRAMS_PER_KG);
 }
 
 function trimNumber(n: number): string {
@@ -54,11 +78,16 @@ function trimNumber(n: number): string {
 }
 
 export function mmToCm(mm: number | null | undefined): string {
-  return mm === null || mm === undefined ? '' : trimNumber(mm / 10);
+  return mm === null || mm === undefined ? '' : trimNumber(mm / MM_PER_CM);
 }
 
 export function gramsToKg(grams: number | null | undefined): string {
-  return grams === null || grams === undefined ? '' : trimNumber(grams / 1000);
+  return grams === null || grams === undefined ? '' : trimNumber(grams / GRAMS_PER_KG);
+}
+
+/** True when `code` is one of the listed size options rather than a free-text carrier code. */
+export function isListedParcelTemplate(code: string): boolean {
+  return (PARCEL_TEMPLATE_OPTIONS as readonly string[]).includes(code);
 }
 
 /** True when a stored profile carries at least one value. */
@@ -86,7 +115,7 @@ export function draftFromFields(fields: ParcelProfileFields | null | undefined):
 
 export function isDraftEmpty(draft: ParcelProfileDraft): boolean {
   return (
-    draft.template === '' &&
+    draft.template.trim() === '' &&
     draft.lengthCm.trim() === '' &&
     draft.widthCm.trim() === '' &&
     draft.heightCm.trim() === '' &&
@@ -106,8 +135,11 @@ export function draftsEqual(a: ParcelProfileDraft, b: ParcelProfileDraft): boole
 
 /** Wire fields with every key present (`null` = cleared). */
 export function draftToFields(draft: ParcelProfileDraft): Required<ParcelProfileFields> {
+  // A typed carrier code can carry stray whitespace. The server trims as well,
+  // so trimming here makes the value sent the value stored.
+  const template = draft.template.trim();
   return {
-    parcelTemplate: draft.template === '' ? null : draft.template,
+    parcelTemplate: template === '' ? null : template,
     lengthMm: cmToMm(draft.lengthCm),
     widthMm: cmToMm(draft.widthCm),
     heightMm: cmToMm(draft.heightCm),
@@ -115,8 +147,21 @@ export function draftToFields(draft: ParcelProfileDraft): Required<ParcelProfile
   };
 }
 
+export interface ValidateDraftOptions {
+  /** The operator chose to type a carrier code rather than pick a listed size. */
+  customTemplate?: boolean;
+}
+
 /** First problem with a draft, or null when it is savable (an empty draft is valid: it clears). */
-export function validateDraft(draft: ParcelProfileDraft): string | null {
+export function validateDraft(
+  draft: ParcelProfileDraft,
+  options: ValidateDraftOptions = {},
+): string | null {
+  const template = draft.template.trim();
+  if (options.customTemplate && template === '') return PARCEL_COPY.customTemplateEmpty;
+  if (template.length > PARCEL_PROFILE_LIMITS.templateMaxLength) {
+    return PARCEL_COPY.templateTooLong(PARCEL_PROFILE_LIMITS.templateMaxLength);
+  }
   const dims = [draft.lengthCm, draft.widthCm, draft.heightCm];
   const filled = dims.filter((d) => d.trim() !== '').length;
   if (filled > 0 && filled < 3) return PARCEL_COPY.boxIncomplete;
@@ -130,6 +175,16 @@ export function validateDraft(draft: ParcelProfileDraft): string | null {
     [f.lengthMm, f.widthMm, f.heightMm, f.defaultWeightGrams].some((v) => v !== null && v < 1)
   ) {
     return PARCEL_COPY.notPositive;
+  }
+  // Compared in wire units after rounding, i.e. exactly what the server's
+  // `@Max` will see.
+  const dimensionMmMax = PARCEL_PROFILE_LIMITS.dimensionCmMax * MM_PER_CM;
+  if ([f.lengthMm, f.widthMm, f.heightMm].some((v) => v !== null && v > dimensionMmMax)) {
+    return PARCEL_COPY.tooLarge(PARCEL_PROFILE_LIMITS.dimensionCmMax);
+  }
+  const weightGramsMax = PARCEL_PROFILE_LIMITS.weightKgMax * GRAMS_PER_KG;
+  if (f.defaultWeightGrams !== null && f.defaultWeightGrams > weightGramsMax) {
+    return PARCEL_COPY.weightTooLarge(PARCEL_PROFILE_LIMITS.weightKgMax);
   }
   return null;
 }
