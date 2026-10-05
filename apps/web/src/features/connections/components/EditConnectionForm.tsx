@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { Connection } from '../api/connections.types';
+import { hasMissingCredentials } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
 import {
@@ -819,9 +820,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         <FormField label="Credentials" name="credentials">
           <Input
             value={
-              connection.credentialsBacked
-                ? 'Stored securely (managed by integration)'
-                : 'Environment variable (not editable via UI)'
+              hasMissingCredentials(connection)
+                ? 'Not set - removed when this connection was archived'
+                : connection.credentialsBacked
+                  ? 'Stored securely (managed by integration)'
+                  : 'Environment variable (not editable via UI)'
             }
             disabled
           />
