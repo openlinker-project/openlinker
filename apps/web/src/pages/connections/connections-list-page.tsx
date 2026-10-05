@@ -15,6 +15,7 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { OmsAttentionBadges, useOmsAttentionQuery } from '../../features/fulfillment-authority';
+import { describeConnectionStatus } from '../oms/oms-connection';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
@@ -33,6 +34,15 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
     case 'needs_reauth':
       return 'warning';
   }
+}
+
+function renderStatusBadge(connection: Connection, compact: boolean): ReactElement {
+  const view = describeConnectionStatus(connection, toStatusTone(connection.status));
+  return (
+    <StatusBadge tone={view.tone} compact={compact}>
+      {view.label}
+    </StatusBadge>
+  );
 }
 
 /**
@@ -82,7 +92,7 @@ function buildColumns(
     header: 'Status',
     cell: (connection) => (
       <span className="data-table__badge-row">
-        <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+        {renderStatusBadge(connection, false)}
         {/* An inert state derived from THIS connection's config (#2356). Beside
             the connection's own status, never instead of it: a connection can be
             perfectly `active` and still be one of two systems claiming the same
@@ -236,9 +246,7 @@ export function ConnectionsListPage(): ReactElement {
               `${resolvePlatformLabel(plugins, connection)} · ${connection.adapterKey ?? 'default adapter'}`,
             meta: (connection) => (
               <span className="data-table__badge-row">
-                <StatusBadge tone={toStatusTone(connection.status)} compact>
-                  {connection.status}
-                </StatusBadge>
+                {renderStatusBadge(connection, true)}
                 <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
               </span>
             ),

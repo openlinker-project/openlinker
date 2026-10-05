@@ -42,6 +42,20 @@ export function AuthenticatedAppLayout(): ReactElement {
     return <Navigate to={{ pathname: '/login', search: location.search }} replace />;
   }
 
+  // An account created by an admin with a one-time password must replace it
+  // before anything else (#3456). Checked BEFORE the consent gate: consent is a
+  // legally meaningful act and must be attributable to the account holder, not
+  // performable while a credential a second party has read is still live. The
+  // API's `PasswordChangeRequiredGuard` refuses every other route regardless.
+  if (session.user?.mustChangePassword === true) {
+    return (
+      <Navigate
+        to={{ pathname: '/change-password', search: `?next=${encodeURIComponent(location.pathname)}` }}
+        replace
+      />
+    );
+  }
+
   // A packer's entire job is at /bench (#3221 follow-up). Unlike every other
   // role, packer is NOT meant to browse the ordinary app shell at all — even
   // the handful of `@AnyRole()` reads (Products, Listings, Shipments, Returns)
