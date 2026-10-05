@@ -196,6 +196,10 @@ at create and never retro-filled, so an existing connection must be edited.
 
 - **No rate limiting or retries yet.** The real request ceiling is unconfirmed (SPIKE-3638 C6); no
   `defaultRateLimit` is declared. Set `config.rateLimit` on the connection if a shop needs a cap.
+- **`adjustInventory` is a non-atomic read-modify-write** (Shoper has no conditional stock write and no
+  idempotency key, so it reports `idempotency: 'unsupported'`): a change landing between the read and the PUT is
+  overwritten, and a retry after a lost response applies the delta again. The remedy belongs at the call site: a
+  short per-`(connection, stock)` `SyncLockPort` lock around the call, as #2617 does per offer.
 - The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
 - **Multi-variant products are not live-verified**: the trial shop has none, so a variant's `options` are not
   mapped to `attributes` yet (they stay `null`) rather than guessed at; the adapter logs a warning per stock

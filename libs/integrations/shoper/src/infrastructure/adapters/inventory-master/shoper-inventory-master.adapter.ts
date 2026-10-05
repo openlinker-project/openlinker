@@ -232,12 +232,12 @@ export class ShoperInventoryMasterAdapter implements InventoryMasterPort {
           `clamped to 0 (connection: ${this.connection.id})`,
       );
     }
-    if (adjustment.reason !== undefined) {
-      this.logger.log(
-        `Adjusting Shoper stock ${stock.stock_id} by ${adjustment.quantity} (${adjustment.reason}), ` +
-          `${current} -> ${next} (connection: ${this.connection.id})`,
-      );
-    }
+    // Unconditional: Shoper has no stock-reason field, so this line is the only record of the write.
+    this.logger.log(
+      `Adjusting Shoper stock ${stock.stock_id} by ${adjustment.quantity}` +
+        `${adjustment.reason !== undefined ? ` (${adjustment.reason})` : ''}, ` +
+        `${current} -> ${next} (connection: ${this.connection.id})`
+    );
 
     await this.client.put(`/product-stocks/${encodeURIComponent(stock.stock_id)}`, { stock: next });
 
