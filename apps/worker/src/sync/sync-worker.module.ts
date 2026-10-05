@@ -8,6 +8,7 @@
  */
 import { Module } from '@nestjs/common';
 import { SyncModule } from '@openlinker/core/sync';
+import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
@@ -19,6 +20,7 @@ import { ReturnsModule } from '@openlinker/core/returns';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
+import { MappingsModule } from '@openlinker/core/mappings';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -85,6 +87,8 @@ import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-disp
 import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
+import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
@@ -93,6 +97,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
 @Module({
   imports: [
     SyncModule, // Import SyncModule to access SYNC_JOB_REPOSITORY_TOKEN
+    EventsModule, // #2301, D48 — exposes STREAM_DEAD_LETTERS_SERVICE_TOKEN for JobIntakeConsumer's poison-entry terminal write
     IntegrationsModule, // Import IntegrationsModule to access INTEGRATIONS_SERVICE_TOKEN
     IdentifierMappingModule, // Import IdentifierMappingModule to access IDENTIFIER_MAPPING_SERVICE_TOKEN
     ProductsModule, // Import ProductsModule to access PRODUCTS_SERVICE_TOKEN
@@ -105,6 +110,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     // @Optional() injection resolves under this role.
     PriceChangeObserverBindingModule,
     ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
+    MappingsModule, // #3651 — exposes FULFILLMENT_ROUTING_SERVICE_TOKEN for the auto-dispatch handler's parcel profile
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
     // #2399 — exposes FULFILLMENT_HANDSHAKE_SERVICE_TOKEN. A leaf module: it
     // imports no sibling context, so this edge adds no cycle risk.
@@ -185,6 +191,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkRouteHandler,
     FulfillmentWorkTimeoutSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    InventorySaleDecrementHandler,
+    FulfillmentWorkRerouteSweepHandler,
     HandlerRegistrationService,
   ],
 })

@@ -348,11 +348,14 @@ export function createMockApiClient(
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
       confirmEmail: vi.fn().mockResolvedValue({ ok: true }),
       updateAnalyticsConsent: vi.fn().mockResolvedValue({ ...DEFAULT_TEST_USER }),
+      changePassword: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.auth,
     } as ApiClient['auth'],
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
       disable: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled' }),
+      archive: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'archived', credentialsBacked: true, credentialsStored: false }),
+      restore: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled', credentialsBacked: true, credentialsStored: false }),
       getBankAccounts: vi.fn().mockResolvedValue([]),
       setDefaultBankAccount: vi.fn().mockResolvedValue(undefined),
       getDiagnostics: vi.fn().mockResolvedValue({
@@ -1132,6 +1135,16 @@ export function createMockApiClient(
       }),
       ...overrides.syncJobs,
     } as ApiClient['syncJobs'],
+    streamDeadLetters: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      count: vi.fn().mockResolvedValue({ count: 0 }),
+      ...overrides.streamDeadLetters,
+    } as ApiClient['streamDeadLetters'],
     webhookDeliveries: {
       list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       getById: vi.fn().mockResolvedValue(null),

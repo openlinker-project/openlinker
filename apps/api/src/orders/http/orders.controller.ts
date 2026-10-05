@@ -168,6 +168,7 @@ import {
   toSalesDocumentViewDto,
 } from './dto/sales-document-view-response.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
+import { ParcelProfileResponseDto } from '../../mappings/http/dto/routing-rule-response.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
 /**
@@ -1169,6 +1170,12 @@ export class OrdersController {
       // `holdHistory` stay detail-only because those ARE a query per row.
       // #2340's display cache: a badge may render it, no gate may read it.
       activeHoldReason: order.activeHoldReason,
+      // #3455 — free for the same reason: the column is already loaded, and the
+      // entity has already coerced it through core's guard.
+      fulfillmentRoutingSkipReason: order.fulfillmentRoutingSkipReason,
+      // #3485 — free for the same reason; the entity coerced the reason already.
+      fulfillmentBlockReason: order.fulfillmentBlock?.reason ?? null,
+      fulfillmentBlockDetail: order.fulfillmentBlock?.detail ?? null,
     };
   }
 
@@ -1247,6 +1254,9 @@ export class OrdersController {
       processorKind: resolution.processorKind,
       processorConnectionId: resolution.processorConnectionId,
       processorAvailable: resolution.processorAvailable,
+      parcelProfile: resolution.parcelProfile
+        ? ParcelProfileResponseDto.fromDomain(resolution.parcelProfile)
+        : null,
     };
   }
 

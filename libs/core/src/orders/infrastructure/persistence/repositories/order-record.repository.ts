@@ -23,10 +23,17 @@ import {
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
-import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type {
+  HeldOrderRef,
+  OrderRecordRepositoryPort,
+} from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
+import {
+  isFulfillmentRoutingSkipReason,
+  type FulfillmentRoutingSkipReason,
+} from '../../../domain/types/fulfillment-routing-eligibility.types';
 import { SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
 import type {
@@ -53,7 +60,11 @@ import {
   netSalesLineNetAmountSql,
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import {
+  isFulfillmentBlockReason,
+  type FulfillmentBlock,
+  type FulfillmentBlockReason,
+} from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
 import {
@@ -2211,11 +2222,74 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       `UPDATE "order_records"
           SET "fulfillmentBlockReason" = $1,
               "fulfillmentBlockDetail" = $2,
+              "fulfillmentBlockedAt" = CASE
+                WHEN $1::text IS NULL THEN NULL
+                WHEN "fulfillmentBlockReason" IS NULL THEN now()
+                ELSE "fulfillmentBlockedAt"
+              END,
               "updatedAt" = now()
         WHERE "internalOrderId" = $3
           AND ("fulfillmentBlockReason" IS DISTINCT FROM $1
             OR "fulfillmentBlockDetail" IS DISTINCT FROM $2)`,
       [block?.reason ?? null, block?.detail ?? null, internalOrderId]
+    );
+  }
+
+  /**
+   * #3485 — keyset page for `fulfillment.work.rerouteSweep`. Served by the
+   * primary key at v1 volumes; see the port for why it is keyset and why it is
+   * keyed on `internalOrderId` rather than `updatedAt`.
+   */
+  async listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]> {
+    if (reasons.length === 0 || page.limit <= 0) return [];
+
+    const query = this.repository
+      .createQueryBuilder('rec')
+      .select('rec.internalOrderId', 'internalOrderId')
+      .addSelect('rec.fulfillmentBlockedAt', 'fulfillmentBlockedAt')
+      .where('rec.fulfillmentBlockReason IN (:...reasons)', { reasons: [...reasons] })
+      .orderBy('rec.internalOrderId', 'ASC')
+      .limit(page.limit);
+
+    if (page.afterOrderId !== null) {
+      query.andWhere('rec.internalOrderId > :after', { after: page.afterOrderId });
+    }
+
+    const rows = await query.getRawMany<{
+      internalOrderId: string;
+      fulfillmentBlockedAt: Date | string | null;
+    }>();
+    return rows.map((row) => ({
+      orderId: row.internalOrderId,
+      blockedAt: row.fulfillmentBlockedAt === null ? null : new Date(row.fulfillmentBlockedAt),
+    }));
+  }
+
+  /**
+   * #3455 — the sole writer of `fulfillmentRoutingSkipReason`, level-triggered by
+   * the ingestion intercept: it stores the answer INCLUDING `null`, which is what
+   * clears a stale reason once the order is routed or the OMS is switched off.
+   *
+   * The same `IS DISTINCT FROM` guard as {@link updateFulfillmentBlock}, for the
+   * same reason: the overwhelmingly common `null -> null` path (every ingestion
+   * on an install with the OMS off) must not bump `updatedAt`, a live filter axis.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  async updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "fulfillmentRoutingSkipReason" = $1,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $2
+          AND "fulfillmentRoutingSkipReason" IS DISTINCT FROM $1`,
+      [reason, internalOrderId]
     );
   }
 
@@ -2626,6 +2700,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // columns (#2396 - sole writer `updateFulfillmentBlock`; `persistOrder` runs
     // BEFORE the intercept on every ingestion, so a round-trip would null the
     // reason the previous transition wrote and then re-add none),
+    // `fulfillmentRoutingSkipReason` (#3455 - sole writer
+    // `updateFulfillmentRoutingSkipReason`, same reason as `fulfillmentBlock*`),
     // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
@@ -3062,7 +3138,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.buyerTaxId ?? null,
       entity.shippingAddressHash ?? null,
       (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null,
-      entity.salesDocumentMatchedRuleId ?? null
+      entity.salesDocumentMatchedRuleId ?? null,
+      // #3455 - coerced, never cast: an unrecognised persisted value reads as
+      // "no recorded reason" rather than reaching the UI as an unknown literal.
+      isFulfillmentRoutingSkipReason(entity.fulfillmentRoutingSkipReason)
+        ? entity.fulfillmentRoutingSkipReason
+        : null,
+      // #3485 - coerced like the skip reason: a reason this build does not
+      // recognise (written by a newer release, then rolled back) reads as no
+      // block at all, never as an unknown literal.
+      isFulfillmentBlockReason(entity.fulfillmentBlockReason)
+        ? { reason: entity.fulfillmentBlockReason, detail: entity.fulfillmentBlockDetail ?? null }
+        : null
     );
   }
 

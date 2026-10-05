@@ -36,7 +36,11 @@ export { hasParcelProfile, summarizeParcelProfile } from './lib/parcel-profile';
 // resolver joins the barrel rather than being reached for by deep path. #2088
 // made it the app's ONLY platform-label path (14 call sites), which is why the
 // no-fallback variant is exported too — see `lib/platform-label.ts`.
-export { findPlatformDisplayName, resolvePlatformLabel } from './lib/platform-label';
+export {
+  findPlatformDisplayName,
+  resolvePlatformLabel,
+  resolvePlatformShortLabel,
+} from './lib/platform-label';
 export {
   DELIVERY_MAPPING_DEEP_LINK_PARAMS,
   DELIVERY_MAPPING_TAB,

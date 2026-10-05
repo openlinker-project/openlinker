@@ -62,6 +62,8 @@ export const subiektPlugin: OpenLinkerPlugin = definePlugin({
   },
   platform: {
     displayName: 'Subiekt GT (Sfera GT bridge)',
+    // The bridge is how it is reached, not what it is: the chip face says the platform.
+    shortLabel: 'Subiekt GT',
     setupCard: {
       title: 'Subiekt GT',
       description:

@@ -121,6 +121,7 @@ function resolution(
       overrides.processorConnectionId === undefined ? INPOST : overrides.processorConnectionId,
     source: overrides.source ?? 'rule',
     processorAvailable: overrides.processorAvailable ?? true,
+    parcelProfile: null,
   };
 }
 
@@ -155,7 +156,11 @@ describe('ShipmentDispatchService', () => {
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
   let orderHolds: jest.Mocked<IOrderHoldService>;
-  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
+  let fulfillmentWorks: {
+    resolveLinkForOrder: jest.Mock;
+    listBlockingRejectionConnectionIds: jest.Mock;
+    findWorkById: jest.Mock;
+  };
   let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock };
   let service: ShipmentDispatchService;
 
@@ -213,6 +218,8 @@ describe('ShipmentDispatchService', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -250,6 +257,7 @@ describe('ShipmentDispatchService', () => {
     fulfillmentWorks = {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+      findWorkById: jest.fn().mockResolvedValue(null),
     };
     // #3365: every successful label buy enqueues the dispatch notification, so
     // the queue is present on every pre-existing test. Resolving by default

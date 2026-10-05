@@ -15,6 +15,7 @@ import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/ful
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
+import { ShippingModule } from '@openlinker/core/shipping';
 
 import { FulfillmentWorkController } from './http/fulfillment-work.controller';
 
@@ -27,10 +28,12 @@ import { FulfillmentWorkController } from './http/fulfillment-work.controller';
   //                             and the source's own order reference (#3426)
   //   InventoryModule (#3426) — the location's operator-authored name
   //   ProductsModule  (#3426) — each line's product name
+  //   ShippingModule  (#3292) — the shipment(s) dispatched for one work, via
+  //                             `IShipmentQueryService.findByFulfillmentWorkIds`
   //
-  // All three are reached through their published `I*Service` interfaces and
-  // never a `*RepositoryPort`, and all three reads are batched per page.
-  imports: [CoreFulfillmentModule, OrdersModule, InventoryModule, ProductsModule],
+  // All are reached through their published `I*Service` interfaces and never
+  // a `*RepositoryPort`, and every page-shaped read is batched per page.
+  imports: [CoreFulfillmentModule, OrdersModule, InventoryModule, ProductsModule, ShippingModule],
   controllers: [FulfillmentWorkController],
 })
 export class FulfillmentApiModule {}

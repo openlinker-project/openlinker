@@ -28,6 +28,14 @@ export class OperationalSettingsOrmEntity {
   @Column({ type: 'integer', name: 'deletion_audit_budget', nullable: true })
   deletionAuditBudget!: number | null;
 
+  /** Days a `succeeded` sync_jobs row is kept before the retention prune deletes it (#2946, D16). */
+  @Column({ type: 'integer', name: 'sync_job_retention_days', nullable: true })
+  syncJobRetentionDays!: number | null;
+
+  /** Days a `dead` sync_jobs row is kept (#2946, D16). */
+  @Column({ type: 'integer', name: 'sync_job_dead_retention_days', nullable: true })
+  syncJobDeadRetentionDays!: number | null;
+
   @Column({ type: 'text', name: 'deletion_audit_cadence', nullable: true })
   deletionAuditCadence!: string | null;
 

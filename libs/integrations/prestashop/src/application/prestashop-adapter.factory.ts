@@ -40,6 +40,7 @@ import { PrestashopCountryResolver } from '../infrastructure/provisioners/presta
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
 import { PrestashopPackResolver } from '../infrastructure/provisioners/prestashop-pack.resolver';
 import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
+import { PrestashopShopUnitsResolver } from '../infrastructure/provisioners/prestashop-shop-units.resolver';
 import { PrestashopOrderCurrencyResolver } from '../infrastructure/provisioners/prestashop-order-currency.resolver';
 import { PrestashopOrderFeedCapabilityCache } from '../infrastructure/provisioners/prestashop-order-feed-capability.cache';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
@@ -75,6 +76,10 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // instances the master sync creates. Resolves the fallback currency when the
   // connection config leaves `currency` unset.
   private readonly shopCurrencyResolver = new PrestashopShopCurrencyResolver();
+
+  // Process-singleton for the same reason: the shop's weight/dimension units
+  // are read once per connection, not once per per-product adapter (#3650).
+  private readonly shopUnitsResolver = new PrestashopShopUnitsResolver();
 
   // Same placement and reasoning: master inventory sync builds one adapter per
   // product, so the set of pack ids has to be cached above the adapter or the
@@ -187,7 +192,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       // one shop. Its own instance (and so its own 5-minute cache) rather than
       // the order branch's, because that one is built only when customer
       // provisioning is wired and the catalogue sync must not depend on that.
-      this.productTaxRateResolver
+      this.productTaxRateResolver,
+      this.shopUnitsResolver
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(
@@ -329,6 +335,7 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     this.featureResolver.clearCache(connectionId);
     this.categoryPathResolver.clearCache(connectionId);
     this.shopCurrencyResolver.clearCache(connectionId);
+    this.shopUnitsResolver.clearCache(connectionId);
     this.orderCurrencyResolver.clearCache(connectionId);
     this.productTaxRateResolver.clearCache(connectionId);
     // Pack ids are shop-scoped product ids, so the previous shop's set would

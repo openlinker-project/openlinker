@@ -109,8 +109,18 @@ export {
   resolveAutoDispatchDeliveryIntent,
   resolveAutoDispatchParcel,
   resolveAutoDispatchRecipient,
+  resolveOrderDispatchTarget,
+  mergeAutoDispatchParcelOptions,
+  findMissingParcelRequirement,
 } from './domain/auto-dispatch';
-export type { AutoDispatchRefusalReason, AutoDispatchWorkLine } from './domain/auto-dispatch';
+export type {
+  AutoDispatchRefusalReason,
+  AutoDispatchWorkLine,
+  OrderDispatchTarget,
+  AutoDispatchParcelProfile,
+  AutoDispatchParcelOptions,
+} from './domain/auto-dispatch';
+export { resolveCarrierMethod } from './domain/delivery-intent-resolution';
 
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
@@ -145,6 +155,11 @@ export type { PickupPointQueryStatsPort } from './domain/ports/pickup-point-quer
 // engineering-standards §"Port sub-capabilities").
 export type { ShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
 export { isShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
+export type {
+  ParcelRequirements,
+  ParcelRequirementsReader,
+} from './domain/ports/capabilities/parcel-requirements-reader.capability';
+export { isParcelRequirementsReader } from './domain/ports/capabilities/parcel-requirements-reader.capability';
 export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export type { LabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';

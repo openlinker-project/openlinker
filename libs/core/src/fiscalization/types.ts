@@ -13,6 +13,9 @@
  * @see docs/architecture/adrs/065-sales-document-read-surface.md
  */
 export type {
+  FiscalArtefactDisposition,
+  FiscalArtefactMedium,
+  FiscalArtefactSummary,
   FiscalRegistrationFailureMode,
   FiscalRegistrationStatus,
 } from './domain/types/fiscalization.types';

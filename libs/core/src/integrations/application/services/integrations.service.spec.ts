@@ -199,6 +199,30 @@ describe('IntegrationsService', () => {
       );
     });
 
+    it('should throw ConnectionDisabledException when connection is archived (#3657)', async () => {
+      const archivedConnection = new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        'archived',
+        {},
+        '',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+      connectionPort.get.mockResolvedValue(archivedConnection);
+
+      await expect(service.getAdapter('connection-123')).rejects.toThrow(
+        'Connection is archived: connection-123'
+      );
+      await expect(service.getAdapter('connection-123')).rejects.toBeInstanceOf(
+        ConnectionDisabledException
+      );
+    });
+
     it('should throw AdapterNotFoundException when adapter key not found', async () => {
       connectionPort.get.mockResolvedValue(mockConnection);
       adapterRegistry.getAdapterMetadata.mockRejectedValue(

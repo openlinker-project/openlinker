@@ -142,6 +142,16 @@ describe('FulfillmentWorklistService', () => {
       expect(JSON.stringify(view)).not.toContain('some-internal-service');
     });
 
+    it('should expose the relay instant only as channelNotifiedAt (#3096, G02-3)', async () => {
+      // The fixture's work carries `dispatchRelayedAt: 2026-08-01`. The fact
+      // reaches the operator — has the channel been told? — under a name that
+      // says so, and the relay column itself stays off the view.
+      const view = await makeService(makeRepo()).get('work-1');
+
+      expect(view.channelNotifiedAt).toEqual(new Date('2026-08-01T00:00:00Z'));
+      expect(Object.keys(view)).not.toContain('dispatchRelayedAt');
+    });
+
     it('should carry the optimistic token and the line counters', async () => {
       const view = await makeService(makeRepo()).get('work-1');
       expect(view.version).toBe(7);

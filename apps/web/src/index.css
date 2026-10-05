@@ -766,6 +766,33 @@ button:disabled,
 .button--icon.button--sm { width: 1.75rem; }
 .button--icon.button--lg { width: 2.375rem; }
 
+/* ── Contextual help link (#81) ───────────────────────────────────── */
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.help-link:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.help-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.help-link__glyph {
+  font-size: 0.6875rem;
+  line-height: 1;
+  font-weight: 600;
+}
+
 /* ── Keyboard shortcut affordance inside a button (#775) ─────────── */
 .button__shortcut {
   display: inline-flex;
@@ -1183,6 +1210,36 @@ textarea,
   font-size: 14px;
   color: var(--text-primary);
   letter-spacing: -0.02em;
+}
+
+/* A shell with no sidebar (the pack bench): the topbar and content take the
+   full width at every breakpoint, and the brand mark moves into the topbar,
+   where it sits flush instead of carrying the sidebar's padding. */
+@media (min-width: 1024px) {
+  .shell.shell--no-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'main';
+  }
+}
+
+.shell-topbar .shell-brand {
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* On a phone the rest of the app's topbar opens with a 36 px menu button and
+   the breadcrumb. The brand takes that slot here, so only the mark stays and
+   the name and environment badge give the breadcrumb its room back. */
+@media (max-width: 767px) {
+  .shell-topbar .shell-brand__name,
+  .shell-topbar .shell-brand .context-chip {
+    display: none;
+  }
+}
+
+/* The page owns its own gutters (`.bench-shell`), so the shell adds none. */
+.shell-content.shell-content--flush {
+  padding: 0;
 }
 
 /* ── Environment badge: version line (#3287) ─────────────────────────
@@ -1629,6 +1686,18 @@ textarea,
   .shell-user-chip__name {
     display: none;
   }
+
+  /* Except on the pack bench (story A4, #3653): a packer must see who the
+     system thinks they are without opening a menu, and a bench terminal may
+     well be narrow. Capped and ellipsised so a long name cannot push the
+     topbar past the viewport; the full name stays in the chip's label. */
+  .shell--bench .shell-user-chip__name {
+    display: inline-block;
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .shell-user-chip__menu {
@@ -1704,6 +1773,15 @@ textarea,
 .state-card__title {
   margin: 0;
   color: var(--text-primary);
+}
+
+/* A page/section title carrying an inline HelpLink (#81) — same title
+   styling, plus a small gap so the "?" badge doesn't crowd the text. */
+.page-title__with-help,
+.section-title__with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .page-description,
@@ -3550,6 +3628,104 @@ a.delivery-rider-banner__button:focus-visible {
   background: var(--status-error-soft);
 }
 
+/* `AccessDeniedState` (#3096): neutral, not error-tinted - a 403 is a fact
+   about the session's role, not a fault, and it offers no Retry. */
+.state-card--denied {
+  border-color: var(--border-default);
+  background: var(--bg-surface-muted);
+}
+
+/* ── DetailSection (`shared/ui/detail-section.tsx`, #3096) ─────────────────
+   The card a detail page is built from: the mockups' `.detail-section` box
+   model, transcribed. Spacing between cards belongs to the parent stack's
+   `gap`, so the card itself carries no outer margin. */
+.detail-card {
+  min-width: 0;
+  padding: 1.25rem var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.detail-card--hero {
+  padding: 1.375rem var(--space-5);
+}
+
+.detail-card--actions {
+  padding: 1.125rem var(--space-5);
+}
+
+.detail-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.detail-card__title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.detail-card__aside {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* A narrow phone keeps the card but takes the mockup's mobile inset (16 x
+   20 px) rather than its desktop 20 x 24: with the app's 16 px page gutter the
+   wider inset leaves a 310 px measure on a 390 px screen, which the two-column
+   facts grid needs more than the card needs air. */
+@media (max-width: 479.98px) {
+  .detail-card,
+  .detail-card--hero,
+  .detail-card--actions {
+    padding: var(--space-4) 1.25rem;
+  }
+}
+
+/* `Alert density="compact"` (#3096): the mockups' `.hold-banner` - an 8 px
+   radius, a 13 x 15 px inset, no inset rule, and a 14 px title in the tone's
+   own foreground colour. */
+.alert--compact {
+  gap: var(--space-3);
+  padding: 0.8125rem 0.9375rem;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.alert--compact .alert__content {
+  gap: 0.1875rem;
+}
+
+.alert--compact .alert__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.alert--compact .alert__description {
+  font-size: 0.8125rem;
+}
+
+.alert--compact.alert--warning .alert__title {
+  color: var(--status-warning-fg);
+}
+
+.alert--compact.alert--error .alert__title {
+  color: var(--status-error-fg);
+}
+
+.alert--compact.alert--info .alert__title {
+  color: var(--status-info-fg);
+}
+
 .definition-list {
   margin: 0;
 }
@@ -4808,6 +4984,18 @@ a.delivery-rider-banner__button:focus-visible {
 .sales-document-country-routing-dialog__body {
   display: grid;
   gap: var(--space-5);
+}
+
+/* #3657 — the archive confirmation stacks a consequence list, the typed-name
+   field and an error alert; same grid+gap shape as the dialog bodies above. */
+.archive-connection-dialog__body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.archive-connection-dialog__list {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 /* ── Per-tier cards (review finding: tiers read as one unbroken block) ──
@@ -6270,6 +6458,30 @@ a.kpi-card:focus-visible {
 .kpi-card--success .kpi-card__value,
 .kpi-card--success .kpi-card__description {
   color: var(--status-success-strong);
+}
+
+/* ── KpiGrid (`shared/ui/kpi-card.tsx`, #3096) ────────────────────────────
+   A row of KPI cards that WRAPS by grid track, never by flex line: a wrapped
+   flex row resolves `.kpi-card`'s `height: 100%` against the row track and
+   lets cards overlap whatever follows (measured on the fulfilment board at
+   390 px). Same tracks as the mockups' `.metric-row` and `.bench-metric-row`. */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+}
+
+/* The mockups' `.metric-card` scale: 16 px inset, 28 px value. The KPI card's
+   own 24 px / 32 px is the Insights page's, where the value is the headline. */
+.kpi-card--compact {
+  gap: var(--space-2);
+  padding: var(--space-4);
+  min-height: 0;
+}
+
+.kpi-card--compact .kpi-card__value {
+  font-size: 1.75rem;
+  line-height: 1.05;
 }
 
 /* ── Analytics KPI card extras (#1990) ───────────────────────────────
@@ -11439,6 +11651,272 @@ a.kpi-card:focus-visible {
 .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
 .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
 
+/* ── Connection chip (#3670) ───────────────────────────────────────────
+ * A connection's channel as one link: the platform at rest, the connection
+ * name sliding out to the right on hover / keyboard focus. It replaces a
+ * non-clickable `.channel-pill` beside a separate, truncated name link.
+ *
+ * Two boxes, one silhouette. The FACE (dot + platform) is the only thing in
+ * flow, so a row's width never depends on the name. The REVEAL is absolutely
+ * positioned behind the face's right cap and unrolls rightwards with a clip,
+ * so opening it moves nothing - it overlays the neighbouring cell for as long
+ * as the pointer is there. Both share one tint, so the open chip reads as a
+ * single pill that grew, with the face's cap left as a natural seam.
+ *
+ * `isolation` gives the reveal a stacking context of its own to sit BEHIND the
+ * face in; the raised `z-index` on the open state lifts the whole chip above
+ * whatever it overlays. */
+.connection-chip {
+  --chip-hue: var(--text-muted);
+  --chip-rest-bg: var(--bg-surface-muted);
+  --chip-rest-edge: var(--border-subtle);
+  --chip-tint: color-mix(in oklab, var(--chip-hue) 13%, var(--bg-surface));
+  --chip-tint-strong: color-mix(in oklab, var(--chip-hue) 24%, var(--bg-surface));
+  --chip-edge: color-mix(in oklab, var(--chip-hue) 55%, var(--border-subtle));
+  --chip-overlap: 12px;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  /* Several hosts are column flex stacks (`.orders-cell-stack`), which would
+   * otherwise stretch the chip across the whole cell. */
+  align-self: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.connection-chip[data-channel='allegro']     { --chip-hue: var(--channel-allegro); }
+.connection-chip[data-channel='prestashop']  { --chip-hue: var(--channel-prestashop); }
+.connection-chip[data-channel='erli']        { --chip-hue: var(--channel-erli); }
+.connection-chip[data-channel='woocommerce'] { --chip-hue: var(--channel-woocommerce); }
+.connection-chip[data-channel='amazon']      { --chip-hue: var(--channel-amazon); }
+.connection-chip[data-channel='shopify']     { --chip-hue: var(--channel-shopify); }
+
+.connection-chip__face {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 8px 0 7px;
+  border: 1px solid var(--chip-rest-edge);
+  border-radius: var(--radius-pill);
+  background: var(--chip-rest-bg);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--chip-hue);
+  transition:
+    box-shadow var(--duration-normal) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__platform {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.connection-chip__reveal {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: calc(100% - var(--chip-overlap));
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  max-width: 18rem;
+  padding: 0 8px 0 calc(var(--chip-overlap) + 7px);
+  border: 1px solid var(--chip-edge);
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  background: var(--chip-tint);
+  box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--chip-hue) 45%, transparent);
+  /* Rolled up to its left edge, i.e. entirely behind the face. */
+  clip-path: inset(-12px 100% -12px 0);
+  pointer-events: none;
+  transition:
+    clip-path var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--text-primary);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip__chevron {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--chip-hue);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+/* ── Open: hover or keyboard focus ── */
+.connection-chip--link {
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+  transform-origin: left center;
+}
+
+.connection-chip--link:hover,
+.connection-chip--link:focus-visible {
+  z-index: 3;
+}
+
+.connection-chip--link:hover .connection-chip__face,
+.connection-chip--link:focus-visible .connection-chip__face {
+  border-color: var(--chip-edge);
+  background: var(--chip-tint);
+}
+
+.connection-chip--link:hover .connection-chip__dot,
+.connection-chip--link:focus-visible .connection-chip__dot {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--chip-hue) 28%, transparent);
+}
+
+/* Opening is slower and eased out, so the name reads as unrolling; closing
+ * (the base rule) is quicker, so a pointer sweeping down a column does not
+ * leave a trail of half-shut chips behind it. */
+.connection-chip--link:hover .connection-chip__reveal,
+.connection-chip--link:focus-visible .connection-chip__reveal {
+  clip-path: inset(-12px -12px -12px 0);
+  pointer-events: auto;
+  transition:
+    clip-path var(--duration-slow) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.connection-chip--link:hover .connection-chip__name,
+.connection-chip--link:focus-visible .connection-chip__name {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 60ms,
+    transform var(--duration-slow) var(--ease-out) 40ms;
+}
+
+.connection-chip--link:hover .connection-chip__chevron,
+.connection-chip--link:focus-visible .connection-chip__chevron {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out) 120ms,
+    transform var(--duration-slow) var(--ease-out) 120ms;
+}
+
+.connection-chip--link:focus-visible {
+  outline: none;
+}
+
+.connection-chip--link:focus-visible .connection-chip__face {
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Press ── the whole chip dips and the tint deepens, so a click is felt
+ * before the route changes. Scaling the root rather than the face keeps the
+ * face and the reveal moving as one piece. */
+.connection-chip--link:active {
+  transform: scale(0.96);
+  transition-duration: 60ms;
+}
+
+.connection-chip--link:active .connection-chip__face,
+.connection-chip--link:active .connection-chip__reveal {
+  background: var(--chip-tint-strong);
+}
+
+.connection-chip--link:active .connection-chip__dot {
+  transform: scale(1.35);
+}
+
+/* ── No label known: the name is the face, nothing slides out ── */
+.connection-chip--name-only .connection-chip__name {
+  opacity: 1;
+  transform: none;
+}
+
+.connection-chip--name-only .connection-chip__chevron {
+  margin-left: -2px;
+}
+
+/* A connection that did not resolve is a statement of absence, not a name. */
+.connection-chip--unknown .connection-chip__name {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* No hover to open it: show the name statically, joined to the face, rather
+ * than hide it on the one device class that could never reveal it. */
+@media (hover: none) {
+  .connection-chip__reveal {
+    position: relative;
+    left: auto;
+    margin-left: calc(var(--chip-overlap) * -1);
+    clip-path: none;
+    pointer-events: auto;
+    box-shadow: none;
+    border-color: var(--chip-rest-edge);
+    background: var(--chip-rest-bg);
+  }
+
+  .connection-chip__name,
+  .connection-chip__chevron {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-chip,
+  .connection-chip *,
+  .connection-chip--link:hover *,
+  .connection-chip--link:focus-visible * {
+    transition: none !important;
+  }
+
+  .connection-chip--link:active {
+    transform: none;
+  }
+}
+
 /* ── Patterns: entity label (thumb + name + sub-id) ──────────────── */
 .entity-label { display: inline-flex; align-items: center; gap: var(--space-2); }
 .entity-label__thumb {
@@ -11872,8 +12350,8 @@ a.kpi-card:focus-visible {
   vertical-align: top;
 }
 
-/* Products is the only list pairing `ConnectionCell` with a TEXT adornment, and
- * the cell's 220px body cap was measured in #2027 for an adornment that is either
+/* Products paired `ConnectionCell` with a TEXT adornment before #3670, and the
+ * cell's 220px body cap was measured in #2027 for an adornment that is either
  * absent or a 14px `ConnectionDot`. A `.channel-pill` is 2px border + 16px
  * padding + a 6px dot + a 4px gap + mono 11px text at 0.6em advance, so
  * `WooCommerce` runs ~100px — leaving the connection NAME ~113px inside 220px,
@@ -14040,6 +14518,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-color: var(--border-subtle);
 }
 .bulk-editor__ean-err { color: var(--status-error-fg); font-size: 11.5px; margin-top: 5px; }
+
+/* ── EAN override (#3492) ── */
+/* One definition for the "I confirm this EAN is correct" block, shared by the
+ * simple-product and per-variant scopes so the two cannot look different. */
+.bulk-editor__ean-ack { margin-top: var(--space-2); }
+.bulk-editor__ean-ack .checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* ── end EAN override (#3492) ── */
 
 .bulk-editor__prov {
   font-family: var(--font-mono);
@@ -22353,34 +22842,6 @@ legend.analytics-settings-dialog__label {
   min-width: 0;
 }
 
-.impact-column {
-  position: sticky;
-  top: var(--space-4);
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-  align-self: start;
-}
-
-@media (max-width: 900px) {
-  .impact-column {
-    position: static;
-  }
-}
-
-.field-stack {
-  display: grid;
-  gap: var(--space-4);
-}
-
-/* Label with the effective value + its provenance pushed to the right. */
-.form-field__label--split {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
 .form-field__source {
   font-family: var(--font-mono);
   font-size: 0.6875rem;  font-weight: 400;
@@ -23415,24 +23876,6 @@ legend.analytics-settings-dialog__label {
   color: var(--status-info-fg);
 }
 
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.field-row__slider {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--accent-primary);
-}
-
-.control--narrow {
-  width: 6.5rem;
-  flex: none;
-  text-align: right;
-}
-
 .field-changed {
   display: inline-flex;
   align-items: center;
@@ -23448,11 +23891,6 @@ legend.analytics-settings-dialog__label {
   height: 5px;
   border-radius: 50%;
   background: var(--status-warning);
-}
-
-.actions-hint {
-  color: var(--text-muted);
-  font-size: 0.75rem;
 }
 
 .form-actions {
@@ -23552,10 +23990,6 @@ legend.analytics-settings-dialog__label {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   color: var(--text-muted);
-}
-
-.impact-alert {
-  margin-top: var(--space-4);
 }
 
 /* ── Before / after ─────────────────────────────────────────────────────── */
@@ -23695,44 +24129,9 @@ legend.analytics-settings-dialog__label {
 }
 
 /* ── Two ceilings (#2653 follow-up) ──────────────────────────────────────
- * The slider runs to the ABSOLUTE ceiling, so the recommended one has to be
- * visible on the track - otherwise an operator only learns they crossed it
- * when the save is refused.
+ * The slider runs to the ABSOLUTE ceiling; the recommended one is the tick
+ * `RangeNumberInput` draws on the track (see its block below).
  * ──────────────────────────────────────────────────────────────────────── */
-
-.field-row__track {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.field-row__track .field-row__slider {
-  width: 100%;
-}
-
-.field-row__recommended-marker {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  border-radius: 1px;
-  background: var(--status-warning);
-  opacity: 0.85;
-  pointer-events: none;
-}
-
-.field-row__scale {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-}
 
 /* A value the operator deliberately pushed past our advice must not read as
    an ordinary setting when the page is reopened. */
@@ -23750,6 +24149,678 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-2);
   font-size: 0.8125rem;
   cursor: pointer;
+}
+
+/* ── RangeNumberInput (shared/ui) ────────────────────────────────────────
+ * A slider and a compact number box side by side, bound to one value. The
+ * range is fully restyled (no `.control` chrome): a 4px track in
+ * --border-default, the filled part in the accent, the part past an optional
+ * marker in the warning tone, and a 16px thumb. The `--range-*` fractions are
+ * set inline by the component; the thumb's travel is inset by half its width,
+ * so every position below is `8px + (100% - 16px) * fraction`.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.range-number {
+  --range-control-height: 2rem;
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.range-number__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.range-number__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.range-number__slider {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: var(--range-control-height);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range-number__slider:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.range-number__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0,
+    var(--accent-primary) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) 100%
+  );
+}
+
+.range-number__slider::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0,
+    var(--accent-primary) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-a, 0)),
+    var(--status-warning) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) calc(8px + (100% - 16px) * var(--range-p, 0)),
+    var(--border-default) 100%
+  );
+}
+
+.range-number__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.range-number__slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.range-number__slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--shadow-focus);
+}
+
+.range-number__slider:focus-visible::-moz-range-thumb {
+  box-shadow: var(--shadow-focus);
+}
+
+/* Drawn UNDER the slider: the 4px track hides its middle, so it reads as a
+   notch crossing the track, and the thumb covers it when it sits on it. */
+.range-number__tick {
+  position: absolute;
+  z-index: 0;
+  top: calc(var(--range-control-height) / 2 - 7px);
+  left: calc(8px + (100% - 16px) * var(--range-mark, 1));
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--status-warning);
+  pointer-events: none;
+}
+
+.range-number__scale {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 1rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1rem;
+}
+
+.range-number__marker-label {
+  position: absolute;
+  top: 0;
+  left: calc(8px + (100% - 16px) * var(--range-mark, 1));
+  color: var(--status-warning-fg);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.range-number__marker-label[data-align='start'] {
+  transform: translateX(-4px);
+}
+
+.range-number__marker-label[data-align='end'] {
+  transform: translateX(calc(-100% + 4px));
+}
+
+.range-number__box {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Two classes so it outranks the global `input[type='number']` width rule. */
+.range-number__box .range-number__input {
+  width: 6.5rem;
+  height: var(--range-control-height);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The arrow keys still step the value; the spinner only crowds a 6rem box. */
+.range-number__box .range-number__input::-webkit-inner-spin-button,
+.range-number__box .range-number__input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range-number__box .range-number__input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.range-number__unit {
+  min-width: 2.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 767.98px) {
+  .range-number {
+    --range-control-height: 2.75rem;
+  }
+
+  .range-number__box .range-number__input {
+    width: 5.5rem;
+    font-size: 1rem; /* 16px keeps iOS from zooming on focus */
+  }
+}
+
+/* ── Sync pacing page layout (#2653 rework) ───────────────────────────── */
+
+.pacing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .pacing-layout {
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  }
+}
+
+.pacing-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pacing-nav__link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.pacing-nav__link:hover {
+  border-color: var(--accent-primary-border);
+  color: var(--text-primary);
+}
+
+.pacing-card {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: var(--space-8);
+}
+
+.pacing-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.pacing-card__header .panel__meta {
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.pacing-card__copy {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 72ch;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.pacing-card__copy p {
+  margin: 0;
+}
+
+.pacing-card__note {
+  margin: 0;
+  border-left: 2px solid var(--border-strong);
+  padding-left: var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.pacing-card__fields {
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* One rule between sibling fields, so a card with two reads as two rows. */
+.pacing-card__fields > .pacing-field + .pacing-field {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-5);
+}
+
+.pacing-field {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.pacing-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.pacing-field__source {
+  font-variant-numeric: tabular-nums;
+}
+
+.pacing-field__description {
+  max-width: 72ch;
+  line-height: 1.5;
+}
+
+.pacing-stat {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* ── The summary rail (#3508 follow-up) ───────────────────────────────────
+ * One card beside the form that summarises every section with the live
+ * effect of the draft, and carries the save controls in its footer so they
+ * are always in reach. Sticky from 1024 px, below the 52 px topbar (and the
+ * notch inset); taller than the viewport, its body scrolls on its own while
+ * the footer stays put. Below 1024 px it is an ordinary section after the
+ * form, and `.pacing-mobilebar` keeps the save reachable instead.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* `.shell-content`'s `overflow-x: hidden` makes it a scroll container in
+   both axes (CSS Overflow 3: `hidden` with `visible` computes the other
+   axis to `auto`), and a sticky descendant resolves against its nearest
+   scroll container — one that never scrolls here, because the document
+   does. `clip` cuts off horizontal overflow exactly like `hidden` but is
+   not a scroll container, so the rail sticks to the viewport.
+   Scoped to this page on purpose: switching the shell itself would wake a
+   dozen dormant `position: sticky` rules on other pages at once (the
+   numbering-editor preview at `top: var(--space-5)` would slide under the
+   topbar, for one), and each of those needs its own look. */
+.shell-content:has(.pacing-layout) {
+  overflow-x: clip;
+}
+
+.pacing-rail {
+  --pacing-rail-top: calc(
+    var(--shell-topbar-height) + env(safe-area-inset-top, 0px) + var(--space-4)
+  );
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  scroll-margin-top: var(--space-8);
+}
+
+.pacing-rail__body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--space-4);
+  min-height: 0;
+  padding: var(--space-5);
+}
+
+.pacing-rail__header {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.pacing-rail__lede {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pacing-rail__group {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-4);
+}
+
+.pacing-rail__group-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.pacing-rail__jump {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.pacing-rail__jump::after {
+  content: '→';
+  margin-left: var(--space-1);
+  color: var(--text-muted);
+}
+
+.pacing-rail__jump:hover,
+.pacing-rail__jump:hover::after {
+  color: var(--accent-primary-hover);
+}
+
+.pacing-rail__edited {
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-soft-strong);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.pacing-rail__rows {
+  display: grid;
+  margin: 0;
+}
+
+.pacing-rail__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  margin: 0 calc(-1 * var(--space-2));
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.pacing-rail__row[data-changed='true'] {
+  background: var(--accent-primary-soft);
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.pacing-rail__label {
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.pacing-rail__value {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pacing-rail__before {
+  color: var(--text-muted);
+}
+
+.pacing-rail__arrow {
+  margin: 0 var(--space-1);
+  color: var(--text-muted);
+}
+
+.pacing-rail__row[data-changed='true'] .pacing-rail__after {
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+.pacing-rail__hint {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.pacing-rail__bar {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.pacing-rail__warning {
+  margin: 0;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.pacing-rail__warning[data-tone='error'] {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+
+.pacing-rail__caveats {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.pacing-rail__caveats-summary {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pacing-rail__caveats .limits-list {
+  margin-top: var(--space-3);
+}
+
+.pacing-rail__footer {
+  display: grid;
+  flex: none;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+}
+
+.pacing-save {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.pacing-save + .pacing-save {
+  border-top: 1px dashed var(--border-default);
+  padding-top: var(--space-3);
+}
+
+.pacing-save__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pacing-save__count {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.pacing-save[data-dirty='true'] .pacing-save__count {
+  color: var(--accent-primary-soft-strong);
+}
+
+.pacing-save__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.pacing-save__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Retention's block is one line: a label and its two buttons. */
+.pacing-save--inline {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+/* Fixed, not sticky: it must sit on the viewport's bottom edge wherever the
+   page is scrolled, and it only exists while something is unsaved. */
+.pacing-mobilebar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-default);
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.pacing-mobilebar__count {
+  margin: 0;
+  color: var(--accent-primary-soft-strong);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.pacing-mobilebar .pacing-mobilebar__save {
+  min-width: 8rem;
+  height: 2.75rem;
+}
+
+@media (max-width: 1023.98px) {
+  /* Room for the fixed bar, so it never covers the rail's own footer. */
+  .pacing-layout[data-mobile-bar='true'] {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 1024px) {
+  .pacing-rail {
+    position: sticky;
+    top: var(--pacing-rail-top);
+    /* --space-7 matches .shell-content's bottom padding, so at the very end of
+       the page the grid area does not push the rail up under the topbar. */
+    max-height: calc(100dvh - var(--pacing-rail-top) - var(--space-7));
+  }
+
+  .pacing-rail__body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Until the page has scrolled far enough for the rail to stick, the rail
+     starts below the page header and its foot can sit under the fold. Sticky
+     to the viewport's bottom edge, the save controls stay in view anyway,
+     over the bottom of the rail's own (scrollable) body. */
+  .pacing-rail__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    box-shadow: 0 -1px 0 var(--border-default);
+  }
+
+  .pacing-mobilebar {
+    display: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pacing-rail__body {
+    padding: var(--space-4);
+  }
+
+  .pacing-save__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pacing-save--inline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pacing-save__actions .button,
+  .pacing-save__actions button {
+    height: 2.75rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pacing-card {
+    padding: var(--space-4);
+  }
+
+  .pacing-nav__link {
+    min-height: 2.75rem;
+  }
 }
 
 /* Which ceiling a change crossed, on that change's own entry in the modal. */
@@ -23841,10 +24912,21 @@ legend.analytics-settings-dialog__label {
 
 .fulfilment-task__lines > li {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+/* A line is a product card since #3096 (`FulfillmentLineIdentity`): the card
+   shrinks, the count stays on the same row rather than wrapping beneath it. */
+.fulfilment-task__lines > li > .order-line-item__product {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fulfilment-task__lines > li > .fulfilment-task__count {
+  flex: none;
 }
 
 .fulfilment-task__count {
@@ -23896,40 +24978,78 @@ legend.analytics-settings-dialog__label {
 
 /* ── Assign Packing Work board (#3340) ──────────────────────────────────── */
 
-/* #3428 — the metric row. Flex, not a fixed-column grid: only one of the
-   mockup's three cards is shipped, and a fixed grid would leave visibly
-   empty cells rather than a naturally-sized row. */
+/* #3428 — the metric row, on `.kpi-grid` since #3096. It was a wrapped flex
+   row of `MetricCard`s, whose `height: 100%` resolved against the wrapped
+   line at 390 px and overlapped the lanes beneath (cards 192 x 296 px). The
+   mockup's `.metric-row` margin: one `--space-5` above the lanes. */
 .assign-packing-work-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
 
-.assign-packing-work-metrics .metric-card {
-  min-width: 160px;
-}
-
 /* The board is paged, so a lane holds only this page's tasks. Stated once
-   above the lanes rather than on each — see the page's own comment. */
+   above the lanes, and only when there IS a second page — see the page. */
 .assign-packing-work-scope-note {
   margin: 0 0 var(--space-3);
   font-size: 0.8125rem;
 }
 
-/* The grouping-axis switch, and the one thing that changes with it. The note
-   sits beside the control rather than under the board, because the control is
-   what the operator just used. */
-.assign-packing-work-groupby {
+/* The board's one toolbar row: the grouping switch (multi-location installs
+   only) and the order filter. No grey `.toolbar` band — the mockup has none —
+   and no `flex-basis` on the filter: `.toolbar` turns into a column below
+   900 px, where a basis is a HEIGHT, and `flex: 0 1 20rem` drew the inputs
+   as 324 x 320 px squares on a phone (#3096, M1). A width does what the basis
+   was meant to and means the same thing in either direction. */
+.assign-packing-work-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.assign-packing-work-toolbar__filter {
+  flex: none;
+  width: min(20rem, 100%);
 }
 
 .assign-packing-work-groupby__note {
   font-size: 0.8125rem;
+}
+
+.assign-packing-work-pagination {
+  margin-top: var(--space-5);
+}
+
+/* The lane skeleton's own bars — sized to the rows they stand in for. */
+.assign-packing-work-skeleton {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.assign-packing-work-skeleton__value {
+  height: 22px;
+  width: 40%;
+}
+
+.assign-packing-work-skeleton__avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-surface-hover);
+}
+
+.assign-packing-work-skeleton__title {
+  width: 9rem;
+}
+
+.assign-packing-work-skeleton__ref {
+  flex: 0 0 6rem;
+}
+
+.assign-packing-work-skeleton__text {
+  flex: 1 1 auto;
+  max-width: 16rem;
 }
 
 .assign-packing-work-board {
@@ -24042,6 +25162,15 @@ legend.analytics-settings-dialog__label {
   font-size: 0.8125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  /* The mockup's `.lane-card__ref`: primary ink, no underline until hovered.
+     It used to be a `.link` - an orange underlined body link on every row,
+     the loudest thing on the board for the least changing fact. */
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.assign-packing-work-card__ref:hover {
+  text-decoration: underline;
 }
 
 /* A FIXED slot, so every column after it starts at the same x.
@@ -24050,20 +25179,6 @@ legend.analytics-settings-dialog__label {
    left the buyer column jumping left wherever a row had no deadline. The
    ragged edge is what reads as unfinished. `justify-content: flex-start` keeps
    a short badge from stretching. */
-/* The shared `.toolbar` is `space-between`, which is right for a bar with a
-   heading on one side and a button on the other. This one holds two sibling
-   filters, and flinging them to opposite ends of a 1100px bar left a void
-   down the middle that read as a missing control. Scoped rather than changed
-   on `.toolbar` itself, which every other screen in the app shares. */
-.assign-packing-work-filters {
-  justify-content: flex-start;
-  gap: var(--space-3);
-}
-
-.assign-packing-work-filters > * {
-  flex: 0 1 20rem;
-}
-
 .assign-packing-work-card__flag {
   flex: 0 0 7.5rem;
   display: flex;
@@ -24127,16 +25242,6 @@ legend.analytics-settings-dialog__label {
     flex: 1 1 100%;
   }
 
-  /* Full row width to stack in - see `.assign-packing-work-actions`'s own
-   * comment on why it stays `nowrap` on a desk. */
-  .assign-packing-work-actions {
-    flex-wrap: wrap;
-  }
-
-  .assign-packing-work-actions .control--select {
-    flex: 1 1 auto;
-    max-width: none;
-  }
 }
 
 /* ── Lane column heads (the mockup's `.lane__col-heads`) ──────────────────
@@ -24151,11 +25256,12 @@ legend.analytics-settings-dialog__label {
      cannot be named for one action the way the mockup's static `Hold`
      button is; the shape is what carries over. */
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
+  width: 28px;
   height: 28px;
-  min-width: 28px;
-  padding: 0 var(--space-2);
+  padding: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
@@ -24168,6 +25274,43 @@ legend.analytics-settings-dialog__label {
 .assign-packing-work-card__menu-trigger:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
+}
+
+/* A row with no server action keeps the trigger's footprint (#3096, B12), so
+   the checkbox and the menu button sit at the same x on every row instead of
+   sliding right on a closed or cancelled task. */
+.assign-packing-work-card__menu-slot {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+/* Touch: every control on the row is a 44 px target (style guide § Responsive). */
+@media (pointer: coarse) {
+  .assign-packing-work-card__menu-trigger,
+  .assign-packing-work-card__menu-slot {
+    width: 44px;
+    height: 44px;
+  }
+
+  .assign-packing-work-actions .fulfilment-assignment__trigger {
+    min-height: 44px;
+  }
+
+  .assign-packing-work-actions__self-serve {
+    min-height: 44px;
+  }
+}
+
+/* The assignment menu (`FulfillmentAssignmentControls`): the mockup's
+   `.lane-card__menu` width, and "Pull back" in the warning ink it uses to set
+   the way back apart from the destinations above the separator. */
+.fulfilment-assignment__menu {
+  min-width: 200px;
+}
+
+.fulfilment-assignment__pull-back {
+  color: var(--status-warning-fg);
 }
 
 .assign-packing-work-card__menu {
@@ -24373,21 +25516,13 @@ legend.analytics-settings-dialog__label {
   justify-content: flex-end;
 }
 
-/* Bounds the "Move to" select against its own global `width: 100%` rule -
- * see `.assign-packing-work-actions`'s own comment. Sized for the longest
- * real value seen on the board (`e2e-packer-manual`, 18 chars) with room
- * to spare; `flex-shrink: 1` so it still yields before it forces the row
- * to overflow on a narrower desk. */
-.assign-packing-work-actions .control--select {
-  flex: 0 1 11rem;
-  width: auto;
-  min-width: 0;
-  max-width: 11rem;
-}
-
 .assign-packing-work-actions__self-serve {
   align-items: center;
   display: flex;
+  /* The mockup's `.lane-card__pickable { flex: 0 0 168px }`: a fixed slot, so
+     the menu button after it starts at the same x on every row whichever of
+     the two label lengths the row carries. */
+  flex: 0 0 11rem;
   /* Quieter than the row it sits on, deliberately. It renders on EVERY card,
      and on a board of fourteen unassigned parcels it was fourteen identical
      ticks and fourteen copies of the same five words running down the page -
@@ -24400,6 +25535,482 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-1);
   white-space: nowrap;
 }
+
+/* The mockup's phone row: the checkbox on its own line, then the menu button
+   and the overflow trigger right-aligned beneath it. AFTER the base rules
+   above on purpose - a media block earlier in the file loses to them on
+   source order, which is how this row used to stay `nowrap` on a phone. */
+@media (max-width: 640px) {
+  .assign-packing-work-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .assign-packing-work-actions .assign-packing-work-actions__self-serve {
+    flex: 1 1 100%;
+  }
+}
+
+/* ── Fulfilment work detail (#3096) ───────────────────────────────────────
+   One block for the routed detail page. Declares no new custom properties —
+   every `var(--x)` here already exists, because `tokens.ts` is a second
+   shared file and `check-design-tokens.mjs` asserts the pair.
+
+   The block prefix is `fulfilment-work-detail` (British, like every other
+   class in this slice, while the folder and the route stay American), and it
+   is covered by `features/fulfillment/fulfilment-work-detail-styles.test.ts`. */
+
+/* ── #3096 layout: the order page's grid, the mockup's 22 px card rhythm ──
+   `.order-detail__primary-grid--split` + `.order-detail__stack` supply the
+   two columns (60/40 at >= 1024 px). The mockup stacks its cards 22 px apart
+   (`.detail-section { margin-top: 22px }`); the stacks' gap carries that here,
+   so no card has an outer margin. */
+.fulfilment-work-detail__layout,
+.fulfilment-work-detail__layout > .order-detail__stack {
+  gap: 1.375rem;
+}
+
+/* Below desktop the grid is one column and the stacks dissolve, so the cards
+   can take the mobile reading order: the task first, then who packs it and
+   the order's own modules, then the reference facts and the actions. */
+@media (max-width: 1023.98px) {
+  .fulfilment-work-detail__main,
+  .fulfilment-work-detail__rail {
+    display: contents;
+  }
+
+  .fulfilment-work-detail__slot--hero { order: 1; }
+  .fulfilment-work-detail__slot--holds { order: 2; }
+  .fulfilment-work-detail__slot--lines { order: 3; }
+  .fulfilment-work-detail__slot--packer { order: 4; }
+  .fulfilment-work-detail__slot--shipment { order: 5; }
+  .fulfilment-work-detail__slot--invoicing { order: 6; }
+  .fulfilment-work-detail__slot--payment { order: 7; }
+  .fulfilment-work-detail__slot--facts { order: 8; }
+  .fulfilment-work-detail__slot--actions { order: 9; }
+}
+
+/* A capability-gated panel renders nothing inside its anchor wrapper; an empty
+   wrapper must not cost the stack a gap. */
+.fulfilment-work-detail__slot--shipment:empty,
+.fulfilment-work-detail__slot--invoicing:empty {
+  display: none;
+}
+
+/* The order page lays the sales-document title beside its headline across a
+   wide column; the rail is ~40 % of that, where the side-by-side squeezes the
+   title onto two lines, so the header stacks here instead. */
+.fulfilment-work-detail__slot--invoicing .sales-document-panel__header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* The order page's Shipment and Sales document panels are reused here as they
+   are, because they own their actions, but they bring that page's chrome: a
+   16 px inset, the subtle border and a 15 px title-case heading. Beside the
+   DetailSection cards that read as two systems on one page (e2e v2), so on
+   this page alone they take the card's box and its 12 px uppercase title. The
+   order page itself is untouched. */
+.fulfilment-work-detail__slot--shipment .order-shipment-panel,
+.fulfilment-work-detail__slot--invoicing .sales-document-panel {
+  padding: 1.25rem var(--space-5);
+  border-color: var(--border-default);
+}
+
+@media (max-width: 479.98px) {
+  .fulfilment-work-detail__slot--shipment .order-shipment-panel,
+  .fulfilment-work-detail__slot--invoicing .sales-document-panel {
+    padding: var(--space-4) 1.25rem;
+  }
+}
+
+.fulfilment-work-detail__slot--shipment .order-shipment-panel__header > .detail-section__title,
+.fulfilment-work-detail__slot--invoicing .sales-document-panel__header > .detail-section__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── hero (the mockup's `.detail-hero`) ── */
+.fulfilment-work-detail__hero-sub {
+  margin: 0 0 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__hero-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+/* The two axis labels joined, at the mockup's 22 px / 700: the page's answer
+   to "what is happening to this task", so it is the largest thing in it. */
+.fulfilment-work-detail__headline {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+/* The mockup's `.expedite-badge`: an accent pill beside the headline. */
+.fulfilment-work-detail__expedited {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  padding: 2px 9px;
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary-hover);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The derived sentence. Body-weight and uncoloured on purpose - colour on this
+   page marks attention, and attention here is the hold banners. */
+.fulfilment-work-detail__summary {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+/* ── #3100 lines / holds / facts ── */
+
+/* Holds stack 8 px apart, the mockup's `.hold-banner:not(:last-child)`. Each
+   banner is `Alert density="compact"`, the shared form of that shape. */
+.fulfilment-work-detail__holds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The note and the "since" line inside one banner. A wrapper rather than two
+   paragraphs, because `.alert__description p` is margin-zeroed, so stacked
+   paragraphs would touch. */
+.fulfilment-work-detail__hold-body {
+  display: grid;
+  gap: 0.1875rem;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+/* The mockup's `.item-row`: 11 px of air above and below, a hairline between
+   rows (not around them — the card already carries the boundary). One row at
+   every width: the product card shrinks, the count never wraps under it. */
+.fulfilment-work-detail__line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0.6875rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fulfilment-work-detail__line:first-child {
+  padding-top: 0;
+}
+
+.fulfilment-work-detail__line:last-child {
+  border-bottom: none;
+}
+
+.fulfilment-work-detail__line .order-line-item__product {
+  flex: 1 1 auto;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* The mockup's 15 px / 500 item name, allowed to wrap: a long product name is
+   the identity, and an ellipsis would hide the half that tells two apart. */
+.fulfilment-work-detail__line .order-line-item__name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-detail__line-count {
+  flex: none;
+  padding-top: 0.125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+/* The variant's distinguishing attributes, under its codes ("Kolor: srebrny ·
+   Rozmiar: L") — shared by the task detail and the order page's task panel. */
+.fulfilment-line-identity__attributes {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Reinforcement only - the two equal numbers beside it already say the line is
+   complete, so colour is never the sole signal here. */
+.fulfilment-work-detail__line-done {
+  color: var(--status-success-fg);
+}
+
+.fulfilment-work-detail__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+}
+
+/* The mockup's `.fact-grid`: two columns at EVERY width (its phone render has
+   two as well), 14 px between rows and 24 px between columns; a label in
+   small muted case-as-written over a 15 px / 500 value. */
+.fulfilment-work-detail__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem var(--space-5);
+  margin: 0;
+  min-width: 0;
+}
+
+.fulfilment-work-detail__fact {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fulfilment-work-detail__fact dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fulfilment-work-detail__fact dd {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Closed but not yet settled with the channel — attention, not alarm. */
+.fulfilment-work-detail__fact-warning {
+  color: var(--status-warning-fg);
+  font-size: 0.875rem;
+}
+
+/* ── #3096 action card (the mockup's `.detail-actions`) ── */
+.fulfilment-work-detail__actions-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A small label, not a section title — the mockup draws it 12 px muted and in
+   sentence case, above the buttons. */
+.fulfilment-work-detail__actions-label {
+  width: 100%;
+  margin-bottom: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fulfilment-work-detail__actions .fulfilment-task__actions {
+  padding-top: 0;
+}
+
+/* Touch: the 32 px action buttons grow to the 44 px target. */
+@media (pointer: coarse) {
+  .fulfilment-work-detail__actions .button,
+  .fulfilment-work-packer__controls .button {
+    min-height: 44px;
+  }
+}
+
+/* ── #3096 Packer card (from `assign-packing-work.html`'s lane head) ── */
+.fulfilment-work-packer__holder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.fulfilment-work-packer__identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fulfilment-work-packer__name {
+  margin: 0;
+  font-size: 0.84375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fulfilment-work-packer__sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.fulfilment-work-packer__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.fulfilment-work-packer .alert {
+  margin-top: var(--space-3);
+}
+
+/* ── #3096 Payment card + rail states ── */
+.fulfilment-work-detail__payment-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+
+.fulfilment-work-detail__order-unavailable {
+  margin: 0 0 var(--space-3);
+  font-size: 0.875rem;
+}
+
+.fulfilment-work-detail__skeleton-line {
+  margin-top: var(--space-2);
+}
+
+/* ── #3102 vs-Orders explainer ── */
+
+/* Why this screen is not a duplicate of Orders. ALWAYS VISIBLE - there is no
+   collapsed variant of this block and no rule here may introduce one, because
+   the reader who needs it is the one who does not know they need it. One
+   stack, one outer margin: neither part carries a margin of its own, so the
+   gap between them and the distance to the hero are each set in one place. */
+.fulfilment-work-detail__vs-orders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* The mockup's 20 px from the comparison to the hero (`.detail-hero`). */
+  margin-bottom: 1.25rem;
+  /* The mockup's own measure. Two sentences side by side are unreadable at a
+     full-width container, and this block is context rather than content. */
+  max-width: 78ch;
+}
+
+/* Two columns that REFLOW to one below 640px rather than truncating: each half
+   is a whole sentence about a different thing, so an ellipsis would hide
+   whichever happens to be second and leave the comparison half-made. */
+.fulfilment-work-detail__compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  /* The columns paint to the edge; the radius has to clip them. */
+  overflow: hidden;
+}
+
+.fulfilment-work-detail__compare-col {
+  /* The mockup's `.compare__col`: 14 x 16 px. */
+  padding: 0.875rem var(--space-4);
+  background: var(--bg-surface-muted);
+  border-right: 1px solid var(--border-default);
+}
+
+/* Positional, not semantic: the divider belongs BETWEEN the halves, so it is
+   the last column that drops it rather than the one that happens to be "this
+   task". Swapping the two would then still leave exactly one divider. */
+.fulfilment-work-detail__compare-col:last-child {
+  border-right: none;
+}
+
+/* The half the operator is actually on sits on the plain surface, so the pair
+   reads as "that one, then this one" with no second colour and no accent -
+   accent on this page marks attention, and attention here is the hold banners. */
+.fulfilment-work-detail__compare-col--this {
+  background: var(--bg-surface);
+}
+
+.fulfilment-work-detail__compare-label {
+  margin-bottom: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* `margin: 0` is load-bearing on a `dd`: the UA default indents it by 40px,
+   which would step the two sentences in from their own labels. */
+.fulfilment-work-detail__compare-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .fulfilment-work-detail__compare {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stacked, the divider is the one between the rows. Nothing is hidden - the
+     column that was beside the first is now beneath it. */
+  .fulfilment-work-detail__compare-col {
+    border-right: none;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .fulfilment-work-detail__compare-col:last-child {
+    border-bottom: none;
+  }
+}
+
+/* ── #3101 detail actions ── */
+/* `FulfillmentTaskActions` brings its own `.fulfilment-task__actions` flex
+   row, so this wrapper exists for the two things that row cannot carry:
+   `aria-busy` for the whole write surface of a one-task page, and a home for
+   the "nothing left" sentence when the server offers no action at all.
+   Flex-wrap so a long action set falls to a second line rather than
+   overflowing - there is nothing here worth truncating. */
+.fulfilment-work-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Deliberately quiet: it reports an absence of work, not a problem. No
+   typography-scale token family exists in this stylesheet, so the size is a
+   literal - the shape `.fulfilment-work-detail__summary` above already
+   takes. */
+.fulfilment-work-detail__actions-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+/* ── end Fulfilment work detail (#3096) ── */
 
 /* ── Sales-document glyph + headline (#2535) ───────────────────────────
    The kind is an entity axis, so the glyph inherits `currentColor` and takes
@@ -24662,34 +26273,6 @@ legend.analytics-settings-dialog__label {
   justify-content: center;
   padding: 2rem;
   background: var(--bg-surface-elevated);
-}
-
-.bench-identity-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin: 0 var(--space-5);
-  padding: var(--space-3) var(--space-5);
-  background: var(--bg-surface-muted);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.875rem;
-}
-
-/* The mockup says out loud what the switch DOES, next to the control, rather
-   than leaving it to a `title` a gloved hand never hovers. */
-.bench-identity-bar__hint {
-  margin-left: auto;
-  margin-right: var(--space-4);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-wrap: pretty;
-}
-
-@media (max-width: 900px) {
-  .bench-identity-bar__hint {
-    display: none;
-  }
 }
 
 /* ── Pack bench — work list (#2416, W3b-3) ──────────────────────────────────
@@ -25377,7 +26960,8 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-3);
   justify-items: start;
   max-width: 42rem;
-  padding: var(--space-6) 0;
+  /* The same side gutter as the rail's search, take-next and tabs above it. */
+  padding: var(--space-6) var(--space-4);
 }
 
 .bench-work-empty__title {
@@ -26463,115 +28047,20 @@ legend.analytics-settings-dialog__label {
   overflow-y: auto;
 }
 
-/* ── Bench topbar (#3423, mockup-parity epic #3401) ──────────────────────
- * A bench-owned header, NOT `AppShell` — `/bench` stays outside
- * `AuthenticatedAppLayout` by design (#2413). Mirrors the mockup's
- * `.topbar`/`.shell-brand`/`.shell-crumbs`/`.shell-user-chip` visually. */
-.bench-topbar {
+/* ── Bench connectivity readout (#3422, moved by #3653) ──────────────────
+ * The bench carries the application's own topbar since #3653; this readout is
+ * the one part of the old bench-only topbar no other page has. Colour is never
+ * the only signal: the dot is always paired with its own word, per the rule
+ * that also governs `StatusBadge`. The middle tone is NOT "hardware" - see
+ * `bench-connectivity-indicator.tsx`. */
+.bench-status {
   display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  height: 52px;
-  padding: 0 var(--space-5);
-  background: var(--bg-shell);
-  border-bottom: 1px solid var(--border-subtle);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-5) 0;
+  background: var(--bg-canvas);
 }
 
-.bench-topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.bench-topbar__brand-mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: var(--accent-primary);
-  display: grid;
-  place-items: center;
-  color: var(--text-on-primary);
-  font-weight: 700;
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
-.bench-topbar__brand-name {
-  font-weight: 600;
-  font-size: 0.875rem;
-  letter-spacing: -0.02em;
-}
-
-.bench-topbar__crumbs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--border-default);
-}
-
-.bench-topbar__crumbs-current {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-/* The crumb's parent, live for a viewer who can use it (#3340 follow-up).
-   Reads as text until hovered, because a breadcrumb that shouts is a
-   breadcrumb competing with the work. */
-.bench-topbar__crumbs-up {
-  color: inherit;
-  text-decoration: none;
-  border-radius: var(--radius-sm);
-}
-
-.bench-topbar__crumbs-up:hover {
-  color: var(--text-primary);
-  text-decoration: underline;
-}
-
-.bench-topbar__crumbs-up:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-/* The explicit exit. It survives the phone breakpoint that folds the crumbs
-   away, which is the width where a typed URL is least available. */
-.bench-topbar__leave {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: 0.78125rem;
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.bench-topbar__leave:hover {
-  color: var(--text-primary);
-  border-color: var(--border-strong);
-}
-
-.bench-topbar__leave:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
-.bench-topbar__spacer {
-  flex: 1;
-}
-
-/* #3422 - the connectivity readout. Colour is never the only signal: the dot
-   is always paired with its own word, per the accessibility rule that also
-   governs `StatusBadge`. The three tones map to #3407's three states, and the
-   middle one is NOT "hardware" - see `bench-topbar.tsx`. */
-.bench-topbar__conn {
+.bench-conn {
   align-items: center;
   display: inline-flex;
   gap: var(--space-2);
@@ -26580,7 +28069,7 @@ legend.analytics-settings-dialog__label {
   white-space: nowrap;
 }
 
-.bench-topbar__conn-dot {
+.bench-conn__dot {
   border-radius: 50%;
   flex-shrink: 0;
   height: 8px;
@@ -26588,97 +28077,22 @@ legend.analytics-settings-dialog__label {
   background: var(--status-success);
 }
 
-.bench-topbar__conn--server-unreachable .bench-topbar__conn-dot {
+.bench-conn--server-unreachable .bench-conn__dot {
   background: var(--status-warning);
 }
 
-.bench-topbar__conn--link-down .bench-topbar__conn-dot {
+.bench-conn--link-down .bench-conn__dot {
   background: var(--status-error);
 }
 
 /* The label carries the tone too, so the state survives a monochrome screen
    and a colour-blind reader. */
-.bench-topbar__conn--server-unreachable .bench-topbar__conn-label {
+.bench-conn--server-unreachable .bench-conn__label {
   color: var(--status-warning);
 }
 
-.bench-topbar__conn--link-down .bench-topbar__conn-label {
+.bench-conn--link-down .bench-conn__label {
   color: var(--status-error);
-}
-
-/* The label is the first thing to go at phone width - the dot keeps the
-   state on screen, and the `title` keeps the detail reachable. */
-@media (max-width: 560px) {
-  .bench-topbar__conn-label {
-    display: none;
-  }
-}
-
-.bench-topbar__user-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 3px 10px 3px 3px;
-  border-radius: var(--radius-pill);
-  height: 32px;
-}
-
-.bench-topbar__user-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
-  color: var(--text-inverse);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.65625rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.bench-topbar__user-name {
-  font-size: 0.78125rem;
-  font-weight: 500;
-}
-
-@media (max-width: 560px) {
-  /* `.theme-toggle` is `overflow: hidden`, so a topbar that merely ran out of
-     room CLIPPED its third option rather than scrolling — "System" became
-     unreachable with nothing to say so. The bar wraps instead, which needs
-     the fixed 52 px height released. */
-  .bench-topbar {
-    height: auto;
-    flex-wrap: wrap;
-    row-gap: var(--space-2);
-    padding-block: var(--space-2);
-  }
-
-  .bench-topbar__crumbs {
-    display: none;
-  }
-
-  .bench-topbar__user-name {
-    display: none;
-  }
-
-  /* TWO rows, not three. The spacer grows on a desk to push the trailing
-     group right; wrapping, that growth put the avatar on a line of its own. */
-  .bench-topbar__spacer {
-    flex-basis: 100%;
-    height: 0;
-  }
-
-  .bench-topbar .theme-toggle {
-    margin-left: auto;
-  }
-
-  /* The identity row follows the topbar's own gutter on a phone; the 24 px
-     inset it carries on a desk made it read as a floating strip. */
-  .bench-identity-bar {
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
-  }
 }
 
 /* `.order-head__ref` — the one value on the strip the mockup lifts, and only
@@ -27737,4 +29151,305 @@ legend.analytics-settings-dialog__label {
 .tab-toolbar p {
   margin: 0;
   max-width: 70ch;
+}
+
+/* ── Pack orders in OpenLinker — onboarding wizard (#3457) ── */
+.setup-stepper__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+/* The global `button` rule paints every button orange, fixes its height at 2rem
+   and gives it an orange hover; a step in the list is none of that. */
+.setup-stepper--vertical .setup-stepper__button,
+.setup-stepper--vertical .setup-stepper__button:hover,
+.setup-stepper--vertical .setup-stepper__button:active {
+  height: auto;
+  min-height: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+}
+.setup-stepper__button:disabled { cursor: not-allowed; opacity: 0.6; }
+.setup-stepper__button:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+
+/* The mockup's `.content` caps every state (wizard, waiting, status) at 1120px
+   less its padding, so the page reads as a column rather than a full-width sheet. */
+.oms-onboarding { display: flex; flex-direction: column; gap: var(--space-4); max-width: 75rem; width: 100%; }
+.oms-onboarding__stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.oms-onboarding__panel-title { margin: 0; font-size: 1.125rem; font-weight: 600; }
+.oms-onboarding__panel-title:focus { outline: none; }
+.oms-onboarding__why { margin: 0; color: var(--text-secondary); }
+.oms-onboarding__panel-body { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.oms-onboarding__panel-next { display: flex; gap: var(--space-2); }
+.oms-onboarding__subtitle { margin: 0 0 var(--space-2); font-weight: 600; }
+
+.oms-onboarding__card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.oms-onboarding__card-main { display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__card-name { font-weight: 600; }
+.oms-onboarding__card-sub { color: var(--text-secondary); }
+.oms-onboarding__badges { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+.oms-onboarding__progress { display: flex; flex-direction: column; gap: var(--space-2); }
+.oms-onboarding__progress-row { display: flex; justify-content: space-between; gap: var(--space-3); }
+.oms-onboarding__progress-track {
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+.oms-onboarding__progress-fill { height: 100%; background: var(--accent-primary); transition: width 200ms ease; }
+
+.oms-onboarding__form { display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+  /* Not stretched: a field with a hint under it is taller than one without,
+     and stretching it spreads the shorter fields' rows apart, which drops
+     their inputs below their neighbours'. */
+  align-items: start;
+}
+.oms-onboarding__copybox { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.oms-onboarding__copybox .control { flex: 1; min-width: 0; }
+.oms-onboarding__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.oms-onboarding__list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__more summary { cursor: pointer; color: var(--text-link); }
+.oms-onboarding__more p { margin: var(--space-2) 0 0; color: var(--text-secondary); }
+
+/* Today and After turn-it-on sit side by side (one column on a phone), each a
+   top-to-bottom journey, as in the mockup. */
+.oms-onboarding__flows { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+@media (min-width: 720px) {
+  .oms-onboarding__flows { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+}
+.oms-onboarding__flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__flow--after { border-color: var(--accent-primary); }
+.oms-onboarding__flow-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Each order journey reads top to bottom. */
+.oms-onboarding__chain { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.oms-onboarding__node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+}
+.oms-onboarding__node--highlight { background: var(--status-info-soft); }
+.oms-onboarding__node-title { font-weight: 600; }
+.oms-onboarding__node-body { color: var(--text-secondary); }
+.oms-onboarding__arrow { align-self: center; color: var(--text-muted); transform: rotate(90deg); }
+
+.oms-onboarding__boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); }
+.oms-onboarding__box { padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.oms-onboarding__box--in { border-color: var(--status-success-border); background: var(--status-success-soft); }
+.oms-onboarding__box-title { margin: 0 0 var(--space-2); font-weight: 600; }
+.oms-onboarding__box ul { margin: 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+
+.oms-onboarding__changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__changes li { display: flex; gap: var(--space-3); }
+.oms-onboarding__changes-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  font-weight: 700;
+}
+.oms-onboarding__changes-body { display: block; color: var(--text-secondary); }
+.oms-onboarding__ack {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.oms-onboarding__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.oms-onboarding__check + .oms-onboarding__check { border-top: 1px solid var(--border-subtle); }
+.oms-onboarding__check-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.oms-onboarding__check-title { font-weight: 600; }
+.oms-onboarding__check-detail { display: block; color: var(--text-secondary); }
+.oms-onboarding__tick {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-pill);
+}
+.oms-onboarding__tick--ok { background: var(--status-success-soft); color: var(--status-success-fg); }
+.oms-onboarding__tick--warn { background: var(--status-warning-soft); color: var(--status-warning-fg); }
+
+.oms-onboarding__banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--status-success-border);
+  border-radius: var(--radius-lg);
+  background: var(--status-success-soft);
+}
+.oms-onboarding__banner--off { border-color: var(--border-subtle); background: var(--bg-surface-muted); }
+.oms-onboarding__banner-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 600; }
+.oms-onboarding__banner-body { margin: var(--space-1) 0 0; color: var(--text-secondary); }
+.oms-onboarding__pulse {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--status-success-fg);
+}
+.oms-onboarding__banner--off .oms-onboarding__pulse { background: var(--text-muted); }
+.oms-onboarding__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.oms-onboarding__first-order { display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__event { display: flex; align-items: flex-start; gap: var(--space-3); }
+.oms-onboarding__spinner {
+  flex: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  animation: oms-onboarding-spin 900ms linear infinite;
+}
+@keyframes oms-onboarding-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .oms-onboarding__spinner { animation: none; }
+  .oms-onboarding__progress-fill { transition: none; }
+}
+.oms-onboarding__next-steps { margin: var(--space-2) 0 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__next-hint { color: var(--text-secondary); }
+
+/* The platform's own product (the OpenLinker OMS), set apart from the
+   third-party integrations around it in the platform picker. */
+.platform-picker__card--featured {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+.toolbar-chip--accent {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+/* A wizard whose step list sits beside its content (the OMS setup, per the
+   mockup's `.wizard`: a 240px list and a flexible panel). */
+.setup-stepper__text { display: flex; flex-direction: column; min-width: 0; }
+.setup-stepper__meta { font-size: 0.75rem; color: var(--text-muted); min-height: 1rem; line-height: 1rem; }
+
+.wizard-layout.wizard-layout--side {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'stepper'
+    'form';
+}
+
+@media (min-width: 800px) {
+  .wizard-layout.wizard-layout--side {
+    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-areas: 'stepper form';
+    column-gap: var(--space-7);
+    align-items: start;
+    justify-content: stretch;
+  }
+}
+
+@media (min-width: 800px) {
+  .setup-stepper--vertical { margin: 0; position: sticky; top: var(--space-6); }
+  .setup-stepper--vertical .setup-stepper__list {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+  .setup-stepper--vertical .setup-stepper__step { display: block; }
+  .setup-stepper--vertical .setup-stepper__button {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+    border-radius: var(--radius-md);
+  }
+  .setup-stepper--vertical .setup-stepper__button:hover:not(:disabled) { background: var(--bg-surface-hover); }
+  .setup-stepper--vertical .setup-stepper__button:disabled:hover { background: none; }
+  .setup-stepper--vertical .setup-stepper__indicator { width: 1.75rem; height: 1.75rem; }
+  .setup-stepper--vertical .setup-stepper__label { white-space: normal; font-size: 0.9375rem; padding-top: 2px; line-height: 1.3; }
+  .setup-stepper--vertical .setup-stepper__connector { display: none; }
 }

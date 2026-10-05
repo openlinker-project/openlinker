@@ -168,6 +168,7 @@ function renderState(opts: {
   list: ReturnType<typeof vi.fn>;
   route?: string;
   demoMode?: boolean;
+  activeLocations?: number;
 }): void {
   const api = createMockApiClient({
     system: {
@@ -176,6 +177,12 @@ function renderState(opts: {
     fulfillment: {
       list: opts.list,
       applyAction: vi.fn().mockResolvedValue(task()),
+    } as never,
+    // The location axis is offered only on a multi-location install (#3096).
+    inventory: {
+      listActiveLocations: vi
+        .fn()
+        .mockResolvedValue({ items: [], total: opts.activeLocations ?? 1, page: 1, limit: 1 }),
     } as never,
   });
 
@@ -255,8 +262,10 @@ describe('fulfilment screen copy audit', () => {
     expect(BANNED_TERMS.length).toBeGreaterThanOrEqual(9);
   });
 
-  it('is clean while loading', () => {
+  it('is clean while loading', async () => {
     renderState({ list: vi.fn(() => new Promise(() => undefined)) });
+    // The access gate renders nothing until the session hydrates.
+    await screen.findByText('Loading packing work…');
     expectCleanCopy('Loading packing work');
   });
 
@@ -297,6 +306,7 @@ describe('fulfilment screen copy audit', () => {
     // packer axis never renders it.
     renderState({
       route: '/fulfillment?groupBy=location',
+      activeLocations: 2,
       list: vi.fn().mockResolvedValue({
         works: [
           task({

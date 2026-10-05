@@ -76,6 +76,11 @@ const harness = createIntegrationTestHarness({
     // about a position and must outlive it), so they are invisible to the
     // CASCADE closure walk and must be listed explicitly.
     'reservation_shortfall_episodes',
+    // #3453 — routed-order sale decrements. No foreign key (an audit record
+    // outlives the order and the work it describes), so the CASCADE closure walk
+    // cannot reach it; a claim left by one case would otherwise make the next
+    // case's decrement a no-op.
+    'inventory_sale_decrements',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the
@@ -232,6 +237,14 @@ const harness = createIntegrationTestHarness({
     // by one case makes every later case's `openRun` throw
     // OpenRemediationRunExistsError. Truncate explicitly.
     'analytics_remediation_runs',
+    // stream_dead_letters (#2301, D48) — the durable terminal state for a
+    // Redis Stream PEL entry that exhausted recovery. No FK anywhere (stream +
+    // consumer_group + entry_id are plain text, the exchange_rates/
+    // analytics_remediation_runs precedent), so nothing cascades into it; a
+    // row written by one case would otherwise collide on
+    // IDX_stream_dead_letters_stream_group_entry in the next. Truncate
+    // explicitly.
+    'stream_dead_letters',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',
