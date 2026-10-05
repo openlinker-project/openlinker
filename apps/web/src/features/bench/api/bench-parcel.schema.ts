@@ -32,6 +32,7 @@ import type {
   BenchPackedTodayList,
   BenchParcel,
   BenchPresence,
+  BenchLabelReplaceResult,
   BenchReopenResult,
   BenchUndoCompletionResult,
   BenchUndoResult,
@@ -190,6 +191,10 @@ export const benchDocumentsSchema = z.object({
       .nullish()
       .transform((value) => value ?? false),
     failedAt: nullableString,
+    parcelTemplates: z
+      .array(z.string())
+      .nullish()
+      .transform((value) => value ?? []),
   }),
 });
 
@@ -352,4 +357,57 @@ export const benchMetricsSchema = z.object({
 
 export function parseBenchMetrics(payload: unknown): BenchMetrics {
   return benchMetricsSchema.parse(payload);
+}
+
+// ── Change size (#3655) ─────────────────────────────────────────────────────
+// A success body is `{ outcome: 'replaced' | 'cancelled-not-replaced', voidState,
+// keptTemplate, ... }`. Refusals are 409s and are folded into the same result by
+// `bench-work.api.ts`.
+export const benchLabelReplaceResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  voidState: nullableString,
+  keptTemplate: nullableString,
+});
+
+/** Reads a wire body into a result. Anything that is not a success outcome is a refusal. */
+export function parseBenchLabelReplaceResult(payload: unknown): BenchLabelReplaceResult {
+  const parsed = benchLabelReplaceResultSchema.parse(payload);
+  if (parsed.outcome === 'replaced') {
+    return {
+      outcome: 'replaced',
+      reason: parsed.reason,
+      voidState: 'confirmed',
+      keptTemplate: parsed.keptTemplate,
+    };
+  }
+  if (parsed.outcome === 'cancelled-not-replaced') {
+    return {
+      outcome: 'cancelled-not-replaced',
+      reason: parsed.reason,
+      // Only an explicit `confirmed` reads as confirmed. A missing or unknown
+      // value is held as in doubt: claiming a void we were not told about is
+      // the wrong direction to fail in, and both tell the packer not to use it.
+      voidState: parsed.voidState === 'confirmed' ? 'confirmed' : 'in-doubt',
+      keptTemplate: parsed.keptTemplate,
+    };
+  }
+  return {
+    outcome: 'refused',
+    reason: parsed.reason ?? parsed.outcome,
+    voidState: null,
+    keptTemplate: null,
+  };
+}
+
+/**
+ * The refusal code of a 409. `BenchLabelController` answers every refusal with
+ * `ConflictException({ reason, message })`, so `reason` is the member to read.
+ * A body without one yields `null`, which the dialog renders as its
+ * unrecognised-refusal line rather than nothing.
+ */
+export function readReplaceRefusalReason(details: unknown): string | null {
+  if (typeof details !== 'object' || details === null) return null;
+  const { reason } = details as { reason?: unknown };
+  return typeof reason === 'string' ? reason : null;
 }
