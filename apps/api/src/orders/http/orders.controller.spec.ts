@@ -219,6 +219,7 @@ describe('OrdersController', () => {
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
       getForOrder: jest.fn().mockResolvedValue(null),
+      getReceiptHandoverArtefact: jest.fn().mockResolvedValue(null),
       listSalesDocuments: jest.fn().mockResolvedValue({
         items: [],
         nextCursor: { invoice: null, fiscal: null },
@@ -1383,6 +1384,7 @@ describe('OrdersController', () => {
             failureMode: null,
             failureReason: null,
             artefactCount: 0,
+            artefacts: [],
             identity: { ...identity, recordId: 'fis-1', documentNumber: 'DOC/1' },
           },
         })
