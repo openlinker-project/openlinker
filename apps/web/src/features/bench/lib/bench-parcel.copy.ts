@@ -497,10 +497,60 @@ export const benchParcelCopy = {
     trackingLabel: 'Tracking',
     printFailed: 'That did not print. Nothing changed — try again.',
 
+    /**
+     * #3647 - a document still being made, or one that failed. Each is its own
+     * fact; reporting any of them as "no invoice was made" told the packer
+     * something false.
+     */
+    doesNotStop: 'It does not stop the box going out.',
+    mentionOffice: 'Mention it to the office.',
+    invoiceStatus: {
+      inProgressBadge: 'Being issued',
+      inProgressTitle: 'Invoice on its way',
+      rejectedBadge: 'Not issued',
+      rejectedTitle: 'The invoice did not go through',
+      notConfirmedBadge: 'Not confirmed',
+      notConfirmedTitle: 'Invoice not confirmed',
+      notConfirmedBody: 'OpenLinker does not know if this invoice was made.',
+    },
+    /**
+     * #3647 - the fiscal receipt. Nothing here says anything about paper or the
+     * box (a provider may print on the seller's own fiscal printer, which
+     * OpenLinker cannot see), or that the buyer received it (`disposition` is a
+     * hint, never evidence).
+     */
+    receipt: {
+      slot: 'Receipt for this order',
+      title: (reference: string | null): string =>
+        reference === null ? 'Receipt' : `Receipt ${reference}`,
+      madeBadge: 'Receipt made',
+      linkBody: 'Open with the link below.',
+      openAction: 'Open receipt',
+      linkPending: 'Getting the link. One moment.',
+      linkFailed: 'The link did not load.',
+      retryAction: 'Try again',
+      printAction: 'Print receipt',
+      noArtefactBody: 'There is no link to this receipt in OpenLinker.',
+      inProgressBadge: 'Being registered',
+      inProgressTitle: 'Receipt on its way',
+      rejectedBadge: 'Not registered',
+      rejectedTitle: 'The receipt did not go through',
+      notConfirmedBadge: 'Not confirmed',
+      notConfirmedTitle: 'Receipt not confirmed',
+      notConfirmedBody: 'OpenLinker does not know if this receipt was made.',
+    },
+    /** #3647 - a document kind this build does not know. Should not happen today. */
+    unknownDocument: {
+      badge: 'Document',
+      slot: 'Document for this order',
+      title: 'This screen cannot show this document',
+    },
+
     /** F1's honest exception: the document exists but only as machine-readable source. */
-    notPrintableTitle: 'There is nothing to print for this one',
-    notPrintableBody:
-      'An invoice was made for this order, but it only exists in a form a printer cannot use. Send the box without it — the office will post it to the buyer.',
+    notPrintableBadge: 'Issued, not printable',
+    notPrintableTitle: (documentNumber: string | null): string =>
+      documentNumber === null ? 'Invoice issued' : `Invoice ${documentNumber}`,
+    notPrintableBody: 'Issued, but it cannot be printed here.',
 
     /** F2 — named, never silently skipped, and never blocking. */
     missingTitle: 'Carry on packing — one paper is not coming',
