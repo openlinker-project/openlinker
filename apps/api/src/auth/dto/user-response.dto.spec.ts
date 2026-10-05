@@ -68,6 +68,23 @@ describe('UserResponseDto', () => {
       expect(UserResponseDto.fromDomain(declined).analyticsConsent).toBe(false);
     });
 
+    // The frontend reads `mustChangePassword` here to send the account to the
+    // change screen; /auth/me is exempt from the gate for exactly that reason.
+    it('should expose displayName and mustChangePassword (#3456)', () => {
+      const created = new User(
+        'id-1', 'anna', null, 'hash', 'packer', 'active', new Date(), new Date(),
+        false, null, null, 'Anna Kowalska', true
+      );
+      const ordinary = new User('id-2', 'b', null, 'hash', 'viewer', 'active', new Date(), new Date());
+
+      expect(UserResponseDto.fromDomain(created)).toEqual(
+        expect.objectContaining({ displayName: 'Anna Kowalska', mustChangePassword: true })
+      );
+      expect(UserResponseDto.fromDomain(ordinary)).toEqual(
+        expect.objectContaining({ displayName: null, mustChangePassword: false })
+      );
+    });
+
     it('should expose the caller\'s own packStationLabel (#3404)', () => {
       const labelled = new User(
         'id-1', 'a', null, 'hash', 'packer', 'active', new Date(), new Date(), false, 'Zebra ZD420 · Bench 3'

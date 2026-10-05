@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  countTasksByPacker,
   groupTasksByPacker,
   laneLoadPercent,
   laneLoadTone,
@@ -48,6 +49,29 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
 
 const packerA: PackerSummary = { id: 'u_a', username: 'packer-a', online: true, stationLabel: null };
 const packerB: PackerSummary = { id: 'u_b', username: 'packer-b', online: true, stationLabel: null };
+
+describe('countTasksByPacker (#3096)', () => {
+  it('should count each roster packer\'s tasks, zero included, when given a page', () => {
+    const counts = countTasksByPacker(
+      [
+        task({ id: 'a', assignedToUserId: 'u_a' }),
+        task({ id: 'b', assignedToUserId: 'u_a' }),
+        task({ id: 'c', assignedToUserId: null }),
+      ],
+      [packerA, packerB]
+    );
+
+    expect(counts.get('u_a')).toBe(2);
+    expect(counts.get('u_b')).toBe(0);
+  });
+
+  it('should leave an off-roster assignee out when the user is not a packer', () => {
+    const counts = countTasksByPacker([task({ assignedToUserId: 'u_gone' })], [packerA]);
+
+    expect(counts.has('u_gone')).toBe(false);
+    expect(counts.get('u_a')).toBe(0);
+  });
+});
 
 describe('groupTasksByPacker', () => {
   it('puts the unassigned lane first even when it is empty', () => {

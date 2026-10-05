@@ -20,10 +20,15 @@
  * not asked of the API: "distinguishing" is a property of THIS box's contents,
  * and the same variant in a different box may need a different answer.
  *
- * @module apps/web/src/features/bench/lib
+ * Moved from `features/bench/lib/bench-parcel-attributes.ts` to `shared/lib`
+ * by #3096: the fulfilment task detail renders the same narrowed attributes
+ * under each of its product cards, and a pure function two features share
+ * belongs below both of them rather than in one feature the other imports.
+ *
+ * @module apps/web/src/shared/lib
  */
 
-/** The shape this reads — any parcel line carrying optional attributes. */
+/** The shape this reads — any line carrying optional variant attributes. */
 export interface AttributeBearingLine {
   readonly attributes: Record<string, string> | null;
 }
@@ -80,4 +85,17 @@ export function narrowAttributes(
   // A line carrying none of the distinguishing keys is the odd one out, and
   // saying nothing about it is worse than saying what it does carry.
   return Object.keys(narrowed).length === 0 ? attributes : narrowed;
+}
+
+/**
+ * One line of `Key: value` pairs, keys sorted so two renders of the same
+ * variant always read the same way ("Kolor: srebrny · Rozmiar: L"). Data, not
+ * prose: the keys and values are the catalogue's own words, so this carries no
+ * operator copy of its own.
+ */
+export function formatVariantAttributes(attributes: Record<string, string>): string {
+  return Object.keys(attributes)
+    .sort()
+    .map((key) => `${key}: ${attributes[key] ?? ''}`)
+    .join(' · ');
 }

@@ -13,6 +13,11 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 
+import {
+  BenchLabelVoidStateValues,
+  type BenchLabelVoidState,
+} from '../../application/types/bench-label.types';
+
 export class BenchInvoiceResponseDto {
   @ApiProperty({
     enum: ['ready', 'issued-not-printable', 'missing'],
@@ -232,4 +237,43 @@ export class BenchUnlabelledParcelListResponseDto {
 
   @ApiProperty({ description: 'Whether the read hit its cap and there may be more' })
   truncated!: boolean;
+}
+
+/**
+ * Replace-label response (#3654). `cancelled-not-replaced` is a 2xx on purpose:
+ * money and the carrier state DID change (the old label is void), so the bench
+ * must read it as a result, not an error. With `voidState: 'in-doubt'` it may
+ * have changed - which is still a result the bench must render, never an error
+ * the client could read as "nothing happened".
+ */
+export class BenchReplaceLabelResponseDto {
+  @ApiProperty({ enum: ['replaced', 'cancelled-not-replaced'] })
+  outcome!: 'replaced' | 'cancelled-not-replaced';
+
+  @ApiProperty()
+  cancelledShipmentId!: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  newShipmentId!: string | null;
+
+  @ApiProperty({ description: 'The old label had already been dispatched when it was voided.' })
+  cancelledAfterDispatch!: boolean;
+
+  @ApiProperty({
+    enum: BenchLabelVoidStateValues,
+    description:
+      'confirmed: the old label is void. in-doubt: the cancel failed at the carrier boundary, so ' +
+      'whether the old label is void is unknown; no new label was bought. Always confirmed on ' +
+      '`replaced`. Either way the old label must not be used.',
+  })
+  voidState!: BenchLabelVoidState;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The configured size used when only the weight was corrected ("keep the current size"); ' +
+      'null when the request named a size or measured the box.',
+  })
+  keptTemplate!: string | null;
 }

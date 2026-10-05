@@ -213,6 +213,15 @@ const SCAN_ROOTS = [
     owner: 'W2-A (#2342)',
     pending: false,
   },
+  {
+    // #3457's packing onboarding wizard. Added with the folder, not after it:
+    // the wizard explains who decides where an order is packed, which is the
+    // single most tempting place for an operator-facing "authority" or
+    // "holder" to appear.
+    dir: join('apps', 'web', 'src', 'features', 'oms-onboarding'),
+    owner: 'W-07 (#3457)',
+    pending: false,
+  },
 ];
 
 /**

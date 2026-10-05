@@ -61,7 +61,8 @@ describe('bench work copy (#2416)', () => {
     // described the state would leave a packer staring at a screen that will
     // never change with nothing to act on.
     expect(benchWorkCopy.emptyNotRouted.remedyBody.length).toBeGreaterThan(40);
-    expect(benchWorkCopy.emptyNotRouted.remedyBody.toLowerCase()).toContain('settings');
+    // Names where packing is turned on: the OMS is set up from Connections.
+    expect(benchWorkCopy.emptyNotRouted.remedyBody.toLowerCase()).toContain('openlinker oms');
   });
 
   it('should keep the two empty states distinguishable', () => {

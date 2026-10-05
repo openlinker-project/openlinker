@@ -22,7 +22,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { EmptyState } from '../../../shared/ui/feedback-state';
-import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
+import { OrderLineItemIdentity } from './order-line-item-identity';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { formatTaxRate } from '../../../shared/format/format-tax-rate';
 import { AbsentValue } from '../../../shared/ui/absent-value';
@@ -67,25 +67,13 @@ export function OrderLineItemsPanel({ items, totals }: OrderLineItemsPanelProps)
       id: 'product',
       header: 'Product',
       cell: (item) => (
-        <span className="order-line-item__product">
-          <ProductThumbnail
-            name={item.name ?? item.sku ?? item.productId ?? item.id}
-            src={item.imageUrl}
-            size="sm"
-          />
-          <span className="order-line-item__product-info">
-            {item.name ? (
-              <span className="order-line-item__name">{item.name}</span>
-            ) : null}
-            {item.sku ? (
-              <span className="order-line-item__sku mono-text">{item.sku}</span>
-            ) : item.productId ? (
-              <span className="order-line-item__sku mono-text text-muted">{item.productId}</span>
-            ) : (
-              <span className="order-line-item__sku mono-text text-muted">{item.id}</span>
-            )}
-          </span>
-        </span>
+        <OrderLineItemIdentity
+          name={item.name}
+          code={item.sku ?? item.productId ?? item.id}
+          codeIsFallback={!item.sku}
+          imageSrc={item.imageUrl}
+          placeholderName={item.name ?? item.sku ?? item.productId ?? item.id}
+        />
       ),
     },
     {
