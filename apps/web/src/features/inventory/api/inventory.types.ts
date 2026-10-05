@@ -25,6 +25,8 @@ export interface InventoryFilters {
   productId?: string;
   productVariantId?: string;
   locationId?: string;
+  /** Leave out stale rows (products the master no longer reports). */
+  excludeStale?: boolean;
 }
 
 export interface InventoryPagination {

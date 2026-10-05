@@ -133,6 +133,13 @@ export interface PlatformSetupCard {
   description: string;
   to: string;
   badge: string;
+  /**
+   * Render the card as the platform's own product rather than a third-party
+   * integration (the OpenLinker OMS): listed first and styled apart. It also
+   * makes the card appear in the picker even when the platform is
+   * `hideFromCreateConnection` (hidden from the by-hand advanced form only).
+   */
+  featured?: boolean;
 }
 
 /**
@@ -610,6 +617,15 @@ export interface PlatformContribution {
   displayName: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
+  /**
+   * When true, the platform is NOT offered by "Add new connection" (the
+   * picker or the advanced form's platform dropdown), while its existing
+   * connections still render normally everywhere else. For a platform whose
+   * connection is created by its own setup flow rather than by hand — the
+   * OpenLinker OMS, created by `/settings/packing` (#3457), where a bare
+   * connection with none of the flow's other writes would pack nothing.
+   */
+  hideFromCreateConnection?: boolean;
   /**
    * When true, the inline create-connection form replaces its submit
    * affordances with an Alert linking to the guided setup wizard (today:

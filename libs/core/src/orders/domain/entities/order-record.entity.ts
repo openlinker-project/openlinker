@@ -18,7 +18,9 @@ import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
@@ -400,7 +402,32 @@ export class OrderRecord {
      * positional constructor, so a field inserted mid-list would silently
      * shift every argument after it at each construction site.
      */
-    public readonly salesDocumentMatchedRuleId: string | null = null
+    public readonly salesDocumentMatchedRuleId: string | null = null,
+    /**
+     * Why OpenLinker deliberately did not route this order to the pack bench
+     * while the OMS is on (#3455; also #3487 / #3488), or `null` when it was
+     * routed, has not been decided, or the OMS is off. Not a hold - a skipped
+     * order follows today's path - which is what separates it from the
+     * `fulfillmentBlock*` columns.
+     *
+     * Level-triggered by the ingestion intercept and NOT round-tripped through
+     * `toOrm`, for the `salesDocumentBlockReason` reason: `persistOrder` runs
+     * before the intercept on every ingestion. Appended LAST: positional
+     * constructor.
+     */
+    public readonly fulfillmentRoutingSkipReason: FulfillmentRoutingSkipReason | null = null,
+    /**
+     * Why fulfilment routing HOLDS this order with no work object explaining it
+     * (#2396), or `null`. #3485 made it readable: with the OMS on, a refused,
+     * address-less or failed route waits in OpenLinker, and the operator needs
+     * to see why. Read from `fulfillmentBlockReason` / `fulfillmentBlockDetail`;
+     * an unrecognised reason reads as `null`.
+     *
+     * NOT round-tripped through `toOrm` — sole writer `updateFulfillmentBlock`,
+     * for the `salesDocumentBlockReason` reason. Appended LAST: positional
+     * constructor.
+     */
+    public readonly fulfillmentBlock: FulfillmentBlock | null = null
   ) {}
 
   /**

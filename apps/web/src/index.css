@@ -4846,6 +4846,18 @@ a.delivery-rider-banner__button:focus-visible {
   gap: var(--space-5);
 }
 
+/* #3657 — the archive confirmation stacks a consequence list, the typed-name
+   field and an error alert; same grid+gap shape as the dialog bodies above. */
+.archive-connection-dialog__body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.archive-connection-dialog__list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
 /* ── Per-tier cards (review finding: tiers read as one unbroken block) ──
  * Each fallback-ladder tier is a discrete decision an operator can act on
  * independently, but a bare heading + content with only vertical `gap`
@@ -14076,6 +14088,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-color: var(--border-subtle);
 }
 .bulk-editor__ean-err { color: var(--status-error-fg); font-size: 11.5px; margin-top: 5px; }
+
+/* ── EAN override (#3492) ── */
+/* One definition for the "I confirm this EAN is correct" block, shared by the
+ * simple-product and per-variant scopes so the two cannot look different. */
+.bulk-editor__ean-ack { margin-top: var(--space-2); }
+.bulk-editor__ean-ack .checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* ── end EAN override (#3492) ── */
 
 .bulk-editor__prov {
   font-family: var(--font-mono);
@@ -28355,4 +28378,305 @@ legend.analytics-settings-dialog__label {
 .tab-toolbar p {
   margin: 0;
   max-width: 70ch;
+}
+
+/* ── Pack orders in OpenLinker — onboarding wizard (#3457) ── */
+.setup-stepper__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+/* The global `button` rule paints every button orange, fixes its height at 2rem
+   and gives it an orange hover; a step in the list is none of that. */
+.setup-stepper--vertical .setup-stepper__button,
+.setup-stepper--vertical .setup-stepper__button:hover,
+.setup-stepper--vertical .setup-stepper__button:active {
+  height: auto;
+  min-height: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+}
+.setup-stepper__button:disabled { cursor: not-allowed; opacity: 0.6; }
+.setup-stepper__button:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+
+/* The mockup's `.content` caps every state (wizard, waiting, status) at 1120px
+   less its padding, so the page reads as a column rather than a full-width sheet. */
+.oms-onboarding { display: flex; flex-direction: column; gap: var(--space-4); max-width: 75rem; width: 100%; }
+.oms-onboarding__stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.oms-onboarding__panel-title { margin: 0; font-size: 1.125rem; font-weight: 600; }
+.oms-onboarding__panel-title:focus { outline: none; }
+.oms-onboarding__why { margin: 0; color: var(--text-secondary); }
+.oms-onboarding__panel-body { display: flex; flex-direction: column; gap: var(--space-4); }
+.oms-onboarding__panel-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.oms-onboarding__panel-next { display: flex; gap: var(--space-2); }
+.oms-onboarding__subtitle { margin: 0 0 var(--space-2); font-weight: 600; }
+
+.oms-onboarding__card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.oms-onboarding__card-main { display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__card-name { font-weight: 600; }
+.oms-onboarding__card-sub { color: var(--text-secondary); }
+.oms-onboarding__badges { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+.oms-onboarding__progress { display: flex; flex-direction: column; gap: var(--space-2); }
+.oms-onboarding__progress-row { display: flex; justify-content: space-between; gap: var(--space-3); }
+.oms-onboarding__progress-track {
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+.oms-onboarding__progress-fill { height: 100%; background: var(--accent-primary); transition: width 200ms ease; }
+
+.oms-onboarding__form { display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+  /* Not stretched: a field with a hint under it is taller than one without,
+     and stretching it spreads the shorter fields' rows apart, which drops
+     their inputs below their neighbours'. */
+  align-items: start;
+}
+.oms-onboarding__copybox { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.oms-onboarding__copybox .control { flex: 1; min-width: 0; }
+.oms-onboarding__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.oms-onboarding__list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__more summary { cursor: pointer; color: var(--text-link); }
+.oms-onboarding__more p { margin: var(--space-2) 0 0; color: var(--text-secondary); }
+
+/* Today and After turn-it-on sit side by side (one column on a phone), each a
+   top-to-bottom journey, as in the mockup. */
+.oms-onboarding__flows { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+@media (min-width: 720px) {
+  .oms-onboarding__flows { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+}
+.oms-onboarding__flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__flow--after { border-color: var(--accent-primary); }
+.oms-onboarding__flow-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Each order journey reads top to bottom. */
+.oms-onboarding__chain { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2); }
+.oms-onboarding__node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+}
+.oms-onboarding__node--highlight { background: var(--status-info-soft); }
+.oms-onboarding__node-title { font-weight: 600; }
+.oms-onboarding__node-body { color: var(--text-secondary); }
+.oms-onboarding__arrow { align-self: center; color: var(--text-muted); transform: rotate(90deg); }
+
+.oms-onboarding__boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); }
+.oms-onboarding__box { padding: var(--space-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.oms-onboarding__box--in { border-color: var(--status-success-border); background: var(--status-success-soft); }
+.oms-onboarding__box-title { margin: 0 0 var(--space-2); font-weight: 600; }
+.oms-onboarding__box ul { margin: 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+
+.oms-onboarding__changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__changes li { display: flex; gap: var(--space-3); }
+.oms-onboarding__changes-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  font-weight: 700;
+}
+.oms-onboarding__changes-body { display: block; color: var(--text-secondary); }
+.oms-onboarding__ack {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.oms-onboarding__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.oms-onboarding__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.oms-onboarding__check + .oms-onboarding__check { border-top: 1px solid var(--border-subtle); }
+.oms-onboarding__check-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.oms-onboarding__check-title { font-weight: 600; }
+.oms-onboarding__check-detail { display: block; color: var(--text-secondary); }
+.oms-onboarding__tick {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border-radius: var(--radius-pill);
+}
+.oms-onboarding__tick--ok { background: var(--status-success-soft); color: var(--status-success-fg); }
+.oms-onboarding__tick--warn { background: var(--status-warning-soft); color: var(--status-warning-fg); }
+
+.oms-onboarding__banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--status-success-border);
+  border-radius: var(--radius-lg);
+  background: var(--status-success-soft);
+}
+.oms-onboarding__banner--off { border-color: var(--border-subtle); background: var(--bg-surface-muted); }
+.oms-onboarding__banner-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 600; }
+.oms-onboarding__banner-body { margin: var(--space-1) 0 0; color: var(--text-secondary); }
+.oms-onboarding__pulse {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--status-success-fg);
+}
+.oms-onboarding__banner--off .oms-onboarding__pulse { background: var(--text-muted); }
+.oms-onboarding__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.oms-onboarding__first-order { display: flex; flex-direction: column; gap: var(--space-3); }
+.oms-onboarding__event { display: flex; align-items: flex-start; gap: var(--space-3); }
+.oms-onboarding__spinner {
+  flex: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  animation: oms-onboarding-spin 900ms linear infinite;
+}
+@keyframes oms-onboarding-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .oms-onboarding__spinner { animation: none; }
+  .oms-onboarding__progress-fill { transition: none; }
+}
+.oms-onboarding__next-steps { margin: var(--space-2) 0 0; padding-left: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
+.oms-onboarding__next-hint { color: var(--text-secondary); }
+
+/* The platform's own product (the OpenLinker OMS), set apart from the
+   third-party integrations around it in the platform picker. */
+.platform-picker__card--featured {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+.toolbar-chip--accent {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
+/* A wizard whose step list sits beside its content (the OMS setup, per the
+   mockup's `.wizard`: a 240px list and a flexible panel). */
+.setup-stepper__text { display: flex; flex-direction: column; min-width: 0; }
+.setup-stepper__meta { font-size: 0.75rem; color: var(--text-muted); min-height: 1rem; line-height: 1rem; }
+
+.wizard-layout.wizard-layout--side {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'stepper'
+    'form';
+}
+
+@media (min-width: 800px) {
+  .wizard-layout.wizard-layout--side {
+    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-areas: 'stepper form';
+    column-gap: var(--space-7);
+    align-items: start;
+    justify-content: stretch;
+  }
+}
+
+@media (min-width: 800px) {
+  .setup-stepper--vertical { margin: 0; position: sticky; top: var(--space-6); }
+  .setup-stepper--vertical .setup-stepper__list {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+  .setup-stepper--vertical .setup-stepper__step { display: block; }
+  .setup-stepper--vertical .setup-stepper__button {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+    border-radius: var(--radius-md);
+  }
+  .setup-stepper--vertical .setup-stepper__button:hover:not(:disabled) { background: var(--bg-surface-hover); }
+  .setup-stepper--vertical .setup-stepper__button:disabled:hover { background: none; }
+  .setup-stepper--vertical .setup-stepper__indicator { width: 1.75rem; height: 1.75rem; }
+  .setup-stepper--vertical .setup-stepper__label { white-space: normal; font-size: 0.9375rem; padding-top: 2px; line-height: 1.3; }
+  .setup-stepper--vertical .setup-stepper__connector { display: none; }
 }

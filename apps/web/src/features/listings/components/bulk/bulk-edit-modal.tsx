@@ -452,6 +452,15 @@ export function BulkEditModal({
  */
 interface VariantEdit {
   ean: string;
+  /**
+   * The exact (trimmed) EAN the operator confirmed with "I confirm this EAN is
+   * correct - submit anyway" (#3492). Keyed to the digits rather than stored as
+   * a boolean, so an acknowledgement never carries onto a different value no
+   * matter which path edits the EAN (the RHF base field, a per-variant input,
+   * or any later paste / bulk-apply / re-seed) - there is nothing to reset.
+   * Read it only through `isEanAcknowledged`.
+   */
+  eanAcknowledgedFor?: string;
   price?: string;
   publishImmediately?: boolean;
   title?: string;
@@ -470,10 +479,25 @@ function masterBarcodeOf(variant: BulkVariantRow): string {
   return (variant.variant.ean ?? variant.variant.gtin ?? '').trim();
 }
 
+/**
+ * Whether `acknowledgedFor` confirms exactly `ean`, and `ean` actually fails the
+ * GS1 checksum (#3492). The single rule behind both checkboxes and both
+ * save-time emissions: an acknowledgement for other digits does not count, and
+ * a valid EAN never emits a stray `eanOverrideAcknowledged: true`.
+ */
+function isEanAcknowledged(acknowledgedFor: string | undefined, ean: string): boolean {
+  const trimmed = ean.trim();
+  return trimmed !== '' && !isValidGtin(trimmed) && acknowledgedFor === trimmed;
+}
+
 function initVariantEdit(variant: BulkVariantRow): VariantEdit {
   const o = variant.override.overrides ?? {};
+  const ean = (o.ean ?? masterBarcodeOf(variant)).trim();
   return {
-    ean: (o.ean ?? masterBarcodeOf(variant)).trim(),
+    ean,
+    // A persisted acknowledgement was given for the effective EAN it was saved
+    // with - the override when present, else the master barcode - i.e. `ean`.
+    eanAcknowledgedFor: o.eanOverrideAcknowledged === true ? ean : undefined,
     price: variant.override.price !== undefined ? String(variant.override.price.amount) : undefined,
     publishImmediately: variant.override.publishImmediately,
     title: typeof o.title === 'string' ? o.title : undefined,
@@ -864,6 +888,12 @@ function BulkEditModalForm({
     // the lone variant's master barcode - a blank or unchanged value inherits.
     const baseEan = values.ean.trim();
     const primaryMasterBarcode = masterBarcodeOf(row.variants[0]);
+    // Simple-product acknowledgement (#3492) - only for a genuine single-variant
+    // product; a multi-variant base carries no offer-EAN of its own (see the
+    // comment above `baseParameters`).
+    const simpleEanAck =
+      !isMultiVariant &&
+      isEanAcknowledged(variantEdits[row.variants[0].variantId]?.eanAcknowledgedFor, baseEan);
     // Per-product policy is emitted only for a multi-variant product and only
     // when it diverges from the batch default (#1741); simple products use their
     // explicit Price/Stock inputs instead.
@@ -883,6 +913,7 @@ function BulkEditModalForm({
         ...(values.categoryId ? { categoryId: values.categoryId } : {}),
         ...(values.productCardId ? { productCardId: values.productCardId } : {}),
         ...(baseEan !== '' && baseEan !== primaryMasterBarcode ? { ean: baseEan } : {}),
+        ...(simpleEanAck ? { eanOverrideAcknowledged: true } : {}),
         ...(baseImageUrls !== undefined ? { imageUrls: baseImageUrls } : {}),
         ...(baseParameters.length > 0 ? { parameters: baseParameters } : {}),
         ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
@@ -898,6 +929,9 @@ function BulkEditModalForm({
 
         const eanTrimmed = edit.ean.trim();
         if (eanTrimmed !== '' && eanTrimmed !== masterBarcodeOf(variant)) overrides.ean = eanTrimmed;
+        if (isEanAcknowledged(edit.eanAcknowledgedFor, eanTrimmed)) {
+          overrides.eanOverrideAcknowledged = true;
+        }
         if (edit.title !== undefined) overrides.title = edit.title;
         if (edit.description !== undefined) overrides.description = edit.description;
         if (edit.imageUrls !== undefined) overrides.imageUrls = edit.imageUrls;
@@ -1182,6 +1216,10 @@ function BulkEditModalForm({
             initialValues={initialBase}
             simpleIncluded={included[row.variants[0].variantId]}
             onSimpleIncludedChange={(next) => setIncluded((prev) => ({ ...prev, [row.variants[0].variantId]: next }))}
+            eanAcknowledgedFor={variantEdits[row.variants[0].variantId]?.eanAcknowledgedFor}
+            onEanAcknowledgedForChange={(next) =>
+              patchVariant(row.variants[0].variantId, { eanAcknowledgedFor: next })
+            }
             onReady={(form) => {
               baseFormRef.current = form;
             }}
@@ -1425,6 +1463,15 @@ interface BaseScopeFormProps {
   initialValues: BulkEditModalValues;
   simpleIncluded: boolean;
   onSimpleIncludedChange: (next: boolean) => void;
+  /**
+   * "I confirm this EAN is correct - submit anyway" for the sole variant of a
+   * simple product (#3492). Stored in `variantEdits` rather than the RHF form
+   * (mirrors `simpleIncluded`'s prop-threading, since this form has no
+   * `connectionId`-scoped state of its own for it). Holds the exact EAN that was
+   * acknowledged, not a boolean - see `VariantEdit.eanAcknowledgedFor`.
+   */
+  eanAcknowledgedFor: string | undefined;
+  onEanAcknowledgedForChange: (next: string | undefined) => void;
   onReady: (form: UseFormReturn<BulkEditModalValues, undefined, BulkEditModalSubmission>) => void;
   onValuesChange: (values: BulkEditModalValues) => void;
 }
@@ -1458,6 +1505,8 @@ function BaseScopeForm({
   initialValues,
   simpleIncluded,
   onSimpleIncludedChange,
+  eanAcknowledgedFor,
+  onEanAcknowledgedForChange,
   onReady,
   onValuesChange,
 }: BaseScopeFormProps): ReactElement {
@@ -1556,6 +1605,22 @@ function BaseScopeForm({
             {eanInvalid ? (
               <div className="bulk-editor__ean-err">
                 Invalid GTIN checksum - Allegro will reject this EAN.
+              </div>
+            ) : null}
+            {eanInvalid ? (
+              <div className="bulk-editor__ean-ack">
+                <Alert tone="warning">
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={isEanAcknowledged(eanAcknowledgedFor, watchedEan)}
+                      onChange={(e) =>
+                        onEanAcknowledgedForChange(e.target.checked ? watchedEan.trim() : undefined)
+                      }
+                    />
+                    <span>I confirm this EAN is correct - submit anyway.</span>
+                  </label>
+                </Alert>
               </div>
             ) : null}
             <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
@@ -2659,6 +2724,22 @@ function VariantScopeForm({
           onChange={(e) => onPatch({ ean: e.target.value })}
         />
         {eanError ? <div className="bulk-editor__ean-err">{eanError}</div> : null}
+        {eanInvalid ? (
+          <div className="bulk-editor__ean-ack">
+            <Alert tone="warning">
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={isEanAcknowledged(edit.eanAcknowledgedFor, ean)}
+                  onChange={(e) =>
+                    onPatch({ eanAcknowledgedFor: e.target.checked ? ean.trim() : undefined })
+                  }
+                />
+                <span>I confirm this EAN is correct - submit anyway.</span>
+              </label>
+            </Alert>
+          </div>
+        ) : null}
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           Pre-filled from this variant&apos;s master EAN. Edits are checksum + duplicate validated; clearing lists it
           without a catalog card.

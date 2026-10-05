@@ -7,6 +7,8 @@
  *
  * GET    /users                — list all users (optional ?status filter)
  * GET    /users/packers        — minimal active-packer roster (admin+operator, #3340)
+ * POST   /users                — create an active account with a one-time password (#3456)
+ * POST   /users/:id/temporary-password — re-issue a one-time password (#3456)
  * POST   /users/:id/approve    — approve a pending registration with a role
  * POST   /users/:id/reject     — reject and delete a pending registration
  * PATCH  /users/:id/role       — change a user's role
@@ -36,8 +38,10 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import {
   CannotSelfModifyException,
   LastAdminException,
+  UserAlreadyExistsException,
   UserNotFoundException,
   UserNotActiveException,
+  UserNotAwaitingFirstSignInException,
   UserNotDeactivatedException,
   UserNotPendingException,
 } from '@openlinker/core/users';
@@ -45,6 +49,8 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
+import { CreateUserDto } from '../dto/create-user.dto';
+import { CreateUserResponseDto } from '../dto/create-user-response.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
 import { PackerListResponseDto } from '../dto/packer-list-response.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
@@ -74,6 +80,45 @@ export class UsersController {
     return UserListResponseDto.fromDomain(result);
   }
 
+  @Post()
+  @Roles('admin')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Create an active account with a one-time password (admin only). The account ' +
+      'must set a new password at first sign-in.',
+  })
+  @ApiResponse({ status: 201, description: 'User created', type: CreateUserResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 403, description: 'Caller is not an admin' })
+  @ApiResponse({ status: 409, description: 'Username or email already in use (field named)' })
+  async createUser(@Body() dto: CreateUserDto): Promise<CreateUserResponseDto> {
+    try {
+      const created = await this.userManagement.createUser({
+        displayName: dto.displayName,
+        username: dto.username,
+        email: dto.email ?? null,
+        role: dto.role,
+      });
+      const response = new CreateUserResponseDto();
+      response.id = created.id;
+      response.temporaryPassword = created.temporaryPassword;
+      return response;
+    } catch (error) {
+      if (error instanceof UserAlreadyExistsException) {
+        // Naming the field is safe HERE (admin-only; an admin already sees
+        // every account) and is what the form needs to point at the right input.
+        // The public registration route keeps its generic message.
+        const field = error.field ?? 'username';
+        throw new ConflictException({
+          field,
+          message: `That ${field} is already in use.`,
+        });
+      }
+      throw error;
+    }
+  }
+
   @Get('packers')
   @Roles('admin', 'operator')
   @ApiOperation({
@@ -96,6 +141,39 @@ export class UsersController {
       pageSize: 500,
     });
     return PackerListResponseDto.fromDomain(result.users);
+  }
+
+  @Post(':id/temporary-password')
+  @Roles('admin')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Re-issue the one-time password of an account that has not set its own yet (admin only)',
+  })
+  @ApiResponse({ status: 201, description: 'New one-time password', type: CreateUserResponseDto })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 409, description: 'The account has already set its own password' })
+  async reissueTemporaryPassword(@Param('id') id: string): Promise<CreateUserResponseDto> {
+    try {
+      const issued = await this.userManagement.reissueTemporaryPassword(id);
+      const response = new CreateUserResponseDto();
+      response.id = issued.id;
+      response.temporaryPassword = issued.temporaryPassword;
+      return response;
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof UserNotAwaitingFirstSignInException) {
+        // Machine-readable, like the create route's { field, message }: the
+        // wizard tells this conflict apart by `code`, never by prose.
+        throw new ConflictException({
+          code: 'ALREADY_SET_OWN_PASSWORD',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   @Post(':id/approve')
