@@ -21,6 +21,8 @@ import {
   parseBenchClaimResult,
   parseBenchCompleteResult,
   parseBenchDocuments,
+  parseBenchLabelReplaceResult,
+  readReplaceRefusalReason,
   parseBenchMetrics,
   parseBenchPackedTodayList,
   parseBenchParcel,
@@ -38,6 +40,8 @@ import type {
   BenchClaimResult,
   BenchCompleteResult,
   BenchDocuments,
+  BenchLabelReplaceInput,
+  BenchLabelReplaceResult,
   BenchMetrics,
   BenchPackedTodayList,
   BenchParcel,
@@ -49,6 +53,7 @@ import type {
   BenchUnlabelledParcelList,
   BenchVerificationResult,
 } from './bench-parcel.types';
+import { ApiError } from '../../../shared/api/api-error';
 import { parseBenchWorkList } from './bench-work.schema';
 import type { BenchWorkList } from './bench-work.types';
 
@@ -127,6 +132,17 @@ export interface BenchApi {
    * packer's box rather than to any caller who happens to know a shipment id.
    */
   downloadLabel: (workId: string) => Promise<Blob>;
+  /**
+   * Cancel the box's label and buy a new one with corrected parcel data (#3655).
+   *
+   * Parcel data only - the server derives recipient and carrier method. A 409
+   * refusal resolves as `{ outcome: 'refused', reason }` so the caller renders
+   * WHICH refusal it was; every other error rejects.
+   */
+  replaceLabel: (
+    workId: string,
+    input: BenchLabelReplaceInput
+  ) => Promise<BenchLabelReplaceResult>;
   /** Finished boxes with no label on them, here and in dispatch. */
   listUnlabelledParcels: () => Promise<BenchUnlabelledParcelList>;
 
@@ -220,6 +236,26 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
     },
     async downloadLabel(workId): Promise<Blob> {
       return requestBlob(`${work(workId)}/documents/label`);
+    },
+    async replaceLabel(workId, input): Promise<BenchLabelReplaceResult> {
+      try {
+        return parseBenchLabelReplaceResult(
+          await request<unknown>(`${work(workId)}/label/replace`, {
+            method: 'POST',
+            body: JSON.stringify(input),
+          })
+        );
+      } catch (error) {
+        if (error instanceof ApiError && error.isConflict()) {
+          return {
+            outcome: 'refused',
+            reason: readReplaceRefusalReason(error.details),
+            voidState: null,
+            keptTemplate: null,
+          };
+        }
+        throw error;
+      }
     },
     async listUnlabelledParcels(): Promise<BenchUnlabelledParcelList> {
       return parseBenchUnlabelledParcelList(await request<unknown>('/bench/unlabelled-parcels'));

@@ -194,6 +194,12 @@ export interface BenchLabel {
    */
   readonly carrierMessageRedacted: boolean;
   readonly failedAt: string | null;
+  /**
+   * Size codes the routed carrier accepts (#3655). Optional on the wire: the
+   * backend contract (#3654) does not promise a list, so `[]` means "offer a
+   * box or a weight only", never "no size can be chosen".
+   */
+  readonly parcelTemplates?: readonly string[];
 }
 
 /**
@@ -377,4 +383,42 @@ export interface BenchMetrics {
   readonly packedToday: number;
   readonly packedYesterday: number;
   readonly toPackAllBenches: number;
+}
+
+// ── Change size (#3655, backend #3654) ──────────────────────────────────────
+// Wire units are mm and grams. The UI speaks cm and kg and converts in
+// `lib/bench-label-replace.ts` - nowhere else.
+
+/** Parcel data ONLY. There is deliberately no address, recipient or carrier member. */
+export type BenchLabelReplaceInput =
+  | { readonly template: string }
+  | {
+      readonly lengthMm: number;
+      readonly widthMm: number;
+      readonly heightMm: number;
+      readonly weightGrams: number;
+    }
+  | { readonly weightGrams: number };
+
+/**
+ * Whether the old label is KNOWN to be void (#3654's `voidState`).
+ * `in-doubt` - the cancel failed at the carrier boundary, so it may or may not
+ * be void; nothing was re-bought. Either way the old label must not be used.
+ */
+export type BenchLabelVoidState = 'confirmed' | 'in-doubt';
+
+/**
+ * `replaced` - a new label was bought.
+ * `refused` - nothing changed; `reason` is a refusal code (see the dialog's
+ *   `REFUSAL_COPY`) or an unrecognised value from a newer API.
+ * `cancelled-not-replaced` - the old label is void (or, `in-doubt`, may be) and
+ *   no new one exists.
+ */
+export interface BenchLabelReplaceResult {
+  readonly outcome: 'replaced' | 'refused' | 'cancelled-not-replaced';
+  readonly reason: string | null;
+  /** `null` on a refusal, where nothing was cancelled. */
+  readonly voidState: BenchLabelVoidState | null;
+  /** The configured size bought with when only the weight was corrected; else `null`. */
+  readonly keptTemplate: string | null;
 }

@@ -27378,6 +27378,48 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
+/* ── Change size (#3655) ─────────────────────────────────────────────────
+ * Every control is at least 44px: the bench is used on a phone and a tablet. */
+.bench-documents__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.bench-documents__touch,
+.bench-change-size__action,
+.bench-change-size__mode,
+.bench-change-size__control {
+  min-height: 44px;
+}
+
+.bench-change-size__form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.bench-change-size__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.bench-change-size__modes legend {
+  width: 100%;
+  margin-bottom: var(--space-1);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.bench-change-size__notice {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
 /* ── The printer-binding line (mockup-parity epic #3401, #3437) ──────────
  * The mockup's line under `.docs`: "Printing to Zebra ZD420 · Bench 3 — this
  * station's printer, always." Rendered from the signed-in packer's own
