@@ -120,6 +120,19 @@ import {
   BenchUnlabelledParcelListResponseDto,
 } from './dto/bench-documents-response.dto';
 
+// The invoice and receipt Content-Type is adapter-declared, ultimately a
+// provider's own value. Only types a browser displays without executing
+// anything open inline; `text/html` or `image/svg+xml` inline would render
+// provider-controlled markup on the OpenLinker origin, on a route a `packer`
+// reaches, so everything else is served as a download. An allow-list rather
+// than a deny-list, as the product-image proxy does, so an unforeseen type
+// fails safe.
+const INLINE_SAFE_CONTENT_TYPES: ReadonlySet<string> = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+]);
+
 @ApiBearerAuth()
 @ApiTags('bench')
 @Controller('bench')
@@ -250,11 +263,7 @@ export class BenchDocumentsController {
       );
     }
 
-    res.setHeader('Content-Type', document.contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename="invoice-${record.id}"`
-    );
+    this.setProviderDocumentHeaders(res, document.contentType, `invoice-${record.id}`);
     return new StreamableFile(Buffer.from(document.content));
   }
 
@@ -294,8 +303,7 @@ export class BenchDocumentsController {
     // `selectHandoverArtefact` only ever yields `document` or `link`, and a
     // `document` payload is base64 by the artefact contract.
     const contentType = artefact.contentType ?? 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `inline; filename="receipt-${work.orderId}"`);
+    this.setProviderDocumentHeaders(res, contentType, `receipt-${work.orderId}`);
     return new StreamableFile(Buffer.from(artefact.content, 'base64'));
   }
 
@@ -398,6 +406,19 @@ export class BenchDocumentsController {
       }
       throw error;
     }
+  }
+
+  /**
+   * Headers for a document whose Content-Type a provider declared: `inline`
+   * only for an {@link INLINE_SAFE_CONTENT_TYPES} type, `attachment` otherwise.
+   * The type is compared stripped of parameters and lowercased, so a
+   * legitimate `application/pdf; charset=binary` still opens inline.
+   */
+  private setProviderDocumentHeaders(res: Response, contentType: string, filename: string): void {
+    const normalized = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
+    const disposition = INLINE_SAFE_CONTENT_TYPES.has(normalized) ? 'inline' : 'attachment';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
   }
 
   /**

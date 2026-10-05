@@ -8,7 +8,10 @@ import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
-import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
+import {
+  FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationRecordNotFoundException,
+} from '@openlinker/core/fiscalization';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
@@ -317,6 +320,26 @@ describe('SalesDocumentViewService', () => {
 
     it('should serve nothing for an order OpenLinker has never seen', async () => {
       await expect(service.getReceiptHandoverArtefact('ol_order_missing')).resolves.toBeNull();
+    });
+
+    it('should serve nothing when the record disappears between the projection read and the re-read', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscalRecord({ artefacts: [link] })]);
+      fiscalRegistrations.getById.mockRejectedValue(
+        new FiscalRegistrationRecordNotFoundException('fis-1'),
+      );
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should propagate any other failure of the re-read when it is not a not-found', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscalRecord({ artefacts: [link] })]);
+      fiscalRegistrations.getById.mockRejectedValue(new Error('connection reset'));
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).rejects.toThrow(
+        'connection reset',
+      );
     });
   });
 
