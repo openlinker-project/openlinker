@@ -9,6 +9,7 @@
  *
  * @module features/oms-onboarding/lib
  */
+import { INVOICE_TRIGGER_MODEL_VALUES, type InvoiceTriggerModel } from '../../connections';
 import type { SalesDocumentRow } from '../../sales-documents';
 import { withConfigKey } from './config-merge';
 import { omsOnboardingCopy as COPY } from './oms-onboarding.copy';
@@ -100,7 +101,21 @@ export function describeSetupStep(
   return { title: copy.title, detail };
 }
 
-const AUTOMATIC_TRIGGERS: readonly string[] = ['auto-on-paid', 'auto-on-shipped'];
+// Exhaustive on purpose: a trigger model added to the mirrored union is a compile
+// error here, so it cannot silently read as "issued by hand".
+const IS_AUTOMATIC_TRIGGER: Record<InvoiceTriggerModel, boolean> = {
+  manual: false,
+  batched: false,
+  'auto-on-paid': true,
+  'auto-on-shipped': true,
+};
+
+function isAutomaticTrigger(triggerModel: string): boolean {
+  return (
+    (INVOICE_TRIGGER_MODEL_VALUES as readonly string[]).includes(triggerModel) &&
+    IS_AUTOMATIC_TRIGGER[triggerModel as InvoiceTriggerModel]
+  );
+}
 
 /**
  * Whether documents get issued without anyone asking: an active connection
@@ -116,6 +131,6 @@ export function hasAutomaticDocumentIssuing(rows: readonly SalesDocumentRow[]): 
       row.status === 'active' &&
       row.documentKind !== null &&
       row.isPrimary &&
-      AUTOMATIC_TRIGGERS.includes(row.triggerModel)
+      isAutomaticTrigger(row.triggerModel)
   );
 }
