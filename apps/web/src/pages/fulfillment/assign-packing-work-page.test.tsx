@@ -1,10 +1,12 @@
 /**
- * `AssignPackingWorkPage` (#3340, ADR-074).
+ * `AssignPackingWorkPage` (#3340, ADR-074; mockup parity #3096).
  *
  * Covers what would break if the board's assembly regressed: tasks land in
- * the right swimlane, moving a task posts the right body, toggling
- * self-serve posts the right body, and a failed roster read degrades the
- * board rather than blocking it.
+ * the right swimlane, the `Assign to…` / `Move to…` menu posts the right body,
+ * toggling self-serve posts the right body, a failed roster read degrades the
+ * board rather than blocking it, and — since #3096 — the board is admin +
+ * operator only, asks for active work only, and offers the location axis only
+ * where there is more than one location.
  */
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -29,6 +31,10 @@ const OPERATOR: SessionUser = {
   role: 'operator',
   permissions: ['orders:read', 'orders:write'],
 };
+
+const POOL_LABEL = 'Anyone can pick this up';
+const ASSIGNED_LABEL = 'Anyone can still pick this up';
+const ASSIGN_MENU = /^(Assign|Move) to…$/;
 
 function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   return {
@@ -73,6 +79,8 @@ function renderPage(opts: {
   listPackers?: ReturnType<typeof vi.fn>;
   updateAssignment?: ReturnType<typeof vi.fn>;
   route?: string;
+  user?: SessionUser;
+  activeLocations?: number;
 }): {
   list: ReturnType<typeof vi.fn>;
   listPackers: ReturnType<typeof vi.fn>;
@@ -88,32 +96,60 @@ function renderPage(opts: {
     system: { getConfig: vi.fn().mockResolvedValue({ demoMode: false }) },
     fulfillment: { list, updateAssignment } as never,
     users: { listPackers } as never,
+    inventory: {
+      listActiveLocations: vi
+        .fn()
+        .mockResolvedValue({ items: [], total: opts.activeLocations ?? 1, page: 1, limit: 1 }),
+    } as never,
   });
 
   renderWithProviders(<AssignPackingWorkPage />, {
     apiClient: api,
     route: opts.route ?? '/fulfillment',
-    sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR),
+    sessionAdapter: createAuthenticatedSessionAdapter(opts.user ?? OPERATOR),
   });
 
   return { list, listPackers, updateAssignment };
 }
 
 /**
- * The task list.
- *
- * This board used to render its tasks TWICE — a desktop row list and a mobile
- * card list, both always in the DOM with a CSS breakpoint choosing between
- * them — so every role query had to be scoped to one or it matched each
- * control twice. #3401 replaced both with one card that reflows, so the
- * scoping is no longer about avoiding duplicates; it is kept because a query
- * scoped to the list cannot accidentally match a control in the page header.
+ * The task list, so a query cannot accidentally match a control in the page
+ * header or the toolbar.
  */
-function desktop(): HTMLElement {
-  return document.querySelector('.assign-packing-work-card-list') as HTMLElement;
+function board(): HTMLElement {
+  return document.querySelector('.assign-packing-work-board') as HTMLElement;
+}
+
+/** Open a row's assignment menu and choose an entry from it. */
+async function chooseAssignee(
+  user: ReturnType<typeof userEvent.setup>,
+  item: RegExp,
+  rowIndex = 0
+): Promise<void> {
+  await user.click(within(board()).getAllByRole('button', { name: ASSIGN_MENU })[rowIndex]);
+  await user.click(await screen.findByRole('menuitem', { name: item }));
+}
+
+async function findMenus(): Promise<HTMLElement[]> {
+  return await screen.findAllByRole('button', { name: ASSIGN_MENU });
 }
 
 describe('AssignPackingWorkPage', () => {
+  describe('who may open it (#3096)', () => {
+    it('should render access denied, and read nothing, when the session lacks orders:write', async () => {
+      const { list, listPackers } = renderPage({
+        user: { ...OPERATOR, role: 'viewer', permissions: ['orders:read'] },
+      });
+
+      expect(
+        await screen.findByRole('heading', { name: 'The fulfilment board is for supervisors' })
+      ).toBeInTheDocument();
+      expect(list).not.toHaveBeenCalled();
+      expect(listPackers).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
+
   it('renders one lane per active packer plus a pinned Unassigned lane', async () => {
     renderPage({
       list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: 'u_a' })])),
@@ -130,153 +166,189 @@ describe('AssignPackingWorkPage', () => {
     expect(await screen.findByRole('region', { name: 'packer-b' })).toBeInTheDocument();
   });
 
-  it('moving a task to a packer posts the assignment with that user id', async () => {
-    const user = userEvent.setup();
-    const { updateAssignment } = renderPage({});
-
-    await screen.findAllByRole('combobox', { name: 'Move to' });
-    const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-    await user.selectOptions(select, 'packer-a');
+  it('should ask the server for active work only, by alias rather than a status list', async () => {
+    const { list } = renderPage({});
 
     await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
-        assignedToUserId: 'u_a',
-        expectedVersion: 1,
+      expect(list).toHaveBeenCalledWith(expect.objectContaining({ active: true }));
+    });
+    expect(list.mock.calls[0][0]).not.toHaveProperty('status');
+  });
+
+  describe('the assignment menu (#3096)', () => {
+    it('should say Assign to… on a pooled task and Move to… on an assigned one', async () => {
+      renderPage({
+        list: vi
+          .fn()
+          .mockResolvedValue(page([task({ id: 'a' }), task({ id: 'b', assignedToUserId: 'u_a' })])),
+      });
+
+      await findMenus();
+      expect(within(board()).getByRole('button', { name: 'Assign to…' })).toBeInTheDocument();
+      expect(within(board()).getByRole('button', { name: 'Move to…' })).toBeInTheDocument();
+    });
+
+    it('posts the assignment with the chosen packer id', async () => {
+      const user = userEvent.setup();
+      const { updateAssignment } = renderPage({});
+
+      await findMenus();
+      await chooseAssignee(user, /^packer-a/);
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          assignedToUserId: 'u_a',
+          expectedVersion: 1,
+        });
+      });
+    });
+
+    it("should list each packer with their queue on this page", async () => {
+      const user = userEvent.setup();
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([
+            task({ id: 'a' }),
+            task({ id: 'b', assignedToUserId: 'u_b' }),
+            task({ id: 'c', assignedToUserId: 'u_b' }),
+          ])
+        ),
+        listPackers: vi.fn().mockResolvedValue({
+          packers: [
+            { id: 'u_a', username: 'packer-a' },
+            { id: 'u_b', username: 'packer-b' },
+          ],
+        }),
+      });
+
+      await findMenus();
+      await user.click(within(board()).getByRole('button', { name: 'Assign to…' }));
+
+      expect(await screen.findByRole('menuitem', { name: 'packer-a (0)' })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'packer-b (2)' })).toBeInTheDocument();
+      // A pooled task has nowhere to be pulled back FROM.
+      expect(screen.queryByRole('menuitem', { name: /Pull back to Unassigned/ })).not.toBeInTheDocument();
+    });
+
+    it('should offer Pull back to Unassigned on an assigned task, and post a null assignment', async () => {
+      const user = userEvent.setup();
+      const { updateAssignment } = renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+      });
+
+      await findMenus();
+      // The task's own packer is not offered as a destination.
+      await user.click(within(board()).getByRole('button', { name: 'Move to…' }));
+      expect(screen.queryByRole('menuitem', { name: /^packer-a/ })).not.toBeInTheDocument();
+      await user.click(await screen.findByRole('menuitem', { name: /Pull back to Unassigned/ }));
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          assignedToUserId: null,
+          expectedVersion: 1,
+        });
+      });
+    });
+
+    it('sends the version the row was RENDERED with, not a hardcoded 1', async () => {
+      const user = userEvent.setup();
+      const { updateAssignment } = renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ version: 7 })])),
+      });
+
+      await findMenus();
+      await chooseAssignee(user, /^packer-a/);
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          assignedToUserId: 'u_a',
+          expectedVersion: 7,
+        });
+      });
+    });
+
+    it('sends the CURRENT rendered version after the board refreshes, not the one from initial mount', async () => {
+      const user = userEvent.setup();
+      const list = vi
+        .fn()
+        .mockResolvedValueOnce(page([task({ version: 3, assignedToUserId: null })]))
+        .mockResolvedValueOnce(page([task({ version: 4, assignedToUserId: null })]));
+      const { updateAssignment } = renderPage({ list });
+
+      await screen.findAllByRole('checkbox', { name: POOL_LABEL });
+      await user.click(within(board()).getByRole('checkbox', { name: POOL_LABEL }));
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenNthCalledWith(1, 'ol_work_1', {
+          selfServeEligible: false,
+          expectedVersion: 3,
+        });
+      });
+      await waitFor(() => {
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+      await findMenus();
+      await chooseAssignee(user, /^packer-a/);
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenNthCalledWith(2, 'ol_work_1', {
+          assignedToUserId: 'u_a',
+          expectedVersion: 4,
+        });
       });
     });
   });
 
-  it('sends the version the row was RENDERED with, not a hardcoded 1', async () => {
-    // A version of 1 alone would pass even if the field were hardcoded — a
-    // row at some other version proves it is read from the task, not from a
-    // constant.
-    const user = userEvent.setup();
-    const { updateAssignment } = renderPage({
-      list: vi.fn().mockResolvedValue(page([task({ version: 7 })])),
+  describe('self-serve', () => {
+    it('offers the self-serve control on an ASSIGNED row, where it is the hard lock', async () => {
+      const user = userEvent.setup();
+      const { updateAssignment } = renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+      });
+
+      await user.click(await screen.findByRole('checkbox', { name: ASSIGNED_LABEL }));
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          selfServeEligible: false,
+          expectedVersion: 1,
+        });
+      });
     });
 
-    await screen.findAllByRole('combobox', { name: 'Move to' });
-    const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-    await user.selectOptions(select, 'packer-a');
+    it('toggling self-serve posts the eligibility flag alone', async () => {
+      const user = userEvent.setup();
+      const { updateAssignment } = renderPage({});
 
-    await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
-        assignedToUserId: 'u_a',
-        expectedVersion: 7,
+      await user.click(await screen.findByRole('checkbox', { name: POOL_LABEL }));
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          selfServeEligible: false,
+          expectedVersion: 1,
+        });
       });
+    });
+
+    it('should word the pooled and the assigned checkbox differently', async () => {
+      renderPage({
+        list: vi
+          .fn()
+          .mockResolvedValue(page([task({ id: 'a' }), task({ id: 'b', assignedToUserId: 'u_a' })])),
+      });
+
+      expect(await screen.findByRole('checkbox', { name: POOL_LABEL })).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: ASSIGNED_LABEL })).toBeInTheDocument();
     });
   });
 
-  it('sends the CURRENT rendered version after the board refreshes, not the one from initial mount', async () => {
-    // Proves the token tracks whatever is on screen right now rather than a
-    // value captured once and never revisited: a self-serve toggle succeeds
-    // at version 3, its own success invalidates the board, the refetch comes
-    // back at version 4 for the same row, and a second write — the "Move to"
-    // select — must carry THAT version, not the stale one from before the
-    // refresh.
-    const user = userEvent.setup();
-    const list = vi
-      .fn()
-      .mockResolvedValueOnce(page([task({ version: 3, assignedToUserId: null })]))
-      .mockResolvedValueOnce(page([task({ version: 4, assignedToUserId: null })]));
-    const updateAssignment = vi.fn().mockResolvedValue(task());
-    const { updateAssignment: updateAssignmentSpy } = renderPage({ list, updateAssignment });
-
-    await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
-    await user.click(within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' }));
-
-    await waitFor(() => {
-      expect(updateAssignmentSpy).toHaveBeenNthCalledWith(1, 'ol_work_1', {
-        selfServeEligible: false,
-        expectedVersion: 3,
-      });
-    });
-    // The self-serve write's own success invalidated the board; wait for the
-    // refetch (list's second, version-4 response) to actually land before
-    // acting again, or the second click could race a render that has not
-    // committed yet.
-    await waitFor(() => {
-      expect(list).toHaveBeenCalledTimes(2);
-    });
-    await screen.findAllByRole('combobox', { name: 'Move to' });
-    const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-    await user.selectOptions(select, 'packer-a');
-
-    await waitFor(() => {
-      expect(updateAssignmentSpy).toHaveBeenNthCalledWith(2, 'ol_work_1', {
-        assignedToUserId: 'u_a',
-        expectedVersion: 4,
-      });
-    });
-  });
-
-  it('moving a task back to Unassigned posts a null assignment', async () => {
-    const user = userEvent.setup();
-    const { updateAssignment } = renderPage({
-      list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
-    });
-
-    await screen.findAllByRole('combobox', { name: 'Move to' });
-    const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-    await user.selectOptions(select, 'Unassigned');
-
-    await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
-        assignedToUserId: null,
-        expectedVersion: 1,
-      });
-    });
-  });
-
-  it('offers the self-serve control on an ASSIGNED row, where it is the hard lock', async () => {
-    // It used to render only on unassigned rows, which made ADR-074's own
-    // escape hatch - assigned to one packer and nobody else - unreachable from
-    // the only screen that assigns anything. The label changes because the
-    // question does.
-    const user = userEvent.setup();
-    const { updateAssignment } = renderPage({
-      list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'packer-a' })])),
-    });
-
-    await screen.findAllByRole('checkbox', { name: 'Anyone may still take this' });
-    const checkbox = within(desktop()).getByRole('checkbox', {
-      name: 'Anyone may still take this',
-    });
-    await user.click(checkbox);
-
-    await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
-        selfServeEligible: false,
-        expectedVersion: 1,
-      });
-    });
-  });
-
-  it('toggling self-serve posts the eligibility flag alone', async () => {
-    const user = userEvent.setup();
-    const { updateAssignment } = renderPage({});
-
-    await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
-    const checkbox = within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' });
-    await user.click(checkbox);
-
-    await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
-        selfServeEligible: false,
-        expectedVersion: 1,
-      });
-    });
-  });
-
-  // ── #3429 — success toasts, assignment-only styling, control scoping ────
   describe('success toasts', () => {
     it('toasts on a successful move', async () => {
       const user = userEvent.setup();
       renderPage({});
 
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-      await user.selectOptions(select, 'packer-a');
+      await findMenus();
+      await chooseAssignee(user, /^packer-a/);
 
       expect(await screen.findByText('Task moved.')).toBeInTheDocument();
     });
@@ -285,24 +357,18 @@ describe('AssignPackingWorkPage', () => {
       const user = userEvent.setup();
       renderPage({});
 
-      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
-      const checkbox = within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' });
-      await user.click(checkbox);
+      await user.click(await screen.findByRole('checkbox', { name: POOL_LABEL }));
 
       expect(await screen.findByText('Self-serve eligibility updated.')).toBeInTheDocument();
       expect(screen.queryByText('Task moved.')).not.toBeInTheDocument();
     });
 
     it('does not toast success on a failed move, and does not claim nothing happened', async () => {
-      // A plain thrown Error is a failure we cannot classify, so the honest
-      // answer is that we do not know whether it landed. Saying "nothing has
-      // changed" here would be a claim, not a hedge.
       const user = userEvent.setup();
       renderPage({ updateAssignment: vi.fn().mockRejectedValue(new Error('boom')) });
 
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-      await user.selectOptions(select, 'packer-a');
+      await findMenus();
+      await chooseAssignee(user, /^packer-a/);
 
       expect(
         await screen.findByText(
@@ -320,15 +386,12 @@ describe('AssignPackingWorkPage', () => {
         updateAssignment: vi.fn().mockRejectedValue(new ApiError('conflict', 409, null)),
       });
 
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-      await user.selectOptions(select, 'packer-a');
+      await findMenus();
+      await chooseAssignee(user, /^packer-a/);
 
       expect(
         await screen.findByText('Somebody changed this task first. The board has been refreshed.')
       ).toBeInTheDocument();
-      // The sentence claims a refresh happened — so it has to, or this is a
-      // toast lying to the operator about what the board did.
       await waitFor(() => {
         expect(list).toHaveBeenCalledTimes(2);
       });
@@ -340,39 +403,16 @@ describe('AssignPackingWorkPage', () => {
         updateAssignment: vi.fn().mockRejectedValue(new ApiError('bad request', 400, null)),
       });
 
-      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
-      await user.click(within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' }));
+      await user.click(await screen.findByRole('checkbox', { name: POOL_LABEL }));
 
       expect(
         await screen.findByText('Could not change who may claim this. Nothing has changed.')
       ).toBeInTheDocument();
-      expect(
-        screen.queryByText('Could not move this task. Nothing has changed.')
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Could not move this task. Nothing has changed.')).not.toBeInTheDocument();
     });
   });
 
-  describe('self-serve checkbox scoping', () => {
-    it('renders the checkbox on an unassigned task', async () => {
-      renderPage({});
-
-      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
-      expect(
-        within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' })
-      ).toBeInTheDocument();
-    });
-
-    it('renders no checkbox on a task already assigned to a packer', async () => {
-      renderPage({
-        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
-      });
-
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      expect(screen.queryByRole('checkbox', { name: 'Anyone may claim this' })).not.toBeInTheDocument();
-      // "Move to" stays on every task, in every lane.
-      expect(within(desktop()).getByRole('combobox', { name: 'Move to' })).toBeInTheDocument();
-    });
-
+  describe('the action set', () => {
     it('offers Release hold on a held task — the gate this screen used to be missing', async () => {
       const user = userEvent.setup();
       renderPage({
@@ -381,56 +421,114 @@ describe('AssignPackingWorkPage', () => {
             task({
               supportedActions: ['release_hold'],
               activeHolds: [
-                {
-                  id: 'hold_1',
-                  reason: 'stock_shortfall',
-                  note: null,
-                  placedAt: '2026-09-22T10:00:00.000Z',
-                },
+                { id: 'hold_1', reason: 'stock_shortfall', note: null, placedAt: '2026-09-22T10:00:00.000Z' },
               ],
             }),
           ])
         ),
       });
 
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      // The action set lives behind the row's overflow menu now — see
-      // `assign-packing-work-actions.tsx`'s own docblock.
-      await user.click(within(desktop()).getByRole('button', { name: 'More actions' }));
+      await findMenus();
+      await user.click(within(board()).getByRole('button', { name: 'More actions' }));
       expect(await screen.findByRole('button', { name: 'Release hold' })).toBeInTheDocument();
     });
 
     it('offers no button when the server allows a release but reports no hold', async () => {
-      // A state this surface cannot act on: a control that cannot be completed
-      // is worse than none.
       renderPage({
         list: vi
           .fn()
           .mockResolvedValue(page([task({ supportedActions: ['release_hold'], activeHolds: [] })])),
       });
 
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      expect(within(desktop()).queryByRole('button', { name: /release hold/i })).not.toBeInTheDocument();
+      await findMenus();
+      expect(within(board()).queryByRole('button', { name: /release hold/i })).not.toBeInTheDocument();
     });
 
     it('keeps the action set on an assigned task, because the SERVER decides it', async () => {
-      // The old assertion here was that Hold disappeared once a task was
-      // assigned. That was the screen's own lane-based gate, and it is what
-      // made this a one-way gate: a held task could never be released from
-      // the only screen that could hold it. `supportedActions` is the gate
-      // now, so an assigned task still offers whatever the server declared.
       const user = userEvent.setup();
       renderPage({
         list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
       });
 
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      await user.click(within(desktop()).getByRole('button', { name: 'More actions' }));
+      await findMenus();
+      await user.click(within(board()).getByRole('button', { name: 'More actions' }));
       expect(await screen.findByRole('button', { name: 'Put on hold' })).toBeInTheDocument();
+    });
+
+    it('should keep the overflow slot on a row with no action, so the columns line up (#3096)', async () => {
+      renderPage({
+        list: vi
+          .fn()
+          .mockResolvedValue(page([task({ id: 'a' }), task({ id: 'b', supportedActions: [] })])),
+      });
+
+      await findMenus();
+      expect(within(board()).getAllByRole('button', { name: 'More actions' })).toHaveLength(1);
+      expect(within(board()).getAllByTestId('assign-packing-work-menu-slot')).toHaveLength(1);
     });
   });
 
-  describe('lane header presentation additions', () => {
+  describe('the row (#3096)', () => {
+    it('should shorten a long reference the way the orders lists do, and keep it a plain link', async () => {
+      renderPage({
+        list: vi
+          .fn()
+          .mockResolvedValue(page([task({ orderReference: '1a7a9550-bd84-11f1-a5f3-e32e252d5e3f' })])),
+      });
+
+      const ref = await within(await screen.findByRole('region', { name: 'Unassigned' })).findByRole(
+        'link',
+        { name: '1a7a9550…2d5e3f' }
+      );
+      expect(ref).toHaveAttribute('title', '1a7a9550-bd84-11f1-a5f3-e32e252d5e3f');
+      expect(ref).not.toHaveClass('link');
+    });
+
+    it('should say what the packer will scan, in the mockup wording', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([
+            task({
+              id: 'a',
+              lines: [
+                { id: 'l1', orderLineId: 'o1', productVariantId: 'v1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+              ],
+            }),
+            task({
+              id: 'b',
+              lines: [
+                { id: 'l1', orderLineId: 'o1', productVariantId: 'v1', totalQuantity: 3, fulfilledQuantity: 0, cancelledQuantity: 0 },
+                { id: 'l2', orderLineId: 'o2', productVariantId: 'v2', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+              ],
+            }),
+          ])
+        ),
+      });
+
+      expect(await screen.findByText('1 product to scan')).toBeInTheDocument();
+      expect(screen.getByText('2 products, 4 units to scan')).toBeInTheDocument();
+    });
+
+    it('should leave the location off the row on a one-location install', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ locationName: 'Main warehouse' })])),
+      });
+
+      await findMenus();
+      expect(within(board()).queryByText(/Main warehouse/)).not.toBeInTheDocument();
+    });
+
+    it('should name the location on the row when the install has several', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ locationName: 'Berlin' })])),
+        activeLocations: 2,
+      });
+
+      expect(await within(await screen.findByRole('region', { name: 'Unassigned' })).findByText(/· Berlin/)).toBeInTheDocument();
+    });
+  });
+
+  describe('lane header presentation', () => {
     it('renders the Unassigned lane subtitle', async () => {
       renderPage({});
 
@@ -450,202 +548,21 @@ describe('AssignPackingWorkPage', () => {
         ),
       });
 
-      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
-      const rowA = within(desktop()).getByText('a').closest('li') as HTMLElement;
-      const rowB = within(desktop()).getByText('b').closest('li') as HTMLElement;
-
+      await findMenus();
+      const rowA = within(board()).getByText('a').closest('li') as HTMLElement;
+      const rowB = within(board()).getByText('b').closest('li') as HTMLElement;
       expect(rowA.className).toContain('assign-packing-work-lane-card--assignment-only');
       expect(rowB.className).not.toContain('assign-packing-work-lane-card--assignment-only');
     });
 
-    it('never mutes an assigned task, whatever its selfServeEligible value', async () => {
-      renderPage({
-        list: vi.fn().mockResolvedValue(
-          page([task({ assignedToUserId: 'u_a', selfServeEligible: false })])
-        ),
-      });
-
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const row = within(desktop()).getByText('ol_work_1').closest('li') as HTMLElement;
-      expect(row.className).not.toContain('assign-packing-work-lane-card--assignment-only');
-    });
-  });
-
-  it('degrades to a roster-error banner without blocking the board on a failed packer read', async () => {
-    renderPage({ listPackers: vi.fn().mockRejectedValue(new Error('boom')) });
-
-    expect(
-      await screen.findByText(
-        'The packer roster could not be loaded, so tasks can only be held or left unassigned.'
-      )
-    ).toBeInTheDocument();
-    expect(await screen.findByRole('region', { name: 'Unassigned' })).toBeInTheDocument();
-  });
-
-  it('shows the empty state when there is no work to assign', async () => {
-    renderPage({ list: vi.fn().mockResolvedValue(page([])) });
-
-    expect(await screen.findByText('Nothing to assign right now')).toBeInTheDocument();
-  });
-
-  // ── #3428 — the metric row ───────────────────────────────────────────
-  describe('the metric row', () => {
-    it('counts only the pinned Unassigned lane, never assigned tasks', async () => {
-      renderPage({
-        list: vi.fn().mockResolvedValue(
-          page([
-            task({ id: 'a', assignedToUserId: null }),
-            task({ id: 'b', assignedToUserId: null }),
-            task({ id: 'c', assignedToUserId: 'u_a' }),
-          ])
-        ),
-        listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'packer-a' }] }),
-      });
-
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const card = screen.getByText('Unassigned right now').closest('.metric-card') as HTMLElement;
-      expect(within(card).getByText('2')).toBeInTheDocument();
-    });
-
-    it('does not render until the board has real data — no loading-flicker zero', () => {
-      renderPage({ list: vi.fn(() => new Promise(() => {})) });
-
-      expect(screen.queryByText('Unassigned right now')).not.toBeInTheDocument();
-    });
-
-    // ── #3428's third card ──────────────────────────────────────────────
-    it('counts the packers the roster reports as at their benches', async () => {
-      renderPage({
-        list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: null })])),
-        listPackers: vi.fn().mockResolvedValue({
-          packers: [
-            { id: 'u_a', username: 'packer-a', online: true, stationLabel: 'Bench 1' },
-            { id: 'u_b', username: 'packer-b', online: false, stationLabel: null },
-            { id: 'u_c', username: 'packer-c', online: true, stationLabel: null },
-          ],
-        }),
-      });
-
-      const card = (await screen.findByText('Packers at their benches')).closest(
-        '.metric-card'
-      ) as HTMLElement;
-      expect(within(card).getByText('2')).toBeInTheDocument();
-    });
-
-    it('says "not known" rather than zero when the roster could not be read', async () => {
-      // The page deliberately survives a failed roster read, so a `0` here
-      // would report an empty warehouse when the truth is that nobody asked.
-      renderPage({
-        list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: null })])),
-        listPackers: vi.fn().mockRejectedValue(new Error('roster is down')),
-      });
-
-      const card = (await screen.findByText('Packers at their benches')).closest(
-        '.metric-card'
-      ) as HTMLElement;
-      // A dash, labelled - never the digit, and never an unlabelled glyph.
-      expect(within(card).getByLabelText('Not known')).toBeInTheDocument();
-      expect(within(card).queryByText('0')).not.toBeInTheDocument();
-    });
-  });
-
-  // ── #3426 — native drag-and-drop, additive to "Move to" ──────────────
-  describe('drag-and-drop lane reassignment', () => {
-    /** A minimal `DataTransfer` stub — happy-dom does not implement one. */
-    function fakeDataTransfer(): DataTransfer {
-      return {
-        setData: vi.fn(),
-        effectAllowed: '',
-      } as unknown as DataTransfer;
-    }
-
-    function draggableRow(): HTMLElement {
-      return within(desktop()).getByText('ol_work_1').closest('li') as HTMLElement;
-    }
-
-    it('dragging a task onto a different lane posts the same assignment the "Move to" select uses', async () => {
-      const { updateAssignment } = renderPage({
-        listPackers: vi.fn().mockResolvedValue({
-          packers: [
-            { id: 'u_a', username: 'packer-a' },
-            { id: 'u_b', username: 'packer-b' },
-          ],
-        }),
-      });
-
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const sourceRow = draggableRow();
-      const destinationLane = screen.getByRole('region', { name: 'packer-a' });
-
-      fireEvent.dragStart(sourceRow, { dataTransfer: fakeDataTransfer() });
-      fireEvent.dragOver(destinationLane, { dataTransfer: fakeDataTransfer() });
-      fireEvent.drop(destinationLane, { dataTransfer: fakeDataTransfer() });
-
-      await waitFor(() => {
-        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
-          assignedToUserId: 'u_a',
-          expectedVersion: 1,
-        });
-      });
-    });
-
-    it('dropping onto the task\'s own current lane is a no-op', async () => {
-      const { updateAssignment } = renderPage({
-        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
-        listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'packer-a' }] }),
-      });
-
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const sourceRow = draggableRow();
-      const ownLane = screen.getByRole('region', { name: 'packer-a' });
-
-      fireEvent.dragStart(sourceRow, { dataTransfer: fakeDataTransfer() });
-      fireEvent.dragOver(ownLane, { dataTransfer: fakeDataTransfer() });
-      fireEvent.drop(ownLane, { dataTransfer: fakeDataTransfer() });
-
-      // Give any wrongly-fired mutation a tick to land before asserting absence.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(updateAssignment).not.toHaveBeenCalled();
-    });
-
-    it('the "Move to" select keeps working exactly as before, drag or no drag', async () => {
-      const user = userEvent.setup();
-      const { updateAssignment } = renderPage({});
-
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
-      await user.selectOptions(select, 'packer-a');
-
-      await waitFor(() => {
-        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
-          assignedToUserId: 'u_a',
-          expectedVersion: 1,
-        });
-      });
-    });
-
-    it('marks the row draggable only for a session that may write', async () => {
-      renderPage({});
-
-      await screen.findAllByRole('combobox', { name: 'Move to' });
-      expect(draggableRow()).toHaveAttribute('draggable', 'true');
-    });
-  });
-
-  // ── #3427 — avatar, lightest-load tag, load bar, lane accent ────────────
-  describe('lane header presentation', () => {
     it('renders an initials avatar for a packer lane and a warning icon for Unassigned', async () => {
       renderPage({
-        listPackers: vi.fn().mockResolvedValue({
-          packers: [{ id: 'u_a', username: 'Marta Kowalczyk' }],
-        }),
+        listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'Marta Kowalczyk' }] }),
       });
 
       const packerLane = await screen.findByRole('region', { name: 'Marta Kowalczyk' });
       expect(within(packerLane).getByText('MK')).toBeInTheDocument();
-
-      const unassignedLane = screen.getByRole('region', { name: 'Unassigned' });
-      expect(within(unassignedLane).getByText('✳')).toBeInTheDocument();
+      expect(within(screen.getByRole('region', { name: 'Unassigned' })).getByText('✳')).toBeInTheDocument();
     });
 
     it('tags the packer with the fewest tasks "lightest load", and no one else', async () => {
@@ -667,7 +584,6 @@ describe('AssignPackingWorkPage', () => {
 
       const laneA = await screen.findByRole('region', { name: 'packer-a' });
       const laneB = screen.getByRole('region', { name: 'packer-b' });
-
       expect(within(laneB).getByText('lightest load')).toBeInTheDocument();
       expect(within(laneA).queryByText('lightest load')).not.toBeInTheDocument();
     });
@@ -675,44 +591,196 @@ describe('AssignPackingWorkPage', () => {
     it('reads the load-bar fill width and tone off the same task count shown beside it', async () => {
       renderPage({
         list: vi.fn().mockResolvedValue(
-          page(
-            Array.from({ length: 3 }, (_, i) =>
-              task({ id: `t${String(i)}`, assignedToUserId: 'u_a' })
-            )
-          )
+          page(Array.from({ length: 3 }, (_, i) => task({ id: `t${String(i)}`, assignedToUserId: 'u_a' })))
         ),
         listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'packer-a' }] }),
       });
 
       const lane = await screen.findByRole('region', { name: 'packer-a' });
       const fill = lane.querySelector('.assign-packing-work-lane__load-fill') as HTMLElement;
-
-      // 3 tasks -> 60% width, "busy" tone (>= 3).
       expect(fill.style.width).toBe('60%');
       expect(fill.className).toContain('assign-packing-work-lane__load-fill--busy');
     });
   });
-});
 
-// ── Filters and paging, moved from the worklist this screen absorbed ──────
-//
-// These are the capabilities the board did not have. Before the merge it
-// asked for a flat 100 and rendered whatever came back, so past that it
-// showed a slice — and grouped by packer, a slice means a lane looks empty
-// when it is not.
+  // e2e v2 (F-10) read a board that kept old rows after a failed read; that
+  // was the query cache answering without a refetch. A refetch that DOES fail
+  // must say so rather than leave rows the server can no longer vouch for.
+  it('should show the error state, not the previous rows, when a refetch fails', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce(page([task({ id: 'a', assignedToUserId: 'u_a' })]))
+      .mockRejectedValue(new ApiError('boom', 500, null));
+    const user = userEvent.setup();
+    renderPage({ list });
+
+    await findMenus();
+    await chooseAssignee(user, /packer-a|Unassign|Back to/i);
+
+    expect(await screen.findByText('Could not load packing work')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: ASSIGN_MENU })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('degrades to a roster-error banner without blocking the board on a failed packer read', async () => {
+    renderPage({ listPackers: vi.fn().mockRejectedValue(new Error('boom')) });
+
+    expect(
+      await screen.findByText(
+        'The packer roster could not be loaded, so tasks can only be held or left unassigned.'
+      )
+    ).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Unassigned' })).toBeInTheDocument();
+  });
+
+  it('shows the empty state when there is no work to assign', async () => {
+    renderPage({ list: vi.fn().mockResolvedValue(page([])) });
+
+    expect(await screen.findByText('Nothing to assign right now')).toBeInTheDocument();
+  });
+
+  it('should draw the lane skeleton, not a bare sentence, while the first page loads (#3096)', async () => {
+    renderPage({ list: vi.fn(() => new Promise(() => {})) });
+
+    expect(await screen.findByText('Loading packing work…')).toHaveClass('sr-only');
+    expect(document.querySelector('.assign-packing-work-skeleton')).not.toBeNull();
+  });
+
+  describe('the metric row', () => {
+    function metric(label: string): HTMLElement {
+      return screen.getByText(label).closest('.kpi-card') as HTMLElement;
+    }
+
+    it('should lay the three cards out in the mockup order: Unassigned, Packers, Oldest (#3096)', async () => {
+      renderPage({});
+
+      await screen.findByText('Unassigned right now');
+      const grid = document.querySelector('.assign-packing-work-metrics') as HTMLElement;
+      expect(grid).toHaveClass('kpi-grid');
+      const labels = [...grid.querySelectorAll('.kpi-card__label-text')].map((n) => n.textContent);
+      expect(labels).toEqual(['Unassigned right now', 'Packers at their benches', 'Oldest unassigned']);
+      for (const card of grid.querySelectorAll('.kpi-card')) expect(card).toHaveClass('kpi-card--compact');
+    });
+
+    it('counts only unassigned tasks, never assigned ones', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([
+            task({ id: 'a', assignedToUserId: null }),
+            task({ id: 'b', assignedToUserId: null }),
+            task({ id: 'c', assignedToUserId: 'u_a' }),
+          ])
+        ),
+      });
+
+      await findMenus();
+      expect(within(metric('Unassigned right now')).getByText('2')).toBeInTheDocument();
+    });
+
+    it('does not render until the board has real data — no loading-flicker zero', () => {
+      renderPage({ list: vi.fn(() => new Promise(() => {})) });
+
+      expect(screen.queryByText('Unassigned right now')).not.toBeInTheDocument();
+    });
+
+    it('counts the packers the roster reports as at their benches', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: null })])),
+        listPackers: vi.fn().mockResolvedValue({
+          packers: [
+            { id: 'u_a', username: 'packer-a', online: true, stationLabel: 'Bench 1' },
+            { id: 'u_b', username: 'packer-b', online: false, stationLabel: null },
+            { id: 'u_c', username: 'packer-c', online: true, stationLabel: null },
+          ],
+        }),
+      });
+
+      await screen.findByText('Packers at their benches');
+      await waitFor(() => {
+        expect(within(metric('Packers at their benches')).getByText('2')).toBeInTheDocument();
+      });
+    });
+
+    it('says "not known" rather than zero when the roster could not be read', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: null })])),
+        listPackers: vi.fn().mockRejectedValue(new Error('roster is down')),
+      });
+
+      await screen.findByText('Packers at their benches');
+      await waitFor(() => {
+        expect(within(metric('Packers at their benches')).getByLabelText('Not known')).toBeInTheDocument();
+      });
+      expect(within(metric('Packers at their benches')).queryByText('0')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('drag-and-drop lane reassignment', () => {
+    /** A minimal `DataTransfer` stub — happy-dom does not implement one. */
+    function fakeDataTransfer(): DataTransfer {
+      return { setData: vi.fn(), effectAllowed: '' } as unknown as DataTransfer;
+    }
+
+    function draggableRow(): HTMLElement {
+      return within(board()).getByText('ol_work_1').closest('li') as HTMLElement;
+    }
+
+    it('dragging a task onto a different lane posts the same assignment the menu uses', async () => {
+      const { updateAssignment } = renderPage({
+        listPackers: vi.fn().mockResolvedValue({
+          packers: [
+            { id: 'u_a', username: 'packer-a' },
+            { id: 'u_b', username: 'packer-b' },
+          ],
+        }),
+      });
+
+      await findMenus();
+      const destinationLane = screen.getByRole('region', { name: 'packer-a' });
+      fireEvent.dragStart(draggableRow(), { dataTransfer: fakeDataTransfer() });
+      fireEvent.dragOver(destinationLane, { dataTransfer: fakeDataTransfer() });
+      fireEvent.drop(destinationLane, { dataTransfer: fakeDataTransfer() });
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          assignedToUserId: 'u_a',
+          expectedVersion: 1,
+        });
+      });
+    });
+
+    it("dropping onto the task's own current lane is a no-op", async () => {
+      const { updateAssignment } = renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+      });
+
+      await findMenus();
+      const ownLane = screen.getByRole('region', { name: 'packer-a' });
+      fireEvent.dragStart(draggableRow(), { dataTransfer: fakeDataTransfer() });
+      fireEvent.dragOver(ownLane, { dataTransfer: fakeDataTransfer() });
+      fireEvent.drop(ownLane, { dataTransfer: fakeDataTransfer() });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(updateAssignment).not.toHaveBeenCalled();
+    });
+
+    it('marks the row draggable only for a session that may write', async () => {
+      renderPage({});
+
+      await findMenus();
+      expect(draggableRow()).toHaveAttribute('draggable', 'true');
+    });
+  });
+});
 
 describe('the merged screen — empty states are three, not one', () => {
   it('says "no matches" when a filter is narrowing the board', async () => {
-    renderPage({
-      list: vi.fn().mockResolvedValue(page([])),
-      route: '/fulfillment?orderId=ol_order_missing',
-    });
+    renderPage({ list: vi.fn().mockResolvedValue(page([])), route: '/fulfillment?orderId=ol_order_missing' });
 
     expect(await screen.findByText('No fulfilment tasks match these filters')).toBeInTheDocument();
   });
 
   it('says "nothing on this page" when paged past the end', async () => {
-    // Neither of the other two: rows exist, this page is simply beyond them.
     renderPage({
       list: vi.fn().mockResolvedValue(page([], { total: 40, offset: 100 })),
       route: '/fulfillment?offset=100',
@@ -722,25 +790,21 @@ describe('the merged screen — empty states are three, not one', () => {
   });
 
   it('offers a way out of the filtered empty state', async () => {
-    renderPage({
-      list: vi.fn().mockResolvedValue(page([])),
-      route: '/fulfillment?orderId=ol_order_missing',
-    });
+    renderPage({ list: vi.fn().mockResolvedValue(page([])), route: '/fulfillment?orderId=ol_order_missing' });
 
     await screen.findByText('No fulfilment tasks match these filters');
     expect(screen.getAllByRole('button', { name: 'Clear filters' }).length).toBeGreaterThan(0);
   });
 });
 
-describe('the merged screen — the pager reads the APPLIED page', () => {
-  it('uses the limit the server applied, not the one requested', async () => {
-    // The server clamps, so a pager reading its own request would render a
-    // range that does not describe the lanes on screen.
-    renderPage({
-      list: vi.fn().mockResolvedValue(page([task()], { total: 60, limit: 25, offset: 0 })),
-    });
+describe('the merged screen — paging (#3096: ListPagination)', () => {
+  it('should render the shared pager with the total the server reported', async () => {
+    renderPage({ list: vi.fn().mockResolvedValue(page([task()], { total: 60, limit: 25, offset: 0 })) });
 
-    expect(await screen.findByText('Showing 1–25 of 60')).toBeInTheDocument();
+    const pager = await screen.findByRole('navigation', { name: 'Pagination' });
+    expect(pager.textContent).toContain('of 60');
+    expect(within(pager).getByRole('button', { name: 'Next' })).toBeEnabled();
+    expect(within(pager).getByRole('button', { name: 'Previous' })).toBeDisabled();
   });
 
   it('asks for the page size the server will actually give', async () => {
@@ -751,47 +815,63 @@ describe('the merged screen — the pager reads the APPLIED page', () => {
     });
   });
 
-  it('states once, not per lane, that a lane holds only this page', async () => {
+  it('should state once that a lane holds only this page, when there is more than one page', async () => {
     renderPage({
-      list: vi
-        .fn()
-        .mockResolvedValue(page([task({ id: 'a', assignedToUserId: 'u_a' }), task({ id: 'b' })])),
+      list: vi.fn().mockResolvedValue(
+        page([task({ id: 'a', assignedToUserId: 'u_a' }), task({ id: 'b' })], { total: 60 })
+      ),
     });
 
-    // Two lanes render; the caveat is a fact about the board, so it appears
-    // once rather than on each of them.
     expect(await screen.findAllByText('Grouped from the tasks on this page only.')).toHaveLength(1);
+  });
+
+  it('should say nothing about page scope when everything fits on one page', async () => {
+    renderPage({ list: vi.fn().mockResolvedValue(page([task({ id: 'a' }), task({ id: 'b' })])) });
+
+    await findMenus();
+    expect(screen.queryByText('Grouped from the tasks on this page only.')).not.toBeInTheDocument();
   });
 });
 
 describe('the merged screen — the grouping axis', () => {
   it('groups by packer by default', async () => {
+    renderPage({ list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])) });
+
+    expect(await screen.findByRole('region', { name: 'packer-a' })).toBeInTheDocument();
+  });
+
+  it('should not offer the location axis on a one-location install (#3096)', async () => {
+    renderPage({});
+
+    await findMenus();
+    expect(screen.queryByRole('radio', { name: 'Location' })).not.toBeInTheDocument();
+  });
+
+  it('should ignore ?groupBy=location on a one-location install (#3096)', async () => {
     renderPage({
       list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+      route: '/fulfillment?groupBy=location',
     });
 
     expect(await screen.findByRole('region', { name: 'packer-a' })).toBeInTheDocument();
   });
 
-  it('groups by location and delivery method when asked', async () => {
+  it('groups by location and delivery method when asked on a multi-location install', async () => {
     renderPage({
       list: vi.fn().mockResolvedValue(page([task({ locationId: 'loc_warsaw' })])),
       route: '/fulfillment?groupBy=location',
+      activeLocations: 2,
     });
 
     expect(await screen.findByRole('region', { name: 'loc_warsaw · courier' })).toBeInTheDocument();
-    // The packer lanes are gone — this is a different question about the
-    // same rows, not an extra section.
     expect(screen.queryByRole('region', { name: 'packer-a' })).not.toBeInTheDocument();
   });
 
   it('turns drag OFF on the location axis, because a lane id is not a user id', async () => {
-    // The drop handler PATCHes `assignedToUserId` with the lane it was
-    // dropped on. On this axis that would send a location key as a user id,
-    // and the handler cannot tell — a lane id is an opaque string.
     renderPage({
       list: vi.fn().mockResolvedValue(page([task({ locationId: 'loc_warsaw' })])),
       route: '/fulfillment?groupBy=location',
+      activeLocations: 2,
     });
 
     await screen.findByRole('region', { name: 'loc_warsaw · courier' });
@@ -799,47 +879,14 @@ describe('the merged screen — the grouping axis', () => {
     expect(card?.getAttribute('draggable')).not.toBe('true');
   });
 
-  it('keeps drag on the packer axis', async () => {
-    renderPage({});
-
-    await screen.findAllByRole('combobox', { name: 'Move to' });
-    const card = document.querySelector('[data-testid="assign-packing-work-card"]');
-    expect(card?.getAttribute('draggable')).toBe('true');
-  });
-
-  it('names the location rather than printing its internal id', async () => {
-    // The card one line below prints `Main warehouse`; a heading showing
-    // `ol_location_bab164c3…` would contradict its own rows.
-    renderPage({
-      list: vi.fn().mockResolvedValue(
-        page([
-          task({
-            locationId: 'ol_location_bab164c3b9b94a9eab0df5ab2130c184',
-            locationName: 'Main warehouse',
-          }),
-        ])
-      ),
-      route: '/fulfillment?groupBy=location',
-    });
-
-    expect(
-      await screen.findByRole('region', { name: 'Main warehouse · courier' })
-    ).toBeInTheDocument();
-  });
-
   it('counts unassigned tasks on EITHER axis', async () => {
-    // Read off the pinned lane this answered a confident 0 here, because no
-    // lane carries that id on the location axis.
     renderPage({
-      list: vi
-        .fn()
-        .mockResolvedValue(page([task({ id: 'a' }), task({ id: 'b' }), task({ id: 'c' })])),
+      list: vi.fn().mockResolvedValue(page([task({ id: 'a' }), task({ id: 'b' }), task({ id: 'c' })])),
       route: '/fulfillment?groupBy=location',
+      activeLocations: 2,
     });
 
-    await screen.findByText('Unassigned right now');
-    // Scoped to the metric: the lane header carries its own count, which is
-    // the same number here and would make a bare text query ambiguous.
+    await screen.findByRole('region', { name: 'loc_warsaw · courier' });
     const metric = document.querySelector('.assign-packing-work-metrics') as HTMLElement;
     expect(within(metric).getByText('3')).toBeInTheDocument();
   });
@@ -848,6 +895,7 @@ describe('the merged screen — the grouping axis', () => {
     renderPage({
       list: vi.fn().mockResolvedValue(page([task({ locationId: 'loc_warsaw' })])),
       route: '/fulfillment?groupBy=location',
+      activeLocations: 2,
     });
 
     expect(
@@ -856,11 +904,11 @@ describe('the merged screen — the grouping axis', () => {
   });
 
   it('drops the offset when the axis changes', async () => {
-    // Row 26 of one grouping is not row 26 of the other.
     const user = userEvent.setup();
     const { list } = renderPage({
       list: vi.fn().mockResolvedValue(page([task()], { total: 90, offset: 25 })),
       route: '/fulfillment?offset=25',
+      activeLocations: 2,
     });
 
     await waitFor(() => {
@@ -875,17 +923,22 @@ describe('the merged screen — the grouping axis', () => {
   });
 });
 
-describe('the merged screen — filters reach the request', () => {
-  it('sends both free-string filters read out of the URL', async () => {
-    const { list } = renderPage({
-      route: '/fulfillment?orderId=ol_order_7&locationId=loc_krakow',
-    });
+describe('the merged screen — the order filter', () => {
+  it('sends the order filter read out of the URL, and ignores a legacy locationId (#3096)', async () => {
+    const { list } = renderPage({ route: '/fulfillment?orderId=ol_order_7&locationId=loc_krakow' });
 
     await waitFor(() => {
-      expect(list).toHaveBeenCalledWith(
-        expect.objectContaining({ orderId: 'ol_order_7', locationId: 'loc_krakow' })
-      );
+      expect(list).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'ol_order_7' }));
     });
+    expect(list.mock.calls[0][0]).not.toHaveProperty('locationId');
+  });
+
+  it('should offer one filter box, for the order, and no location box (#3096)', async () => {
+    renderPage({});
+
+    expect(await screen.findByLabelText('Order')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Location')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/location id/i)).not.toBeInTheDocument();
   });
 
   it('commits a filter on Enter, not only on blur', async () => {
@@ -904,13 +957,8 @@ describe('the merged screen — filters reach the request', () => {
   });
 
   it('clears the visible filter text when the filters are cleared', async () => {
-    // A box still showing `ol_order_7` over an unfiltered board is the screen
-    // contradicting itself.
     const user = userEvent.setup();
-    renderPage({
-      list: vi.fn().mockResolvedValue(page([])),
-      route: '/fulfillment?orderId=ol_order_7',
-    });
+    renderPage({ list: vi.fn().mockResolvedValue(page([])), route: '/fulfillment?orderId=ol_order_7' });
 
     const before = await screen.findByLabelText<HTMLInputElement>('Order');
     expect(before.value).toBe('ol_order_7');
@@ -923,8 +971,6 @@ describe('the merged screen — filters reach the request', () => {
   });
 
   it('does not send a present-but-empty filter as a value', async () => {
-    // `?orderId=` would otherwise filter to orders whose id is the empty
-    // string — none — while the screen reported itself unfiltered.
     const { list } = renderPage({ route: '/fulfillment?orderId=' });
 
     await waitFor(() => {

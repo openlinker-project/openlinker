@@ -1,10 +1,19 @@
 import type { ReactElement } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { BENCH_PATH, resolveSessionSurface } from '../../shared/auth/session-surface';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { AppShell } from '../app-shell';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useSystemConfigQuery } from '../../features/system';
+
+/** The /login query string: the original params, plus `next` for a deep link. */
+function loginSearch(location: { pathname: string; search: string }): string {
+  if (location.pathname === '/') return location.search;
+  const params = new URLSearchParams(location.search);
+  params.set('next', `${location.pathname}${location.search}`);
+  return `?${params.toString()}`;
+}
 
 export function AuthenticatedAppLayout(): ReactElement {
   const { isReady, session } = useSession();
@@ -17,6 +26,26 @@ export function AuthenticatedAppLayout(): ReactElement {
   const systemConfigQuery = useSystemConfigQuery();
   const demoMode = systemConfigQuery.data?.demoMode ?? false;
   const isAuthenticated = isReady && session.status === 'authenticated';
+
+  // #3096 (F-9) — a bench-only session (a packer) never renders this shell,
+  // not even the `@AnyRole()` reads #3221's nav gate leaves reachable (the
+  // #3221 follow-up asked for exactly this, by role; this one check is it).
+  // Decided BEFORE the loading branch below, because that branch already
+  // renders `AppShell` — its sidebar would flash a packer the full admin
+  // navigation while the system config loads. `/bench` sits outside this
+  // layout (`bench.route.tsx`), so the redirect cannot loop, and because every
+  // core and plugin route is a child of this layout, this one check closes all
+  // of them without a list of allowed paths.
+  //
+  // Except a packer still owing a password change (#3456): the API refuses
+  // every route but the change itself, the bench included, so the
+  // change-password redirect below must win.
+  if (
+    resolveSessionSurface(isReady, session) === 'bench-only' &&
+    session.user?.mustChangePassword !== true
+  ) {
+    return <Navigate to={BENCH_PATH} replace />;
+  }
 
   if (!isReady || (isAuthenticated && systemConfigQuery.isPending)) {
     return (
@@ -38,8 +67,11 @@ export function AuthenticatedAppLayout(): ReactElement {
   if (session.status === 'anonymous') {
     // Preserve the query string (e.g. utm_* campaign params from a marketing
     // redirect landing on the app root) so it survives onto /login instead of
-    // being silently dropped by the redirect.
-    return <Navigate to={{ pathname: '/login', search: location.search }} replace />;
+    // being silently dropped by the redirect. A deep link below the root also
+    // rides along as `?next=` (#3096), so signing in returns the operator to
+    // the order or task they were opening rather than to Analytics; the guest
+    // layout sanitises it through `resolveNextPath`.
+    return <Navigate to={{ pathname: '/login', search: loginSearch(location) }} replace />;
   }
 
   // An account created by an admin with a one-time password must replace it
@@ -54,19 +86,6 @@ export function AuthenticatedAppLayout(): ReactElement {
         replace
       />
     );
-  }
-
-  // A packer's entire job is at /bench (#3221 follow-up). Unlike every other
-  // role, packer is NOT meant to browse the ordinary app shell at all — even
-  // the handful of `@AnyRole()` reads (Products, Listings, Shipments, Returns)
-  // that #3221's nav-gate fix (deliberately) leaves reachable through the
-  // sidebar. This guard is a hard, unconditional redirect: wherever a packer
-  // session lands inside AuthenticatedAppLayout — post-login via GuestLayout's
-  // `/` redirect, or a direct/bookmarked URL — it is sent to /bench instead.
-  // /bench itself is a standalone route outside this layout's tree (see
-  // router.tsx), so this never loops.
-  if (session.user?.role === 'packer') {
-    return <Navigate to="/bench" replace />;
   }
 
   // A demo account that has not consented to session recording gets no shell

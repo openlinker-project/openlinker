@@ -14,7 +14,10 @@
  * intersection, so such an assertion is `never` and green forever).
  *
  * Deliberately excluded: `dispatchRelayedAt` (internal relay hygiene, #2401)
- * and a hold's `placedByService` (internal actor).
+ * and a hold's `placedByService` (internal actor). The one operator fact the
+ * relay column carries — that the channel has been told — rides out as
+ * `channelNotifiedAt` instead (#3096), under a name no reader will mistake
+ * for the relay's own bookkeeping.
  *
  * ## `activeHolds` is the authority on heldness, NOT `status`
  *
@@ -144,6 +147,19 @@ export interface FulfillmentWorkView {
    * resolving a name is the consumer's, and this view holds no PII.
    */
   readonly completedByUserId: string | null;
+  /**
+   * When the dispatch fact for this parcel was settled with its sales channel
+   * (#3096, G02-3), or `null` while it is not.
+   *
+   * Read from `dispatchRelayedAt`, which stays off this view under its own
+   * name: that column is relay hygiene and its spelling invites a reader to
+   * branch on it. This is the one operator-relevant fact it carries — "has the
+   * channel been told this shipped?" — exposed read-only and under a name
+   * that says so. It marks the relay as RESOLVED, which includes a channel
+   * that does not accept dispatch notices at all, so a consumer must not word
+   * it as a confirmation the channel acknowledged.
+   */
+  readonly channelNotifiedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly lines: readonly FulfillmentWorkLineView[];
