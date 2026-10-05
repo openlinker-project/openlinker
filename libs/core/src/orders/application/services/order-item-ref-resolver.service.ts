@@ -3,6 +3,32 @@
  *
  * Resolves external-only IncomingOrder item references to internal OpenLinker IDs.
  *
+ * ## The `ShopProduct` fallback (#3365)
+ *
+ * A `product` or `variant` ref is normally answered by the mapping a
+ * ProductMaster sweep wrote while reading that platform's catalogue. But an
+ * OpenLinker-managed shop is frequently the other way round: the catalogue
+ * lives in an ERP, OpenLinker PUBLISHES to the shop, and the order comes back.
+ * On that topology no ProductMaster sweep ever ran against the shop, so no
+ * `Product` / `ProductVariant` mapping exists for it - the only record of the
+ * shop-side identity is the `ShopProduct` mapping
+ * `ProductPublishExecutionService` writes at publish time. Without consulting
+ * it, the line either failed to resolve at all, or (where the shop was ALSO
+ * swept as a master) resolved to the duplicate product that sweep created,
+ * which carries no mapping back to the real catalogue.
+ *
+ * The fallback runs only AFTER the primary mapping misses, which keeps the
+ * precedence right: a shop that really is a ProductMaster has the sweep's own
+ * identity for the row, and that answer beats a publish record.
+ *
+ * `ShopProduct` deliberately holds two kinds of internal id in one entityType -
+ * a variant's own shop product id maps to a VARIANT, while a grouped parent's
+ * maps to a PRODUCT (they never collide because the two id families are
+ * distinctly prefixed). So the fallback asks which one it got rather than
+ * assuming, and refuses when the mapped row is gone - returning a variant id in
+ * `internalProductId` would be a silent mis-link, which is exactly what the
+ * `variant` branch already declines to do.
+ *
  * @module libs/core/src/orders/application/services
  * @see {@link IProductsService} for cross-context variant reads (#718)
  */
@@ -85,14 +111,18 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           productRef.externalId,
           connectionId
         );
-        if (!internalProductId) {
-          throw new MissingOrderItemMappingError(
-            connectionId,
-            productRef,
-            'identifier_mappings:Product'
-          );
+        if (internalProductId) {
+          return { internalProductId };
         }
-        return { internalProductId };
+        const published = await this.resolveViaShopProduct(connectionId, productRef);
+        if (published) {
+          return published;
+        }
+        throw new MissingOrderItemMappingError(
+          connectionId,
+          productRef,
+          'identifier_mappings:Product,ShopProduct'
+        );
       }
       case 'variant': {
         const internalVariantId = await this.identifierMapping.getInternalId(
@@ -101,10 +131,14 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (!internalVariantId) {
+          const published = await this.resolveViaShopProduct(connectionId, productRef);
+          if (published) {
+            return published;
+          }
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,
-            'identifier_mappings:ProductVariant'
+            'identifier_mappings:ProductVariant,ShopProduct'
           );
         }
         const variant = await this.productsService.getVariant(internalVariantId);
@@ -143,5 +177,51 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
         return { internalProductId: internalId };
       }
     }
+  }
+
+  /**
+   * Answer a ref from the `ShopProduct` mapping OpenLinker wrote when it
+   * published this product to the shop (see the module docblock for why this
+   * exists and why it runs second).
+   *
+   * `null` means "no such publish record" - the caller decides what that means
+   * for its own ref type. A record pointing at a row that no longer exists is
+   * NOT null: it is a mapping pointing at nothing, and the caller must not
+   * carry that id onwards, so it raises the same missing-mapping error the
+   * primary branches raise for the identical condition.
+   */
+  private async resolveViaShopProduct(
+    connectionId: string,
+    productRef: IncomingOrderItemRef
+  ): Promise<ResolvedOrderItemProduct | null> {
+    const internalId = await this.identifierMapping.getInternalId(
+      CORE_ENTITY_TYPE.ShopProduct,
+      productRef.externalId,
+      connectionId
+    );
+    if (!internalId) {
+      return null;
+    }
+
+    // A variant's own shop product id maps to a variant; a grouped parent's
+    // maps to a product. Ask, rather than infer from the id's shape.
+    const variant = await this.productsService.getVariant(internalId);
+    if (variant) {
+      if (variant.isStale) {
+        throw new StaleOrderItemError(connectionId, productRef, variant.id);
+      }
+      return { internalProductId: variant.productId, internalVariantId: variant.id };
+    }
+
+    const product = await this.productsService.getProduct(internalId);
+    if (product) {
+      return { internalProductId: product.id };
+    }
+
+    throw new MissingOrderItemMappingError(
+      connectionId,
+      productRef,
+      'identifier_mappings:ShopProduct:target-missing'
+    );
   }
 }

@@ -42,6 +42,19 @@ export function AuthenticatedAppLayout(): ReactElement {
     return <Navigate to={{ pathname: '/login', search: location.search }} replace />;
   }
 
+  // A packer's entire job is at /bench (#3221 follow-up). Unlike every other
+  // role, packer is NOT meant to browse the ordinary app shell at all — even
+  // the handful of `@AnyRole()` reads (Products, Listings, Shipments, Returns)
+  // that #3221's nav-gate fix (deliberately) leaves reachable through the
+  // sidebar. This guard is a hard, unconditional redirect: wherever a packer
+  // session lands inside AuthenticatedAppLayout — post-login via GuestLayout's
+  // `/` redirect, or a direct/bookmarked URL — it is sent to /bench instead.
+  // /bench itself is a standalone route outside this layout's tree (see
+  // router.tsx), so this never loops.
+  if (session.user?.role === 'packer') {
+    return <Navigate to="/bench" replace />;
+  }
+
   // A demo account that has not consented to session recording gets no shell
   // and no route under it (#1938). Viewer-only: admin and operator accounts on
   // a demo instance are the operators' own, and gating them would block live

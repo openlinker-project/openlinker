@@ -9,6 +9,7 @@
  * @module libs/integrations/subiekt/src/infrastructure/http/__tests__
  */
 import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../../bridge/subiekt-bridge.errors';
+import { SubiektBridgeUnreachableWithPhaseError } from '../../../bridge/subiekt-transport-retryability';
 import { SubiektBridgeAuthError } from '../../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../../domain/exceptions/subiekt-config.exception';
 import { SubiektBridgeHttpClient } from '../subiekt-bridge-http.client';
@@ -149,6 +150,61 @@ describe('SubiektBridgeHttpClient', () => {
       expect(res.state).toBe('issued');
     });
 
+    it('#3431: parses cleanly when the bridge omits warehouseReleaseNumber (older bridge build)', async () => {
+      // No `warehouseReleaseNumber` key at all in the wire payload — the shape
+      // every bridge build older than #3431 produces. `postJson` does a bare
+      // `as T` cast with no runtime schema validation, so the field must simply
+      // come back `undefined` rather than throwing or defaulting to something else.
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
+          state: 'issued',
+          regulatoryStatus: 'pending',
+          pdfUrl: null,
+          clearanceReference: null,
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueInvoice(sampleIssueInvoiceRequest());
+      expect(res.warehouseReleaseNumber).toBeUndefined();
+    });
+
+    it('#3431: passes warehouseReleaseNumber through verbatim when the bridge reports it', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
+          state: 'issued',
+          regulatoryStatus: 'pending',
+          pdfUrl: null,
+          clearanceReference: null,
+          warehouseReleaseNumber: 'WZ 42/CENTRALA/2026',
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueInvoice(sampleIssueInvoiceRequest());
+      expect(res.warehouseReleaseNumber).toBe('WZ 42/CENTRALA/2026');
+    });
+
+    it('#3431: null warehouseReleaseNumber means "no ZK for this order", not a failure signal', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
+          state: 'issued',
+          regulatoryStatus: 'pending',
+          pdfUrl: null,
+          clearanceReference: null,
+          warehouseReleaseNumber: null,
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueInvoice(sampleIssueInvoiceRequest());
+      expect(res.state).toBe('issued');
+      expect(res.warehouseReleaseNumber).toBeNull();
+    });
+
     it('throws SubiektRejectedError on a 2xx success:false envelope', async () => {
       // A success:false envelope returned with a 200 (the bridge's validation path).
       fetchMock.mockResolvedValue({
@@ -202,9 +258,13 @@ describe('SubiektBridgeHttpClient', () => {
       expect(err).toBeInstanceOf(SubiektBridgeAuthError);
       // A 401 must NOT be surfaced as a fiscal rejection.
       expect(err).not.toBeInstanceOf(SubiektRejectedError);
+      // The bridge's OWN reason is appended now, which is the point of carrying
+      // it: "not configured" and "wrong value" need different remedies and only
+      // the bridge knows which applies.
       expect((err as Error).message).toBe(
-        'Subiekt bridge authentication failed (check bridge token/credentials)',
+        'Subiekt bridge authentication failed (check bridge token/credentials): invalid NIP',
       );
+      expect((err as SubiektBridgeAuthError).reason).toBe('invalid NIP');
       expect((err as SubiektBridgeAuthError).status).toBe(401);
     });
 
@@ -471,5 +531,123 @@ describe('SubiektBridgeHttpClient', () => {
     expect(() => new SubiektBridgeHttpClient('http://169.254.169.254')).toThrow(
       SubiektConfigException,
     );
+  });
+});
+
+/**
+ * `failureMode` was emitted by the bridge and discarded here (bridge PR #7
+ * review).
+ *
+ * Every non-2xx became `SubiektRejectedError`, whose mode is a hard-coded
+ * `'rejected'`. `InvoiceRecord.blocksIssuanceElsewhere` frees another
+ * connection to issue precisely when the mode is `rejected` (ADR-041 §3a), so a
+ * `Sfera.Run` timeout that MAY already have committed an FS released the
+ * one-document-per-order guard, and a second fiscal document became possible
+ * for one sale.
+ */
+describe('SubiektBridgeHttpClient — the bridge says whether an outcome is in doubt', () => {
+  function bodied(status: number, error: Record<string, unknown>): Response {
+    return {
+      status,
+      ok: status < 400,
+      json: (): Promise<unknown> => Promise.resolve({ success: false, data: null, error }),
+    } as unknown as Response;
+  }
+
+  it('raises an INDETERMINATE transport error when the bridge reports in-doubt', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(422, {
+          code: 'sfera_timeout',
+          reason: 'Sfera.Run timed out after 120s',
+          correlationId: null,
+          failureMode: 'in-doubt',
+        }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(SubiektBridgeUnreachableWithPhaseError);
+    expect((error as SubiektBridgeUnreachableWithPhaseError).retryability).toBe('indeterminate');
+    // And NOT the terminal class, which is what released the guard.
+    expect(error).not.toBeInstanceOf(SubiektRejectedError);
+  });
+
+  it('keeps a declared rejection terminal', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(422, {
+          code: 'bad_request',
+          reason: 'symbol is required',
+          correlationId: null,
+          failureMode: 'rejected',
+        }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SubiektRejectedError);
+  });
+
+  // A bridge older than the field says nothing. Reading silence as in-doubt
+  // would block issuance everywhere on every ordinary refusal, so absent stays
+  // terminal - the pre-existing behaviour.
+  it('treats an absent failureMode as terminal', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(422, { code: 'bad_request', reason: 'symbol is required', correlationId: null }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SubiektRejectedError);
+  });
+
+  // The bridge answers 200 with `success: false` on some paths. An in-doubt
+  // outcome must not become terminal merely because the status code was 2xx.
+  it('honours in-doubt on a 200 success:false envelope too', async () => {
+    const client = new SubiektBridgeHttpClient(BASE, {
+      fetchImpl: (() =>
+        Promise.resolve(
+        bodied(200, {
+          code: 'sfera_timeout',
+          reason: 'timed out',
+          correlationId: null,
+          failureMode: 'in-doubt',
+        }),
+        )) as unknown as typeof fetch,
+    });
+
+    const error = await client.issueInvoice(sampleIssueInvoiceRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SubiektBridgeUnreachableWithPhaseError);
+  });
+});
+
+describe('read retryability (#3365 review)', () => {
+  it('classifies a GET transport failure as safe to retry, not indeterminate', async () => {
+    // The fiscal-safety pivot protects WRITES from double-issuing. A read
+    // creates nothing, so an ambiguous GET was being killed on its first
+    // attempt for a hazard it cannot have.
+    const client = new SubiektBridgeHttpClient('http://127.0.0.1:5000', {
+      fetchImpl: () => Promise.reject(Object.assign(new Error('boom'), { code: 'ETIMEDOUT' })),
+    });
+
+    await expect(client.getInvoiceStatus({ providerInvoiceId: '1' })).rejects.toMatchObject({
+      retryability: 'safe',
+    });
+  });
+
+  it('keeps a POST transport failure indeterminate', async () => {
+    const client = new SubiektBridgeHttpClient('http://127.0.0.1:5000', {
+      fetchImpl: () => Promise.reject(Object.assign(new Error('boom'), { code: 'ETIMEDOUT' })),
+    });
+
+    await expect(
+      client.upsertCustomer({ name: 'X' } as never),
+    ).rejects.toMatchObject({ retryability: 'indeterminate' });
   });
 });

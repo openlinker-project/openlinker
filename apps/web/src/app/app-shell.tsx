@@ -24,7 +24,7 @@ import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
 import { useNumberFormat } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
-import { buildNavGroups, sessionNeedsOmsRouting } from './nav-registry';
+import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
 import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
@@ -69,7 +69,7 @@ function SidebarNav({ ariaLabel, counts, groups, onNavigate }: SidebarNavProps):
   const renderDisabledItem = (
     label: string,
     reason: string | undefined,
-    locked: boolean,
+    locked: boolean
   ): ReactElement => (
     <li key={label}>
       <span
@@ -153,7 +153,12 @@ interface WorkspaceFooterProps {
   demoMode: boolean;
 }
 
-function WorkspaceFooter({ onLogout, username, location, demoMode }: WorkspaceFooterProps): ReactElement {
+function WorkspaceFooter({
+  onLogout,
+  username,
+  location,
+  demoMode,
+}: WorkspaceFooterProps): ReactElement {
   return (
     <div className="shell-workspace">
       <div className="shell-workspace__header">
@@ -206,7 +211,11 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="shell-user-chip" aria-label={`Account menu for ${username}`}>
+        <button
+          type="button"
+          className="shell-user-chip"
+          aria-label={`Account menu for ${username}`}
+        >
           <span className="shell-user-chip__avatar" aria-hidden="true">
             {initialsFrom(username)}
           </span>
@@ -250,23 +259,40 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const username = session.user?.username;
   const email = session.user?.email ?? null;
   const counts = useNavCounts();
-  const isAdmin =
-    isReady && session.status === 'authenticated' && session.user?.role === 'admin';
+  // The session's own role string, and the ONLY place this file reads it.
+  //
+  // Role-gated nav items (#3108) — e.g. "Pack bench" — need the raw string,
+  // since `packer`'s ROLE_PERMISSIONS grant is deliberately empty (ADR-071)
+  // and so carries no permission a `requiresPermission` gate could check
+  // instead. `navRoleOf` is shared with ⌘K (#3108 review) so the two cannot
+  // drift, and its docblock records why it needs no `isReady`: the provider
+  // sets session and readiness in one batched callback, so no render observes
+  // `authenticated` with `isReady` false and an unresolved session already
+  // yields `undefined`.
+  //
+  // The two booleans below derive from it rather than re-spelling the same
+  // expression a third and fourth time (#3204 review). They are a different
+  // QUESTION from the nav gate — shell behaviour, not item visibility — but
+  // they were the same DERIVATION, which is what the extraction was for. Note
+  // the return type is `string | undefined`, not `Role | undefined`: `viewer`
+  // is deliberately absent from the FE `Role` union (see `nav-registry.types`),
+  // so `isViewerOnly` can only be expressed against the raw string.
+  const role = navRoleOf(session);
+  const isAdmin = role === 'admin';
   // Demo mode's "write actions are disabled" claim is only true for a
   // viewer-role session — RolesGuard lets admin/operator write fine, so
   // showing the banner to them is actively misleading during a live
   // walkthrough (#1468).
-  const isViewerOnly =
-    isReady && session.status === 'authenticated' && session.user?.role === 'viewer';
+  const isViewerOnly = role === 'viewer';
   // Permission-gated nav items (#2358 review I5) need the session's permission
   // list, not just the admin flag — `/automations` is admin + operator.
   const permissions = session.user?.permissions;
   // `requiresOms` entries (#3505) follow the routing state; the read is only
   // issued for a session that could see one of them.
-  const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions) });
+  const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
-    () => buildNavGroups({ isAdmin, demoMode, permissions, omsRouting }),
-    [isAdmin, demoMode, permissions, omsRouting],
+    () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting }),
+    [isAdmin, demoMode, permissions, role, omsRouting]
   );
   const matches = useMatches();
 
@@ -313,90 +339,92 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
   return (
     <CommandPaletteProvider>
-    <div className="shell">
-      <div className="shell-sidebar">
-        <SidebarBrand />
-        <SidebarNav ariaLabel="Primary" counts={counts} groups={groups} />
-        <WorkspaceFooter
-          username={username}
-          onLogout={username ? handleLogout : undefined}
-          location="sidebar_footer"
-          demoMode={demoMode}
-        />
-      </div>
-
-      <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation (mobile)">
-        <div className="shell-drawer__inner">
-          <div className="shell-drawer__header">
-            <SidebarBrand />
-            <Button
-              tone="ghost"
-              onClick={closeDrawer}
-              aria-label="Close menu"
-              className="shell-drawer__close"
-            >
-              ✕
-            </Button>
-          </div>
-          <SidebarNav
-            ariaLabel="Primary (mobile)"
-            counts={counts}
-            groups={groups}
-            onNavigate={closeDrawer}
-          />
+      <div className="shell">
+        <div className="shell-sidebar">
+          <SidebarBrand />
+          <SidebarNav ariaLabel="Primary" counts={counts} groups={groups} />
           <WorkspaceFooter
             username={username}
             onLogout={username ? handleLogout : undefined}
-            location="mobile_drawer_footer"
+            location="sidebar_footer"
             demoMode={demoMode}
           />
         </div>
-      </dialog>
 
-      <div className="shell-main">
-        <header className="shell-topbar">
-          <button
-            type="button"
-            onClick={openDrawer}
-            aria-label="Open menu"
-            className="shell-topbar__hamburger"
-          >
-            <span aria-hidden="true">☰</span>
-          </button>
+        <dialog ref={drawerRef} className="shell-drawer" aria-label="Primary navigation (mobile)">
+          <div className="shell-drawer__inner">
+            <div className="shell-drawer__header">
+              <SidebarBrand />
+              <Button
+                tone="ghost"
+                onClick={closeDrawer}
+                aria-label="Close menu"
+                className="shell-drawer__close"
+              >
+                ✕
+              </Button>
+            </div>
+            <SidebarNav
+              ariaLabel="Primary (mobile)"
+              counts={counts}
+              groups={groups}
+              onNavigate={closeDrawer}
+            />
+            <WorkspaceFooter
+              username={username}
+              onLogout={username ? handleLogout : undefined}
+              location="mobile_drawer_footer"
+              demoMode={demoMode}
+            />
+          </div>
+        </dialog>
 
-          <nav aria-label="Breadcrumb" className="shell-crumbs">
-            <span className="shell-crumbs__group">{crumbs.group}</span>
-            {crumbs.title ? (
-              <>
-                <span className="shell-crumbs__sep" aria-hidden="true">
-                  /
-                </span>
-                <span className="shell-crumbs__current">{crumbs.title}</span>
-              </>
+        <div className="shell-main">
+          <header className="shell-topbar">
+            <button
+              type="button"
+              onClick={openDrawer}
+              aria-label="Open menu"
+              className="shell-topbar__hamburger"
+            >
+              <span aria-hidden="true">☰</span>
+            </button>
+
+            <nav aria-label="Breadcrumb" className="shell-crumbs">
+              <span className="shell-crumbs__group">{crumbs.group}</span>
+              {crumbs.title ? (
+                <>
+                  <span className="shell-crumbs__sep" aria-hidden="true">
+                    /
+                  </span>
+                  <span className="shell-crumbs__current">{crumbs.title}</span>
+                </>
+              ) : null}
+            </nav>
+
+            <TopbarSearchTrigger />
+
+            <div className="shell-topbar__spacer" />
+
+            <Button tone="ghost" className="shell-topbar__alerts">
+              Alerts <span aria-hidden="true">0</span>
+              <span className="sr-only">(0 new)</span>
+            </Button>
+
+            {username ? (
+              <UserChip username={username} email={email} onLogout={handleLogout} />
             ) : null}
-          </nav>
+          </header>
 
-          <TopbarSearchTrigger />
+          {demoMode && isViewerOnly ? <DemoBanner /> : null}
 
-          <div className="shell-topbar__spacer" />
-
-          <Button tone="ghost" className="shell-topbar__alerts">
-            Alerts <span aria-hidden="true">0</span>
-            <span className="sr-only">(0 new)</span>
-          </Button>
-
-          {username ? (
-            <UserChip username={username} email={email} onLogout={handleLogout} />
-          ) : null}
-        </header>
-
-        {demoMode && isViewerOnly ? <DemoBanner /> : null}
-
-        {/* `key={location.pathname}` retriggers the .shell-content
+          {/* `key={location.pathname}` retriggers the .shell-content
             cross-fade animation on every route change (#775). */}
-        <main key={location.pathname} className="shell-content">{children}</main>
+          <main key={location.pathname} className="shell-content">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
     </CommandPaletteProvider>
   );
 }

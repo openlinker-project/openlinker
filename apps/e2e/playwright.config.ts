@@ -90,7 +90,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    // #3365 - a run that executed NOTHING must not report success. Opt-in via
+    // E2E_REQUIRE_EXECUTED; see the reporter's own header for why it is not
+    // always on and why it does not police the skip ratio.
+    ['./src/reporters/require-executed.reporter.ts'],
+  ],
   // Backstop, not the primary bound. Specs here chain several individually
   // bounded waits — job pollers (120 s), order ingestion (180 s), regulatory
   // clearance (300 s) — and a 90 s ceiling sat BELOW those budgets, so a test
@@ -189,6 +196,19 @@ export default defineConfig({
       // would double-mutate or attempt to re-delete an already-gone variant.
       name: 'lifecycle',
       testMatch: /lifecycle\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Subiekt GT: models as product variants, and images that load (#3365).
+      // Opt-in via E2E_TEST_SUBIEKT, because the dependency is a live Subiekt
+      // GT on Windows behind a hand-deployed bridge that no CI runner has -
+      // the specs skip cleanly without it. `retries: 0`: the suite triggers a
+      // real catalogue sweep, and a silent retry would run a second one over a
+      // stack that is still draining the first.
+      name: 'subiekt',
+      testMatch: /subiekt\/.*\.spec\.ts/,
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },

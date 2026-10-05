@@ -274,8 +274,16 @@ describe('Shipments Read + Command API Integration', () => {
         .post(`/v1/shipments/${id}/cancel`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(cancelled.body.status).toBe('cancelled');
-      expect(cancelled.body.cancelledAt).not.toBeNull();
+      // The response is `{ shipment, cancelledAfterDispatch }` since 367e92473,
+      // which let an operator void a label AFTER the dispatch notification had
+      // gone out - the flag is the whole point of the reshape, because a
+      // cancellation past that point leaves the marketplace believing the
+      // parcel is on its way. This spec still read the pre-reshape flat body,
+      // so it asserted `undefined` against `'cancelled'`.
+      expect(cancelled.body.shipment.status).toBe('cancelled');
+      expect(cancelled.body.shipment.cancelledAt).not.toBeNull();
+      // Nothing had been notified here, so voiding leaves nothing outstanding.
+      expect(cancelled.body.cancelledAfterDispatch).toBe(false);
 
       // Now terminal: no active shipment for the order.
       await http
@@ -288,7 +296,7 @@ describe('Shipments Read + Command API Integration', () => {
         .post(`/v1/shipments/${id}/cancel`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
-      expect(again.body.status).toBe('cancelled');
+      expect(again.body.shipment.status).toBe('cancelled');
     });
 
     it('should 404 when cancelling a missing shipment', async () => {

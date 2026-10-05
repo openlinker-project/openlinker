@@ -1,0 +1,71 @@
+// DocumentTypes.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/DocumentTypes.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// afterwards so a reviewer can read what is actually running without leaving
+// the PR.
+//
+// DocumentTypes - the numeric dok__Dokument.dok_Typ codes, MEASURED.
+//
+// This file replaces five `dok_NrPelny LIKE 'ZK %'` / `LIKE 'WZ %'` filters.
+// Those existed because OrdersEndpoints.cs's own header recorded that the
+// numeric code "was never established live", and they were the single most
+// dangerous thing in this bridge: `dok_NrPelny` is rendered from an
+// OPERATOR-EDITABLE numbering template, and the pattern needs a literal space.
+//
+// A customer numbering `ZK/18/2026`, `ZAM 18/2026`, or carrying a branch
+// prefix matched none of them, and four things broke at once - every one of
+// them with HTTP 200:
+//
+//   - FindExistingZk never matched, so EVERY retried order create minted a
+//     duplicate ZK. That is the only guard against the retry-after-timeout
+//     case, and the case is real: IdempotencyLock.cs records that the COM call
+//     survives the client's timeout.
+//   - FindExistingWz never matched, so stock was released TWICE.
+//   - GET /api/orders/feed returned an empty page for ever.
+//   - FindZkIdByOrderRef returned null, so no ZK ever reached 'zrealizowane'.
+//
+// The values below were established by running the query the header itself
+// prescribed, against the live DEMO database on 2026-09-27:
+//
+//   SELECT LEFT(dok_NrPelny, CHARINDEX(' ', dok_NrPelny + ' ') - 1) pfx,
+//          dok_Typ, COUNT(*)
+//   FROM dok__Dokument GROUP BY ..., dok_Typ ORDER BY dok_Typ;
+//
+//   FZ 1 (14) | FS 2 (40) | KFS 6 (5) | MM 9 (2) | PZ 10 (21) | WZ 11 (66)
+//   PW 12 (4) | RW 13 (2) | ZD 15 (2)  | ZK 16 (41) | PA 21 (32)
+//
+// One code per prefix, no overlaps, across 229 documents. A numeric filter is
+// also index-friendlier than a LIKE on a rendered string, which the header
+// noted as the second reason to prefer it.
+//
+// If a future install disagrees, re-run that query there: these are facts
+// about Subiekt GT's document model, not about this database, but they are
+// facts this project measured rather than facts it was told.
+public static class DocumentTypes
+{
+    /// <summary>Faktura sprzedazy.</summary>
+    public const int Fs = 2;
+
+    /// <summary>Korekta faktury sprzedazy.</summary>
+    public const int Kfs = 6;
+
+    /// <summary>Wydanie zewnetrzne - the warehouse release.</summary>
+    public const int Wz = 11;
+
+    /// <summary>Przyjecie wewnetrzne.</summary>
+    public const int Pw = 12;
+
+    /// <summary>Rozchod wewnetrzny.</summary>
+    public const int Rw = 13;
+
+    /// <summary>Zamowienie od klienta.</summary>
+    public const int Zk = 16;
+
+    /// <summary>Paragon.</summary>
+    public const int Pa = 21;
+}

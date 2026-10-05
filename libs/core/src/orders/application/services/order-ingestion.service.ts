@@ -501,6 +501,15 @@ export class OrderIngestionService implements IOrderIngestionService {
           sku: item.sku,
           name: item.name,
           imageUrl: item.imageUrl,
+          // The source's own gross unit price, carried verbatim. Spread
+          // conditionally so an adapter that reports none leaves the field
+          // ABSENT rather than `undefined` - the snapshot writer and the
+          // document gate both read absence as "this source does not report
+          // gross", and an explicit `undefined` key would survive JSON
+          // round-tripping as a present-but-empty field on some paths.
+          ...(item.unitPriceGross !== undefined && Number.isFinite(item.unitPriceGross)
+            ? { unitPriceGross: item.unitPriceGross }
+            : {}),
           ...tax,
         });
       } else {

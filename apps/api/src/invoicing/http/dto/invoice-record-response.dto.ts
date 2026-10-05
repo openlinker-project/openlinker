@@ -23,7 +23,8 @@ import type {
   InvoiceFailureCode,
   InvoiceFailureMode,
 
-  InvoiceRecord} from '@openlinker/core/invoicing';
+  InvoiceRecord,
+  WarehouseReleaseOutcome} from '@openlinker/core/invoicing';
 import {
   InvoiceFailureCodeValues,
   InvoiceFailureModeValues,
@@ -31,6 +32,7 @@ import {
   InvoiceStatusValues,
   RegulatoryStatus,
   RegulatoryStatusValues,
+  WarehouseReleaseOutcomeValues,
 } from '@openlinker/core/invoicing';
 import type { OrderSummary } from '@openlinker/core/orders';
 import { decodeBuyerTaxIdColumn , BuyerTaxId} from '@openlinker/core/orders';
@@ -62,6 +64,21 @@ export class InvoiceRecordResponseDto {
 
   @ApiProperty({ description: 'Provider-assigned document number', nullable: true })
   providerInvoiceNumber!: string | null;
+
+  @ApiProperty({
+    enum: WarehouseReleaseOutcomeValues,
+    nullable: true,
+    description:
+      'Whether the goods this document billed for left the warehouse in the provider own books. Only `not-released` is a claim that something is wrong: `released` is the ordinary success and its number is below, `not-applicable` means there was nothing to release, and null means this provider has no warehouse and never reports. Read the OUTCOME, never the number nullability - the number is legitimately absent on three of the four.',
+  })
+  warehouseReleaseOutcome!: WarehouseReleaseOutcome | null;
+
+  @ApiProperty({
+    description:
+      'The release document number the provider created or detected (Subiekt: the WZ). Null unless the outcome is `released`.',
+    nullable: true,
+  })
+  warehouseReleaseNumber!: string | null;
 
   @ApiProperty({
     enum: RegulatoryStatusValues,
@@ -162,6 +179,8 @@ export class InvoiceRecordResponseDto {
     dto.status = record.status;
     dto.providerInvoiceId = record.providerInvoiceId;
     dto.providerInvoiceNumber = record.providerInvoiceNumber;
+    dto.warehouseReleaseOutcome = record.warehouseReleaseOutcome;
+    dto.warehouseReleaseNumber = record.warehouseReleaseNumber;
     dto.regulatoryStatus = record.regulatoryStatus;
     dto.clearanceReference = record.clearanceReference;
     dto.pdfUrl = record.pdfUrl;

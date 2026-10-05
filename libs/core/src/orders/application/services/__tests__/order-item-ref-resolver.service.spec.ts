@@ -2,7 +2,7 @@ import { OrderItemRefResolverService } from '../order-item-ref-resolver.service'
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import { StaleOrderItemError } from '../../../domain/exceptions/stale-order-item.error';
-import type { IProductsService, ProductVariant } from '@openlinker/core/products';
+import type { IProductsService, Product, ProductVariant } from '@openlinker/core/products';
 
 function makeVariant(id: string, productId: string): ProductVariant {
   return {
@@ -17,6 +17,19 @@ function makeVariant(id: string, productId: string): ProductVariant {
   };
 }
 
+function makeProduct(id: string): Product {
+  return {
+    id,
+    name: `product ${id}`,
+    sku: null,
+    description: null,
+    price: null,
+    currency: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as unknown as Product;
+}
+
 function makeStaleVariant(id: string, productId: string): ProductVariant {
   return { ...makeVariant(id, productId), isStale: true, staleAt: new Date() };
 }
@@ -27,7 +40,7 @@ describe('OrderItemRefResolverService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   // Only the products-service method the SUT actually calls — keeps the mock
   // surface tight per #718 review.
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getProduct'>>;
   let service: OrderItemRefResolverService;
 
   beforeEach(() => {
@@ -43,6 +56,7 @@ describe('OrderItemRefResolverService', () => {
 
     productsService = {
       getVariant: jest.fn(),
+      getProduct: jest.fn(),
     };
 
     service = new OrderItemRefResolverService(
@@ -242,6 +256,110 @@ describe('OrderItemRefResolverService', () => {
       await expect(
         service.tryResolve(connectionId, { type: 'offer', externalId: 'offer-1' })
       ).rejects.toThrow('DB connection lost');
+    });
+  });
+
+  // The topology these cover: OpenLinker PUBLISHED the product to the shop, so
+  // the only shop-side identity on record is the `ShopProduct` mapping the
+  // publish wrote. No ProductMaster sweep ran against that shop, so the primary
+  // mapping legitimately misses.
+  describe('ShopProduct fallback for a published product (#3365)', () => {
+    it('resolves a product ref through the publish record when no Product mapping exists', async () => {
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null) // Product
+        .mockResolvedValueOnce('ol_variant_9'); // ShopProduct
+      productsService.getVariant.mockResolvedValueOnce(makeVariant('ol_variant_9', 'ol_product_9'));
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'wc-77' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_9', internalVariantId: 'ol_variant_9' });
+
+      expect(identifierMapping.getInternalId).toHaveBeenNthCalledWith(
+        2,
+        'ShopProduct',
+        'wc-77',
+        connectionId
+      );
+    });
+
+    it('resolves a variant ref through the publish record when no ProductVariant mapping exists', async () => {
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null) // ProductVariant
+        .mockResolvedValueOnce('ol_variant_9'); // ShopProduct
+      productsService.getVariant.mockResolvedValueOnce(makeVariant('ol_variant_9', 'ol_product_9'));
+
+      await expect(
+        service.resolve(connectionId, { type: 'variant', externalId: 'wc-78' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_9', internalVariantId: 'ol_variant_9' });
+    });
+
+    // A grouped parent's shop id maps to a PRODUCT id, not a variant one - the
+    // one entityType carries both, so the fallback has to ask which it got.
+    it('resolves to a product when the publish record names a grouped parent', async () => {
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('ol_product_9');
+      productsService.getVariant.mockResolvedValueOnce(null);
+      productsService.getProduct.mockResolvedValueOnce(makeProduct('ol_product_9'));
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'wc-79' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_9' });
+    });
+
+    // Never carry an id onwards that resolves to nothing: a variant id landing
+    // in `internalProductId` is a silent mis-link, which is the whole reason
+    // the fallback asks instead of inferring from the id's shape.
+    it('refuses when the publish record points at a row that no longer exists', async () => {
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('ol_variant_gone');
+      productsService.getVariant.mockResolvedValueOnce(null);
+      productsService.getProduct.mockResolvedValueOnce(null);
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'wc-80' })
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+    });
+
+    it('applies the stale guard to a variant reached through the publish record', async () => {
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('ol_variant_9');
+      productsService.getVariant.mockResolvedValueOnce(
+        makeStaleVariant('ol_variant_9', 'ol_product_9')
+      );
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'wc-81' })
+      ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    // Precedence: a shop that really IS a ProductMaster has the sweep's own
+    // identity for the row, and that answer beats a publish record.
+    it('never consults the publish record when the primary mapping answers', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'p-1' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_1' });
+
+      expect(identifierMapping.getInternalId).toHaveBeenCalledTimes(1);
+    });
+
+    it('still reports a missing mapping when neither record exists', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      const result = await service.tryResolve(connectionId, {
+        type: 'product',
+        externalId: 'wc-404',
+      });
+
+      expect(result.resolved).toBe(false);
+      if (!result.resolved) {
+        expect(result.kind).toBe('missing_mapping');
+        expect(result.reason).toContain('ShopProduct');
+      }
     });
   });
 });

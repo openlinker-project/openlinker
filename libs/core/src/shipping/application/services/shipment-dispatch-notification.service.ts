@@ -100,6 +100,18 @@ export class ShipmentDispatchNotificationService
     if (!shipment) {
       return { shipmentId: input.shipmentId, outcome: 'shipment-not-found', source: 'absent', destinations: [] };
     }
+    // Direction-gate, and it runs BEFORE the status gate because it is about
+    // what the shipment IS, not about how far along it is. `findById` is
+    // deliberately direction-blind (it is the by-id read every route shares),
+    // so the cohort check has to live here — and this service now has TWO ways
+    // in, the operator route and the automatic `shipping.shipment.notifyDispatched`
+    // job, neither of which carries a direction. On a return row the relay would
+    // tell the marketplace that the SELLER dispatched the order, off a label that
+    // is moving goods the other way. Nothing writes `'return'` today (#2373), so
+    // this is a guard placed ahead of the first writer rather than a live fix.
+    if (shipment.direction !== 'outbound') {
+      return { shipmentId: shipment.id, outcome: 'skipped-inbound', source: 'absent', destinations: [] };
+    }
     // Status-gate: at-most-once notify (and at-most-once source waybill-attach).
     if (shipment.status !== SHIPMENT_STATUS.Generated) {
       return { shipmentId: shipment.id, outcome: 'skipped-not-generated', source: 'absent', destinations: [] };

@@ -32,8 +32,18 @@ export type {
   TerminalShipmentStatus,
 } from './domain/types/shipment-status.types';
 
+export type { ShipmentCancellationResult } from './domain/types/shipment-cancellation.types';
 export { ShipmentDirectionValues } from './domain/types/shipment-direction.types';
 export type { ShipmentDirection } from './domain/types/shipment-direction.types';
+
+// #3365 review - the per-connection opt-in for notifying the marketplace when a
+// label is bought. Exported so the API's connection-config validator and the FE
+// form can both name the key rather than spelling the string twice.
+export {
+  NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY,
+  SHIPPING_CONFIG_KEY,
+  readNotifyOnLabelPurchase,
+} from './domain/types/dispatch-notification.types';
 // #2073 — the waybill-relay failure vocabulary and its two pure rules. The
 // threshold constants are deliberately NOT exported: only
 // `resolveWaybillRelayAlertThreshold` may produce the number a caller compares

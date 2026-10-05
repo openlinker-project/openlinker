@@ -86,7 +86,7 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
     id: 'inv_1',
     connectionId: 'conn_1',
     orderId: 'ol_order_1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'FV/2026/1',
@@ -525,7 +525,7 @@ describe('InvoicingController', () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
       invoiceService.issueInvoice.mockRejectedValue(
-        new CapabilityNotSupportedException('subiekt', 'Invoicing'),
+        new CapabilityNotSupportedException('subiekt-gt', 'Invoicing'),
       );
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(
         CapabilityNotSupportedException,
@@ -535,7 +535,7 @@ describe('InvoicingController', () => {
     it('AdapterNotFoundException -> 502 provider-unavailable message', async () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
-      invoiceService.issueInvoice.mockRejectedValue(new AdapterNotFoundException('subiekt'));
+      invoiceService.issueInvoice.mockRejectedValue(new AdapterNotFoundException('subiekt-gt'));
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(BadGatewayException);
     });
 
@@ -668,6 +668,59 @@ describe('InvoicingController', () => {
       );
     });
 
+    // #3365 review: the service returns the EXISTING record unchanged on two
+    // resume arms, and answering 201 Created for either states something that did
+    // not happen. The sibling issue route already draws this line (#1200); this
+    // one simply never applied it.
+    it('409 CORRECTION_IN_PROGRESS when another attempt is still in flight', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({
+          status: 'issuing',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          isIssued: false,
+        }),
+      );
+
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('409 CORRECTION_NEEDS_RECONCILIATION for a record that ended in doubt', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({
+          status: 'failed',
+          failureMode: 'in-doubt',
+          leaseExpiresAt: null,
+          isIssued: false,
+        }),
+      );
+
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('still answers 201 for a same-key REPLAY of an already-issued correction', async () => {
+      // Deliberately unlike the issue route's 409 on an existing document: that
+      // route keys on (order, connection), where a second one is a real conflict,
+      // while this keys on the caller's idempotency key, where returning the
+      // original result IS the contract.
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected', status: 'issued' }),
+      );
+
+      const result = await controller.issueCorrection(invoiceId, dto);
+
+      expect(result.documentType).toBe('corrected');
+    });
+
     it('passes originalDocument (rebuilt from the order snapshot) when the order is available', async () => {
       invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
@@ -686,10 +739,23 @@ describe('InvoicingController', () => {
             clearanceReference: null,
             documentNumber: 'FV/2026/1',
             issueDate: '2026-06-23',
-            // orderLineId is #3312's addition: toInvoiceLine now stamps the
-            // originating OrderItem.id onto every line built from an order
-            // snapshot (never onto a synthesized line, e.g. shipping).
-            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '', orderLineId: 'li_1' }],
+            // Rebuilt from the ORDER, so the line carries `productId` (see the
+            // sibling assertion below, which reads the persisted issuedLineSnapshot
+            // instead and therefore does not) and `orderLineId` - #3312's stamp of
+            // the originating `OrderItem.id`, put on every line built from an order
+            // snapshot and never onto a synthesized one such as shipping.
+            // `objectContaining` does not recurse into this array - it is compared
+            // field for field.
+            lines: [
+              {
+                name: 'Widget',
+                productId: 'p_1',
+                quantity: 1,
+                unitPriceGross: 100,
+                taxRate: '',
+                orderLineId: 'li_1',
+              },
+            ],
           }),
         }),
       );

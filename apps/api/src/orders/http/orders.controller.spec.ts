@@ -54,6 +54,8 @@ import type {
   IDeliveryRiderService,
 } from '@openlinker/core/mappings';
 
+import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
+
 describe('OrdersController', () => {
   let controller: OrdersController;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
@@ -182,7 +184,8 @@ describe('OrdersController', () => {
       resolveBatch: jest.fn().mockResolvedValue([]),
     };
 
-    const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
+    const mockSourceFulfillment = { read: jest.fn() };
+  const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
       // Default: no actionable hint. Batch mirrors the input length so the
       // controller's positional zip stays aligned.
       resolve: jest.fn().mockResolvedValue({ rider: 'none' }),
@@ -258,6 +261,10 @@ describe('OrdersController', () => {
         {
           provide: DELIVERY_RIDER_SERVICE_TOKEN,
           useValue: mockDeliveryRider,
+        },
+        {
+          provide: SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,
+          useValue: mockSourceFulfillment,
         },
         {
           provide: RESERVATION_SHORTFALL_SERVICE_TOKEN,
@@ -828,6 +835,16 @@ describe('OrdersController', () => {
         // the FE suppresses a sales-document block on exactly the records the
         // backend gate refuses to write one for.
         blocksIssuanceElsewhere: true,
+        // Tri-state, projected verbatim: `null` is "this provider does not
+        // report catalogue linkage", which the fixture's record is.
+        unlinkedCatalogueLines: null,
+        // Four-state, projected verbatim, and `null` is the honest answer for
+        // this fixture: the provider has no warehouse and was never asked. The
+        // NUMBER is legitimately absent on three of the four outcomes, which is
+        // why nothing downstream tests its nullability - only `'not-released'`
+        // is a claim. See `warehouseReleaseBadge`.
+        warehouseReleaseOutcome: null,
+        warehouseReleaseNumber: null,
       });
     });
 
