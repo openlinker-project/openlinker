@@ -21,9 +21,11 @@ import { captureDemoEvent } from '../../demo';
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
+  /** Replaces "Edit connection" for a connection configured elsewhere (the OMS). */
+  settingsLink?: { to: string; label: string };
 }
 
-export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelProps): ReactElement {
+export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionActionsPanelProps): ReactElement {
   const disableConnection = useDisableConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -139,7 +141,19 @@ export function ConnectionActionsPanel({ connection }: ConnectionActionsPanelPro
           </div>
         ) : null}
 
-        {write.visible ? (
+        {write.visible && settingsLink ? (
+          <div className="action-list__item">
+            <div>
+              <strong>{settingsLink.label}</strong>
+              <p className="muted-text">This connection is configured from its own settings page.</p>
+            </div>
+            <Link className="button button--secondary" to={settingsLink.to}>
+              Open
+            </Link>
+          </div>
+        ) : null}
+
+        {write.visible && !settingsLink ? (
           <div className="action-list__item">
             <div>
               <strong>Edit connection</strong>

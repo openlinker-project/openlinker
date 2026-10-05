@@ -307,7 +307,7 @@ describe('Returns Write API Integration', () => {
 
   describe('restockTarget on the detail read (#2380)', () => {
     it('should report that no connection owns the stock, rather than omitting the field', async () => {
-      const { returnId } = await seedAttributedReturn('RET-RT-1');
+      const { returnId, lineId } = await seedAttributedReturn('RET-RT-1');
 
       const response = await http()
         .get(`/v1/returns/${returnId}`)
@@ -317,7 +317,7 @@ describe('Returns Write API Integration', () => {
       // No InventoryMaster connection exists in this harness. The field is
       // present and says so — the UI needs a state, not an absence, or it
       // renders nothing where the destination sentence belongs.
-      expect(response.body.restockTarget).toEqual({
+      expect(response.body.restockTargets[lineId]).toEqual({
         status: 'no-inventory-master',
         connectionId: null,
         connectionName: null,

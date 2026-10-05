@@ -51,6 +51,11 @@ import {
   type DuplicatePositionReport,
   type ProvenanceBackfillStatus,
 } from '../../domain/types/inventory.types';
+import {
+  resolveInventoryPositionOwner,
+  type InventoryOwnerQuery,
+  type InventoryOwnerResolution,
+} from '../../domain/types/inventory-owner.types';
 import type {
   InventoryItemView,
   InventoryViewProduct,
@@ -369,5 +374,10 @@ export class InventoryQueryService implements IInventoryQueryService {
         }
       : null;
     return { item, product: viewProduct };
+  }
+
+  async resolveStockOwner(query: InventoryOwnerQuery): Promise<InventoryOwnerResolution> {
+    const positions = await this.inventoryRepository.findLiveOwnerPositions([query.productId]);
+    return resolveInventoryPositionOwner(positions, query);
   }
 }

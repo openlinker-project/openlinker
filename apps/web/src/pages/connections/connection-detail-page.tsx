@@ -27,6 +27,7 @@ import { usePlatform, usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
+import { describeConnectionStatus, OMS_PLATFORM_TYPE } from '../oms/oms-connection';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -267,6 +268,14 @@ function ProductCatalogLinkBanner({
   );
 }
 
+function ConnectionStatusBadge({ connection }: { connection: Connection }): ReactElement {
+  const view = describeConnectionStatus(connection, toStatusTone(connection.status));
+  return <StatusBadge tone={view.tone}>{view.label}</StatusBadge>;
+}
+
+/** The OMS connection is configured by the packing setup, never by the generic edit form. */
+const PACKING_SETTINGS_PATH = '/settings/packing';
+
 export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
@@ -301,6 +310,9 @@ export function ConnectionDetailPage(): ReactElement {
   };
 
   const connection = connectionQuery.data;
+  // The OMS connection is a by-product of the packing setup: no credentials, no
+  // adapter choice, no config to edit. It is managed from /settings/packing.
+  const isOms = connection?.platformType === OMS_PLATFORM_TYPE;
 
   return (
     <PageLayout
@@ -312,10 +324,21 @@ export function ConnectionDetailPage(): ReactElement {
           `Connection ${connectionId}`
         )
       }
-      description="Connection overview, configuration, health, and operator actions."
+      description={
+        isOms
+          ? 'Managed from Packing settings.'
+          : 'Connection overview, configuration, health, and operator actions.'
+      }
       backTo={{ to: '/connections', label: 'Connections' }}
       actions={
         connection ? (
+          connection.platformType === OMS_PLATFORM_TYPE ? (
+            <div className="button-group">
+              <Link className="button button--primary" to={PACKING_SETTINGS_PATH}>
+                Packing settings
+              </Link>
+            </div>
+          ) : (
           <div className="button-group">
             <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
               Edit connection
@@ -342,6 +365,7 @@ export function ConnectionDetailPage(): ReactElement {
               </Link>
             ) : null}
           </div>
+          )
         ) : undefined
       }
       summary={
@@ -351,7 +375,7 @@ export function ConnectionDetailPage(): ReactElement {
               <span className="toolbar-chip" title={connection.platformType}>
                 {resolvePlatformLabel(platforms, connection)}
               </span>
-              <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+              <ConnectionStatusBadge connection={connection} />
             </div>
             <div className="toolbar__group">
               <span className="muted-text">Created <TimeDisplay iso={connection.createdAt} format="date" /></span>
@@ -400,8 +424,8 @@ export function ConnectionDetailPage(): ReactElement {
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="health">Health</TabsTrigger>
-            <TabsTrigger value="actions">Actions</TabsTrigger>
-            <TabsTrigger value="config">Config</TabsTrigger>
+            {isOms ? null : <TabsTrigger value="actions">Actions</TabsTrigger>}
+            {isOms ? null : <TabsTrigger value="config">Config</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="overview">
@@ -411,9 +435,7 @@ export function ConnectionDetailPage(): ReactElement {
                   <p className="eyebrow">Connection summary</p>
                   <h3 className="section-title">Overview</h3>
                 </div>
-                <StatusBadge tone={toStatusTone(connection.status)}>
-                  {connection.status}
-                </StatusBadge>
+                <ConnectionStatusBadge connection={connection} />
               </div>
 
               <KeyValueList
@@ -433,6 +455,7 @@ export function ConnectionDetailPage(): ReactElement {
                       </>
                     ),
                   },
+                  ...(isOms ? [] : [
                   {
                     id: 'credentials',
                     label: 'Credentials',
@@ -448,6 +471,7 @@ export function ConnectionDetailPage(): ReactElement {
                     value: connection.adapterKey ?? 'default adapter',
                     mono: true,
                   },
+                  ]),
                   { id: 'id', label: 'Connection ID', value: connection.id, mono: true },
                   {
                     id: 'updatedAt',
@@ -458,7 +482,7 @@ export function ConnectionDetailPage(): ReactElement {
               />
             </div>
 
-            <ConnectionCapabilitiesPanel connection={connection} />
+            <ConnectionCapabilitiesPanel connection={connection} readOnly={isOms} />
           </TabsContent>
 
           <TabsContent value="health">
@@ -477,7 +501,14 @@ export function ConnectionDetailPage(): ReactElement {
           </TabsContent>
 
           <TabsContent value="actions">
-            <ConnectionActionsPanel connection={connection} />
+            <ConnectionActionsPanel
+              connection={connection}
+              settingsLink={
+                isOms
+                  ? { to: PACKING_SETTINGS_PATH, label: 'Packing settings' }
+                  : undefined
+              }
+            />
           </TabsContent>
 
           <TabsContent value="config">
