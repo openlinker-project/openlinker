@@ -17,6 +17,21 @@ import { DataTable, type DataTableColumn, type DataTableCardView } from '../../.
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Select } from '../../../shared/ui/select';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../connections';
+import { useDemoMode } from '../../system';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { RoutingParcelDialog } from './routing-parcel-dialog';
+import {
+  EMPTY_PARCEL_DRAFT,
+  draftFromFields,
+  draftToFields,
+  draftsEqual,
+  isDraftEmpty,
+  summarizeParcelProfile,
+  type ParcelProfileDraft,
+} from '../lib/parcel-profile';
+import { PARCEL_COPY } from '../lib/parcel-profile.copy';
 import { RoutingSplitBar, type RoutingSplitBucket } from './routing-split-bar';
 import {
   useRoutingRulesQuery,
@@ -118,6 +133,20 @@ export function RoutingRulesPanel({
     return map;
   }, [savedRules]);
 
+  // Persisted parcel profile per method, as an editable cm / kg draft (#3652).
+  const savedDraftByMethod = useMemo(() => {
+    const map = new Map<string, ParcelProfileDraft>();
+    for (const rule of savedRules) map.set(rule.sourceDeliveryMethodId, draftFromFields(rule));
+    return map;
+  }, [savedRules]);
+
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
+  const [profileDrafts, setProfileDrafts] = useState<Record<string, ParcelProfileDraft>>(() =>
+    Object.fromEntries(savedDraftByMethod),
+  );
+  const [editingMethod, setEditingMethod] = useState<MappingOption | null>(null);
+
   const [selections, setSelections] = useState<Record<string, string>>(() =>
     Object.fromEntries(savedKeyByMethod),
   );
@@ -126,6 +155,9 @@ export function RoutingRulesPanel({
   useEffect(() => {
     setSelections(Object.fromEntries(savedKeyByMethod));
   }, [savedKeyByMethod]);
+  useEffect(() => {
+    setProfileDrafts(Object.fromEntries(savedDraftByMethod));
+  }, [savedDraftByMethod]);
 
   const connectionNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -173,8 +205,18 @@ export function RoutingRulesPanel({
     return [...deliveryMethods, ...orphans];
   }, [deliveryMethods, savedKeyByMethod]);
 
+  const draftFor = useCallback(
+    (methodId: string): ParcelProfileDraft => profileDrafts[methodId] ?? EMPTY_PARCEL_DRAFT,
+    [profileDrafts],
+  );
+
   const isDirty = rowMethods.some(
-    (m) => (selections[m.value] ?? DEFAULT_KEY) !== (savedKeyByMethod.get(m.value) ?? DEFAULT_KEY),
+    (m) =>
+      (selections[m.value] ?? DEFAULT_KEY) !== (savedKeyByMethod.get(m.value) ?? DEFAULT_KEY) ||
+      // A profile only persists on a diverted method, so a staged profile on a
+      // default-routed row is not a pending change.
+      ((selections[m.value] ?? DEFAULT_KEY) !== DEFAULT_KEY &&
+        !draftsEqual(draftFor(m.value), savedDraftByMethod.get(m.value) ?? EMPTY_PARCEL_DRAFT)),
   );
 
   // Surface the dirty signal up for the page-level discard guard (#1784 I3).
@@ -251,10 +293,16 @@ export function RoutingRulesPanel({
       const key = selections[method.value] ?? DEFAULT_KEY;
       const parsed = parseSelectionKey(key);
       if (!parsed) continue;
+      const draft = draftFor(method.value);
+      const hadProfile = !isDraftEmpty(savedDraftByMethod.get(method.value) ?? EMPTY_PARCEL_DRAFT);
+      // Profile keys are sent only when there is something to set or clear, so
+      // a save against an API that predates the profile carries no unknown keys.
+      const profile = !isDraftEmpty(draft) || hadProfile ? draftToFields(draft) : {};
       items.push({
         sourceDeliveryMethodId: method.value,
         processorKind: parsed.kind,
         processorConnectionId: parsed.connectionId,
+        ...profile,
       });
     }
     replaceMutation.mutate({ items });
@@ -324,6 +372,36 @@ export function RoutingRulesPanel({
     [selections, optionsForRow, handleSelect],
   );
 
+  const renderParcel = useCallback(
+    (method: MappingOption): ReactNode => {
+      if ((selections[method.value] ?? DEFAULT_KEY) === DEFAULT_KEY) return null;
+      const draft = draftFor(method.value);
+      const summary = isDraftEmpty(draft) ? null : summarizeParcelProfile(draftToFields(draft));
+      return (
+        <>
+          <span className={summary ? undefined : 'muted-text'}>
+            {summary ?? PARCEL_COPY.noneSet}
+          </span>{' '}
+          {write.visible && (
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="secondary"
+                className="button--sm"
+                disabled={write.demoReadOnly}
+                onClick={() => {
+                  setEditingMethod(method);
+                }}
+              >
+                {summary ? PARCEL_COPY.editAction : PARCEL_COPY.setAction}
+              </Button>
+            </ReadOnlyLock>
+          )}
+        </>
+      );
+    },
+    [selections, draftFor, write.visible, write.demoReadOnly],
+  );
+
   const columns = useMemo<DataTableColumn<MappingOption>[]>(
     () => [
       {
@@ -337,17 +415,23 @@ export function RoutingRulesPanel({
         cell: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
       },
       { id: 'change', header: 'Change', cell: (m) => renderProcessorSelect(m) },
+      { id: 'parcel', header: PARCEL_COPY.columnHeader, cell: (m) => renderParcel(m) },
     ],
-    [sourceLabel, renderMethodLabel, renderRoutedTo, renderProcessorSelect, selections],
+    [sourceLabel, renderMethodLabel, renderRoutedTo, renderProcessorSelect, renderParcel, selections],
   );
 
   const cardView = useMemo<DataTableCardView<MappingOption>>(
     () => ({
       title: (m) => renderMethodLabel(m),
       subtitle: (m) => renderRoutedTo(selections[m.value] ?? DEFAULT_KEY),
-      detail: (m) => renderProcessorSelect(m),
+      detail: (m) => (
+        <>
+          {renderProcessorSelect(m)}
+          {renderParcel(m)}
+        </>
+      ),
     }),
-    [renderMethodLabel, renderRoutedTo, renderProcessorSelect, selections],
+    [renderMethodLabel, renderRoutedTo, renderProcessorSelect, renderParcel, selections],
   );
 
   if (deliveryMethodsLoading || rulesQuery.isLoading || candidatesQuery.isLoading) {
@@ -423,6 +507,21 @@ export function RoutingRulesPanel({
           containerHeight={containerHeight}
           columns={columns}
           cardView={cardView}
+        />
+      )}
+
+      {editingMethod && (
+        <RoutingParcelDialog
+          key={editingMethod.value}
+          open
+          methodLabel={editingMethod.label}
+          initial={draftFor(editingMethod.value)}
+          onApply={(draft) => {
+            setProfileDrafts((prev) => ({ ...prev, [editingMethod.value]: draft }));
+          }}
+          onOpenChange={(next) => {
+            if (!next) setEditingMethod(null);
+          }}
         />
       )}
 
