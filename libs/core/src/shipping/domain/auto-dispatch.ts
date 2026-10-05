@@ -23,8 +23,10 @@
  *
  * Stacking boxes is not addition, and getting it wrong is a mispriced label.
  * A carrier that needs a size takes the operator-chosen `parcelTemplate`
- * instead (`Connection.config.autoDispatch.parcelTemplate`,
- * `@openlinker/core/identifier-mapping`'s `readAutoDispatchConfig`).
+ * (`Connection.config.autoDispatch.parcelTemplate`,
+ * `@openlinker/core/identifier-mapping`'s `readAutoDispatchConfig`) or, since
+ * #3651, a FIXED box configured on the routing rule for that delivery method
+ * (see {@link mergeAutoDispatchParcelOptions}) - never a box derived from items.
  *
  * ## Every refusal is named, never silent
  *
@@ -42,7 +44,7 @@ import type { Address, Order, OrderPickupPoint, OrderShipping } from '@openlinke
 import type { DeliveryIntent } from './types/delivery-intent.types';
 import { DELIVERY_INTENT } from './types/delivery-intent.types';
 import type { ShipmentAddress, ShipmentRecipient } from './types/shipment-recipient.types';
-import type { ShipmentParcel } from './types/shipment-parcel.types';
+import type { ShipmentDimensions, ShipmentParcel } from './types/shipment-parcel.types';
 
 /**
  * Why an auto-dispatch attempt did not produce a label.
@@ -56,6 +58,7 @@ export const AutoDispatchRefusalReasonValues = [
   'not-enabled',
   'already-has-label',
   'no-weight',
+  'no-dimensions',
   'no-address',
   'no-delivery-method',
   'carrier-refused',
@@ -105,6 +108,71 @@ function isPositiveFiniteNumber(value: unknown): value is number {
 }
 
 /**
+ * Parcel profile of a routing rule, as auto-dispatch consumes it (#3651).
+ * Structural on purpose: `shipping` does not import `mappings`, and the
+ * mappings type satisfies this shape.
+ */
+export interface AutoDispatchParcelProfile {
+  readonly parcelTemplate: string | null;
+  readonly lengthMm: number | null;
+  readonly widthMm: number | null;
+  readonly heightMm: number | null;
+  readonly defaultWeightGrams: number | null;
+}
+
+export interface AutoDispatchParcelOptions {
+  parcelTemplate?: string;
+  defaultWeightGrams?: number;
+  dimensions?: ShipmentDimensions;
+}
+
+/**
+ * Merge the routing rule's parcel profile over the connection-wide
+ * `autoDispatch` config, most specific first, per field (#3651). A `null`
+ * profile, or a null field on it, falls through to the connection value, so a
+ * rule without a profile yields exactly the connection-only options.
+ * Dimensions exist only on the profile and only when the whole box is set.
+ */
+export function mergeAutoDispatchParcelOptions(
+  profile: AutoDispatchParcelProfile | null,
+  connection: { parcelTemplate?: string; defaultWeightGrams?: number },
+): AutoDispatchParcelOptions {
+  const merged: AutoDispatchParcelOptions = {};
+  const template = profile?.parcelTemplate ?? connection.parcelTemplate;
+  if (template) merged.parcelTemplate = template;
+  const profileWeight = profile?.defaultWeightGrams;
+  const weight = isPositiveFiniteNumber(profileWeight)
+    ? profileWeight
+    : connection.defaultWeightGrams;
+  if (weight !== undefined) merged.defaultWeightGrams = weight;
+  if (
+    profile !== null &&
+    isPositiveFiniteNumber(profile.lengthMm) &&
+    isPositiveFiniteNumber(profile.widthMm) &&
+    isPositiveFiniteNumber(profile.heightMm)
+  ) {
+    merged.dimensions = {
+      length: profile.lengthMm,
+      width: profile.widthMm,
+      height: profile.heightMm,
+    };
+  }
+  return merged;
+}
+
+/**
+ * Whether a resolved parcel is missing what the routed carrier declared it
+ * requires (#3651). `requiresDimensions` comes from the adapter's
+ * `ParcelRequirementsReader`, never from a carrier name in core.
+ */
+export function findMissingParcelRequirement(
+  parcel: ShipmentParcel,
+  requirements: { readonly requiresDimensions: boolean },
+): 'dimensions' | null {
+  return requirements.requiresDimensions && parcel.dimensions === undefined ? 'dimensions' : null;
+}
+
+/**
  * Resolve the parcel for an auto-dispatched label, or `null` on refusal
  * (`no-weight` — the caller attributes the reason).
  *
@@ -122,7 +190,7 @@ function isPositiveFiniteNumber(value: unknown): value is number {
 export function resolveAutoDispatchParcel(
   lines: readonly AutoDispatchWorkLine[],
   variantWeightGrams: ReadonlyMap<string, number | null | undefined>,
-  options: { parcelTemplate?: string; defaultWeightGrams?: number },
+  options: AutoDispatchParcelOptions,
 ): ShipmentParcel | null {
   let totalWeightGrams = 0;
   for (const line of lines) {
@@ -146,7 +214,10 @@ export function resolveAutoDispatchParcel(
   }
 
   const parcel: ShipmentParcel = { weightGrams: Math.round(totalWeightGrams) };
-  return options.parcelTemplate ? { ...parcel, template: options.parcelTemplate } : parcel;
+  const withTemplate = options.parcelTemplate
+    ? { ...parcel, template: options.parcelTemplate }
+    : parcel;
+  return options.dimensions ? { ...withTemplate, dimensions: options.dimensions } : withTemplate;
 }
 
 function isIsoAlpha2(code: string): boolean {
