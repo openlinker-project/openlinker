@@ -25,6 +25,8 @@
  * @module apps/web/src/features/bench/lib
  */
 
+import { formatVariantAttributes } from '../../../shared/lib/variant-attributes';
+
 export const benchParcelCopy = {
   header: {
     orderLabel: 'Order',
@@ -111,11 +113,7 @@ export const benchParcelCopy = {
      * value, and nothing guarantees that. Naming it costs a few characters and
      * always reads.
      */
-    attributesText: (attrs: Record<string, string>): string =>
-      Object.keys(attrs)
-        .sort()
-        .map((key) => `${key}: ${attrs[key] ?? ''}`)
-        .join(' · '),
+    attributesText: (attrs: Record<string, string>): string => formatVariantAttributes(attrs),
     /** Operator-authored bin/shelf code, rendered as a short label (#3402/#3410). */
     binCodeLabel: (code: string): string => `Bin ${code}`,
     /** Display-only physical master data — never a claim OpenLinker measured it. */

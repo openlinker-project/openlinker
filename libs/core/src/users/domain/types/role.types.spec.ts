@@ -113,6 +113,23 @@ describe('ROLE_PERMISSIONS', () => {
     it('gives `packer` exactly the one permission its bench controls need', () => {
       expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
     });
+
+    /**
+     * The frontend decides which shell a session may use FROM PERMISSIONS
+     * (`apps/web/src/shared/auth/session-surface.ts`, #3096): `bench:write`
+     * without `orders:read` is "bench-only" and is sent to `/bench`. That
+     * predicate is only right while it picks out exactly the packer, and the
+     * frontend cannot see this map at compile time - so the equivalence is
+     * pinned here, where a `ROLE_PERMISSIONS` change that breaks it fails.
+     */
+    it('should make packer the only role holding bench:write without orders:read', () => {
+      const benchOnly = UserRoleValues.filter(
+        (role) =>
+          ROLE_PERMISSIONS[role].includes('bench:write') &&
+          !ROLE_PERMISSIONS[role].includes('orders:read')
+      );
+      expect(benchOnly).toEqual(['packer']);
+    });
   });
 
   describe('admin', () => {

@@ -101,8 +101,14 @@ import {
   ORDERS_LIST_FILTERS_COPY,
 } from '../../features/orders/lib/orders-list-filters.copy';
 import { ORDERS_LIST_PAGE_COPY as PAGE_COPY } from '../../features/orders/lib/orders-list-page.copy';
-import { useConnectionsQuery } from '../../features/connections';
-import { resolvePlatformLabel } from '../../features/mappings';
+import {
+  ConnectionChip,
+  readConnectionEnvironment,
+  useConnectionsQuery,
+  type ConnectionChipChannel,
+  type ConnectionEnvironment,
+} from '../../features/connections';
+import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 
 const PAGE_SIZE = 20;
@@ -314,6 +320,27 @@ export function OrdersListPage(): ReactElement {
 
   const channelLabel = (platform: string | undefined): string | undefined =>
     platform ? resolvePlatformLabel(platforms, platform) : undefined;
+
+  // id → sandbox/production for the source chip (#3670): two Allegro connections
+  // share a platform label and a dot hue, so the environment is what tells a
+  // sandbox row from a production one at a glance.
+  const environmentByConnection = useMemo(() => {
+    const map = new Map<string, ConnectionEnvironment | null>();
+    (connectionsQuery.data ?? []).forEach((c) => {
+      map.set(c.id, readConnectionEnvironment(c.config));
+    });
+    return map;
+  }, [connectionsQuery.data]);
+
+  const sourceChipChannel = (connectionId: string, label: string): ConnectionChipChannel => {
+    const platformType = platformByConnection.get(connectionId);
+    return {
+      platformType,
+      label,
+      shortLabel: platformType ? resolvePlatformShortLabel(platforms, platformType) : undefined,
+      environment: environmentByConnection.get(connectionId),
+    };
+  };
 
   // Resolve a connectionId to a human channel label (never undefined) for the
   // bulk-dispatch per-row source pill.
@@ -619,9 +646,12 @@ export function OrdersListPage(): ReactElement {
                   standalone Channel column is visible. */}
               {source ? (
                 <span className="orders-order-channel">
-                  <span className="channel-pill" data-channel={sourcePlatform}>
-                    {source}
-                  </span>
+                  <ConnectionChip
+                    connectionId={order.sourceConnectionId}
+                    name={connectionNames.get(order.sourceConnectionId) ?? null}
+                    loading={connectionsQuery.isLoading}
+                    channel={sourceChipChannel(order.sourceConnectionId, source)}
+                  />
                   {dest ? (
                     <span className="text-muted orders-cell-sub">
                       → {dest}
@@ -680,9 +710,12 @@ export function OrdersListPage(): ReactElement {
           if (!source) return <span className="text-muted">—</span>;
           return (
             <span className="orders-cell-stack">
-              <span className="channel-pill" data-channel={platformByConnection.get(order.sourceConnectionId)}>
-                {source}
-              </span>
+              <ConnectionChip
+                connectionId={order.sourceConnectionId}
+                name={connectionNames.get(order.sourceConnectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                channel={sourceChipChannel(order.sourceConnectionId, source)}
+              />
               {dest ? <span className="text-muted orders-cell-sub">→ {dest}</span> : null}
             </span>
           );
@@ -943,6 +976,8 @@ export function OrdersListPage(): ReactElement {
     [
       locale,
       platformByConnection,
+      // `sourceChipChannel` reads it, so a connections refetch updates the sandbox mark (#3670).
+      environmentByConnection,
       // `channelLabel` closes over the plugin registry as of #2088. The registry
       // array is referentially stable (a provider-level memo over a module
       // constant), so listing it costs no rebuild — but that invariant lives two
@@ -1341,12 +1376,12 @@ export function OrdersListPage(): ReactElement {
                 return (
                   <span className="orders-card-sub">
                     {source ? (
-                      <span
-                        className="channel-pill"
-                        data-channel={platformByConnection.get(order.sourceConnectionId)}
-                      >
-                        {source}
-                      </span>
+                      <ConnectionChip
+                        connectionId={order.sourceConnectionId}
+                        name={connectionNames.get(order.sourceConnectionId) ?? null}
+                        loading={connectionsQuery.isLoading}
+                        channel={sourceChipChannel(order.sourceConnectionId, source)}
+                      />
                     ) : null}
                     {dest ? (
                       <span className="text-muted orders-cell-sub">

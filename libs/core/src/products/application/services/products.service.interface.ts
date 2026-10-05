@@ -16,6 +16,7 @@ import type {
   ProductListSort,
   PaginatedProducts,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
 } from '../../domain/types/product.types';
 import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
 import type {
@@ -47,6 +48,17 @@ export interface IProductsService {
    * @param variants - Array of product variant domain entities
    */
   upsertVariants(productId: string, variants: ProductVariant[]): Promise<void>;
+
+  /**
+   * Fill variants' physical data (weight/dimensions) only where the stored
+   * column is still empty (#3650). Never overwrites an existing value, so a
+   * master re-sync cannot undo an operator-typed one. Neutral units: grams and
+   * millimetres, already converted by the adapter. All given variants are
+   * written in one statement; returns how many actually had a column filled.
+   */
+  fillVariantsPhysicalDimensionsIfAbsent(
+    fills: readonly VariantPhysicalDimensionsFill[]
+  ): Promise<number>;
 
   /**
    * Record what a ProductMaster said about a product's tax rate (#2054).

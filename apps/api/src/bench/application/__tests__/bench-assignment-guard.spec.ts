@@ -86,6 +86,7 @@ const lockedWork = (): FulfillmentWorkView =>
     labelPrintedAt: null,
     completedAt: null,
     completedByUserId: null,
+    channelNotifiedAt: null,
     createdAt: new Date('2026-09-01T09:00:00Z'),
     updatedAt: new Date('2026-09-01T09:00:00Z'),
     lines: [

@@ -10,15 +10,18 @@
  */
 import type { ReactElement, ReactNode } from 'react';
 import {
+  AccessDeniedState,
   Alert,
   BackLink,
   Button,
+  DetailSection,
   EmptyState,
   EntityLabel,
   ErrorState,
   FormField,
   Input,
   KpiCard,
+  KpiGrid,
   KeyValueList,
   LoadingState,
   MetricCard,
@@ -227,6 +230,30 @@ export function PrimitivesSection(): ReactElement {
             message="HTTP 503 from api.allegro.pl. Retry usually clears this."
             action={<Button tone="secondary" className="button--sm">Retry</Button>}
           />
+          <AccessDeniedState
+            title="Fulfilment tasks are for supervisors"
+            message="A 403 is a role fact: no Retry, role=status. QueryErrorState picks this for a 403."
+          />
+        </div>
+      </Group>
+
+      <Group
+        title="DetailSection"
+        description="One card on a detail page: --border-default, --radius-lg, --shadow-xs, 20 × 24 px inset, 12 px / 700 muted title. Tones: hero (22 × 24) and actions (18 × 24). No outer margin — the stack's gap spaces cards."
+      >
+        <div className="ds-stack" style={{ gap: '1.375rem' }}>
+          <DetailSection tone="hero">
+            <p className="text-muted">ol_fwork_b204 · OpenLinker OMS</p>
+            <p style={{ margin: 0, fontSize: '1.375rem', fontWeight: 700 }}>Open · Accepted</p>
+          </DetailSection>
+          <DetailSection title="Why it's stuck">
+            <Alert tone="warning" density="compact" title="Stock shortfall">
+              0 of 1 available at this location
+            </Alert>
+          </DetailSection>
+          <DetailSection tone="actions" aria-label="What you can do">
+            <Button tone="secondary">Put on hold</Button>
+          </DetailSection>
         </div>
       </Group>
 
@@ -262,6 +289,11 @@ export function PrimitivesSection(): ReactElement {
             description="Allegro 4,902 · PrestaShop 3,510"
           />
         </div>
+        <KpiGrid aria-label="Compact KPI grid">
+          <KpiCard density="compact" label="Unassigned right now" value="3" />
+          <KpiCard density="compact" label="Packers at their benches" value="3" />
+          <KpiCard density="compact" label="Oldest unassigned" value="52m" />
+        </KpiGrid>
         <div className="ds-grid ds-grid--4">
           <MetricCard label="Open orders" value="142" />
           <MetricCard label="Avg ingest lag" value="42 s" />
