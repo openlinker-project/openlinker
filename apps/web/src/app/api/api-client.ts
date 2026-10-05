@@ -128,6 +128,10 @@ import {
   type PromptTemplatesApi,
 } from '../../features/prompt-templates/api/prompt-templates.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
+import {
+  createStreamDeadLettersApi,
+  type StreamDeadLettersApi,
+} from '../../features/sync-jobs/api/stream-dead-letters.api';
 import { createMappingsApi, type MappingsApi } from '../../features/mappings/api/mappings.api';
 import {
   createWebhookDeliveriesApi,
@@ -253,6 +257,7 @@ export interface CoreApiClient {
   bench: BenchApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
+  streamDeadLetters: StreamDeadLettersApi;
   system: SystemApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
@@ -491,6 +496,7 @@ export function createApiClient({
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
+    streamDeadLetters: createStreamDeadLettersApi(request),
     system: createSystemApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),

@@ -188,6 +188,35 @@ export class YourMigration1735000000000 implements MigrationInterface {
 
 ## Running Migrations
 
+### Empty-database prerequisite (#2684)
+
+The oldest migration in the tree (`1766246163229-add-connections-and-mappings..ts`)
+calls `uuid_generate_v4()` but never creates the `uuid-ossp` extension itself, so
+running the chain against a genuinely empty Postgres used to fail at the very first
+migration. Every real deployment happened to already carry the extension from some
+earlier, out-of-band bootstrap, so nothing noticed until #2392's migration/entity
+parity spec became the first thing in the tree to run the chain from empty.
+
+This is fixed at the **runtime entry point**, not inside a migration — a migration
+can't fix it, because the fix has to run *before* the very first migration, and
+`scripts/check-migration-timestamps.mjs` refuses any new migration file that sorts
+at or below `origin/main`'s current maximum (which the first migration already is),
+and editing `1766246163229` in place would never re-run on a database that already
+applied it. `apps/api/src/database/data-source.ts` exports a `BootstrappedDataSource`
+— a thin `DataSource` subclass whose `runMigrations()` override issues
+`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` before delegating to the real
+`runMigrations()`. Because the TypeORM CLI's `migration:run` command loads this
+module's default export and calls `.runMigrations()` on it directly, the fix applies
+to every invocation shape documented below — dev (`ts-node`), the compiled
+production JS, and the docker-compose demo stack's one-shot migration bootstrap
+service — with nothing extra for an operator to run.
+
+**No limitation for an already-provisioned database.** Because the statement is
+`IF NOT EXISTS` and runs on *every* `migration:run` call, it is a no-op on a
+database that already carries the extension (which is every database that had
+already applied any migration under the old code) — there is nothing to migrate or
+backfill.
+
 ### Development (TypeScript)
 
 **Run pending migrations:**

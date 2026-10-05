@@ -2675,6 +2675,7 @@ describe('OrderIngestionService', () => {
           processorConnectionId: 'shop-1',
           source: 'rule',
           processorAvailable: true,
+          parcelProfile: null,
         });
 
         await service.syncOrderFromSource(connectionId, externalOrderId);

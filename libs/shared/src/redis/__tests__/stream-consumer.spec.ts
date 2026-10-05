@@ -12,8 +12,8 @@ import { hostname } from 'os';
 
 import {
   MAX_RECOVERY_ATTEMPTS,
-  MAX_TRACKED_ATTEMPTS,
   MIN_RECLAIM_IDLE_MS,
+  POISON_COUNTER_TTL_SECONDS,
   nextPendingCursor,
   RecoveryAttemptTracker,
   toClaimedMessage,
@@ -143,31 +143,98 @@ describe('nextPendingCursor', () => {
 });
 
 describe('RecoveryAttemptTracker', () => {
-  it('should count failures per entry independently', () => {
-    const tracker = new RecoveryAttemptTracker();
+  // A minimal in-memory fake of the three Redis primitives the tracker
+  // needs, with real INCR/EXPIRE/DEL semantics (INCR creates-then-increments,
+  // DEL removes the key entirely) — not a hand-stubbed jest.fn() per call,
+  // because the "survives a new tracker instance" test below depends on the
+  // counter living in the fake's Map, not in any per-tracker state.
+  const buildCounterClient = (): jest.Mocked<StreamConsumerClient> & {
+    readonly store: Map<string, number>;
+  } => {
+    const store = new Map<string, number>();
+    const client = {
+      xPendingRange: jest.fn().mockResolvedValue([]),
+      xRange: jest.fn().mockResolvedValue([]),
+      xClaim: jest.fn().mockResolvedValue(undefined),
+      xAck: jest.fn().mockResolvedValue(1),
+      incr: jest.fn((key: string) => {
+        const next = (store.get(key) ?? 0) + 1;
+        store.set(key, next);
+        return Promise.resolve(next);
+      }),
+      expire: jest.fn(() => Promise.resolve(true)),
+      del: jest.fn((key: string) => {
+        const existed = store.delete(key);
+        return Promise.resolve(existed ? 1 : 0);
+      }),
+      store,
+    };
+    return client as unknown as jest.Mocked<StreamConsumerClient> & { readonly store: Map<string, number> };
+  };
 
-    expect(tracker.recordFailure('1-0')).toBe(1);
-    expect(tracker.recordFailure('1-0')).toBe(2);
-    expect(tracker.recordFailure('2-0')).toBe(1);
+  it('should count failures per entry independently', async () => {
+    const tracker = new RecoveryAttemptTracker(buildCounterClient());
+
+    await expect(tracker.recordFailure(STREAM, GROUP, '1-0')).resolves.toBe(1);
+    await expect(tracker.recordFailure(STREAM, GROUP, '1-0')).resolves.toBe(2);
+    await expect(tracker.recordFailure(STREAM, GROUP, '2-0')).resolves.toBe(1);
   });
 
-  it('should forget an entry that finally succeeded', () => {
+  it('should forget an entry that finally succeeded', async () => {
     // A transient failure must not leave the entry permanently near the alarm.
-    const tracker = new RecoveryAttemptTracker();
-    tracker.recordFailure('1-0');
-    tracker.recordFailure('1-0');
+    const client = buildCounterClient();
+    const tracker = new RecoveryAttemptTracker(client);
+    await tracker.recordFailure(STREAM, GROUP, '1-0');
+    await tracker.recordFailure(STREAM, GROUP, '1-0');
 
-    tracker.succeeded('1-0');
+    await tracker.succeeded(STREAM, GROUP, '1-0');
 
-    expect(tracker.recordFailure('1-0')).toBe(1);
+    await expect(tracker.recordFailure(STREAM, GROUP, '1-0')).resolves.toBe(1);
   });
 
-  it('should fire the crossing at the documented threshold, not one past it', () => {
-    const tracker = new RecoveryAttemptTracker();
+  it('should set a TTL on every recorded failure, well above the drain horizon', async () => {
+    const client = buildCounterClient();
+    const tracker = new RecoveryAttemptTracker(client);
+
+    await tracker.recordFailure(STREAM, GROUP, '1-0');
+
+    expect(client.expire).toHaveBeenCalledWith(
+      `poison:${STREAM}:${GROUP}:1-0`,
+      POISON_COUNTER_TTL_SECONDS
+    );
+  });
+
+  it('should survive a new tracker instance — the counter lives in Redis, not in-process state', async () => {
+    // The whole point of moving off the in-memory Map (#2301, D48): a worker
+    // restart must not reset the count. A fresh tracker against the SAME
+    // client must continue counting where the old one left off.
+    const client = buildCounterClient();
+    const trackerA = new RecoveryAttemptTracker(client);
+    await trackerA.recordFailure(STREAM, GROUP, '1-0');
+    await trackerA.recordFailure(STREAM, GROUP, '1-0');
+
+    const trackerB = new RecoveryAttemptTracker(client);
+
+    await expect(trackerB.recordFailure(STREAM, GROUP, '1-0')).resolves.toBe(3);
+  });
+
+  it('should key the counter per stream + group + entry id, not just entry id', async () => {
+    const client = buildCounterClient();
+    const tracker = new RecoveryAttemptTracker(client);
+
+    await tracker.recordFailure(STREAM, GROUP, '1-0');
+    await tracker.recordFailure('events.master.deletion', 'master-deletion-offer-pause', '1-0');
+
+    await expect(tracker.recordFailure(STREAM, GROUP, '1-0')).resolves.toBe(2);
+  });
+
+  it('should fire the crossing at the documented threshold, not one past it', async () => {
+    const client = buildCounterClient();
+    const tracker = new RecoveryAttemptTracker(client);
     let firedAt = 0;
 
     for (let i = 0; i < MAX_RECOVERY_ATTEMPTS + 3; i += 1) {
-      const attempts = tracker.recordFailure('1-0');
+      const attempts = await tracker.recordFailure(STREAM, GROUP, '1-0');
       if (tracker.justCrossedThreshold(attempts)) {
         firedAt = attempts;
       }
@@ -176,32 +243,15 @@ describe('RecoveryAttemptTracker', () => {
     expect(firedAt).toBe(MAX_RECOVERY_ATTEMPTS);
   });
 
-  it('should evict the least-recently-failed id, keeping the longest-stuck one tracked', () => {
-    // A plain Map `set` does not reorder, which would evict the entry stuck
-    // longest — precisely the one whose alarm is worth keeping.
-    const tracker = new RecoveryAttemptTracker();
-    tracker.recordFailure('oldest');
-
-    for (let i = 0; i < MAX_TRACKED_ATTEMPTS - 1; i += 1) {
-      tracker.recordFailure(`filler-${i}`);
-    }
-
-    // Touching 'oldest' again must move it to the tail...
-    tracker.recordFailure('oldest');
-    // ...so this overflow evicts a filler, not it.
-    tracker.recordFailure('newcomer');
-
-    expect(tracker.recordFailure('oldest')).toBe(3);
-  });
-
-  it('should report the threshold crossing exactly once', () => {
+  it('should report the threshold crossing exactly once', async () => {
     // A poison entry recurs by definition, so alarming every pass is alert
     // fatigue on the channel meant to carry real incidents.
-    const tracker = new RecoveryAttemptTracker();
+    const client = buildCounterClient();
+    const tracker = new RecoveryAttemptTracker(client);
     const crossings: number[] = [];
 
     for (let i = 0; i < MAX_RECOVERY_ATTEMPTS + 5; i += 1) {
-      const attempts = tracker.recordFailure('1-0');
+      const attempts = await tracker.recordFailure(STREAM, GROUP, '1-0');
       if (tracker.justCrossedThreshold(attempts)) {
         crossings.push(attempts);
       }
@@ -210,13 +260,33 @@ describe('RecoveryAttemptTracker', () => {
     expect(crossings).toEqual([MAX_RECOVERY_ATTEMPTS]);
   });
 
+  it('should report hasReachedThreshold as true at and past the threshold, unlike the one-time crossing flag', async () => {
+    // This is the retriable predicate the terminal-write path gates on: a
+    // failed stream_dead_letters insert on attempt 10 must still be eligible
+    // to retry the dead-letter write on attempt 11, even though the one-time
+    // alarm (justCrossedThreshold) has already fired and will not fire again.
+    const client = buildCounterClient();
+    const tracker = new RecoveryAttemptTracker(client);
+
+    for (let i = 0; i < MAX_RECOVERY_ATTEMPTS - 1; i += 1) {
+      const attempts = await tracker.recordFailure(STREAM, GROUP, '1-0');
+      expect(tracker.hasReachedThreshold(attempts)).toBe(false);
+    }
+
+    const atThreshold = await tracker.recordFailure(STREAM, GROUP, '1-0');
+    expect(atThreshold).toBe(MAX_RECOVERY_ATTEMPTS);
+    expect(tracker.hasReachedThreshold(atThreshold)).toBe(true);
+
+    const pastThreshold = await tracker.recordFailure(STREAM, GROUP, '1-0');
+    expect(tracker.hasReachedThreshold(pastThreshold)).toBe(true);
+  });
+
   it('should be generous enough that a transient failure is not treated as poison', () => {
     // An alarm threshold, not a retry budget: a handler failing on a database
     // blip must be allowed to succeed on a later pass.
     expect(MAX_RECOVERY_ATTEMPTS).toBeGreaterThanOrEqual(5);
   });
 });
-
 describe('readOwnPending', () => {
   it('should scope the XPENDING scan to this consumer', async () => {
     const client = buildClient();

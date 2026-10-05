@@ -154,6 +154,11 @@
       "require": "./dist/events/index.js",
       "default": "./dist/events/index.js"
     },
+    "./events/orm-entities": {
+      "types": "./dist/events/orm-entities.d.ts",
+      "require": "./dist/events/orm-entities.js",
+      "default": "./dist/events/orm-entities.js"
+    },
     "./events/testing": {
       "types": "./dist/events/testing/index.d.ts",
       "require": "./dist/events/testing/index.js",

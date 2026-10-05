@@ -64,7 +64,26 @@ describe('SyncJobsPage', () => {
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // The poison-entries section below the jobs list has its own loading
+    // region, so the jobs list's one is picked out by its label.
+    const jobsLoading = screen.getByText('Loading sync jobs…').closest('[role="status"]');
+    expect(jobsLoading).toBeInTheDocument();
+  });
+
+  it('should announce each list by name when the jobs and poison entries are both loading', () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      streamDeadLetters: {
+        list: vi.fn().mockReturnValue(new Promise(() => {})),
+        count: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    const announcements = screen.getAllByRole('status').map((region) => region.textContent);
+    expect(announcements).toEqual(['Loading sync jobs…', 'Loading poison stream entries…']);
   });
 
   it('should show jobs table when data loads', async () => {

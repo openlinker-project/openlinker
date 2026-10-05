@@ -40,9 +40,13 @@ import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoici
 import type { InvoiceRecord, InvoiceRecordFilters, InvoiceStatus } from '@openlinker/core/invoicing';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationRecordNotFoundException,
   IFiscalRegistrationService,
+  selectHandoverArtefact,
+  summarizeFiscalArtefacts,
 } from '@openlinker/core/fiscalization';
 import type {
+  FiscalArtefact,
   FiscalRegistrationListFilters,
   FiscalRegistrationRecord,
   FiscalRegistrationStatus,
@@ -342,6 +346,28 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     return (await this.buildViews([orderId], true)).get(orderId) ?? null;
   }
 
+  async getReceiptHandoverArtefact(orderId: string): Promise<FiscalArtefact | null> {
+    // The SAME winner the projection names, so a surface that offered "open the
+    // receipt" off `getForOrders` is served that receipt and not another one.
+    const view = (await this.buildViews([orderId], false)).get(orderId);
+    const document = view?.document ?? null;
+    if (document === null || document.kind !== 'fiscal-receipt' || document.status !== 'registered') {
+      return null;
+    }
+    let record: FiscalRegistrationRecord;
+    try {
+      record = await this.fiscalRegistrations.getById(document.identity.recordId);
+    } catch (error) {
+      // A record gone between the projection read and this one is a receipt
+      // that no longer exists - the route's advertised 404, not a 500.
+      if (error instanceof FiscalRegistrationRecordNotFoundException) {
+        return null;
+      }
+      throw error;
+    }
+    return selectHandoverArtefact(record.artefacts);
+  }
+
   /**
    * Which document kind an order with NO record is routed to.
    *
@@ -578,6 +604,9 @@ function toRankedInvoice(record: InvoiceRecord): RankedRecord {
 }
 
 function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
+  // The count is read off the summaries so the two are one fact: a future
+  // filter on the summaries cannot leave the count describing a different list.
+  const artefacts = summarizeFiscalArtefacts(record.artefacts);
   return {
     orderId: record.orderId,
     connectionId: record.connectionId,
@@ -591,7 +620,8 @@ function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
       failureReason: record.failureReason,
       // `0` on a registered row is a SUCCESS - a pure reporting regime returns
       // identifiers and no artefact at all.
-      artefactCount: record.artefacts?.length ?? 0,
+      artefactCount: artefacts?.length ?? 0,
+      artefacts,
       identity: toIdentity({
         recordId: record.id,
         connectionId: record.connectionId,

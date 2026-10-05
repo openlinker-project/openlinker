@@ -10,7 +10,7 @@
  *
  * @module apps/web/src/pages/settings
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../shared/api/api-error';
@@ -46,6 +46,8 @@ function view(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     inventorySweepBudget: numeric(100, 2000, 20_000, 'Headroom is the point.'),
     sweepPageSize: numeric(100, 100, 500, 'Ids are joined into a query string.'),
     deletionAuditBudget: numeric(100, 2000, 20_000, 'A 41.7-day cycle is what this is for.'),
+    syncJobRetentionDays: numeric(30, 365, 365, 'Bounded 30-365 days (D16).'),
+    syncJobDeadRetentionDays: numeric(90, 365, 365, 'Bounded 30-365 days (D16).'),
     deletionAuditCadence: { value: '0 * * * *', source: 'default' },
     deletionAuditAlwaysEnabled: true,
     cadenceAppliesAt: 'next-scheduler-start',
@@ -80,6 +82,20 @@ function view(overrides: Record<string, unknown> = {}): Record<string, unknown> 
         absoluteMax: 20_000,
         default: 100,
         envVar: 'OL_MASTER_PRODUCT_RECONCILE_PAGE_LIMIT',
+      },
+      syncJobRetentionDays: {
+        min: 30,
+        recommendedMax: 365,
+        absoluteMax: 365,
+        default: 30,
+        envVar: 'OL_SYNC_JOB_RETENTION_DAYS',
+      },
+      syncJobDeadRetentionDays: {
+        min: 30,
+        recommendedMax: 365,
+        absoluteMax: 365,
+        default: 90,
+        envVar: 'OL_SYNC_JOB_DEAD_RETENTION_DAYS',
       },
     },
     ...overrides,
@@ -382,5 +398,324 @@ describe('OperationalSettingsPage', () => {
     expect(
       await screen.findByText(/clamped when the request is built/),
     ).toBeInTheDocument();
+  });
+
+  describe('job retention (#2946, D16)', () => {
+    it('should render both retention values with their provenance', async () => {
+      renderPage({
+        get: vi.fn().mockResolvedValue(
+          view({
+            syncJobRetentionDays: { value: 45, source: 'setting' },
+            syncJobDeadRetentionDays: { value: 120, source: 'env' },
+          }),
+        ),
+      });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      const dead = await screen.findByRole('spinbutton', {
+        name: 'Days a permanently-failed sync job is kept',
+      });
+      expect(succeeded).toHaveValue(45);
+      expect(dead).toHaveValue(120);
+    });
+
+    it('should save only the retention fields, independently of the sweep-pacing form', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          syncJobRetentionDays: 60,
+          syncJobDeadRetentionDays: 90,
+        });
+      });
+      // The sweep-pacing budgets must never be swept up into this save.
+      expect(update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ catalogueSweepBudget: expect.anything() }),
+      );
+    });
+
+    it('should put a rejected retention value beside its own control', async () => {
+      const update = vi.fn().mockRejectedValue(
+        new ApiError('Bad Request', 400, {
+          message: ['syncJobRetentionDays must not be greater than 200'],
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      await user.clear(succeeded);
+      await user.type(succeeded, '300');
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      expect(
+        await screen.findByText('syncJobRetentionDays must not be greater than 200'),
+      ).toBeInTheDocument();
+    });
+
+    // The 30-365 window is enforced in the field before it reaches the API:
+    // an out-of-range number does not move the slider, says why, and is
+    // clamped to the nearest end when the field is left.
+    it('should refuse a retention value outside 30-365 and clamp it before saving', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      const slider = screen.getByRole('slider', { name: 'Days a completed sync job is kept' });
+      await user.clear(succeeded);
+      await user.type(succeeded, '500');
+
+      expect(
+        await screen.findByText(
+          /Enter a whole number from 30 to 365\. Leaving the field sets it to 365\./,
+        ),
+      ).toBeInTheDocument();
+      expect(slider).not.toHaveValue('500');
+
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          syncJobRetentionDays: 365,
+          syncJobDeadRetentionDays: 90,
+        });
+      });
+      expect(succeeded).toHaveValue(365);
+    });
+
+    it('should keep the slider and the number box in step both ways', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const box = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+      const slider = screen.getByRole('slider', { name: 'Products per catalogue run' });
+
+      fireEvent.change(slider, { target: { value: '1520' } });
+      expect(box).toHaveValue(1500);
+      expect(await screen.findByText('changed from 500')).toBeInTheDocument();
+
+      await user.clear(box);
+      await user.type(box, '730');
+      expect(slider).toHaveValue('730');
+
+      fireEvent.keyDown(slider, { key: 'ArrowRight' });
+      expect(box).toHaveValue(750);
+    });
+
+    it('should offer no retention save until something changes', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      expect(screen.queryByRole('button', { name: 'Save retention' })).not.toBeInTheDocument();
+
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      expect(screen.getByRole('button', { name: 'Save retention' })).toBeEnabled();
+    });
+
+    it('should keep a pacing edit when retention is saved', async () => {
+      const get = vi
+        .fn()
+        .mockResolvedValueOnce(view())
+        .mockResolvedValue(
+          view({
+            syncJobRetentionDays: { ...numeric(60, 365, 365, 'Bounded.'), source: 'setting' },
+            updatedAt: '2026-10-04T12:00:00.000Z',
+          }),
+        );
+      const user = userEvent.setup();
+      renderPage({ get });
+
+      const catalogue = await screen.findByRole('spinbutton', {
+        name: 'Products per catalogue run',
+      });
+      await user.clear(catalogue);
+      await user.type(catalogue, '900');
+
+      const succeeded = screen.getByRole('spinbutton', { name: 'Days a completed sync job is kept' });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+      await user.click(screen.getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: 'Save retention' })).not.toBeInTheDocument();
+      });
+      expect(catalogue).toHaveValue(900);
+      expect(screen.getByText('changed from 500')).toBeInTheDocument();
+    });
+  });
+
+  describe('summary rail', () => {
+    function rail(): HTMLElement {
+      return screen.getByRole('complementary', { name: 'Summary of these settings' });
+    }
+
+    function railGroup(name: string): HTMLElement {
+      return within(rail()).getByRole('region', { name });
+    }
+
+    it('should summarise every section of the page, in page order', async () => {
+      renderPage();
+
+      await screen.findByRole('complementary', { name: 'Summary of these settings' });
+      const titles = within(rail())
+        .getAllByRole('heading', { level: 4 })
+        .map((heading) => heading.textContent);
+      expect(titles).toEqual([
+        'Hosting',
+        'Catalogue sweep',
+        'Stock sweep',
+        'Deletion audit',
+        'Job retention',
+      ]);
+      expect(within(railGroup('Catalogue sweep')).getByText('Shop requests per run')).toBeInTheDocument();
+      expect(within(railGroup('Deletion audit')).getByText('Full audit cycle')).toBeInTheDocument();
+      expect(
+        within(railGroup('Job retention')).getByText('Completed jobs kept for'),
+      ).toBeInTheDocument();
+      expect(within(rail()).getByText('What these numbers cannot tell you')).toBeInTheDocument();
+    });
+
+    it('should show before and after on a changed row only, and mark its group edited', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const numberBox = await screen.findByRole('spinbutton', { name: 'Products per catalogue run' });
+      await user.clear(numberBox);
+      await user.type(numberBox, '1500');
+
+      const catalogue = railGroup('Catalogue sweep');
+      const row = within(catalogue).getByText('Products per run').closest('.pacing-rail__row');
+      expect(row).toHaveAttribute('data-changed', 'true');
+      expect(row).toHaveTextContent('500→changes to1500');
+      expect(within(catalogue).getByText('edited')).toBeInTheDocument();
+
+      const stockRow = within(railGroup('Stock sweep'))
+        .getByText('Products per run')
+        .closest('.pacing-rail__row');
+      expect(stockRow).toHaveAttribute('data-changed', 'false');
+      expect(within(railGroup('Stock sweep')).queryByText('edited')).not.toBeInTheDocument();
+    });
+
+    it('should show a retention change in the rail as days', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const succeeded = await screen.findByRole('spinbutton', {
+        name: 'Days a completed sync job is kept',
+      });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      const row = within(railGroup('Job retention'))
+        .getByText('Completed jobs kept for')
+        .closest('.pacing-rail__row');
+      expect(row).toHaveTextContent('30 days→changes to60 days');
+    });
+
+    it('should save the pacing set from the rail footer, through the confirmation', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const numberBox = await screen.findByRole('spinbutton', { name: 'Products per stock run' });
+      await user.clear(numberBox);
+      await user.type(numberBox, '300');
+
+      expect(within(rail()).getByText('1 unsaved change')).toBeInTheDocument();
+      await user.click(within(rail()).getByRole('button', { name: 'Save changes' }));
+      const confirm = await screen.findByRole('dialog');
+      await user.click(within(confirm).getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({ inventorySweepBudget: 300 });
+      });
+    });
+
+    it('should save retention from the rail footer without a confirmation', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update });
+
+      const failed = await screen.findByRole('spinbutton', {
+        name: 'Days a permanently-failed sync job is kept',
+      });
+      await user.clear(failed);
+      await user.type(failed, '120');
+      await user.click(within(rail()).getByRole('button', { name: 'Save retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          syncJobRetentionDays: 30,
+          syncJobDeadRetentionDays: 120,
+        });
+      });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('should scroll to a section when its rail heading is clicked', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await screen.findByRole('complementary', { name: 'Summary of these settings' });
+      const target = document.getElementById('pacing-deletions');
+      expect(target).not.toBeNull();
+      const scrollIntoView = vi.fn();
+      (target as HTMLElement).scrollIntoView = scrollIntoView;
+
+      await user.click(within(rail()).getByRole('link', { name: 'Deletion audit' }));
+
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  describe('unsaved-changes bar', () => {
+    it('should not exist while nothing has changed', async () => {
+      renderPage();
+
+      await screen.findByRole('button', { name: 'Save changes' });
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument();
+    });
+
+    it('should count pacing and retention changes together and open the pacing confirmation', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      const catalogue = await screen.findByRole('spinbutton', {
+        name: 'Products per catalogue run',
+      });
+      await user.clear(catalogue);
+      await user.type(catalogue, '900');
+      const succeeded = screen.getByRole('spinbutton', { name: 'Days a completed sync job is kept' });
+      await user.clear(succeeded);
+      await user.type(succeeded, '60');
+
+      const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+      expect(within(bar).getByText('2 unsaved changes')).toBeInTheDocument();
+
+      await user.click(within(bar).getByRole('button', { name: 'Save' }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    });
   });
 });
