@@ -646,7 +646,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true },
+        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true, parcelProfile: null },
       ]);
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -659,6 +659,7 @@ describe('OrdersController', () => {
         processorKind: 'ol_managed_carrier',
         processorConnectionId: 'conn-inpost',
         processorAvailable: true,
+        parcelProfile: null,
       });
       expect(result.items[1].deliveryResolution).toBeUndefined();
     });
@@ -686,7 +687,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([
         { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
@@ -729,7 +730,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
 
@@ -910,6 +911,7 @@ describe('OrdersController', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
 
       const result = await controller.getOrder('ol_order_shipped');
@@ -923,6 +925,7 @@ describe('OrdersController', () => {
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
         processorAvailable: true,
+        parcelProfile: null,
       });
     });
 
@@ -953,6 +956,7 @@ describe('OrdersController', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
       deliveryRider.resolve.mockResolvedValue({
         rider: 'not-connected',
