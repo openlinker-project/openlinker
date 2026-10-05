@@ -458,7 +458,11 @@ export class ConnectionController {
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
-  @ApiResponse({ status: 409, description: 'Connection is not disabled' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Connection is not disabled, its adapter cannot be archived, or another connection still uses it as its catalog (reason "master-catalog-referenced", with the referrers listed)',
+  })
   async archive(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser

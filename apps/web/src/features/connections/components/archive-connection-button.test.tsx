@@ -7,6 +7,7 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import { ArchiveConnectionButton } from './archive-connection-button';
 
 const disabledConnection = { ...sampleConnection, status: 'disabled' as const };
@@ -73,6 +74,73 @@ describe('ArchiveConnectionButton (#3657)', () => {
 
     expect(await screen.findByText('Connection is active; disable it first')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Archive connection' })).toBeInTheDocument();
+  });
+
+  it('should name the connections to re-pair when the connection is still used as a catalog', async () => {
+    const archive = vi.fn().mockRejectedValue(
+      new ApiError('Connection is the catalog connection of "Allegro PL", "Erli"', 409, {
+        statusCode: 409,
+        error: 'ConnectionInUseException',
+        message: 'Connection is the catalog connection of "Allegro PL", "Erli"',
+        reason: 'master-catalog-referenced',
+        referrers: [
+          { id: 'allegro-1', name: 'Allegro PL' },
+          { id: 'erli-1', name: 'Erli' },
+        ],
+      })
+    );
+    const apiClient = createMockApiClient({ connections: { archive } });
+    renderWithProviders(<ArchiveConnectionButton connection={disabledConnection} />, {
+      apiClient,
+      ...adminSession,
+    });
+    await openDialog();
+
+    await userEvent.type(
+      screen.getByLabelText(`Type "${disabledConnection.name}" to confirm`),
+      disabledConnection.name
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Archive connection' }));
+
+    expect(await screen.findByText('Other connections still use this catalog')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Allegro PL' })).toHaveAttribute(
+      'href',
+      '/connections/allegro-1/edit'
+    );
+    expect(screen.getByRole('link', { name: 'Erli' })).toHaveAttribute(
+      'href',
+      '/connections/erli-1/edit'
+    );
+    expect(
+      screen.getByText('Change their catalog pairing first, then archive this connection.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Unable to archive connection')).not.toBeInTheDocument();
+  });
+
+  it('should show the server message for a 409 that carries no catalog referrers', async () => {
+    const archive = vi.fn().mockRejectedValue(
+      new ApiError('Connection is active; disable it before archiving', 409, {
+        statusCode: 409,
+        message: 'Connection is active; disable it before archiving',
+      })
+    );
+    const apiClient = createMockApiClient({ connections: { archive } });
+    renderWithProviders(<ArchiveConnectionButton connection={disabledConnection} />, {
+      apiClient,
+      ...adminSession,
+    });
+    await openDialog();
+
+    await userEvent.type(
+      screen.getByLabelText(`Type "${disabledConnection.name}" to confirm`),
+      disabledConnection.name
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Archive connection' }));
+
+    expect(
+      await screen.findByText('Connection is active; disable it before archiving')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Other connections still use this catalog')).not.toBeInTheDocument();
   });
 
   it('should not archive anything when the operator backs out', async () => {

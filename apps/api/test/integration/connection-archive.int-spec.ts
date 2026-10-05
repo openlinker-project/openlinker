@@ -18,6 +18,7 @@ import { createPrestashopWizardConnectionDto } from './fixtures/connection.fixtu
 import { getConnectionById } from './helpers/test-database.helper';
 import { loginAsAdmin } from './helpers/test-auth.helper';
 import { IntegrationCredentialOrmEntity } from '@openlinker/core/integrations/orm-entities';
+import { ConnectionOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
@@ -145,6 +146,45 @@ describe('Connection archive (#3657)', () => {
     const row = await getConnectionById(dataSource, created.body.id);
     expect(row?.status).toBe('active');
     expect(row?.credentialsRef.startsWith('db:')).toBe(true);
+  });
+
+  it('should refuse with 409 naming the referrers while another connection uses it as its catalog', async () => {
+    const http = harness.getHttp();
+    const dataSource = harness.getDataSource();
+    const token = await loginAsAdmin(http, dataSource);
+    const { id, credentialRef } = await createDisabledConnection(token);
+    // Written straight to the table: the refusal reads the JSONB value, and the
+    // marketplace's own create-time validation is not what is under test.
+    const connections = dataSource.getRepository(ConnectionOrmEntity);
+    const marketplace = await connections.save(
+      connections.create({
+        platformType: 'allegro',
+        name: 'Allegro PL',
+        status: 'active',
+        config: { masterCatalogConnectionId: id },
+        credentialsRef: '',
+        enabledCapabilities: ['OfferManager'],
+      })
+    );
+
+    const refused = await http
+      .patch(`/v1/connections/${id}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(409);
+
+    expect(refused.body).toMatchObject({
+      error: 'ConnectionInUseException',
+      reason: 'master-catalog-referenced',
+      referrers: [{ id: marketplace.id, name: 'Allegro PL' }],
+    });
+    expect((await getConnectionById(dataSource, id))?.status).toBe('disabled');
+    expect(await findCredentialRow(dataSource, credentialRef)).not.toBeNull();
+
+    await connections.update({ id: marketplace.id }, { config: {} });
+    await http
+      .patch(`/v1/connections/${id}/archive`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
   });
 
   it('should refuse to set archived or leave archived through a plain PATCH', async () => {

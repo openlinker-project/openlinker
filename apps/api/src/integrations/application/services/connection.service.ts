@@ -23,11 +23,13 @@ import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
 import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
+  ConnectionInUseException,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -1223,6 +1225,15 @@ export class ConnectionService implements IConnectionService {
         `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`
       );
     }
+    // The pairing is a JSONB value with no FK, so only this service can refuse
+    // (the LocationInUseError precedent, #2316). Archiving the target would
+    // drop it from list(), and the referrers' mapping pages resolve their
+    // catalog through that list - they would report a pairing that is correct
+    // as "could not be found".
+    const referrers = await this.findMasterCatalogReferrers(connectionId);
+    if (referrers.length > 0) {
+      throw new ConnectionInUseException(connectionId, 'master-catalog-referenced', referrers);
+    }
     // Credential first, row second. A crash between the two leaves a disabled
     // connection pointing at a missing credential - it fails loudly on enable
     // and archiving again finishes the job. The reverse order could leave an
@@ -1242,6 +1253,22 @@ export class ConnectionService implements IConnectionService {
     this.httpTransportFactory.evict(connectionId);
     this.logger.log(`Connection archived: ${connection.id} (${connection.name})`);
     return connection;
+  }
+
+  /**
+   * Non-archived connections whose `config.masterCatalogConnectionId` names
+   * `connectionId`. `list()` already leaves archived rows out, which is the
+   * point: an archived referrer is invisible too, so it blocks nothing.
+   */
+  private async findMasterCatalogReferrers(connectionId: string): Promise<ConnectionReferrer[]> {
+    const connections = await this.connectionPort.list();
+    return connections
+      .filter(
+        (candidate) =>
+          candidate.id !== connectionId &&
+          candidate.config?.['masterCatalogConnectionId'] === connectionId
+      )
+      .map((candidate) => ({ id: candidate.id, name: candidate.name }));
   }
 
   async restore(connectionId: string): Promise<Connection> {

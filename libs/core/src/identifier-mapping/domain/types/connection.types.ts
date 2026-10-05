@@ -288,3 +288,20 @@ export interface ConnectionFilters {
    */
   status?: ConnectionStatus;
 }
+
+/**
+ * Why a connection cannot be archived while something still points at it
+ * (#3657 review). One value today; the union leaves room for the next
+ * referrer that gains a refusal without changing the 409 body's shape.
+ *
+ * - `master-catalog-referenced` — another non-archived connection names it as
+ *   `config.masterCatalogConnectionId`.
+ */
+export const ConnectionInUseReasonValues = ['master-catalog-referenced'] as const;
+export type ConnectionInUseReason = (typeof ConnectionInUseReasonValues)[number];
+
+/** A connection that still references the one being archived. */
+export interface ConnectionReferrer {
+  id: string;
+  name: string;
+}

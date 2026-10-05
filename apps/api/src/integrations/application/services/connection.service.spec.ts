@@ -20,6 +20,7 @@ import type {
 import {
   CONNECTION_PORT_TOKEN,
   Connection,
+  ConnectionInUseException,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
 import type {
@@ -2245,6 +2246,66 @@ describe('ConnectionService', () => {
       );
 
     describe('archive', () => {
+      beforeEach(() => {
+        connectionPort.list.mockResolvedValue([]);
+      });
+
+      const marketplaceNaming = (
+        id: string,
+        name: string,
+        masterCatalogConnectionId: string
+      ): Connection =>
+        new Connection(
+          id,
+          'allegro',
+          name,
+          'active',
+          { masterCatalogConnectionId },
+          'db:other-ref',
+          new Date(),
+          new Date(),
+          undefined,
+          ['OfferManager']
+        );
+
+      it('should refuse with ConnectionInUseException naming the referrers and change nothing when another connection uses it as its catalog', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.list.mockResolvedValue([
+          marketplaceNaming('allegro-1', 'Allegro PL', 'connection-123'),
+          marketplaceNaming('erli-1', 'Erli', 'connection-123'),
+          marketplaceNaming('allegro-2', 'Allegro CZ', 'some-other-shop'),
+        ]);
+
+        const refusal = await service.archive('connection-123').catch((error: unknown) => error);
+
+        expect(refusal).toBeInstanceOf(ConnectionInUseException);
+        expect(refusal).toMatchObject({
+          connectionId: 'connection-123',
+          reason: 'master-catalog-referenced',
+          referrers: [
+            { id: 'allegro-1', name: 'Allegro PL' },
+            { id: 'erli-1', name: 'Erli' },
+          ],
+        });
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should archive when no other connection uses it as its catalog', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.list.mockResolvedValue([
+          marketplaceNaming('allegro-2', 'Allegro CZ', 'some-other-shop'),
+        ]);
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
+        // Unfiltered list(): archived referrers are left out by the port, so
+        // they never block an archive.
+        expect(connectionPort.list).toHaveBeenCalledWith();
+      });
+
       it('should delete the credential, clear the ref and set archived when the connection is disabled', async () => {
         connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
         connectionPort.update.mockResolvedValue(withState('archived', ''));

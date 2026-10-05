@@ -11,7 +11,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { ConnectionController } from './connection.controller';
 import { ConnectionService } from '../application/services/connection.service';
-import { Connection } from '@openlinker/core/identifier-mapping';
+import { Connection, ConnectionInUseException } from '@openlinker/core/identifier-mapping';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import {
@@ -518,6 +518,17 @@ describe('ConnectionController', () => {
       expect(result).toBeInstanceOf(ConnectionResponseDto);
       expect(result.status).toBe('archived');
       expect(result.credentialsStored).toBe(false);
+    });
+
+    it('should let ConnectionInUseException reach the global filter when the connection is still a catalog', async () => {
+      // The 409 body (reason + referrers) is ConnectionExceptionFilter's job;
+      // a local catch here would protect this route alone and drop the referrers.
+      const refusal = new ConnectionInUseException('connection-123', 'master-catalog-referenced', [
+        { id: 'connection-allegro', name: 'Allegro PL' },
+      ]);
+      service.archive.mockRejectedValue(refusal);
+
+      await expect(controller.archive('connection-123', mockAdminUser)).rejects.toBe(refusal);
     });
 
     it('should restore through the service and report the credentials as re-enterable', async () => {

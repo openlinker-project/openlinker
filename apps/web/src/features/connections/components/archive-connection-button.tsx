@@ -11,6 +11,10 @@
  * plus re-entering credentials - enough of a cost to make the operator name
  * what they are about to hide, not just click twice.
  *
+ * A connection another connection still uses as its catalog is refused (409,
+ * `master-catalog-referenced`); the dialog then lists those connections with a
+ * link to each one's edit page, where the catalog pairing is changed.
+ *
  * Visibility is the caller's decision (both call sites branch on
  * `connections:write` and on `status === 'disabled'`). The component owns
  * interactivity only.
@@ -19,8 +23,10 @@
  * @see {@link RestoreConnectionButton} for the way back
  */
 import { useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import type { Connection } from '../api/connections.types';
 import { useArchiveConnectionMutation } from '../hooks/use-archive-connection-mutation';
+import { readCatalogReferrers } from '../lib/archive-connection-refusal';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Alert } from '../../../shared/ui/alert';
@@ -50,6 +56,9 @@ export function ArchiveConnectionButton({
   const [typedName, setTypedName] = useState('');
 
   const nameMatches = typedName.trim() === connection.name.trim();
+  // Named, not summarised: once archived this connection leaves every list,
+  // so the operator must learn here which connections to re-pair.
+  const catalogReferrers = readCatalogReferrers(archiveConnection.error);
 
   function handleOpenChange(open: boolean): void {
     setIsOpen(open);
@@ -105,7 +114,21 @@ export function ArchiveConnectionButton({
                 autoComplete="off"
               />
             </FormField>
-            {archiveConnection.error ? (
+            {catalogReferrers ? (
+              <Alert tone="error" title="Other connections still use this catalog">
+                <p>{`"${connection.name}" is the catalog connection of:`}</p>
+                <ul className="archive-connection-dialog__list">
+                  {catalogReferrers.map((referrer) => (
+                    <li key={referrer.id}>
+                      <Link className="link" to={`/connections/${referrer.id}/edit`}>
+                        {referrer.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                <p>Change their catalog pairing first, then archive this connection.</p>
+              </Alert>
+            ) : archiveConnection.error ? (
               <Alert tone="error" title="Unable to archive connection">
                 {archiveConnection.error.message}
               </Alert>
