@@ -74,6 +74,10 @@ import {
 } from '@openlinker/core/shipping';
 
 import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
+import {
   deriveBenchWorkState,
   isBenchWorkSelectable,
   isClaimableByViewer,
@@ -139,7 +143,11 @@ export class BenchParcelService implements IBenchParcelService {
     // the same shape `showToPacker: false` notes and tags are structurally
     // absent from.
     @Inject(ORDER_NOTE_SERVICE_TOKEN)
-    private readonly notes: IOrderNoteService
+    private readonly notes: IOrderNoteService,
+    // #3525 - the SAME notifier the desktop worklist's manual close uses.
+    // Best-effort by contract; never able to fail the scan.
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -242,18 +250,37 @@ export class BenchParcelService implements IBenchParcelService {
     // request that caused it. The two are equal here by construction — this
     // call performed the close — and sourcing it from the recorded fact makes
     // that structural rather than a thing to re-derive when reading.
+    let responseState = result.state;
     if (result.outcome === 'verified' && result.state.closedAt !== null) {
       const packedBy = result.state.packedByUserId;
       if (packedBy !== null) await this.recordOrderPacked(work.orderId, packedBy);
+
+      // #3525 — the SAME instant this call closed the parcel is the instant
+      // reported to the order's channel. `work.assignedConnectionId` is
+      // non-null here by construction: `loadBenchWork` above already refused
+      // any work not assigned to one of THIS bench's own packing executors.
+      if (work.assignedConnectionId !== null) {
+        await this.parcelClosureNotifier.notifyParcelClosed({
+          workId: work.id,
+          connectionId: work.assignedConnectionId,
+          closedAt: result.state.closedAt,
+        });
+        // The notify's own dispatch-relay claim/release bumps the work's
+        // `version` AFTER the close returned its state, so that state's token
+        // is already stale: the packer's very next reopen — the only
+        // correction after a mis-scan shut the box — would bounce as
+        // `not-closed`. Re-read so the response carries the current token.
+        responseState = await this.verification.getState(work.id);
+      }
     }
 
     return {
       outcome: result.outcome,
       reason: result.outcome === 'refused' ? result.reason : null,
-      // Re-projected off the state the write itself returned, never a second
-      // read: a client that just changed the parcel must not be handed a view
-      // assembled from a racing query.
-      parcel: await this.project(work, result.state),
+      // Re-projected off the state the write itself returned, never a racing
+      // read — except after a close, where this call's own follow-up writes
+      // (above) moved the token and only a re-read can return a usable one.
+      parcel: await this.project(work, responseState),
     };
   }
 

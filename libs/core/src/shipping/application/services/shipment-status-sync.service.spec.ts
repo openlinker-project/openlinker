@@ -5,7 +5,9 @@
  * gate (a `generated` shipment backfills `Shipment.trackingNumber` but notifies
  * nobody), the at-most-once claim on `Shipment.waybillRelayedAt`, the
  * terminal-status guard (`cancelled`/`failed` suppress the relay but `delivered`
- * must NOT), and the transient-vs-structural split on `unsupported`.
+ * must NOT), the transient-vs-structural split on `unsupported`, and the
+ * retryable `delivered` relay (#3506, G02-7): its stamp/failure bookkeeping and
+ * the bounded re-drive pass.
  *
  * @module libs/core/src/shipping/application/services
  */
@@ -18,6 +20,13 @@ import type {
 import { Shipment } from '../../domain/entities/shipment.entity';
 import type { ShipmentRepositoryPort } from '../../domain/ports/shipment-repository.port';
 import type { TrackingSnapshot } from '../../domain/types/tracking-snapshot.types';
+import {
+  DELIVERED_RELAY_MAX_AGE_MS,
+  DELIVERED_RELAY_MAX_FAILURES,
+  WAYBILL_RELAY_MAX_FAILURES,
+  DELIVERED_RELAY_REDRIVE_LIMIT,
+  DELIVERED_RELAY_RETRY_AFTER_MS,
+} from '../types/shipment-status-sync.types';
 import { ShipmentStatusSyncService } from './shipment-status-sync.service';
 
 const CARRIER = 'conn-inpost';
@@ -54,6 +63,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.fulfillmentWorkId ?? null,
     // #2073 waybill-relay failure history — none by default.
     overrides.waybillRelayFailure ?? null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
@@ -92,10 +103,16 @@ describe('ShipmentStatusSyncService', () => {
       // concurrent trigger or an already-relayed waybill.
       claimWaybillRelay: jest.fn().mockResolvedValue(true),
       releaseWaybillRelay: jest.fn().mockResolvedValue(undefined),
+      giveUpWaybillRelay: jest.fn().mockResolvedValue(undefined),
       clearWaybillRelayFailures: jest.fn().mockResolvedValue(undefined),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
+      // #3506: nothing owed by default, so the re-drive pass is a no-op unless
+      // a test stages candidates.
+      findDeliveredRelayPending: jest.fn().mockResolvedValue([]),
+      markDeliveredRelayed: jest.fn().mockResolvedValue(true),
+      recordDeliveredRelayFailure: jest.fn().mockResolvedValue(1),
     } as unknown as jest.Mocked<ShipmentRepositoryPort>;
 
     relay = {
@@ -133,6 +150,8 @@ describe('ShipmentStatusSyncService', () => {
         failed: 0,
         total: 0,
         nextOffset: 0,
+        deliveredRelaysRetried: 0,
+        deliveredRelaysRecovered: 0,
       });
       expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
     });
@@ -213,6 +232,251 @@ describe('ShipmentStatusSyncService', () => {
       getTracking.mockResolvedValue(snapshot({ status: 'in-transit' }));
       await service.sync(CARRIER, { limit: 50 });
       expect(shipments.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('delivered lifecycle relay (#3526)', () => {
+    it('relays `delivered` with the carrier instant on the delivered transition', async () => {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: 'ALREADY-KNOWN' });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      const deliveredAt = new Date('2026-05-28T12:00:00.000Z');
+      // No NEW tracking number in this snapshot — the delivered relay must
+      // fire independent of whatever the waybill logic decides, unlike the
+      // waybill relay above which needs a null→value transition to run at
+      // all.
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', trackingNumber: 'ALREADY-KNOWN', deliveredAt }),
+      );
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: s.orderId,
+        originConnectionId: CARRIER,
+        event: { type: 'delivered', deliveredAt },
+      });
+    });
+
+    it('does NOT relay delivered for a non-delivered transition', async () => {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: null });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'cancelled' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(relay.relay).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: expect.objectContaining({ type: 'delivered' }) }),
+      );
+    });
+
+    it('does NOT re-relay delivered when the shipment already reads delivered (redelivered webhook)', async () => {
+      // The guard is the SAME status comparison that already gates
+      // `patch.status` — once the row is `delivered`, a redelivered webhook
+      // observes `snapshot.status === shipment.status` and fires nothing.
+      const s = makeShipment({ status: 'delivered', deliveredAt: new Date('2026-05-28') });
+      shipments.findByProviderShipmentId.mockResolvedValue(s);
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', deliveredAt: new Date('2026-05-28') }),
+      );
+
+      await service.syncOneByProviderShipmentId(CARRIER, 'prov-abc');
+
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(shipments.update).not.toHaveBeenCalled();
+    });
+
+    it('fires from the webhook-triggered path too', async () => {
+      const s = makeShipment({ status: 'in-transit' });
+      shipments.findByProviderShipmentId.mockResolvedValue(s);
+      const deliveredAt = new Date('2026-05-28T12:00:00.000Z');
+      getTracking.mockResolvedValue(snapshot({ status: 'delivered', deliveredAt }));
+
+      await service.syncOneByProviderShipmentId(CARRIER, 'prov-abc');
+
+      expect(relay.relay).toHaveBeenCalledWith(
+        expect.objectContaining({ event: { type: 'delivered', deliveredAt } }),
+      );
+    });
+
+    it('never throws when the relay itself throws — the rest of the patch still applies', async () => {
+      relay.relay.mockRejectedValue(new Error('identifier resolution exploded'));
+      const s = makeShipment({ status: 'dispatched', trackingNumber: 'KNOWN' });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', trackingNumber: 'KNOWN', deliveredAt: new Date('2026-05-28') }),
+      );
+
+      await expect(service.sync(CARRIER, { limit: 50 })).resolves.toBeDefined();
+      const patch = shipments.update.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(patch.status).toBe('delivered');
+    });
+  });
+
+  describe('delivered relay bookkeeping (#3506, G02-7)', () => {
+    const deliveredAt = new Date('2026-05-28T12:00:00.000Z');
+
+    async function syncIntoDelivered(): Promise<Shipment> {
+      const s = makeShipment({ status: 'dispatched', trackingNumber: 'KNOWN' });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(
+        snapshot({ status: 'delivered', trackingNumber: 'KNOWN', deliveredAt }),
+      );
+      await service.sync(CARRIER, { limit: 50 });
+      return s;
+    }
+
+    it('should stamp the relay as done when every participant applies it', async () => {
+      const s = await syncIntoDelivered();
+
+      expect(shipments.markDeliveredRelayed).toHaveBeenCalledWith(s.id, expect.any(Date));
+      expect(shipments.recordDeliveredRelayFailure).not.toHaveBeenCalled();
+    });
+
+    it('should stamp the relay as done when a participant structurally declines it', async () => {
+      // Allegro / WooCommerce / Erli have no delivered state — a decline, not a
+      // failure: there is nothing a retry could change.
+      relay.relay.mockResolvedValue(
+        relayResult({
+          connectionId: SOURCE,
+          outcome: 'unsupported',
+          unsupportedReason: 'no-capability',
+          detail: 'no delivered member',
+        }),
+      );
+
+      const s = await syncIntoDelivered();
+
+      expect(shipments.markDeliveredRelayed).toHaveBeenCalledWith(s.id, expect.any(Date));
+      expect(shipments.recordDeliveredRelayFailure).not.toHaveBeenCalled();
+    });
+
+    it('should count a failure and leave the relay owed when a participant rejects it', async () => {
+      // G02-7 Run 1: the PrestaShop destination could not resolve a delivered
+      // state and rejected — previously logged and never retried.
+      relay.relay.mockResolvedValue(
+        relayResult(
+          { connectionId: SOURCE, outcome: 'unsupported', unsupportedReason: 'no-capability' },
+          { connectionId: PS1, outcome: 'rejected', detail: 'no delivered state' },
+        ),
+      );
+
+      const s = await syncIntoDelivered();
+
+      expect(shipments.recordDeliveredRelayFailure).toHaveBeenCalledWith(s.id, expect.any(Date));
+      expect(shipments.markDeliveredRelayed).not.toHaveBeenCalled();
+      // The terminal status still lands — the retry is the re-drive pass's job.
+      const patch = shipments.update.mock.calls[0]?.[1] as Record<string, unknown>;
+      expect(patch.status).toBe('delivered');
+    });
+
+    it('should count a failure when a participant adapter cannot be resolved', async () => {
+      relay.relay.mockResolvedValue(
+        relayResult({ connectionId: PS1, outcome: 'unsupported', unsupportedReason: 'adapter-unresolved' }),
+      );
+
+      const s = await syncIntoDelivered();
+
+      expect(shipments.recordDeliveredRelayFailure).toHaveBeenCalledWith(s.id, expect.any(Date));
+    });
+
+    it('should count a failure when the relay throws before reaching anyone', async () => {
+      relay.relay.mockRejectedValue(new Error('identifier resolution exploded'));
+
+      const s = await syncIntoDelivered();
+
+      expect(shipments.recordDeliveredRelayFailure).toHaveBeenCalledWith(s.id, expect.any(Date));
+      expect(shipments.markDeliveredRelayed).not.toHaveBeenCalled();
+    });
+
+    it('should still apply the patch when the bookkeeping write itself fails', async () => {
+      shipments.markDeliveredRelayed.mockRejectedValue(new Error('db blip'));
+
+      const s = await syncIntoDelivered();
+
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ status: 'delivered' }),
+      );
+    });
+  });
+
+  describe('delivered relay re-drive pass (#3506, G02-7)', () => {
+    const deliveredAt = new Date('2026-05-28T12:00:00.000Z');
+    const owed = (): Shipment =>
+      makeShipment({ id: 'ol_shipment_owed', status: 'delivered', deliveredAt });
+
+    beforeEach(() => {
+      shipments.findMany.mockResolvedValue({ items: [], total: 0 });
+    });
+
+    it('should re-drive an owed delivered relay and stamp it when it lands on a later tick', async () => {
+      shipments.findDeliveredRelayPending.mockResolvedValue([owed()]);
+
+      const result = await service.sync(CARRIER, { limit: 50 });
+
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: CARRIER,
+        event: { type: 'delivered', deliveredAt },
+      });
+      expect(shipments.markDeliveredRelayed).toHaveBeenCalledWith(
+        'ol_shipment_owed',
+        expect.any(Date),
+      );
+      expect(result).toMatchObject({ deliveredRelaysRetried: 1, deliveredRelaysRecovered: 1 });
+    });
+
+    it('should count another failure when the re-driven relay is rejected again', async () => {
+      shipments.findDeliveredRelayPending.mockResolvedValue([owed()]);
+      relay.relay.mockResolvedValue(relayResult({ connectionId: PS1, outcome: 'rejected' }));
+
+      const result = await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.recordDeliveredRelayFailure).toHaveBeenCalledWith(
+        'ol_shipment_owed',
+        expect.any(Date),
+      );
+      expect(shipments.markDeliveredRelayed).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ deliveredRelaysRetried: 1, deliveredRelaysRecovered: 0 });
+    });
+
+    it('should bound the candidate read by page size, failure count, age and back-off', async () => {
+      const before = Date.now();
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.findDeliveredRelayPending).toHaveBeenCalledTimes(1);
+      const [connectionId, options] = shipments.findDeliveredRelayPending.mock.calls[0];
+      expect(connectionId).toBe(CARRIER);
+      expect(options.limit).toBe(DELIVERED_RELAY_REDRIVE_LIMIT);
+      expect(options.maxFailures).toBe(DELIVERED_RELAY_MAX_FAILURES);
+      const after = Date.now();
+      expect(options.deliveredSince.getTime()).toBeGreaterThanOrEqual(before - DELIVERED_RELAY_MAX_AGE_MS);
+      expect(options.deliveredSince.getTime()).toBeLessThanOrEqual(after - DELIVERED_RELAY_MAX_AGE_MS);
+      expect(options.lastFailureBefore.getTime()).toBeGreaterThanOrEqual(before - DELIVERED_RELAY_RETRY_AFTER_MS);
+      expect(options.lastFailureBefore.getTime()).toBeLessThanOrEqual(after - DELIVERED_RELAY_RETRY_AFTER_MS);
+    });
+
+    it('should log a give-up once when a failure exhausts the bound', async () => {
+      shipments.findDeliveredRelayPending.mockResolvedValue([owed()]);
+      relay.relay.mockResolvedValue(relayResult({ connectionId: PS1, outcome: 'rejected' }));
+      shipments.recordDeliveredRelayFailure.mockResolvedValue(DELIVERED_RELAY_MAX_FAILURES);
+      const error = jest
+        .spyOn((service as unknown as { logger: { error: (message: string) => void } }).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(error.mock.calls.some((call) => String(call[0]).includes('delivered_relay_given_up'))).toBe(true);
+    });
+
+    it('should not fail the sync when the candidate read throws', async () => {
+      shipments.findDeliveredRelayPending.mockRejectedValue(new Error('db down'));
+
+      await expect(service.sync(CARRIER, { limit: 50 })).resolves.toMatchObject({
+        deliveredRelaysRetried: 0,
+        deliveredRelaysRecovered: 0,
+      });
     });
   });
 
@@ -501,6 +765,64 @@ describe('ShipmentStatusSyncService', () => {
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
       return s;
     }
+
+    function failingFor(count: number) {
+      return {
+        count,
+        firstFailedAt: new Date('2026-10-04T10:00:00.000Z'),
+        lastFailedAt: new Date('2026-10-05T09:30:00.000Z'),
+        reason: 'rejected' as const,
+        connectionId: PS1,
+      };
+    }
+
+    it('should give the relay up, keep the claim and save the number when a failure reaches the bound (#3506)', async () => {
+      // One participant that never accepts used to re-send every other
+      // participant the dispatch on each tick, forever (seen live on e2e).
+      relay.relay.mockResolvedValue({
+        targets: [
+          { connectionId: SOURCE, outcome: 'applied' },
+          { connectionId: PS1, outcome: 'rejected', detail: 'WooCommerce network error' },
+        ],
+      });
+      const s = makeShipment({
+        status: 'dispatched',
+        trackingNumber: null,
+        waybillRelayFailure: failingFor(WAYBILL_RELAY_MAX_FAILURES - 1),
+      });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
+      const result = await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.giveUpWaybillRelay).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ reason: 'rejected', connectionId: PS1 }),
+      );
+      expect(shipments.releaseWaybillRelay).not.toHaveBeenCalled();
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ trackingNumber: 'NEW456' }),
+      );
+      expect(result.failed).toBe(0);
+    });
+
+    it('should keep releasing the claim while the failures are under the bound', async () => {
+      relay.relay.mockResolvedValue(relayResult({ connectionId: PS1, outcome: 'rejected' }));
+      const s = makeShipment({
+        status: 'dispatched',
+        trackingNumber: null,
+        waybillRelayFailure: failingFor(WAYBILL_RELAY_MAX_FAILURES - 2),
+      });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledTimes(1);
+      expect(shipments.giveUpWaybillRelay).not.toHaveBeenCalled();
+      expect(shipments.update).not.toHaveBeenCalled();
+    });
 
     it('records the FIRST failing participant when several are unreachable', async () => {
       // The log keeps every target; the column carries one name so an operator

@@ -98,6 +98,18 @@ import type { DeliveryIntent } from '../../../domain/types/delivery-intent.types
 // only in the migration holds in production and silently not in tests, and an
 // anonymous `@Check` carries a hash name there rather than this one.
 @Check('CHK_shipments_waybill_relay_failure_count', '"waybillRelayFailureCount" >= 0')
+// Owed-delivered-relay lookup (#3506, G02-7). Partial over a predicate that
+// references `status`, which the reservation-consume index above warns
+// against — answered here rather than inherited: `delivered` is TERMINAL, so a
+// row enters this index exactly once (delivered while the relay is still owed)
+// and leaves it exactly once (stamped), never on an ordinary lifecycle write.
+// The relay that discovers the transition stamps before the status write
+// lands, so a first-time success never enters it at all. Declared here as well
+// as in the migration, under the same name, for the `synchronize`-built harness.
+@Index('IDX_shipments_delivered_relay_pending', ['connectionId', 'createdAt'], {
+  where: `"status" = 'delivered' AND "deliveredRelayedAt" IS NULL`,
+})
+@Check('CHK_shipments_delivered_relay_failure_count', '"deliveredRelayFailureCount" >= 0')
 export class ShipmentOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;
@@ -239,6 +251,21 @@ export class ShipmentOrmEntity {
   // before any participant is known. Per-target retry state is #861.
   @Column({ type: 'uuid', nullable: true })
   waybillRelayLastFailureConnectionId!: string | null;
+
+  // Delivered-relay bookkeeping (#3506, G02-7) — see `DeliveredRelayState`.
+  // Written only by `markDeliveredRelayed` / `recordDeliveredRelayFailure`; no
+  // counterpart on `UpdateShipmentInput`, so the ordinary patch path cannot
+  // stomp these. Plain `timestamp`, matching every other timestamp on this
+  // table. The count's `default` is on the decorator as well as the migration
+  // for the `synchronize`-built harness, and the insert path assigns 0 anyway.
+  @Column({ type: 'timestamp', nullable: true })
+  deliveredRelayedAt!: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  deliveredRelayFailureCount!: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deliveredRelayLastFailureAt!: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

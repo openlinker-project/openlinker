@@ -1139,6 +1139,34 @@ export class PrestashopOrderProcessorManagerAdapter
           return { outcome: 'applied' };
         }
 
+        case 'delivered': {
+          // `OrderStatusValues` already carries `'delivered'` natively (the
+          // very status `cancelled` above reads to refuse a regressive
+          // transition), so the shop CAN express it — through the same
+          // operator-configured `order_state_mappings` every other status
+          // uses. An unresolvable mapping surfaces via the SAME
+          // `PrestashopOrderStateUnresolvedException` path `dispatched`
+          // already takes, which the outer catch reports as `rejected` — an
+          // operator-actionable configuration gap, never `unsupported`,
+          // because the shop's own vocabulary already has a slot for this.
+          await this.updateFulfillment({
+            externalOrderId: event.externalOrderId,
+            status: 'delivered',
+          });
+          return { outcome: 'applied' };
+        }
+
+        case 'in-progress': {
+          // The neutral "work accepted / picking" fact maps to PrestaShop's
+          // native `processing` status — the same reasoning as `delivered`
+          // above.
+          await this.updateFulfillment({
+            externalOrderId: event.externalOrderId,
+            status: 'processing',
+          });
+          return { outcome: 'applied' };
+        }
+
         default: {
           // Unreachable in-tree: the binding is the compile break when an
           // `OrderLifecycleEvent` member is added without an arm here (#2286).

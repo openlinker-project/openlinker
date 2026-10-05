@@ -34,6 +34,8 @@ function makeShipment(): Shipment {
     null,
     // #2073 waybill-relay failure history — none in this fixture.
     null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
