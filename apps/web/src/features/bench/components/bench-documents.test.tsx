@@ -704,7 +704,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
             getReceiptLink: vi.fn().mockResolvedValue({ url: 'https://receipts.example.test/r/16240' }),
           },
         });
-        renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={1} />, {
+        renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={1} closed={false} />, {
           apiClient,
           sessionAdapter: createAuthenticatedSessionAdapter({
             ...PACKER,
