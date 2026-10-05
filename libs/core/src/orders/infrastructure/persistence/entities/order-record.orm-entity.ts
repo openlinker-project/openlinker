@@ -498,18 +498,28 @@ export class OrderRecordOrmEntity {
    * `fulfillment-block-reason.types.ts`.
    *
    * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
-   * the union is enforced in TypeScript. `isFulfillmentBlockReason` exists for
-   * the read surface to coerce with — note that nothing reads the column YET
-   * (the operator surface is a later issue), so this is a guard made available,
-   * not one currently running. Whoever adds that read must call it: a value
-   * written by a newer release and then rolled back has to read as "nothing
-   * recognised" rather than widening the union at runtime.
+   * the union is enforced in TypeScript. Since #3485 the column is READ:
+   * `OrderRecordRepository.toDomain` coerces it with `isFulfillmentBlockReason`
+   * onto `OrderRecord.fulfillmentBlock`, so a value written by a newer release
+   * and then rolled back reads as "nothing recognised" rather than widening the
+   * union at runtime.
    *
-   * **No index, deliberately** — same call as `omsAttention` above: nothing
-   * filters on it yet, and the consuming issue adds one against its own data.
+   * **No index, deliberately.** #3485's `fulfillment.work.rerouteSweep` filters
+   * on it, keyset-paged by `internalOrderId`; at v1 volumes (a handful of held
+   * orders) the primary key serves that page. A partial index on the reroutable
+   * reasons is the follow-up if held-order counts grow.
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockReason!: string | null;
+
+  /**
+   * When the current fulfilment hold began (#3485 review). Stamped only on
+   * none -> held by `updateFulfillmentBlock`, so it survives a change of reason.
+   * `null` for a row held before the column existed. Not round-tripped through
+   * `toOrm` (single writer).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  fulfillmentBlockedAt!: Date | null;
 
   /**
    * PII-free elaboration of the reason above (ids and causes only). Free text,
