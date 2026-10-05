@@ -179,6 +179,18 @@ export function summarizeFiscalArtefacts(
  */
 export interface FiscalTransactionLine {
   name: string;
+  /**
+   * The OL-internal product id this line sells, when the caller knows it —
+   * the same id `OrderItem.productId` carries, and the same optional field
+   * `InvoiceLine` gained for the same reason.
+   *
+   * It exists so a caller that has just registered a receipt can ask the
+   * master to re-read the stock the receipt moved. It is NOT the catalogue
+   * key a provider files the line under: `sku` remains that, because a fiscal
+   * provider addresses its own catalogue by symbol. Optional and
+   * provider-ignorable — a shipping charge has no product.
+   */
+  productId?: string;
   quantity: number;
   /** Buyer-paid gross price of ONE unit. */
   unitPriceGross: number;

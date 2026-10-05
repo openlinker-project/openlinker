@@ -341,6 +341,9 @@ describe('SchedulerService', () => {
         // below: `IDX_fulfillment_works_request_status` carries no connection
         // axis, and a dispatch nobody answered is stalled whoever holds it.
         'fulfillment-relay-sweep',
+        // #3485 — same global scope: re-drives work held because the router
+        // could not place it, so it names no platform either.
+        'fulfillment-reroute-sweep',
         'fulfillment-timeout-sweep',
         // Also core-owned and platform-free, and the most so of any task here:
         // it has neither a platform nor a capability, because its subject is a

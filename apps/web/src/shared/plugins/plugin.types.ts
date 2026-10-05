@@ -31,10 +31,10 @@ import type { RouteObject } from 'react-router-dom';
 import type { RefinementCtx, ZodType } from 'zod';
 
 import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
-import type { Role } from '../../app/nav-registry.types';
+import type { GroupRoleGate } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
-import type { InvoiceRecord } from '../../features/invoicing';
+import type { CorrectionSuggestedLine, InvoiceRecord } from '../../features/invoicing';
 import type { StructuredError } from '../types/structured-error.types';
 
 /**
@@ -56,12 +56,19 @@ export interface NavContribution {
   label: string;
   end?: boolean;
   /**
-   * Declarative role gate (#610). When set, the contribution is dropped for
-   * sessions whose role doesn't match — same UI-hide semantics as the AI
-   * group's `requiresRole: 'admin'` on `BASE_NAV_GROUPS`. Authorization is
-   * still enforced backend-side; this only hides the nav affordance.
+   * Declarative ADMIN-ONLY gate (#610). When set, the contribution is dropped
+   * for non-admin sessions — same UI-hide semantics as the AI group's
+   * `requiresRole: 'admin'` on `BASE_NAV_GROUPS`. Authorization is still
+   * enforced backend-side; this only hides the nav affordance.
+   *
+   * Typed {@link GroupRoleGate} rather than the wider `Role` union (#3107
+   * review):
+   * `merge-nav-contributions.ts` tests `requiresRole === 'admin'`, so this said
+   * "dropped for sessions whose role doesn't match" while a contribution
+   * declaring `'operator'` was in fact shown to EVERY role. A plugin author
+   * gets a compile error now instead of a gate that silently does nothing.
    */
-  requiresRole?: Role;
+  requiresRole?: GroupRoleGate;
 }
 
 /**
@@ -126,6 +133,13 @@ export interface PlatformSetupCard {
   description: string;
   to: string;
   badge: string;
+  /**
+   * Render the card as the platform's own product rather than a third-party
+   * integration (the OpenLinker OMS): listed first and styled apart. It also
+   * makes the card appear in the picker even when the platform is
+   * `hideFromCreateConnection` (hidden from the by-hand advanced form only).
+   */
+  featured?: boolean;
 }
 
 /**
@@ -568,6 +582,14 @@ export interface InvoiceCorrectionFlowProps {
   connection?: Connection;
   onClose: () => void;
   onCorrectionIssued: (correctionInvoiceId: string) => void;
+  /**
+   * Lines a return's own correction proposal already resolved (#3090) — the
+   * mount site on the return-detail page supplies these from
+   * `ReturnCorrectionProposal.lines`; the order-detail mount omits the field
+   * entirely, and every implementer's `CorrectionLineGrid` degrades to
+   * showing every invoice line unprefilled when it is absent.
+   */
+  suggestedLines?: CorrectionSuggestedLine[];
 }
 
 /**
@@ -595,6 +617,15 @@ export interface PlatformContribution {
   displayName: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
+  /**
+   * When true, the platform is NOT offered by "Add new connection" (the
+   * picker or the advanced form's platform dropdown), while its existing
+   * connections still render normally everywhere else. For a platform whose
+   * connection is created by its own setup flow rather than by hand — the
+   * OpenLinker OMS, created by `/settings/packing` (#3457), where a bare
+   * connection with none of the flow's other writes would pack nothing.
+   */
+  hideFromCreateConnection?: boolean;
   /**
    * When true, the inline create-connection form replaces its submit
    * affordances with an Alert linking to the guided setup wizard (today:

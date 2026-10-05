@@ -12,7 +12,7 @@
  * lose its place in a ruleset. The picker marks it instead. The page's
  * enablement gate is a different question and reads the `listActiveLocations`
  * probe, because a gate answered from this capped page would refuse authoring
- * on an install whose first 200 rows happen to be retired ones.
+ * on an install whose first 100 rows happen to be retired ones.
  *
  * ## The page size is a bound, and the bound is REPORTED
  *
@@ -29,8 +29,11 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { SourcingRuleLocationOption } from '../components/sourcing-rule-dialog';
 
-/** One page is enough for a picker; a ruleset ranking hundreds is not a shape this screen serves. */
-export const SOURCING_RULE_LOCATION_PAGE_SIZE = 200;
+/**
+ * One page is enough for a picker; a ruleset ranking hundreds is not a shape this screen serves.
+ * Must not exceed `ListLocationsQueryDto`'s `@Max(100)`, or every read is a 400 (#3634).
+ */
+export const SOURCING_RULE_LOCATION_PAGE_SIZE = 100;
 
 export const sourcingRuleLocationsQueryKey = ['oms', 'sourcing-rules', 'locations'] as const;
 

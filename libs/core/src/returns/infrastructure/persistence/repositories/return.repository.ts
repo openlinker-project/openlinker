@@ -368,9 +368,11 @@ export class ReturnRepository implements ReturnRepositoryPort {
    *   observe whether a parcel arrived; re-ingestion resetting a received line
    *   to `advised` would also violate `CHK_return_lines_quantity_ordering` in
    *   the cases where it did not silently lose custody state.
-   * - `resolvedOrderLineId` — core-resolved attribution, never adapter-supplied
-   *   (the type carries no field for it), and always `null` this wave since
-   *   `order_records` has no lines table to point at.
+   * - `resolvedOrderLineId` / `resolvedProductId` / `resolvedVariantId` —
+   *   core-resolved attribution, never adapter-supplied (the type carries no
+   *   field for any of them); `claimOrderLineResolution` (#3450) is their one
+   *   writer, always `null` on ingestion since `order_records` has no lines
+   *   table to point at.
    * - `createdAt` on both tables, and the line's `id` — each records a first
    *   write. Churning a line id would re-key a parcel physically in transit.
    *
@@ -1048,12 +1050,21 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * conjunct is the whole guarantee, so two concurrent resolves cannot both
    * win and a re-ingestion can never move an answer that already stands.
    */
-  async claimOrderLineResolution(returnLineId: string, orderLineId: string): Promise<boolean> {
+  async claimOrderLineResolution(
+    returnLineId: string,
+    orderLineId: string,
+    catalogIdentity?: { productId?: string; variantId?: string }
+  ): Promise<boolean> {
     try {
       const result = await this.lines
         .createQueryBuilder()
         .update(ReturnLineOrmEntity)
-        .set({ resolvedOrderLineId: orderLineId, updatedAt: () => 'now()' })
+        .set({
+          resolvedOrderLineId: orderLineId,
+          resolvedProductId: catalogIdentity?.productId ?? null,
+          resolvedVariantId: catalogIdentity?.variantId ?? null,
+          updatedAt: () => 'now()',
+        })
         .where('"id" = :id', { id: returnLineId })
         .andWhere('"resolvedOrderLineId" IS NULL')
         .execute();
@@ -1061,6 +1072,36 @@ export class ReturnRepository implements ReturnRepositoryPort {
       return (result.affected ?? 0) > 0;
     } catch (error) {
       throw new ReturnPersistenceError('claimOrderLineResolution', error);
+    }
+  }
+
+  /**
+   * See the port. A NARROWER guard than `claimOrderLineResolution`'s —
+   * `resolvedOrderLineId IS NOT NULL AND resolvedProductId IS NULL` — because
+   * this claims the catalogue-identity columns alone, on a row whose order
+   * line was already resolved before those columns existed.
+   */
+  async backfillResolvedCatalogIdentity(
+    returnLineId: string,
+    catalogIdentity: { productId?: string; variantId?: string }
+  ): Promise<boolean> {
+    try {
+      const result = await this.lines
+        .createQueryBuilder()
+        .update(ReturnLineOrmEntity)
+        .set({
+          resolvedProductId: catalogIdentity.productId ?? null,
+          resolvedVariantId: catalogIdentity.variantId ?? null,
+          updatedAt: () => 'now()',
+        })
+        .where('"id" = :id', { id: returnLineId })
+        .andWhere('"resolvedOrderLineId" IS NOT NULL')
+        .andWhere('"resolvedProductId" IS NULL')
+        .execute();
+
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      throw new ReturnPersistenceError('backfillResolvedCatalogIdentity', error);
     }
   }
 
@@ -1228,6 +1269,8 @@ export class ReturnRepository implements ReturnRepositoryPort {
       entity.lineIndex,
       entity.externalLineId,
       entity.resolvedOrderLineId,
+      entity.resolvedProductId,
+      entity.resolvedVariantId,
       entity.offerId,
       entity.sku,
       entity.name,

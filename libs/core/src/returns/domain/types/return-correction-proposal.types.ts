@@ -45,7 +45,7 @@ export type ReturnCorrectionLineStatus = (typeof ReturnCorrectionLineStatusValue
 /**
  * Why a disposed line carries no proposal.
  *
- * Four values rather than one, because each is a DIFFERENT operator action
+ * Five values rather than one, because each is a DIFFERENT operator action
  * (#2231's rule: a closed union that can only say "excluded" tells an operator
  * nothing they can act on).
  *
@@ -63,12 +63,19 @@ export type ReturnCorrectionLineStatus = (typeof ReturnCorrectionLineStatusValue
  *   rule 1). OL does not know the goods were accepted back, so crediting for them
  *   would be a guess. The remediation is the same attestation a block already
  *   has, after which the proposal can be re-opened.
+ * - `ambiguous-invoice-line` (#3312) — the return line's order-line join is
+ *   itself unresolved, or it is resolved but no single invoice line can be
+ *   identified from it or from the line's name. The operator must check the
+ *   invoice by hand; this is never a picker — `status: 'ambiguous'` is retired
+ *   as a live outcome (#3091 kept the candidate-picker interaction itself
+ *   retired, and this reason is what replaces its only remaining producer).
  */
 export const ReturnCorrectionNoMatchReasonValues = [
   'no-line-name',
   'no-line-by-name',
   'quantity-exceeds-invoiced',
   'disposition-not-confirmed',
+  'ambiguous-invoice-line',
 ] as const;
 
 export type ReturnCorrectionNoMatchReason =

@@ -445,7 +445,11 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     // on it (#1905 — see `canRegenerateLabel`), not on status alone.
     ['draft', null, { generate: true, cancel: false, notify: false, download: false }],
     ['generated', 'prov-1', { generate: false, cancel: true, notify: true, download: true }],
-    ['dispatched', 'prov-1', { generate: false, cancel: false, notify: false, download: true }],
+    // Cancel is enabled since #3365: the automatic dispatch notification
+    // advances a shipment within seconds of the label being bought, so gating
+    // Cancel on `generated` alone meant an operator who bought the wrong label
+    // could not void it at all. The dialog warns what that leaves outstanding.
+    ['dispatched', 'prov-1', { generate: false, cancel: true, notify: false, download: true }],
     ['in-transit', 'prov-1', { generate: false, cancel: false, notify: false, download: true }],
     // `delivered` no longer offers Generate: the parcel arrived, so there is
     // nothing left to dispatch (#1905).

@@ -47,6 +47,18 @@ export {
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
 // Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
 // the guard; never getCapabilityAdapter('ReturnSourceReader').
+export type { OrderFulfillmentReadback } from './domain/ports/capabilities/order-fulfillment-readback.capability';
+export { isOrderFulfillmentReadback } from './domain/ports/capabilities/order-fulfillment-readback.capability';
+export type {
+  SourceFulfillmentReadback,
+  SourceFulfillmentReadbackOutcome,
+  SourceFulfillmentWaybill,
+} from './domain/types/source-fulfillment-readback.types';
+export {
+  SourceFulfillmentReadbackOutcomeValues,
+  unavailableSourceFulfillmentReadback,
+  unsupportedSourceFulfillmentReadback,
+} from './domain/types/source-fulfillment-readback.types';
 export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 // The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a
@@ -369,6 +381,7 @@ export type { OrderSummary } from './domain/order-summary-projection';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
+export type { HeldOrderRef } from './domain/ports/order-record-repository.port';
 
 // ADR-044 change proposals (#2333) — the Wave-2 gate. `OrderChangeRepositoryPort`
 // is deliberately NOT exported: it is intra-context, and a sibling reaches the
@@ -398,6 +411,12 @@ export type {
   PlaceOrderHoldInput,
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
+// #3455 — why the fulfilment intercept deliberately did not route an order.
+export {
+  FulfillmentRoutingSkipReasonValues,
+  isFulfillmentRoutingSkipReason,
+  type FulfillmentRoutingSkipReason,
+} from './domain/types/fulfillment-routing-eligibility.types';
 export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
 export { TestFixturesDisabledException } from './domain/exceptions/test-fixtures-disabled.exception';
 export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';
@@ -446,3 +465,4 @@ export { OrderChangesModule } from './order-changes.module';
 export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
+export * from './domain/types/order-discount-split.types';

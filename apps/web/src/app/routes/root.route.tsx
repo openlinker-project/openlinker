@@ -12,6 +12,7 @@
 import type { RouteObject } from 'react-router-dom';
 
 import { plugins } from '../../plugins';
+import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
 import { analyticsIndexRoute, analyticsLegacyRedirectRoute } from './analytics.route';
@@ -52,6 +53,7 @@ import {
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
+import { omsOnboardingRoute } from './oms-onboarding.route';
 import { whoDecidesRoute } from './who-decides.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
@@ -59,54 +61,60 @@ import { usersRoute } from './users.route';
 import { webhookDeliveriesRoute } from './webhook-deliveries.route';
 
 /**
- * Authenticated route children of `rootRoute`. Exported solely so the
- * route-lazy contract test can walk the full tree; this is NOT a runtime
- * API for other modules to consume. The runtime composition is the
- * `rootRoute.children` array at the bottom of this file.
+ * Authenticated route children of `rootRoute`, for a given state of the OMS
+ * routing UI flag (#3634). Exported solely so the route contract tests can walk
+ * the full tree with the flag on; this is NOT a runtime API for other modules
+ * to consume. The runtime composition is `coreChildren` below.
  */
-export const coreChildren: RouteObject[] = [
-  analyticsIndexRoute,
-  analyticsLegacyRedirectRoute,
-  insightsRoute,
-  ordersRoute,
-  productsRoute,
-  cursorsRoute,
-  duplicatePositionsRoute,
-  customersRoute,
-  listingsRoute,
-  shipmentsRoute,
-  returnsRoute,
-  fulfillmentRoute,
-  assignPackingWorkLegacyRedirectRoute,
-  automationsRoute,
-  invoicesRoute,
-  salesDocumentsListRoute,
-  connectionsRoute,
-  inventoryLocationsRoute,
-  adaptersRoute,
-  newConnectionRoute,
-  advancedNewConnectionRoute,
-  connectionDetailRoute,
-  connectionCategoryMappingsRoute,
-  connectionMappingsRoute,
-  connectionPricingSyncRoute,
-  editConnectionRoute,
-  jobsLogsRoute,
-  webhookDeliveriesRoute,
-  settingsRoute,
-  operationalSettingsRoute,
-  salesDocumentsRoute,
-  sourcingRulesRoute,
-  whoDecidesRoute,
-  promptTemplatesListRoute,
-  promptTemplateDetailRoute,
-  promptTemplatesLegacyListRedirectRoute,
-  promptTemplateLegacyDetailRedirectRoute,
-  aiProviderSettingsRoute,
-  mcpTokensRoute,
-  usersRoute,
-  devUiRoute,
-];
+export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
+  return [
+    analyticsIndexRoute,
+    analyticsLegacyRedirectRoute,
+    insightsRoute,
+    ordersRoute,
+    productsRoute,
+    cursorsRoute,
+    duplicatePositionsRoute,
+    customersRoute,
+    listingsRoute,
+    shipmentsRoute,
+    returnsRoute,
+    fulfillmentRoute,
+    assignPackingWorkLegacyRedirectRoute,
+    automationsRoute,
+    invoicesRoute,
+    salesDocumentsListRoute,
+    connectionsRoute,
+    ...(omsRoutingUiEnabled ? [inventoryLocationsRoute] : []),
+    adaptersRoute,
+    newConnectionRoute,
+    advancedNewConnectionRoute,
+    connectionDetailRoute,
+    connectionCategoryMappingsRoute,
+    connectionMappingsRoute,
+    connectionPricingSyncRoute,
+    editConnectionRoute,
+    jobsLogsRoute,
+    webhookDeliveriesRoute,
+    settingsRoute,
+    operationalSettingsRoute,
+    salesDocumentsRoute,
+    ...(omsRoutingUiEnabled ? [sourcingRulesRoute] : []),
+    omsOnboardingRoute,
+    whoDecidesRoute,
+    promptTemplatesListRoute,
+    promptTemplateDetailRoute,
+    promptTemplatesLegacyListRedirectRoute,
+    promptTemplateLegacyDetailRedirectRoute,
+    aiProviderSettingsRoute,
+    mcpTokensRoute,
+    usersRoute,
+    devUiRoute,
+  ];
+}
+
+/** The route tree as registered for this build. */
+export const coreChildren: RouteObject[] = buildCoreChildren(isOmsRoutingUiEnabled());
 
 const pluginChildren: RouteObject[] = plugins.flatMap((plugin) => plugin.build?.routes ?? []);
 

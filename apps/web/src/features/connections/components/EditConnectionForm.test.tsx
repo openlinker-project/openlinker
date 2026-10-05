@@ -78,6 +78,7 @@ describe('EditConnectionForm', () => {
   afterEach(() => {
     cleanup();
     mockDemoMode = false;
+    vi.unstubAllEnvs();
   });
 
   it('renders pre-filled form fields from the connection', () => {
@@ -142,6 +143,8 @@ describe('EditConnectionForm', () => {
   });
 
   it('shows the stockLocationOverride API error only as a field-level error, not also as the generic banner (#3207 review)', async () => {
+    // The override group is part of the OMS routing UI (#3634).
+    vi.stubEnv('VITE_OL_OMS_ROUTING_UI_ENABLED', 'true');
     // Pre-populate an already-open location-override group (#3206) so the
     // field-level error has somewhere to render, and reject the update with
     // the exact message shape `ConnectionService.validateStockLocationOverride`
@@ -170,7 +173,7 @@ describe('EditConnectionForm', () => {
       ],
       total: 1,
       page: 1,
-      limit: 200,
+      limit: 100,
     };
     const fieldErrorMessage = 'config.stockLocationOverride names an unknown location: ol_location_1';
     const apiClient = createMockApiClient({
@@ -232,7 +235,7 @@ describe('EditConnectionForm', () => {
       ],
       total: 1,
       page: 1,
-      limit: 200,
+      limit: 100,
     });
     const apiClient = createMockApiClient({
       connections: { getById: vi.fn().mockResolvedValue(connectionWithoutInventoryMaster) },
@@ -248,6 +251,39 @@ describe('EditConnectionForm', () => {
         screen.queryByLabelText("Assign a location to this connection's stock"),
       ).not.toBeInTheDocument(),
     );
+    expect(listLocations).not.toHaveBeenCalled();
+  });
+
+  it('should not offer the stock-location-override group, and should keep a stored override on save, when the OMS routing UI flag is off (#3634)', async () => {
+    const connectionWithOverride: Connection = {
+      ...sampleConnection,
+      config: { ...sampleConnection.config, stockLocationOverride: 'ol_location_1' },
+    };
+    const listLocations = vi.fn();
+    const updateFn = vi.fn().mockResolvedValue(connectionWithOverride);
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        getById: vi.fn().mockResolvedValue(connectionWithOverride),
+      },
+      inventory: { listLocations },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithOverride} />, { apiClient });
+
+    expect(
+      screen.queryByLabelText("Assign a location to this connection's stock"),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue(connectionWithOverride.name), {
+      target: { value: 'Renamed Store' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(updateFn).toHaveBeenCalled();
+    });
+    const [, submittedInput] = updateFn.mock.calls[0] as [string, { config: Record<string, unknown> }];
+    expect(submittedInput.config.stockLocationOverride).toBe('ol_location_1');
     expect(listLocations).not.toHaveBeenCalled();
   });
 

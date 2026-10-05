@@ -222,8 +222,52 @@ export interface ReturnRepositoryPort {
    * Note the column stays absent from BOTH halves of `upsertFromSource`: it is
    * core-resolved and must never be echoed from a source payload, which is why
    * this is its own narrow write rather than a field on the upsert input.
+   *
+   * `catalogIdentity` (#3450) denormalizes the winning order line's already-
+   * resolved `productId` / `variantId` onto the SAME row in the SAME
+   * statement — the `resolvedProductId` / `resolvedVariantId` columns — so
+   * restock target resolution can use them without a live order-snapshot
+   * read. Optional and independent of the claim guard: an omitted value
+   * simply leaves those two columns `NULL`, exactly as they were before this
+   * parameter existed.
    */
-  claimOrderLineResolution(returnLineId: string, orderLineId: string): Promise<boolean>;
+  claimOrderLineResolution(
+    returnLineId: string,
+    orderLineId: string,
+    catalogIdentity?: { productId?: string; variantId?: string }
+  ): Promise<boolean>;
+
+  /**
+   * Backfill catalogue identity onto a line that already carries a
+   * `resolvedOrderLineId` from BEFORE those two columns existed (#3450).
+   *
+   * A DIFFERENT claim from {@link claimOrderLineResolution}: that one's guard
+   * is `resolvedOrderLineId IS NULL`, which is exactly the state an
+   * already-resolved legacy line does NOT have, so it can never be re-entered
+   * through the normal path — `resolveOrderLinesForReturn` skips it as
+   * `alreadyResolved` before the claim is ever attempted. Without this second,
+   * narrower conditional UPDATE (`resolvedOrderLineId IS NOT NULL AND
+   * resolvedProductId IS NULL`), every return line resolved before this
+   * column existed would stay on the sku-only restock-target fallback
+   * forever — the exact bug #3450 reports, permanently unfixed for the
+   * historical backlog.
+   *
+   * The guard keys on `resolvedProductId` ALONE, deliberately asymmetric with
+   * the restock read (which requires both ids): a product-only resolution
+   * writes `resolvedVariantId = null` and is then permanently excluded from
+   * this pass, which is correct — re-backfilling would write the same nulls,
+   * and such a line takes the sku fallback by design. Do NOT "tighten" the
+   * guard to `resolvedVariantId IS NULL`: every product-only line would then
+   * match on every pass and the backfill would re-run forever.
+   *
+   * `false` is ordinary: a concurrent backfill already won, or the row was
+   * resolved by a later release that populated the columns already — nothing
+   * to do either way, not a failure.
+   */
+  backfillResolvedCatalogIdentity(
+    returnLineId: string,
+    catalogIdentity: { productId?: string; variantId?: string }
+  ): Promise<boolean>;
 
   /**
    * Stamp `authorizedAt` at most once (#2372).

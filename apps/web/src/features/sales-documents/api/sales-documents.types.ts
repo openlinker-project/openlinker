@@ -1,7 +1,7 @@
 /**
  * Sales Documents — view types (#2159)
  *
- * FE-local view model for the centralized "Settings → Sales documents" table.
+ * FE-local view model for the centralized "Settings -> Document routing" table.
  * Deliberately NOT imported from `@openlinker/core/sales-documents` — `apps/web`
  * never imports `@openlinker/core/*` (it talks to the API over HTTP only), so
  * the capability/kind vocabulary is mirrored here, matching the existing

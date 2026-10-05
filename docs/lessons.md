@@ -23,6 +23,59 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## `triggerAndWait` on a SWEEP waits for the fan-out, not for the work
+
+**Context**: an e2e asserting that a Subiekt model product carries the VAT rate
+its members agree on (#3365). The spec triggered `master.product.syncAll` via
+`jobs.triggerAndWait`, then read the product.
+
+**Problem**: it failed with "the model-key branch is not resolving" against a
+branch that was resolving perfectly - the rate landed about ninety seconds
+later. A budgeted sweep's job is to ENQUEUE children (#2218/#2593); the
+per-product syncs that actually read the rate drain afterwards, behind whatever
+the stack already had queued. `triggerAndWait` returns when the PARENT
+succeeds, and the parent succeeding means the children were enqueued. The
+failure message named the wrong culprit with total confidence, which is the
+expensive part: ten minutes went into reading an adapter that was correct.
+
+**Rule**: after triggering a sweep, POLL for the effect rather than reading it
+once. Key the poll on the marker that says the work HAPPENED (a `*ReadAt`
+column, a status transition) rather than on the value, so an honest "the master
+answered and named nothing" ends the poll instead of spinning it out. This
+applies to every `master.*.syncAll`, `master.product.reconcile` and
+`*.statusSync` trigger - anything whose handler fans out.
+
+**Applies to**: `apps/e2e/**` specs that call `SyncJobs.triggerAndWait` with a
+sweep job type.
+
+**Source**: #3365.
+
+---
+
+## A shared e2e fixture picker that pages BEFORE it filters answers about the wrong catalogue
+
+**Context**: `pickDriverProduct` in `apps/e2e/src/support/order-synthesis.ts`
+listed `{ limit: 50 }` across every connection and then filtered by the
+connection it had been handed.
+
+**Problem**: on a stack whose catalogue is mostly another master's, every
+candidate fell off the end of page one, and `synthesizeOrder` threw "found no
+catalogue product with a priced, EAN-complete variant" about a catalogue that
+had six of them. The error was about the pager, and it read as being about the
+data.
+
+**Rule**: when a support helper filters a paged read by a field the API can
+filter on, pass the filter to the API. A post-page filter turns "which page did
+this land on" into the answer, and the resulting failure message describes the
+operator's data rather than the query.
+
+**Applies to**: `apps/e2e/src/support/**` helpers that call a `list()` and then
+narrow the result.
+
+**Source**: #3365.
+
+---
+
 ## A push plan built from pre-rebase subjects silently drops commits made after it
 
 **Context**: the pack-bench stack (#3330-#3439). After rebasing fourteen
@@ -1895,3 +1948,249 @@ record file — currently `startSharedPrestashopContainer()` in
 `apps/api/test/integration/helpers/prestashop-container.helper.ts`.
 
 **Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+## A probe that skips the auth boundary proves nothing about auth
+
+**Context**: #3462. `SubiektConnectionTesterAdapter` verified a Subiekt connection with
+`GET /health`, and the same adapter backs the `subiekt.bridge.reachabilitySweep` job. Both
+Subiekt bridges deliberately exempt `/health` from their auth middleware so a load balancer or
+monitoring probe needs no credential.
+
+**Problem**: the probe therefore proved reachability and nothing else. A connection created with
+no bridge token got a green "Connection test passed - OK" and then failed `401` on its first
+invoice, because every `/api/*` route is closed until the token is configured. The wizard
+compounded it by calling the field optional, so the operator was told to leave it blank, told the
+setup was fine, and found out at the first real document. The sweep was blind to the same thing -
+a rotated bridge token is the likeliest way a working connection stops working, and the sweep kept
+reporting green through it.
+
+**Rule**: a connection test must exercise the same authorization the real work does. Probe a route
+that sits BEHIND the auth boundary and is a side-effect-free read, so any answer other than
+401/403 proves the credential works; assert the probed URL in the test, not the client method
+name, so swapping back to the unauthenticated route fails even if the method keeps its name. When
+a health endpoint is deliberately anonymous, that is a reason not to build a credential check on
+it - not a convenience.
+
+**Applies to**: every `ConnectionTesterPort` implementation, and any periodic reachability job
+built on one. Currently `libs/integrations/{subiekt,subiekt-nexo}/src/infrastructure/adapters/subiekt-connection-tester.adapter.ts`.
+
+**Source**: PR #3464, issue #3462.
+
+## Documentation can state the opposite of the code, and the test can agree with the documentation
+
+**Context**: #3463. Three Subiekt guides (`setup-guide.md`, `tutorial.md`, `runbook.md`) said the
+bridge credentials were *"hardcoded constants in the bridge, not read from an environment variable
+or config file - consult the bridge operator"*.
+
+**Problem**: `BridgeConfig.cs` resolves every key as env `OL_BRIDGE_*` -> `appsettings.json` ->
+built-in default, and the three credentials have no default at all, so the operator both CAN and
+MUST set them. The bridge's own `appsettings.example.json` said so in its `_readme`
+(*"choose your own"*), one directory away. Two independent sources of truth disagreed for months,
+and nothing noticed, because the connection test (see the lesson above) agreed with the wrong one.
+The guides also shipped an example `appsettings.json` that was the OTHER product's bridge schema
+with names swapped - every key wrong - and told the reader the public bridge repository was
+*"not yet published"*.
+
+**Rule**: when a document states a fact about a component's behaviour, cite where that behaviour is
+defined and read it. Prefer pointing at the authoritative artifact (`appsettings.example.json`, a
+port interface, a migration) over restating it in prose, because a restatement is a second copy
+that can drift. When a claim turns out to be wrong in the direction that blocks the reader, say so
+where it was: a one-line note that the previous text claimed X saves the next reader from
+concluding the correction is the mistake.
+
+**Applies to**: `libs/integrations/*/docs/**`, `docs/user-guide/**` - anywhere prose describes
+runtime behaviour defined in another repository or another language.
+
+**Source**: PR #3465, issue #3463.
+
+## Green locally does not mean green in the image, and a rebuilt stack may not include the service you changed
+
+**Context**: #3461 added a new workspace package (`libs/integrations/subiekt-nexo`) and a
+migration, then deployed to the demo stack to verify.
+
+**Problem**: two independent failures, both silent. The `Dockerfile` enumerates every workspace
+`package.json` by hand before `pnpm install`, so a new package is invisible to the image until it
+is named there - `pnpm lint`, `type-check` and every test pass locally while the image build dies
+on `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`. Separately, `docker compose build api worker web` does not
+rebuild `migrate`: it is its own service with its own `build.target` and its own image, so the
+migration ran from the previous build and the command still exited 0.
+
+**Rule**: adding a workspace package is a `Dockerfile` edit as well as a `tsconfig`/`plugins.ts`
+edit. Before concluding a deployment verified a change, confirm the container that performs it was
+one of the containers rebuilt - list the compose services and check each one's build target rather
+than rebuilding the ones whose names match the change. A zero exit code from a build or a compose
+command is not evidence the new code ran.
+
+**Applies to**: `Dockerfile`, `docker-compose.yml`, and any verification run on a locally built
+stack.
+
+**Source**: PR #3464.
+
+## TypeORM keys an applied migration by class NAME, so renumbering one makes it run again
+
+**Context**: while checking a suspected duplicate migration prefix, the demo database's
+`migrations` table was read directly.
+
+**Problem**: it contained BOTH `SplitSubiektGtIdentity1898000000000` and
+`SplitSubiektProductLines1898000000000` - two different classes at the same timestamp, both
+recorded as applied. TypeORM matches executed migrations by class name (`MigrationExecutor`), not
+by timestamp, so a duplicate prefix does not collide at runtime at all; it is caught only by
+`scripts/check-migration-timestamps.mjs` rule 3, and only within ONE tree. Two branches can each
+carry a different migration at the same prefix and both pass their own lint - the failure appears
+when the second one merges.
+
+The corollary bites in the other direction: renumbering an already-merged migration changes its
+class name, so TypeORM treats it as new and runs it again. On any environment that already applied
+it, a plain `ALTER TABLE ... ADD COLUMN` then fails on "column already exists".
+
+**Rule**: before picking a migration prefix, scan every remote ref, not just the current branch and
+`origin/main` - the guard cannot see the branch that will collide with yours. If a merged migration
+must be renumbered, make its `up()` and `down()` idempotent (`ADD COLUMN IF NOT EXISTS` /
+`DROP COLUMN IF EXISTS`) in the same commit, and say in a comment why that one is idempotent so the
+pattern is not copied without cause. Check whether the colliding branch has already renumbered
+before doing it yourself: a stale branch can keep a prefix its own base has already moved off.
+
+**Applies to**: `apps/api/src/migrations/**`, `scripts/check-migration-timestamps.mjs`.
+
+**Source**: #3461 (investigated; renumbering proved unnecessary once the colliding branch turned
+out to be three commits behind its own base).
+
+## An order field has to be named in THREE allowlists, and each omission fails differently
+
+Adding a field to an entity and to every mapper that produces it is not enough to make it survive.
+`OrderRecordService.persistOrder` projects order items through an explicit allowlist on the way
+INTO the `orderSnapshot` jsonb, and `orderFromReadySnapshot.readItems` projects them through a
+second one on the way back OUT. A field named in only one of the two is silently dropped - and
+which half is missing decides which paths break, so the bug looks path-dependent rather than
+structural.
+
+It has now happened twice in the same function. #2254 lost the per-line tax rate on the write side,
+which left every MANUAL issuance path rehydrating a rate-less order while the auto-issue path -
+which composes from the live `Order` and never reads the snapshot - was fine. #3365 lost the
+source-reported gross unit price the same way: the mapper read it, the adapter carried it, the
+ingestion service carried it, the reader was updated to accept it, and the writer was not, so a
+PrestaShop order reached the destination adapter with no gross price and was refused for not
+reporting one it HAD reported.
+
+Both times every unit test passed. Both times it was found by a live run. That is not a coincidence:
+a unit test naturally exercises one side of the pair, and the round trip is the only thing that
+exercises both.
+
+**There is a THIRD list, and it is the worst one to miss.** `OrderSyncService` projects `Order`
+into `OrderCreate` field by field before handing it to a destination adapter. A field missing there
+is invisible to every destination while being visibly present on the order and in its snapshot -
+so the data is demonstrably there and the adapter still says it is not, which is the hardest of the
+three to diagnose. #3365 hit all three in one change, one after another, each found only by the
+next live run.
+
+**Rule**: adding an `OrderItem` or `OrderTotals` field that must reach a destination is a
+THREE-file edit, in one commit:
+
+| file | what it feeds | how the omission shows |
+|---|---|---|
+| `order-record.service.ts` (writer) | the persisted snapshot | manual/rehydrating paths lose it; the auto path works |
+| `order-from-ready-snapshot.ts` (reader) | rehydrated `Order` | manual paths lose it, invisibly |
+| `order-sync.service.ts` (`OrderCreate`) | every destination adapter | present everywhere except where it is used |
+
+Add a spec per site asserting the key is present when set and ABSENT when not - absent rather than
+`undefined`, because the snapshot is a JSON contract and consumers distinguish the two. Before
+trusting a live run, confirm the running container is on the image you just built: the first
+"verification" of each of these ran against a stale one.
+
+**Applies to**: `libs/core/src/orders/application/services/order-record.service.ts`,
+`libs/core/src/orders/domain/order-from-ready-snapshot.ts`,
+`libs/core/src/orders/application/services/order-sync.service.ts`.
+
+**Source**: #2254 (first occurrence, writer only), #3365 (all three, in sequence, each found by a
+live run after the previous fix).
+
+---
+
+## Two paths can agree about a VALUE and disagree about IDENTITY, and nothing notices
+
+**Context**: `SubiektProductMasterAdapter` mints a standalone towar's variant
+under the external id `{symbol}::variant` and, on the model path, minted the
+same towar's variant under the bare `{symbol}` (#3365, round 3).
+
+**Problem**: grouping a standalone towar into a model therefore minted a SECOND
+internal variant id, orphaning and pausing every offer attached to the first —
+on the very grouping operation the feature introduces. It survived three
+verification rounds because `SubiektInventoryMasterAdapter` strips `::variant`
+before asking the bridge, so **stock resolved correctly under either shape**.
+Every quantity assertion passed. The only thing that differed was which row the
+identity pointed at, and nothing asserted that.
+
+It also survived a grep: searching for `::variant` returns a hit on the
+*standalone* path, which reads as evidence the model path is fine.
+
+**Rule**: when two code paths mint an identifier for the same real-world thing,
+assert they produce the SAME identifier — not merely that both downstream reads
+work. A reader that normalises the two shapes (a strip, a trim, a case-fold, a
+`??` fallback) is precisely what hides the divergence, so its existence is a
+reason to test identity harder, not evidence that identity is fine. And when a
+grep for a literal is your evidence that a path is correct, check which path the
+hit is on.
+
+**Applies to**: any adapter with more than one path minting ids through
+`getOrCreateInternalId`; anywhere a reader normalises an id shape before use.
+
+**Source**: PR #3365 (`resolveMemberVariantId`, and the strip it revealed in
+`subiekt-inventory-master.adapter.ts`)
+
+## Changing a minting key orphans existing rows unless the old key is consulted first
+
+**Context**: fixing the divergence above (#3365).
+
+**Problem**: simply switching the model path to the canonical key would have
+caused, once and on upgrade, exactly the orphaning it was fixing — every install
+whose model members already carried the bare key would be re-identified on the
+next sweep.
+
+**Rule**: a change to a minting key is a data migration wearing a code change's
+clothes. Consult the OLD key first and reuse it when present, then mint the new
+one; the fix then applies only to rows that do not yet exist under either. State
+which of the three cases each test covers (legacy reused, canonical reused,
+fresh minted), and confirm the legacy case passes with AND without the change —
+that it does not move is the no-change-on-upgrade guarantee, not a weak test.
+
+**Applies to**: `getOrCreateInternalId` call sites; any `identifier_mappings`
+key format change.
+
+**Source**: PR #3365
+
+## A diagnosis that never checked which BUILD was running cost three wrong answers
+
+**Symptom**: a live e2e run failed with a destination error, and three successive
+explanations were written for it - a lane cap, then a queue back-fill, then the real one.
+The first two were confidently reasoned from real data and were both wrong.
+
+**What actually happened**: `Subiekt rejected the request: Parametr jest niepoprawny.` was
+the OLD `resolveTowarSymbol` putting a model's grouping key (`model:1`) on the wire as a
+towar symbol. The fix for it had been written, tested and committed hours earlier in the
+same session - and the `api` and `worker` containers were two days old, so none of it was
+running. The bridge had been redeployed twice during that session; OpenLinker had not.
+
+**The specific trap**: this repository already carries the entry *"Green locally does not
+mean green in the image, and a rebuilt stack may not include the service you changed"*. It
+was applied - to the C# bridge, which was correctly rebuilt and verified each time. Having
+applied it once, the same session then read every OpenLinker-side e2e result as evidence
+about code it had just written. A rule remembered for one component is not remembered.
+
+**What made it findable**: replaying the same failing order through the bridge BY HAND, in
+six shapes - buyer name, `uwagi`, a symbol-less shipping line, PLN, EUR, minimal. All six
+created a ZK. Only once the bridge was positively ruled out did the image become the
+obvious suspect. The wrong two answers had both been reached without ever reproducing the
+failure outside the stack.
+
+**Rule**: before explaining ANY behaviour observed on a running stack, verify the running
+artefact contains the change being reasoned about. One command:
+
+```bash
+docker inspect <container> --format '{{.Created}}'
+docker exec <container> grep -rc '<a symbol from the new code>' /app/node_modules/...
+```
+
+A container older than the commit under discussion invalidates every observation made
+through it - including the ones that look like they confirm something.
+
+**Source**: PR #3365

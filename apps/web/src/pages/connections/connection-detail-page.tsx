@@ -18,12 +18,14 @@ import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
 import { usePlatform, usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
+import { describeConnectionStatus, OMS_PLATFORM_TYPE } from '../oms/oms-connection';
 
 function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   switch (status) {
@@ -193,9 +195,23 @@ function ProductCatalogLinkBanner({
   );
 }
 
+function ConnectionStatusBadge({ connection }: { connection: Connection }): ReactElement {
+  const view = describeConnectionStatus(connection, toStatusTone(connection.status));
+  return <StatusBadge tone={view.tone}>{view.label}</StatusBadge>;
+}
+
+/** The OMS connection is configured by the packing setup, never by the generic edit form. */
+const PACKING_SETTINGS_PATH = '/settings/packing';
+
 export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
+  // The plugin registry is what turns a `platformType` slug into the product
+  // name an operator recognises. Rendering the raw slug was tolerable while
+  // one slug meant one product; it stopped being so when two products can
+  // share a prefix (`subiekt-gt` vs `subiekt-nexo`), where the slug is
+  // exactly the part a reader has to squint at.
+  const platforms = usePlatforms();
   const {
     productMasterConnections,
     connectionsQuery: productMasterConnectionsQuery,
@@ -221,6 +237,9 @@ export function ConnectionDetailPage(): ReactElement {
   };
 
   const connection = connectionQuery.data;
+  // The OMS connection is a by-product of the packing setup: no credentials, no
+  // adapter choice, no config to edit. It is managed from /settings/packing.
+  const isOms = connection?.platformType === OMS_PLATFORM_TYPE;
 
   return (
     <PageLayout
@@ -232,10 +251,21 @@ export function ConnectionDetailPage(): ReactElement {
           `Connection ${connectionId}`
         )
       }
-      description="Connection overview, configuration, health, and operator actions."
+      description={
+        isOms
+          ? 'Managed from Packing settings.'
+          : 'Connection overview, configuration, health, and operator actions.'
+      }
       backTo={{ to: '/connections', label: 'Connections' }}
       actions={
         connection ? (
+          connection.platformType === OMS_PLATFORM_TYPE ? (
+            <div className="button-group">
+              <Link className="button button--primary" to={PACKING_SETTINGS_PATH}>
+                Packing settings
+              </Link>
+            </div>
+          ) : (
           <div className="button-group">
             <Link className="button button--primary" to={`/connections/${connectionId}/edit`}>
               Edit connection
@@ -262,14 +292,17 @@ export function ConnectionDetailPage(): ReactElement {
               </Link>
             ) : null}
           </div>
+          )
         ) : undefined
       }
       summary={
         connection ? (
           <>
             <div className="toolbar__group">
-              <span className="toolbar-chip">{connection.platformType}</span>
-              <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+              <span className="toolbar-chip" title={connection.platformType}>
+                {resolvePlatformLabel(platforms, connection)}
+              </span>
+              <ConnectionStatusBadge connection={connection} />
             </div>
             <div className="toolbar__group">
               <span className="muted-text">Created <TimeDisplay iso={connection.createdAt} format="date" /></span>
@@ -316,8 +349,8 @@ export function ConnectionDetailPage(): ReactElement {
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="health">Health</TabsTrigger>
-            <TabsTrigger value="actions">Actions</TabsTrigger>
-            <TabsTrigger value="config">Config</TabsTrigger>
+            {isOms ? null : <TabsTrigger value="actions">Actions</TabsTrigger>}
+            {isOms ? null : <TabsTrigger value="config">Config</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="overview">
@@ -327,15 +360,27 @@ export function ConnectionDetailPage(): ReactElement {
                   <p className="eyebrow">Connection summary</p>
                   <h3 className="section-title">Overview</h3>
                 </div>
-                <StatusBadge tone={toStatusTone(connection.status)}>
-                  {connection.status}
-                </StatusBadge>
+                <ConnectionStatusBadge connection={connection} />
               </div>
 
               <KeyValueList
                 items={[
                   { id: 'name', label: 'Name', value: connection.name },
-                  { id: 'platform', label: 'Platform', value: connection.platformType },
+                  {
+                    id: 'platform',
+                    label: 'Platform',
+                    // Both, not one: the product name is what an operator
+                    // reads, and the raw slug is what they paste into a
+                    // support ticket or an API call. Replacing the slug
+                    // outright would take that away.
+                    value: (
+                      <>
+                        {resolvePlatformLabel(platforms, connection)}{' '}
+                        <span className="muted-text mono-text">{connection.platformType}</span>
+                      </>
+                    ),
+                  },
+                  ...(isOms ? [] : [
                   {
                     id: 'credentials',
                     label: 'Credentials',
@@ -347,6 +392,7 @@ export function ConnectionDetailPage(): ReactElement {
                     value: connection.adapterKey ?? 'default adapter',
                     mono: true,
                   },
+                  ]),
                   { id: 'id', label: 'Connection ID', value: connection.id, mono: true },
                   {
                     id: 'updatedAt',
@@ -357,7 +403,7 @@ export function ConnectionDetailPage(): ReactElement {
               />
             </div>
 
-            <ConnectionCapabilitiesPanel connection={connection} />
+            <ConnectionCapabilitiesPanel connection={connection} readOnly={isOms} />
           </TabsContent>
 
           <TabsContent value="health">
@@ -370,12 +416,20 @@ export function ConnectionDetailPage(): ReactElement {
                 where routing gets switched on. Deliberately not capability-gated:
                 the claim lives in config, and `enabledCapabilities` is stamped at
                 create and never retro-filled (#2085), so gating on it would hide
-                the panel from exactly the connections that need it. */}
-            <RouterReadinessPanel />
+                the panel from exactly the connections that need it. Withheld
+                entirely unless the build opts into the OMS routing UI (#3634). */}
+            {isOmsRoutingUiEnabled() ? <RouterReadinessPanel /> : null}
           </TabsContent>
 
           <TabsContent value="actions">
-            <ConnectionActionsPanel connection={connection} />
+            <ConnectionActionsPanel
+              connection={connection}
+              settingsLink={
+                isOms
+                  ? { to: PACKING_SETTINGS_PATH, label: 'Packing settings' }
+                  : undefined
+              }
+            />
           </TabsContent>
 
           <TabsContent value="config">

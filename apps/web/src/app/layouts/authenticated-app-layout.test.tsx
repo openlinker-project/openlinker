@@ -34,6 +34,25 @@ function ConsentSentinel(): React.ReactElement {
   return <div>Consent page next: {location.search}</div>;
 }
 
+function BenchSentinel(): React.ReactElement {
+  return <div>Bench page</div>;
+}
+
+function packer(): SessionUser {
+  return {
+    id: 'user_3',
+    username: 'packer_1',
+    email: 'packer@example.com',
+    role: 'packer',
+    permissions: [],
+  };
+}
+
+function ChangePasswordSentinel(): React.ReactElement {
+  const location = useLocation();
+  return <div>Change password page next: {location.search}</div>;
+}
+
 function demoViewer(analyticsConsent: boolean): SessionUser {
   return {
     id: 'user_2',
@@ -73,6 +92,8 @@ function renderLayout(
       },
       { path: '/login', element: options?.loginElement ?? <LoginSentinel /> },
       { path: '/consent', element: <ConsentSentinel /> },
+      { path: '/bench', element: <BenchSentinel /> },
+      { path: '/change-password', element: <ChangePasswordSentinel /> },
     ],
     { initialEntries: [options?.initialEntry ?? '/'] }
   );
@@ -121,6 +142,25 @@ describe('AuthenticatedAppLayout', () => {
     ).toBeInTheDocument();
   });
 
+  // #3456 - an admin-created account owes a password change before anything.
+  it('should redirect an account owing a password change to /change-password', async () => {
+    renderLayout(
+      createAuthenticatedSessionAdapter({ ...demoViewer(true), mustChangePassword: true })
+    );
+
+    expect(await screen.findByText('Change password page next: ?next=%2F')).toBeInTheDocument();
+  });
+
+  it('should send a demo viewer owing BOTH gates to the password change first', async () => {
+    renderLayout(
+      createAuthenticatedSessionAdapter({ ...demoViewer(false), mustChangePassword: true }),
+      { apiClient: demoModeApiClient(true) }
+    );
+
+    expect(await screen.findByText('Change password page next: ?next=%2F')).toBeInTheDocument();
+    expect(screen.queryByText(/Consent page/)).not.toBeInTheDocument();
+  });
+
   it('should redirect a demo viewer without consent to /consent, carrying the requested path', async () => {
     renderLayout(createAuthenticatedSessionAdapter(demoViewer(false)), {
       initialEntry: '/',
@@ -152,6 +192,13 @@ describe('AuthenticatedAppLayout', () => {
     });
 
     expect(await screen.findByText('Authenticated content')).toBeInTheDocument();
+  });
+
+  it('should redirect a packer session to /bench unconditionally, even at the root route (#3221 follow-up)', async () => {
+    renderLayout(createAuthenticatedSessionAdapter(packer()));
+
+    expect(await screen.findByText('Bench page')).toBeInTheDocument();
+    expect(screen.queryByText('Authenticated content')).not.toBeInTheDocument();
   });
 
   it('should not render app routes while the demo-mode config is still loading (#1938)', async () => {

@@ -25,6 +25,7 @@ import {
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
 import type {
+  AdapterMetadata,
   ConnectionTestResult,
   WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
@@ -75,6 +76,15 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
  * the `ORDER_ALREADY_ON_HOLD` / `HOLD_ALREADY_RELEASED` precedent (#2341).
  */
 export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
+
+/**
+ * Machine-readable code for the #2407 refusal to enable routing with no active
+ * inventory location (#3457). Same shape and same reason as
+ * `STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE`: the OMS onboarding wizard maps
+ * this 400 to an inline remedy and must not match on the message. Mirrored in
+ * `apps/web/src/features/oms-onboarding/lib/routing-requires-location-error.ts`.
+ */
+export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE = 'ROUTING_REQUIRES_ACTIVE_LOCATION';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
@@ -159,11 +169,14 @@ export class ConnectionService implements IConnectionService {
     }
 
     if ((await this.locations.countActiveLocations()) === 0) {
-      throw new BadRequestException(
-        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+      throw new BadRequestException({
+        statusCode: 400,
+        error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+        message:
+          'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
           "Create one first — the connection's routing readiness panel offers a default, " +
-          'or POST /inventory/locations.'
-      );
+          'or POST /inventory/locations.',
+      });
     }
   }
 
@@ -561,6 +574,57 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
+  /**
+   * Enforce `metadata.uniqueConfigKeys` (#3391): no ACTIVE connection on this
+   * PLATFORM may claim the identical value for one of the adapter's declared
+   * unique config keys as another active connection already does — the
+   * config-value counterpart of a database unique index, for a JSONB blob no
+   * database constraint can reach. Scoped by `platformType`, never
+   * `adapterKey` — `existing.adapterKey` may be `undefined` for a connection
+   * created without an explicit override (it then falls back to the platform
+   * default), and excluding such a connection from the collision check would
+   * silently reopen the exact gap this guard exists to close.
+   *
+   * Read-then-act against a snapshot list: a benign TOCTOU window exists (two
+   * concurrent creates could both pass and collide) — acceptable here, since
+   * the failure mode this guards against is a same-machine misconfiguration
+   * (an operator pointing two connections at one physical bridge process),
+   * not a fiscal or security boundary.
+   */
+  private async assertUniqueConfigKeys(
+    metadata: Pick<AdapterMetadata, 'platformType' | 'uniqueConfigKeys'>,
+    config: Record<string, unknown>,
+    connectionIdToExclude: string | undefined
+  ): Promise<void> {
+    const keys = metadata.uniqueConfigKeys;
+    if (!keys || keys.length === 0) return;
+
+    const relevantKeys = keys.filter((key) => {
+      const value = config[key];
+      return typeof value === 'string' && value.trim().length > 0;
+    });
+    if (relevantKeys.length === 0) return;
+
+    const siblings = await this.connectionPort.list({
+      platformType: metadata.platformType,
+      status: 'active',
+    });
+    for (const sibling of siblings) {
+      if (sibling.id === connectionIdToExclude) continue;
+      const siblingConfig = (sibling.config ?? {}) as Record<string, unknown>;
+      for (const key of relevantKeys) {
+        const value = (config[key] as string).trim();
+        const siblingValue = siblingConfig[key];
+        if (typeof siblingValue === 'string' && siblingValue.trim() === value) {
+          throw new BadRequestException(
+            `config.${key} must be unique across active ${metadata.platformType} connections — ` +
+              `"${value}" is already used by connection "${sibling.name}" (${sibling.id}).`
+          );
+        }
+      }
+    }
+  }
+
   private async validateCredentialsShape(
     adapterKey: string,
     credentials: Record<string, unknown>
@@ -709,21 +773,24 @@ export class ConnectionService implements IConnectionService {
       // preserves the "publish-only unless the operator asks" posture.
       // Marketplace manifests (no InventoryMaster) keep the full default set.
       //
-      // The same shape applies to a dual-role fiscal connection (#3192
-      // review, I1): the guided wizard for a manifest declaring both
-      // `Fiscalization` and `Invoicing` (eparagony) collects only the
-      // receipts-lane config, so omitting `enabledCapabilities` must not
-      // silently grant the invoicing lane too — that is exactly the
-      // #2610 rule that server-side validation cannot live only in the
-      // browser, since the raw config-JSON editor, curl and MCP all bypass
-      // it. `Invoicing` is opt-in, mirroring the OfferManager carve-out.
-      const defaultCapabilities = (
-        metadata.supportedCapabilities.includes('InventoryMaster')
-          ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
-          : [...metadata.supportedCapabilities]
-      ).filter(
-        (c) => !(c === 'Invoicing' && metadata.supportedCapabilities.includes('Fiscalization'))
-      );
+      // A dual-lane manifest (declaring BOTH `Invoicing` and `Fiscalization`)
+      // gets its own default via `AdapterMetadata.defaultEnabledCapabilities`
+      // (#3350) rather than a generic "strip Invoicing" rule — that rule was
+      // built for eparagony's dual-lane wizard, which collects only the
+      // receipts-lane config, but fired for every OTHER dual-lane manifest
+      // too (live-reproduced for Subiekt, whose guided wizard is
+      // Invoicing-only and silently lost Invoicing from a fresh connection
+      // with no error anywhere). An adapter that wants a narrower default
+      // than "everything it supports minus the OfferManager carve-out"
+      // declares it explicitly; one that doesn't gets the sane fallback.
+      const defaultCapabilities =
+        metadata.defaultEnabledCapabilities !== undefined
+          ? metadata.defaultEnabledCapabilities.filter((c) =>
+              metadata.supportedCapabilities.includes(c)
+            )
+          : metadata.supportedCapabilities.includes('InventoryMaster')
+            ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
+            : [...metadata.supportedCapabilities];
       const enabledCapabilities = rest.enabledCapabilities ?? defaultCapabilities;
 
       const invalid = enabledCapabilities.filter(
@@ -752,6 +819,8 @@ export class ConnectionService implements IConnectionService {
         // that a 400 from validation never leaves an orphan credential row.
         // No previous config exists on create, so every claim is a transition.
         await this.assertRouterEnablementPreconditions(rest.config, undefined);
+        // #3391 — no existing connection id to exclude on create.
+        await this.assertUniqueConfigKeys(metadata, rest.config, undefined);
       }
 
       // Persist credentials if the caller supplied raw values. We write the
@@ -1015,6 +1084,8 @@ export class ConnectionService implements IConnectionService {
         // `config` therefore cannot move the A2 claim. If that write ever
         // starts merging, this placement becomes a hole.
         await this.assertRouterEnablementPreconditions(patch.config, existing.config);
+        // #3391 — exclude this connection's own row from the collision check.
+        await this.assertUniqueConfigKeys(metadata, patch.config, connectionId);
       }
 
       const connection = await this.connectionPort.update(connectionId, patch);

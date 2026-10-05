@@ -204,6 +204,49 @@ export interface AdapterMetadata {
    * rather than directly, so the safe default is always applied.
    */
   requiresCredentials?: boolean;
+
+  /**
+   * Overrides `ConnectionService.create`'s inferred default for
+   * `enabledCapabilities` when the caller omits the field entirely (#3350).
+   *
+   * A generic rule existed for exactly one adapter (eparagony, #3192): a
+   * manifest declaring BOTH `Invoicing` and `Fiscalization` had `Invoicing`
+   * stripped from the inferred default, since eparagony's guided wizard
+   * collects only the receipts-lane config and omitting the field must not
+   * silently grant the invoicing lane too. That rule then fired for every
+   * OTHER adapter whose manifest happens to declare both — live-reproduced
+   * for Subiekt, whose guided wizard is Invoicing-only and has no
+   * Fiscalization UI at all, silently omitting `Invoicing` from a
+   * wizard-created connection with no error anywhere.
+   *
+   * Declaring this field explicitly is the fix: when present, it is used
+   * verbatim (still filtered against `supportedCapabilities`) as the
+   * default; when absent, `ConnectionService` applies only the generic
+   * `InventoryMaster`-present-drops-`OfferManager` carve-out and no longer
+   * the blanket Invoicing-strip rule. eparagony sets this to
+   * `['Fiscalization', 'FiscalRegistrationLocator', 'RegulatoryStatusReader']`
+   * (preserving its exact prior behaviour); every other adapter leaves it
+   * unset and falls through to the sane, capability-driven default.
+   */
+  defaultEnabledCapabilities?: string[];
+
+  /**
+   * Config keys that must be unique across every ACTIVE connection sharing
+   * this `adapterKey` (#3391). Absent means no such constraint — same
+   * declared-field, safe-default posture as `variantGrouping?` /
+   * `requiresCredentials?` above, never a `platformType === '...'` check in
+   * `ConnectionService`.
+   *
+   * Exists for a connection config value that names a shared PHYSICAL
+   * resource rather than a per-connection credential: Subiekt declares
+   * `['bridgeBaseUrl']` because two connections pointed at the identical
+   * bridge process would each get their own independent per-connection rate
+   * limiter against the SAME underlying single-threaded Sfera COM queue,
+   * silently defeating the `maxConcurrent:1` protection #3369 relies on — a
+   * failure mode invisible at connection-create time and only surfaced later
+   * as unexplained duplicate-write races.
+   */
+  uniqueConfigKeys?: readonly string[];
 }
 
 /**

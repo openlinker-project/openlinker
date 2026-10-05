@@ -145,10 +145,17 @@ module.exports = {
       // The unified `OpenLinkerPlugin` shape necessarily references types that
       // live in `app/` and `features/`:
       //   - `Connection`, `EditConnectionFormValues` — platform-side bag shapes (#578/#579)
-      //   - `Role` — declarative role gate on `NavContribution` (#610)
+      //   - `GroupRoleGate` — declarative role gate on `NavContribution` (#610,
+      //     narrowed from `Role` by #3107's review). REPLACES the `Role` pinhole
+      //     rather than joining it: `merge-nav-contributions.ts` honours only
+      //     `'admin'`, so a plugin declaring any other role got a gate that
+      //     silently showed the contribution to everyone. Keeping `Role`
+      //     importable here would leave that fail-open declaration expressible.
       //   - `ApiRequest`, `PluginApiNamespaces` — build-side `apiNamespaces` factory (#604/#605)
       //   - `CreateOfferRequest` — `OfferCreationWizardProps.initialValues` (#608)
       //   - `InvoiceRecord` — `invoiceDetailSection` / `invoiceCorrectionFlow` slot props (#1240)
+      //   - `CorrectionSuggestedLine` — `InvoiceCorrectionFlowProps.suggestedLines`, the
+      //     return page's pre-fill for the shared `CorrectionLineGrid` (#3090)
       // Each is a deliberate pinhole. Hoisting all of them into `shared/types/`
       // would invert the dependency direction and inflate `shared/` with
       // feature-private surface — keeping the exemption narrow + explicit
@@ -162,9 +169,9 @@ module.exports = {
               {
                 group: ['**/features/**', '**/pages/**', '**/app/**'],
                 importNamePattern:
-                  '^(?!Connection$|EditConnectionFormValues$|Role$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$).+',
+                  '^(?!Connection$|EditConnectionFormValues$|GroupRoleGate$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$|CorrectionSuggestedLine$).+',
                 message:
-                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, Role, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord) from features/app. All other feature/app imports remain banned.',
+                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, GroupRoleGate, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord, CorrectionSuggestedLine) from features/app. All other feature/app imports remain banned.',
               },
             ],
           },
@@ -341,6 +348,13 @@ module.exports = {
                   '**/oms/components/**',
                   '**/oms/lib/**',
                   '**/oms/types/**',
+                  // #3457 — the packing onboarding wizard. `oms-onboarding` is its
+                  // own slug: `**/oms/**` above does not match it.
+                  '**/oms-onboarding/api/**',
+                  '**/oms-onboarding/hooks/**',
+                  '**/oms-onboarding/components/**',
+                  '**/oms-onboarding/lib/**',
+                  '**/oms-onboarding/types/**',
                   // Added on the #2761 tech-review pass — `features/orders`
                   // imports `resolveSalesDocumentReasonCopy` /
                   // `SalesDocumentReasonTone` from `features/sales-documents`'
@@ -630,6 +644,13 @@ module.exports = {
                   '**/oms/components/**',
                   '**/oms/lib/**',
                   '**/oms/types/**',
+                  // #3457 — the packing onboarding wizard. `oms-onboarding` is its
+                  // own slug: `**/oms/**` above does not match it.
+                  '**/oms-onboarding/api/**',
+                  '**/oms-onboarding/hooks/**',
+                  '**/oms-onboarding/components/**',
+                  '**/oms-onboarding/lib/**',
+                  '**/oms-onboarding/types/**',
                   // Added on the #2761 tech-review pass — `features/orders`
                   // reaches `features/sales-documents`' public barrel
                   // (`resolveSalesDocumentReasonCopy`, `SalesDocumentReasonTone`),
@@ -718,6 +739,7 @@ module.exports = {
         'libs/integrations/inpost/**/*.ts',
         'libs/integrations/ksef/**/*.ts',
         'libs/integrations/subiekt/**/*.ts',
+        'libs/integrations/subiekt-nexo/**/*.ts',
         'libs/integrations/woocommerce/**/*.ts',
         // #2390 / ADR-055: `libs/oms` ships no HTTP client by design — the
         // OL-OMS answers from OpenLinker's own tables. Banned here (and

@@ -14,6 +14,7 @@ import {
   encodeBuyerTaxIdColumn,
   readBuyerTaxId,
 } from '../../domain/types/buyer-tax-id.types';
+import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderCancellationSignalRepositoryPort } from '../../domain/ports/order-cancellation-signal-repository.port';
@@ -32,7 +33,8 @@ import type {
   SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
@@ -156,6 +158,13 @@ export class OrderRecordService implements IOrderRecordService {
         ...(item.taxSource !== undefined && { taxSource: item.taxSource }),
         ...(item.taxRateReadAt !== undefined && { taxRateReadAt: item.taxRateReadAt }),
         ...(item.taxRateChannel !== undefined && { taxRateChannel: item.taxRateChannel }),
+        // #3365 - the source-reported gross unit price, and the second time
+        // this exact allowlist has lost a field. The warning above was written
+        // about the tax rate; it applies verbatim here, and this omission was
+        // likewise caught by a live run rather than by a unit test: every spec
+        // passed while a PrestaShop order reached the destination adapter with
+        // no gross price and was refused for not having one it HAD reported.
+        ...(item.unitPriceGross !== undefined && { unitPriceGross: item.unitPriceGross }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii
@@ -914,6 +923,25 @@ export class OrderRecordService implements IOrderRecordService {
     block: FulfillmentBlock | null
   ): Promise<void> {
     await this.repository.updateFulfillmentBlock(internalOrderId, block);
+  }
+
+  /** #3485 — thin read for the reroute sweep. */
+  async listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]> {
+    return this.repository.listOrderIdsByFulfillmentBlockReasons(reasons, page);
+  }
+
+  /**
+   * #3455 — the write half of the intercept's routing-skip report. Thin by
+   * design: the decision belongs to the intercept.
+   */
+  async markFulfillmentRoutingSkip(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void> {
+    await this.repository.updateFulfillmentRoutingSkipReason(internalOrderId, reason);
   }
 
   /**

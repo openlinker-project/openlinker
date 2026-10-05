@@ -1,5 +1,5 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -121,70 +121,96 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the Sourcing rules tile for an admin session', async () => {
+  describe('with the OMS routing UI flag on (#3634)', () => {
+    beforeEach(() => {
+      vi.stubEnv('VITE_OL_OMS_ROUTING_UI_ENABLED', 'true');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('shows the Sourcing rules tile for an admin session', async () => {
+      renderWithProviders(<SettingsPage />, {
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      expect(await screen.findByRole('heading', { name: 'Sourcing rules' })).toBeInTheDocument();
+      expect(screen.getByText('Sourcing rules', { selector: '.toolbar-chip' })).toBeInTheDocument();
+    });
+
+    /**
+     * The gate is the `{isAdmin ? … : null}` at the MOUNT SITE, so it can only be
+     * asserted here. `sourcing-rules-tile.test.tsx` renders the tile in isolation
+     * and would pass with the gate deleted.
+     *
+     * Admin-gated rather than ungated like `WhoDecidesTile` above, because the
+     * sourcing-rules API carries a class-level `@Roles('admin')` covering its
+     * reads too (#2953) — a non-admin reaching the page meets a 403, not a
+     * read-only view.
+     */
+    it('never renders the Sourcing rules tile for a non-admin session', async () => {
+      renderWithProviders(<SettingsPage />, {
+        sessionAdapter: createAuthenticatedSessionAdapter({
+          id: 'user_4',
+          username: 'viewer',
+          email: 'viewer3@example.com',
+          role: 'viewer',
+          permissions: [],
+          analyticsConsent: true,
+        }),
+      });
+
+      expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' }),
+      ).not.toBeInTheDocument();
+    });
+
+    /**
+     * Same deviation, same reason: `InventoryLocationsController`'s reads are
+     * `@Roles('admin', 'operator', 'viewer')` and the sidebar nav entry is
+     * already gated on `inventory:read`, not on being an admin — gating this
+     * link-out tile to admin-only would make it LESS reachable than the nav
+     * item pointing at the same page.
+     */
+    it('always renders the Inventory locations tile, including for a non-admin session', async () => {
+      renderWithProviders(<SettingsPage />, {
+        sessionAdapter: createAuthenticatedSessionAdapter({
+          id: 'user_4',
+          username: 'viewer',
+          email: 'viewer3@example.com',
+          role: 'viewer',
+          permissions: ['inventory:read'],
+          analyticsConsent: true,
+        }),
+      });
+
+      expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('heading', { name: 'Inventory locations' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Inventory locations', { selector: '.toolbar-chip' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('should render neither OMS routing tile nor chip when the OMS routing UI flag is off (#3634)', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
-    expect(await screen.findByRole('heading', { name: 'Sourcing rules' })).toBeInTheDocument();
-    expect(screen.getByText('Sourcing rules', { selector: '.toolbar-chip' })).toBeInTheDocument();
-  });
-
-  /**
-   * The gate is the `{isAdmin ? … : null}` at the MOUNT SITE, so it can only be
-   * asserted here. `sourcing-rules-tile.test.tsx` renders the tile in isolation
-   * and would pass with the gate deleted.
-   *
-   * Admin-gated rather than ungated like `WhoDecidesTile` above, because the
-   * sourcing-rules API carries a class-level `@Roles('admin')` covering its
-   * reads too (#2953) — a non-admin reaching the page meets a 403, not a
-   * read-only view.
-   */
-  it('never renders the Sourcing rules tile for a non-admin session', async () => {
-    renderWithProviders(<SettingsPage />, {
-      sessionAdapter: createAuthenticatedSessionAdapter({
-        id: 'user_4',
-        username: 'viewer',
-        email: 'viewer3@example.com',
-        role: 'viewer',
-        permissions: [],
-        analyticsConsent: true,
-      }),
-    });
-
-    expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Who decides what' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Inventory locations' })).not.toBeInTheDocument();
     expect(
       screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' }),
     ).not.toBeInTheDocument();
-  });
-
-  /**
-   * Same deviation, same reason: `InventoryLocationsController`'s reads are
-   * `@Roles('admin', 'operator', 'viewer')` and the sidebar nav entry is
-   * already gated on `inventory:read`, not on being an admin — gating this
-   * link-out tile to admin-only would make it LESS reachable than the nav
-   * item pointing at the same page.
-   */
-  it('always renders the Inventory locations tile, including for a non-admin session', async () => {
-    renderWithProviders(<SettingsPage />, {
-      sessionAdapter: createAuthenticatedSessionAdapter({
-        id: 'user_4',
-        username: 'viewer',
-        email: 'viewer3@example.com',
-        role: 'viewer',
-        permissions: ['inventory:read'],
-        analyticsConsent: true,
-      }),
-    });
-
-    expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
     expect(
-      await screen.findByRole('heading', { name: 'Inventory locations' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Inventory locations', { selector: '.toolbar-chip' }),
-    ).toBeInTheDocument();
+      screen.queryByText('Inventory locations', { selector: '.toolbar-chip' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the PostHog tile for an admin session', async () => {

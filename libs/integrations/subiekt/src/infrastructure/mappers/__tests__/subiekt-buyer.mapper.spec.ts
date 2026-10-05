@@ -30,7 +30,7 @@ describe('toBridgeBuyer', () => {
     expect(toBridgeBuyer(buyer({ scheme: 'pl-nip', value: '' })).nip).toBeNull();
   });
 
-  // #3224 — Subiekt nexo has exactly one tax-number slot, so an untagged
+  // #3224 — Subiekt GT has exactly one tax-number slot, so an untagged
   // identifier has only one possible placement. Requiring the tag would drop
   // the buyer's NIP from every auto-issued document.
   it('maps nip from an UNTAGGED taxId (#3224)', () => {

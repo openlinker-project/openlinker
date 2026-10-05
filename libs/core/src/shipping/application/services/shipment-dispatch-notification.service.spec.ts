@@ -114,6 +114,8 @@ describe('ShipmentDispatchNotificationService', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -160,6 +162,18 @@ describe('ShipmentDispatchNotificationService', () => {
     const result = await service.notifyDispatched({ shipmentId: 'missing' });
     expect(result.outcome).toBe('shipment-not-found');
     expect(relay.relay).not.toHaveBeenCalled();
+  });
+
+  it('should skip an inbound shipment without relaying, even when it is otherwise notifiable', async () => {
+    // The shipment is `generated` and carries a waybill — i.e. it clears every
+    // OTHER gate — so a pass here proves the direction check, not the status one.
+    shipments.findById.mockResolvedValue(makeShipment({ direction: 'return' }));
+
+    const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
+
+    expect(result.outcome).toBe('skipped-inbound');
+    expect(relay.relay).not.toHaveBeenCalled();
+    expect(shipments.update).not.toHaveBeenCalled();
   });
 
   it('should skip (status-gate) when the shipment is not generated — relay not called', async () => {

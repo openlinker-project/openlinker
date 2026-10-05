@@ -10,7 +10,11 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConnectionService, STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE } from './connection.service';
+import {
+  ConnectionService,
+  ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+  STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+} from './connection.service';
 import type {
   ConnectionPort,
   ConnectionUpdate,
@@ -307,6 +311,87 @@ describe('ConnectionService', () => {
       const rest: ConnectionCreateInput = { ...payload };
       delete rest.credentialsRef;
       await expect(service.create(rest)).rejects.toThrow(/Exactly one of/);
+    });
+
+    describe('unique config keys (#3391)', () => {
+      const subiektMetadata = {
+        adapterKey: 'subiekt.invoicing.v1',
+        platformType: 'subiekt',
+        supportedCapabilities: ['Invoicing'],
+        uniqueConfigKeys: ['bridgeBaseUrl'],
+      };
+      const subiektPayload: ConnectionCreateInput = {
+        name: 'New Subiekt',
+        platformType: 'subiekt',
+        config: { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+        credentialsRef: 'db:existing-ref',
+      };
+
+      it('should refuse a second active connection sharing the same bridgeBaseUrl', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([
+          new Connection(
+            'subiekt-existing',
+            'subiekt',
+            'Existing Subiekt',
+            'active',
+            { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+            'db:cred-existing',
+            new Date(),
+            new Date(),
+            'subiekt.invoicing.v1',
+            ['Invoicing']
+          ),
+        ]);
+
+        await expect(service.create(subiektPayload)).rejects.toThrow(/must be unique/);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+      });
+
+      it('should allow the create when no active sibling shares the bridgeBaseUrl', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([
+          new Connection(
+            'subiekt-other',
+            'subiekt',
+            'Other bridge',
+            'active',
+            { bridgeBaseUrl: 'http://10.0.0.5:5056' },
+            'db:cred-other',
+            new Date(),
+            new Date(),
+            'subiekt.invoicing.v1',
+            ['Invoicing']
+          ),
+        ]);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(subiektPayload)).resolves.toEqual(mockConnection);
+      });
+
+      it('should ignore a DISABLED sibling sharing the same bridgeBaseUrl', async () => {
+        // `list({ status: 'active' })` already excludes it server-side; this
+        // pins that the filter is actually threaded through, not just documented.
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([]);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(subiektPayload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+      });
+
+      it('should skip the collision check entirely when the adapter declares no uniqueConfigKeys', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'prestashop.webservice.v1',
+          platformType: 'prestashop',
+          supportedCapabilities: [],
+        } as never);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.list).not.toHaveBeenCalled();
+      });
     });
 
     describe('credential-less adapter (requiresCredentials: false, #2405 / ADR-055)', () => {
@@ -698,6 +783,11 @@ describe('ConnectionService', () => {
           'Fiscalization',
           'FiscalRegistrationLocator',
           'Invoicing',
+          'RegulatoryStatusReader',
+        ],
+        defaultEnabledCapabilities: [
+          'Fiscalization',
+          'FiscalRegistrationLocator',
           'RegulatoryStatusReader',
         ],
       };
@@ -1250,6 +1340,67 @@ describe('ConnectionService', () => {
 
       expect(result).toEqual(updatedConnection);
       expect(connectionPort.update).toHaveBeenCalledWith('connection-123', patch);
+    });
+
+    describe('unique config keys (#3391)', () => {
+      const subiektMetadata = {
+        adapterKey: 'subiekt.invoicing.v1',
+        platformType: 'subiekt',
+        supportedCapabilities: ['Invoicing'],
+        uniqueConfigKeys: ['bridgeBaseUrl'],
+      };
+      const subiektConnection = new Connection(
+        'subiekt-self',
+        'subiekt',
+        'Self',
+        'active',
+        { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+        'db:cred-self',
+        new Date(),
+        new Date(),
+        'subiekt.invoicing.v1',
+        ['Invoicing']
+      );
+
+      it('should refuse an update that collides with ANOTHER active sibling', async () => {
+        connectionPort.get.mockResolvedValue(subiektConnection);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([
+          subiektConnection,
+          new Connection(
+            'subiekt-sibling',
+            'subiekt',
+            'Sibling',
+            'active',
+            { bridgeBaseUrl: 'http://10.0.0.9:5056' },
+            'db:cred-sibling',
+            new Date(),
+            new Date(),
+            'subiekt.invoicing.v1',
+            ['Invoicing']
+          ),
+        ]);
+
+        await expect(
+          service.update('subiekt-self', {
+            config: { bridgeBaseUrl: 'http://10.0.0.9:5056' },
+          })
+        ).rejects.toThrow(/must be unique/);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should NOT collide with its own unchanged row (self-exclusion)', async () => {
+        connectionPort.get.mockResolvedValue(subiektConnection);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([subiektConnection]);
+        connectionPort.update.mockResolvedValue(subiektConnection);
+
+        await expect(
+          service.update('subiekt-self', {
+            config: { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+          })
+        ).resolves.toEqual(subiektConnection);
+      });
     });
 
     describe('taxonomy bootstrap on enable (#2084)', () => {
@@ -2001,6 +2152,22 @@ describe('ConnectionService', () => {
           /at least one active inventory location/i
         );
         expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should carry a machine-readable code on the refusal (#3457)', async () => {
+        // The OMS onboarding wizard branches on this field, never on the prose,
+        // so a reworded message cannot silently turn its inline remedy into a
+        // generic error banner.
+        locations.countActiveLocations.mockResolvedValue(0);
+
+        const error = await service
+          .create(claiming({ sourcingAuthority: true }))
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toEqual(
+          expect.objectContaining({ error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE })
+        );
       });
 
       it('should allow the same claim once a location exists', async () => {

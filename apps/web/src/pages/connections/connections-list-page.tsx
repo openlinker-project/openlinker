@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import type { Connection, ConnectionFilters, ConnectionStatus } from '../../features/connections/api/connections.types';
 import { usePlatforms } from '../../shared/plugins';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, LoadingState, EmptyState } from '../../shared/ui/feedback-state';
@@ -14,6 +15,7 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { OmsAttentionBadges, useOmsAttentionQuery } from '../../features/fulfillment-authority';
+import { describeConnectionStatus } from '../oms/oms-connection';
 
 const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
 
@@ -34,6 +36,15 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
   }
 }
 
+function renderStatusBadge(connection: Connection, compact: boolean): ReactElement {
+  const view = describeConnectionStatus(connection, toStatusTone(connection.status));
+  return (
+    <StatusBadge tone={view.tone} compact={compact}>
+      {view.label}
+    </StatusBadge>
+  );
+}
+
 /**
  * #2356 — the columns are built per render because the Status cell now also
  * carries the connection's OMS inert states, which come from a query.
@@ -43,7 +54,12 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
  * projection for every connection on the page.
  */
 function buildColumns(
-  attentionFor: (connectionId: string) => readonly { reason: string }[]
+  attentionFor: (connectionId: string) => readonly { reason: string }[],
+  // Passed in for the same reason `attentionFor` is: a module-level const
+  // cannot call a hook. `platforms` turns the `platformType` slug into the
+  // product name an operator recognises - load-bearing now that two products
+  // can share a slug prefix (`subiekt-gt` vs `subiekt-nexo`).
+  platforms: readonly { platformType: string; displayName: string }[]
 ): DataTableColumn<Connection>[] {
   return [
   {
@@ -53,7 +69,8 @@ function buildColumns(
       <div className="data-table__stack">
         <strong>{connection.name}</strong>
         <span className="muted-text">
-          {connection.platformType} · {connection.adapterKey ?? 'default adapter'}
+          {resolvePlatformLabel(platforms, connection)} ·{' '}
+          {connection.adapterKey ?? 'default adapter'}
         </span>
       </div>
     ),
@@ -75,7 +92,7 @@ function buildColumns(
     header: 'Status',
     cell: (connection) => (
       <span className="data-table__badge-row">
-        <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+        {renderStatusBadge(connection, false)}
         {/* An inert state derived from THIS connection's config (#2356). Beside
             the connection's own status, never instead of it: a connection can be
             perfectly `active` and still be one of two systems claiming the same
@@ -106,7 +123,7 @@ export function ConnectionsListPage(): ReactElement {
     () => (connectionId: string) => attention.byConnectionId.get(connectionId) ?? [],
     [attention.byConnectionId]
   );
-  const columns = useMemo(() => buildColumns(attentionFor), [attentionFor]);
+  const columns = useMemo(() => buildColumns(attentionFor, plugins), [attentionFor, plugins]);
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
@@ -226,12 +243,10 @@ export function ConnectionsListPage(): ReactElement {
           cardView={{
             title: (connection) => connection.name,
             subtitle: (connection) =>
-              `${connection.platformType} · ${connection.adapterKey ?? 'default adapter'}`,
+              `${resolvePlatformLabel(plugins, connection)} · ${connection.adapterKey ?? 'default adapter'}`,
             meta: (connection) => (
               <span className="data-table__badge-row">
-                <StatusBadge tone={toStatusTone(connection.status)} compact>
-                  {connection.status}
-                </StatusBadge>
+                {renderStatusBadge(connection, true)}
                 <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
               </span>
             ),

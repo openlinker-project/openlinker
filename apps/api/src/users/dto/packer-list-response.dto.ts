@@ -32,6 +32,15 @@ export class PackerSummaryDto {
   @ApiProperty() username!: string;
 
   @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The packer's name as an admin typed it at account creation (#3456), or null. " +
+      'A swimlane header renders it, falling back to `username`.',
+  })
+  displayName!: string | null;
+
+  @ApiProperty({
     description:
       'Whether this packer has touched a bench recently enough to read as at ' +
       'one. Derived from a presence threshold at read time, never stored, and ' +
@@ -55,6 +64,7 @@ export class PackerSummaryDto {
     const dto = new PackerSummaryDto();
     dto.id = user.id;
     dto.username = user.username;
+    dto.displayName = user.displayName;
     dto.online = isPackerOnline(user.lastActiveAt, now);
     dto.stationLabel = user.packStationLabel;
     return dto;

@@ -140,6 +140,8 @@ describe('ShipmentController', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -706,9 +708,25 @@ describe('ShipmentController', () => {
 
   describe('cancel', () => {
     it('should return the cancelled shipment', async () => {
-      cancellation.cancel.mockResolvedValue(makeShipment({ status: 'cancelled' }));
+      cancellation.cancel.mockResolvedValue({
+        shipment: makeShipment({ status: 'cancelled' }),
+        cancelledAfterDispatch: false,
+      });
       const result = await controller.cancel('ol_shipment_1');
-      expect(result.status).toBe('cancelled');
+      expect(result.shipment.status).toBe('cancelled');
+      expect(result.cancelledAfterDispatch).toBe(false);
+    });
+
+    // The flag is the whole reason this route returns a result rather than the
+    // row: cancelling after dispatch leaves the marketplace believing the
+    // parcel shipped, and OpenLinker sends nothing to withdraw that.
+    it('should report a cancellation that happened after dispatch', async () => {
+      cancellation.cancel.mockResolvedValue({
+        shipment: makeShipment({ status: 'cancelled' }),
+        cancelledAfterDispatch: true,
+      });
+      const result = await controller.cancel('ol_shipment_1');
+      expect(result.cancelledAfterDispatch).toBe(true);
     });
 
     it('should map ShipmentNotFoundException to 404', async () => {

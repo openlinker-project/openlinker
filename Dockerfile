@@ -40,6 +40,11 @@ COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
+# Subiekt nexo is a SEPARATE package for a separate InsERT product. This list is
+# enumerated by hand for layer caching, so a new workspace package is invisible
+# to `pnpm install` until it is named here - the failure is
+# ERR_PNPM_WORKSPACE_PKG_NOT_FOUND at build time, not at run time.
+COPY libs/integrations/subiekt-nexo/package.json ./libs/integrations/subiekt-nexo/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
@@ -90,6 +95,11 @@ COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
+# Subiekt nexo is a SEPARATE package for a separate InsERT product. This list is
+# enumerated by hand for layer caching, so a new workspace package is invisible
+# to `pnpm install` until it is named here - the failure is
+# ERR_PNPM_WORKSPACE_PKG_NOT_FOUND at build time, not at run time.
+COPY libs/integrations/subiekt-nexo/package.json ./libs/integrations/subiekt-nexo/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
 COPY apps/worker/package.json ./apps/worker/
 COPY apps/web/package.json ./apps/web/
@@ -126,6 +136,7 @@ COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/int
 COPY --from=base --chown=node:node /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
 COPY --from=base --chown=node:node /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
+COPY --from=base --chown=node:node /app/libs/integrations/subiekt-nexo/dist ./libs/integrations/subiekt-nexo/dist
 COPY --from=base --chown=node:node /app/libs/integrations/woocommerce/dist ./libs/integrations/woocommerce/dist
 COPY --from=base --chown=node:node /app/node_modules ./node_modules
 COPY --from=base --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules

@@ -19,8 +19,8 @@
 import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
 import { plugins } from '../plugins';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
-import type { Permission } from '../shared/auth/session.types';
-import type { NavGroup, NavRegistryGroup } from './nav-registry.types';
+import type { Permission, Session } from '../shared/auth/session.types';
+import type { LiveNavItem, NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
  * Canonical sidebar composition. The shell consumes whatever this builder
@@ -32,11 +32,21 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     kind: 'live',
     label: 'Operations',
     items: [
-      { to: '/', label: 'Analytics', end: true },
-      { to: '/insights', label: 'Insights' },
-      { to: '/orders', label: 'Orders', countKey: 'orders' },
+      // Role-gated (#3221): the primary read (`GET /analytics/sales` et al.)
+      // is `@Roles('admin', 'operator', 'viewer')` on every analytics
+      // controller — a `packer` (empty `ROLE_PERMISSIONS` grant, #2413) 403s
+      // on the first request the page makes.
+      { to: '/', label: 'Analytics', end: true, requiresRole: ['admin', 'operator', 'viewer'] },
+      // Role-gated (#3221): its first read, `GET /connections`, is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/insights', label: 'Insights', requiresRole: ['admin', 'operator', 'viewer'] },
+      // Role-gated (#3221): `GET /orders` is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/orders', label: 'Orders', countKey: 'orders', requiresRole: ['admin', 'operator', 'viewer'] },
       { to: '/products', label: 'Products' },
-      { to: '/customers', label: 'Customers', countKey: 'customers' },
+      // Role-gated (#3221): `GET /customers` is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/customers', label: 'Customers', countKey: 'customers', requiresRole: ['admin', 'operator', 'viewer'] },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
       // ONE entry, since the staffing board and the worklist merged into one
@@ -48,20 +58,23 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // `orders:write` is a deliberate PROXY for that role set, correct only
       // because `ROLE_PERMISSIONS` grants it to exactly admin + operator
       // today. There is no `fulfillment:*` permission a reader could go
-      // looking for instead. A `viewer` shown this entry would 403 on the
-      // first request the screen makes.
+      // looking for instead. This ALSO excludes `packer` (#3221) as a side
+      // effect — `bench:write` is a packer's only permission, so a `packer`
+      // 403s here exactly like a `viewer` does.
       { to: '/fulfillment', label: 'Fulfilment', requiresPermission: 'orders:write' },
       // The bench itself (#2413) had no way in but a typed URL. A packer still
       // reaches it that way — they get no sidebar at all, since `/bench` renders
       // outside `AuthenticatedAppLayout` on purpose — but an admin or operator
       // checking the floor had to know the path by heart.
       //
-      // Gated on `orders:write`, held by exactly admin + operator, for the same
-      // reason as the entry above: the bench's own routes are
-      // `@Roles('admin', 'operator', 'packer')`, and `ROLE_PERMISSIONS.packer`
-      // is `[]`, so no permission can name all three. A `viewer` shown this
-      // entry would 403 on the first request the page makes.
-      { to: '/bench', label: 'Pack bench', requiresPermission: 'orders:write' },
+      // Gated on `bench:write` (#3439/#3424), held by exactly admin + operator
+      // + packer — the same set as the bench's own routes,
+      // `@Roles('admin', 'operator', 'packer')` on `BenchWorkController` et
+      // al. `scripts/check-bench-write-roles.mjs` keeps that grant identical
+      // to those `@Roles` lists, so this entry and the routes it points at
+      // can't drift apart. A `viewer` shown this entry would 403 on the first
+      // request the page makes.
+      { to: '/bench', label: 'Pack bench', requiresPermission: 'bench:write' },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },
@@ -73,7 +86,13 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // entry gets a 403 on the first request the page makes. `automations:read`
       // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
       { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
-      { to: '/sales-documents', label: 'Sales documents' },
+      // Role-gated (#3221): its primary read, `GET /invoices`
+      // (`InvoicingController`), is `@Roles('admin', 'operator', 'viewer')` —
+      // same 403 for `packer`. Every other read on the page carries the same
+      // guard, so this is not a partial fix. Renamed from "Invoices" to
+      // "Sales documents" (invoicing/fiscalization routing); the gate
+      // carries over unchanged.
+      { to: '/sales-documents', label: 'Sales documents', requiresRole: ['admin', 'operator', 'viewer'] },
     ],
   },
   {
@@ -86,7 +105,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       {
         to: '/duplicate-positions',
         label: 'Duplicate stock positions',
-        requiresRole: 'admin',
+        requiresRole: ['admin'],
       },
     ],
   },
@@ -121,6 +140,62 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
   // fixture — so neither is dead code.
 ];
 
+export interface NavItemVisibilityInput {
+  permissions?: readonly Permission[];
+  role?: string;
+}
+
+/**
+ * Shared per-item visibility rule (#3108) — a single source of truth for
+ * "does this session see this item", consumed by both the sidebar
+ * (`buildNavGroups`) and the command palette (`command-palette-provider.tsx`).
+ * Before this, each caller re-implemented the permission check inline and
+ * ⌘K had no role check at all, so a `requiresRole`-gated item would have been
+ * reachable via the palette even when hidden from the sidebar.
+ *
+ * An item declaring neither gate is visible to everyone (pre-existing
+ * behaviour); one declaring both must satisfy both.
+ */
+export function isNavItemVisible(item: LiveNavItem, { permissions = [], role }: NavItemVisibilityInput): boolean {
+  if (item.requiresPermission !== undefined && !permissions.includes(item.requiresPermission)) {
+    return false;
+  }
+  if (item.requiresRole !== undefined && (role === undefined || !(item.requiresRole as readonly string[]).includes(role))) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The role a nav gate reads from a session — the single derivation feeding
+ * {@link isNavItemVisible}, for both the sidebar and ⌘K.
+ *
+ * Extracted by #3108's review. The visibility RULE was already shared; its
+ * INPUT was spelled twice and not identically — `app-shell.tsx` had
+ * `isReady && session.status === 'authenticated' ? session.user?.role : undefined`
+ * and `command-palette-provider.tsx` the same expression without `isReady`.
+ * That is exactly the argument this PR used for extracting `isNavItemVisible`
+ * ("two independent implementations is how ⌘K became a way around whichever one
+ * drifted"), applied one level up.
+ *
+ * ## Why there is no `isReady` parameter
+ *
+ * It would be redundant, not merely optional. `SessionProvider` starts at
+ * `ANONYMOUS_SESSION` and `refreshSession` calls `setSession(next)` and
+ * `setIsReady(true)` in the SAME callback, so React batches them and no render
+ * ever observes `status === 'authenticated'` while `isReady` is false —
+ * `clearSession` only moves in the safe direction (back to anonymous, leaving
+ * `isReady` true). An unresolved session therefore already yields `undefined`
+ * here, which `isNavItemVisible` treats as "no role known" and fails CLOSED.
+ *
+ * Do not add one back without re-checking that ordering: if a future provider
+ * ever restores a session optimistically before validating it, this function —
+ * not its two call sites — is where the extra condition belongs.
+ */
+export function navRoleOf(session: Session): string | undefined {
+  return session.status === 'authenticated' ? session.user?.role : undefined;
+}
+
 export interface BuildNavGroupsInput {
   isAdmin: boolean;
   demoMode: boolean;
@@ -131,6 +206,16 @@ export interface BuildNavGroupsInput {
    * than every one of them.
    */
   permissions?: readonly Permission[];
+  /**
+   * The session's own role string (`SessionUser.role`, untyped as `string` on
+   * the backend — it may be a role the FE chrome's own `Role` union doesn't
+   * name, e.g. `viewer`). Items declaring `requiresRole` (#3108) are dropped
+   * unless this matches one of the item's allowed roles. Left untyped against
+   * `Role` deliberately: a raw string comparison degrades safely for a role
+   * this union doesn't know about, whereas casting an unrecognised value to
+   * `Role` would claim a type guarantee that isn't true.
+   */
+  role?: string;
 }
 
 /**
@@ -152,6 +237,7 @@ export function buildNavGroups({
   isAdmin,
   demoMode,
   permissions = [],
+  role,
 }: BuildNavGroupsInput): NavGroup[] {
   // `mergePluginNavContributions` deep-clones each live group before mutating,
   // so pushing the readonly BASE group objects by reference is safe.
@@ -170,14 +256,10 @@ export function buildNavGroups({
       continue;
     }
     if (group.kind === 'live') {
-      // Per-ITEM permission + role gates. A live group whose every item is
-      // gated away is dropped entirely — an empty group heading advertises a
-      // section the session cannot reach.
-      const items = group.items.filter(
-        (item) =>
-          (item.requiresPermission === undefined || permissions.includes(item.requiresPermission)) &&
-          (item.requiresRole === undefined || (item.requiresRole === 'admin' && isAdmin)),
-      );
+      // Per-ITEM gates: permission (#2358 review I5) and role (#3076/#3108). A
+      // live group whose every item is gated away is dropped entirely — an
+      // empty group heading advertises a section the session cannot reach.
+      const items = group.items.filter((item) => isNavItemVisible(item, { permissions, role }));
       if (items.length === 0) continue;
       baseGroups.push(items.length === group.items.length ? group : { ...group, items });
       continue;

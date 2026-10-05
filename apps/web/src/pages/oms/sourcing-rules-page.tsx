@@ -29,7 +29,7 @@
  * every rule would decide nothing. The gate reads the `listActiveLocations`
  * probe (`status=active&limit=1`, where only `total` is meaningful) rather than
  * counting active rows inside the picker's capped page: an install whose first
- * 200 rows are all retired would otherwise be refused while active locations
+ * 100 rows are all retired would otherwise be refused while active locations
  * exist. The picker keeps the full-status page, because an inactive location is
  * still a legitimate priority entry.
  *
@@ -55,9 +55,7 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
-
-/** The discriminator `createOmsFulfillmentRouterResolver` uses (ADR-055). */
-const OMS_PLATFORM_TYPE = 'openlinker';
+import { findOmsConnections } from './oms-connection';
 
 export function SourcingRulesPage(): ReactElement {
   const [searchParams] = useSearchParams();
@@ -117,9 +115,7 @@ export function SourcingRulesPage(): ReactElement {
   }
 
   const connections = connectionsQuery.data ?? [];
-  const omsConnections = connections.filter(
-    (connection) => connection.platformType === OMS_PLATFORM_TYPE
-  );
+  const omsConnections = findOmsConnections(connections);
 
   // An explicit `?connectionId=` is honoured so a link from a connection page
   // lands somewhere truthful; it is validated rather than trusted, because a

@@ -41,6 +41,38 @@ describe('ConnectionsListPage', () => {
     expect(await screen.findByText(sampleConnection.name)).toBeInTheDocument();
   });
 
+  it('names the platform by its product name, not its raw slug', async () => {
+    // The row used to render `connection.platformType` verbatim, so two
+    // products sharing a slug prefix (`subiekt-gt` and a future
+    // `subiekt-nexo`) were told apart only by whatever name the operator
+    // happened to type. The registry already knows the product name.
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+    renderWithProviders(<ConnectionsListPage />, { apiClient });
+
+    expect(await screen.findByText(/PrestaShop · prestashop\.webservice\.v1/)).toBeInTheDocument();
+    expect(screen.queryByText(/^prestashop · /)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the raw slug for a platform no plugin declares', async () => {
+    // The fallback is deliberately the raw slug rather than a title-cased
+    // guess: it only fires on a misconfiguration, and an unresolved
+    // identifier should read as one instead of as a plausible brand name.
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            { ...sampleConnection, platformType: 'not-a-real-platform', adapterKey: 'x.v1' },
+          ]),
+      },
+    });
+    renderWithProviders(<ConnectionsListPage />, { apiClient });
+
+    expect(await screen.findByText(/not-a-real-platform · x\.v1/)).toBeInTheDocument();
+  });
+
   it('shows loading state while fetching', () => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
