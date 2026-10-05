@@ -78,7 +78,7 @@ triggering a re-pull.
 | C2 | Full OAuth2 also exists (`POST /webapi/rest/oauth/token`, `authorization_code`/`refresh_token` grants) — for App-Store-distributed public apps, not this use case | Desk: Postman `Auth`/`Authentication` folders |
 | C3 | Granted scopes (`Obszar sklepu` × `Zakres dostępu`) are genuinely enforced server-side, not just a UI affordance | Live: `GET /shippings` and `GET /payments` → `403 {"error":"insufficient_scope","error_description":"The request requires higher privileges than provided by the access token"}` before those two areas were granted; `200` after granting them |
 | C4 | An invalid token gives a clean, structured `401` | Live: `Authorization: Bearer garbage` → `401 {"error":"unauthorized_client","error_description":"Provided access token is invalid"}` |
-| C5 | Rate-limit headers present on every response: `x-shop-api-calls` (running counter), `x-shop-api-limit`, `x-shop-api-bandwidth` | Live: `x-shop-api-calls: 1/2/3` incrementing across 3 sequential calls; `x-shop-api-limit: 10` |
+| C5 | Rate-limit headers present on every response: `x-shop-api-calls` (running counter), `x-shop-api-limit`, `x-shop-api-bandwidth`. **The unit of `x-shop-api-limit: 10` is unknown** (per second, minute or something else was not established), and it must not be read as "no limit applies" because C6's burst did not hit it: the shop itself declares a ceiling of 10. See risk 2. | Live: `x-shop-api-calls: 1/2/3` incrementing across 3 sequential calls; `x-shop-api-limit: 10` |
 | C6 | The real sustained rate-limit ceiling was **not** reached | Live: 25-request burst against `GET /currencies`, all `200`, no throttling observed — flagged as needing a longer test before production launch, not asserted as "no limit" |
 | C7 | 26 distinct `Obszar sklepu` permission values discoverable in the panel's own dropdown (only ~13 are relevant to this milestone's scope) | Live — admin UI: dropdown DOM capture |
 | C8 | Read/write granularity is a 4-level ladder: odczyt / odczyt+dodawanie / +edycja / +usuwanie (read / +create / +edit / +delete) | Live — admin UI |
@@ -356,7 +356,8 @@ Explicitly absent from the surface (confirmed): any invoice/receipt/document res
 1. **`x-webhook-sha1` signing algorithm unresolved** (X5) — 13 candidates ruled out against real raw
    bytes. Non-blocking (X6), but should be chased via Shoper support/docs before `#3644` ships any
    cryptographic verification; until then the webhook is a trigger-only signal.
-2. **Real sustained rate-limit ceiling unconfirmed** (C6) — 25-request burst didn't hit it. Needs a
+2. **Real sustained rate-limit ceiling unconfirmed** (C5, C6) — the shop declares
+   `x-shop-api-limit: 10` in an unknown unit, and a 25-request burst didn't hit it. Needs a
    longer, deliberate test before any production launch estimate is made.
 3. **Multi-warehouse behavior entirely unverified** (M10) — the Premium gate meant `GET /warehouses`
    and any related read/write was never actually exercised against real data, only against the
