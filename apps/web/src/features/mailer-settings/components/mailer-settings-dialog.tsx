@@ -155,6 +155,8 @@ export function MailerSettingsDialog({
       }}
     >
       <DialogContent>
+        {/* No help icon: the docs have no mailer section to point at, and a
+            link to a page's top answers nothing (#81, help-links.ts). */}
         <DialogTitle>Edit mailer settings</DialogTitle>
         <DialogDescription>
           Choose how outbound mail is sent. The SMTP password is write-only — it is never returned by

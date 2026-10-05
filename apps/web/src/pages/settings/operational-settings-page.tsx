@@ -28,17 +28,18 @@ import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
-import { FormField } from '../../shared/ui/form-field';
-import { Input } from '../../shared/ui/input';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { RangeNumberInput } from '../../shared/ui/range-number-input';
 import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { PacingValueField } from '../../features/settings/components/pacing-value-field';
+import { SyncJobRetentionSection } from '../../features/settings/components/sync-job-retention-section';
 import { SyncPacingConfirmDialog } from '../../features/settings/components/sync-pacing-confirm-dialog';
-import { SyncPacingImpact } from '../../features/settings/components/sync-pacing-impact';
+import { SyncPacingRail } from '../../features/settings/components/sync-pacing-rail';
 import { useCatalogueSizeQuery } from '../../features/settings/hooks/use-catalogue-size-query';
 import { useOperationalSettingsQuery } from '../../features/settings/hooks/use-operational-settings-query';
+import { useSyncJobRetentionDraft } from '../../features/settings/hooks/use-sync-job-retention-draft';
 import { useUpdateOperationalSettingsMutation } from '../../features/settings/hooks/use-update-operational-settings-mutation';
 import {
   describeCadence,
@@ -72,8 +73,31 @@ import type {
  */
 const HOST_LIMIT_STORAGE_KEY = 'ol.syncPacing.hostProcessLimitSeconds';
 
-/** The numeric fields, in the order the page lays them out. */
-const NUMERIC_FIELDS: readonly OperationalSettingKey[] = [
+const HOST_LIMIT_MIN_SECONDS = 10;
+const HOST_LIMIT_MAX_SECONDS = 3600;
+
+/** The in-page jump targets, in the order the sections appear. */
+const SECTION_LINKS: readonly { id: string; label: string }[] = [
+  { id: 'pacing-hosting', label: 'Hosting' },
+  { id: 'pacing-catalogue', label: 'Catalogue' },
+  { id: 'pacing-stock', label: 'Stock' },
+  { id: 'pacing-deletions', label: 'Deleted products' },
+  { id: 'pacing-retention', label: 'Job retention' },
+];
+
+/**
+ * The sweep-pacing form's own numeric fields, in the order the page lays
+ * them out — a NARROWER type than `OperationalSettingKey` on purpose
+ * (#2946 widened that union with `syncJobRetentionDays` /
+ * `syncJobDeadRetentionDays`, which have no place in `SyncPacingValues`'s
+ * catalogue-size projection and are rendered by their own self-contained
+ * `SyncJobRetentionSection` instead): the intersection of both unions is
+ * exactly this form's 4 numeric fields, so `draft[key]` below stays sound
+ * without widening `SyncPacingValues` itself.
+ */
+type SyncPacingNumericField = Extract<OperationalSettingKey, keyof SyncPacingValues>;
+
+const NUMERIC_FIELDS: readonly SyncPacingNumericField[] = [
   'catalogueSweepBudget',
   'sweepPageSize',
   'inventorySweepBudget',
@@ -94,7 +118,9 @@ function readStoredHostLimit(): number {
   try {
     const raw = window.localStorage.getItem(HOST_LIMIT_STORAGE_KEY);
     const parsed = raw === null ? Number.NaN : Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_HOST_PROCESS_LIMIT_SECONDS;
+    return Number.isFinite(parsed) && parsed > 0
+      ? Math.min(Math.max(Math.round(parsed), HOST_LIMIT_MIN_SECONDS), HOST_LIMIT_MAX_SECONDS)
+      : DEFAULT_HOST_PROCESS_LIMIT_SECONDS;
   } catch {
     return DEFAULT_HOST_PROCESS_LIMIT_SECONDS;
   }
@@ -124,7 +150,17 @@ export function OperationalSettingsPage(): ReactElement {
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
 
   const view = query.data ?? null;
-  const savedStamp = view === null ? null : `${view.updatedAt ?? 'none'}:${view.deletionAuditCadence.value}`;
+  const retention = useSyncJobRetentionDraft(view);
+  // Built from the pacing fields themselves (value + source), not from the
+  // row's `updatedAt`: retention saves on its own from the same rail, and a
+  // retention save bumping `updatedAt` must not discard a pacing edit.
+  const savedStamp =
+    view === null
+      ? null
+      : [
+          ...NUMERIC_FIELDS.map((key) => `${String(view[key].value)}:${view[key].source}`),
+          `${view.deletionAuditCadence.value}:${view.deletionAuditCadence.source}`,
+        ].join('|');
 
   // Adopt the server's values once, and again whenever the saved row changes
   // underneath us. Deliberately keyed on the saved stamp rather than on `view`
@@ -229,9 +265,7 @@ export function OperationalSettingsPage(): ReactElement {
     );
   }
 
-  const handleHostLimit = (raw: string): void => {
-    const parsed = Number(raw);
-    const next = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : hostLimit;
+  const handleHostLimit = (next: number): void => {
     setHostLimit(next);
     try {
       window.localStorage.setItem(HOST_LIMIT_STORAGE_KEY, String(next));
@@ -286,18 +320,50 @@ export function OperationalSettingsPage(): ReactElement {
     }
   };
 
+  const changeCount = diff.changes.length;
+  const totalChanges = changeCount + retention.changeCount;
+  const pacingSavable =
+    changeCount > 0 && unacknowledgedFields.length === 0 && !mutation.isPending;
+  // The bar's one button saves the pacing set first (through its confirm),
+  // then retention on the next press; it never skips the confirmation.
+  const mobileSavable = changeCount > 0 ? pacingSavable : !retention.saving;
+
+  const jumpTo = (sectionId: string): void => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const saveStatus =
+    changeCount === 0
+      ? 'No changes yet.'
+      : unacknowledgedFields.length > 0
+        ? `${
+            unacknowledgedFields.length === 1 ? 'One value is' : 'Some values are'
+          } past what we suggest. Tick the box next to ${
+            unacknowledgedFields.length === 1 ? 'it' : 'each of them'
+          } to continue.`
+        : 'You will see what each one does before it saves.';
+
   return (
     <PageLayout
       eyebrow="Settings"
       title="Sync pacing"
       description="How hard OpenLinker works your shop, and how long a full pass takes. Changing these trades shop load against how quickly OpenLinker notices a change."
       summary={
-        <div className="toolbar__group">
-          <span className="toolbar-chip">Catalogue</span>
-          <span className="toolbar-chip">Stock</span>
-          <span className="toolbar-chip">Deleted products</span>
-          <span className="toolbar-chip">Hosting</span>
-        </div>
+        <nav className="pacing-nav" aria-label="Sections on this page">
+          {SECTION_LINKS.map((link) => (
+            <a
+              key={link.id}
+              className="toolbar-chip pacing-nav__link"
+              href={`#${link.id}`}
+              onClick={(event) => {
+                // An in-page jump that leaves the router's URL alone.
+                event.preventDefault();
+                jumpTo(link.id);
+              }}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
       }
     >
       {query.isPending ? (
@@ -313,7 +379,7 @@ export function OperationalSettingsPage(): ReactElement {
           }
         />
       ) : view !== null && draft !== null && projections !== null ? (
-        <div className="workspace-grid--primary">
+        <div className="pacing-layout" data-mobile-bar={String(totalChanges > 0)}>
           <div className="settings-column">
             {errors.formErrors.length > 0 ? (
               <Alert tone="error" title="The change was not saved">
@@ -339,60 +405,86 @@ export function OperationalSettingsPage(): ReactElement {
             ) : null}
 
             {/* ── Hosting ──────────────────────────────────────────────── */}
-            <article className="panel">
-              <div className="panel__header">
+            <section
+              className="panel pacing-card"
+              id="pacing-hosting"
+              aria-labelledby="pacing-hosting-title"
+            >
+              <header className="pacing-card__header">
                 <div>
                   <p className="eyebrow">Your server</p>
-                  <h3 className="section-title">Hosting limits</h3>
+                  <h3 className="section-title" id="pacing-hosting-title">
+                    Hosting limits
+                  </h3>
                 </div>
                 <span className="panel__meta">Used by the calculator</span>
-              </div>
+              </header>
 
-              <div className="field-stack">
-                <FormField
-                  name="host-process-limit"
-                  label="Process time limit (seconds)"
-                  description="How long your host lets a single process run before killing it. Shared hosting is often 300 seconds. Ask your provider, or leave it at 300. Kept in this browser — OpenLinker cannot read it from your host."
-                >
-                  <Input
-                    className="control--narrow"
-                    type="number"
-                    min={10}
-                    max={3600}
-                    step={10}
+              <div className="pacing-card__fields">
+                <div className="pacing-field">
+                  <div className="pacing-field__head">
+                    <label className="form-field__label" htmlFor="host-process-limit">
+                      Process time limit
+                    </label>
+                    <span className="form-field__source pacing-field__source">
+                      kept in this browser
+                    </span>
+                  </div>
+                  <RangeNumberInput
+                    id="host-process-limit"
                     value={hostLimit}
-                    onChange={(event) => {
-                      handleHostLimit(event.target.value);
-                    }}
+                    min={HOST_LIMIT_MIN_SECONDS}
+                    max={HOST_LIMIT_MAX_SECONDS}
+                    step={10}
+                    unit="s"
+                    ariaLabel="Process time limit in seconds"
+                    describedBy="host-process-limit-description"
+                    onChange={handleHostLimit}
                   />
-                </FormField>
+                  <p
+                    className="form-field__description pacing-field__description"
+                    id="host-process-limit-description"
+                  >
+                    How long your host lets a single process run before killing it. Shared hosting
+                    is often 300 seconds. Ask your provider, or leave it at 300. OpenLinker cannot
+                    read it from your host.
+                  </p>
+                </div>
 
-                <div className="form-field">
-                  <span className="form-field__label form-field__label--split">
-                    Products OpenLinker holds
-                    <span className="form-field__source">read from your catalogue</span>
-                  </span>
-                  <p className="mono-text">
+                <div className="pacing-field">
+                  <div className="pacing-field__head">
+                    <span className="form-field__label">Products OpenLinker holds</span>
+                    <span className="form-field__source pacing-field__source">
+                      read from your catalogue
+                    </span>
+                  </div>
+                  <p className="pacing-stat">
                     {catalogueSizeQuery.isPending
                       ? '…'
                       : catalogueSize === null
                         ? 'not known yet'
                         : catalogueSize.toLocaleString()}
                   </p>
-                  <p className="form-field__description">
+                  <p className="form-field__description pacing-field__description">
                     Used only to work out how long a full pass takes. This is what OpenLinker has
                     copied over so far, which during a first sync is fewer than your shop holds.
                   </p>
                 </div>
               </div>
-            </article>
+            </section>
 
             {/* ── Catalogue ────────────────────────────────────────────── */}
-            <article className="panel">
-              <div className="panel__header">
+            <section
+              className="panel pacing-card"
+              id="pacing-catalogue"
+              aria-labelledby="pacing-catalogue-title"
+            >
+              <header className="pacing-card__header">
                 <div>
                   <p className="eyebrow">Catalogue</p>
-                  <h3 className="section-title">Product sweep</h3>
+                  <h3 className="section-title" id="pacing-catalogue-title">
+                    Product sweep
+                  </h3>
                 </div>
                 {/* Rendered from what the API reported, never a literal: both
                     sweep cadences are settable in the worker's environment, so a
@@ -403,9 +495,9 @@ export function OperationalSettingsPage(): ReactElement {
                     ? 'every 20 min (assumed)'
                     : describeCadence(view.catalogueSweepCadence.value).toLowerCase()}
                 </span>
-              </div>
+              </header>
 
-              <div className="field-stack">
+              <div className="pacing-card__fields">
                 <PacingValueField
                   label="Products per run"
                   ariaLabel="Products per catalogue run"
@@ -444,31 +536,37 @@ export function OperationalSettingsPage(): ReactElement {
                     setDraft({ ...draft, sweepPageSize: value });
                   }}
                 />
-
-                {/* The API's own sentence. A cap restated here would have to be
-                    kept in step with every adapter, and would be wrong first. */}
-                {view.adapterClampNote !== undefined &&
-                view.adapterClampNote.trim().length > 0 ? (
-                  <p className="form-field__description">{view.adapterClampNote}</p>
-                ) : null}
               </div>
-            </article>
+
+              {/* The API's own sentence. A cap restated here would have to be
+                  kept in step with every adapter, and would be wrong first. */}
+              {view.adapterClampNote !== undefined &&
+              view.adapterClampNote.trim().length > 0 ? (
+                <p className="pacing-card__note">{view.adapterClampNote}</p>
+              ) : null}
+            </section>
 
             {/* ── Stock ────────────────────────────────────────────────── */}
-            <article className="panel">
-              <div className="panel__header">
+            <section
+              className="panel pacing-card"
+              id="pacing-stock"
+              aria-labelledby="pacing-stock-title"
+            >
+              <header className="pacing-card__header">
                 <div>
                   <p className="eyebrow">Stock</p>
-                  <h3 className="section-title">Stock sweep</h3>
+                  <h3 className="section-title" id="pacing-stock-title">
+                    Stock sweep
+                  </h3>
                 </div>
                 <span className="panel__meta">
                   {view.inventorySweepCadence === undefined
                     ? 'every 15 min (assumed)'
                     : describeCadence(view.inventorySweepCadence.value).toLowerCase()}
                 </span>
-              </div>
+              </header>
 
-              <div className="field-stack">
+              <div className="pacing-card__fields">
                 <PacingValueField
                   label="Products per run"
                   ariaLabel="Products per stock run"
@@ -488,35 +586,43 @@ export function OperationalSettingsPage(): ReactElement {
                   }}
                 />
               </div>
-            </article>
+            </section>
 
             {/* ── Deleted products ─────────────────────────────────────── */}
-            <article className="panel">
-              <div className="panel__header">
+            <section
+              className="panel pacing-card"
+              id="pacing-deletions"
+              aria-labelledby="pacing-deletions-title"
+            >
+              <header className="pacing-card__header">
                 <div>
                   <p className="eyebrow">Deleted products</p>
-                  <h3 className="section-title">Deletion audit</h3>
+                  <h3 className="section-title" id="pacing-deletions-title">
+                    Deletion audit
+                  </h3>
                 </div>
                 {view.deletionAuditAlwaysEnabled ? (
                   <span className="panel__meta">no off switch here</span>
                 ) : null}
+              </header>
+
+              <div className="pacing-card__copy">
+                <p>
+                  OpenLinker walks its own list of products and checks each one against the shop, so a
+                  deletion is found even when nothing told us about it. Some shops do tell us — the
+                  PrestaShop module reports a delete as it happens — and where they do, the audit is
+                  the backstop rather than the only route. This page cannot tell which is true for a
+                  given connection.
+                </p>
+                <p>
+                  This page has no switch to turn the audit off, because it is what stops a deleted
+                  product's offers from selling. It can still be disabled on the worker with{' '}
+                  <code>OL_MASTER_PRODUCT_RECONCILE_ENABLED=false</code>, and this page cannot see
+                  that.
+                </p>
               </div>
 
-              <p className="panel-copy muted-text">
-                OpenLinker walks its own list of products and checks each one against the shop, so a
-                deletion is found even when nothing told us about it. Some shops do tell us — the
-                PrestaShop module reports a delete as it happens — and where they do, the audit is
-                the backstop rather than the only route. This page cannot tell which is true for a
-                given connection.
-              </p>
-              <p className="panel-copy muted-text">
-                This page has no switch to turn the audit off, because it is what stops a deleted
-                product's offers from selling. It can still be disabled on the worker with{' '}
-                <code>OL_MASTER_PRODUCT_RECONCILE_ENABLED=false</code>, and this page cannot see
-                that.
-              </p>
-
-              <div className="field-stack">
+              <div className="pacing-card__fields">
                 <PacingValueField
                   label="Products checked per run"
                   ariaLabel="Products checked per deletion-audit run"
@@ -536,11 +642,13 @@ export function OperationalSettingsPage(): ReactElement {
                   }}
                 />
 
-                <div className="form-field">
-                  <label className="form-field__label form-field__label--split" htmlFor="audit-cadence">
-                    How often it runs
+                <div className="pacing-field">
+                  <div className="pacing-field__head">
+                    <label className="form-field__label" htmlFor="audit-cadence">
+                      How often it runs
+                    </label>
                     <span
-                      className="form-field__source"
+                      className="form-field__source pacing-field__source"
                       data-source={
                         draft.deletionAuditCadence === view.deletionAuditCadence.value
                           ? view.deletionAuditCadence.source
@@ -557,7 +665,7 @@ export function OperationalSettingsPage(): ReactElement {
                           })`
                         : `${describeCadence(draft.deletionAuditCadence).toLowerCase()} (not saved yet)`}
                     </span>
-                  </label>
+                  </div>
                   <Select
                     id="audit-cadence"
                     value={draft.deletionAuditCadence}
@@ -573,7 +681,10 @@ export function OperationalSettingsPage(): ReactElement {
                       </option>
                     ))}
                   </Select>
-                  <p className="form-field__description" id="audit-cadence-description">
+                  <p
+                    className="form-field__description pacing-field__description"
+                    id="audit-cadence-description"
+                  >
                     Together with the number above, this decides how long a deleted product can keep
                     selling. It cannot be turned off.
                   </p>
@@ -597,56 +708,111 @@ export function OperationalSettingsPage(): ReactElement {
                   ) : null}
                 </div>
               </div>
-            </article>
+            </section>
 
-            <div className="form-actions">
-              <Button
-                disabled={
-                  diff.changes.length === 0 ||
-                  unacknowledgedFields.length > 0 ||
-                  mutation.isPending
-                }
-                onClick={() => {
-                  setConfirmOpen(true);
-                }}
-              >
-                Save changes
-              </Button>
-              <Button
-                tone="secondary"
-                disabled={diff.changes.length === 0}
-                onClick={() => {
-                  setDraft(toValues(view));
-                }}
-              >
-                Undo my edits
-              </Button>
-              <span className="actions-hint">
-                {diff.changes.length === 0
-                  ? 'No changes yet.'
-                  : unacknowledgedFields.length > 0
-                    ? `${
-                        unacknowledgedFields.length === 1 ? 'One value is' : 'Some values are'
-                      } past what we suggest. Tick the box next to ${
-                        unacknowledgedFields.length === 1 ? 'it' : 'each of them'
-                      } to continue.`
-                    : `${String(diff.changes.length)} ${
-                        diff.changes.length === 1 ? 'setting' : 'settings'
-                      } changed. You will see what each one does before it saves.`}
-              </span>
-            </div>
+            {retention.draft !== null ? (
+              <SyncJobRetentionSection
+                view={view}
+                draft={retention.draft}
+                errors={retention.errors}
+                onChange={retention.setDraft}
+              />
+            ) : null}
           </div>
 
-          <aside className="impact-column">
-            <SyncPacingImpact
-              before={projections.before}
-              after={projections.after}
-              catalogueValue={draft.catalogueSweepBudget}
-              catalogueLimits={limitsFor(view, 'catalogueSweepBudget')}
-              hostLimitSeconds={hostLimit}
-              catalogueSizeKnown={catalogueSize !== null}
-            />
-          </aside>
+          <SyncPacingRail
+            saved={toValues(view)}
+            draft={draft}
+            before={projections.before}
+            after={projections.after}
+            catalogueSweepCadence={view.catalogueSweepCadence?.value}
+            inventorySweepCadence={view.inventorySweepCadence?.value}
+            hostLimitSeconds={hostLimit}
+            catalogueLimits={limitsFor(view, 'catalogueSweepBudget')}
+            catalogueSizeKnown={catalogueSize !== null}
+            retentionSaved={retention.saved}
+            retentionDraft={retention.draft}
+            onJump={jumpTo}
+            footer={
+              <>
+                <div className="pacing-save" data-dirty={String(changeCount > 0)}>
+                  <div className="pacing-save__text">
+                    <p className="pacing-save__count">
+                      {changeCount === 0
+                        ? 'Sync pacing'
+                        : `${String(changeCount)} unsaved ${changeCount === 1 ? 'change' : 'changes'}`}
+                    </p>
+                    <p className="pacing-save__status" aria-live="polite">
+                      {saveStatus}
+                    </p>
+                  </div>
+                  <div className="pacing-save__actions">
+                    <Button
+                      tone="secondary"
+                      disabled={changeCount === 0}
+                      onClick={() => {
+                        setDraft(toValues(view));
+                      }}
+                    >
+                      Undo my edits
+                    </Button>
+                    <Button
+                      disabled={!pacingSavable}
+                      onClick={() => {
+                        setConfirmOpen(true);
+                      }}
+                    >
+                      Save changes
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Retention saves on its own, with no confirmation: it has
+                    no catalogue-size consequence to confirm. Offered only
+                    once there is something to save. */}
+                {retention.changeCount > 0 ? (
+                  <div className="pacing-save pacing-save--inline" data-dirty="true">
+                    <div className="pacing-save__text">
+                      <p className="pacing-save__count">Job retention changed</p>
+                      <p className="pacing-save__status">Saves on its own, no confirmation.</p>
+                    </div>
+                    <div className="pacing-save__actions">
+                      <Button tone="secondary" onClick={retention.reset}>
+                        Undo
+                      </Button>
+                      <Button disabled={retention.saving} onClick={retention.save}>
+                        Save retention
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            }
+          />
+
+          {/* Below 1024px the rail is an ordinary section after the form, so
+              its footer can be a long way down: this bar keeps the save in
+              reach, and only exists while there is something to save. */}
+          {totalChanges > 0 ? (
+            <div className="pacing-mobilebar" role="region" aria-label="Unsaved changes">
+              <p className="pacing-mobilebar__count">
+                {`${String(totalChanges)} unsaved ${totalChanges === 1 ? 'change' : 'changes'}`}
+              </p>
+              <Button
+                className="pacing-mobilebar__save"
+                disabled={!mobileSavable}
+                onClick={() => {
+                  if (changeCount > 0) {
+                    setConfirmOpen(true);
+                  } else {
+                    retention.save();
+                  }
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          ) : null}
 
           <SyncPacingConfirmDialog
             open={confirmOpen}
