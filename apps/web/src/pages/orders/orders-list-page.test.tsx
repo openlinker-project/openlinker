@@ -614,7 +614,7 @@ describe('OrdersListPage', () => {
     }
   });
 
-  it('should render a channel-pill resolved from the connection platformType', async () => {
+  it('should render the source channel as a connection chip linking to the source connection', async () => {
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
@@ -623,15 +623,19 @@ describe('OrdersListPage', () => {
     const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    const pill = container.querySelector('.channel-pill[data-channel="allegro"]');
-    expect(pill?.textContent).toBe('Allegro');
+    const chip = container.querySelector('.connection-chip[data-channel="allegro"]');
+    expect(chip?.querySelector('.connection-chip__platform')?.textContent).toBe('Allegro');
+    // #3670: the chip IS the link to the source connection, and its name
+    // slides out of it rather than sitting beside it as a second link.
+    expect(chip).toHaveAttribute('href', `/connections/${sampleConnection.id}`);
+    expect(chip?.querySelector('.connection-chip__reveal')?.textContent).toBe(sampleConnection.name);
   });
 
   it.each([
     ['erli', 'Erli'],
     ['woocommerce', 'WooCommerce'],
   ])(
-    'should resolve the %s channel-pill from the plugin registry, not a local map',
+    'should resolve the %s channel chip label from the plugin registry, not a local map',
     async (platformType, expectedLabel) => {
       // The deleted `CHANNEL_LABELS` map (#2088) covered only allegro /
       // prestashop / amazon / shopify, so these two rendered raw and lowercase
@@ -648,7 +652,7 @@ describe('OrdersListPage', () => {
       const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
       await screen.findByText('ALG-882414');
-      const pill = container.querySelector(`.channel-pill[data-channel="${platformType}"]`);
+      const pill = container.querySelector(`.connection-chip[data-channel="${platformType}"] .connection-chip__platform`);
       expect(pill?.textContent).toBe(expectedLabel);
     }
   );
@@ -2034,7 +2038,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     }
   });
 
-  it('keeps the folded channel pill under the order name, with its registry label', async () => {
+  it('keeps the folded channel chip under the order name, with its registry label', async () => {
     // The fold is CSS-driven (`.orders-order-channel`, hidden ≥1024px) and
     // #2094 owns relocating it — this pins that #2091 left the render branch and
     // its `→ dest +N` sibling in place, INSIDE the order cell's stack.
@@ -2046,7 +2050,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     const stack = container.querySelector('.orders-cell-stack') as HTMLElement;
     const fold = stack.querySelector('.orders-order-channel') as HTMLElement;
     expect(fold).not.toBeNull();
-    expect(fold.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe('Erli');
+    expect(fold.querySelector('.connection-chip[data-channel="erli"] .connection-chip__platform')?.textContent).toBe('Erli');
     expect(within(fold).getByText('→ WooCommerce')).toBeInTheDocument();
     // The fold is a SIBLING of the identity cell, not inside its body.
     expect(fold.closest('.order-cell')).toBeNull();
@@ -2061,10 +2065,10 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     // Two `erli` pills render on the desktop row — the order cell's fold and the
     // Channel column. Exclude the fold to assert the column's own lookup.
     const columnPill = Array.from(
-      container.querySelectorAll('.channel-pill[data-channel="erli"]')
+      container.querySelectorAll('.connection-chip[data-channel="erli"] .connection-chip__platform')
     ).find((pill) => pill.closest('.orders-order-channel') === null);
     expect(columnPill?.textContent).toBe('Erli');
-    expect(columnPill?.parentElement?.textContent).toContain('→ WooCommerce');
+    expect(columnPill?.closest('.connection-chip')?.parentElement?.textContent).toContain('→ WooCommerce');
   });
 
   it('resolves the mobile-card subtitle channel label from the registry', async () => {
@@ -2076,7 +2080,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
       await screen.findAllByText('ALG-882414');
       const subtitle = container.querySelector('.orders-card-sub') as HTMLElement;
-      expect(subtitle.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe(
+      expect(subtitle.querySelector('.connection-chip[data-channel="erli"] .connection-chip__platform')?.textContent).toBe(
         'Erli'
       );
       expect(within(subtitle).getByText('→ WooCommerce')).toBeInTheDocument();

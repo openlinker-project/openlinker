@@ -30,13 +30,14 @@ import { FulfillmentWorkController } from './http/fulfillment-work.controller';
   //                             and the source's own order reference (#3426)
   //   InventoryModule (#3426) — the location's operator-authored name
   //   ProductsModule  (#3426) — each line's product name
-  //   ShippingModule  (#3525) — the shipment-first dispatch router (#3506)
-  //                             the closure notifier hands every `dispatch`
-  //                             intent to; the worker's relay sweep uses the
-  //                             same one
+  //   ShippingModule  (#3292, #3525) — the shipment(s) dispatched for one work,
+  //                             via `IShipmentQueryService.findByFulfillmentWorkIds`,
+  //                             and the shipment-first dispatch router (#3506) the
+  //                             closure notifier hands every `dispatch` intent to;
+  //                             the worker's relay sweep uses the same one
   //
-  // All four are reached through their published `I*Service` interfaces and
-  // never a `*RepositoryPort`, and all three reads are batched per page.
+  // All are reached through their published `I*Service` interfaces and never
+  // a `*RepositoryPort`, and every page-shaped read is batched per page.
   imports: [CoreFulfillmentModule, OrdersModule, InventoryModule, ProductsModule, ShippingModule],
   controllers: [FulfillmentWorkController],
   providers: [

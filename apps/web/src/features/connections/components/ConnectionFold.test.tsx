@@ -142,4 +142,19 @@ describe('ConnectionFold', () => {
     expect(foldQuery).toBeDefined();
     expect(foldQuery).toBe(columnQuery);
   });
+  it('should render the channel and the name as ONE chip link when a channel is passed', () => {
+    renderWithProviders(
+      <ConnectionFold
+        connectionId={CONNECTION_ID}
+        connection={{ name: 'Erli Demo', status: 'active' }}
+        channel={{ platformType: 'erli', label: 'Erli' }}
+      />,
+    );
+
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveClass('connection-chip');
+    expect(links[0]).toHaveTextContent('Erli Demo');
+    expect(links[0]).toHaveAttribute('href', `/connections/${CONNECTION_ID}`);
+  });
 });

@@ -1,31 +1,22 @@
 /**
  * Bench surface (#2413, stories A2–A4)
  *
- * The composition: the always-visible identity bar (A4) over the overlay that
- * owns lock (A3) and handover (A2), with the bench body as children.
- *
- * Exported as ONE component rather than as its two halves, because they are
- * only correct together: a caller rendering the bar alone gets a bench that
- * shows a name and never locks, and a caller rendering the overlay alone gets a
- * bench that locks and never says whose work it is recording. Both are the
- * mis-attribution failure ADR-071 names.
- *
- * `BenchTopbar` (#3423) is composed here too, but is stateless and carries no
- * attribution stake — it renders above the identity bar unconditionally and
- * has no bearing on the lock/handover argument above.
+ * The composition: the idle lock (A3) and its overlay, the connectivity
+ * readout, and the bench body as children. Who is signed in (A4) is shown by
+ * the application's own topbar above this, which `BenchAppLayout` renders -
+ * its user chip names the packer whose work is being recorded, and its user
+ * menu is how a packer signs out and hands the bench over (#3653).
  *
  * @module apps/web/src/features/bench/components
  */
 import type { ReactElement, ReactNode } from 'react';
 
-import { usePermission } from '../../../shared/auth/use-permission';
 import { Alert } from '../../../shared/ui/alert';
 import { resolveBenchIdleTimeoutMs, useBenchIdentity } from '../hooks/use-bench-identity';
 import { BenchInteractiveContext } from '../hooks/use-bench-interactive';
 import { benchIdentityCopy } from '../lib/bench-identity.copy';
-import { BenchIdentityBar } from './bench-identity-bar';
 import { BenchIdentityOverlay } from './bench-identity-overlay';
-import { BenchTopbar } from './bench-topbar';
+import { BenchConnectivityIndicator } from './bench-connectivity-indicator';
 import { BenchReachabilityContext } from '../hooks/bench-reachability-context';
 import { useBenchReachability } from '../hooks/use-bench-reachability';
 
@@ -50,27 +41,19 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
       ),
   });
 
-  // Whether this viewer has an application to return to. `usePermission` rather
-  // than `useWriteAccess`: this is not a write affordance, so demo mode has no
-  // opinion on it, and a disabled-but-visible exit would be worse than none.
-  // An anonymous (locked) session resolves false, which is what keeps the
-  // locked bench from advertising a door out of itself.
-  const canLeaveBench = usePermission('orders:write');
-
-  // #3407/#3422 - held HERE, above both the topbar that reads it and the
-  // parcel pane that reports into it. See `bench-reachability-context.ts` for
+  // #3407/#3422 - held HERE, above both the connectivity readout that reads it
+  // and the parcel pane that reports into it. See `bench-reachability-context.ts` for
   // why a second call of the hook would be inert rather than merely redundant.
   const reachability = useBenchReachability();
 
   return (
     <BenchReachabilityContext.Provider value={reachability}>
     <div className="bench">
-      {/* #3423 (epic #3401) — bench-owned, never `AppShell`. See the module docblock. */}
-      <BenchTopbar signedInName={identity.signedInName} canLeaveBench={canLeaveBench} />
-      <BenchIdentityBar
-        signedInName={identity.signedInName}
-        onSwitchPacker={identity.requestHandover}
-      />
+      {/* The app's own topbar sits above this (`BenchAppLayout`); what stays
+          bench-owned is only the connectivity readout, which no other page has. */}
+      <div className="bench-status">
+        <BenchConnectivityIndicator />
+      </div>
       {/* #3408 (epic #3401). Advisory only — see `use-bench-identity.ts`'s
           "does not add a fourth state" docblock. Any activity dismisses it
           via `useIdleTimeout`'s own onActivity handler, which is what makes
@@ -80,11 +63,7 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
           {benchIdentityCopy.warning(identity.warningSecondsRemaining)}
         </Alert>
       )}
-      <BenchIdentityOverlay
-        state={identity.state}
-        onConfirmHandover={() => void identity.confirmHandover()}
-        onCancelHandover={identity.cancelHandover}
-      >
+      <BenchIdentityOverlay state={identity.state}>
         {/* A3's client half. The overlay hides the body visually; this is what
             takes the scanner off it — `aria-hidden` and `inert` say nothing to
             a document-level listener. See `use-bench-interactive.ts`. */}

@@ -79,6 +79,7 @@ describe('AuthController', () => {
       login: jest.fn(),
       getMe: jest.fn(),
       updateAnalyticsConsent: jest.fn(),
+      changePassword: jest.fn(),
     };
     const mockPasswordResetService: jest.Mocked<IPasswordResetService> = {
       requestReset: jest.fn(),
@@ -502,6 +503,37 @@ describe('AuthController', () => {
       expect(result.role).toBe('admin');
       expect(result.permissions).toBeDefined();
       expect(result.permissions.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('POST /auth/me/password (#3456)', () => {
+    const principal = { id: 'user-1', username: 'anna', role: 'packer' as const };
+    const dto = { currentPassword: 'Tmp-one-time-pass', newPassword: 'a-brand-new-pass' };
+
+    it('should answer ok when the password was changed', async () => {
+      authService.changePassword.mockResolvedValue('changed');
+
+      await expect(controller.changePassword(principal, dto)).resolves.toEqual({ ok: true });
+      expect(authService.changePassword).toHaveBeenCalledWith(
+        'user-1',
+        'Tmp-one-time-pass',
+        'a-brand-new-pass'
+      );
+    });
+
+    // 400, never 401: a 401 would push the client into refresh-and-retry.
+    it.each([
+      ['incorrect-current', 'CURRENT_PASSWORD_INCORRECT'],
+      ['unchanged', 'PASSWORD_UNCHANGED'],
+    ] as const)('should answer 400 %s with its own code', async (outcome, code) => {
+      authService.changePassword.mockResolvedValue(outcome);
+
+      const error = await controller.changePassword(principal, dto).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toEqual(
+        expect.objectContaining({ code })
+      );
     });
   });
 

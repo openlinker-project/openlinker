@@ -29,8 +29,10 @@ import {
   type FulfillmentWorkView,
   type IFulfillmentWorklistService,
 } from '@openlinker/core/fulfillment';
+import { Shipment } from '@openlinker/core/shipping';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { FulfillmentWorkController } from './fulfillment-work.controller';
 import type { ApplyFulfillmentWorkActionDto } from './dto/apply-fulfillment-work-action.dto';
 import type { IFulfillmentParcelClosureNotifier } from '../application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
@@ -87,11 +89,13 @@ const collaborators = (): {
   orders: { findByIds: BatchedRead };
   locations: { getLocationsByIds: BatchedRead };
   products: { getVariantsByIds: BatchedRead; getProductsByIds: BatchedRead };
+  shipments: { findByFulfillmentWorkIds: jest.Mock };
   parcelClosureNotifier: { notifyParcelClosed: jest.Mock };
 } => ({
   orders: { findByIds: batchedRead() },
   locations: { getLocationsByIds: batchedRead() },
   products: { getVariantsByIds: batchedRead(), getProductsByIds: batchedRead() },
+  shipments: { findByFulfillmentWorkIds: jest.fn().mockResolvedValue(new Map()) },
   // #3525
   parcelClosureNotifier: { notifyParcelClosed: jest.fn().mockResolvedValue(undefined) },
 });
@@ -107,6 +111,7 @@ const build = (
     deps.orders as never,
     deps.locations as never,
     deps.products as never,
+    deps.shipments as never,
     deps.parcelClosureNotifier as unknown as IFulfillmentParcelClosureNotifier
   ),
   ...deps,
@@ -564,6 +569,278 @@ describe('FulfillmentWorkController', () => {
       expect(locations.getLocationsByIds).not.toHaveBeenCalled();
       expect(products.getVariantsByIds).not.toHaveBeenCalled();
       expect(products.getProductsByIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('#3096 — who may read one task', () => {
+    const rolesOf = (handler: (...args: never[]) => unknown): unknown =>
+      Reflect.getMetadata(ROLES_KEY, handler);
+
+    it('should narrow the single-task read and its shipments to admin and operator', () => {
+      expect(rolesOf(FulfillmentWorkController.prototype.get)).toEqual(['admin', 'operator']);
+      expect(rolesOf(FulfillmentWorkController.prototype.listShipments)).toEqual(['admin', 'operator']);
+    });
+
+    it('should keep the list open to viewer, because the order page reads it', () => {
+      expect(rolesOf(FulfillmentWorkController.prototype.list)).toEqual(['admin', 'operator', 'viewer']);
+    });
+  });
+
+  describe('#3096 — the active alias', () => {
+    it('should resolve active=true to every non-terminal status when no status is given', async () => {
+      worklist.list.mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 });
+
+      await controller.list({ active: true } as never);
+
+      const sent = worklist.list.mock.calls[0][0].status ?? [];
+      expect(sent).not.toContain('closed');
+      expect(sent).not.toContain('cancelled');
+      expect(sent).not.toContain('incomplete');
+      expect(sent).toEqual(expect.arrayContaining(['open', 'scheduled', 'in_progress']));
+    });
+
+    it('should intersect active=true with an explicit status filter', async () => {
+      worklist.list.mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 });
+
+      await controller.list({ active: true, status: ['open', 'closed'] } as never);
+
+      expect(worklist.list.mock.calls[0][0].status).toEqual(['open']);
+    });
+
+    it('should leave the status filter untouched when active is absent', async () => {
+      worklist.list.mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 });
+
+      await controller.list({ status: ['closed'] } as never);
+      await controller.list({} as never);
+
+      expect(worklist.list.mock.calls[0][0].status).toEqual(['closed']);
+      expect(worklist.list.mock.calls[1][0].status).toBeUndefined();
+    });
+  });
+
+  describe('#3096 — line product facts', () => {
+    const line = (id: string, variantId: string): FulfillmentWorkView['lines'][number] =>
+      ({
+        id,
+        orderLineId: `line-${id}`,
+        productVariantId: variantId,
+        totalQuantity: 1,
+        fulfilledQuantity: 0,
+        cancelledQuantity: 0,
+      }) as FulfillmentWorkView['lines'][number];
+
+    it('should carry the variant SKU, EAN, attributes and the image proxy path', async () => {
+      worklist.get.mockResolvedValue(view({ lines: [line('l-1', 'ol_variant_1')] }));
+      const { controller: c, products } = build(worklist);
+      products.getVariantsByIds.mockResolvedValue([
+        {
+          id: 'ol_variant_1',
+          productId: 'ol_product_1',
+          sku: 'MUG-01',
+          ean: '5901234123457',
+          attributes: { Colour: 'white' },
+        },
+      ]);
+      products.getProductsByIds.mockResolvedValue([
+        { id: 'ol_product_1', name: 'Ceramic mug', images: ['http://shop.internal/mug.jpg'] },
+      ]);
+
+      const dto = await c.get('work-1');
+
+      expect(dto.lines[0]).toMatchObject({
+        productName: 'Ceramic mug',
+        sku: 'MUG-01',
+        ean: '5901234123457',
+        attributes: { Colour: 'white' },
+        // The API's own proxy path — never the shop URL the sync stored.
+        imageUrl: '/products/ol_product_1/images/0',
+      });
+      expect(JSON.stringify(dto)).not.toContain('shop.internal');
+    });
+
+    it('should answer null for every fact of a variant absent from the catalogue', async () => {
+      worklist.get.mockResolvedValue(view({ lines: [line('l-1', 'ol_variant_gone')] }));
+
+      const dto = await controller.get('work-1');
+
+      expect(dto.lines[0]).toMatchObject({
+        productName: null,
+        sku: null,
+        ean: null,
+        imageUrl: null,
+        attributes: null,
+      });
+    });
+
+    it('should answer null attributes and image for a variant with none, never an empty object', async () => {
+      worklist.get.mockResolvedValue(view({ lines: [line('l-1', 'ol_variant_1')] }));
+      const { controller: c, products } = build(worklist);
+      products.getVariantsByIds.mockResolvedValue([
+        { id: 'ol_variant_1', productId: 'ol_product_1', sku: null, ean: null, attributes: {} },
+      ]);
+      products.getProductsByIds.mockResolvedValue([{ id: 'ol_product_1', name: 'Mug', images: [] }]);
+
+      const dto = await c.get('work-1');
+
+      expect(dto.lines[0].attributes).toBeNull();
+      expect(dto.lines[0].imageUrl).toBeNull();
+    });
+
+    it('should resolve a whole page of line facts from one variant read, never one per line', async () => {
+      worklist.list.mockResolvedValue({
+        works: [
+          view({ id: 'w-1', lines: [line('a', 'ol_variant_a')] }),
+          view({ id: 'w-2', lines: [line('b', 'ol_variant_b')] }),
+        ],
+        total: 2,
+        limit: 25,
+        offset: 0,
+      });
+      const { controller: c, products } = build(worklist);
+
+      await c.list({} as never);
+
+      expect(products.getVariantsByIds).toHaveBeenCalledTimes(1);
+      expect(products.getProductsByIds).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  describe('#3096 — what the bench did (G02-3)', () => {
+    it('should carry the parcel, packer, completion and channel-notified facts out', async () => {
+      worklist.get.mockResolvedValue(
+        view({
+          parcelClosedAt: new Date('2026-09-02T08:00:00Z'),
+          packedByUserId: 'user-packer',
+          completedAt: new Date('2026-09-02T09:00:00Z'),
+          channelNotifiedAt: new Date('2026-09-02T08:05:00Z'),
+        })
+      );
+
+      const dto = await controller.get('work-1');
+
+      expect(dto.parcelClosedAt).toEqual(new Date('2026-09-02T08:00:00Z'));
+      expect(dto.packedByUserId).toBe('user-packer');
+      expect(dto.completedAt).toEqual(new Date('2026-09-02T09:00:00Z'));
+      expect(dto.channelNotifiedAt).toEqual(new Date('2026-09-02T08:05:00Z'));
+    });
+
+    it('should never ride the relay column out under its own name', async () => {
+      worklist.get.mockResolvedValue(view({ channelNotifiedAt: null }));
+
+      const dto = await controller.get('work-1');
+
+      expect(dto).not.toHaveProperty('dispatchRelayedAt');
+      expect(dto.channelNotifiedAt).toBeNull();
+    });
+  });
+
+  describe('listShipments', () => {
+    /** Mirrors `shipment-query.service.spec.ts`'s own factory, field for field. */
+    function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
+      return new Shipment(
+        overrides.id ?? 'ol_shipment_1',
+        overrides.orderId ?? 'ol_order_1',
+        overrides.connectionId ?? 'conn-inpost',
+        overrides.shippingMethod ?? 'paczkomat',
+        overrides.status ?? 'generated',
+        overrides.providerShipmentId ?? 'shipx-1',
+        overrides.paczkomatId ?? 'POZ08A',
+        overrides.trackingNumber ?? '6800000001',
+        // `in`, not `??`: a test that passes `labelPdfRef: null` means "no
+        // label", and `??` would quietly swap that null for the default.
+        'labelPdfRef' in overrides ? (overrides.labelPdfRef ?? null) : 'shipx:label:1',
+        overrides.dispatchedAt ?? null,
+        overrides.deliveredAt ?? null,
+        overrides.cancelledAt ?? null,
+        overrides.failedAt ?? null,
+        overrides.errorMessage ?? null,
+        overrides.createdAt ?? new Date('2026-09-01T00:00:00Z'),
+        overrides.updatedAt ?? new Date('2026-09-01T00:00:00Z'),
+        overrides.sourceDeliveryMethodId ?? null,
+        overrides.carrier ?? null,
+        overrides.deliveryIntent ?? null,
+        overrides.providerCode ?? null,
+        overrides.waybillRelayedAt ?? null,
+        overrides.direction ?? 'outbound',
+        overrides.reservationConsumedAt ?? null,
+        overrides.fulfillmentWorkId ?? 'work-1',
+        overrides.waybillRelayFailure ?? null,
+        overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null }
+      );
+    }
+
+    it('reads outbound shipments for the named work only, newest first', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const older = makeShipment({
+        id: 'ol_shipment_older',
+        createdAt: new Date('2026-09-01T08:00:00Z'),
+      });
+      const newer = makeShipment({
+        id: 'ol_shipment_newer',
+        createdAt: new Date('2026-09-01T09:00:00Z'),
+      });
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(
+        new Map([['work-1', [older, newer]]])
+      );
+
+      const result = await c.listShipments('work-1');
+
+      expect(shipments.findByFulfillmentWorkIds).toHaveBeenCalledWith(['work-1'], 'outbound');
+      expect(result.map((s) => s.id)).toEqual(['ol_shipment_newer', 'ol_shipment_older']);
+    });
+
+    it('projects a narrow shape — never the domain entity wholesale', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const shipment = makeShipment({
+        id: 'ol_shipment_1',
+        status: 'dispatched',
+        carrier: 'inpost',
+        trackingNumber: '6800000001',
+        labelPdfRef: 'shipx:label:1',
+      });
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map([['work-1', [shipment]]]));
+
+      const [dto] = await c.listShipments('work-1');
+
+      expect(dto).toEqual({
+        id: 'ol_shipment_1',
+        status: 'dispatched',
+        carrier: 'inpost',
+        trackingNumber: '6800000001',
+        hasLabel: true,
+        createdAt: shipment.createdAt,
+        dispatchedAt: shipment.dispatchedAt,
+        deliveredAt: shipment.deliveredAt,
+      });
+    });
+
+    it('reports no label rather than throwing when none has been generated', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const shipment = makeShipment({ status: 'draft', labelPdfRef: null });
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map([['work-1', [shipment]]]));
+
+      const [dto] = await c.listShipments('work-1');
+
+      expect(dto.hasLabel).toBe(false);
+    });
+
+    it('answers an empty array — not an error — when nothing has been dispatched yet', async () => {
+      worklist.get.mockResolvedValue(view({ id: 'work-1' }));
+      const { controller: c, shipments } = build(worklist);
+      shipments.findByFulfillmentWorkIds.mockResolvedValue(new Map());
+
+      await expect(c.listShipments('work-1')).resolves.toEqual([]);
+    });
+
+    it('answers 404 for a task that does not exist, never a false empty list', async () => {
+      worklist.get.mockRejectedValue(new FulfillmentWorkNotFoundError('work-missing'));
+      const { controller: c, shipments } = build(worklist);
+
+      await expect(c.listShipments('work-missing')).rejects.toBeInstanceOf(NotFoundException);
+      expect(shipments.findByFulfillmentWorkIds).not.toHaveBeenCalled();
     });
   });
 });

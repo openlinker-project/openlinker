@@ -9,8 +9,12 @@
  * `JwtAuthGuard` is applied GLOBALLY, so per the house convention this file
  * *"never declares a redundant `@UseGuards(JwtAuthGuard)`"* (the invoicing /
  * refunds controllers state the same rule). Every route below is guarded;
- * `@Roles` narrows further — reads are open to `viewer`, actions are not,
- * because `visible` and `canWrite` are different answers.
+ * `@Roles` narrows further. The LIST stays open to `viewer`, because the
+ * order-detail page's fulfilment panel reads it and a viewer may see an
+ * order. The single-task detail and its shipments are admin + operator only
+ * since #3096: the task detail page is a supervisor's screen, and a route a
+ * role can read but whose page it is refused would be a contract that says
+ * one thing and a UI that says another.
  *
  * ## One action route, not a route per action
  *
@@ -53,7 +57,10 @@ import {
   FulfillmentWorkNotFoundError,
   FulfillmentWorkVersionConflictError,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
+  FulfillmentWorkStatusValues,
   isOperatorInvocableAction,
+  isTerminalFulfillmentWorkStatus,
+  type FulfillmentWorkStatus,
   MissingFulfillmentWorkActionFieldError,
   type FulfillmentWorkConflictCode,
   OPERATOR_INVOCABLE_ACTIONS,
@@ -66,12 +73,14 @@ import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService, type OrderRecord } from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
+import { SHIPMENT_QUERY_SERVICE_TOKEN, type IShipmentQueryService } from '@openlinker/core/shipping';
 
 // Value imports (not `import type`): the @CurrentUser() param type feeds
 // decorator metadata, so erasing it breaks the emitted signature.
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { productImageProxyPath } from '../../products/http/product-image-path';
 import {
   FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
   type IFulfillmentParcelClosureNotifier,
@@ -88,6 +97,7 @@ import {
   FulfillmentWorkPageResponseDto,
   FulfillmentWorkResponseDto,
 } from './dto/fulfillment-work-response.dto';
+import { FulfillmentWorkShipmentResponseDto } from './dto/fulfillment-work-shipment-response.dto';
 import { ListFulfillmentWorksQueryDto } from './dto/list-fulfillment-works-query.dto';
 import { UpdateFulfillmentWorkAssignmentDto } from './dto/update-fulfillment-work-assignment.dto';
 
@@ -100,8 +110,32 @@ import { UpdateFulfillmentWorkAssignmentDto } from './dto/update-fulfillment-wor
 interface WorklistFacts {
   readonly orderById: Map<string, OrderRecord>;
   readonly locationNameById: Map<string, string>;
-  readonly productNameByVariantId: Map<string, string | null>;
+  readonly lineFactsByVariantId: Map<string, LineFacts>;
 }
+
+/**
+ * What a line renders about its product (#3426, widened by #3096): the name,
+ * the codes an operator checks a shelf against, the picture and the variant's
+ * own attributes. Collapsed from the variant and product reads `loadFacts`
+ * already makes, so nothing downstream can reach a field this response has not
+ * allowlisted.
+ */
+interface LineFacts {
+  readonly productName: string | null;
+  readonly sku: string | null;
+  readonly ean: string | null;
+  readonly imageUrl: string | null;
+  readonly attributes: Record<string, string> | null;
+}
+
+/**
+ * Every status that still has work in it — the board's default view (#3096).
+ * The complement of the domain's own terminal set rather than a second list,
+ * so a status added to the vocabulary is active unless the domain says it is
+ * an ending.
+ */
+const ACTIVE_FULFILLMENT_WORK_STATUSES: readonly FulfillmentWorkStatus[] =
+  FulfillmentWorkStatusValues.filter((status) => !isTerminalFulfillmentWorkStatus(status));
 
 @ApiBearerAuth()
 @ApiTags('fulfillment')
@@ -118,6 +152,8 @@ export class FulfillmentWorkController {
     private readonly locations: ILocationService,
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
+    @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
+    private readonly shipments: IShipmentQueryService,
     @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
     private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
   ) {}
@@ -135,7 +171,7 @@ export class FulfillmentWorkController {
     @Query() query: ListFulfillmentWorksQueryDto
   ): Promise<FulfillmentWorkPageResponseDto> {
     const page = await this.worklist.list({
-      status: query.status,
+      status: this.resolveStatusFilter(query),
       requestStatus: query.requestStatus,
       locationId: query.locationId,
       orderId: query.orderId,
@@ -143,6 +179,24 @@ export class FulfillmentWorkController {
       offset: query.offset,
     });
     return await this.toPageDto(page);
+  }
+
+  /**
+   * The `status` filter, with the `active` alias folded in (#3096).
+   *
+   * `active=true` is "every status that still has work in it" — the board's
+   * default, because a supervisor staffing the floor has nothing to do with a
+   * closed or cancelled parcel. It is an alias the SERVER resolves rather than
+   * a status list the browser sends: the frontend may not mirror this
+   * vocabulary (`check-no-supported-actions-mirror.mjs`), and a list it sent
+   * would be a mirror. Combined with an explicit `status`, the two intersect.
+   */
+  private resolveStatusFilter(
+    query: ListFulfillmentWorksQueryDto
+  ): FulfillmentWorkStatus[] | undefined {
+    if (query.active !== true) return query.status;
+    if (query.status === undefined) return [...ACTIVE_FULFILLMENT_WORK_STATUSES];
+    return query.status.filter((status) => ACTIVE_FULFILLMENT_WORK_STATUSES.includes(status));
   }
 
   /**
@@ -188,19 +242,36 @@ export class FulfillmentWorkController {
     return {
       orderById: new Map(orders.map((order) => [order.internalOrderId, order])),
       locationNameById: new Map(locations.map((location) => [location.id, location.name])),
-      // Collapsed to the one fact a line renders, so nothing downstream can
-      // reach a variant or a product field this response has not allowlisted.
-      productNameByVariantId: new Map(
-        variants.map((variant) => [
-          variant.id,
-          productById.get(variant.productId)?.name ?? null,
-        ])
+      // Collapsed to the facts a line renders, so nothing downstream can reach
+      // a variant or a product field this response has not allowlisted. No
+      // extra read: the variants and products are the ones loaded above.
+      lineFactsByVariantId: new Map(
+        variants.map((variant): [string, LineFacts] => {
+          const product = productById.get(variant.productId);
+          // Read defensively: a catalogue row synced before a column existed
+          // can carry no value at all, and one malformed variant must not
+          // fail the whole page.
+          const attributes =
+            variant.attributes && Object.keys(variant.attributes).length > 0
+              ? { ...variant.attributes }
+              : null;
+          return [
+            variant.id,
+            {
+              productName: product?.name ?? null,
+              sku: variant.sku ?? null,
+              ean: variant.ean ?? null,
+              imageUrl: productImageProxyPath(product),
+              attributes,
+            },
+          ];
+        })
       ),
     };
   }
 
   @Get(':workId')
-  @Roles('admin', 'operator', 'viewer')
+  @Roles('admin', 'operator')
   @ApiOperation({ summary: 'Get one fulfilment task' })
   @ApiResponse({ status: 200, type: FulfillmentWorkResponseDto })
   @ApiResponse({ status: 404, description: 'No such fulfilment task' })
@@ -211,6 +282,66 @@ export class FulfillmentWorkController {
     } catch (error) {
       throw this.toHttp(error);
     }
+  }
+
+  /**
+   * The shipment(s) dispatched for one fulfilment task (#3292).
+   *
+   * A SIBLING route rather than a field folded onto `GET :workId` — a work
+   * has zero, one, or (append-only across a cancel + re-issue) several
+   * shipments, and the main projection is a single-object DTO carried by the
+   * worklist read too, where an array field would be dead weight on every
+   * row. `IShipmentQueryService.findByFulfillmentWorkIds` is called with a
+   * single-element array rather than a bespoke single-id method — that read
+   * is already batched by design, and a second signature for the N=1 case
+   * would be a second thing to keep in sync with it.
+   *
+   * `'outbound'` is the only direction a work's own parcel can be: #2373
+   * gives the same `shipments` table a `'return'` row for an inbound label,
+   * which this route must never surface as if it were this task's own
+   * dispatch.
+   *
+   * Newest first, so a re-issued shipment (cancel + re-issue, §Shipment
+   * domain entity docblock) reads as the CURRENT attempt rather than the
+   * first one.
+   */
+  @Get(':workId/shipments')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'List the shipments dispatched for one fulfilment task',
+    description:
+      'Outbound only. Empty when nothing has been dispatched yet — that is a normal state, not ' +
+      'an error.',
+  })
+  @ApiResponse({ status: 200, type: [FulfillmentWorkShipmentResponseDto] })
+  @ApiResponse({ status: 404, description: 'No such fulfilment task' })
+  async listShipments(
+    @Param('workId') workId: string
+  ): Promise<FulfillmentWorkShipmentResponseDto[]> {
+    // A 404 on the task itself is a real answer here too — an operator
+    // pasting a stale work id should learn the task is gone, not read an
+    // empty shipment list as "nothing dispatched yet".
+    try {
+      await this.worklist.get(workId);
+    } catch (error) {
+      throw this.toHttp(error);
+    }
+
+    const byWork = await this.shipments.findByFulfillmentWorkIds([workId], 'outbound');
+    const shipments = byWork.get(workId) ?? [];
+
+    return [...shipments]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map((shipment) => ({
+        id: shipment.id,
+        status: shipment.status,
+        carrier: shipment.carrier,
+        trackingNumber: shipment.trackingNumber,
+        hasLabel: shipment.labelPdfRef !== null,
+        createdAt: shipment.createdAt,
+        dispatchedAt: shipment.dispatchedAt,
+        deliveredAt: shipment.deliveredAt,
+      }));
   }
 
   @Post(':workId/actions/:action')
@@ -468,18 +599,33 @@ export class FulfillmentWorkController {
       buyerNameMasked: readMaskedBuyerName(order),
       dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
       carrierName: readCarrierName(order),
-      lines: view.lines.map((line) => ({
-        id: line.id,
-        orderLineId: line.orderLineId,
-        productVariantId: line.productVariantId,
-        // #3426 — the parent product's name. `null`, never a placeholder that
-        // reads like a name: a variant absent from the catalogue is a fact an
-        // operator can act on, and a fabricated label is not.
-        productName: facts.productNameByVariantId.get(line.productVariantId) ?? null,
-        totalQuantity: line.totalQuantity,
-        fulfilledQuantity: line.fulfilledQuantity,
-        cancelledQuantity: line.cancelledQuantity,
-      })),
+      // #3096 (G02-3) — what the bench has done to the box, and whether the
+      // channel has been told. Four instants an operator otherwise had to ask
+      // the database for.
+      parcelClosedAt: view.parcelClosedAt,
+      packedByUserId: view.packedByUserId,
+      completedAt: view.completedAt,
+      channelNotifiedAt: view.channelNotifiedAt,
+      lines: view.lines.map((line) => {
+        const lineFacts = facts.lineFactsByVariantId.get(line.productVariantId);
+        return {
+          id: line.id,
+          orderLineId: line.orderLineId,
+          productVariantId: line.productVariantId,
+          // #3426 — the parent product's name. `null`, never a placeholder that
+          // reads like a name: a variant absent from the catalogue is a fact an
+          // operator can act on, and a fabricated label is not. The same rule
+          // holds for the four #3096 facts beside it.
+          productName: lineFacts?.productName ?? null,
+          sku: lineFacts?.sku ?? null,
+          ean: lineFacts?.ean ?? null,
+          imageUrl: lineFacts?.imageUrl ?? null,
+          attributes: lineFacts?.attributes ?? null,
+          totalQuantity: line.totalQuantity,
+          fulfilledQuantity: line.fulfilledQuantity,
+          cancelledQuantity: line.cancelledQuantity,
+        };
+      }),
       activeHolds: view.activeHolds.map((hold) => ({
         id: hold.id,
         reason: hold.reason,
