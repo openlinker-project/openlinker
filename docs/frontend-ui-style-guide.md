@@ -526,6 +526,10 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 - `StatusBadge` — tones: `success` / `warning` / `error` / `info` / `review` / `neutral`. Dot + text; never color alone.
 - `MetricCard` — label + value + hint + optional sparkline. Severity-tinted via `--kpi--error` / `--kpi--warning` modifiers when the metric carries operational alarm.
 - `KeyValueList` — definition list with `120px auto` grid, monospace values where appropriate, inline copy-to-clipboard buttons on hover.
+- `DetailSection` (#3096) — one card on a detail page: `--border-default`, `--radius-lg`, `--shadow-xs`, `--bg-surface`, 20 × 24 px inset, and a 12 px / 700 uppercase `--text-muted` title. `tone="hero"` (22 × 24 px) and `tone="actions"` (18 × 24 px) are the mockups' other two insets. Carries no outer margin — the parent stack's `gap` spaces the cards. Distinct from the order page's older unboxed `.detail-section` wrapper.
+- `KpiGrid` + `KpiCard density="compact"` (#3096) — a wrapping row of KPI cards on grid tracks (`repeat(auto-fit, minmax(160px, 1fr))`) at the mockups' metric-card scale (16 px inset, 28 px value), for operational boards; the default density stays the Insights headline scale.
+- `AccessDeniedState` / `QueryErrorState` (#3096) — a 403 renders as a fact about the session's role, `role="status"`, with no Retry; `QueryErrorState` picks it, a not-found or the ordinary error-with-Retry from one failed read.
+- `Alert density="compact"` (#3096) — the mockups' in-card banner (`.hold-banner`): 8 px radius, 13 × 15 px inset, no inset rule, a 14 px title in the tone's own ink. For a notice that sits inside a card.
 - `EntityLabel` — **name-first resolver** that takes an internal UUID + entity type and renders human name + monospace ID + copy button. Consumes `useConnectionsQuery` / `useCustomersQuery` / etc. Used on every list row and detail heading where an internal UUID would otherwise leak. `nameTitle` overrides the `title` on the rendered name — pass it whenever the caller SHORTENS what it hands to `name`, or the tooltip shows the shortened form and the full value becomes unreachable to a sighted user (#2089). `copyLabel` / `copiedLabel` mirror `CopyableId`'s and must name what Copy actually writes, which is always the `id`. The copy button also carries `title={id}` so a sighted operator can see the target on a row whose visible identity is something else — deliberately the raw id rather than a mirror of the accessible name, which would make `title` the accessible *description* of a control that already has that string as its name (#2091). `showCopy` (default `true`) suppresses the built-in copy button for a composite that pairs the label with its own copy affordance, so one id never grows two copy controls (#2027). The id-shortening rule is exported as `shortenId(id)` from `shared/ui` so such a composite reuses the exact algorithm instead of growing a second one.
 - `CopyableId` — monospace id + copy button. `copyLabel` / `copiedLabel` override the copy button's accessible name, which otherwise defaults to `Copy {id}` and is read out as a spelled-out UUID; a caller that can resolve the id to something human should pass it (`"Copy connection ID for Erli Demo"`, #1996).
 - `ConnectionCell` (`features/connections`) — the standard table cell for a connection reference: an optional leading `adornment` + resolved name + shortened, copyable id + an attention-only status note, driven by **one batched `useConnectionsQuery` for the whole page**. The adornment is pluggable and per-page: a `channel-pill` where the platform is the point (Products), a `ConnectionDot` where a carrier is (Shipments), nothing where a dedicated Channel column already carries it (Listings). Never resolve a connection per row (#1996/#2027). Its `connection` prop distinguishes `undefined` (still loading) from `null` (resolved, not found) — coalesce with `?? null` at the call site or a per-row fetch is silently reinstated.
@@ -872,6 +876,17 @@ a single column below 768 px with ≥ 44 px targets. Like the picker, it never s
 desktop" hint, because there is nothing it refuses to do at that width.
 
 **Documented departure — the offer-creation product picker modal (#1754/#1779)** folds into a two-step wizard (step 1 = product list, step 2 = selection review + connection + Continue) at **both** mobile *and* tablet width (≤ 1023 px), rather than staying "full interactive" at tablet as the *Complex editors* / *Wizards* rows above would suggest. This is deliberate: the modal's side-by-side list + review rail needs two comfortable columns, which only desktop (≥ 1024 px) affords; on an iPad the two-step flow is more usable than two cramped columns. Unlike the "complex editors" rule, the picker stays **fully interactive** at every width (it is a selection surface, not a data editor), so it never shows an "open on desktop" hint.
+
+**Documented departure — the fulfilment board's metric row and the task detail (#3096).**
+The board's three metric cards sit on `KpiGrid` (`repeat(auto-fit, minmax(160px, 1fr))`,
+the mockup's `.metric-row`) rather than the *KPI strip* row's 1 × N vertical stack: at
+390 px that is two cards and one beneath, of equal height, where the old wrapped flex
+row overlapped the lanes below it. The task detail is the *Detail pages* row's 65/35
+grid at ≥ 1024 px and one stack below it, in a fixed mobile reading order (hero →
+holds → lines → packer → shipment → sales document → payment → details → actions); its
+cards keep the mockup's 20 × 24 px inset down to 480 px and take the mockup's mobile
+16 × 20 px below that, and its two-column facts grid stays two columns at every width,
+as the mockup's phone render has it.
 
 Rules:
 

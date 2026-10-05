@@ -37,6 +37,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { shortenId } from '../../../shared/ui/entity-label';
 import type { ConnectionStatus } from '../api/connections.types';
 import type { ConnectionCellFacts } from './ConnectionCell';
+import { ConnectionChip, type ConnectionChipChannel } from './ConnectionChip';
 import { ConnectionEntityLabel } from './ConnectionEntityLabel';
 
 /** Same vocabulary as `ConnectionCell`'s line 2, minus the label text: at this
@@ -72,6 +73,8 @@ export interface ConnectionFoldProps {
    * connection IS the issuing provider and the column header said so).
    */
   adornment?: ReactNode;
+  /** Same contract as `ConnectionCell.channel` (#3670): one clickable chip, precedence over `adornment`. */
+  channel?: ConnectionChipChannel;
 }
 
 export function ConnectionFold({
@@ -79,6 +82,7 @@ export function ConnectionFold({
   connection,
   loading = false,
   adornment,
+  channel,
 }: ConnectionFoldProps): ReactElement | null {
   if (!connectionId) return null;
 
@@ -99,20 +103,31 @@ export function ConnectionFold({
           reads "…, Invoice (faktura), link inFakt" with nothing saying what
           `inFakt` is. */}
       <span className="sr-only">Connection: </span>
-      {adornment ? <span className="conn-fold__adornment">{adornment}</span> : null}
-      {/* `ConnectionEntityLabel` rather than a hand-rolled name span: it owns the
-          link to `/connections/:id`, its self-page suppression, the "Unknown"
-          branch (with the full id still reachable via `title`) and the loading
-          placeholder. Reproducing those here is how the fold and the cell it
-          mirrors would drift. `name` is always passed — including `null` — so
-          the label never runs its own per-row query. */}
-      <ConnectionEntityLabel
-        connectionId={connectionId}
-        name={connection?.name ?? null}
-        loading={loading}
-        showId={false}
-        showCopy={false}
-      />
+      {channel ? (
+        <ConnectionChip
+          connectionId={connectionId}
+          name={connection?.name ?? null}
+          loading={loading}
+          channel={channel}
+        />
+      ) : (
+        <>
+          {adornment ? <span className="conn-fold__adornment">{adornment}</span> : null}
+          {/* `ConnectionEntityLabel` rather than a hand-rolled name span: it owns the
+              link to `/connections/:id`, its self-page suppression, the "Unknown"
+              branch (with the full id still reachable via `title`) and the loading
+              placeholder. Reproducing those here is how the fold and the cell it
+              mirrors would drift. `name` is always passed — including `null` — so
+              the label never runs its own per-row query. */}
+          <ConnectionEntityLabel
+            connectionId={connectionId}
+            name={connection?.name ?? null}
+            loading={loading}
+            showId={false}
+            showCopy={false}
+          />
+        </>
+      )}
       {/* The one case where the id-is-a-desktop-concern argument inverts: a
           connection that does not resolve is exactly when an operator needs its
           raw id for a support ticket, and `EntityLabel`'s Unknown branch puts

@@ -77,9 +77,16 @@ export const ASSIGN_PACKING_WORK_COPY = {
    */
   card: {
     heldBadge: 'On hold',
-    summary: (parts: { readonly lines: number; readonly units: number }): string =>
-      `${String(parts.lines)} ${parts.lines === 1 ? 'item' : 'items'}, ` +
-      `${String(parts.units)} ${parts.units === 1 ? 'unit' : 'units'}`,
+    /**
+     * The mockup's own phrasing (#3096): what the packer will scan. The unit
+     * count is said only when it differs from the product count — "1 product,
+     * 1 unit" says the same thing twice.
+     */
+    summary: (parts: { readonly lines: number; readonly units: number }): string => {
+      const products = `${String(parts.lines)} ${parts.lines === 1 ? 'product' : 'products'}`;
+      if (parts.units === parts.lines) return `${products} to scan`;
+      return `${products}, ${String(parts.units)} ${parts.units === 1 ? 'unit' : 'units'} to scan`;
+    },
     /**
      * #3424 — the pool's own neglect signal: a task has sat in Unassigned
      * for `age` (already compactly formatted, e.g. `"52m"`). `age` is a
@@ -129,16 +136,27 @@ export const ASSIGN_PACKING_WORK_COPY = {
   },
 
   row: {
-    moveToLabel: 'Move to',
-    moveToUnassigned: 'Unassigned',
-    selfServeLabel: 'Anyone may claim this',
+    /**
+     * The assignment menu's trigger (#3096): the mockup's button + menu, which
+     * replaced a native "Move to" select. The label says what the click does
+     * from where the task is now.
+     */
+    assignTo: 'Assign to…',
+    moveTo: 'Move to…',
+    /** The menu's way back to the pool, only offered on an assigned task. */
+    pullBack: 'Pull back to Unassigned',
+    /** The menu when the roster is empty or could not be read. */
+    noPackers: 'No active packers to assign to',
+    /** A packer entry with its queue on THIS page, e.g. "Marta Kowalczyk (2)". */
+    packerWithQueue: (name: string, queued: number): string => `${name} (${String(queued)})`,
+    selfServeLabel: 'Anyone can pick this up',
     /**
      * The SAME control on a row that already has a packer. It is not a
      * different setting - it is the one ADR-074 calls the escape hatch - but
      * it answers a different question there, so it says so. Unticked it is a
      * hard assignment: the named packer, nobody else.
      */
-    selfServeAssignedLabel: 'Anyone may still take this',
+    selfServeAssignedLabel: 'Anyone can still pick this up',
     /**
      * The overflow-menu trigger holding the server-declared action set
      * (Hold, Release hold, Force cancel, …) — the mockup's own reason for a
@@ -178,6 +196,7 @@ export const ASSIGN_PACKING_WORK_COPY = {
   },
 
   loading: {
+    /** Announced by the lane skeleton; the visible state is the skeleton itself. */
     message: 'Loading packing work…',
   },
 
@@ -190,6 +209,16 @@ export const ASSIGN_PACKING_WORK_COPY = {
   empty: {
     title: 'Nothing to assign right now',
     message: 'Nothing is waiting to be packed. With fulfilment routing switched off, that is expected.',
+  },
+
+  /**
+   * A session without `orders:write` (#3096). The staffing board is a
+   * supervisor's screen: a viewer used to reach it by URL and meet a 403'd
+   * roster and a lane of "No longer a packer".
+   */
+  denied: {
+    title: 'The fulfilment board is for supervisors',
+    message: 'Your role cannot assign or work fulfilment tasks. Ask an administrator if you need access.',
   },
 
   rosterError: {
