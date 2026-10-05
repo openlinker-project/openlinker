@@ -526,14 +526,40 @@ export class ShoperOrderProcessorAdapter
     externalOrderId: string,
     trackingNumber: string | undefined,
   ): Promise<OrderWritebackResult> {
-    const parcels = await this.client.get<{ list?: readonly ShoperParcel[] }>('/parcels', {
-      'filters[order_id]': externalOrderId,
-    });
-    const existing = (parcels.data.list ?? []).filter((p) => String(p.order_id) === externalOrderId);
-    // No lock around read-then-write, deliberately: the relay's conditional claim
-    // (`waybillRelayedAt`, #1947) is already the serialisation point between the
-    // status poll and the carrier webhook, so two triggers for one dispatch cannot
-    // both reach this method.
+    const parcels = await this.client.get<{ list?: readonly ShoperParcel[]; pages?: number | string }>(
+      '/parcels',
+      { 'filters[order_id]': externalOrderId, limit: SHOPER_MAX_PAGE_SIZE },
+    );
+    const rows = parcels.data.list ?? [];
+    // Every guard below is downstream of this read, and an ignored filter would
+    // look exactly like "this order has no parcels" - a duplicate shipment record
+    // that no retry undoes. A row of ANOTHER order is positive proof the filter
+    // was not honoured, so refuse rather than conclude anything from the rest.
+    if (rows.some((p) => String(p.order_id) !== externalOrderId)) {
+      return {
+        outcome: 'rejected',
+        detail:
+          `Shoper returned parcels of other orders for order ${externalOrderId}, so the ` +
+          '`filters[order_id]` filter on /parcels was not honoured; refusing to write a parcel ' +
+          'it cannot check for duplicates',
+      };
+    }
+    // The filter works but the answer is incomplete: the parcel we would find or
+    // conflict with may be on a page this read never saw.
+    if (Number(parcels.data.pages ?? 1) > 1) {
+      return {
+        outcome: 'rejected',
+        detail:
+          `Shoper order ${externalOrderId} has more than ${SHOPER_MAX_PAGE_SIZE} parcels, ` +
+          'which this read does not page through; refusing to write a parcel it cannot check for duplicates',
+      };
+    }
+    const existing = rows;
+    // No lock around read-then-write, deliberately: a conditional claim is already
+    // the serialisation point, so two triggers for one dispatch cannot both reach
+    // this method. Which claim depends on the route: `Shipment.waybillRelayedAt`
+    // (#1947) for a shipment-grain dispatch, `fulfillment_works.dispatchRelayedAt`
+    // (#2401) for a router-fulfilled work, which has no Shipment at all.
     const plan = planShoperParcelWrite(existing, trackingNumber);
 
     if (plan.kind === 'conflict') {

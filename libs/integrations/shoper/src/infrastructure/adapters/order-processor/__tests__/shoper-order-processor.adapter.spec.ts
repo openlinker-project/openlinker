@@ -574,7 +574,7 @@ describe('ShoperOrderProcessorAdapter', () => {
         h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: ' 6200000000001 ' }),
       ).resolves.toEqual({ outcome: 'applied' });
 
-      expect(h.get).toHaveBeenCalledWith('/parcels', { 'filters[order_id]': '10' });
+      expect(h.get).toHaveBeenCalledWith('/parcels', { 'filters[order_id]': '10', limit: 50 });
       expect(h.post).toHaveBeenCalledWith('/parcels', {
         order_id: 10,
         shipping_id: 8,
@@ -646,12 +646,31 @@ describe('ShoperOrderProcessorAdapter', () => {
       expect(h.put).not.toHaveBeenCalled();
     });
 
-    it('should ignore parcels of other orders the filter returned', async () => {
+    it('should reject, and write nothing, when the parcels filter returned another order', async () => {
       const h = shopWith([{ parcel_id: '9', order_id: '11', shipping_code: 'T1' }]);
 
-      await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
 
-      expect(h.post).toHaveBeenCalledWith('/parcels', expect.objectContaining({ order_id: 10 }));
+      expect(result).toEqual({
+        outcome: 'rejected',
+        detail: expect.stringContaining('was not honoured'),
+      });
+      expect(h.post).not.toHaveBeenCalled();
+      expect(h.put).not.toHaveBeenCalled();
+    });
+
+    it('should reject, and write nothing, when the order has more than one page of parcels', async () => {
+      const h = setup();
+      h.get.mockImplementation((path: string) =>
+        path === '/parcels'
+          ? Promise.resolve({ status: 200, data: { list: [], pages: 2 } })
+          : Promise.resolve({ status: 200, data: {} }),
+      );
+
+      const result = await h.adapter.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(result).toEqual({ outcome: 'rejected', detail: expect.stringContaining('more than 50 parcels') });
+      expect(h.post).not.toHaveBeenCalled();
     });
 
     it('should reject when the Shoper order does not exist', async () => {

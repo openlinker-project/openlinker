@@ -329,8 +329,12 @@ When OpenLinker ships an order it pushed into Shoper, the lifecycle relay (ADR-0
 - A dispatch without a tracking number still creates the parcel with `sent: true`. On Shoper that typically
   advances the order status and may email the buyer, so the buyer can receive a message with an empty number; the
   number arrives later as a silent `PUT`.
-- There is no lock around the read-then-write: the relay's conditional claim (`waybillRelayedAt`, #1947) already
-  serialises the status poll and the carrier webhook.
+- An ignored `filters[order_id]` is detected, not assumed away: a parcel row of another order in the answer proves
+  the filter was not honoured, and the write is `rejected` instead of reading it as "no parcels" and creating a
+  duplicate. The read is bounded to one page (`limit` 50); an order with more parcels than that is refused too.
+- There is no lock around the read-then-write: a conditional relay claim already serialises the triggers -
+  `Shipment.waybillRelayedAt` (#1947) for a shipment-grain dispatch, `fulfillment_works.dispatchRelayedAt` (#2401)
+  for a router-fulfilled work.
 - `cancelled` answers `unsupported` (no Shoper cancel OpenLinker can drive), so the operator sees it, never silence.
 - Any failed call answers `rejected` with the reason; the relay surfaces it.
 
