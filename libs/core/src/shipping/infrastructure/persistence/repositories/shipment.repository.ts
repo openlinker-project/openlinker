@@ -259,6 +259,22 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     );
   }
 
+  async giveUpWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void> {
+    // `releaseWaybillRelay`'s statement without the release: the claim stays
+    // taken, so no later tick re-drives the relay.
+    await this.repository.query(
+      `UPDATE "shipments"
+          SET "waybillRelayFailureCount" = "waybillRelayFailureCount" + 1,
+              "waybillRelayFirstFailedAt" = COALESCE("waybillRelayFirstFailedAt", $2),
+              "waybillRelayLastFailedAt" = $2,
+              "waybillRelayLastFailureReason" = $3,
+              "waybillRelayLastFailureConnectionId" = $4,
+              "updatedAt" = now()
+        WHERE "id" = $1`,
+      [id, failure.failedAt, failure.reason, failure.connectionId],
+    );
+  }
+
   async clearWaybillRelayFailures(id: string): Promise<void> {
     // Guarded on `> 0` so the healthy case - every relay that has never failed
     // - matches zero rows and writes nothing. Idempotent either way.

@@ -68,6 +68,7 @@ import {
   DELIVERED_RELAY_MAX_FAILURES,
   DELIVERED_RELAY_REDRIVE_LIMIT,
   DELIVERED_RELAY_RETRY_AFTER_MS,
+  WAYBILL_RELAY_MAX_FAILURES,
   type ShipmentStatusSyncOptions,
   type ShipmentStatusSyncResult,
 } from '../types/shipment-status-sync.types';
@@ -450,12 +451,14 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
    *
    * @returns `'relayed'` on success, `'failed'` when the source could not be
    *          told (claim released, `trackingNumber` withheld so the next tick
-   *          retries), or `'skipped'` when another caller already holds the claim.
+   *          retries), `'skipped'` when another caller already holds the claim,
+   *          or `'given-up'` when the failure reached WAYBILL_RELAY_MAX_FAILURES
+   *          (claim kept, `trackingNumber` saved, never re-driven).
    */
   private async relayWaybillToParticipants(
     shipment: Shipment,
     trackingNumber: string,
-  ): Promise<'relayed' | 'failed' | 'skipped'> {
+  ): Promise<'relayed' | 'failed' | 'skipped' | 'given-up'> {
     const claimed = await this.shipments.claimWaybillRelay(shipment.id, new Date());
     if (!claimed) {
       // Already relayed, or a concurrent trigger won the claim and is relaying
@@ -518,7 +521,12 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     //   - so we keep today's all-or-nothing retry, and bound the blast radius at
     //     the adapter instead: the Allegro waybill POST now treats a 409 as
     //     already-attached, so a repeat is a no-op rather than a duplicate row.
-    // Genuinely per-participant retry is #861.
+    // Genuinely per-participant retry is #861. What #3506 adds is a bound in
+    // time: after WAYBILL_RELAY_MAX_FAILURES consecutive failures the claim is
+    // KEPT and the number persisted, so a destination that will never accept
+    // stops re-sending everyone else the dispatch on every tick (seen live: an
+    // Allegro order re-notified on each status sync because a dead spike
+    // connection kept failing).
     // NOBODY WAS TOLD, so the claim must not stand (#3365 audit).
     //
     // `OrderLifecycleRelayService` answers `{ targets: [] }` when no participant
@@ -565,11 +573,18 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       // and this column reaches a browser — a wider audience (#2341's rule: the
       // code is returned, the message is logged).
       const [first] = transientlyUnreached;
-      await this.shipments.releaseWaybillRelay(shipment.id, {
-        reason: first.outcome === 'rejected' ? 'rejected' : 'adapter-unresolved',
+      const failure = {
+        reason: first.outcome === 'rejected' ? ('rejected' as const) : ('adapter-unresolved' as const),
         connectionId: first.connectionId,
         failedAt: new Date(),
-      });
+      };
+      const failures = (shipment.waybillRelayFailure?.count ?? 0) + 1;
+      const givingUp = failures >= WAYBILL_RELAY_MAX_FAILURES;
+      if (givingUp) {
+        await this.shipments.giveUpWaybillRelay(shipment.id, failure);
+      } else {
+        await this.shipments.releaseWaybillRelay(shipment.id, failure);
+      }
       for (const target of transientlyUnreached) {
         // The poll job deliberately stays `succeeded` (the next tick retries).
         // Since #2073 this log line is no longer the ONLY observable signal —
@@ -582,6 +597,16 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
             `(${target.outcome}${target.unsupportedReason ? `/${target.unsupportedReason}` : ''})` +
             `${target.detail ? `: ${target.detail}` : ''}`,
         );
+      }
+      if (givingUp) {
+        // Logged once: the kept claim takes the row out of every later relay.
+        this.logger.error(
+          `waybill_relay_given_up: shipment ${shipment.id} (order ${shipment.orderId}) failed its ` +
+            `waybill relay ${String(failures)} times in a row; the claim is kept so its participants ` +
+            `stop being re-notified, and the tracking number is saved. Still unreached: ` +
+            `${transientlyUnreached.map((t) => t.connectionId).join(', ')}`,
+        );
+        return 'given-up';
       }
       return 'failed';
     }

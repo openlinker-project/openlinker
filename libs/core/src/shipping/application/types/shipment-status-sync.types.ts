@@ -70,3 +70,15 @@ export const DELIVERED_RELAY_REDRIVE_LIMIT = 25;
 export const DELIVERED_RELAY_RETRY_AFTER_MS = 10 * 60 * 1000;
 export const DELIVERED_RELAY_MAX_FAILURES = 48;
 export const DELIVERED_RELAY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Consecutive failed waybill relays after which the relay is given up on
+ * (#3506, e2e). The waybill relay re-drives EVERY participant while any one of
+ * them fails transiently (it is per-shipment, not per-participant: #861), so a
+ * destination that never accepts used to re-send the source marketplace its
+ * dispatch notice on every status-sync tick, forever. 48 is a day of 30-minute
+ * ticks, the delivered relay's bound and for the same reason: long enough to
+ * ride out an outage, short enough that a participant that will never accept
+ * stops costing everyone else a write per tick.
+ */
+export const WAYBILL_RELAY_MAX_FAILURES = 48;

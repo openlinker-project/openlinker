@@ -23,6 +23,7 @@ import type { TrackingSnapshot } from '../../domain/types/tracking-snapshot.type
 import {
   DELIVERED_RELAY_MAX_AGE_MS,
   DELIVERED_RELAY_MAX_FAILURES,
+  WAYBILL_RELAY_MAX_FAILURES,
   DELIVERED_RELAY_REDRIVE_LIMIT,
   DELIVERED_RELAY_RETRY_AFTER_MS,
 } from '../types/shipment-status-sync.types';
@@ -102,6 +103,7 @@ describe('ShipmentStatusSyncService', () => {
       // concurrent trigger or an already-relayed waybill.
       claimWaybillRelay: jest.fn().mockResolvedValue(true),
       releaseWaybillRelay: jest.fn().mockResolvedValue(undefined),
+      giveUpWaybillRelay: jest.fn().mockResolvedValue(undefined),
       clearWaybillRelayFailures: jest.fn().mockResolvedValue(undefined),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
@@ -763,6 +765,64 @@ describe('ShipmentStatusSyncService', () => {
       getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
       return s;
     }
+
+    function failingFor(count: number) {
+      return {
+        count,
+        firstFailedAt: new Date('2026-10-04T10:00:00.000Z'),
+        lastFailedAt: new Date('2026-10-05T09:30:00.000Z'),
+        reason: 'rejected' as const,
+        connectionId: PS1,
+      };
+    }
+
+    it('should give the relay up, keep the claim and save the number when a failure reaches the bound (#3506)', async () => {
+      // One participant that never accepts used to re-send every other
+      // participant the dispatch on each tick, forever (seen live on e2e).
+      relay.relay.mockResolvedValue({
+        targets: [
+          { connectionId: SOURCE, outcome: 'applied' },
+          { connectionId: PS1, outcome: 'rejected', detail: 'WooCommerce network error' },
+        ],
+      });
+      const s = makeShipment({
+        status: 'dispatched',
+        trackingNumber: null,
+        waybillRelayFailure: failingFor(WAYBILL_RELAY_MAX_FAILURES - 1),
+      });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
+      const result = await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.giveUpWaybillRelay).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ reason: 'rejected', connectionId: PS1 }),
+      );
+      expect(shipments.releaseWaybillRelay).not.toHaveBeenCalled();
+      expect(shipments.update).toHaveBeenCalledWith(
+        s.id,
+        expect.objectContaining({ trackingNumber: 'NEW456' }),
+      );
+      expect(result.failed).toBe(0);
+    });
+
+    it('should keep releasing the claim while the failures are under the bound', async () => {
+      relay.relay.mockResolvedValue(relayResult({ connectionId: PS1, outcome: 'rejected' }));
+      const s = makeShipment({
+        status: 'dispatched',
+        trackingNumber: null,
+        waybillRelayFailure: failingFor(WAYBILL_RELAY_MAX_FAILURES - 2),
+      });
+      shipments.findMany.mockResolvedValue({ items: [s], total: 1 });
+      getTracking.mockResolvedValue(snapshot({ status: 'dispatched', trackingNumber: 'NEW456' }));
+
+      await service.sync(CARRIER, { limit: 50 });
+
+      expect(shipments.releaseWaybillRelay).toHaveBeenCalledTimes(1);
+      expect(shipments.giveUpWaybillRelay).not.toHaveBeenCalled();
+      expect(shipments.update).not.toHaveBeenCalled();
+    });
 
     it('records the FIRST failing participant when several are unreachable', async () => {
       // The log keeps every target; the column carries one name so an operator

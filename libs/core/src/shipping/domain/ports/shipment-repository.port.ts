@@ -253,6 +253,16 @@ export interface ShipmentRepositoryPort {
   releaseWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void>;
 
   /**
+   * Record the failure that reached the give-up bound and KEEP the claim taken
+   * by {@link claimWaybillRelay} (#3506), so the relay is not re-driven: the
+   * participants that applied it stop being re-notified because one of them
+   * never will. Counted exactly like {@link releaseWaybillRelay}, so the
+   * escalation on the read surface still shows the row; only the release is
+   * left out.
+   */
+  giveUpWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void>;
+
+  /**
    * Clear the failure history after a SUCCESSFUL relay (#2073) - the reset that
    * keeps the escalation from becoming an alarm that never goes off.
    *
