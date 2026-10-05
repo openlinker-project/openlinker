@@ -197,6 +197,12 @@ function ProductCatalogLinkBanner({
 export function ConnectionDetailPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId);
+  // The plugin registry is what turns a `platformType` slug into the product
+  // name an operator recognises. Rendering the raw slug was tolerable while
+  // one slug meant one product; it stopped being so when two products can
+  // share a prefix (`subiekt-gt` vs `subiekt-nexo`), where the slug is
+  // exactly the part a reader has to squint at.
+  const platforms = usePlatforms();
   const {
     productMasterConnections,
     connectionsQuery: productMasterConnectionsQuery,
@@ -269,7 +275,9 @@ export function ConnectionDetailPage(): ReactElement {
         connection ? (
           <>
             <div className="toolbar__group">
-              <span className="toolbar-chip">{connection.platformType}</span>
+              <span className="toolbar-chip" title={connection.platformType}>
+                {resolvePlatformLabel(platforms, connection)}
+              </span>
               <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
             </div>
             <div className="toolbar__group">
@@ -336,7 +344,20 @@ export function ConnectionDetailPage(): ReactElement {
               <KeyValueList
                 items={[
                   { id: 'name', label: 'Name', value: connection.name },
-                  { id: 'platform', label: 'Platform', value: connection.platformType },
+                  {
+                    id: 'platform',
+                    label: 'Platform',
+                    // Both, not one: the product name is what an operator
+                    // reads, and the raw slug is what they paste into a
+                    // support ticket or an API call. Replacing the slug
+                    // outright would take that away.
+                    value: (
+                      <>
+                        {resolvePlatformLabel(platforms, connection)}{' '}
+                        <span className="muted-text mono-text">{connection.platformType}</span>
+                      </>
+                    ),
+                  },
                   {
                     id: 'credentials',
                     label: 'Credentials',

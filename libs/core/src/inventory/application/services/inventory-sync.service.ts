@@ -71,8 +71,28 @@ export class InventorySyncService implements IInventorySyncService {
     // Note the batch has no variant authority to ask about: neither
     // `UpdateOfferQuantityCommand` nor its payload carries a `productVariantId`,
     // so the quantity is the caller's and only the Controls come from the seam.
-    // Threading the variant id (and with it real available-to-promise) is
-    // #2324's declared work; this slice deliberately changes no number.
+    //
+    // That is correct rather than a gap, and the earlier note here saying it
+    // was "#2324's declared work" pointed at a CLOSED issue about a different
+    // subject (the locationId propagation skip, long since retired). The
+    // quantity arriving here is ALREADY available-to-promise, because both
+    // producers of `marketplace.offerQuantity.update` resolve it before
+    // enqueueing:
+    //
+    //   - `InventoryPropagateToMarketplacesHandler` asks
+    //     `IAvailabilityService.getPromisableQuantities` in the `global` scope
+    //     and fans that one number out to both the offer and the ShopProduct
+    //     branches (#2324's own rule: one read, one publish per variant);
+    //   - `StaleOfferPauseService` passes a literal 0 on its own authority
+    //     (#1689) - it is pausing an offer for a deleted variant, and has no
+    //     observation to quote.
+    //
+    // So threading a variant id here would add a field whose only consumer
+    // would repeat, per item, a read the caller already did once per batch -
+    // and on the stale-pause path there is no variant left to ask about. The
+    // one arm that genuinely publishes a raw master figure is the handler's
+    // legacy product-level tail, which has no variantId by definition; it is
+    // documented there, and the Controls below still apply to it.
     // The BATCH form, deliberately: the per-item form issues one connection
     // read per ITEM for a value that cannot vary within the batch, where the
     // pre-#2323 code did one read per batch. Same arithmetic, same numbers.

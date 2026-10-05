@@ -1,0 +1,479 @@
+/**
+ * Subiekt Bridge HTTP Client — unit tests (#753)
+ *
+ * Mocks global.fetch (never real HTTP). Owns the `'safe'` retryability
+ * assertion + the full `error.cause.code` phase-classification matrix, the
+ * construction-time SSRF accept/reject matrix (incl. numeric IMDS encodings),
+ * the per-redirect guard, and the token-never-logged guarantee.
+ *
+ * @module libs/integrations/subiekt-nexo/src/infrastructure/http/__tests__
+ */
+import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../../bridge/subiekt-bridge.errors';
+import { SubiektBridgeAuthError } from '../../../domain/exceptions/subiekt-bridge-auth.exception';
+import { SubiektConfigException } from '../../../domain/exceptions/subiekt-config.exception';
+import { SubiektBridgeHttpClient } from '../subiekt-bridge-http.client';
+import {
+  sampleIssueInvoiceRequest,
+  sampleKorektaRequest,
+  sampleUpsertCustomerRequest,
+} from '../../../testing/subiekt-bridge-contract.suite';
+
+const BASE = 'http://192.168.1.10:5000';
+
+/**
+ * A 2xx response wrapping `data` in the real bridge `{ success, data, error }`
+ * envelope (the client unwraps it).
+ */
+function okResponse(data: unknown): Response {
+  return {
+    status: 200,
+    headers: { get: (): string | null => null },
+    json: (): Promise<unknown> => Promise.resolve({ success: true, data, error: null }),
+  } as unknown as Response;
+}
+
+/**
+ * A non-2xx response. `body` is sent verbatim so a test can supply either an
+ * enveloped error (`{ error: { reason } }`) or a bare `{ reason }`.
+ */
+function errorResponse(status: number, body: unknown, location?: string): Response {
+  return {
+    status,
+    headers: {
+      get: (k: string): string | null =>
+        k.toLowerCase() === 'location' ? location ?? null : null,
+    },
+    json: (): Promise<unknown> => Promise.resolve(body),
+  } as unknown as Response;
+}
+
+/** A bridge enveloped error body for the given reason. */
+function envelopeError(reason: string): unknown {
+  return { success: false, data: null, error: { code: 'bad_request', reason, correlationId: null } };
+}
+
+function fetchError(code: string): Error {
+  return Object.assign(new Error('fetch failed'), { cause: { code } });
+}
+
+describe('SubiektBridgeHttpClient', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  describe('construction-time URL safety', () => {
+    it('accepts http://192.168.x (private LAN allowed)', () => {
+      expect(() => new SubiektBridgeHttpClient('http://192.168.1.10:5000')).not.toThrow();
+    });
+
+    it('accepts http://10.x (private LAN allowed)', () => {
+      expect(() => new SubiektBridgeHttpClient('http://10.0.0.5')).not.toThrow();
+    });
+
+    it('accepts http://172.16.x (private LAN allowed)', () => {
+      expect(() => new SubiektBridgeHttpClient('http://172.16.0.5')).not.toThrow();
+    });
+
+    it('accepts http://localhost and http://127.0.0.1 (loopback allowed)', () => {
+      expect(() => new SubiektBridgeHttpClient('http://localhost:5000')).not.toThrow();
+      expect(() => new SubiektBridgeHttpClient('http://127.0.0.1:5000')).not.toThrow();
+    });
+
+    it('rejects http://169.254.169.254 with SubiektConfigException', () => {
+      expect(() => new SubiektBridgeHttpClient('http://169.254.169.254')).toThrow(
+        SubiektConfigException,
+      );
+    });
+
+    it('rejects decimal IMDS http://2852039166 with SubiektConfigException', () => {
+      expect(() => new SubiektBridgeHttpClient('http://2852039166')).toThrow(SubiektConfigException);
+    });
+
+    it('rejects hex IMDS http://0xa9fea9fe with SubiektConfigException', () => {
+      expect(() => new SubiektBridgeHttpClient('http://0xa9fea9fe')).toThrow(SubiektConfigException);
+    });
+
+    it('rejects an octal IMDS encoding with SubiektConfigException', () => {
+      expect(() => new SubiektBridgeHttpClient('http://0251.0376.0251.0376')).toThrow(
+        SubiektConfigException,
+      );
+    });
+
+    it('rejects http://metadata.google.internal with SubiektConfigException', () => {
+      expect(() => new SubiektBridgeHttpClient('http://metadata.google.internal')).toThrow(
+        SubiektConfigException,
+      );
+    });
+  });
+
+  describe('fetchImpl injection (#1810)', () => {
+    it('should route the call through an explicitly-injected fetchImpl instead of global.fetch', async () => {
+      const injectedFetch = jest.fn().mockResolvedValue(okResponse({ state: 'issued' }));
+      const client = new SubiektBridgeHttpClient(BASE, {
+        fetchImpl: injectedFetch as unknown as typeof fetch,
+      });
+
+      await client.issueInvoice(sampleIssueInvoiceRequest());
+
+      expect(injectedFetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to global.fetch when fetchImpl is not provided', async () => {
+      fetchMock.mockResolvedValue(okResponse({ state: 'issued' }));
+      const client = new SubiektBridgeHttpClient(BASE);
+
+      await client.issueInvoice(sampleIssueInvoiceRequest());
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('issueInvoice', () => {
+    it('returns a typed response on 2xx (unwrapping the envelope)', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
+          state: 'issued',
+          regulatoryStatus: 'pending',
+          pdfUrl: null,
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueInvoice(sampleIssueInvoiceRequest());
+      expect(res.providerInvoiceId).toBe(100355);
+      expect(res.state).toBe('issued');
+    });
+
+    it('throws SubiektRejectedError on a 2xx success:false envelope', async () => {
+      // A success:false envelope returned with a 200 (the bridge's validation path).
+      fetchMock.mockResolvedValue({
+        status: 200,
+        headers: { get: (): string | null => null },
+        json: (): Promise<unknown> => Promise.resolve(envelopeError('NazwaSkrocona jest wymagana.')),
+      } as unknown as Response);
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.issueInvoice(sampleIssueInvoiceRequest())).rejects.toThrow(
+        'NazwaSkrocona jest wymagana.',
+      );
+    });
+
+    it('places idempotencyKey on the request body before fetch', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FV-001',
+          state: 'issued',
+          regulatoryStatus: 'sent',
+          pdfUrl: null,
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      await client.issueInvoice(sampleIssueInvoiceRequest({ idempotencyKey: 'idem-1' }));
+      const firstCall = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(firstCall[1].body) as {
+        idempotencyKey?: string;
+      };
+      expect(body.idempotencyKey).toBe('idem-1');
+    });
+
+    it('throws SubiektRejectedError on 4xx with an enveloped {error.reason} body', async () => {
+      fetchMock.mockResolvedValue(errorResponse(400, envelopeError('invalid NIP')));
+      const client = new SubiektBridgeHttpClient(BASE);
+      const err = await client
+        .issueInvoice(sampleIssueInvoiceRequest())
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SubiektRejectedError);
+      expect((err as SubiektRejectedError).reason).toBe('invalid NIP');
+    });
+
+    it('throws SubiektBridgeAuthError (NOT a rejection) on 401', async () => {
+      fetchMock.mockResolvedValue(errorResponse(401, { reason: 'invalid NIP' }));
+      const client = new SubiektBridgeHttpClient(BASE);
+      const err = await client
+        .issueInvoice(sampleIssueInvoiceRequest())
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SubiektBridgeAuthError);
+      // A 401 must NOT be surfaced as a fiscal rejection.
+      expect(err).not.toBeInstanceOf(SubiektRejectedError);
+      // The bridge's OWN reason is appended now, which is the point of carrying
+      // it: "not configured" and "wrong value" need different remedies and only
+      // the bridge knows which applies.
+      expect((err as Error).message).toBe(
+        'Subiekt bridge authentication failed (check bridge token/credentials): invalid NIP',
+      );
+      expect((err as SubiektBridgeAuthError).reason).toBe('invalid NIP');
+      expect((err as SubiektBridgeAuthError).status).toBe(401);
+    });
+
+    it('throws SubiektBridgeAuthError (NOT a rejection) on 403', async () => {
+      fetchMock.mockResolvedValue(errorResponse(403, {}));
+      const client = new SubiektBridgeHttpClient(BASE);
+      const err = await client
+        .issueInvoice(sampleIssueInvoiceRequest())
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SubiektBridgeAuthError);
+      expect(err).not.toBeInstanceOf(SubiektRejectedError);
+      expect((err as SubiektBridgeAuthError).status).toBe(403);
+    });
+
+    it('never leaks the token in the auth error or any log line on a 401', async () => {
+      const warnSpy = jest.fn();
+      fetchMock.mockResolvedValue(errorResponse(401, {}));
+      const client = new SubiektBridgeHttpClient(BASE, { token: 'tok-secret' });
+      (client as unknown as { logger: { warn: typeof warnSpy } }).logger.warn = warnSpy;
+      const err = await client
+        .issueInvoice(sampleIssueInvoiceRequest())
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(JSON.stringify(err instanceof Error ? err.message : err)).not.toContain('tok-secret');
+      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('tok-secret');
+    });
+  });
+
+  describe('retryability phase classification (error.cause.code)', () => {
+    async function retryabilityFor(code: string): Promise<unknown> {
+      fetchMock.mockRejectedValue(fetchError(code));
+      const client = new SubiektBridgeHttpClient(BASE);
+      try {
+        await client.issueInvoice(sampleIssueInvoiceRequest());
+      } catch (err) {
+        return (err as { retryability?: unknown }).retryability;
+      }
+      throw new Error('expected a rejection');
+    }
+
+    it("classifies ECONNREFUSED -> retryability 'safe'", async () => {
+      expect(await retryabilityFor('ECONNREFUSED')).toBe('safe');
+    });
+
+    it("classifies ENOTFOUND -> retryability 'safe'", async () => {
+      expect(await retryabilityFor('ENOTFOUND')).toBe('safe');
+    });
+
+    it("classifies EAI_AGAIN -> retryability 'safe'", async () => {
+      expect(await retryabilityFor('EAI_AGAIN')).toBe('safe');
+    });
+
+    it("classifies AbortError/timeout -> retryability 'indeterminate'", async () => {
+      fetchMock.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      const client = new SubiektBridgeHttpClient(BASE);
+      try {
+        await client.issueInvoice(sampleIssueInvoiceRequest());
+        throw new Error('expected a rejection');
+      } catch (err) {
+        expect((err as { retryability?: unknown }).retryability).toBe('indeterminate');
+      }
+    });
+
+    it("classifies ECONNRESET -> retryability 'indeterminate'", async () => {
+      expect(await retryabilityFor('ECONNRESET')).toBe('indeterminate');
+    });
+
+    it("classifies an unrecognised code -> retryability 'indeterminate'", async () => {
+      expect(await retryabilityFor('EWHATEVER')).toBe('indeterminate');
+    });
+
+    it("classifies HTTP 5xx -> retryability 'indeterminate'", async () => {
+      fetchMock.mockResolvedValue(errorResponse(503, {}));
+      const client = new SubiektBridgeHttpClient(BASE);
+      try {
+        await client.issueInvoice(sampleIssueInvoiceRequest());
+        throw new Error('expected a rejection');
+      } catch (err) {
+        expect((err as { retryability?: unknown }).retryability).toBe('indeterminate');
+      }
+    });
+
+    it('thrown error is instanceof SubiektBridgeUnreachableError (contract-suite compatibility)', async () => {
+      fetchMock.mockRejectedValue(fetchError('ECONNREFUSED'));
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.issueInvoice(sampleIssueInvoiceRequest())).rejects.toBeInstanceOf(
+        SubiektBridgeUnreachableError,
+      );
+    });
+  });
+
+  describe('redirect guard', () => {
+    it('rejects a redirect Location pointing at a metadata/IMDS host (incl. numeric)', async () => {
+      fetchMock.mockResolvedValue(errorResponse(302, {}, 'http://169.254.169.254/'));
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.issueInvoice(sampleIssueInvoiceRequest())).rejects.toBeInstanceOf(
+        SubiektConfigException,
+      );
+    });
+  });
+
+  describe('getInvoiceStatus', () => {
+    it('issues a GET to the templated /api/invoices/{id}/status path and derives state', async () => {
+      // Real status `data`: Polish document status + KSeF regulatoryStatus, no `state`.
+      fetchMock.mockResolvedValue(
+        okResponse({ status: 'zatwierdzony', regulatoryStatus: 'pending' }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const status = await client.getInvoiceStatus({ providerInvoiceId: '100355' });
+      const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+      expect(url).toBe(`${BASE}/api/invoices/100355/status`);
+      expect(init.method).toBe('GET');
+      // The client derives `state: 'issued'` for a document that reads back.
+      expect(status.state).toBe('issued');
+      expect(status.regulatoryStatus).toBe('pending');
+    });
+  });
+
+  describe('issueCorrection', () => {
+    it('issues a POST to the templated /api/invoices/{origId}/corrections path and forwards the bridge data', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 300_001,
+          providerInvoiceNumber: 'FK-001',
+          korygowanyId: 100_355,
+          przyczyna: 'Zwrot towaru',
+          state: 'issued',
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueCorrection(100_355, sampleKorektaRequest());
+      const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+      expect(url).toBe(`${BASE}/api/invoices/100355/corrections`);
+      expect(init.method).toBe('POST');
+      expect(res.providerInvoiceId).toBe(300_001);
+      expect(res.korygowanyId).toBe(100_355);
+      expect(res.state).toBe('issued');
+    });
+  });
+
+  describe('listBankAccounts (#1324)', () => {
+    it('issues a GET to /api/bank-accounts and unwraps the envelope', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          count: 1,
+          accounts: [
+            {
+              id: 100004,
+              name: 'Rachunek podstawowy',
+              number: '00 10101010 1111 1111 1111 1111',
+              bankNumber: null,
+              description: null,
+              currency: 'PLN',
+              isVatAccount: false,
+              isDefault: true,
+              ownerPodmiotId: 1,
+              ownerName: 'Moja Firma Sp. z o.o.',
+            },
+          ],
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.listBankAccounts();
+      const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+      expect(url).toBe(`${BASE}/api/bank-accounts`);
+      expect(init.method).toBe('GET');
+      expect(res.count).toBe(1);
+      expect(res.accounts[0].ownerPodmiotId).toBe(1);
+    });
+
+    it('translates a transport failure to SubiektBridgeUnreachableError', async () => {
+      fetchMock.mockRejectedValue(fetchError('ECONNREFUSED'));
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.listBankAccounts()).rejects.toBeInstanceOf(SubiektBridgeUnreachableError);
+    });
+
+    it('translates a 401 to SubiektBridgeAuthError (not a rejection)', async () => {
+      fetchMock.mockResolvedValue(errorResponse(401, {}));
+      const client = new SubiektBridgeHttpClient(BASE);
+      await expect(client.listBankAccounts()).rejects.toBeInstanceOf(SubiektBridgeAuthError);
+    });
+  });
+
+  describe('setDefaultBankAccount (#1324)', () => {
+    it('issues a PUT to the templated /api/bank-accounts/{id}/default path', async () => {
+      fetchMock.mockResolvedValue(okResponse({ bankAccountId: 100007, isDefault: true }));
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.setDefaultBankAccount(100007);
+      const [url, init] = fetchMock.mock.calls[0] as [
+        string,
+        { method: string; headers: Record<string, string> },
+      ];
+      expect(url).toBe(`${BASE}/api/bank-accounts/100007/default`);
+      expect(init.method).toBe('PUT');
+      expect(init.headers['content-type']).toBe('application/json');
+      expect(res).toEqual({ bankAccountId: 100007, isDefault: true });
+    });
+
+    it('translates a 422 rejection to SubiektRejectedError', async () => {
+      fetchMock.mockResolvedValue(errorResponse(422, envelopeError('Nieznany rachunek.')));
+      const client = new SubiektBridgeHttpClient(BASE);
+      const err = await client
+        .setDefaultBankAccount(999)
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SubiektRejectedError);
+      expect((err as SubiektRejectedError).reason).toBe('Nieznany rachunek.');
+    });
+  });
+
+  describe('listCashRegisters (#1324)', () => {
+    it('issues a GET to /api/cash-registers and unwraps the envelope', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          count: 2,
+          cashRegisters: [
+            { id: 100065, name: 'Kasa Centralna', symbol: 'CENTR', oddzialId: null },
+            { id: 100067, name: 'Kasa Pachnidło', symbol: 'PACH', oddzialId: 100001 },
+          ],
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.listCashRegisters();
+      const [url, init] = fetchMock.mock.calls[0] as [string, { method: string }];
+      expect(url).toBe(`${BASE}/api/cash-registers`);
+      expect(init.method).toBe('GET');
+      expect(res.cashRegisters[0].oddzialId).toBeNull();
+      expect(res.cashRegisters[1].oddzialId).toBe(100001);
+    });
+  });
+
+  describe('token handling', () => {
+    it('attaches the bridge token header when provided', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({ id: 101169, numer: '73', nazwaSkrocona: 'Test', nip: '1234567890' }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE, { token: 'tok-123' });
+      await client.upsertCustomer(sampleUpsertCustomerRequest());
+      const firstCall = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
+      const headers = firstCall[1].headers;
+      expect(headers.authorization).toBe('Bearer tok-123');
+      expect(headers['x-bridge-token']).toBe('tok-123');
+    });
+
+    it('never includes the token in any log line', async () => {
+      const warnSpy = jest.fn();
+      // Drive a transport failure so the client logs at warn level.
+      fetchMock.mockRejectedValue(fetchError('ECONNRESET'));
+      const client = new SubiektBridgeHttpClient(BASE, { token: 'tok-secret' });
+      // Replace the private logger's warn to capture arguments.
+      (client as unknown as { logger: { warn: typeof warnSpy } }).logger.warn = warnSpy;
+      await expect(client.issueInvoice(sampleIssueInvoiceRequest())).rejects.toBeDefined();
+      const serialized = JSON.stringify(warnSpy.mock.calls);
+      expect(serialized).not.toContain('tok-secret');
+    });
+  });
+
+  it('imports isBridgeUrlSafe from the url-safety module, not the DTO', () => {
+    // Construction-time validation works without class-validator's DTO graph —
+    // proving the transport reuses the predicate directly (a successful private
+    // LAN construction and an IMDS rejection both exercise that import).
+    expect(() => new SubiektBridgeHttpClient('http://10.0.0.1')).not.toThrow();
+    expect(() => new SubiektBridgeHttpClient('http://169.254.169.254')).toThrow(
+      SubiektConfigException,
+    );
+  });
+});

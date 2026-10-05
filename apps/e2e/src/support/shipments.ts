@@ -542,12 +542,32 @@ export function resolveOrderDeliveryMethodId(order: OrderRecord): string {
 }
 
 /** Recipient payload for a pickup-point (locker) dispatch, derived from the order. */
+/**
+ * The order's buyer email, or a synthetic one when it carries nothing usable.
+ *
+ * `?? fallback` was not enough and the difference is not theoretical: 27 orders
+ * on the demo database carry `customerEmail` as an EMPTY STRING rather than
+ * null, so the nullish fallback passed `''` straight through and InPost's own
+ * DTO refused the dispatch with `recipient.email must be an email` - an HTTP
+ * 400 that reads like a product defect and is a fixture one.
+ *
+ * An empty value is also the shape a `OL_STORE_PII=false` deployment produces
+ * by design, so "absent" and "present but unusable" are one case here, not two.
+ * The `@` test is deliberately loose - this only has to decide whether to use
+ * the order's value or a known-good synthetic one, never to validate an
+ * address.
+ */
+function recipientEmail(customerEmail: string | null | undefined): string {
+  const trimmed = customerEmail?.trim() ?? '';
+  return trimmed.includes('@') ? trimmed : 'e2e-shipping@example.test';
+}
+
 export function buildPickupRecipient(order: OrderRecord): Record<string, unknown> {
   const snapshot = readShippingOrderSnapshot(order);
   return {
     firstName: snapshot.shippingAddress?.firstName ?? 'Jan',
     lastName: snapshot.shippingAddress?.lastName ?? 'Testowy',
-    email: snapshot.customerEmail ?? 'e2e-shipping@example.test',
+    email: recipientEmail(snapshot.customerEmail),
     // Synthesized REST-source test orders don't carry a phone number;
     // InPost requires a non-empty one regardless of delivery mode — same
     // fallback as `buildCourierRecipient` below.
@@ -579,7 +599,7 @@ export function buildCourierRecipient(order: OrderRecord): Record<string, unknow
   return {
     firstName: snapshot.shippingAddress?.firstName ?? 'Jan',
     lastName: snapshot.shippingAddress?.lastName ?? 'Testowy',
-    email: snapshot.customerEmail ?? 'e2e-shipping@example.test',
+    email: recipientEmail(snapshot.customerEmail),
     phone: snapshot.shippingAddress?.phone ?? '500100200',
     address: SYNTHETIC_COURIER_ADDRESS,
   };

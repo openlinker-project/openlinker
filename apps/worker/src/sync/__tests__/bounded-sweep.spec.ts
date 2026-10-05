@@ -373,6 +373,36 @@ describe('readPagedIds (#2220 - shared by both master product sweeps)', () => {
     expect(result.consumed).toBe(7);
   });
 
+  it('should keep paging past a FULL page whose ids collapse to fewer distinct values (#3365)', async () => {
+    // The adapter-side trap this pins. `readPagedIds` infers end-of-collection
+    // from a page SHORTER than the size it asked for, so an enumeration that
+    // de-duplicates before returning - Subiekt collapsing a model's three
+    // members onto one product key - hands back 8 ids for a full page of 10.
+    // Read as exhaustion that ends the cycle at page one, clears the cursor and
+    // logs `cycle complete`, permanently, on every tick.
+    //
+    // The contract is therefore on the CALLER: return one id per row read,
+    // repeats included, and let this helper collapse them after `consumed` is
+    // computed. This asserts the helper honours that - a full-length page keeps
+    // paging however many DISTINCT ids it carries.
+    const fetchPage = jest
+      .fn<Promise<string[]>, [number, number]>()
+      // A full page of 10 rows, of which three are members of one model.
+      .mockResolvedValueOnce(['m:1', 'm:1', 'm:1', 'a', 'b', 'c', 'd', 'e', 'f', 'g'])
+      .mockResolvedValueOnce(['h', 'i']);
+
+    const result = await readPagedIds(fetchPage, 0, 50, 10);
+
+    // Two calls, not one: the first page was FULL, so the walk continued past
+    // it. Against the pre-fix adapter it returned 8 and stopped here.
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    // `consumed` counts ROWS READ (10 + 2), never the 8 distinct ids page one
+    // reduced to - an under-advanced cursor re-reads the collapsed rows forever.
+    expect(result.consumed).toBe(12);
+    expect(result.items).toEqual(['m:1', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']);
+    expect(result.exhausted).toBe(true);
+  });
+
   it('should mark exhausted on an empty page', async () => {
     const result = await readPagedIds(source(0), 0, 50, 10);
 

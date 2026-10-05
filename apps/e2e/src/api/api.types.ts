@@ -106,6 +106,15 @@ export interface ExternalIdMapping {
 export interface ProductVariant {
   id: string;
   productId: string;
+  /**
+   * Soft-deleted at the master (#1478/#1599): the master stopped reporting this
+   * variant, so it is excluded from availability and its offers are paused.
+   *
+   * A spec asserting anything about what a product currently HAS must filter on
+   * this. A stale row is history, not catalogue - counting it reads a retired
+   * variant as a live one.
+   */
+  isStale?: boolean;
   sku: string | null;
   attributes: Record<string, unknown> | null;
   ean: string | null;
@@ -136,6 +145,27 @@ export interface Product {
   variantCount?: number;
   /** Only on the DETAIL read (`GET /products/:id`), never on the list. */
   variants?: ProductVariant[];
+  /**
+   * Master-supplied image URLs, cover first (`product-response.dto.ts`).
+   *
+   * OpenLinker never fetches these - it stores the master's URL verbatim and
+   * the operator's BROWSER dereferences it - so a spec that checks an image
+   * must request it from a browser context, not from Node.
+   */
+  images?: string[] | null;
+  /**
+   * The master's VAT rate as a percent-as-string code (`'23'`, `'0'`, `'zw'`),
+   * projected onto the catalogue at product-sync time (#3357, ADR-063).
+   *
+   * `null` with a non-null `taxRateReadAt` is the master answering "no rate" -
+   * a real, persisted answer. `null` with a null `taxRateReadAt` means nobody
+   * asked yet, or the read FAILED and the failure was swallowed as a warn,
+   * which is a different thing and is what a spec proving a read works must
+   * distinguish.
+   */
+  taxRate?: string | null;
+  taxRateReadAt?: string | null;
+  taxRateUnknownReason?: string | null;
   externalIds?: ExternalIdMapping[];
   createdAt: string;
   updatedAt: string;
@@ -162,6 +192,13 @@ export interface InventoryAvailability {
   productVariantId: string;
   totalAvailable: number;
   locationCount: number;
+  /**
+   * What OpenLinker is willing to PROMISE (#2321): stock net of outstanding
+   * holds, clamped at zero. `null` means OpenLinker does not know, which a
+   * caller must never read as `0` - an absent number written as zero is how a
+   * healthy catalogue stops selling.
+   */
+  availableToPromise?: number | null;
 }
 
 export interface InventoryAvailabilityResponse {
@@ -249,6 +286,10 @@ export interface OfferMapping {
   context: Record<string, unknown> | null;
   offerCreation?: OfferCreationSummary;
   linkedProductId?: string;
+  /** Present on the `GET /listings` projection (#2023/#2024), absent elsewhere. */
+  identity?: ListingIdentity | null;
+  channelStatus?: ListingChannelStatus | null;
+  commercial?: ListingCommercial | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -282,6 +323,16 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: string | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /**
+   * The buyer's tax number as the SOURCE reported it (#2599/#2822), carried
+   * verbatim and never format-checked.
+   *
+   * Three states, and they are not the same: absent means the source asserted
+   * nothing, `''` means it positively asserted the buyer has none, and anything
+   * else is the number. Optional so the suite stays green against an API that
+   * predates the field.
+   */
+  buyerTaxId?: string | null;
   /**
    * The batched per-order sales-document projection (#2516/#2552, ADR-065).
    * Optional/loosely-typed here — this suite only reads a handful of fields
@@ -496,6 +547,17 @@ export interface Shipment {
   updatedAt: string;
 }
 
+/**
+ * POST /shipments/:id/cancel response (`CancelShipmentResponseDto`, apps/api).
+ * NOT a bare `Shipment` - the row plus `cancelledAfterDispatch`, the one fact
+ * the row itself cannot express (whether the dispatch notification had
+ * already run when the cancel landed, per #3365).
+ */
+export interface CancelShipmentResult {
+  shipment: Shipment;
+  cancelledAfterDispatch: boolean;
+}
+
 /** Decimal-string money descriptor shared by COD and insured-value inputs. */
 export interface ShippingMoneyInput {
   amount: string;
@@ -694,6 +756,15 @@ export interface ListProductsQuery {
   search?: string;
   limit?: number;
   offset?: number;
+  /**
+   * Narrows to the products a given connection is the MASTER of.
+   *
+   * A spec that asserts one integration's rules has to pass this: `/products`
+   * is the whole catalogue, so an unscoped read checks a Subiekt rule against
+   * a PrestaShop product and fails for a reason that has nothing to do with
+   * what it is testing.
+   */
+  connectionId?: string;
 }
 
 export interface ListListingsQuery {
@@ -1019,4 +1090,62 @@ export interface FiscalRegistrationRecordSummary {
   status: string;
   documentReference: string | null;
   registeredAt: string | null;
+}
+
+/**
+ * What the SOURCE marketplace says about an order (#3365).
+ *
+ * The read that finally lets a spec assert something about the marketplace
+ * rather than about an OpenLinker row. `waybills: null` means the source does
+ * not report them - a DIFFERENT claim from `[]`, which means it answered and
+ * listed none.
+ */
+export interface SourceFulfillmentReadback {
+  outcome: 'read' | 'unsupported' | 'unavailable';
+  rawStatus: string | null;
+  dispatched: boolean | null;
+  waybills: { waybill: string; carrierId?: string; carrierName?: string }[] | null;
+  detail?: string;
+}
+
+export interface SourceFulfillmentView {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  sourceConnectionName: string | null;
+  externalOrderId: string | null;
+  readback: SourceFulfillmentReadback | null;
+  unmappedReason: 'no-source-mapping' | null;
+  readAt: string;
+}
+
+/** Who a listing row is about, as `GET /listings` projects it (#2023). */
+export interface ListingIdentity {
+  productId: string | null;
+  productName: string | null;
+  variantLabel: string | null;
+  sku: string | null;
+  ean: string | null;
+  imageUrl: string | null;
+  isStale: boolean;
+}
+
+/** The channel's own publication state for a listing row (#816). */
+export interface ListingChannelStatus {
+  publicationStatus: string | null;
+  lifecycle: string | null;
+  lastStatusSyncedAt: string | null;
+}
+
+/**
+ * What the CHANNEL reports the listing is selling at, and how many (#2024).
+ *
+ * Every field is independently nullable and `null` never means zero: a sparse
+ * response records "not reported", which an operator cannot tell from a
+ * sell-out if it is written as `0`.
+ */
+export interface ListingCommercial {
+  price: string | null;
+  currency: string | null;
+  availableQuantity: number | null;
+  lastCommercialSyncedAt: string | null;
 }

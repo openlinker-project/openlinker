@@ -166,6 +166,7 @@ One pointer per section, identical format every time.
 | [ADR-072](./072-recurring-price-propagation.md) | Recurring price propagation is opt-in, destination-owned, and cost-blind by necessity | Proposed | 2026-09-10 |
 | [ADR-073](./073-buyer-tax-identity-and-dual-role-document-connections.md) | Buyer tax identity, the fiscalization/invoicing split, and dual-role connections | Accepted | 2026-09-11 |
 | [ADR-074](./074-fulfillment-work-pre-assignment.md) | Pre-assigning a `FulfillmentWork` to a packer | Proposed | 2026-09-21 |
+| [ADR-075](./075-per-destination-relay-claims.md) | Per-destination relay claims | Proposed | 2026-09-25 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

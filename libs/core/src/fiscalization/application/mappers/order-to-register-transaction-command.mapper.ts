@@ -25,6 +25,8 @@ import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
   splitShippingAcrossRates,
+  describeDiscountCause,
+  quantityScaledReconciliationEpsilon,
 } from '@openlinker/core/sales-documents';
 
 import type {
@@ -41,35 +43,6 @@ import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fisca
  * overrides it via {@link OrderToRegisterTransactionCommandInput.shippingLineName}.
  */
 const SHIPPING_LINE_NAME = 'Shipping';
-
-/**
- * Tolerance, in the currency's own units, when checking that the composed lines
- * sum to the reported total.
- *
- * ONE MINOR UNIT of the order's own currency - `0.01` for PLN/EUR, `1` for JPY,
- * `0.001` for KWD. Wide enough to absorb IEEE-754 accumulation across a normal
- * basket and per-line rounding the source already did; narrow enough that a
- * folded discount, a coupon or a zero-defaulted snapshot field cannot hide
- * inside it.
- *
- * Deriving it rather than fixing it at `0.01` matters in both directions: a
- * 3-decimal currency (KWD) would otherwise tolerate ten of its own minor units
- * of unexplained drift, and a 0-decimal currency (JPY) would reject a whole-yen
- * basket carrying float dust. Neither is reachable from the PL v1 regime, but
- * the constant is in `libs/core` and the next regime is what it exists for.
- *
- * NOT tax arithmetic - it compares two sets of gross figures the source itself
- * reported (ADR-042 decision 8's negative half is about never computing a RATE,
- * which this does not). Nor is it a price conversion: nothing here rewrites an
- * amount, it only decides whether two reported amounts agree.
- */
-function totalReconciliationEpsilon(currency: string | undefined): number {
-  // One table for the whole repository (#2260 review). The shipping split needs
-  // the same answer to make its parts sum in the currency the buyer paid in, so
-  // the exponents live in the `sales-documents` leaf both document contexts
-  // already share rather than once per consumer.
-  return 10 ** -minorUnitExponentFor(currency);
-}
 
 /** Inputs to {@link toRegisterTransactionCommand}. */
 export interface OrderToRegisterTransactionCommandInput {
@@ -143,10 +116,15 @@ export function toRegisterTransactionCommand(
   const lines = order.items.map((item) => toFiscalLine(item, order.id));
 
   lines.push(
-    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName),
+    ...toShippingLines(
+      order.totals.shippingGross ?? order.totals.shipping,
+      order.items,
+      order.totals.currency,
+      shippingLineName
+    ),
   );
 
-  assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
+  assertLinesSumToTotal(lines, order.totals, order.id);
 
   const command: RegisterTransactionCommand = {
     connectionId,
@@ -206,8 +184,11 @@ export function toRegisterTransactionCommand(
  * "the lines sum to the total" has to be CHECKED, not asserted in a comment.
  * Three real ways it breaks today, none of them exotic:
  *
- *   - `OrderTotals` carries no discount field, so a source that folds a coupon
- *     or an order-level discount into `total` reports lines that sum higher;
+ *   - a source that folds a coupon or an order-level discount into `total`
+ *     reports lines that sum higher. `OrderTotals.discountTotal` exists since
+ *     5e85a35d7 and the refusal now NAMES it when it accounts for the gap
+ *     (#3365) - but only a source that populates it can be named, and a source
+ *     that does not still produces this refusal with no cause stated;
  *   - `orderFromReadySnapshot`'s `readTotals` / `readItems` zero-default every
  *     missing numeric, so a partially malformed snapshot composes zero-priced
  *     lines under a non-zero total (or the reverse);
@@ -223,10 +204,11 @@ export function toRegisterTransactionCommand(
  */
 function assertLinesSumToTotal(
   lines: FiscalTransactionLine[],
-  totalGross: number,
+  totals: Order['totals'],
   orderId: string,
-  currency: string | undefined,
 ): void {
+  const totalGross = totals.total;
+  const currency = totals.currency;
   if (!Number.isFinite(totalGross)) {
     throw new InvalidFiscalLineError(
       `Order ${orderId} reports a non-finite gross total; cannot compose a registrable sale`,
@@ -240,11 +222,25 @@ function assertLinesSumToTotal(
     );
   }
 
-  if (Math.abs(summed - totalGross) > totalReconciliationEpsilon(currency)) {
+  // #3365 review: the same quantity-scaled bound the invoice half now uses, and
+  // for the same reason - both kinds must answer one question about one sale
+  // identically, or a figure a receipt accepts is one an invoice refuses.
+  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const epsilon = quantityScaledReconciliationEpsilon(currency, totalQuantity);
+  const gap = summed - totalGross;
+  if (Math.abs(gap) > epsilon) {
     throw new InvalidFiscalLineError(
       `Order ${orderId} lines sum to ${summed.toFixed(2)} but the order reports a gross total of ` +
         `${totalGross.toFixed(2)}; a fiscal registration may not transmit lines that contradict ` +
-        `their own total`,
+        `their own total` +
+        // #3365 - the same diagnosis the invoice half already gave. Both
+        // contexts share ONE implementation in `sales-documents`, because a
+        // fiscal receipt is not an invoice and neither could own the sentence
+        // for the other. Taking the whole `totals` rather than a bare number is
+        // what makes it reachable at all: the previous signature could not see
+        // `discountTotal`, so this refusal named no cause even on a source that
+        // reports one.
+        describeDiscountCause(totals.discountTotal, gap, epsilon),
     );
   }
 }
@@ -269,9 +265,16 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
   return {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
-    unitPriceGross: item.price,
+    // See the invoicing twin: the source's own gross when it reported one
+    // (#3365), otherwise `price`, which is already gross on a gross-priced
+    // source. The eligibility guard refuses the order before this point unless
+    // one of the two is genuinely a gross figure.
+    unitPriceGross: item.unitPriceGross ?? item.price,
     taxRate: item.taxRate?.trim() ?? '',
     sku: item.sku ?? null,
+    // Carried so the post-registration stock re-read knows what moved; the
+    // shipping lines below deliberately omit it.
+    productId: item.productId,
   };
 }
 
@@ -300,7 +303,14 @@ function toShippingLines(
     shipping,
     items.map((item) => ({
       taxRate: item.taxRate?.trim() ?? null,
-      gross: item.price * item.quantity,
+      // The field is named `gross` and must be given one. On a gross-priced
+      // source `price` already is; on a net-priced one that reports its own
+      // gross figure (#3365) it is not, and a net weight is wrong here for a
+      // specific reason: the split is proportional, so a uniform-rate basket
+      // is unaffected, but a MIXED-rate one shifts, because net scales to
+      // gross by a different factor per rate. The shipping then lands under
+      // the wrong rate - silently, with the total still adding up.
+      gross: (item.unitPriceGross ?? item.price) * item.quantity,
     })),
     // The order's own currency decides how many decimals the parts round to, so
     // they sum exactly in the units the buyer paid in (#2260 review).

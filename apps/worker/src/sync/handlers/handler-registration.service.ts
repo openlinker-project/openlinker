@@ -32,8 +32,10 @@ import { MarketplaceOfferRefreshSnapshotHandler } from './marketplace-offer-refr
 import { MarketplaceOfferStockRestoreHandler } from './marketplace-offer-stock-restore.handler';
 import { MarketplaceOfferPauseStaleHandler } from './marketplace-offer-pause-stale.handler';
 import { MarketplaceOfferPauseStaleSweepHandler } from './marketplace-offer-pause-stale-sweep.handler';
+import { SubiektBridgeReachabilitySweepHandler } from './subiekt-bridge-reachability-sweep.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
+import { ShippingShipmentNotifyDispatchedHandler } from './shipping-shipment-notify-dispatched.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
 import { FulfillmentWorkStatusSyncHandler } from './fulfillment-work-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
@@ -99,8 +101,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferStockRestoreHandler: MarketplaceOfferStockRestoreHandler,
     private readonly marketplaceOfferPauseStaleHandler: MarketplaceOfferPauseStaleHandler,
     private readonly marketplaceOfferPauseStaleSweepHandler: MarketplaceOfferPauseStaleSweepHandler,
+    private readonly subiektBridgeReachabilitySweepHandler: SubiektBridgeReachabilitySweepHandler,
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
+    private readonly shippingShipmentNotifyDispatchedHandler: ShippingShipmentNotifyDispatchedHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
     private readonly fulfillmentWorkStatusSyncHandler: FulfillmentWorkStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
@@ -297,6 +301,11 @@ export class HandlerRegistrationService implements OnModuleInit {
       'bulk'
     );
     this.handlerRegistry.register(
+      'subiekt.bridge.reachabilitySweep',
+      this.subiektBridgeReachabilitySweepHandler,
+      'bulk'
+    );
+    this.handlerRegistry.register(
       'marketplace.shipment.statusSync',
       this.marketplaceShipmentStatusSyncHandler,
       'bulk'
@@ -310,6 +319,15 @@ export class HandlerRegistrationService implements OnModuleInit {
       'marketplace.fulfillment.statusSync',
       this.marketplaceFulfillmentStatusSyncHandler,
       'bulk'
+    );
+    // `realtime`, on ADR-050's cost-of-starvation rule: a buyer is waiting to
+    // be told their parcel is on its way, and the marketplace's own dispatch
+    // clock is running. Not `bulk` - this is the outbound half of a sale, not
+    // a paced reconcile.
+    this.handlerRegistry.register(
+      'shipping.shipment.notifyDispatched',
+      this.shippingShipmentNotifyDispatchedHandler,
+      'realtime'
     );
 
     // Register generic master handlers (Option B)

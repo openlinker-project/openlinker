@@ -10,12 +10,14 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
+import type { WarehouseReleaseOutcome } from '@openlinker/core/invoicing';
 import {
   DocumentTypeValues,
   InvoiceStatus,
   InvoiceStatusValues,
   RegulatoryStatus,
   RegulatoryStatusValues,
+  WarehouseReleaseOutcomeValues,
 } from '@openlinker/core/invoicing';
 
 export class OrderInvoiceProjectionDto {
@@ -76,4 +78,37 @@ export class OrderInvoiceProjectionDto {
       'True when this record represents a document that plausibly exists at the provider (pending/issuing/issued, or a non-rejected failure). False only for a terminal rejected failure. Mirrors InvoiceRecord.blocksIssuanceElsewhere.',
   })
   blocksIssuanceElsewhere!: boolean;
+
+  /**
+   * How many of the document's lines the provider could not link to its own
+   * catalogue and issued as free text.
+   *
+   * Projected as the raw count rather than the entity's
+   * `hasUnlinkedCatalogueLines` boolean, because the operator-facing sentence
+   * names the number ("2 lines"), and a boolean cannot tell `null` (this
+   * provider does not report linkage) from `0` (every line was linked) — two
+   * states a surface must not collapse.
+   */
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'How many of this document lines the provider could not link to a record in its own catalogue and therefore issued as free text - on Subiekt such a line does not move warehouse stock. Tri-state: null = this provider does not report linkage at all (inFakt/KSeF/eparagony never will), 0 = every line was linked, > 0 = that many were not. It is what OpenLinker believed BEFORE submitting, not a provider confirmation.',
+  })
+  unlinkedCatalogueLines!: number | null;
+
+  @ApiProperty({
+    enum: WarehouseReleaseOutcomeValues,
+    nullable: true,
+    description:
+      'Whether the goods this document billed for left the warehouse in the provider own books. Four states, and only `not-released` is a claim: `released` = a release document exists and its number is below; `not-applicable` = there was nothing to release (a service-only document); `not-released` = one was expected and none was made; null = this provider has no warehouse and never reports (inFakt/KSeF/eparagony). Test the OUTCOME, never the number nullability - the number is legitimately absent on three of the four.',
+  })
+  warehouseReleaseOutcome!: WarehouseReleaseOutcome | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'The release document number the provider created or detected (Subiekt: the WZ). Null unless `warehouseReleaseOutcome` is `released`.',
+  })
+  warehouseReleaseNumber!: string | null;
 }

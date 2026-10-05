@@ -70,7 +70,7 @@ const MANIFESTS: ReadonlyArray<readonly [string, AdapterMetadata]> = [
   ['inpost', inpostAdapterManifest],
   ['ksef', ksefAdapterManifest],
   ['prestashop', prestashopAdapterManifest],
-  ['subiekt', subiektAdapterManifest],
+  ['subiekt-gt', subiektAdapterManifest],
   ['woocommerce', woocommerceAdapterManifest],
 ];
 

@@ -144,6 +144,13 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readStockLocationOverride', key: 'config.stockLocationOverride' },
   ],
   [
+    'libs/core/src/shipping/domain/types/dispatch-notification.types.ts',
+    {
+      helper: 'readNotifyOnLabelPurchase',
+      key: 'config.shipping.notifyMarketplaceOnLabelPurchase',
+    },
+  ],
+  [
     'libs/core/src/listings/domain/types/price-change-block.types.ts',
     { helper: 'readConnectionCurrency', key: 'config.currency' },
   ],
@@ -354,7 +361,22 @@ const NON_KNOBS = new Map([
  *
  * A reviewer who disagrees should push back on THIS raise specifically.
  */
-const KNOB_THRESHOLD = 11;
+// #3365 review: raised from 11 to 12 for the eleventh knob, deliberately and
+// with the trade named rather than nudged past.
+//
+// That knob is `config.shipping.notifyMarketplaceOnLabelPurchase`, and it exists
+// because #3365 made buying a label notify the marketplace on EVERY install.
+// Printing a label and handing a parcel over are two acts, and an install that
+// batches labels in the morning was telling buyers "your order shipped" hours
+// before anything moved. The alternatives were worse than an eleventh knob: an
+// env var makes it install-wide, when the question is per-connection; and
+// leaving it unconditional leaves a buyer-facing claim firing everywhere.
+//
+// What this does NOT do is answer the question the threshold asks. Eleven
+// per-connection knobs in JSONB is the accretion #1032's rules model is meant to
+// replace, and that is still true - it is simply not something a review fix may
+// take on. The number is raised by one so the next knob asks again.
+const KNOB_THRESHOLD = 12;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

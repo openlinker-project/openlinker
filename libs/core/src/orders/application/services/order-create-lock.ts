@@ -19,10 +19,22 @@
  * adapter's own create-or-skip dedup (PrestaShop keeps one — its order create
  * is idempotent per cart, and the adapter also dedups by order reference; ADR-016).
  *
+ * **The slowest destination in the tree sets this number, and right now that is
+ * Subiekt.** `SUBIEKT_BRIDGE_TIMEOUT_MS` is 150 s, chosen to exceed the bridge's
+ * own 120 s Sfera budget so that a client timeout means the far end really
+ * stopped. At the previous 120 s here, a Subiekt create could outlive the lock
+ * that serialises it - the sentence above would have been false for that
+ * destination, which is the kind of inverted precondition nothing notices until
+ * it produces a duplicate. 180 s restores the margin.
+ *
+ * This is a RELATIONSHIP between two numbers in two packages, so raising a
+ * destination's client timeout past this value means raising this value too.
+ * `subiekt-bridge-timeout.ts` carries the same note from its end.
+ *
  * Operator-tunable via `OL_ORDER_CREATE_LOCK_TTL_MS` (clamped to [10s, 600s]),
  * mirroring `OL_WEBHOOK_SKEW_WINDOW_MS`. Tune up for slow destinations.
  */
-const DEFAULT_ORDER_CREATE_LOCK_TTL_MS = 120_000;
+const DEFAULT_ORDER_CREATE_LOCK_TTL_MS = 180_000;
 const MIN_ORDER_CREATE_LOCK_TTL_MS = 10_000;
 const MAX_ORDER_CREATE_LOCK_TTL_MS = 600_000;
 

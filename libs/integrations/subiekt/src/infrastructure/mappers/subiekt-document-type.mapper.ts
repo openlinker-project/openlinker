@@ -38,7 +38,7 @@ export const PL_NIP_SCHEME = 'pl-nip';
  * An UNTAGGED identifier counts (#3224). Since ADR-073 decision 1 core may not
  * mint a `scheme` — an `Order` stores a bare number — an untagged value now
  * reaches every invoicing adapter, and *"an adapter needing a tag supplies
- * it"*. Subiekt nexo is a Polish accounting system with exactly one tax-number
+ * it"*. Subiekt GT is a Polish accounting system with exactly one tax-number
  * slot, so there is no placement to get wrong: the domestic reading is the only
  * one it has. Requiring the tag instead would silently drop the buyer's tax
  * number from every auto-issued document and quietly downgrade it to a paragon.

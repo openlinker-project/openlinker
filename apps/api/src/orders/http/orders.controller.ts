@@ -131,6 +131,14 @@ import {
 } from '@openlinker/core/order-lifecycle';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import {
+  SourceFulfillmentResponseDto,
+  toSourceFulfillmentDto,
+} from './dto/source-fulfillment-response.dto';
+import {
+  SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,
+  type ISourceFulfillmentStatusService,
+} from '../application/interfaces/source-fulfillment-status.service.interface';
 import { CountOrdersQueryDto } from './dto/count-orders-query.dto';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
@@ -261,6 +269,11 @@ export class OrdersController {
     private readonly fulfillmentRouting: IFulfillmentRoutingService,
     @Inject(DELIVERY_RIDER_SERVICE_TOKEN)
     private readonly deliveryRider: IDeliveryRiderService,
+    // #3365 - the marketplace's own answer about an order's fulfilment. An
+    // app-layer composition (order record + identifier mapping + the source
+    // adapter), the RateLimitStatusService shape.
+    @Inject(SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN)
+    private readonly sourceFulfillment: ISourceFulfillmentStatusService,
     // #2341 — holds are reached ONLY through the service seam. The intra-context
     // `OrderHoldRepositoryPort` is deliberately absent from the barrel (#2338).
     @Inject(ORDER_HOLD_SERVICE_TOKEN)
@@ -619,6 +632,44 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     return toSalesDocumentViewDto(view);
+  }
+
+  // #3365 review: NOT `viewer`, unlike its sales-document neighbour above.
+  //
+  // That one reads OpenLinker's own persisted projection. This one resolves the
+  // source adapter and issues a live GET against the marketplace on every call.
+  // The call is paced - the Allegro client goes through the shared per-connection
+  // limiter - so it is not unbounded, but a viewer refreshing a detail page still
+  // CONSUMES the operator's own budget, and what queues behind it is the order
+  // sync. A role defined as look-but-do-not-touch should not be able to starve
+  // the ingestion of the orders it is looking at.
+  @Roles('admin', 'operator')
+  @Get(':internalOrderId/source-fulfillment')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Ask the SOURCE marketplace what it says about this order',
+    description:
+      "What the marketplace itself reports, as opposed to what OpenLinker recorded (#3365). " +
+      'OpenLinker relays a dispatch mark and, where it has one, a waybill INTO the marketplace ' +
+      'through a relay that reads nothing back (ADR-027), so this is the only way to confirm the ' +
+      'write landed. Read-only: it resolves the source adapter and issues one GET, writes nothing, ' +
+      'and never changes the order. An unreachable source, a source with no readback, and an order ' +
+      'carrying no external id are three DIFFERENT states on the response, never a 5xx.',
+  })
+  @ApiResponse({ status: 200, description: "The source's answer", type: SourceFulfillmentResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getSourceFulfillment(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<SourceFulfillmentResponseDto> {
+    try {
+      return toSourceFulfillmentDto(await this.sourceFulfillment.read(internalOrderId));
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      }
+      throw error;
+    }
   }
 
   @Roles('admin', 'operator')
@@ -1138,6 +1189,9 @@ export class OrdersController {
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,
       blocksIssuanceElsewhere: record.blocksIssuanceElsewhere,
+      unlinkedCatalogueLines: record.unlinkedCatalogueLines,
+      warehouseReleaseOutcome: record.warehouseReleaseOutcome,
+      warehouseReleaseNumber: record.warehouseReleaseNumber,
     };
   }
 

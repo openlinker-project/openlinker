@@ -27,7 +27,7 @@ function ormRow(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordO
       id: 'ol_invoice_1',
       connectionId: 'conn_1',
       orderId: 'ol_order_1',
-      providerType: 'subiekt',
+      providerType: 'subiekt-gt',
       documentType: 'invoice',
       status: 'pending',
       providerInvoiceId: null,
@@ -50,7 +50,7 @@ function ormRow(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordO
 const createInput: CreateInvoiceRecordInput = {
   connectionId: 'conn_1',
   orderId: 'ol_order_1',
-  providerType: 'subiekt',
+  providerType: 'subiekt-gt',
   documentType: 'invoice',
   status: 'pending',
   idempotencyKey: 'idem-1',
@@ -304,14 +304,14 @@ describe('InvoiceRecordRepository', () => {
 
       const result = await repository.updateOutcome('ol_invoice_1', {
         status: 'issued',
-        providerType: 'subiekt',
+        providerType: 'subiekt-gt',
         documentType: 'invoice',
       });
 
       const saved = ormRepo.save.mock.calls[0][0] as InvoiceRecordOrmEntity;
-      expect(saved.providerType).toBe('subiekt');
+      expect(saved.providerType).toBe('subiekt-gt');
       expect(saved.documentType).toBe('invoice');
-      expect(result.providerType).toBe('subiekt');
+      expect(result.providerType).toBe('subiekt-gt');
       expect(result.documentType).toBe('invoice');
     });
 

@@ -48,3 +48,76 @@ export const ALLEGRO_CARRIER_BY_PLATFORM_TYPE: Readonly<Record<string, string>> 
   dpd: 'DPD',
   dhl: 'DHL',
 };
+
+/**
+ * Allegro fulfilment statuses that mean the parcel has LEFT the seller (#3365).
+ *
+ * Two vocabularies are listed together on purpose. The write path sends the
+ * English `SENT` (`ALLEGRO_FULFILLMENT_STATUS_SENT`), while Allegro's seller
+ * panel documents this same field with Polish values (`WYSLANE`, `ODEBRANE`,
+ * ...). Which spelling a READ returns is not established, so both are accepted
+ * rather than guessed at - `needs-sandbox-probe`, and the probe is what removes
+ * whichever half turns out to be dead.
+ *
+ * `DO_ODBIORU` (ready for pickup) is deliberately absent: the parcel is at a
+ * pickup point but the order is not yet in the buyer's hands, and the flag this
+ * feeds means "dispatched", not "available".
+ */
+export const ALLEGRO_FULFILLMENT_DISPATCHED_STATUSES: readonly string[] = [
+  'SENT',
+  'WYSLANE',
+  'WYSŁANE',
+  'PICKED_UP',
+  'ODEBRANE',
+];
+
+/**
+ * Allegro fulfilment statuses that mean the parcel has NOT left the seller.
+ *
+ * Kept as an explicit list rather than as "everything else" so an unrecognised
+ * value can answer `null`. Reading an unknown status as "not dispatched" would
+ * tell an operator their parcel never went out on the strength of a word this
+ * build has never seen.
+ */
+export const ALLEGRO_FULFILLMENT_UNDISPATCHED_STATUSES: readonly string[] = [
+  'NEW',
+  'NOWE',
+  'PROCESSING',
+  'W_REALIZACJI',
+  'READY_FOR_SHIPMENT',
+  'DO_WYSLANIA',
+  'DO_WYSŁANIA',
+  'READY_FOR_PICKUP',
+  'DO_ODBIORU',
+  'SUSPENDED',
+  'WSTRZYMANE',
+  'CANCELLED',
+  'ANULOWANE',
+];
+
+/**
+ * `GET /order/checkout-forms/{id}/shipments` response (#3365).
+ *
+ * VERIFIED LIVE on the sandbox, 2026-09-27, against two orders OpenLinker had
+ * itself dispatched: the route answers 200 and returns exactly the waybills
+ * `POST .../shipments` attached, each with the carrier id it was sent under.
+ *
+ * That probe is why this type exists at all. The repository had previously
+ * struck down a `GET .../shipments` as an unverified assumption about somebody
+ * else's API (`implementation-plan-waybill-relay-on-tracking-backfill.md`),
+ * and it was right to: the endpoint was assumed rather than checked. It is
+ * checked now, and the recorded evidence is two live waybills read back under
+ * `carrierId: "INPOST"`.
+ */
+export interface AllegroOrderShipmentsResponse {
+  shipments?: AllegroOrderShipment[];
+}
+
+export interface AllegroOrderShipment {
+  /** The tracking number, as the carrier issued it. */
+  waybill?: string;
+  /** Allegro's own carrier vocabulary (`INPOST`, `DPD`, `OTHER`, ...). */
+  carrierId?: string;
+  /** Present when the seller sent `OTHER` plus a free-text name. */
+  carrierName?: string;
+}

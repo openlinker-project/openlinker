@@ -33,8 +33,15 @@ test.describe('operator setup (S1-S4)', () => {
     jobs,
     poll,
   }, testInfo) => {
-    const prestashop = world.connectionFor(PlatformType.prestashop);
-    test.skip(!prestashop, 'no PrestaShop connection on this stack');
+    // Picked BY CAPABILITY, not by platform (#1571's own rule, which this spec
+    // predated). `connectionFor` returns the first ACTIVE PrestaShop connection
+    // whatever it can do, and other projects leave seed connections behind -
+    // `E2E bench seed source` is active with `enabledCapabilities: []`, so this
+    // spec triggered `master.product.syncAll` against it and spent the full
+    // retry ladder on `capability ProductMaster disabled`, which is a true
+    // statement about the wrong connection.
+    const prestashop = world.connectionWithCapability('ProductMaster', PlatformType.prestashop);
+    test.skip(!prestashop, 'no PrestaShop connection with ProductMaster on this stack');
 
     // Trigger the master product sync explicitly and wait for the worker.
     const job = await jobs.triggerAndWait(
@@ -269,7 +276,10 @@ async function findUnpublishedFirstVariant(
 }
 
 function buildPrestashopClient(world: World): PrestashopWebserviceClient | null {
-  const connection = world.connectionFor(PlatformType.prestashop);
+  // Same reason as S1 above: a capability-less seed connection carries no
+  // usable `baseUrl` either, so selecting it produces a client pointed at
+  // nothing.
+  const connection = world.connectionWithCapability('ProductMaster', PlatformType.prestashop);
   const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
   const baseUrl =
     process.env.OL_PS_ADMIN_URL?.trim() ||

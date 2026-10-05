@@ -422,6 +422,34 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     //     the adapter instead: the Allegro waybill POST now treats a 409 as
     //     already-attached, so a repeat is a no-op rather than a duplicate row.
     // Genuinely per-participant retry is #861.
+    // NOBODY WAS TOLD, so the claim must not stand (#3365 audit).
+    //
+    // `OrderLifecycleRelayService` answers `{ targets: [] }` when no participant
+    // resolves - an order whose `Order` identifier mapping is missing, most
+    // commonly. `transientlyUnreached` was then empty, so the code fell through
+    // to `clearWaybillRelayFailures` and reported `'relayed'` with
+    // `waybillRelayedAt` already claimed and never released: the waybill claim
+    // burnt on the first poll tick, the failure counter reading 0, the badge
+    // never rendering, and the claim unable to be re-taken. Ever.
+    //
+    // Released rather than reported as a failure count, because there is no
+    // participant to name: the next tick re-claims and tries again, which is
+    // what should have happened the first time.
+    if (result.targets.length === 0) {
+      await this.shipments.releaseWaybillRelay(shipment.id, {
+        reason: 'adapter-unresolved',
+        connectionId: null,
+        failedAt: new Date(),
+      });
+      this.logger.warn(
+        `waybill_relay_no_participants shipment=${shipment.id} order=${shipment.orderId} — the ` +
+          `relay resolved no participant at all, so nobody was told. The claim is released so ` +
+          `the next poll retries; a persistent case is usually a missing Order identifier ` +
+          `mapping on the source connection.`,
+      );
+      return 'failed';
+    }
+
     const transientlyUnreached = result.targets.filter(
       (t) =>
         t.outcome === 'rejected' ||
