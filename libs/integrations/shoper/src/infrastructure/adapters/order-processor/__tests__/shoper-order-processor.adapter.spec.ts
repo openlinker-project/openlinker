@@ -57,6 +57,7 @@ function order(overrides: Record<string, unknown> = {}): OrderCreate {
 function setup(
   config: Record<string, unknown> = { defaults: { shippingId: 8, paymentId: 1, statusId: 1 } },
   shopDecrements = true,
+  shopContextFails = false,
 ): Harness {
   const post = jest.fn().mockImplementation((path: string) =>
     Promise.resolve({ status: 200, data: path === '/orders' ? 10 : 16 }),
@@ -83,7 +84,12 @@ function setup(
     { resolveOrCreateCustomer } as unknown as ShoperCustomerProvisioner,
     { get: () => Promise.resolve(TAXES) } as unknown as ShoperTaxTableProvider,
     options as unknown as ShoperOrderOptionsProvider,
-    { get: () => Promise.resolve({ ...MAP_CONTEXT, decrementsStockOnOrder: shopDecrements }) } as unknown as ShoperShopContextProvider,
+    {
+      get: () =>
+        shopContextFails
+          ? Promise.reject(new Error('shop context unavailable'))
+          : Promise.resolve({ ...MAP_CONTEXT, decrementsStockOnOrder: shopDecrements }),
+    } as unknown as ShoperShopContextProvider,
     { id: 'conn-1', config } as unknown as Connection,
     mappingConfig as unknown as IMappingConfigService,
   );
@@ -131,6 +137,14 @@ describe('ShoperOrderProcessorAdapter', () => {
         '/order-products',
         expect.objectContaining({ order_id: 10, price: 10, quantity: 1, name: 'SKU2', tax: '8%', tax_value: 8 }),
       ]);
+    });
+
+    it('should still return the order when the post-create stock check fails', async () => {
+      const { adapter, del } = setup(undefined, true, true);
+
+      await expect(adapter.createOrder(order())).resolves.toEqual({ orderId: '10' });
+
+      expect(del).not.toHaveBeenCalled();
     });
 
     it('should fill a missing phone from the other address', async () => {
@@ -507,11 +521,11 @@ describe('ShoperOrderProcessorAdapter', () => {
     });
   });
 
-  describe('resolveCustomer', () => {
+  describe('customer resolution', () => {
     it('should resolve the customer from the metadata email and the billing name', async () => {
-      const { adapter, resolveOrCreateCustomer } = setup();
+      const { adapter, post, resolveOrCreateCustomer } = setup();
 
-      await expect(adapter.resolveCustomer(order())).resolves.toBe('91');
+      await adapter.createOrder(order());
 
       expect(resolveOrCreateCustomer).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -522,17 +536,18 @@ describe('ShoperOrderProcessorAdapter', () => {
           connectionId: 'conn-1',
         }),
       );
+      expect((post.mock.calls[0] as [string, Record<string, unknown>])[1]).toMatchObject({ user_id: 91 });
     });
 
     it('should fall back to the shipping name and pass no email when it is not valid', async () => {
       const { adapter, resolveOrCreateCustomer } = setup();
 
-      await adapter.resolveCustomer(
-        order({ billingAddress: undefined, metadata: { buyerEmail: 'not-an-email' } }),
-      );
+      // An invalid email is refused before any write, so the provisioner is
+      // never reached; the fallback name is exercised with a valid one.
+      await adapter.createOrder(order({ billingAddress: undefined }));
 
       expect(resolveOrCreateCustomer).toHaveBeenCalledWith(
-        expect.objectContaining({ buyerEmail: undefined, firstName: 'Anna', lastName: 'Nowak' }),
+        expect.objectContaining({ firstName: 'Anna', lastName: 'Nowak' }),
       );
     });
   });

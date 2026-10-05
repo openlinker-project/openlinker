@@ -53,6 +53,7 @@ import { ShoperNotMappedException } from '../../../domain/exceptions/shoper-not-
 import { ShoperOrderUnbuildableException } from '../../../domain/exceptions/shoper-order-unbuildable.exception';
 import { ShoperPartialOrderException } from '../../../domain/exceptions/shoper-partial-order.exception';
 import type { ShoperOrderDefaults } from '../../../domain/types/shoper-config.types';
+import type { PreparedShoperOrder } from '../../../domain/types/shoper-order-prepare.types';
 import type {
   ShoperOptionRow,
   ShoperOrderCreateRequest,
@@ -68,16 +69,18 @@ import {
   mapShoperOrderAddress,
   resolveGrossUnitPrice,
 } from '../../mappers/shoper-order.mapper';
+import {
+  orderMarker,
+  readBuyerEmail,
+  readDefaults,
+  readId,
+  requireDefault,
+  toPositiveInt,
+} from '../../mappers/shoper-order-input.mapper';
 import type { ShoperCustomerProvisioner } from '../../provisioners/shoper-customer.provisioner';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 import type { ShoperOrderOptionsProvider } from '../../shop-context/shoper-order-options.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
-
-/** RFC-5322-lite: enough to refuse an obviously unusable value. */
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Connections already warned that their shop does not reduce stock itself (see `warnIfShopKeepsStock`). */
-const WARNED_STOCK_FLAG_CONNECTIONS = new Set<string>();
 
 /** Shoper rounds to cents, so a smaller gap is not a real mismatch. */
 const SUM_TOLERANCE = 0.011;
@@ -94,6 +97,13 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
     private readonly shopContext: ShoperShopContextProvider,
     private readonly connection: Connection,
     private readonly mappingConfig?: IMappingConfigService,
+    /**
+     * Connections already warned that their shop keeps its own stock. Owned by the
+     * factory so it spans the per-resolution adapters of ONE plugin instance
+     * (a fresh adapter is built per `getCapabilityAdapter` call) without being
+     * process-global state.
+     */
+    private readonly warnedStockFlagConnections: Set<string> = new Set<string>(),
   ) {}
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
@@ -136,13 +146,22 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
       throw await this.rollBack(orderId, linesCreated, prepared.lines.length, error);
     }
 
-    await this.warnIfShopKeepsStock(order);
+    // Diagnostics only: the order already exists, so a failure reading the shop
+    // context must not fail (and so retry) a create that succeeded.
+    try {
+      await this.warnIfShopKeepsStock(order);
+    } catch (error) {
+      this.logger.debug(
+        `Could not check the Shoper stock flag after creating order ${orderId} ` +
+          `(connection: ${this.connection.id}): ${String(error)}`,
+      );
+    }
     this.warnOnSumMismatch(order, prepared, orderId);
     return { orderId };
   }
 
   /** The Shoper `user_id` the order must reference. */
-  resolveCustomer(order: OrderCreate): Promise<string> {
+  private resolveCustomer(order: OrderCreate): Promise<string> {
     return this.customerProvisioner.resolveOrCreateCustomer({
       internalCustomerId: order.customerId,
       buyerEmail: readBuyerEmail(order),
@@ -231,7 +250,7 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
 
   // ─── Preparation (no writes) ───────────────────────────────────────────────
 
-  private async prepare(order: OrderCreate): Promise<PreparedOrder> {
+  private async prepare(order: OrderCreate): Promise<PreparedShoperOrder> {
     if (order.internalOrderId === undefined) {
       // No key means no way to recognise this order on a retry, i.e. an order
       // that can be duplicated for good. Refuse rather than create one.
@@ -475,15 +494,15 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
       `Shoper connection ${this.connection.id} has shopping_update_stock_on_buy off: creating order ` +
       `${order.internalOrderId ?? '<unknown>'} did NOT reduce the shop's stock, and OpenLinker does not ` +
       'compensate with a stock write';
-    if (WARNED_STOCK_FLAG_CONNECTIONS.has(this.connection.id)) {
+    if (this.warnedStockFlagConnections.has(this.connection.id)) {
       this.logger.debug(message);
       return;
     }
-    WARNED_STOCK_FLAG_CONNECTIONS.add(this.connection.id);
+    this.warnedStockFlagConnections.add(this.connection.id);
     this.logger.warn(message);
   }
 
-  private warnOnSumMismatch(order: OrderCreate, prepared: PreparedOrder, orderId: string): void {
+  private warnOnSumMismatch(order: OrderCreate, prepared: PreparedShoperOrder, orderId: string): void {
     const sent = expectedOrderSum(prepared.lines, prepared.shippingCost);
     // A discount the source reports may or may not already be in the line prices
     // (the buyer-paid price usually is), so either reading is a match.
@@ -499,59 +518,4 @@ export class ShoperOrderProcessorAdapter implements OrderProcessorManagerPort, D
   private unbuildable(reason: string): ShoperOrderUnbuildableException {
     return new ShoperOrderUnbuildableException(this.connection.id, reason);
   }
-}
-
-interface PreparedOrder {
-  readonly header: Omit<ShoperOrderCreateRequest, 'user_id'>;
-  readonly lines: Array<Omit<ShoperOrderProductCreateRequest, 'order_id'>>;
-  readonly shippingCost: number;
-  /** The `notes_priv` value that recognises this order on a retry. */
-  readonly marker: string;
-}
-
-function orderMarker(internalOrderId: string): string {
-  return `OpenLinker order ${internalOrderId}`;
-}
-
-function readBuyerEmail(order: OrderCreate): string | undefined {
-  const raw = order.metadata?.buyerEmail;
-  return typeof raw === 'string' && EMAIL_PATTERN.test(raw.trim()) ? raw.trim() : undefined;
-}
-
-function readDefaults(connection: Connection): ShoperOrderDefaults {
-  const raw = (connection.config ?? {}).defaults;
-  if (typeof raw !== 'object' || raw === null) {
-    return {};
-  }
-  const record = raw as Record<string, unknown>;
-  const shippingId = toPositiveInt(record.shippingId);
-  const paymentId = toPositiveInt(record.paymentId);
-  const statusId = toPositiveInt(record.statusId);
-  return {
-    ...(shippingId !== null ? { shippingId } : {}),
-    ...(paymentId !== null ? { paymentId } : {}),
-    ...(statusId !== null ? { statusId } : {}),
-  };
-}
-
-function requireDefault(value: number | undefined, key: string, label: string, connectionId: string): number {
-  if (value === undefined) {
-    throw new ShoperOrderUnbuildableException(
-      connectionId,
-      `no ${label} could be resolved: add a mapping or set connection config "${key}" to the id of a ${label} in the shop`,
-    );
-  }
-  return value;
-}
-
-function toPositiveInt(value: unknown): number | null {
-  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
-  return Number.isInteger(n) && n > 0 ? n : null;
-}
-
-function readId(data: unknown): string | null {
-  if (typeof data === 'number' || (typeof data === 'string' && data.trim() !== '')) {
-    return String(data);
-  }
-  return null;
 }

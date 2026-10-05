@@ -42,6 +42,9 @@ export interface ShoperAdapters {
 }
 
 export class ShoperAdapterFactory {
+  /** Connections already warned about a shop that keeps its own stock; see the order processor. */
+  private readonly warnedStockFlagConnections = new Set<string>();
+
   async createAdapters(
     connection: Connection,
     identifierMapping: IdentifierMappingPort,
@@ -107,6 +110,7 @@ export class ShoperAdapterFactory {
               shopContext,
               connection,
               mappingConfig,
+              this.warnedStockFlagConnections,
             ),
     };
   }
