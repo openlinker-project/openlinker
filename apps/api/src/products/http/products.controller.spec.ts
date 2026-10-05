@@ -81,6 +81,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     markVariantsStaleExcept: jest.fn(),
   recordProductTaxRate: jest.fn(),
   recordVariantTaxRate: jest.fn(),
+  fillVariantsPhysicalDimensionsIfAbsent: jest.fn(),
   clearVariantTaxRate: jest.fn(),
   getEffectiveTaxRate: jest.fn(),
   getTaxRateCoverage: jest.fn(),

@@ -53,6 +53,10 @@ import type { IdentifierMappingPort, Connection } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { exceedsAdapterPageSize } from '@openlinker/core/operational-settings';
+import {
+  buildWooCommercePhysicalData,
+  type WooCommerceStoreUnits,
+} from '../../mappers/woocommerce-physical-data';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
@@ -319,6 +323,7 @@ export class WooCommerceProductMasterAdapter
           ean: null,
           gtin: null,
           price,
+          ...buildWooCommercePhysicalData(product, undefined, await this.readStoreUnits()),
         },
       ];
     }
@@ -355,14 +360,20 @@ export class WooCommerceProductMasterAdapter
       })),
     );
 
+    const storeUnits = await this.readStoreUnits();
+
     return validVariations
-      .map((v) => {
+      .map((v): ProductVariant | null => {
         const internalId = idMap.get(`${String(v.id)}:${this.connection.id}`);
         if (!internalId) {
           this.logger.warn(`No internal ID for WC variation ${String(v.id)}`);
           return null;
         }
-        return { ...this.mapper.mapVariation(v, productId), id: internalId };
+        return {
+          ...this.mapper.mapVariation(v, productId),
+          ...buildWooCommercePhysicalData(product, v, storeUnits),
+          id: internalId,
+        };
       })
       .filter((v): v is ProductVariant => v !== null);
   }
@@ -1008,6 +1019,38 @@ export class WooCommerceProductMasterAdapter
     }
   }
 
+  /**
+   * The store's weight and dimension units, from `GET /settings/products`
+   * (#3650), cached for the adapter's lifetime so a page of products issues one
+   * request. Only a successful read is cached. Physical data is enrichment, so a
+   * failed read degrades to `null` ("not recorded") and never fails the sync.
+   */
+  private async readStoreUnits(): Promise<WooCommerceStoreUnits | null> {
+    if (this.storeUnits !== undefined) return this.storeUnits;
+    try {
+      const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
+        '/wp-json/wc/v3/settings/products',
+      );
+      const read = (id: string): string | null => {
+        const raw = (settings ?? []).find((s) => s.id === id)?.value;
+        const value = Array.isArray(raw) ? raw[0] : raw;
+        return value && value.trim() ? value.trim() : null;
+      };
+      this.storeUnits = {
+        weightUnit: read('woocommerce_weight_unit'),
+        dimensionUnit: read('woocommerce_dimension_unit'),
+      };
+      return this.storeUnits;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the store's weight/dimension units (connection: ${this.connection.id}); ` +
+          `variant weight and dimensions stay unrecorded: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  private storeUnits: WooCommerceStoreUnits | null | undefined;
   private storeCountry: string | null | undefined;
   private storeCurrency: string | null | undefined;
   private generalSettings: WooCommerceGeneralSetting[] | undefined;
