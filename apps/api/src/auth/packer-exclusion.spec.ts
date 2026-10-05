@@ -255,6 +255,12 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // else's paperwork. The asymmetry with `getParcel` is deliberate, not an
   // oversight.
   'BenchDocumentsController.downloadInvoice',
+  // #3646. The receipt sibling of `downloadInvoice`, granted for the same
+  // reason: the customer-facing e-receipt is the paper (or the link) the buyer
+  // is owed for this very box. Reached through the work and its own order only -
+  // no registration id - so it cannot be walked to another order's receipt, and
+  // it reads through the sales-document projection, never a fiscalization route.
+  'BenchDocumentsController.downloadReceipt',
   'BenchDocumentsController.listUnlabelled',
   // #3415. The label, and it is granted for a NARROWER reason than the invoice
   // above: the sheet goes on the outside of the box and `ShipmentResponseDto`

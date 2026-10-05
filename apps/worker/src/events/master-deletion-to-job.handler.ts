@@ -23,6 +23,10 @@ import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisClientType } from 'redis';
 import type { EventEnvelope } from '@openlinker/core/events';
+import {
+  IStreamDeadLettersService,
+  STREAM_DEAD_LETTERS_SERVICE_TOKEN,
+} from '@openlinker/core/events';
 import type { MasterDeletionEventPayload } from '@openlinker/core/products';
 import { MASTER_DELETION_EVENT_STREAM } from '@openlinker/core/products';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -81,7 +85,9 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
   private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
 
   private lastReclaimAt = 0;
-  private readonly recoveryAttempts = new RecoveryAttemptTracker();
+  // Constructed in the body — see JobIntakeConsumer's identical field for why
+  // (#2301, D48).
+  private readonly recoveryAttempts: RecoveryAttemptTracker;
   private readonly BLOCK_MS = 5000;
   private readonly COUNT = 10;
 
@@ -93,8 +99,14 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
     private readonly redisClient: RedisClientType,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(STREAM_DEAD_LETTERS_SERVICE_TOKEN)
+    private readonly streamDeadLetters: IStreamDeadLettersService,
     private readonly configService: ConfigService
-  ) {}
+  ) {
+    this.recoveryAttempts = new RecoveryAttemptTracker(
+      this.redisClient as unknown as StreamConsumerClient
+    );
+  }
 
   async onModuleInit(): Promise<void> {
     const enabled =
@@ -476,7 +488,7 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
   private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<RecoveryOutcome> {
     try {
       await this.handleRecoveredEntry(entry, source);
-      this.recoveryAttempts.succeeded(entry.id);
+      await this.recoveryAttempts.succeeded(this.STREAM_NAME, this.CONSUMER_GROUP, entry.id);
       // A trimmed entry was ACKed, but nothing was recovered — retention
       // destroyed its payload. Reporting that as recovered would tell an
       // operator the opposite of what happened.
@@ -490,7 +502,12 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
         throw error;
       }
 
-      const attempts = this.recoveryAttempts.recordFailure(entry.id);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const attempts = await this.recoveryAttempts.recordFailure(
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        entry.id
+      );
 
       this.logger.error(
         `Failed to recover stream entry ${entry.id} (${source}, attempt ${attempts}, redis deliveries ${entry.kind === 'entry' ? entry.deliveryCount : 'n/a'}); leaving it pending and continuing`,
@@ -498,19 +515,73 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
       );
 
       // Once, on the crossing — a poison entry recurs by definition, so an
-      // unguarded alarm per pass is alert fatigue. Auto-dead-lettering is
-      // deliberately NOT done: two of the three consumers cannot build their
-      // dead-letter payload from a raw pending entry (one needs a decoded
-      // webhook event, one a parsed job request), and discarding it would be
-      // unrecoverable loss. See ADR-049.
+      // unguarded alarm per pass is alert fatigue.
       if (this.recoveryAttempts.justCrossedThreshold(attempts)) {
         this.logger.error(
-          `Stream entry ${entry.id} has now failed recovery ${attempts} times (${source}); it is stuck and needs manual intervention`
+          `Stream entry ${entry.id} has now failed recovery ${attempts} times (${source}); writing it to stream_dead_letters and acking it`
         );
+      }
+
+      // >= rather than === — see JobIntakeConsumer's identical branch
+      // (#2301, D48) for why the one-time alarm above and this terminal-
+      // write trigger deliberately use different predicates.
+      if (this.recoveryAttempts.hasReachedThreshold(attempts)) {
+        await this.deadLetterPoisonEntry(entry, attempts, errorMessage, source);
       }
 
       return 'failed';
     }
+  }
+
+  /**
+   * Writes the durable `stream_dead_letters` row and, only once that write
+   * has committed, `XACK`s the entry (#2301, D48). Deliberately a DIFFERENT
+   * method from `deadLetter` below: that one is the pre-existing, immediate
+   * DLQ write for a MALFORMED master-deletion event (a deterministic
+   * classification, made on the first read) — this one is for an entry that
+   * has been attempted repeatedly and keeps failing, which is a different
+   * question answered by a different mechanism (a Postgres table, not the
+   * `events.master.deletion.dead` Redis stream). Never throws: a failed
+   * write here means the entry stays pending and is retried on the next
+   * recovery pass.
+   *
+   * `rawFields` is `{}` for a `'trimmed'` entry — retention already removed
+   * its body before this method ever sees it.
+   */
+  private async deadLetterPoisonEntry(
+    entry: StreamEntry,
+    attempts: number,
+    lastError: string,
+    source: string
+  ): Promise<void> {
+    try {
+      await this.streamDeadLetters.record({
+        stream: this.STREAM_NAME,
+        consumerGroup: this.CONSUMER_GROUP,
+        entryId: entry.id,
+        rawFields: entry.kind === 'entry' ? entry.fields : {},
+        attempts,
+        lastError,
+      });
+    } catch (writeError) {
+      this.logger.error(
+        `Failed to write stream_dead_letters for entry ${entry.id} (${source}); leaving it pending — it will be retried on the next recovery pass`,
+        writeError instanceof Error ? writeError.stack : String(writeError)
+      );
+      return;
+    }
+
+    try {
+      await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, entry.id);
+    } catch (ackError) {
+      this.logger.error(
+        `stream_dead_letters row written for entry ${entry.id} (${source}) but XACK failed; it will be redelivered and re-written (idempotent) until the ack lands`,
+        ackError instanceof Error ? ackError.stack : String(ackError)
+      );
+      return;
+    }
+
+    await this.recoveryAttempts.succeeded(this.STREAM_NAME, this.CONSUMER_GROUP, entry.id);
   }
 
   /**

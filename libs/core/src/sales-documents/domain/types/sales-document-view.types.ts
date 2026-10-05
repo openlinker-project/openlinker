@@ -41,6 +41,7 @@
  * @see docs/architecture/adrs/065-sales-document-read-surface.md
  */
 import type {
+  FiscalArtefactSummary,
   FiscalRegistrationFailureMode,
   FiscalRegistrationStatus,
 } from '@openlinker/core/fiscalization/types';
@@ -175,6 +176,18 @@ export interface SalesDocumentReceiptView {
    * returns identifiers and no artefact at all.
    */
   readonly artefactCount: number;
+  /**
+   * What the registration produced, WITHOUT what it produced (#3646): the
+   * payload-free {@link FiscalArtefactSummary} per artefact, so a surface can
+   * decide between "print", "open" and "nothing to hand over" without reading
+   * a customer-facing document into a per-order projection.
+   *
+   * `null` means the registration never got far enough to produce anything
+   * (still in flight, or failed); `[]` is a SUCCESSFUL registration that
+   * produced nothing (ADR-042 decision 2). The two are never collapsed.
+   * `disposition` is the adapter's hint and never evidence of delivery.
+   */
+  readonly artefacts: readonly FiscalArtefactSummary[] | null;
   readonly identity: SalesDocumentIdentity;
 }
 

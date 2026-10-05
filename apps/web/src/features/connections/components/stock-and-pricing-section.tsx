@@ -79,6 +79,7 @@ import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { FormField } from '../../../shared/ui/form-field';
+import { HelpLink } from '../../../shared/ui/help-link';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useInventoryLocationsQuery } from '../../inventory';
@@ -301,7 +302,10 @@ export function StockAndPricingSection({
 
   return (
     <section className="rate-limit-section">
-      <h3 className="rate-limit-section__title">Stock and price on this destination</h3>
+      <div className="section-title__with-help">
+        <h3 className="rate-limit-section__title">Stock and price on this destination</h3>
+        <HelpLink surfaceKey="connection-stock-and-pricing" />
+      </div>
       <p className="rate-limit-section__help">
         By default this destination is told your catalogue quantity and your catalogue price,
         unchanged.

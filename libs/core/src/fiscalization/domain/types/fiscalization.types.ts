@@ -143,6 +143,46 @@ export interface FiscalArtefactSummary {
 }
 
 /**
+ * The artefact mediums a person can be HANDED, in the order one is preferred
+ * (#3646).
+ *
+ * A self-contained file comes first because it is the only form a caller can
+ * print without leaving OpenLinker; a link comes second because it still lets a
+ * person open the document at the provider. `markup`, `code` and `text` are
+ * deliberately absent: each needs a renderer or a device OpenLinker does not
+ * own, so offering one as "the receipt" would promise something no surface can
+ * deliver.
+ */
+export const FiscalHandoverMediumValues = ['document', 'link'] as const;
+export type FiscalHandoverMedium = (typeof FiscalHandoverMediumValues)[number];
+
+/**
+ * Pick the one artefact a surface should hand over, or `null` when none of them
+ * can be handed over (#3646).
+ *
+ * Pure, generic over the full artefact and its payload-free summary, so the
+ * read that decides what to OFFER and the route that SERVES it cannot pick
+ * different artefacts - reported and served are one decision.
+ *
+ * The first artefact of the most-preferred medium wins; order within a medium
+ * is the adapter's own.
+ */
+export function selectHandoverArtefact<T extends { medium: FiscalArtefactMedium }>(
+  artefacts: readonly T[] | null | undefined,
+): T | null {
+  if (artefacts === null || artefacts === undefined) {
+    return null;
+  }
+  for (const medium of FiscalHandoverMediumValues) {
+    const match = artefacts.find((artefact) => artefact.medium === medium);
+    if (match !== undefined) {
+      return match;
+    }
+  }
+  return null;
+}
+
+/**
  * Project artefacts onto their summaries, dropping every payload.
  *
  * Pure, and co-located with the type it projects onto (the pure-rule exception
