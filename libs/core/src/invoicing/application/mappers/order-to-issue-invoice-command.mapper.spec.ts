@@ -42,11 +42,15 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     id: 'order-1',
     status: 'processing',
     items: [makeItem()],
+    // Internally consistent, and it has to be: the mapper refuses an order
+    // whose lines contradict its own total. `taxTreatment: 'inclusive'` makes
+    // the line's 100 a GROSS figure, so the total is 100 - of which 18.70 is
+    // the tax already inside it, not 23 on top.
     totals: {
-      subtotal: 100,
-      tax: 23,
+      subtotal: 81.3,
+      tax: 18.7,
       shipping: 0,
-      total: 123,
+      total: 100,
       currency: 'PLN',
       taxTreatment: 'inclusive',
     },
@@ -58,6 +62,222 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 }
 
 describe('toIssueInvoiceCommand', () => {
+  // The realistic cause is a whole-order discount: PrestaShop applies a
+  // `CartRule` outside `OrderDetail::setSpecificPrice()`, so the line prices
+  // are the pre-discount ones while `total` is net of it. Without this guard
+  // the invoice asks the buyer for more than they were charged, with every
+  // figure on it internally consistent.
+  describe('lines must add up to the order total', () => {
+    it('refuses an order whose total is below what its own lines sum to', () => {
+      expect(() =>
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              // A 10.00 whole-order discount that never reached a line.
+              total: 90,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        })
+      ).toThrow(InvalidInvoiceLineError);
+    });
+
+    it('names both figures so an operator can see which side is wrong', () => {
+      try {
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              total: 90,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        });
+        throw new Error('expected the mapper to refuse');
+      } catch (error) {
+        const message = (error as Error).message;
+        expect(message).toContain('100.00');
+        expect(message).toContain('90.00');
+        // PII-clean, like every other refusal this mapper raises.
+        expect(message).not.toContain('Kowalski');
+      }
+    });
+
+    // The whole point of carrying `discountTotal` (#3365): turn the arithmetic
+    // complaint into a diagnosis an operator can act on.
+    it('names a whole-order discount that exactly accounts for the difference', () => {
+      try {
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              total: 90,
+              discountTotal: 10,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        });
+        throw new Error('expected the mapper to refuse');
+      } catch (error) {
+        expect((error as Error).message).toContain('whole-order discount of 10.00');
+        expect((error as Error).message).toContain('exactly the difference');
+      }
+    });
+
+    // A cause is attributed only when it accounts for the gap. Naming one on a
+    // coincidence would send an operator after the wrong thing.
+    it('does not attribute the difference to a discount that fails to explain it', () => {
+      try {
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              total: 90,
+              discountTotal: 3,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        });
+        throw new Error('expected the mapper to refuse');
+      } catch (error) {
+        const message = (error as Error).message;
+        expect(message).toContain('does not by itself account for the difference');
+        expect(message).not.toContain('exactly the difference');
+      }
+    });
+
+    it('says nothing about a discount when the source reported none', () => {
+      try {
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              total: 90,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        });
+        throw new Error('expected the mapper to refuse');
+      } catch (error) {
+        expect((error as Error).message).not.toContain('discount');
+      }
+    });
+
+    // Float dust from a normal basket is not a discount: 10.10 three times is
+    // 30.299999999999997, not 30.30. That is what the tolerance exists for.
+    //
+    // Note the boundary is `> epsilon`, so a discrepancy of NOMINALLY one whole
+    // minor unit sits exactly on it and IEEE-754 decides which side it lands -
+    // a 33.33 x 3 basket against a 100.00 total is refused, by 5e-15. Both
+    // document mappers share that property. It is not tested here because
+    // asserting a coin flip proves nothing; it is written down so nobody reads
+    // the tolerance as "a grosz of unexplained difference is fine".
+    it('tolerates float dust from a normal basket', () => {
+      expect(() =>
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [
+              makeItem({ id: 'a', price: 10.1, quantity: 1 }),
+              makeItem({ id: 'b', price: 10.1, quantity: 1 }),
+              makeItem({ id: 'c', price: 10.1, quantity: 1 }),
+            ],
+            totals: {
+              subtotal: 30.3,
+              tax: 0,
+              shipping: 0,
+              total: 30.3,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        })
+      ).not.toThrow();
+    });
+
+    it('counts the shipping line, so a shipped order is not refused for carrying one', () => {
+      const cmd = toIssueInvoiceCommand({
+        order: makeOrder({
+          items: [makeItem({ price: 100, quantity: 1 })],
+          totals: {
+            subtotal: 100,
+            tax: 0,
+            shipping: 15,
+            total: 115,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        connectionId: 'conn-1',
+      });
+
+      expect(cmd.lines).toHaveLength(2);
+    });
+  });
+
+  // The shipping split weights each rate by its share of the basket's GROSS
+  // value. On a net-priced source reporting its own gross figures (#3365),
+  // weighting by `price` weights by NET - which is only visible on a
+  // MIXED-rate basket, because net scales to gross by a different factor per
+  // rate. Net weights here would give 11.40/11.40; gross weights give
+  // 12.30/10.50, which is where the buyer's shipping actually sat.
+  it('weights the shipping split by gross, not by net, on a mixed-rate net-priced order', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({
+        items: [
+          makeItem({ id: 'a', price: 100, unitPriceGross: 123, taxRate: '23' }),
+          makeItem({ id: 'b', price: 100, unitPriceGross: 105, taxRate: '5' }),
+        ],
+        totals: {
+          subtotal: 200,
+          tax: 28,
+          shipping: 18.54,
+          shippingGross: 22.8,
+          total: 250.8,
+          currency: 'PLN',
+          taxTreatment: 'exclusive',
+        },
+      }),
+      connectionId: 'conn-1',
+    });
+
+    const shippingLines = cmd.lines.filter((line) => line.name === 'Shipping');
+    expect(
+      shippingLines.map((line) => ({ taxRate: line.taxRate, amount: line.unitPriceGross }))
+    ).toEqual([
+      { taxRate: '23', amount: 12.3 },
+      { taxRate: '5', amount: 10.5 },
+    ]);
+    // Whatever the weights, the parts still sum to exactly what was charged.
+    expect(shippingLines.reduce((sum, line) => sum + line.unitPriceGross, 0)).toBeCloseTo(22.8, 2);
+  });
+
   it('B2B: buyerTaxId present -> buyer.type "company", scheme-tagged taxId carried through', () => {
     const taxId = { scheme: 'pl-nip', value: '1234567890' };
     const cmd = toIssueInvoiceCommand({
@@ -129,10 +349,12 @@ describe('toIssueInvoiceCommand', () => {
   it('multi-line: items -> lines, currency from totals.currency, name fallback to sku then productId', () => {
     const order = makeOrder({
       totals: {
-        subtotal: 0,
+        subtotal: 130,
         tax: 0,
         shipping: 0,
-        total: 0,
+        // The lines' own sum. A placeholder 0 here used to be harmless; it is
+        // now a statement the mapper checks.
+        total: 130,
         currency: 'EUR',
         taxTreatment: 'inclusive',
       },
@@ -157,8 +379,15 @@ describe('toIssueInvoiceCommand', () => {
     // An empty rate here is the honest passthrough of an order line that never
     // got one, NOT a default (#2257): the mapper names no rate of its own, and
     // the gate refuses such an order before it reaches a provider.
+    // `productId` rides along so a destination that keeps a catalogue can link
+    // the line to a real product instead of emitting free text - a free-text
+    // line moves no stock, so no warehouse release can be issued for it
+    // (#3445). It is carried, never invented: a line without one omits it.
+    // `orderLineId` (#3312) is the other half of the same idea one grain down -
+    // which ORDER line this document line was built from.
     expect(cmd.lines[0]).toEqual({
       name: 'Named',
+      productId: 'prod-1',
       quantity: 2,
       unitPriceGross: 10,
       taxRate: '',
@@ -316,10 +545,10 @@ describe('toIssueInvoiceCommand', () => {
     const order = makeOrder({
       items: [makeItem({ price: 49.99 })],
       totals: {
-        subtotal: 0,
+        subtotal: 49.99,
         tax: 0,
         shipping: 0,
-        total: 0,
+        total: 49.99,
         currency: 'PLN',
         taxTreatment: 'inclusive',
       },
@@ -332,7 +561,7 @@ describe('toIssueInvoiceCommand', () => {
   it('price treatment: totals.taxTreatment ABSENT -> unitPriceGross = item.price (gross assumption)', () => {
     const order = makeOrder({
       items: [makeItem({ price: 49.99 })],
-      totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+      totals: { subtotal: 49.99, tax: 0, shipping: 0, total: 49.99, currency: 'PLN' },
     });
 
     const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
@@ -409,8 +638,13 @@ describe('toIssueInvoiceCommand', () => {
   });
 
   it('should carry item.id onto InvoiceLine.orderLineId, the exact join ReturnLine.resolvedOrderLineId points at (#3312)', () => {
+    // Totals stated rather than left at the helper's default, because
+    // `assertLinesSumToTotal` refuses a command whose lines contradict the
+    // order's own total - a guard this branch added after #3312 was written.
+    // The fixture's one line is 10, so the order is worth 10.
     const order = makeOrder({
       items: [makeItem({ id: 'order-item-42', name: 'Widget', price: 10, quantity: 1 })],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
     });
 
     const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });

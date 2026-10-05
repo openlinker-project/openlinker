@@ -51,8 +51,10 @@ import { MarketplaceOfferRefreshSnapshotHandler } from './handlers/marketplace-o
 import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offer-stock-restore.handler';
 import { MarketplaceOfferPauseStaleHandler } from './handlers/marketplace-offer-pause-stale.handler';
 import { MarketplaceOfferPauseStaleSweepHandler } from './handlers/marketplace-offer-pause-stale-sweep.handler';
+import { SubiektBridgeReachabilitySweepHandler } from './handlers/subiekt-bridge-reachability-sweep.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
+import { ShippingShipmentNotifyDispatchedHandler } from './handlers/shipping-shipment-notify-dispatched.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-fulfillment-status-sync.handler';
 import { FulfillmentWorkStatusSyncHandler } from './handlers/fulfillment-work-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
@@ -147,8 +149,10 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferStockRestoreHandler,
     MarketplaceOfferPauseStaleHandler,
     MarketplaceOfferPauseStaleSweepHandler,
+    SubiektBridgeReachabilitySweepHandler,
     MarketplaceShipmentStatusSyncHandler,
     MarketplaceShipmentSyncByExternalIdHandler,
+    ShippingShipmentNotifyDispatchedHandler,
     MarketplaceFulfillmentStatusSyncHandler,
     FulfillmentWorkStatusSyncHandler,
     MasterProductSyncHandler,

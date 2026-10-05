@@ -22,6 +22,7 @@ import type {
   PaymentStatus,
   RegulatoryStatus,
   StoredDocument,
+  WarehouseReleaseOutcome,
 } from '../types/invoicing.types';
 
 export class InvoiceRecord {
@@ -143,7 +144,52 @@ export class InvoiceRecord {
      * before this column existed — there is nothing to backfill it from.
      */
     public readonly buyerTaxId: string | null = null,
+    /**
+     * How many of this document's lines the provider could not link to its own
+     * catalogue and issued as free text — see
+     * {@link IssueInvoiceResult.unlinkedCatalogueLines} for the tri-state and
+     * for why `0` is not a provider guarantee.
+     *
+     * `null` on every row issued before this column existed, and on every row
+     * from a provider that does not report linkage. Both read as "not
+     * reported" — a surface must test `> 0` rather than nullability, which
+     * {@link hasUnlinkedCatalogueLines} does as a convenience for a caller
+     * that only needs the yes/no question; a caller naming the count (e.g.
+     * "2 lines") reads this field directly instead.
+     */
+    public readonly unlinkedCatalogueLines: number | null = null,
+    /**
+     * Whether the goods this document billed for left the warehouse in the
+     * provider's own books, and under which number. See
+     * {@link WarehouseRelease} for the four states and why the last two cannot
+     * be told apart by the provider alone. `null` = not reported.
+     */
+    public readonly warehouseReleaseOutcome: WarehouseReleaseOutcome | null = null,
+    public readonly warehouseReleaseNumber: string | null = null,
   ) {}
+
+  /**
+   * Was a warehouse release EXPECTED here and not made? Pure read, so a surface
+   * never has to decide what the other three states mean for itself.
+   *
+   * Only `'not-released'` is a claim. `null` (this provider has no warehouse),
+   * `'not-applicable'` (nothing to release) and `'released'` all answer false -
+   * which is why nothing may test the NUMBER's nullability instead: it is
+   * legitimately absent on three of the four.
+   */
+  get warehouseReleaseMissing(): boolean {
+    return this.warehouseReleaseOutcome === 'not-released';
+  }
+
+  /**
+   * Did this document go out with lines the provider could not link to its
+   * catalogue? Pure read of the column, so a surface never has to decide what
+   * `null` means for itself: only a positive count is a claim, and `null`
+   * (not reported) and `0` (all linked) both answer false.
+   */
+  get hasUnlinkedCatalogueLines(): boolean {
+    return this.unlinkedCatalogueLines !== null && this.unlinkedCatalogueLines > 0;
+  }
 
   /** Pure derivation: the document was successfully issued by the provider. */
   get isIssued(): boolean {
