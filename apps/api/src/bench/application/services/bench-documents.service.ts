@@ -47,7 +47,12 @@ import {
   type InvoicingPort,
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
-import { ORDER_RECORD_SERVICE_TOKEN, IOrderRecordService } from '@openlinker/core/orders';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  IOrderRecordService,
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  type ISalesDocumentViewService,
+} from '@openlinker/core/orders';
 import {
   SHIPMENT_QUERY_SERVICE_TOKEN,
   type IShipmentQueryService,
@@ -64,6 +69,8 @@ import type {
   BenchDocumentsView,
   BenchInvoiceView,
   BenchLabelView,
+  BenchNoSalesDocumentView,
+  BenchSalesDocumentView,
   BenchUnlabelledParcelListView,
   BenchUnlabelledParcelView,
 } from '../types/bench-parcel.types';
@@ -94,19 +101,105 @@ export class BenchDocumentsService implements IBenchDocumentsService {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
-    private readonly shipments: IShipmentQueryService
+    private readonly shipments: IShipmentQueryService,
+    @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
+    private readonly salesDocuments: ISalesDocumentViewService
   ) {}
 
   async getDocuments(work: FulfillmentWorkView, canSeeCarrierText: boolean): Promise<BenchDocumentsView> {
-    const [invoice, label] = await Promise.all([
+    const [invoice, salesDocument, label] = await Promise.all([
       this.describeInvoice(work.orderId),
+      this.describeSalesDocument(work.orderId),
       this.describeLabel(work.id, canSeeCarrierText),
     ]);
-    return { workId: work.id, invoice, label };
+    return { workId: work.id, invoice, ...salesDocument, label };
+  }
+
+  /**
+   * The order's sales document, of either kind and in any status (#3646).
+   *
+   * Read from the per-order projection the `/orders` row and the order panel
+   * read (ADR-065), so the three surfaces cannot name different documents. The
+   * block reason is reported ONLY when no document of any kind exists: once one
+   * does, a persisted reason is left over from before it, and printing it beside
+   * the document would contradict it.
+   */
+  private async describeSalesDocument(
+    orderId: string
+  ): Promise<{ document: BenchSalesDocumentView | null; noDocument: BenchNoSalesDocumentView | null }> {
+    const view = (await this.salesDocuments.getForOrders([orderId])).get(orderId);
+    const document = view?.document ?? null;
+
+    if (document === null) {
+      return {
+        document: null,
+        noDocument: {
+          documentKind: view?.documentKind ?? null,
+          blockReason: view?.blockReason ?? null,
+          unresolvedReason: view?.unresolvedReason ?? null,
+        },
+      };
+    }
+
+    if (document.kind === 'invoice') {
+      return {
+        document: {
+          kind: 'invoice',
+          recordId: document.identity.recordId,
+          connectionId: document.identity.connectionId,
+          status: document.status,
+          failureMode: document.failureMode,
+          documentNumber: document.identity.documentNumber,
+          completedAt: document.identity.completedAt,
+          printable:
+            document.status === 'issued' &&
+            (await this.canRenderDocument(document.identity.connectionId, document.regulatoryStatus)),
+        },
+        noDocument: null,
+      };
+    }
+
+    return {
+      document: {
+        kind: 'fiscal-receipt',
+        recordId: document.identity.recordId,
+        connectionId: document.identity.connectionId,
+        platformType: await this.resolvePlatformType(document.identity.connectionId),
+        status: document.status,
+        failureMode: document.failureMode,
+        documentReference: document.identity.documentNumber,
+        completedAt: document.identity.completedAt,
+        artefacts: document.artefacts,
+      },
+      noDocument: null,
+    };
+  }
+
+  /**
+   * The connection's `platformType`, for picking a per-integration presentation.
+   *
+   * A metadata-only lookup. An unresolvable connection (disabled, deleted)
+   * degrades to `null` and the surface uses its neutral default - a
+   * presentation hint must never blank the rest of the documents read.
+   */
+  private async resolvePlatformType(connectionId: string): Promise<string | null> {
+    try {
+      const { connection } = await this.integrations.getAdapter(connectionId);
+      return connection.platformType;
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve connection ${connectionId} for the bench receipt; using the neutral ` +
+          `presentation: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return null;
+    }
   }
 
   /**
    * The invoice, and whether the bench can actually print it.
+   *
+   * @deprecated since #3646 - the legacy `invoice` slot, kept verbatim for a
+   * frontend that predates `document`. {@link describeSalesDocument} is the read.
    *
    * `ready` means issued AND printable, deliberately: the machine-readable
    * source document is XML, and a `rendered` document exists only when the

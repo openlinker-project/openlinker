@@ -206,6 +206,22 @@ export interface AdapterMetadata {
   requiresCredentials?: boolean;
 
   /**
+   * Whether an operator may ARCHIVE a connection on this adapter (#3657).
+   * Absent means `true`; an adapter that declares `false` can be disabled but
+   * never archived.
+   *
+   * The OL-OMS declares `false`. Its connection row is created when an
+   * operator enables the OMS (ADR-055 - never seeded) and carries the
+   * fulfilment-authority claims routing reads, so hiding it from every list
+   * would make those claims vanish with no row left on `/connections` to
+   * explain why. Disabling keeps the row visible and reversible in one click.
+   * Declared here rather than as a `platformType === 'openlinker'` check for
+   * the reason `requiresCredentials` is: the host must not privilege one
+   * plugin by name. Read it through {@link resolveArchivable}.
+   */
+  archivable?: boolean;
+
+  /**
    * Overrides `ConnectionService.create`'s inferred default for
    * `enabledCapabilities` when the caller omits the field entirely (#3350).
    *
@@ -301,5 +317,15 @@ export function resolveRequiresCredentials(
   metadata: Pick<AdapterMetadata, 'requiresCredentials'> | undefined | null
 ): boolean {
   return metadata?.requiresCredentials ?? true;
+}
+
+/**
+ * Resolve `AdapterMetadata.archivable` (#3657), defaulting to `true`. Same
+ * pure-rule shape as {@link resolveRequiresCredentials} above.
+ */
+export function resolveArchivable(
+  metadata: Pick<AdapterMetadata, 'archivable'> | undefined | null
+): boolean {
+  return metadata?.archivable ?? true;
 }
 

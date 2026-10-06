@@ -23,6 +23,141 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Never route a one-field change through a full-upsert port
+
+**Context**: price-change propagation to a WooCommerce shop (#3144) reused
+`ShopProductManagerPort.publishProduct`, because the port had no narrower write.
+
+**Problem**: `publishProduct` is a full upsert. The WooCommerce body always sends
+`manage_stock: true` + `stock_quantity`, and name / description whenever content
+is present, so every price change overwrote the shop's stock (and switched stock
+management on for products the shop did not manage), and its title and
+description whenever no earlier publish snapshot existed. Reusing the last
+snapshot and wrapping the call in the stock lock made the write *consistent*,
+not *narrow* — it still wrote fields nobody asked to change. The e2e run caught
+it only because stock 30 came back as OL's number (G01-10).
+
+**Rule**: a change to one field needs a write that carries only that field. If
+the port has none, add an optional sub-capability with a type guard
+(`ShopProductPriceUpdater`) and fall back to the full write only for adapters
+that lack it. Assert the adapter body with `toEqual` on the exact object, so a
+field sneaking back in fails the spec.
+
+**Applies to**: `libs/core/src/listings/application/services/price-change-apply.service.ts`,
+any shop/marketplace adapter `publishProduct`-style upsert.
+
+**Source**: #3505 (G01-10), 2026-10-01.
+
+---
+
+## `position: sticky` inside `.shell-content` never engages - `overflow-x: hidden` made the shell a scroll container that does not scroll
+
+**Context**: the sync-pacing summary rail had to stay in view while the form beside it scrolls
+(#3631 follow-up).
+
+**Problem**: `.shell-content` sets `overflow-x: hidden`, and CSS Overflow 3 computes the other axis
+of a `hidden`/`visible` pair to `auto`, so the shell is a scroll container in both axes. A sticky
+descendant resolves against its NEAREST scroll container - the shell - but the DOCUMENT is what
+scrolls, so the sticky offset never applies and the element just scrolls away. Every sticky rule
+inside the shell is dormant this way (bulk-action bar, numbering-editor preview, bench rail, ...),
+and nothing fails: the rule is valid, the computed `position` reads `sticky`, and happy-dom has
+no layout to notice.
+
+**Rule**: to make one page's element sticky, scope `overflow-x: clip` to that page
+(`.shell-content:has(.<page-root>)`) - `clip` cuts horizontal overflow exactly like `hidden` but
+is not a scroll container. Do not flip the shell globally as a drive-by: it wakes every dormant
+sticky rule at once, and some (a `top: var(--space-5)` preview) would then slide under the 52 px
+topbar. Prove stickiness in a real browser by scrolling and reading `getBoundingClientRect().top`
+before and after.
+
+**Applies to**: `apps/web/src/index.css` (`.shell-content`), any page wanting a sticky rail, bar or
+header inside the app shell.
+
+**Source**: #3631 (sync-pacing summary rail), 2026-10-04.
+
+---
+
+## A single-class modifier loses to the global `input[type=...]` rule, and a `--modifier` class without its base class styles nothing
+
+**Context**: the sync-pacing settings page (#2653 / #2946) shipped a slider + number box per
+value, laid out with `workspace-grid--primary` and a `control--narrow` number box.
+
+**Problem**: the reviewer saw a full-width text box with the slider's thumb squeezed to its left
+edge, and the calculator column stacked UNDER the form at 1440 px. Two CSS facts, neither visible
+in a unit test: `input[type='number'] { width: 100% }` in the form-control block has specificity
+(0,1,1) and beats any single class such as `.control--narrow` (0,1,0), so the number box took the
+whole row; and `.workspace-grid--primary` only sets `grid-template-columns` — `display: grid`
+lives on `.workspace-grid`, which the page never applied, so the two-column layout never existed.
+
+**Rule**: a class meant to size or restyle a native `<input type="number|text|…">` needs two
+classes of specificity (e.g. `.range-number__box .range-number__input`), and a BEM modifier is
+applied together with its base class or not at all. Neither failure shows in happy-dom, so a page
+whose layout is the point gets a real-browser screenshot at 1440 and 390 before review.
+
+**Applies to**: `apps/web/src/index.css`; any page composing grid / control modifiers.
+
+**Source**: #3631 (sync-pacing rework), 2026-10-04.
+
+---
+
+## Compare a screen with its mockup by computed box model, not by the text it renders
+
+**Context**: the fulfilment task detail (#3096) shipped with every sentence of
+its mockup on screen, and every class-presence and copy test green.
+
+**Problem**: the mockup draws each section as a CARD — a `--border-default`
+border, `--radius-lg`, 20 x 24 px of padding, `--shadow-xs`, 22 px between
+cards — and the page rendered the same sections as flat blocks on the page
+background with a 24 px bottom margin. Nothing a text query, a snapshot of
+class names or a copy audit checks could see the difference; a reviewer
+looking at both side by side called the page "a sketch". The same review
+found facts in five columns where the mockup has two, 28 px buttons where it
+has 32 px, and a UUID in the Delivery row — all invisible to the tests,
+because the tests asserted presence.
+
+**Rule**: when a screen has a committed mockup, assert the box model the
+mockup is drawn with — the declarations on the card, the grid tracks, the
+control heights — either in a stylesheet test against the rule bodies
+(`fulfilment-work-detail-styles.test.ts` § "the mockup box model") or by
+measuring computed style on both renders at the same viewport. Build the card
+as a shared primitive (`DetailSection`) the first time a second page needs it,
+so the next page cannot re-derive it flatter.
+
+**Applies to**: any page implemented from `docs/plans/mockups/*`; detail pages
+especially.
+
+**Source**: #3096 review (epic #3096 UI rework, 2026-10-01).
+
+---
+
+## In a container that turns into a column, a flex-basis is a height
+
+**Context**: the fulfilment board's filter inputs (#3096) sat in `.toolbar`,
+which switches to `flex-direction: column` below 900 px, with
+`.assign-packing-work-filters > * { flex: 0 1 20rem }` written for the row.
+
+**Problem**: in a column the main axis is vertical, so `flex-basis: 20rem`
+became the inputs' HEIGHT — 324 x 320 px squares on a phone, overriding the
+control's own `height: 2rem`. The same board's metric cards had
+`height: 100%` inside a wrapped flex row; on the wrapped lines the percentage
+resolved against the row track and the cards overlapped the lanes below.
+Both rules were correct at the width they were written at.
+
+**Rule**: size a control in a direction-switching container with `width` (and
+`flex: none`), never with a `flex-basis` meant for one axis; and lay out a
+wrapping row of cards on grid tracks (`.kpi-grid`,
+`repeat(auto-fit, minmax(160px, 1fr))`) rather than a wrapped flex line with
+`height: 100%` children. When a media block overrides a rule, put it AFTER the
+base rule — an earlier block loses on source order at equal specificity (the
+board's phone row stayed `nowrap` for exactly that reason).
+
+**Applies to**: `apps/web/src/index.css`, any toolbar, filter bar or metric row
+that reflows on mobile.
+
+**Source**: #3096 review (board mobile defects M1–M2).
+
+---
+
 ## `triggerAndWait` on a SWEEP waits for the fan-out, not for the work
 
 **Context**: an e2e asserting that a Subiekt model product carries the VAT rate
@@ -106,6 +241,39 @@ where the tip branch is also the working branch.
 
 ---
 
+## Shared UI primitives take `tone`, not `variant` - `tsc -b` catches it, a fast visual skim does not
+
+**Context**: building the order-notes panel (#3531/#3533), copying an
+`order-hold-panel.tsx`-style `<Button tone="secondary">` usage from memory
+rather than re-reading the component.
+
+**Problem**: `Button` (`apps/web/src/shared/ui/button.tsx`) exposes
+`ButtonProps.tone: ButtonTone`, not `variant` - a prop name common enough in
+other component libraries that writing `<Button variant="ghost">` compiles
+under a loose editor but fails `tsc -b` with a real type error (an unknown
+prop, since `ButtonHTMLAttributes` has no `variant`). The same session also
+mis-guessed `TimeDisplay`'s `value` prop (it is `iso`) and rendered
+`<ReadOnlyLock message="...">`, standalone, as if it were a lock icon with a
+tooltip - it is a WRAPPER (`{ active, message, children }`) that always
+renders its children and dims them only when `active`, the
+`order-hold-panel.tsx` precedent for how a demo-read-only affordance stays
+visible-but-locked rather than disappearing.
+
+**Rule**: before reusing a shared `shared/ui/*` primitive by name-recall,
+open the file and read its prop interface - do not infer it from a sibling
+component's *usage* site, which shows only the props that call site happened
+to set. `pnpm type-check` (never `tsc --noEmit` on a hand-picked file) is
+what actually catches a wrong prop name; a subjective "looks right" pass over
+JSX does not, because a misnamed prop on an untyped-looking spread often
+renders as if it worked and simply drops the value.
+
+**Applies to**: any new component consuming `apps/web/src/shared/ui/*`
+primitives, especially `Button`, `TimeDisplay`, `ReadOnlyLock`.
+
+**Source**: #3507 (Pilot G03 - orders list search/notes/tags/export), 2026-09-28.
+
+---
+
 ## A test fixture that contradicts the call under test passes until a guard is added
 
 **Context**: ADR-074 gained a rule that a parcel cannot be made exclusive
@@ -131,9 +299,14 @@ lost-race case here is the worked example: its premise is that its own
 which is both more realistic than the unassigned row it had and the shape the
 rule needs.
 
-**Applies to**: any spec suite built on a `makeX(over)` factory.
+**Applies to**: any spec suite built on a `makeX(over)` factory — and any hand-written fixture of a
+stored document (an `orderSnapshot`, a payload), which must be copied from the producer's type, not
+from the reader under test.
 
-**Source**: #3360, 2026-09-23.
+**Source**: #3360, 2026-09-23. Recurred in #3507 G03-11: `order-export-columns.spec.ts` put
+`currency` at the snapshot's top level, where `readTotals` wrongly looked, instead of on `totals`
+(`OrderTotals.currency`) where every producer writes it — so the export's Currency column was empty
+for every real order while the spec stayed green.
 
 ---
 
@@ -1948,6 +2121,228 @@ record file — currently `startSharedPrestashopContainer()` in
 `apps/api/test/integration/helpers/prestashop-container.helper.ts`.
 
 **Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+---
+
+## `internalOrderId` is `text` (`ol_order_{uuid}`), never a bare `uuid` column
+
+**Context**: the G03 orders-list epic (#3507) added `order_notes` and `order_tag_assignments`,
+each carrying an `internalOrderId` column, and both migrations declared it `uuid NOT NULL` — matching
+`authorUserId`/`assignedByUserId` right next to it, which really are uuids.
+
+**Problem**: an internal order id has the shape `ol_order_{uuid}` (`docs/architecture-overview.md §
+Identifier Mapping Service` — `ol_{prefix}_{uuid}`, stored as `TEXT`), so a real order id is not
+valid `uuid` input and every insert against a real order would fail with a Postgres type error. Every
+other reference to this exact column in the same context — `order_holds`, `order_changes`,
+`refund_records` — already types it `text`; the two new tables were the only ones that got it wrong,
+and nothing caught it because the integration test fixtures happened to use literal uuid-shaped
+strings as order ids, which pass a `uuid` column silently.
+
+**Rule**: when adding a column that stores an internal id (`internalOrderId`, `internalProductId`,
+etc.), grep the SAME entity type in a sibling table first (`grep -B2 'internalOrderId!:' libs/core/src/orders/infrastructure/persistence/entities/*.ts`)
+rather than inferring the column type from what LOOKS like a uuid in a test fixture. An internal id's
+wire format is `text`; only a genuine platform-native uuid (`users.id`, a Postgres-generated PK) is
+`uuid`.
+
+**Applies to**: any new ORM entity/migration carrying `internalOrderId`, `internalProductId`, or any
+other `ol_*`-prefixed internal id as a foreign-value column.
+
+**Source**: session-013 recovery pass on #3507 (G03), caught by code review before merge — no
+migration had shipped yet, so both were fixed in place rather than needing a follow-up migration.
+
+---
+
+## A migration backfill must copy application logic, never call it — and never lean on an optional Postgres extension for correctness
+
+**Context**: the `order_records.searchText` backfill migration (#3527) used PostgreSQL's `unaccent()`
+extension to normalize existing rows, reasoning that it was "close enough" to the application's own
+`deriveOrderSearchText`/`normalizeOrderSearchText`.
+
+**Problem**: two separate problems compound. First, `unaccent` is an optional contrib extension not
+guaranteed available on every managed Postgres, and even where installed its diacritic-folding table
+is NOT guaranteed byte-identical to the application's own normalizer — `normalizeOrderSearchText`'s
+own docblock names the exact trap (`ł`/`ø`/`ß`-class letters plain NFD does not decompose, which is
+why that function carries a hand-maintained `NON_DECOMPOSING_LETTERS` table `unaccent` may fold
+differently or not at all). Second, and more generally: any migration backfill that calls a database
+extension or re-derives logic separately from the application's own function is a SECOND
+implementation of that logic, which drifts the moment either side changes.
+
+**Rule**: a migration backfill of an application-derived column copies the application's pure
+function verbatim into the migration file (with a comment naming the source function and the
+migration that must be kept in sync), and runs it in TypeScript against pages of rows read with
+`SELECT`, never inside a bare SQL `UPDATE` calling a database extension. This is the same rule
+`1892000000000-inline-sales-document-rule-amounts.ts` already established for its own hash
+canonicalization ("the canonicalisation is COPIED, not imported... a migration has to reproduce the
+rule as it stands AT THE MOMENT IT RUNS") — apply it to a backfill's *value computation* too, not
+only to its hashing.
+
+**Applies to**: any migration backfilling a column that mirrors what an application-layer pure
+function computes.
+
+**Source**: session-013 recovery pass on #3507 (G03) review, fixed same-branch before the migration
+had run anywhere.
+
+---
+
+## A static route under a parametric controller's prefix must be registered BEFORE that controller
+
+**Context**: #3530 added `OrderColumnPresetsController` at `@Controller('orders/column-presets')`
+beside `OrdersController` at `@Controller('orders')`, whose detail route is `@Get(':internalOrderId')`.
+The new controller was appended to `OrdersModule.controllers` after `OrdersController`.
+
+**Problem**: Express matches routes in registration order and Nest registers controllers in the
+order of the module's `controllers` array, so `GET /orders/column-presets` — two segments, the same
+shape as `/orders/:internalOrderId` — was answered by the order-detail handler with `404 Order not
+found: column-presets`. Every three-segment preset route (`workspace-default`, `:id`) still worked,
+so saving a preset succeeded while listing presets failed; the defect only showed on the live API
+(#3507 G03-10). No gate notices: the route-authorization coverage spec reads decorators, not path
+precedence, and a controller unit spec calls the handler directly, bypassing routing entirely.
+
+**Rule**: when a controller's prefix extends another controller's prefix with a STATIC segment
+(`orders/column-presets`, `orders/export` under `orders`), list it before the parametric controller in
+the module's `controllers` array, with a comment saying why the order is load-bearing. Prove it with
+an HTTP int-spec that hits the static path's shortest route (the one with the same segment count as
+the parametric route) AND a real id on the parametric route, so the fix cannot invert the defect.
+Cross-module shadowing follows the same rule at the `imports` level of the host app.
+
+**Applies to**: `apps/api/src/**/*.module.ts` `controllers` arrays; any new controller whose prefix
+starts with another controller's prefix (`grep -rn "@Controller('" apps/api/src` — the companion
+lesson above on prefix collisions).
+
+**Source**: #3507 G03-10 (live API: `GET /v1/orders/column-presets` → 404); fixed in
+`apps/api/src/orders/orders.module.ts`, guarded by
+`apps/api/test/integration/orders/order-column-presets-routing.int-spec.ts`.
+
+---
+
+## A default-install status fixture can be ambiguous for a status your test doesn't already cover
+
+**Context**: #3526 added `delivered` and `in-progress` to `OrderLifecycleEvent`, and the
+PrestaShop adapter maps `in-progress` onto its native `OrderStatus` `'processing'` through the
+same shop-catalogue-derivation seam `dispatched`/`cancelled` already use (`deriveOrderState` in
+`prestashop-order-state-semantics.ts`).
+
+**Problem**: `DEFAULT_INSTALL_ORDER_STATES` (`libs/integrations/prestashop/src/__tests__/fixtures/`),
+the shared fixture every existing PrestaShop status-writeback spec builds on, carries TWO rows —
+id 2 ("Payment accepted") and id 3 ("Processing in progress") — that both derive to `'processing'`
+(`paid=1, shipped=0, delivered=0`, matched by `deriveOrderState`'s `paid-flag` basis; `stateIdFor`
+resolves the ambiguity silently by returning the lowest matching id). Every status the *existing*
+tests exercised (`shipped`/`delivered`/`cancelled`) happens to resolve uniquely against that
+fixture, so the ambiguity was invisible until a test needed `'processing'` specifically — writing
+an assertion against `id_order_state: 2` (or 3) would have been asserting an implementation detail
+of `stateIdFor`'s iteration order rather than a real requirement.
+
+**Rule**: before writing a status-writeback test against a shared default-install fixture, check
+whether the TARGET status resolves to more than one row in that fixture — grep the fixture for the
+flag combination (`paid`/`shipped`/`delivered`) your target status derives from. If it's ambiguous,
+build a small unambiguous fixture (one row per status, the `CUSTOM_STATES` shape in
+`order-state-mapping.spec.ts`) rather than asserting against whichever id the default install
+happens to resolve first — a passing assertion against an ambiguous fixture proves nothing about
+the mapping logic and can silently start asserting a different id the day `stateIdFor`'s iteration
+or the fixture's row order changes.
+
+**Applies to**: any PrestaShop test asserting a specific `id_order_state` against
+`DEFAULT_INSTALL_ORDER_STATES` for a status that isn't `shipped`/`delivered`/`cancelled`.
+
+**Source**: #3526 (epic #3506), 2026-09-28.
+
+---
+
+## An HTTP client's default retry loop is opt-out only for methods that are idempotent by definition
+
+**Context**: #3505 (epic G01) found that the InPost, Allegro, WooCommerce and PrestaShop HTTP
+clients all retried a POST on an ambiguous `5xx` or a network/timeout error exactly like a GET —
+the retry loop keyed on status code and error type, never on the HTTP method. `POST
+/v1/organizations/{id}/shipments` (InPost label create), `POST /sale/product-offers` (Allegro offer
+create), `POST /orders` (WooCommerce), and every PrestaShop Webservice `createResource` call
+inherited this. A committed-but-lost response — the request succeeded on the platform, but the
+client never saw the 2xx — is indistinguishable from a genuine failure, so the retry re-sent an
+identical create: a second paid shipping label, a second live marketplace offer, a second shop
+order. The correct precedent already existed in the same tree (DPD, eParagony, Erli, KSeF all
+gated retry by method), so this was an inconsistency, not a missing pattern.
+
+**Problem, restated as the rule that was missing**: a shared retry loop's default must be
+"idempotent methods retry, everything else does not," with a per-call opt-in
+(`{ idempotent: true }`) for the rare POST that is genuinely safe (the platform holds its own
+dedup key, or the call is a read dressed as a POST). `429` is the one exception that retries
+*regardless* of method or the opt-in, because a 429 means the platform refused the request before
+doing any work — there is nothing to double.
+
+**A shared test fixture that predates the fix can itself become the regression surface.** Fixing
+this exposed a second-order defect: `PrestashopOrderProcessorManagerAdapter` sends `order.orderNumber`
+verbatim as `ps_orders.reference`, a `VARCHAR(9)` column under non-strict MySQL — so a 36-character
+Allegro `checkoutFormId` was silently truncated, and the duplicate-recovery lookup's *exact* filter
+on the untruncated value could never match what was actually stored. The shared
+`createTestOrder()` fixture's default `orderNumber: 'TEST-ORDER-001'` (14 characters) had been
+exercising this truncation-unsafe path in every test that used it, unnoticed, because no test
+asserted on the literal reference sent — only on the mocked response. Once the fix derived a
+column-safe reference, every assertion of the literal shape `orderReference: order.orderNumber`
+had to become `orderReference: derivePrestashopOrderReference(order.orderNumber)`.
+
+**Rule**: when a shared fixture's default value happens to sit on the safe side of a boundary
+(≤ 9 chars, a `0`/exempt tax rate, an always-`false` flag), a later correctness fix that makes that
+boundary load-bearing will pass against the fixture and still ship a genuine bug — or, as here,
+break silently because the fixture was ALREADY on the wrong side, worked around by no test
+depending on the literal value. Audit a shared fixture's defaults against the new boundary
+explicitly, not just "do the existing tests still pass."
+
+**Applies to**: any shared retry-loop implementation (`libs/integrations/*/src/infrastructure/http/*-client.ts`)
+and to `createTestOrder()` / equivalent shared order fixtures across the integration packages.
+
+**Source**: #3469, #3470, #3472, #3473 (epic #3505).
+
+---
+
+## A workspace package missing from `tsconfig.base.json`'s `paths` degrades to `any` under `pnpm lint`, with no diagnostic and a misleading failure site
+
+**Context**: #3003 — `pnpm lint` failed on a clean checkout at `apps/worker/src/plugins.ts:45`,
+the line assigning the whole `workerPlugins: PluginEntry[]` array literal, reported as "Unsafe
+assignment of type `any[]`". The issue's own bisection blamed `@openlinker/oms` (rebuilding its
+`dist` made the symptom disappear).
+
+**Problem**: `@openlinker/oms` was not the cause. `.eslintrc.js`'s `parserOptions.project:
+['./tsconfig.eslint.json']` with `tsconfigRootDir: __dirname` anchors to the REPO ROOT regardless
+of which package's own `pnpm run lint` invoked ESLint, so every package's lint run shares ONE
+TypeScript program built from `tsconfig.eslint.json` (which only extends `tsconfig.base.json` —
+`apps/api/tsconfig.json` and `apps/worker/tsconfig.json`'s own `paths` are never consulted by
+ESLint at all). `tsconfig.base.json`'s `paths` map was missing entries for two packages,
+`@openlinker/integrations-dpd-polska` and `@openlinker/integrations-infakt` — bisecting the
+literal array (binary search, removing half the elements at a time) isolated `DpdIntegrationModule`
+as a *standalone* reproducer with `OmsModule` entirely absent from the file, proving the report's
+own root-cause claim wrong. A workspace import missing from `paths` falls through to plain
+`node_modules` resolution, which needs a built `dist` (the package's `types`/`exports` field) to
+succeed; absent that, TypeScript's resolver logs "module name ... was not resolved" internally
+(confirmed with `tsc --traceResolution`) but — for reasons not fully explained by this repo's own
+config once resolution genuinely fails — raises **no** `TS2307` diagnostic anywhere in the whole
+compile; the import's type silently becomes `any`. Because `any` in one element of an array
+literal widens the WHOLE literal's inferred type to `any[]`, `no-unsafe-assignment` fires on the
+array's declaration line — nowhere near the actually-broken import — so bisecting by *symptom
+line* points at the wrong culprit; only bisecting the array's *elements* finds it. And because
+`pnpm build` builds every workspace package via `pnpm -r build`, rebuilding ANY sufficiently-widely-
+imported package (including one that was never the cause) makes the symptom disappear too, which
+is what produced the original misattribution.
+
+**Rule**: when `pnpm lint` reports an `any`-typed value from an import that "should" have real
+types, do not trust the reported line — it names where the `any` got USED (often an array/object
+literal several imports away from the real one), not where it originated. Bisect by commenting out
+individual imports/array elements until the error disappears, not by reading the stack trace.
+Once found, the fix is to add the missing package to `tsconfig.base.json`'s `paths` (pointing at
+its `src/index.ts`, matching every other workspace package) rather than building `dist` — a `paths`
+entry resolves to source with **no** prior build step, on every future clean checkout, which a
+built `dist` does not survive past the next `git clean`. `apps/api/tsconfig.json` and
+`apps/worker/tsconfig.json` were also individually incomplete (each missing a different subset of
+packages) — irrelevant to `pnpm lint` for the reason above, but relevant to a live editor's
+language server (which uses the PER-PACKAGE tsconfig, not `tsconfig.eslint.json`) and to
+`pnpm type-check` in edge configurations, so keep all three `paths` maps in sync with the full
+workspace package list rather than growing them ad hoc per import.
+
+**Applies to**: `tsconfig.base.json`, `apps/api/tsconfig.json`, `apps/worker/tsconfig.json`; any
+new `libs/integrations/<name>` or `libs/<name>` package — add its `paths` entry to all three
+in the SAME commit that first imports it from `apps/api` or `apps/worker` source, or the import
+type-checks fine locally (dist already built from prior work) and silently degrades to `any` for
+the next contributor's clean checkout.
+
+**Source**: #3003.
 
 ## A probe that skips the auth boundary proves nothing about auth
 

@@ -73,6 +73,14 @@ export interface PrestashopQueryFilters {
  */
 export interface PrestashopWriteOptions {
   sendEmail?: boolean;
+  /**
+   * Whether a `createResource` (POST) call is safe to auto-retry on an
+   * ambiguous 5xx / network failure (#3469) — `false` by default, since a
+   * create is non-idempotent and a blind retry after a committed-but-lost
+   * response risks a duplicate row. Has no effect on `updateResource` (PUT),
+   * which is always retried — idempotent by HTTP semantics.
+   */
+  idempotent?: boolean;
 }
 
 export interface IPrestashopWebserviceClient {

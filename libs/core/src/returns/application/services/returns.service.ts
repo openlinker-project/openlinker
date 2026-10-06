@@ -51,6 +51,7 @@ import { ReturnRepositoryPort } from '../../domain/ports/return-repository.port'
 import type { IncomingReturn, IncomingReturnLine } from '../../domain/types/incoming-return.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnDeclineAvailability,
   ReturnIngestionAvailability,
@@ -295,6 +296,16 @@ export class ReturnsService implements IReturnsService {
 
   async countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts> {
     return this.repository.countReturnsBySegment(filter);
+  }
+
+  async listOpenReturnOrderIds(): Promise<string[]> {
+    return this.repository.findOpenReturnOrderIds();
+  }
+
+  async getOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>> {
+    return this.repository.findOpenReturnSummariesForOrders(internalOrderIds);
   }
 
   /**

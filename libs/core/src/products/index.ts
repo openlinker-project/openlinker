@@ -66,6 +66,7 @@ export {
   ProductCreate,
   ProductUpdate,
   ProductVariantCreate,
+  VariantPhysicalDimensionsFill,
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,

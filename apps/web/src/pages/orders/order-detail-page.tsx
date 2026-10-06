@@ -39,7 +39,18 @@ import { OrderBuyerTaxIdValue } from '../../features/orders/components/order-buy
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
+import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
+import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
+import {
+  OrderNotesPanel,
+  PinnedOrderNoteBanner,
+} from '../../features/orders/components/order-notes-panel';
+import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
+import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
+import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
+import { resolvePlatformLabel } from '../../features/mappings';
+import { usePlatforms } from '../../shared/plugins';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
@@ -60,6 +71,7 @@ import {
   useOrderReturnEventsQuery,
 } from '../../features/returns';
 import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
+import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
@@ -85,10 +97,19 @@ export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const query = useOrderQuery(internalOrderId);
   const connectionsQuery = useConnectionsQuery();
+  // Destinations the operator declared as packing and shipping by themselves (#2118).
+  const fulfilmentOwnedIds = useFulfilmentOwnedConnectionIds();
   const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
   // Non-fatal by design: a returns read that could not answer must not take the
   // order's own timeline down with it — the page renders one section shorter.
   const returnEventsQuery = useOrderReturnEventsQuery(internalOrderId || null);
+  // #3531 — the notes' authored acts, same non-fatal contract as returns: an
+  // unreadable answer contributes no rows rather than failing the timeline.
+  const noteTimelineQuery = useOrderNotesTimelineQuery(internalOrderId);
+  const platforms = usePlatforms();
+  // #3505 — whether fulfilment routing is on decides whether an order with no
+  // fulfilment tasks gets a section saying so.
+  const omsRouting = useOmsRoutingState();
   const { session } = useSession();
   // The order timeline's automation half (#2385). Its own read rather than a
   // field on `GET /orders/:id`: every order-detail load would otherwise pay for
@@ -209,9 +230,20 @@ export function OrderDetailPage(): ReactElement {
     returnEventsQuery.data ?? [],
     session.user?.id ?? null,
   );
+  const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
+  // The notes section's "Never sent to …" promise names THIS order's channels
+  // (source + destinations), not every connection in the workspace.
+  const orderChannelNames = Array.from(
+    new Set(
+      [order.sourceConnectionId, ...order.syncStatus.map((s) => s.destinationConnectionId)]
+        .map((id) => connections.find((c) => c.id === id))
+        .filter((c): c is NonNullable<typeof c> => c !== undefined)
+        .map((c) => resolvePlatformLabel(platforms, c)),
+    ),
+  );
   const hasShippingCapability = connections.some((c) =>
     c.supportedCapabilities.includes(SHIPPING_CAPABILITY),
   );
@@ -347,7 +379,13 @@ export function OrderDetailPage(): ReactElement {
       eyebrow="Orders"
       title="Order detail"
     >
-      <OrderDetailHeader order={order} snapshot={snapshot} />
+      <OrderDetailHeader
+        order={order}
+        snapshot={snapshot}
+        tags={<OrderTagsHeaderRow internalOrderId={order.internalOrderId} />}
+      />
+
+      <PinnedOrderNoteBanner internalOrderId={order.internalOrderId} />
 
       <OrderHealthSummary
         syncStatus={order.syncStatus}
@@ -428,11 +466,17 @@ export function OrderDetailPage(): ReactElement {
               rendered left stack rather than inside the capability-gated
               shipment panel — an order with no shipping-capable connection
               still gets packed. */}
-          <OrderPackedControl
-            internalOrderId={order.internalOrderId}
-            packedAt={order.packedAt}
-            packedByUserId={order.packedByUserId}
-          />
+          {/* #2118 - hidden for an order routed to a destination the operator
+              declared as packing and shipping by itself. Display-only: the
+              packed endpoint still accepts a write, so that system can still
+              report the order as packed. */}
+          {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+            <OrderPackedControl
+              internalOrderId={order.internalOrderId}
+              packedAt={order.packedAt}
+              packedByUserId={order.packedByUserId}
+            />
+          )}
 
           {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
               (#2081 rule 3). Beside the packed control for the same reason it
@@ -449,6 +493,14 @@ export function OrderDetailPage(): ReactElement {
             internalOrderId={order.internalOrderId}
             activeHold={order.activeHold}
             holdHistory={order.holdHistory}
+          />
+
+          {/* #3531/#3533 — beside Hold and Packing: notes are a fact about
+              every order, independent of which integration it came through. */}
+          <OrderNotesPanel
+            key={order.internalOrderId}
+            internalOrderId={order.internalOrderId}
+            channelNames={orderChannelNames}
           />
 
           <section className="detail-section">
@@ -528,14 +580,20 @@ export function OrderDetailPage(): ReactElement {
       {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
           order can carry several fulfilment tasks, each with its own lines and
           holds, which is more than a rail column can hold without wrapping into
-          nonsense on a tablet. Rendered unconditionally, and keyed per order so
-          the panel's dialog state cannot leak onto a cached next order (the
-          OrderHoldPanel precedent) — an order with no fulfilment tasks SAYS so
-          rather than silently disappearing, which is what a reader needs when
-          routing is switched on and an order was not routed. */}
+          nonsense on a tablet. Keyed per order so the panel's dialog state
+          cannot leak onto a cached next order (the OrderHoldPanel precedent).
+          With routing on, an order with no fulfilment tasks SAYS so — what a
+          reader needs when an order was not routed. With routing off (or its
+          state not known) the section appears only for an order that has tasks
+          from when routing was on (#3505); it is never hidden outright, since
+          those tasks still carry actions. */}
+      {/* The key is namespaced: `OrderReturnsPanel` below is keyed on the same
+          order id, and two siblings sharing a key let React duplicate this
+          panel's DOM once it can render nothing (`hideWhenEmpty`). */}
       <OrderFulfillmentTasksPanel
-        key={order.internalOrderId}
+        key={`fulfilment-tasks:${order.internalOrderId}`}
         internalOrderId={order.internalOrderId}
+        hideWhenEmpty={omsRouting !== 'on'}
       />
 
       {/* #2640 — returns spec § 5.4's third surface. Rendered UNCONDITIONALLY
@@ -578,7 +636,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={returnTimelineEvents}
+          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />

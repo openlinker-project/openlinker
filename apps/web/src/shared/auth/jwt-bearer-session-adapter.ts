@@ -137,6 +137,8 @@ export function createJwtBearerSessionAdapter({
           // than leaving it `undefined`: a payload predating this field and
           // an explicitly-cleared label must read identically ("unset").
           packStationLabel: data.packStationLabel ?? null,
+          // #3456 — an absent field reads as no forced change (backward compatible).
+          mustChangePassword: data.mustChangePassword ?? false,
         };
         return {
           status: 'authenticated',

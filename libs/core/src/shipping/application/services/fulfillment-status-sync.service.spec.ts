@@ -71,6 +71,8 @@ function makeBranchOneShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.fulfillmentWorkId ?? null,
     // #2073 waybill-relay failure history — none by default.
     overrides.waybillRelayFailure ?? null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
@@ -81,7 +83,11 @@ describe('FulfillmentStatusSyncService', () => {
   let integrations: jest.Mocked<IIntegrationsService>;
   let getFulfillmentStatus: jest.Mock;
   let relay: jest.Mocked<IOrderLifecycleRelayService>;
-  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
+  let fulfillmentWorks: {
+    resolveLinkForOrder: jest.Mock;
+    listBlockingRejectionConnectionIds: jest.Mock;
+    findWorkById: jest.Mock;
+  };
   let service: FulfillmentStatusSyncService;
 
   beforeEach(() => {
@@ -96,11 +102,15 @@ describe('FulfillmentStatusSyncService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      giveUpWaybillRelay: jest.fn(),
       clearWaybillRelayFailures: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
+      findDeliveredRelayPending: jest.fn(),
+      markDeliveredRelayed: jest.fn(),
+      recordDeliveredRelayFailure: jest.fn(),
     };
 
     orderRecords = {
@@ -117,6 +127,8 @@ describe('FulfillmentStatusSyncService', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -159,6 +171,7 @@ describe('FulfillmentStatusSyncService', () => {
     fulfillmentWorks = {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+      findWorkById: jest.fn().mockResolvedValue(null),
     };
     service = new FulfillmentStatusSyncService(
       shipments,
@@ -617,6 +630,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorConnectionId: 'conn-inpost',
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],
@@ -637,6 +651,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorConnectionId: 'conn-different-ps',
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],
@@ -655,6 +670,7 @@ describe('FulfillmentStatusSyncService', () => {
         processorConnectionId: PS,
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
       orderRecords.findMany.mockResolvedValue({
         items: [makeOrderRecord()],

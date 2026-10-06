@@ -256,4 +256,59 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @IsInt()
   @Min(0)
   offset?: number = 0;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Is it packed" filter (#2997): true keeps only packed orders, false only ' +
+      'unpacked ones, omitted does not filter. Maps to `packedAt IS [NOT] NULL`. ' +
+      'ANDed with `health`, not a sixth health bucket.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  packed?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-text search (#3527/#3528): order number, buyer name, buyer email, any line SKU, ' +
+      'or a shipment tracking number. Matched against a denormalized, diacritic-folded ' +
+      '`searchText` column via a GIN trigram index; a valid tracking number additionally ' +
+      'widens the match to the order(s) that shipment belongs to. A blank or ' +
+      'diacritic/punctuation-only query behaves as "don\'t filter".',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      '"Has an open return" filter (#2998): true keeps only orders carrying at least one ' +
+      'OPEN return (the `/returns` `all_open` segment predicate, reused verbatim), false ' +
+      'keeps only the rest, omitted does not filter. ANDed with `health`, not a sixth ' +
+      'health bucket — an order is routinely `synced` AND carrying an open return.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  openReturn?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Tag filter (#3532, D34): restricts to orders carrying this one tag id. Mutually ' +
+      'exclusive with `untagged` by convention.',
+  })
+  @IsOptional()
+  @IsString()
+  tag?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: '"No tags" filter (#3532): restricts to orders carrying NO tag at all.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  untagged?: boolean;
 }

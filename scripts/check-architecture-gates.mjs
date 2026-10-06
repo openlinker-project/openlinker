@@ -191,6 +191,21 @@ const NON_KNOBS = new Map([
     // thing the shared-rules-model conversation is not about.
     'coerces a persisted jsonb column, not Connection.config (#2352)',
   ],
+  [
+    'libs/core/src/identifier-mapping/domain/types/fulfilment-ownership.types.ts',
+    // A per-connection config coercion that is deliberately NOT counted toward
+    // the #1032 threshold, and this is a judgement a reviewer should confirm.
+    // `config.fulfilmentOwnedByDestination` (#2118) is an operator-declared
+    // DISPLAY flag: no server code reads it at runtime (the only core use is
+    // refusing a non-boolean on write), it resolves no precedence, blocks no
+    // write and feeds no rule - `POST /orders/:id/packed` succeeds whatever it
+    // says, and only the browser reads it, to hide OpenLinker's own packing
+    // affordances. The accretion #1032's shared rules model exists to replace
+    // is knobs that change what the system DOES; this changes what an operator
+    // is shown. If it ever starts to drive behaviour it must move to
+    // KNOWN_CONFIG_KNOBS and trip the threshold like every other knob.
+    'display-only flag no server code dispatches on; changes what is shown, not what happens (#2118)',
+  ],
 ]);
 
 /**

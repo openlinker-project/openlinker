@@ -23,12 +23,13 @@ import { FulfillmentWorkAutoDispatchHandler } from '../fulfillment-work-auto-dis
 
 describe('FulfillmentWorkAutoDispatchHandler', () => {
   let handler: FulfillmentWorkAutoDispatchHandler;
-  let integrations: { getAdapter: jest.Mock };
+  let integrations: { getAdapter: jest.Mock; getCapabilityAdapter: jest.Mock };
   let worklist: { get: jest.Mock };
   let shipmentQuery: { findByFulfillmentWorkIds: jest.Mock };
   let shipmentDispatch: { dispatch: jest.Mock };
   let orderRecords: { getOrderRecord: jest.Mock };
   let products: { getVariantsByIds: jest.Mock };
+  let routing: { resolve: jest.Mock };
 
   const readyRecord = (overrides: Record<string, unknown> = {}) => ({
     internalOrderId: 'ol_order_1',
@@ -98,6 +99,16 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
         connection: { config: { autoDispatch: { enabled: true } } },
         metadata: {},
       }),
+      getCapabilityAdapter: jest.fn(),
+    };
+    routing = {
+      resolve: jest.fn().mockResolvedValue({
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        source: 'default',
+        processorAvailable: true,
+        parcelProfile: null,
+      }),
     };
     worklist = { get: jest.fn().mockResolvedValue(workView()) };
     shipmentQuery = { findByFulfillmentWorkIds: jest.fn().mockResolvedValue(new Map()) };
@@ -113,7 +124,8 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       shipmentQuery as never,
       shipmentDispatch as never,
       orderRecords as never,
-      products as never
+      products as never,
+      routing as never
     );
   });
 
@@ -301,5 +313,81 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       outcomeReason: 'auto_dispatch_no_weight',
     });
     expect(products.getVariantsByIds).not.toHaveBeenCalled();
+  });
+
+  describe('routing rule parcel profile (#3651)', () => {
+    const ruleResolution = (parcelProfile: Record<string, unknown> | null) => ({
+      processorKind: 'source_brokered',
+      processorConnectionId: 'allegro-1',
+      source: 'rule',
+      processorAvailable: true,
+      parcelProfile,
+    });
+    const profile = (overrides: Record<string, unknown> = {}) => ({
+      parcelTemplate: null,
+      lengthMm: null,
+      widthMm: null,
+      heightMm: null,
+      defaultWeightGrams: null,
+      ...overrides,
+    });
+    const dimensionAdapter = (requiresDimensions: boolean) => ({
+      getSupportedMethods: () => ['paczkomat', 'kurier'],
+      getParcelRequirements: () => ({ requiresDimensions }),
+    });
+
+    it('should prefer the rule template over the connection-wide one', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true, parcelTemplate: 'small' } } },
+        metadata: {},
+      });
+      routing.resolve.mockResolvedValue(ruleResolution(profile({ parcelTemplate: 'large' })));
+      integrations.getCapabilityAdapter.mockResolvedValue({ getSupportedMethods: () => ['kurier'] });
+
+      await handler.execute(job(validPayload));
+
+      expect(shipmentDispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ parcel: { weightGrams: 400, template: 'large' } })
+      );
+    });
+
+    it('should pass the rule box as dimensions', async () => {
+      routing.resolve.mockResolvedValue(
+        ruleResolution(profile({ lengthMm: 300, widthMm: 200, heightMm: 100 }))
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue(dimensionAdapter(true));
+
+      await handler.execute(job(validPayload));
+
+      expect(shipmentDispatch.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parcel: { weightGrams: 400, dimensions: { length: 300, width: 200, height: 100 } },
+        })
+      );
+    });
+
+    it('should refuse (no-dimensions) before dispatch when the carrier requires a box and the rule has none', async () => {
+      routing.resolve.mockResolvedValue(ruleResolution(null));
+      integrations.getCapabilityAdapter.mockResolvedValue(dimensionAdapter(true));
+
+      expect(await handler.execute(job(validPayload))).toEqual({
+        outcome: 'business_failure',
+        outcomeReason: 'auto_dispatch_no_dimensions',
+      });
+      expect(shipmentDispatch.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('should not refuse when the carrier declares no dimension requirement', async () => {
+      routing.resolve.mockResolvedValue(ruleResolution(null));
+      integrations.getCapabilityAdapter.mockResolvedValue(dimensionAdapter(false));
+
+      expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'ok' });
+    });
+
+    it('should not resolve a carrier adapter for an OMP-fulfilled default', async () => {
+      await handler.execute(job(validPayload));
+
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
   });
 });

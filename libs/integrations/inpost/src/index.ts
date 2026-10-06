@@ -13,6 +13,7 @@
 export { InpostConfigException } from './domain/exceptions/inpost-config.exception';
 export { InpostUnauthorizedException } from './domain/exceptions/inpost-unauthorized.exception';
 export { InpostNetworkException } from './domain/exceptions/inpost-network.exception';
+export { InpostAmbiguousWriteException } from './domain/exceptions/inpost-ambiguous-write.exception';
 // Validation / paczkomat-unavailable rejections now throw the shared
 // `ShippingProviderRejectionException` from `@openlinker/core/shipping`
 // (#885) — `providerName: 'inpost'`, `providerCode: 'target_point'` /

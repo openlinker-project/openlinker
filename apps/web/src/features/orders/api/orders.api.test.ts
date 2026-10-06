@@ -16,7 +16,8 @@ function recordingApi(): { api: ReturnType<typeof createOrdersApi>; paths: strin
     paths.push(path);
     return { items: [], total: 0 } as never;
   });
-  return { api: createOrdersApi(request), paths };
+  const requestBlob = vi.fn(async () => new Blob());
+  return { api: createOrdersApi(request, requestBlob), paths };
 }
 
 describe('orders api — buildQuery', () => {
@@ -103,7 +104,8 @@ describe('orders api — packed writes (#2288)', () => {
       calls.push({ path, init });
       return {} as never;
     });
-    return { api: createOrdersApi(request), calls };
+    const requestBlob = vi.fn(async () => new Blob());
+    return { api: createOrdersApi(request, requestBlob), calls };
   }
 
   it('POSTs to the packed sub-resource and encodes the order id', async () => {

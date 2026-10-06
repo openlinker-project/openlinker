@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { Connection } from '../api/connections.types';
+import { hasMissingCredentials } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
 import {
@@ -18,6 +19,8 @@ import {
 } from './edit-connection.schema';
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
+import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
+import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -486,6 +489,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       pricingRule: readPricingRuleForm(connection.config),
       // Per-connection stock-location override (#3206/#3207) — platform-neutral.
       stockLocationOverride: readStockLocationOverride(connection.config),
+      // "This system packs and ships orders itself" (#2118) — platform-neutral.
+      fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -698,6 +703,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #2118 — re-serialize `config.fulfilmentOwnedByDestination` into configText.
+  // Clone of `syncStockLocationOverrideToJson`: reads CURRENT form state, takes
+  // NO argument, keeps the `!configIsParseable` early-return. The section MUST
+  // setValue('fulfilmentOwnedByDestination', …) BEFORE calling this.
+  function syncFulfilmentOwnershipToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      fulfilmentOwnedByDestination: form.getValues('fulfilmentOwnedByDestination'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -819,9 +837,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         <FormField label="Credentials" name="credentials">
           <Input
             value={
-              connection.credentialsBacked
-                ? 'Stored securely (managed by integration)'
-                : 'Environment variable (not editable via UI)'
+              hasMissingCredentials(connection)
+                ? 'Not set - removed when this connection was archived'
+                : connection.credentialsBacked
+                  ? 'Stored securely (managed by integration)'
+                  : 'Environment variable (not editable via UI)'
             }
             disabled
           />
@@ -929,6 +949,17 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
         }
       />
+
+      {/* #2118 — only a connection that can be an order destination can own
+          fulfilment, so the checkbox is withheld elsewhere rather than
+          persisting a flag nothing reads. */}
+      {connection.enabledCapabilities.includes('OrderProcessorManager') ? (
+        <FulfilmentOwnershipSection
+          form={form}
+          configIsParseable={configIsParseable}
+          syncFulfilmentOwnershipToJson={syncFulfilmentOwnershipToJson}
+        />
+      ) : null}
 
       <div className="config-panel__toggle">
         <Button

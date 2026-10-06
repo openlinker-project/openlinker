@@ -66,6 +66,7 @@ import {
   CUSTOMER_PROJECTION_REPOSITORY_TOKEN,
   CustomerProjectionRepositoryPort,
 } from '@openlinker/core/customers';
+import { MappingsModule, MAPPING_CONFIG_SERVICE_TOKEN, IMappingConfigService } from '@openlinker/core/mappings';
 import { Logger } from '@openlinker/shared/logging';
 import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
@@ -82,6 +83,7 @@ import { WooCommerceWebhookProvisioningModule } from './woocommerce-webhook-prov
     SyncModule,
     IdentifierMappingModule,
     CustomersModule,
+    MappingsModule,
     // The inbound webhook provisioner (#1548) needs NestJS-injected ConnectionPort
     // + IWebhookSecretService (not in the HostServices bag), so it self-registers
     // from this companion module rather than from plugin.register(host).
@@ -132,6 +134,8 @@ export class WooCommerceIntegrationModule implements OnModuleInit {
     private readonly addressProvisioner: WooCommerceAddressProvisioner,
     @Inject(CUSTOMER_PROJECTION_REPOSITORY_TOKEN)
     private readonly customerProjectionRepository: CustomerProjectionRepositoryPort,
+    @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
+    private readonly mappingConfigService: IMappingConfigService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort,
   ) {}
@@ -143,6 +147,7 @@ export class WooCommerceIntegrationModule implements OnModuleInit {
       customerProvisioner: this.customerProvisioner,
       addressProvisioner: this.addressProvisioner,
       customerProjectionRepository: this.customerProjectionRepository,
+      mappingConfigService: this.mappingConfigService,
     });
 
     const host: HostServices = {

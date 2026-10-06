@@ -41,8 +41,17 @@ describe('OmsLifecycleFact (#2305)', () => {
       expect(overlap).toEqual([]);
     });
 
-    it('should leave the relay union untouched at its two #2286 members', () => {
-      expect(OrderLifecycleEventTypeValues).toEqual(['dispatched', 'cancelled']);
+    // #3526 widened the relay union deliberately (`delivered`, `in-progress` —
+    // both EXTERNAL lifecycle facts a channel can show). Pinned so that any
+    // further widening is a reviewed decision; the split itself is the overlap
+    // assertion above, which still forbids an internal OMS fact from joining.
+    it('should hold the relay union at its #2286 + #3526 members', () => {
+      expect(OrderLifecycleEventTypeValues).toEqual([
+        'dispatched',
+        'cancelled',
+        'delivered',
+        'in-progress',
+      ]);
     });
   });
 

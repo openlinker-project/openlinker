@@ -10,7 +10,12 @@
  * @see {@link IConnectionService} for the interface
  * @see {@link ConnectionPort} for the core port
  */
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
@@ -18,11 +23,15 @@ import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
 import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
+  FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
+  isPresentButInvalidFulfilmentOwnedByDestination,
+  ConnectionInUseException,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -50,6 +59,7 @@ import {
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
   resolveRequiresCredentials,
+  resolveArchivable,
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -76,6 +86,15 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
  * the `ORDER_ALREADY_ON_HOLD` / `HOLD_ALREADY_RELEASED` precedent (#2341).
  */
 export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
+
+/**
+ * Machine-readable code for the #2407 refusal to enable routing with no active
+ * inventory location (#3457). Same shape and same reason as
+ * `STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE`: the OMS onboarding wizard maps
+ * this 400 to an inline remedy and must not match on the message. Mirrored in
+ * `apps/web/src/features/oms-onboarding/lib/routing-requires-location-error.ts`.
+ */
+export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE = 'ROUTING_REQUIRES_ACTIVE_LOCATION';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
@@ -160,11 +179,14 @@ export class ConnectionService implements IConnectionService {
     }
 
     if ((await this.locations.countActiveLocations()) === 0) {
-      throw new BadRequestException(
-        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+      throw new BadRequestException({
+        statusCode: 400,
+        error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+        message:
+          'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
           "Create one first — the connection's routing readiness panel offers a default, " +
-          'or POST /inventory/locations.'
-      );
+          'or POST /inventory/locations.',
+      });
     }
   }
 
@@ -248,6 +270,24 @@ export class ConnectionService implements IConnectionService {
     ) {
       throw new BadRequestException(
         'config.rateLimit.maxConcurrent must be a number between 1 and 64'
+      );
+    }
+  }
+
+  /**
+   * Refuse a non-boolean `config.fulfilmentOwnedByDestination` (#2118).
+   *
+   * Display-only flag, so a wrong type changes nothing on the server - but the
+   * readers coerce it to `false`, and an operator who typed `"true"` would see
+   * a saved setting that never hides a packing affordance. Refused here rather
+   * than coerced silently, the same reported-not-enforced reasoning as
+   * `validateStockAndPricingConfig`. Never defaults a value in; an absent key
+   * stays absent, and `null` (a cleared knob) is accepted.
+   */
+  private validateFulfilmentOwnedByDestinationConfig(config: Record<string, unknown>): void {
+    if (isPresentButInvalidFulfilmentOwnedByDestination(config)) {
+      throw new BadRequestException(
+        `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY} must be true or false`
       );
     }
   }
@@ -800,6 +840,7 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
@@ -1018,6 +1059,22 @@ export class ConnectionService implements IConnectionService {
 
       const existing = await this.connectionPort.get(connectionId);
 
+      // #3657 — `archived` is reachable only through archive(), which also
+      // removes the credential; a plain PATCH must not produce an archived row
+      // that still holds one. And an archived row leaves only through
+      // restore(), so it cannot be re-enabled around the step that makes an
+      // operator re-enter its credentials.
+      if (patch.status === 'archived') {
+        throw new BadRequestException(
+          'A connection is archived with PATCH /connections/:id/archive, not by setting its status'
+        );
+      }
+      if (existing.status === 'archived' && patch.status !== undefined) {
+        throw new ConflictException(
+          `Connection ${connectionId} is archived; restore it with PATCH /connections/:id/restore first`
+        );
+      }
+
       if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
         throw new BadRequestException(
           `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`
@@ -1063,6 +1120,7 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
@@ -1105,6 +1163,17 @@ export class ConnectionService implements IConnectionService {
     credentials: Record<string, unknown>
   ): Promise<void> {
     const connection = await this.get(connectionId);
+    // #3657 — archiving deleted the credential on purpose; storing a new one
+    // on a row that is still archived would re-arm a connection nobody can see.
+    if (connection.status === 'archived') {
+      throw new ConflictException(
+        `Connection ${connectionId} is archived; restore it before entering credentials`
+      );
+    }
+    if (connection.credentialsRef === '') {
+      await this.storeFirstCredentials(connection, credentials);
+      return;
+    }
     if (!connection.credentialsRef.startsWith('db:')) {
       throw new BadRequestException(
         `Connection ${connectionId} does not have a db-backed credentials reference ` +
@@ -1127,6 +1196,125 @@ export class ConnectionService implements IConnectionService {
     await this.validateCredentialsShape(metadata.adapterKey, mergedCredentials);
     await this.credentials.update(ref, { credentialsJson: mergedCredentials });
     this.logger.log(`Rotated credentials for connection ${connectionId}`);
+  }
+
+  /**
+   * #3657 — a connection whose credential was removed by archive() gets one
+   * back here, once it has been restored. Nothing to merge onto, so the shape
+   * is validated against the payload alone (the same order `create()` uses).
+   * A credential-less adapter (ADR-055, e.g. the OMS) is refused: a row nothing
+   * ever reads would be encrypted and stored for no reason.
+   */
+  private async storeFirstCredentials(
+    connection: Connection,
+    credentials: Record<string, unknown>
+  ): Promise<void> {
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    if (!resolveRequiresCredentials(metadata)) {
+      throw new BadRequestException(
+        `Connection ${connection.id} uses an adapter that takes no credentials`
+      );
+    }
+    const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
+    await this.validateCredentialsShape(metadata.adapterKey, resolvedCredentials);
+    const ref = randomUUID();
+    await this.credentials.create({
+      ref,
+      platformType: connection.platformType,
+      credentialsJson: resolvedCredentials,
+    });
+    try {
+      await this.connectionPort.update(connection.id, { credentialsRef: `db:${ref}` });
+    } catch (error) {
+      // Same best-effort cleanup as create(): never leave an unreferenced
+      // encrypted row behind.
+      await this.credentials.delete(ref).catch(() => undefined);
+      throw error;
+    }
+    this.logger.log(`Stored credentials for connection ${connection.id} (ref: db:${ref})`);
+  }
+
+  async archive(connectionId: string): Promise<Connection> {
+    const existing = await this.get(connectionId);
+    if (existing.status === 'archived') {
+      return existing;
+    }
+    if (existing.status !== 'disabled') {
+      throw new ConflictException(
+        `Connection ${connectionId} is ${existing.status}; disable it before archiving`
+      );
+    }
+    // Declared by the adapter, never inferred from platformType (ADR-055):
+    // the OL-OMS connection holds routing authority claims and is disabled,
+    // never archived. See AdapterMetadata.archivable.
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: existing.platformType,
+      adapterKey: existing.adapterKey,
+    });
+    if (!resolveArchivable(metadata)) {
+      throw new ConflictException(
+        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`
+      );
+    }
+    // The pairing is a JSONB value with no FK, so only this service can refuse
+    // (the LocationInUseError precedent, #2316). Archiving the target would
+    // drop it from list(), and the referrers' mapping pages resolve their
+    // catalog through that list - they would report a pairing that is correct
+    // as "could not be found".
+    const referrers = await this.findMasterCatalogReferrers(connectionId);
+    if (referrers.length > 0) {
+      throw new ConnectionInUseException(connectionId, 'master-catalog-referenced', referrers);
+    }
+    // Credential first, row second. A crash between the two leaves a disabled
+    // connection pointing at a missing credential - it fails loudly on enable
+    // and archiving again finishes the job. The reverse order could leave an
+    // archived row still holding a live credential.
+    if (existing.credentialsRef.startsWith('db:')) {
+      const removed = await this.credentials.delete(existing.credentialsRef.slice('db:'.length));
+      if (!removed) {
+        this.logger.warn(
+          `Credential row for connection ${connectionId} was already gone while archiving`
+        );
+      }
+    }
+    const connection = await this.connectionPort.update(connectionId, {
+      status: 'archived',
+      credentialsRef: '',
+    });
+    this.httpTransportFactory.evict(connectionId);
+    this.logger.log(`Connection archived: ${connection.id} (${connection.name})`);
+    return connection;
+  }
+
+  /**
+   * Non-archived connections whose `config.masterCatalogConnectionId` names
+   * `connectionId`. `list()` already leaves archived rows out, which is the
+   * point: an archived referrer is invisible too, so it blocks nothing.
+   */
+  private async findMasterCatalogReferrers(connectionId: string): Promise<ConnectionReferrer[]> {
+    const connections = await this.connectionPort.list();
+    return connections
+      .filter(
+        (candidate) =>
+          candidate.id !== connectionId &&
+          candidate.config?.['masterCatalogConnectionId'] === connectionId
+      )
+      .map((candidate) => ({ id: candidate.id, name: candidate.name }));
+  }
+
+  async restore(connectionId: string): Promise<Connection> {
+    const existing = await this.get(connectionId);
+    if (existing.status !== 'archived') {
+      throw new ConflictException(
+        `Connection ${connectionId} is ${existing.status}; only an archived connection can be restored`
+      );
+    }
+    const connection = await this.connectionPort.update(connectionId, { status: 'disabled' });
+    this.logger.log(`Connection restored: ${connection.id} (${connection.name})`);
+    return connection;
   }
 
   async disable(connectionId: string): Promise<Connection> {

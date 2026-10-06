@@ -486,6 +486,177 @@ jobs:
         # containers anyway — the next run's pre-flight sweep picks up anything
         # this run itself failed to clean up.
 
+  backup-restore:
+    name: Backup / Restore (#3618)
+    # Deliberately UNGATED by `needs: changes`, matching `Type Check`'s own
+    # precedent above ("intentionally NOT gated, so it always reports") — the
+    # path filter above explicitly EXCLUDES `docker-compose.yml`, so a
+    # PR touching only the backup service or its scripts would otherwise never
+    # run this job at all, silently. A pilot-readiness gate that can be
+    # skipped by editing exactly the files it exists to verify is not a gate.
+    timeout-minutes: 20
+    runs-on: self-hosted
+    # One container name PER RUN, never a shared literal: every self-hosted
+    # runner talks to the same Docker daemon, so with a fixed name a second
+    # PR's opening `docker rm -f` (or its closing clean-up) removed the first
+    # run's Postgres mid-job and failed it with "No such container". The run
+    # attempt is part of the name so a re-run never meets a leftover from the
+    # attempt before it.
+    env:
+      PG_CONTAINER: ol-backup-restore-ci-pg-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      # A throwaway Postgres this job fully owns, published to an
+      # OS-assigned host port (never a fixed one, so a concurrent run on this
+      # persistent self-hosted runner can't collide) — plain `docker run -p`
+      # port publishing, not the Testcontainers reaper callback the
+      # `Integration Tests` job's TESTCONTAINERS_RYUK_DISABLED comment
+      # describes as broken under this runner's Docker-in-Docker network; an
+      # ordinary published port works exactly as it does for any other
+      # `docker run -p` container here.
+      #
+      # `127.0.0.1::5432` was wrong for a reason distinct from the Ryuk
+      # callback problem: it publishes the port on the DOCKER HOST's loopback
+      # only. This `self-hosted` runner is ITSELF a container
+      # (`/home/docker/actions-runner/...`, its own network namespace), so its
+      # `127.0.0.1` is not the host's — a published port bound to the host's
+      # loopback is unreachable from here no matter which port number is used
+      # (confirmed live: `ECONNREFUSED 127.0.0.1:32768` from the migration
+      # step below, while `docker exec ... pg_isready` — which runs INSIDE
+      # the Postgres container's own namespace — reported ready throughout).
+      #
+      # `Integration Tests`' Testcontainers-driven Postgres does not hit this:
+      # testcontainers-node's `resolveHost` (container-runtime/utils/
+      # resolve-host.js) detects it is running inside a container (checks for
+      # `/.dockerenv`) and, instead of trusting `localhost`, resolves the
+      # gateway IP of the Docker `bridge` network and connects through THAT
+      # address — the one interface of the docker HOST that every container
+      # attached to the default bridge network (this runner included) can
+      # always reach. Testcontainers never binds the published port to a
+      # specific host IP either (`generic-container.js`'s `withExposedPorts`
+      # sets only `HostPort`, no `HostIp`, which Docker defaults to `0.0.0.0`
+      # — published on every host interface); it is the DESTINATION address
+      # that changes, never the bind address. We replicate that exact
+      # mechanism rather than inventing a second one: publish on every
+      # interface as before, but connect to the gateway address everywhere
+      # below instead of `localhost`.
+      #
+      # (Binding the publish itself to the gateway address, i.e.
+      # `-p "${GATEWAY}::5432"`, was tried and rejected: on at least one
+      # Docker setup checked while fixing this, that populates
+      # `NetworkSettings.Ports` with an empty list — no port at all — rather
+      # than failing loudly, which would have made the failure this fix
+      # exists to remove reappear as a different, more confusing one.)
+      - name: Start a throwaway Postgres
+        run: |
+          # A run that died before its own clean-up leaves a container nothing
+          # else would ever remove (the name is per run). Sweep only THIS job's
+          # containers, by label, and only ones older than 30 min - past this
+          # job's 20 min timeout, so a concurrent run's live Postgres is never
+          # touched. `-v` takes the image's anonymous data volume with it.
+          for id in $(docker ps -aq --filter label=openlinker.ci=backup-restore); do
+            created="$(docker inspect -f '{{.Created}}' "$id")"
+            if [ $(( $(date +%s) - $(date -d "$created" +%s) )) -gt 1800 ]; then
+              docker rm -f -v "$id" >/dev/null 2>&1 || true
+            fi
+          done
+          docker rm -f -v "$PG_CONTAINER" >/dev/null 2>&1 || true
+          PG_GATEWAY_HOST="$(docker network inspect bridge --format '{{ (index .IPAM.Config 0).Gateway }}')"
+          echo "PG_GATEWAY_HOST=$PG_GATEWAY_HOST" >> "$GITHUB_ENV"
+          docker run -d --name "$PG_CONTAINER" --label openlinker.ci=backup-restore \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=openlinker \
+            -p 5432 \
+            postgres:17-alpine
+          PG_HOST_PORT="$(docker inspect -f '{{ (index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort }}' "$PG_CONTAINER")"
+          echo "PG_HOST_PORT=$PG_HOST_PORT" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            docker exec "$PG_CONTAINER" pg_isready -U postgres >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec "$PG_CONTAINER" pg_isready -U postgres
+          # The check above only proves the daemon is ready INSIDE the
+          # container's own network namespace — exactly what was already true
+          # in the failing run above while the migration step still got
+          # ECONNREFUSED. Prove reachability over the SAME address migration
+          # will actually dial: a raw TCP connect through bash's `/dev/tcp`
+          # (no extra binary needed on the runner) against
+          # `PG_GATEWAY_HOST:PG_HOST_PORT`.
+          for i in $(seq 1 30); do
+            timeout 1 bash -c "cat < /dev/null > /dev/tcp/${PG_GATEWAY_HOST}/${PG_HOST_PORT}" 2>/dev/null && break
+            sleep 1
+          done
+          timeout 1 bash -c "cat < /dev/null > /dev/tcp/${PG_GATEWAY_HOST}/${PG_HOST_PORT}"
+      # Seeds a REAL database via the actual migration chain, which is also
+      # #2684's own from-empty proof: this Postgres container has never run
+      # `CREATE EXTENSION "uuid-ossp"` at all until BootstrappedDataSource
+      # does it as part of this very command.
+      - name: Seed a database via the real migration chain
+        working-directory: apps/api
+        env:
+          DB_HOST: ${{ env.PG_GATEWAY_HOST }}
+          DB_PORT: ${{ env.PG_HOST_PORT }}
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          DB_DATABASE: openlinker
+        run: pnpm run migration:run
+      - name: Insert a marker row (so the restore assertion below is not vacuous)
+        run: |
+          docker exec "$PG_CONTAINER" psql -U postgres -d openlinker -c \
+            "INSERT INTO connections (id, \"platformType\", name, status, config, \"credentialsRef\") VALUES (uuid_generate_v4(), 'ci-backup-restore-marker', 'backup-restore-ci-marker', 'disabled', '{}'::jsonb, '');"
+      # The SAME script the `backup` compose service runs nightly (#3618) —
+      # never a CI-only reimplementation, or this job would prove nothing
+      # about what actually runs in production.
+      - name: Produce a dump with the real backup script
+        run: |
+          docker cp scripts/backup "$PG_CONTAINER":/scripts
+          docker exec \
+            -e PGHOST=localhost -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres -e PGDATABASE=openlinker \
+            -e OL_BACKUP_DIR=/tmp/ci-backups \
+            "$PG_CONTAINER" bash /scripts/pg-backup-once.sh
+      - name: Restore the dump into a genuinely empty database
+        run: |
+          DUMP_FILE="$(docker exec "$PG_CONTAINER" sh -c 'ls -1t /tmp/ci-backups/daily/*.dump | head -1')"
+          docker exec "$PG_CONTAINER" psql -U postgres -c 'CREATE DATABASE restore_check;'
+          docker exec \
+            -e PGHOST=localhost -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres \
+            "$PG_CONTAINER" bash /scripts/pg-restore.sh "$DUMP_FILE" restore_check
+      # Covers #2684's own acceptance criterion too: `migration:show` always
+      # exits 0 regardless of pending status (MigrationShowCommand discards
+      # DataSource#showMigrations()'s return value), so a dedicated script
+      # reads that return value directly — see
+      # apps/api/scripts/assert-no-pending-migrations.ts's own docblock.
+      - name: Assert 0 pending migrations against the restored database
+        working-directory: apps/api
+        env:
+          DB_HOST: ${{ env.PG_GATEWAY_HOST }}
+          DB_PORT: ${{ env.PG_HOST_PORT }}
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          DB_DATABASE: restore_check
+        run: pnpm run migration:assert-clean
+      - name: Assert the seeded marker row survived the restore
+        run: |
+          COUNT="$(docker exec "$PG_CONTAINER" psql -U postgres -d restore_check -tAc "SELECT count(*) FROM connections WHERE \"platformType\" = 'ci-backup-restore-marker';")"
+          if [ "$COUNT" != "1" ]; then
+            echo "expected 1 seeded marker row to survive the restore, found $COUNT" >&2
+            exit 1
+          fi
+          echo "restored database carries the seeded marker row."
+      - name: Clean up
+        if: always()
+        # `-v`: postgres:17-alpine declares VOLUME /var/lib/postgresql/data, so
+        # every run creates an anonymous volume holding the whole database. A
+        # bare `docker rm -f` left one behind per run on the shared runner disk.
+        run: docker rm -f -v "$PG_CONTAINER" >/dev/null 2>&1 || true
+
   test-php:
     name: PHP Unit Tests
     timeout-minutes: 10

@@ -10,7 +10,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ConnectionEntityLabel } from '../../connections';
@@ -28,6 +28,12 @@ import { OrderPhaseBadge } from './order-phase-badge';
 interface OrderDetailHeaderProps {
   order: OrderRecord;
   snapshot: ParsedOrderSnapshot;
+  /**
+   * The tags line (#3533, mockup M3) — a slot, not a dependency, so the
+   * header stays display-only and the page decides what fills it. Rendered
+   * between the id/route line and the contents summary.
+   */
+  tags?: ReactNode;
 }
 
 const HEALTH_TONE: Record<OrderHealthLevel, StatusBadgeTone> = {
@@ -52,7 +58,7 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
   refunded: 'Refunded',
 };
 
-export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): ReactElement {
+export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderProps): ReactElement {
   const rollup = rollupSyncStatus(order.syncStatus);
   const healthLevel = deriveHealthLevel(rollup);
 
@@ -142,6 +148,8 @@ export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): 
           )}
         </span>
       </div>
+
+      {tags}
 
       {itemCount > 0 ? (
         <div className="order-header__summary-line">

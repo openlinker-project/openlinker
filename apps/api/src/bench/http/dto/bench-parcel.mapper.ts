@@ -50,5 +50,11 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
       widthMm: line.widthMm,
       heightMm: line.heightMm,
     })),
+    packerNotes: view.packerNotes.map((note) => ({
+      id: note.id,
+      body: note.body,
+      authorUsername: note.authorUsername,
+      createdAt: note.createdAt,
+    })),
   };
 }

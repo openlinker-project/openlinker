@@ -6,11 +6,12 @@
  *
  * @module app
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
+  createMockApiClient,
   renderWithProviders,
   sampleConnection,
 } from '../test/test-utils';
@@ -38,7 +39,7 @@ function renderPalette(user?: SessionUser) {
     <CommandPaletteProvider>
       <OpenButton />
     </CommandPaletteProvider>,
-    { sessionAdapter: createAuthenticatedSessionAdapter(user) },
+    { sessionAdapter: createAuthenticatedSessionAdapter(user) }
   );
 }
 
@@ -219,6 +220,77 @@ describe('CommandPaletteProvider', () => {
       expect(captureDemoEvent).toHaveBeenCalledWith('demo_command_palette_result_selected', {
         source: 'connections',
       });
+    });
+  });
+
+  // #3505 — ⌘K must not surface the routing-only entries the sidebar hides.
+  describe('routing-gated navigation', () => {
+    const OPERATOR: SessionUser = {
+      id: 'user_op',
+      username: 'operator',
+      email: 'operator@example.com',
+      role: 'operator',
+      permissions: ['orders:read', 'orders:write', 'bench:write'],
+    };
+
+    function renderWithRouting(getStatus: ReturnType<typeof vi.fn>): void {
+      renderWithProviders(
+        <CommandPaletteProvider>
+          <OpenButton />
+        </CommandPaletteProvider>,
+        {
+          apiClient: createMockApiClient({ fulfillmentAuthority: { getStatus } as never }),
+          sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR),
+        }
+      );
+    }
+
+    function sourcingStatus(state: 'default' | 'resolved'): unknown {
+      return {
+        rows: [
+          {
+            question: 'sourcing',
+            state,
+            answer: { kind: 'nobody-to-route' },
+            why: { kind: 'default', code: 'a2-single-origin-nothing-to-choose' },
+            source: state === 'default' ? 'default' : 'operator-config',
+            inactiveClaimantConnectionIds: [],
+          },
+        ],
+        attention: { counted: [], routine: [], affectedOrderCount: 0 },
+        presets: [],
+        applied: null,
+      };
+    }
+
+    it('should hide Fulfilment and Pack bench when routing is off', async () => {
+      const getStatus = vi.fn().mockResolvedValue(sourcingStatus('default'));
+      renderWithRouting(getStatus);
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      await waitFor(() => {
+        expect(getStatus).toHaveBeenCalled();
+      });
+      expect((await screen.findAllByText('Shipments')).length).toBeGreaterThan(0);
+      expect(screen.queryByText('Fulfilment')).toBeNull();
+      expect(screen.queryByText('Pack bench')).toBeNull();
+    });
+
+    it('should list Fulfilment and Pack bench when routing is on', async () => {
+      renderWithRouting(vi.fn().mockResolvedValue(sourcingStatus('resolved')));
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+
+      expect(await screen.findByText('Fulfilment')).toBeInTheDocument();
+      expect(screen.getByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('should list them when the routing state cannot be read', async () => {
+      renderWithRouting(vi.fn().mockRejectedValue(new Error('status down')));
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+
+      expect(await screen.findByText('Fulfilment')).toBeInTheDocument();
     });
   });
 

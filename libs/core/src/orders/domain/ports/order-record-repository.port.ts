@@ -23,7 +23,8 @@ import type {
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
   AuthorityAttentionOutcome,
@@ -42,6 +43,21 @@ import type {
   CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
+import type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+} from '../types/order-search-text-reindex.types';
+
+/**
+ * A held order and when its CURRENT hold began (#3485 review). The age bounds
+ * how often the reroute sweep re-drives an order that stays refused.
+ * `blockedAt` is `null` for a row held before the column existed: "not asserted",
+ * never a guess.
+ */
+export interface HeldOrderRef {
+  readonly orderId: string;
+  readonly blockedAt: Date | null;
+}
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -579,6 +595,36 @@ export interface OrderRecordRepositoryPort {
   ): Promise<void>;
 
   /**
+   * #3485 — one keyset page of internal order ids whose fulfilment block is one
+   * of `reasons`, ascending by `internalOrderId`, starting strictly after
+   * `afterOrderId` (`null` = from the start).
+   *
+   * Keyset, never offset: the set shrinks as orders are re-routed, and an offset
+   * over a shrinking set steps over rows. And keyset, never oldest-`updatedAt`:
+   * a re-refused order rewrites an identical block, the `IS DISTINCT FROM` guard
+   * (correctly) leaves `updatedAt` alone, so an oldest-first page would re-read
+   * the same head for ever and starve everything behind it.
+   */
+  listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]>;
+
+  /**
+   * #3455 — record why the ingestion intercept deliberately did NOT route the
+   * order while the OMS is on, or clear it with `null`. Level-triggered: the
+   * intercept re-decides on every ingestion and writes the answer including
+   * `null`. Outside the ingestion write set, so a re-poll cannot reset it; a
+   * no-change write costs no `updatedAt` bump.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void>;
+
+  /**
    * How many orders carry at least one COUNTED OMS inert state (#2352)?
    *
    * One row per affected ORDER, not per entry — the surface renders one row per
@@ -972,4 +1018,28 @@ export interface OrderRecordRepositoryPort {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<FxRestatementRemainingSummary>;
+
+  /**
+   * One keyset page of `order_records` for the `searchText` reindex pass
+   * (#3507 G03-14): rows with `internalOrderId > afterInternalOrderId` (or from
+   * the start when `null`), ascending, at most `limit`. Narrowed to the three
+   * columns the pass needs — the snapshot to re-derive from and the stored text
+   * to compare against — and NOT filtered on the text: the derivation is
+   * application code, so "does this row disagree" can only be answered after
+   * reading it.
+   */
+  findSearchTextReindexPage(
+    afterInternalOrderId: string | null,
+    limit: number
+  ): Promise<OrderSearchTextReindexRow[]>;
+
+  /**
+   * Conditionally rewrite `searchText` for each entry (#3507 G03-14), guarded
+   * on the row still holding `expectedSearchText` — a concurrent ingestion that
+   * already rewrote it wins. `updatedAt` is deliberately left untouched: the
+   * text is derived data, and bumping the timestamp would reorder every
+   * "recently updated" view by an internal reindex nobody performed. Returns
+   * how many rows were actually rewritten.
+   */
+  rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number>;
 }

@@ -40,6 +40,12 @@ function baseSalesDocumentView(over: Partial<SalesDocumentView> = {}): SalesDocu
   };
 }
 
+// The Filters panel remembers being open per browser (#3507): every test in
+// this file starts with it closed, whichever describe block it sits in.
+beforeEach(() => {
+  window.localStorage.removeItem('ol.orders-list.filters-open.v1');
+});
+
 const captureDemoEvent = vi.fn();
 vi.mock('../../features/demo', () => ({
   captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
@@ -180,7 +186,7 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h / overdue' }));
+    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h' }));
 
     expect(captureDemoEvent).toHaveBeenCalledWith('demo_orders_filtered', {
       filter: 'sla_breaching',
@@ -315,7 +321,7 @@ describe('OrdersListPage', () => {
         expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
         // The recovery affordance must clear the filter, not send the operator
         // to /connections to debug an ingestion problem that does not exist.
-        expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
         expect(screen.queryByRole('link', { name: 'Manage connections' })).toBeNull();
       }
     );
@@ -333,7 +339,7 @@ describe('OrdersListPage', () => {
           '/orders?due=breaching&slaState=overdue&fulfillmentState=not-shipped&sourceConnectionId=conn_1&createdFrom=2026-01-01&createdTo=2026-01-31',
       });
 
-      const recover = await screen.findByRole('button', { name: 'View all orders' });
+      const recover = await screen.findByRole('button', { name: 'Clear filters' });
       const before = list.mock.calls.length;
       await userEvent.setup().click(recover);
 
@@ -377,7 +383,7 @@ describe('OrdersListPage', () => {
         route: '/orders?due=breaching&sort=createdAt&dir=asc',
       });
 
-      const recover = await screen.findByRole('button', { name: 'View all orders' });
+      const recover = await screen.findByRole('button', { name: 'Clear filters' });
       const before = list.mock.calls.length;
       await userEvent.setup().click(recover);
 
@@ -385,7 +391,7 @@ describe('OrdersListPage', () => {
         expect(list.mock.calls.length).toBeGreaterThan(before);
       });
 
-      // "View all orders" restores membership, not presentation — resetting the
+      // "Clear filters" restores membership, not presentation — resetting the
       // operator's chosen column sort would be a second, unasked-for change.
       const [filters] = list.mock.calls[list.mock.calls.length - 1];
       expect(filters).toMatchObject({ sort: 'createdAt', dir: 'asc' });
@@ -574,10 +580,14 @@ describe('OrdersListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
-    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+    // #3507 U5 — row selection needs `orders:write`; the default test session is anonymous.
+    const { container } = renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('ALG-882414');
-    const checkbox = screen.getByRole('checkbox', { name: 'Select ol_order_synced' });
+    const checkbox = await screen.findByRole('checkbox', { name: 'Select ol_order_synced' });
     await user.click(checkbox);
 
     expect(container.querySelector('.data-table__detail-row')).toBeNull();
@@ -593,7 +603,10 @@ describe('OrdersListPage', () => {
         connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
       });
 
-      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+      const { container } = renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
 
       await screen.findAllByText('ALG-882414');
       expect(container.querySelector('table')).toBeNull();
@@ -614,7 +627,7 @@ describe('OrdersListPage', () => {
     }
   });
 
-  it('should render a channel-pill resolved from the connection platformType', async () => {
+  it('should render the source channel as a connection chip linking to the source connection', async () => {
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
@@ -623,15 +636,19 @@ describe('OrdersListPage', () => {
     const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    const pill = container.querySelector('.channel-pill[data-channel="allegro"]');
-    expect(pill?.textContent).toBe('Allegro');
+    const chip = container.querySelector('.connection-chip[data-channel="allegro"]');
+    expect(chip?.querySelector('.connection-chip__platform')?.textContent).toBe('Allegro');
+    // #3670: the chip IS the link to the source connection, and its name
+    // slides out of it rather than sitting beside it as a second link.
+    expect(chip).toHaveAttribute('href', `/connections/${sampleConnection.id}`);
+    expect(chip?.querySelector('.connection-chip__reveal')?.textContent).toBe(sampleConnection.name);
   });
 
   it.each([
     ['erli', 'Erli'],
     ['woocommerce', 'WooCommerce'],
   ])(
-    'should resolve the %s channel-pill from the plugin registry, not a local map',
+    'should resolve the %s channel chip label from the plugin registry, not a local map',
     async (platformType, expectedLabel) => {
       // The deleted `CHANNEL_LABELS` map (#2088) covered only allegro /
       // prestashop / amazon / shopify, so these two rendered raw and lowercase
@@ -648,7 +665,7 @@ describe('OrdersListPage', () => {
       const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
       await screen.findByText('ALG-882414');
-      const pill = container.querySelector(`.channel-pill[data-channel="${platformType}"]`);
+      const pill = container.querySelector(`.connection-chip[data-channel="${platformType}"] .connection-chip__platform`);
       expect(pill?.textContent).toBe(expectedLabel);
     }
   );
@@ -771,7 +788,7 @@ describe('OrdersListPage', () => {
 
     await screen.findByText('ALG-882414');
     // Exact name targets the chip, not the sortable "Ship-by" column header (#944).
-    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h / overdue' }));
+    await user.click(screen.getByRole('button', { name: 'Ship-by ≤ 24h' }));
 
     await vi.waitFor(() => {
       const calledWithDue = list.mock.calls.some(
@@ -793,7 +810,11 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
-    await user.selectOptions(screen.getByLabelText('Filter by source'), 'conn_allegro_1');
+    await user.click(screen.getByTestId('orders-filter-toggle'));
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Source' }),
+      'conn_allegro_1',
+    );
 
     await vi.waitFor(() => {
       const called = list.mock.calls.some(
@@ -900,6 +921,7 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
     await screen.findByText('ALG-882414');
+    fireEvent.click(screen.getByTestId('orders-filter-toggle'));
     fireEvent.change(screen.getByLabelText('Created from'), { target: { value: '2026-05-01' } });
 
     await vi.waitFor(() => {
@@ -1415,7 +1437,7 @@ describe('OrdersListPage', () => {
 
       renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-      const chip = await screen.findByRole('button', { name: /sales documents blocked/i });
+      const chip = await screen.findByRole('button', { name: /sales docs blocked/i });
       expect(chip).toHaveTextContent('2');
 
       const before = list.mock.calls.length;
@@ -1447,11 +1469,12 @@ describe('OrdersListPage', () => {
 
       renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-      const chip = await screen.findByRole('button', { name: /sales documents blocked/i });
+      const chip = await screen.findByRole('button', { name: /sales docs blocked/i });
       // The blocked chip's own count is unaffected by the separate figure.
       expect(chip).toHaveTextContent('2');
-      expect(await screen.findByText('3 issued on request')).toBeInTheDocument();
-      // Neutral, not a filter: no button/link role for this figure.
+      // #3507 — the neutral figure rides on the chip's tooltip rather than as a
+      // third text item in the quick-filter row; it is still never a filter.
+      expect(chip).toHaveAttribute('title', expect.stringContaining('3 more are issued on request'));
       expect(screen.queryByRole('button', { name: /issued on request/i })).not.toBeInTheDocument();
     });
 
@@ -1475,7 +1498,7 @@ describe('OrdersListPage', () => {
       renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
       await screen.findByText('ALG-882414');
-      expect(screen.queryByRole('button', { name: /sales documents blocked/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /sales docs blocked/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/issued on request/i)).not.toBeInTheDocument();
     });
 
@@ -1563,7 +1586,7 @@ describe('OrdersListPage', () => {
         route: '/orders?invoicing=blocked&offset=20',
       });
 
-      const chip = await screen.findByRole('button', { name: /sales documents blocked/i });
+      const chip = await screen.findByRole('button', { name: /sales docs blocked/i });
       expect(chip).toHaveAttribute('aria-pressed', 'true');
       expect(list.mock.calls[0][0]).toMatchObject({ salesDocumentBlocked: true });
 
@@ -1603,7 +1626,7 @@ describe('OrdersListPage', () => {
       // Gating the chip on the count alone unmounted the ONLY control for this
       // param exactly when the remediation succeeded, stranding an applied filter.
       expect(
-        await screen.findByRole('button', { name: /sales documents blocked/i }),
+        await screen.findByRole('button', { name: /sales docs blocked/i }),
       ).toBeInTheDocument();
       // And the empty state must not claim nothing has ever synced.
       // `findByText` (not `getByText`): the chip is sync-derived from the URL
@@ -1671,7 +1694,7 @@ describe('OrdersListPage', () => {
 
       await screen.findByText('ALG-882414');
       // An install that never hits this state gets no extra control.
-      expect(screen.queryByRole('button', { name: /sales documents blocked/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /sales docs blocked/i })).not.toBeInTheDocument();
     });
   });
 
@@ -2034,7 +2057,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     }
   });
 
-  it('keeps the folded channel pill under the order name, with its registry label', async () => {
+  it('keeps the folded channel chip under the order name, with its registry label', async () => {
     // The fold is CSS-driven (`.orders-order-channel`, hidden ≥1024px) and
     // #2094 owns relocating it — this pins that #2091 left the render branch and
     // its `→ dest +N` sibling in place, INSIDE the order cell's stack.
@@ -2046,7 +2069,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     const stack = container.querySelector('.orders-cell-stack') as HTMLElement;
     const fold = stack.querySelector('.orders-order-channel') as HTMLElement;
     expect(fold).not.toBeNull();
-    expect(fold.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe('Erli');
+    expect(fold.querySelector('.connection-chip[data-channel="erli"] .connection-chip__platform')?.textContent).toBe('Erli');
     expect(within(fold).getByText('→ WooCommerce')).toBeInTheDocument();
     // The fold is a SIBLING of the identity cell, not inside its body.
     expect(fold.closest('.order-cell')).toBeNull();
@@ -2061,10 +2084,10 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     // Two `erli` pills render on the desktop row — the order cell's fold and the
     // Channel column. Exclude the fold to assert the column's own lookup.
     const columnPill = Array.from(
-      container.querySelectorAll('.channel-pill[data-channel="erli"]')
+      container.querySelectorAll('.connection-chip[data-channel="erli"] .connection-chip__platform')
     ).find((pill) => pill.closest('.orders-order-channel') === null);
     expect(columnPill?.textContent).toBe('Erli');
-    expect(columnPill?.parentElement?.textContent).toContain('→ WooCommerce');
+    expect(columnPill?.closest('.connection-chip')?.parentElement?.textContent).toContain('→ WooCommerce');
   });
 
   it('resolves the mobile-card subtitle channel label from the registry', async () => {
@@ -2076,7 +2099,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
       await screen.findAllByText('ALG-882414');
       const subtitle = container.querySelector('.orders-card-sub') as HTMLElement;
-      expect(subtitle.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe(
+      expect(subtitle.querySelector('.connection-chip[data-channel="erli"] .connection-chip__platform')?.textContent).toBe(
         'Erli'
       );
       expect(within(subtitle).getByText('→ WooCommerce')).toBeInTheDocument();
@@ -2089,10 +2112,13 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     const user = userEvent.setup();
     const mockApi = mockCrossChannelApi();
 
-    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('checkbox', { name: 'Select ol_order_crosschannel' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Select ol_order_crosschannel' }));
     await user.click(screen.getByRole('button', { name: 'Dispatch 1' }));
 
     // The dialog portals outside the render container, so query the document.
@@ -2324,8 +2350,10 @@ describe('OrdersListPage — hold surfacing (#2342)', () => {
     // Start on page 2 so the offset drop is observable.
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?offset=20' });
 
+    // #3507 — the hold reason lives in the Filters panel's Exceptions group.
+    await user.click(await screen.findByTestId('orders-filter-toggle'));
     await user.selectOptions(
-      await screen.findByLabelText('Filter by hold reason'),
+      await screen.findByRole('combobox', { name: 'Hold reason' }),
       'address-invalid'
     );
 
@@ -2336,7 +2364,7 @@ describe('OrdersListPage — hold surfacing (#2342)', () => {
     });
 
     // And back to unfiltered.
-    await user.selectOptions(screen.getByLabelText('Filter by hold reason'), '');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Hold reason' }), '');
 
     await vi.waitFor(() => {
       expect(list.mock.calls[list.mock.calls.length - 1][0].holdReason).toBeUndefined();

@@ -1203,3 +1203,53 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
     expect(screen.queryByText(/Reference for carrier support/i)).toBeNull();
   });
 });
+
+describe('GenerateLabelForm - routed parcel profile (#3652)', () => {
+  const RULE = {
+    id: 'r1',
+    sourceConnectionId: 'b3f1c2d4-0000-4000-8000-000000000099',
+    sourceDeliveryMethodId: 'allegro-courier',
+    processorKind: 'ol_managed_carrier' as const,
+    processorConnectionId: 'p1',
+    lengthMm: 300,
+    widthMm: 200,
+    heightMm: 100,
+    defaultWeightGrams: 500,
+  };
+
+  it('should prefill dimensions and weight from the matched rule and keep them editable', async () => {
+    const apiClient = createMockApiClient({
+      mappings: { getRoutingRules: vi.fn().mockResolvedValue([RULE]) },
+    });
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    const length = await screen.findByLabelText('Length in millimetres');
+    await waitFor(() => {
+      expect(length).toHaveValue(300);
+    });
+    expect(screen.getByLabelText('Width in millimetres')).toHaveValue(200);
+    expect(screen.getByLabelText('Height in millimetres')).toHaveValue(100);
+    expect(screen.getByLabelText(/Weight \(g\)/)).toHaveValue(500);
+
+    fireEvent.change(length, { target: { value: '350' } });
+    expect(length).toHaveValue(350);
+  });
+
+  it('should leave the fields empty when the rule carries no profile', async () => {
+    const apiClient = createMockApiClient({
+      mappings: {
+        getRoutingRules: vi.fn().mockResolvedValue([{ ...RULE, lengthMm: null, widthMm: null, heightMm: null, defaultWeightGrams: null }]),
+      },
+    });
+    renderWithProviders(
+      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+    const length = await screen.findByLabelText('Length in millimetres');
+    expect(length).toHaveValue(null);
+    expect(screen.getByLabelText(/Weight \(g\)/)).toHaveValue(null);
+  });
+});

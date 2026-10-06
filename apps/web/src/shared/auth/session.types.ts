@@ -39,6 +39,10 @@ export const PermissionValues = [
   // docblock on the backend for why.
   'inventory-locations:write',
   'analytics:write',
+  // D35 (#3534/#3535): the Export button + row checkboxes on the export
+  // dialog. Admin and operator only — an export takes buyer data out of the
+  // system, so read access to /orders does not imply it.
+  'orders:export',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];
@@ -63,6 +67,12 @@ export interface MeResponse {
    * carrying it.
    */
   packStationLabel?: string | null;
+  /**
+   * The account was created by an admin with a one-time password and must
+   * replace it before doing anything else (#3456). Optional so a payload from an
+   * API predating the field is tolerated; absent reads as `false`.
+   */
+  mustChangePassword?: boolean;
 }
 
 export interface SessionUser {
@@ -75,6 +85,8 @@ export interface SessionUser {
   analyticsConsent?: boolean;
   /** The signed-in user's own bench/printer label (#3404). Absent/null ⇒ unset. */
   packStationLabel?: string | null;
+  /** Forced first-sign-in password change is pending (#3456). Absent ⇒ false. */
+  mustChangePassword?: boolean;
 }
 
 export interface Session {

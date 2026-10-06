@@ -103,6 +103,10 @@ function makeCommand(overrides: Partial<IssueCorrectionCommand> = {}): IssueCorr
     lines: makeCorrectionLines(),
     idempotencyKey: `correction:${CONNECTION_ID}:ol_order_1`,
     originalDocument: makeOriginalDocument(),
+    // Core always allocates one for this adapter (#3500); defaulted here so
+    // every test not specifically exercising its absence composes a document
+    // the vendor would actually accept.
+    documentNumber: 'OL-POC/2026/KOR/1',
     ...overrides,
   };
 }
@@ -190,10 +194,6 @@ describe('composeCorrectiveInvoiceDocument - the wire shape', () => {
     expect(eCorrectiveInvoice.correctedMetadata.invoiceNumber).toBe('OL-POC/2026/B2B/1');
   });
 
-  it('should omit metadata.invoiceNumber when core allocated none, so the vendor generates one', () => {
-    const { eCorrectiveInvoice } = compose();
-    expect('invoiceNumber' in eCorrectiveInvoice.metadata).toBe(false);
-  });
 
   it("should stamp the correction's own issue date from the command's issuance instant", () => {
     const { eCorrectiveInvoice } = compose(
@@ -337,6 +337,15 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
     expect(() =>
       compose(makeCommand({ originalDocument: makeOriginalDocument({ documentNumber: '  ' }) })),
     ).toThrow(EparagonyConfigException);
+  });
+
+  it('should refuse when core allocated no document number for the correction, rather than composing a document the vendor is known to reject (#3500)', () => {
+    expect(() => compose(makeCommand({ documentNumber: undefined }))).toThrow(
+      EparagonyConfigException,
+    );
+    expect(() => compose(makeCommand({ documentNumber: '   ' }))).toThrow(
+      EparagonyConfigException,
+    );
   });
 
   it('should refuse an original issue date that is not a YYYY-MM-DD calendar date', () => {

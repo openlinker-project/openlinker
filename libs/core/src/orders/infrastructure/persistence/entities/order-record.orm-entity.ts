@@ -498,18 +498,28 @@ export class OrderRecordOrmEntity {
    * `fulfillment-block-reason.types.ts`.
    *
    * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
-   * the union is enforced in TypeScript. `isFulfillmentBlockReason` exists for
-   * the read surface to coerce with — note that nothing reads the column YET
-   * (the operator surface is a later issue), so this is a guard made available,
-   * not one currently running. Whoever adds that read must call it: a value
-   * written by a newer release and then rolled back has to read as "nothing
-   * recognised" rather than widening the union at runtime.
+   * the union is enforced in TypeScript. Since #3485 the column is READ:
+   * `OrderRecordRepository.toDomain` coerces it with `isFulfillmentBlockReason`
+   * onto `OrderRecord.fulfillmentBlock`, so a value written by a newer release
+   * and then rolled back reads as "nothing recognised" rather than widening the
+   * union at runtime.
    *
-   * **No index, deliberately** — same call as `omsAttention` above: nothing
-   * filters on it yet, and the consuming issue adds one against its own data.
+   * **No index, deliberately.** #3485's `fulfillment.work.rerouteSweep` filters
+   * on it, keyset-paged by `internalOrderId`; at v1 volumes (a handful of held
+   * orders) the primary key serves that page. A partial index on the reroutable
+   * reasons is the follow-up if held-order counts grow.
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockReason!: string | null;
+
+  /**
+   * When the current fulfilment hold began (#3485 review). Stamped only on
+   * none -> held by `updateFulfillmentBlock`, so it survives a change of reason.
+   * `null` for a row held before the column existed. Not round-tripped through
+   * `toOrm` (single writer).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  fulfillmentBlockedAt!: Date | null;
 
   /**
    * PII-free elaboration of the reason above (ids and causes only). Free text,
@@ -518,6 +528,52 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockDetail!: string | null;
+
+  /**
+   * Denormalized, diacritic-folded free-text search corpus (#3527) — order
+   * number, buyer name, buyer email and every line SKU, space-joined; under
+   * `OL_STORE_PII=false` the order number and SKUs only (#3507 G03-14).
+   * Recomputed on EVERY write by `OrderRecordRepository.toOrm` (via
+   * `deriveOrderSearchText`) and written by both halves of the
+   * frozen-attribution upsert (#3507 G03-1), never incrementally maintained:
+   * the snapshot it derives from is itself rewritten wholesale on every
+   * ingestion, so a separate write path would only be a second place to
+   * forget. The one out-of-band writer is `OrderSearchTextReindexService`,
+   * which re-derives rows stored before the PII flag was turned off.
+   *
+   * `NOT NULL DEFAULT ''` rather than nullable — the `DestinationCategory.
+   * searchText` precedent — so the trigram index and the `LIKE` predicate
+   * never have to special-case a NULL. An order with no matchable text
+   * (no order number captured, no buyer stored, no SKUs) legitimately carries
+   * `''`, which no non-empty query can match.
+   *
+   * Backed by `IDX_order_records_searchText_trgm`, a GIN `gin_trgm_ops` index
+   * (`docs/architecture-overview.md § Listings, destination taxonomy read
+   * model` — the same precedent). The repository matches with `LIKE`, never
+   * the `%` similarity operator, so correctness never depends on `pg_trgm`
+   * being installed.
+   *
+   * Not domain data — deliberately absent from `OrderRecord` and from
+   * `toDomain`, exactly as `DestinationCategory` drops its own `searchText`:
+   * it is an index-serving derivation of fields the domain entity already
+   * carries inside `orderSnapshot`.
+   */
+  @Column({ type: 'text', default: '' })
+  searchText!: string;
+
+  /**
+   * Why OpenLinker deliberately did NOT route this order while the OMS is on
+   * (#3455; also #3487 / #3488). `null` means routed, not yet decided, or the OMS
+   * is off. Distinct from `fulfillmentBlockReason`: a skipped order is not held,
+   * it follows today's path.
+   *
+   * Sole writer `updateFulfillmentRoutingSkipReason`, level-triggered by the
+   * ingestion intercept and outside the ingestion write set. Plain `text` with no
+   * check constraint - the union is enforced in TypeScript and coerced on read by
+   * `isFulfillmentRoutingSkipReason`. No index: nothing filters on it yet.
+   */
+  @Column({ type: 'text', nullable: true })
+  fulfillmentRoutingSkipReason!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

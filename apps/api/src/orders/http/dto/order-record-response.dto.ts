@@ -18,6 +18,8 @@ import {
   SlaState,
   FulfillmentRollupState,
   BuyerTaxId,
+  FulfillmentRoutingSkipReasonValues,
+  type FulfillmentRoutingSkipReason,
 } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
@@ -26,6 +28,10 @@ import {
   type HoldReason,
 } from '@openlinker/core/order-lifecycle';
 import { OrderHoldDto } from './order-hold-response.dto';
+import {
+  FulfillmentBlockReasonValues,
+  type FulfillmentBlockReason,
+} from '@openlinker/core/fulfillment';
 import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
@@ -40,6 +46,7 @@ import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
 import { OrderReservationShortfallDto } from './order-reservation-shortfall.dto';
+import { OrderOpenReturnDto } from './order-open-return.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
@@ -203,6 +210,26 @@ export class OrderRecordResponseDto {
   })
   reservationShortfalls?: OrderReservationShortfallDto[];
 
+  @ApiPropertyOptional({
+    type: OrderOpenReturnDto,
+    description:
+      'The Status-group "open return" badge (#2998). Absent means no OPEN return was found for ' +
+      'this order, never a positive "no returns" claim — the batched projection is best-effort ' +
+      'and degrades to absent on a failed read. "Open" is the `/returns` list\'s own `all_open` ' +
+      'segment predicate, reused rather than redefined. An orphan return (unattributed to any ' +
+      'order) can never contribute to this field by construction.',
+  })
+  openReturn?: OrderOpenReturnDto;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Tag ids assigned to this order (#3532, D34). Absent means "not projected on this read" ' +
+      '(never used today — every read that returns this DTO batches it); an empty array is a ' +
+      'positive "no tags".',
+  })
+  tagIds?: string[];
+
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;
 
@@ -338,6 +365,41 @@ export class OrderRecordResponseDto {
       'IOrderHoldService.getOpenHold against order_holds (the epic\'s L4 exit criterion).',
   })
   activeHoldReason!: HoldReason | null;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentRoutingSkipReasonValues,
+    nullable: true,
+    description:
+      'Why OpenLinker deliberately did NOT route this order to the pack bench while the OMS is on ' +
+      '(#3455): `own-shop-order` (placed in the operator\'s own shop), `shipped-by-other-system` (a ' +
+      'fulfilment routing rule sends its delivery method to another system), `mirrored-before-routing` ' +
+      '(the product master already had it before routing was switched on). null when the order was ' +
+      'routed, has not been decided yet, or no connection claims sourcing (the OMS is off). NOT a hold: ' +
+      'a skipped order follows today\'s path and is mirrored to its destinations as usual.',
+  })
+  fulfillmentRoutingSkipReason!: FulfillmentRoutingSkipReason | null;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentBlockReasonValues,
+    nullable: true,
+    description:
+      'Why fulfilment routing is HOLDING this order in OpenLinker with no work object explaining it ' +
+      '(#2396, readable since #3485), or null. A held order is not mirrored to any destination. ' +
+      'With the OMS on: `routing-refused` (the plan could not be committed, typically a line out of ' +
+      'stock; re-routed automatically), `routing-no-shipping-address` (clears when the source sends ' +
+      'an address), `routing-failed` (re-routed automatically). The others are transient routing ' +
+      'states. Opposite of `fulfillmentRoutingSkipReason`, which is NOT a hold.',
+  })
+  fulfillmentBlockReason!: FulfillmentBlockReason | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'PII-free elaboration of `fulfillmentBlockReason` (ids and causes only), rendered verbatim; ' +
+      'null when there is no block or nothing to add.',
+  })
+  fulfillmentBlockDetail!: string | null;
 
   @ApiPropertyOptional({
     type: OrderHoldDto,

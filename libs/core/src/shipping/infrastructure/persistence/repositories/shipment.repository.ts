@@ -41,6 +41,10 @@ import type {
   ShipmentPagination,
 } from '../../../domain/types/shipment-query.types';
 import type { ShipmentDirection } from '../../../domain/types/shipment-direction.types';
+import type {
+  DeliveredRelayState,
+  FindDeliveredRelayPendingOptions,
+} from '../../../domain/types/delivered-relay.types';
 import {
   readWaybillRelayFailureReason,
   type RecordWaybillRelayFailureInput,
@@ -255,6 +259,22 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     );
   }
 
+  async giveUpWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void> {
+    // `releaseWaybillRelay`'s statement without the release: the claim stays
+    // taken, so no later tick re-drives the relay.
+    await this.repository.query(
+      `UPDATE "shipments"
+          SET "waybillRelayFailureCount" = "waybillRelayFailureCount" + 1,
+              "waybillRelayFirstFailedAt" = COALESCE("waybillRelayFirstFailedAt", $2),
+              "waybillRelayLastFailedAt" = $2,
+              "waybillRelayLastFailureReason" = $3,
+              "waybillRelayLastFailureConnectionId" = $4,
+              "updatedAt" = now()
+        WHERE "id" = $1`,
+      [id, failure.failedAt, failure.reason, failure.connectionId],
+    );
+  }
+
   async clearWaybillRelayFailures(id: string): Promise<void> {
     // Guarded on `> 0` so the healthy case - every relay that has never failed
     // - matches zero rows and writes nothing. Idempotent either way.
@@ -268,6 +288,68 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
         waybillRelayLastFailureConnectionId: null,
       },
     );
+  }
+
+  async findDeliveredRelayPending(
+    connectionId: string,
+    options: FindDeliveredRelayPendingOptions,
+  ): Promise<readonly Shipment[]> {
+    // Query builder rather than `find`: the age bound is a COALESCE and the
+    // back-off is an OR, neither of which the object form can carry. The OR is
+    // bracketed on purpose — `AND` binds tighter than `OR`. Values are bound.
+    const entities = await this.repository
+      .createQueryBuilder('shipment')
+      .where('shipment.connectionId = :connectionId', { connectionId })
+      // Outbound only: a return label is not a delivery to the buyer (#2373).
+      .andWhere('shipment.direction = :direction', { direction: 'outbound' })
+      .andWhere('shipment.status = :status', { status: 'delivered' })
+      // Provider-backed rows only, exactly the set the status scan polls:
+      // branch-1 projection rows (no provider id) belong to
+      // `FulfillmentStatusSyncService`, which owns their relays.
+      .andWhere('shipment.providerShipmentId IS NOT NULL')
+      .andWhere('shipment.deliveredRelayedAt IS NULL')
+      .andWhere('shipment.deliveredRelayFailureCount < :maxFailures', {
+        maxFailures: options.maxFailures,
+      })
+      .andWhere('COALESCE(shipment.deliveredAt, shipment.createdAt) >= :deliveredSince', {
+        deliveredSince: options.deliveredSince,
+      })
+      .andWhere(
+        '(shipment.deliveredRelayLastFailureAt IS NULL OR shipment.deliveredRelayLastFailureAt < :lastFailureBefore)',
+        { lastFailureBefore: options.lastFailureBefore },
+      )
+      .orderBy('shipment.createdAt', 'ASC')
+      .take(options.limit)
+      .getMany();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async markDeliveredRelayed(id: string, at: Date): Promise<boolean> {
+    const result = await this.repository.update(
+      { id, deliveredRelayedAt: IsNull() },
+      { deliveredRelayedAt: at },
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  async recordDeliveredRelayFailure(id: string, at: Date): Promise<number> {
+    // The increment is an expression, so the query builder rather than the
+    // object form of `update()`; `RETURNING` hands back the post-increment count
+    // so the caller can tell the attempt that exhausted the bound.
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(ShipmentOrmEntity)
+      .set({
+        deliveredRelayFailureCount: () => '"deliveredRelayFailureCount" + 1',
+        deliveredRelayLastFailureAt: at,
+      })
+      .where('id = :id', { id })
+      .andWhere('"deliveredRelayedAt" IS NULL')
+      .returning(['deliveredRelayFailureCount'])
+      .execute();
+    const rows = result.raw as ReadonlyArray<{ deliveredRelayFailureCount?: unknown }>;
+    const count = rows[0]?.deliveredRelayFailureCount;
+    return typeof count === 'number' && Number.isFinite(count) ? count : 0;
   }
 
   private buildOrmEntity(input: CreateShipmentInput): ShipmentOrmEntity {
@@ -320,6 +402,14 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     entity.waybillRelayLastFailedAt = null;
     entity.waybillRelayLastFailureReason = null;
     entity.waybillRelayLastFailureConnectionId = null;
+    // Nothing relayed at birth (#3506). A branch-1 row born `delivered` keeps
+    // NULL too: it carries no provider id, and the re-drive pass — like the
+    // scan it follows — only ever reads provider-backed rows (branch-1 is
+    // `FulfillmentStatusSyncService`'s, disjoint by branch). The count is
+    // explicit for the same reason as the waybill count above.
+    entity.deliveredRelayedAt = null;
+    entity.deliveredRelayFailureCount = 0;
+    entity.deliveredRelayLastFailureAt = null;
     return entity;
   }
 
@@ -338,6 +428,12 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     if (filters.shippingMethod !== undefined) where.shippingMethod = filters.shippingMethod;
     if (filters.hasTracking !== undefined) {
       where.trackingNumber = filters.hasTracking ? Not(IsNull()) : IsNull();
+    }
+    // #3528 — exact match, unlike `hasTracking`'s presence test. A tracking
+    // number is an opaque carrier-issued code; nobody types a partial one and
+    // gets a useful answer, so this is `=`, never `LIKE`.
+    if (filters.trackingNumber !== undefined) {
+      where.trackingNumber = filters.trackingNumber;
     }
     if (filters.hasProviderShipmentId !== undefined) {
       where.providerShipmentId = filters.hasProviderShipmentId ? Not(IsNull()) : IsNull();
@@ -409,7 +505,16 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
       entity.reservationConsumedAt,
       entity.fulfillmentWorkId,
       this.toWaybillRelayFailure(entity),
+      this.toDeliveredRelayState(entity),
     );
+  }
+
+  private toDeliveredRelayState(entity: ShipmentOrmEntity): DeliveredRelayState {
+    return {
+      relayedAt: entity.deliveredRelayedAt,
+      failureCount: entity.deliveredRelayFailureCount,
+      lastFailureAt: entity.deliveredRelayLastFailureAt,
+    };
   }
 
   /**

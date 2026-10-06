@@ -84,6 +84,7 @@ describe('SalesDocumentView', () => {
         failureMode: null,
         failureReason: null,
         artefactCount: 0,
+        artefacts: [],
         identity: { ...identity, recordId: 'fis-1', providerType: 'fiscal-provider' },
       };
 
@@ -120,6 +121,7 @@ describe('SalesDocumentView', () => {
           failureMode: null,
           failureReason: null,
           artefactCount: 0,
+          artefacts: null,
           identity: { ...identity, recordId: 'fis-2', completedAt: null },
         },
       ];

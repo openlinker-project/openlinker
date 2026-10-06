@@ -7,9 +7,17 @@
  * in demo mode.
  */
 import { describe, expect, it } from 'vitest';
-import { BASE_NAV_GROUPS, buildNavGroups, isNavItemVisible, navRoleOf } from './nav-registry';
+import {
+  BASE_NAV_GROUPS,
+  buildNavGroups,
+  isNavItemVisible,
+  isOmsNavItemVisible,
+  navRoleOf,
+  sessionNeedsOmsRouting,
+} from './nav-registry';
 import { RoleValues } from './nav-registry.types';
 import type { LiveNavGroup, NavGroup } from './nav-registry.types';
+import type { OmsRoutingState } from '../features/fulfillment-authority';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 import { ANONYMOUS_SESSION } from '../shared/auth/session.types';
 import type { Session } from '../shared/auth/session.types';
@@ -68,7 +76,11 @@ describe('buildNavGroups', () => {
 
   describe('per-item requiresRole gate (#3076)', () => {
     const diagnosticsItems = (isAdmin: boolean): string[] => {
-      const groups = buildNavGroups({ isAdmin, demoMode: false, role: isAdmin ? 'admin' : 'operator' });
+      const groups = buildNavGroups({
+        isAdmin,
+        demoMode: false,
+        role: isAdmin ? 'admin' : 'operator',
+      });
       const diagnostics = byLabel(groups, 'Diagnostics');
       if (diagnostics?.kind !== 'live') throw new Error('expected a live Diagnostics group');
       return diagnostics.items.map((i) => i.label);
@@ -91,6 +103,86 @@ describe('buildNavGroups', () => {
       expect(items).toContain('Jobs & Logs');
       expect(items).toContain('Webhooks');
       expect(items).toContain('Cursors');
+    });
+  });
+
+  describe('per-item requiresOms gate (#3505)', () => {
+    const operationsItems = (omsRouting?: OmsRoutingState): string[] => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        role: 'operator',
+        permissions: ['orders:read', 'orders:write', 'bench:write'],
+        omsRouting,
+      });
+      const operations = byLabel(groups, 'Operations');
+      if (operations?.kind !== 'live') throw new Error('expected a live Operations group');
+      return operations.items.map((i) => i.label);
+    };
+
+    it('should show Fulfilment and Pack bench when routing is on', () => {
+      const items = operationsItems('on');
+      expect(items).toContain('Fulfilment');
+      expect(items).toContain('Pack bench');
+    });
+
+    it('should hide Fulfilment and Pack bench when routing is off', () => {
+      const items = operationsItems('off');
+      expect(items).not.toContain('Fulfilment');
+      expect(items).not.toContain('Pack bench');
+      expect(items).toContain('Orders');
+    });
+
+    it('should hide them while the routing state is unknown, including by default', () => {
+      expect(operationsItems('unknown')).not.toContain('Fulfilment');
+      expect(operationsItems()).not.toContain('Pack bench');
+    });
+
+    it('should show them when the routing state could not be read', () => {
+      const items = operationsItems('unreadable');
+      expect(items).toContain('Fulfilment');
+      expect(items).toContain('Pack bench');
+    });
+
+    it('should still apply the permission gate when routing is on', () => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        role: 'operator',
+        permissions: ['orders:read'],
+        omsRouting: 'on',
+      });
+      const operations = byLabel(groups, 'Operations');
+      if (operations?.kind !== 'live') throw new Error('expected a live Operations group');
+      expect(operations.items.map((i) => i.label)).not.toContain('Fulfilment');
+    });
+  });
+
+  describe('isOmsNavItemVisible', () => {
+    it.each<[OmsRoutingState, boolean]>([
+      ['on', true],
+      ['unreadable', true],
+      ['off', false],
+      ['unknown', false],
+    ])('should resolve a requiresOms item to %s → %s', (state, visible) => {
+      expect(isOmsNavItemVisible({ to: '/x', label: 'X', requiresOms: true }, state)).toBe(visible);
+    });
+
+    it('should never hide an item that does not require OMS', () => {
+      expect(isOmsNavItemVisible({ to: '/x', label: 'X' }, 'off')).toBe(true);
+    });
+  });
+
+  describe('sessionNeedsOmsRouting', () => {
+    it('should need the routing state for a session that can see a routing-gated entry', () => {
+      expect(sessionNeedsOmsRouting(['orders:read', 'orders:write'], 'operator')).toBe(true);
+      // Pack bench is gated on bench:write since #3439.
+      expect(sessionNeedsOmsRouting(['bench:write'], 'operator')).toBe(true);
+    });
+
+    it('should not need it for a session that cannot see any routing-gated entry', () => {
+      expect(sessionNeedsOmsRouting(['orders:read'], 'viewer')).toBe(false);
+      expect(sessionNeedsOmsRouting()).toBe(false);
     });
   });
 
@@ -118,7 +210,7 @@ describe('buildNavGroups', () => {
     it('declares no group role gate other than admin, which is the only one honoured', () => {
       const declared = BASE_NAV_GROUPS.filter(
         (group): group is Extract<typeof group, { requiresRole?: unknown }> =>
-          'requiresRole' in group && group.requiresRole !== undefined,
+          'requiresRole' in group && group.requiresRole !== undefined
       ).map((group) => group.requiresRole);
 
       expect(declared.length).toBeGreaterThan(0);
@@ -135,18 +227,28 @@ describe('buildNavGroups', () => {
   // preferred whenever one exists, and #3439 minted this one for exactly
   // this purpose.
   describe('"Pack bench" permission gate (#3439)', () => {
-    it.each(['admin', 'operator', 'packer'])('is visible to a %s session holding bench:write', (role) => {
-      const groups = buildNavGroups({
-        isAdmin: role === 'admin',
-        demoMode: false,
-        role,
-        permissions: ['bench:write'],
-      });
-      expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
-    });
+    it.each(['admin', 'operator', 'packer'])(
+      'is visible to a %s session holding bench:write',
+      (role) => {
+        const groups = buildNavGroups({
+          isAdmin: role === 'admin',
+          demoMode: false,
+          omsRouting: 'on',
+          role,
+          permissions: ['bench:write'],
+        });
+        expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
+      }
+    );
 
     it('is hidden from a viewer session, which holds no bench:write', () => {
-      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer', permissions: [] });
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        omsRouting: 'on',
+        role: 'viewer',
+        permissions: [],
+      });
       expect(itemLabels(byLabel(groups, 'Operations'))).not.toContain('Pack bench');
     });
 
@@ -156,7 +258,13 @@ describe('buildNavGroups', () => {
     });
 
     it('does not drop its sibling items in the same group for a permission-gated absence', () => {
-      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer', permissions: [] });
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        omsRouting: 'on',
+        role: 'viewer',
+        permissions: [],
+      });
       const labels = itemLabels(byLabel(groups, 'Operations'));
       expect(labels).toContain('Orders');
       expect(labels).toContain('Analytics');
@@ -204,6 +312,7 @@ describe('buildNavGroups', () => {
       const groups = buildNavGroups({
         isAdmin: false,
         demoMode: false,
+        omsRouting: 'on',
         role: 'packer',
         permissions: ['bench:write'],
       });
@@ -227,10 +336,15 @@ describe('buildNavGroups', () => {
       '%s is visible to admin, operator, and viewer',
       (label) => {
         for (const role of ['admin', 'operator', 'viewer']) {
-          const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+          const groups = buildNavGroups({
+            isAdmin: role === 'admin',
+            demoMode: false,
+            omsRouting: 'on',
+            role,
+          });
           expect(itemLabels(byLabel(groups, 'Operations'))).toContain(label);
         }
-      },
+      }
     );
 
     // The pre-existing items (never role-gated by #3221) are unaffected —
@@ -240,10 +354,15 @@ describe('buildNavGroups', () => {
       '%s is unaffected — still visible to every authenticated role',
       (label) => {
         for (const role of ['admin', 'operator', 'viewer', 'packer']) {
-          const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+          const groups = buildNavGroups({
+            isAdmin: role === 'admin',
+            demoMode: false,
+            omsRouting: 'on',
+            role,
+          });
           expect(itemLabels(byLabel(groups, 'Operations'))).toContain(label);
         }
-      },
+      }
     );
   });
 
@@ -266,9 +385,14 @@ describe('buildNavGroups', () => {
     // already reaches `isNavItemVisible` as `undefined` and fails CLOSED.
     it('returns undefined for the anonymous session the provider starts at', () => {
       expect(navRoleOf(ANONYMOUS_SESSION)).toBeUndefined();
-      expect(isNavItemVisible({ to: '/bench', label: 'Pack bench', requiresRole: ['packer'] }, {
-        role: navRoleOf(ANONYMOUS_SESSION),
-      })).toBe(false);
+      expect(
+        isNavItemVisible(
+          { to: '/bench', label: 'Pack bench', requiresRole: ['packer'] },
+          {
+            role: navRoleOf(ANONYMOUS_SESSION),
+          }
+        )
+      ).toBe(false);
     });
 
     it('returns undefined when an authenticated session carries no user', () => {
@@ -277,7 +401,11 @@ describe('buildNavGroups', () => {
   });
 
   describe('isNavItemVisible', () => {
-    const item = { to: '/bench', label: 'Pack bench', requiresRole: ['admin', 'operator', 'packer'] } as const;
+    const item = {
+      to: '/bench',
+      label: 'Pack bench',
+      requiresRole: ['admin', 'operator', 'packer'],
+    } as const;
 
     it('is visible when the role matches', () => {
       expect(isNavItemVisible(item, { role: 'packer' })).toBe(true);
@@ -302,9 +430,13 @@ describe('buildNavGroups', () => {
         requiresPermission: 'automations:read',
         requiresRole: ['admin'],
       } as const;
-      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'operator' })).toBe(false);
+      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'operator' })).toBe(
+        false
+      );
       expect(isNavItemVisible(both, { permissions: [], role: 'admin' })).toBe(false);
-      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'admin' })).toBe(true);
+      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'admin' })).toBe(
+        true
+      );
     });
   });
 });
