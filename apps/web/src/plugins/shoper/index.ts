@@ -1,16 +1,18 @@
 /**
  * Shoper plugin
  *
- * Front for the Shoper connection (#3639): the guided setup route, the
- * setup card, and the order defaults (delivery / payment / status) edit
- * section (#3702). No other contributions yet. The section reads
- * `enabledCapabilities` only to explain why its lists are unavailable.
+ * Front for the Shoper connection (#3639): the guided setup route, the setup
+ * card, the edit-connection section (webhook callback URL (#3644) and order
+ * defaults: delivery / payment / status (#3702)) and the Configure webhooks
+ * action (#3644). The components read `enabledCapabilities` only to explain
+ * why a control is unavailable.
  *
  * @module plugins/shoper
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
-import { ShoperOrderDefaultsSection } from './components/shoper-order-defaults-section';
+import { ShoperConnectionActions } from './components/shoper-connection-actions';
+import { ShoperStructuredSection } from './components/shoper-structured-section';
 import { shoperConnectionConfig } from './shoper-connection-config';
 import { shoperSetupRoute } from './shoper-setup.route';
 
@@ -28,7 +30,10 @@ export const shoperPlugin: OpenLinkerPlugin = definePlugin({
       to: '/connections/new/shoper',
       badge: 'API token',
     },
-    StructuredConfigSection: ShoperOrderDefaultsSection,
+    getCallbackUrlDefault: () =>
+      typeof window !== 'undefined' ? window.location.origin : undefined,
+    StructuredConfigSection: ShoperStructuredSection,
     connectionConfig: shoperConnectionConfig,
+    ConnectionActions: ShoperConnectionActions,
   },
 });

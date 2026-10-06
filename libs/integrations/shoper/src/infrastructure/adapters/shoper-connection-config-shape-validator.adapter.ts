@@ -35,6 +35,7 @@ export class ShoperConnectionConfigShapeValidatorAdapter
       issues.push(...parsed.issues.map((message) => ({ path: 'baseUrl', message })));
     }
     issues.push(...validateDefaults(config.defaults));
+    issues.push(...validateCallbackBaseUrl(config.openlinkerCallbackBaseUrl));
     return issues.length > 0
       ? Promise.reject(new InvalidConnectionConfigException(this.pluginName, issues))
       : Promise.resolve();
@@ -62,4 +63,23 @@ function validateDefaults(defaults: unknown): Array<{ path: string; message: str
       ? []
       : [{ path: `defaults.${key}`, message: 'must be a positive integer (an id from the shop)' }];
   });
+}
+
+/** Absent or blank is fine (the webhook install then asks for it); a present value must be an http(s) URL. */
+function validateCallbackBaseUrl(value: unknown): Array<{ path: string; message: string }> {
+  if (value === undefined || value === null || value === '') {
+    return [];
+  }
+  const path = 'openlinkerCallbackBaseUrl';
+  if (typeof value !== 'string') {
+    return [{ path, message: 'must be a string' }];
+  }
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? []
+      : [{ path, message: 'must use http:// or https://' }];
+  } catch {
+    return [{ path, message: 'must be a valid URL' }];
+  }
 }

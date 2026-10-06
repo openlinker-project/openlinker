@@ -12,6 +12,7 @@ import {
   Post,
   Param,
   Headers,
+  Query,
   Req,
   Res,
   HttpCode,
@@ -28,6 +29,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiHeader } from '@nestjs
 import { Public } from '../../auth/decorators/public.decorator';
 import { WebhookService } from '../application/services/webhook.service';
 import { RequestWithRawBody } from './middleware/raw-body.middleware';
+import { readStringQuery } from './read-string-query';
 import { WebhookAuthenticationException } from '../application/errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../application/errors/webhook-replay.exception';
 import { WebhookDecodeException } from '../application/errors/webhook-decode.exception';
@@ -80,6 +82,7 @@ export class WebhookController {
     @Param('provider') provider: string,
     @Param('connectionId') connectionId: string,
     @Headers() headers: Record<string, string>,
+    @Query() query: Record<string, unknown>,
     @Req() req: RequestWithRawBody,
     // Only usage of the raw Response object in this controller — needed to
     // override the route's default 202 with 200 on the handshake-echo path
@@ -119,7 +122,13 @@ export class WebhookController {
     }
 
     try {
-      const result = await this.webhookService.processWebhook(provider, connectionId, rawBody, headers);
+      const result = await this.webhookService.processWebhook(
+        provider,
+        connectionId,
+        rawBody,
+        headers,
+        readStringQuery(query),
+      );
       if (result !== undefined) {
         // Handshake echo — verified live against Infakt's own "Zweryfikuj"
         // button (2026-07-01): it reports "could not verify" on our default

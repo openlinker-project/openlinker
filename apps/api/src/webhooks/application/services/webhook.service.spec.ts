@@ -150,6 +150,34 @@ describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)',
     });
   });
 
+  describe('URL query for token-authenticated providers', () => {
+    it('should hand the delivery URL query to the decoder verify, beside the headers and the secret', async () => {
+      await service.processWebhook(provider, connectionId, rawBody, headers, { token: 'abc' });
+
+      expect(decoder.verify).toHaveBeenCalledWith({
+        rawBody,
+        headers,
+        secret: 'secret',
+        query: { token: 'abc' },
+      });
+    });
+
+    it('should call verify WITHOUT a query key when the caller supplied none, so existing decoders see the same input as before', async () => {
+      await service.processWebhook(provider, connectionId, rawBody, headers);
+
+      const input = decoder.verify.mock.calls[0]?.[0];
+      expect(input).toEqual({ rawBody, headers, secret: 'secret' });
+      expect(input).not.toHaveProperty('query');
+    });
+
+    it('should never put the query into a delivery row or a routing request', async () => {
+      await service.processWebhook(provider, connectionId, rawBody, headers, { token: 'super-secret-token' });
+
+      expect(JSON.stringify(inboundRouting.resolveEvent.mock.calls)).not.toContain('super-secret-token');
+      expect(JSON.stringify(jobGate.insertDeliveryWithJob.mock.calls)).not.toContain('super-secret-token');
+    });
+  });
+
   describe('decoder dispatch + three-state decode', () => {
     it('routes at ingress and writes the gate row in its final job_enqueued status with the job', async () => {
       await service.processWebhook(provider, connectionId, rawBody, headers);

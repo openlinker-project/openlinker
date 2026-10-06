@@ -32,6 +32,8 @@ import { SHOPER_ADAPTER_KEY, SHOPER_BRAND, SHOPER_PLATFORM_TYPE } from './shoper
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { ShoperCustomerProvisioner } from './infrastructure/provisioners/shoper-customer.provisioner';
 import { ShoperAdapterFactory, type ShoperAdapters } from './application/shoper-adapter.factory';
+import { ShoperInboundWebhookDecoderAdapter } from './infrastructure/adapters/shoper-inbound-webhook-decoder.adapter';
+import { ShoperWebhookEventTranslatorAdapter } from './infrastructure/adapters/shoper-webhook-event-translator.adapter';
 import { ShoperRetryClassifierAdapter } from './infrastructure/adapters/shoper-retry-classifier.adapter';
 import { ShoperAuthFailureClassifierAdapter } from './infrastructure/adapters/shoper-auth-failure-classifier.adapter';
 import { ShoperConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/shoper-connection-config-shape-validator.adapter';
@@ -97,6 +99,20 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
       host.retryClassifierRegistry.register(
         SHOPER_ADAPTER_KEY,
         new ShoperRetryClassifierAdapter(),
+      );
+      // Inbound webhooks (#3644). The decoder is keyed by PLATFORM TYPE (the
+      // `:provider` segment of the delivery route) and authenticates the token in
+      // the delivery URL, since Shoper's own signature is unresolved (SPIKE-3638
+      // X5). The translator is keyed by adapter key. The PROVISIONER is registered
+      // by `ShoperIntegrationModule`: it needs `ConnectionPort` and
+      // `IWebhookSecretService`, which the `HostServices` bag does not carry.
+      host.inboundWebhookDecoderRegistry.register(
+        shoperAdapterManifest.platformType,
+        new ShoperInboundWebhookDecoderAdapter(),
+      );
+      host.webhookEventTranslatorRegistry.register(
+        SHOPER_ADAPTER_KEY,
+        new ShoperWebhookEventTranslatorAdapter(),
       );
     },
 
