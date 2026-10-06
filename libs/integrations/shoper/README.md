@@ -359,7 +359,9 @@ mapping is not persisted at `createOrder`, so a parcel always ships the remainde
 `ShoperOrderSourceAdapter` ingests orders placed in the shop (#3711). It is **opt-in**: `OrderSource` is in
 `supportedCapabilities` but not in `defaultEnabledCapabilities`, so a connection that exists only as a catalogue
 master never starts polling orders. **No scheduler task is registered** - a recurring poll is a separate decision,
-because the shop's request ceiling is unknown (SPIKE-3638 C5/C6, `x-shop-api-limit: 10`, unit unstated).
+because the shop's request ceiling is unknown (SPIKE-3638 C5/C6, `x-shop-api-limit: 10`, unit unstated). Enabling
+`OrderSource` on a connection still opts it into the core tasks scoped to that capability (automation deadline sweep,
+`returns.orphan.reconcile`, the order FX stamp sweep and the tax-rate backfill); none of them calls the shop's API.
 
 - **Feed (`listOrderFeed`)**: an `order_id` keyset - `order=order_id ASC` plus `filters[order_id][>]=<cursor>`
   (both live-verified). The cursor is the highest id seen, so no date, time zone or same-second edge is involved.
@@ -374,6 +376,9 @@ because the shop's request ceiling is unknown (SPIKE-3638 C5/C6, `x-shop-api-lim
   `paymentStatus`.
 - **Events**: an order that is already cancelled or refunded when first seen is reported as `cancelled`, which core
   routes through the cancellation relay instead of the create/update path; everything else is `created`.
+- **Payment**: reports `paid` (Shoper's `is_paid`) or `cod` (`is_cash_on_delivery`, the "Pobranie" method) and otherwise
+  nothing. `awaiting` is never reported: it blocks shipping labels, and Shoper cannot tell an unpaid prepay order
+  from one paid at pickup. A terminal order reports nothing.
 - **Price and tax**: a line's `price` is the gross unit price the buyer paid and passes through untouched; the totals
   are declared `inclusive`. A line's tax rate is read from its stored tax name and left **absent** when unreadable.
   The tax in the totals is derived by division and is informational.

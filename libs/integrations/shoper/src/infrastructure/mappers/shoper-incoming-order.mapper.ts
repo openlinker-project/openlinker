@@ -172,16 +172,22 @@ export function mapShoperOrderStatus(status: ShoperOrderStatusInfo | null): stri
 }
 
 /**
- * Reported only when the order says so: COD, paid in full, or untouched by any
- * payment. A part-payment, a terminal status and an unreadable sum report
- * nothing rather than a guess.
+ * Reports `cod` or `paid`, and otherwise NOTHING - the silence is load-bearing.
+ *
+ * `awaiting` is deliberately never reported. `DISPATCH_BLOCKING_PAYMENT_STATUSES`
+ * holds `awaiting` and `refunded`, so either one makes OpenLinker refuse a
+ * shipping label with a 422, and Shoper cannot tell "unpaid, the buyer will pay
+ * before dispatch" from "unpaid, pays at pickup or the courier": only the
+ * "Pobranie" method sets `is_cash_on_delivery`, while a cash-at-pickup or bank
+ * transfer order is also `paid = 0`. Reporting `awaiting` would block shipping
+ * orders that are legitimately unpaid. PrestaShop and WooCommerce follow the same
+ * rule: a source that cannot distinguish the two must not assume the first.
+ * A terminal status says nothing about money either, so it reports nothing.
  */
 export function mapShoperPaymentStatus(
   row: ShoperOrderRow,
   status: ShoperOrderStatusInfo | null,
 ): PaymentStatus | undefined {
-  // A terminal order says nothing about money: `refunded` would block a
-  // re-dispatch and a cancelled order owes nothing (the WooCommerce precedent).
   if (status?.type === 4) {
     return undefined;
   }
@@ -190,11 +196,6 @@ export function mapShoperPaymentStatus(
   }
   if (row.is_paid === true) {
     return PAYMENT_STATUS.Paid;
-  }
-  const paid = num(row.paid);
-  const sum = num(row.sum);
-  if (paid === 0 && sum !== undefined && sum > 0) {
-    return PAYMENT_STATUS.Awaiting;
   }
   return undefined;
 }

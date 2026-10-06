@@ -92,10 +92,11 @@ describe('mapShoperPaymentStatus', () => {
     expect(mapShoperPaymentStatus(buildOrderRow(), status(3))).toBe('paid');
   });
 
-  it('should report awaiting for an untouched, unpaid order', () => {
-    expect(mapShoperPaymentStatus(buildOrderRow({ is_paid: false, paid: '0.00', sum: '214.35' }), status(1))).toBe(
-      'awaiting',
-    );
+  it('should report NOTHING for an unpaid order, since awaiting would block dispatch', () => {
+    // Orders 4 and 9 of the live shop: shipped, paid 0.00, paid at pickup. A reported
+    // `awaiting` would make OpenLinker refuse their shipping label.
+    expect(mapShoperPaymentStatus(buildOrderRow({ is_paid: false, paid: '0.00', sum: '214.35' }), status(1))).toBeUndefined();
+    expect(mapShoperPaymentStatus(buildOrderRow({ is_paid: false, paid: '0.00', sum: '999.00' }), status(3))).toBeUndefined();
   });
 
   it('should report nothing for a part-payment, a zero sum or a terminal status', () => {
