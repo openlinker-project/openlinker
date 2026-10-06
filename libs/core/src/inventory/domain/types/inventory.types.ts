@@ -228,6 +228,10 @@ export interface InventoryFilters {
   /**
    * Leave out positions marked stale (the master no longer reports them).
    * Absent keeps every row, so existing callers read what they always did.
+   *
+   * The OMS router sets it (#3481): it acts on the quantity, so a row the
+   * #2322 / #3206 repairs staled, or one of a product deleted at the master
+   * (#1689), must not count units that no longer exist.
    */
   excludeStale?: boolean;
 }
