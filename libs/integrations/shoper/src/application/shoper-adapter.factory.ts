@@ -106,7 +106,12 @@ export class ShoperAdapterFactory {
       ),
       orderSource: new ShoperOrderSourceAdapter(
         client,
-        new ShoperOrderReferenceProvider(client),
+        // Through the host cache: the bag is rebuilt per call, so a per-instance memo
+        // alone would re-read these tables in every order job.
+        new ShoperOrderReferenceProvider(client, {
+          cache,
+          keyPrefix: `shoper:order-reference:${connection.id}:${base.host}`,
+        }),
         shopContext,
         connection,
       ),

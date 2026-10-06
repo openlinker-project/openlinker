@@ -28,7 +28,7 @@ import type {
   ShoperOrderRow,
   ShoperOrderSourceAddress,
 } from '../../domain/types/shoper-api.types';
-import type { ShoperOrderStatusInfo } from '../shop-context/shoper-order-reference.provider';
+import type { ShoperOrderStatusInfo } from '../../domain/types/shoper-order-status.types';
 import { mapShoperTaxName } from './shoper-tax-rate.mapper';
 
 const EPOCH_ISO = '1970-01-01T00:00:00.000Z';

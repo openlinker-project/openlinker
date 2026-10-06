@@ -39,10 +39,8 @@ import {
   shopLocalToIso,
 } from '../../mappers/shoper-incoming-order.mapper';
 import { ORDER_MARKER_PREFIX } from '../../mappers/shoper-order-input.mapper';
-import type {
-  ShoperOrderReferenceProvider,
-  ShoperOrderStatusInfo,
-} from '../../shop-context/shoper-order-reference.provider';
+import type { ShoperOrderStatusInfo } from '../../../domain/types/shoper-order-status.types';
+import type { ShoperOrderReferenceProvider } from '../../shop-context/shoper-order-reference.provider';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
 /** Shoper order ids are positive integers; anything else is refused before a URL is built. */

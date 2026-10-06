@@ -51,7 +51,7 @@ The plan below is written against the most likely answers and **isolates every u
 
 **Known and accepted limit:** an id-ordered feed observes only NEW orders; a later edit of an already-read order is not re-observed by the poll. That is the same trade-off PrestaShop accepts when `date_upd` is unfilterable (#2877) and it is why the webhook backstop (#3644) matters: the webhook, not the poll, is the update channel. `GET /object-mtime/order/:id` exists but is per-object, so it cannot drive a feed (M7). The first-run window honours `config.orders.initialSyncFrom` only if U3 shows a usable creation date; otherwise the first run reads the whole collection (stated, as WooCommerce does).
 
-Event type is always `created`; `eventKey = "<order_id>:created"` (a stable key, so a re-read page dedups).
+Event type is `created`, except that an order already terminal (cancelled, rejected, returned) when first seen is reported as `cancelled` - core routes that through the cancellation relay and never through the create/update path (the PrestaShop and WooCommerce sources do the same). `eventKey = "<order_id>:<eventType>"` (a stable key, so a re-read page dedups).
 
 ### 3.2 `getOrder`
 
@@ -109,3 +109,10 @@ No integration test: nothing here touches Postgres or Redis.
 3. **The OpenLinker echo filter depends on `notes_priv` being on the list rows** (3.3); otherwise the filter moves to `getOrder`, which cannot drop an item from the feed and would require a different mechanism (an ingestion-level exclusion).
 4. **Recurring poll load** is deliberately not enabled (3.4).
 5. The stack base: this branch depends on #3701 not being rebased again; if the stack is re-cut, this plan's files are all new, so only `shoper-plugin.ts` / the factory can conflict.
+
+## 7. Changes after review (supersede the text above where they differ)
+
+- **Status**: type 4 is split by label into `cancelled` / `refunded` (refund vocabulary: `zwro`, `refund`, `return`, ...), the PrestaShop precedent, instead of reading every terminal type as `cancelled`. A terminal order reports no payment status.
+- **Payment**: only `paid` (`is_paid`) or `cod` (`is_cash_on_delivery`) is reported; **`awaiting` is never reported**. It is in `DISPATCH_BLOCKING_PAYMENT_STATUSES`, so it would make OpenLinker refuse a shipping label, and Shoper cannot tell an unpaid prepay order from one paid at pickup (orders 4 and 9 of the trial shop are shipped with `paid 0.00`). PrestaShop and WooCommerce follow the same rule.
+- **Reference tables**: statuses, currencies and shipping names are read through the host `CachePort` (key per connection, TTL 300 s, an empty table is never stored). `getCapabilityAdapter` builds a fresh bag per call, so a per-instance memo alone cost about six requests per order job against a shop whose request ceiling is unknown. `ShoperOrderStatusInfo` moved to `domain/types`.
+- **Echo**: core's destination-echo guard (#940) already skips a re-read of an order owned by another connection; the `notes_priv` filter in the feed saves the job and its requests on top of that.
