@@ -501,6 +501,21 @@ export class ShoperOrderProcessorAdapter
             detail: 'Shoper has no order cancellation OpenLinker can write; cancel the order in the shop',
           };
 
+        case 'delivered':
+          // Shoper has no delivered state OpenLinker can drive; declined as no-capability.
+          return {
+            outcome: 'unsupported',
+            detail: 'Shoper has no order status for delivered that OpenLinker can write',
+          };
+
+        case 'in-progress':
+          // Moving a Shoper order to a status needs an operator-chosen status mapping that
+          // does not exist for this adapter; declined rather than guessed.
+          return {
+            outcome: 'unsupported',
+            detail: 'Shoper has no in-progress order status OpenLinker can write without a status mapping',
+          };
+
         default: {
           // Compile break when a lifecycle member is added (#2286); returns rather
           // than throws so a widened union degrades to a surfaced no-op (ADR-055).
