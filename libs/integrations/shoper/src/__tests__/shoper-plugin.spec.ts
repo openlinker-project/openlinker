@@ -154,15 +154,15 @@ describe('Shoper plugin', () => {
       const { host } = hostWithRegistries();
 
       await expect(
-        createShoperPlugin().createCapabilityAdapter(connection(), 'OrderSource', host),
-      ).rejects.toThrow(/does not support capability: OrderSource/);
+        createShoperPlugin().createCapabilityAdapter(connection(), 'OfferManager', host),
+      ).rejects.toThrow(/does not support capability: OfferManager/);
     });
 
     it('should not decrypt the credentials or open a transport to say so', async () => {
       const { host, credentialsGet } = hostWithRegistries();
 
       await createShoperPlugin()
-        .createCapabilityAdapter(connection(), 'OrderSource', host)
+        .createCapabilityAdapter(connection(), 'OfferManager', host)
         .catch(() => undefined);
 
       expect(credentialsGet).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe('Shoper plugin', () => {
       await expect(
         createShoperPlugin().createCapabilityAdapter(
           connection({ config: {} }),
-          'OrderSource',
+          'OfferManager',
           host,
         ),
       ).rejects.toThrow(/does not support capability/);
