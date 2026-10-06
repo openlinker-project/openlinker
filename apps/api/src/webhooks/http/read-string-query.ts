@@ -18,7 +18,7 @@ export function readStringQuery(query: Record<string, unknown> | undefined): Rec
     return out;
   }
   for (const [key, value] of Object.entries(query)) {
-    const first = Array.isArray(value) ? value[0] : value;
+    const first: unknown = Array.isArray(value) ? (value as unknown[])[0] : value;
     if (typeof first === 'string') {
       out[key] = first;
     }

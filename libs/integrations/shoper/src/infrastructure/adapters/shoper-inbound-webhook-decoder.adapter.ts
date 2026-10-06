@@ -115,7 +115,11 @@ export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoder
   }
 
   private header(headers: Record<string, string>, name: string): string | undefined {
-    const value = headers[name] ?? headers[name.toLowerCase()];
+    // HTTP header names are case-insensitive and a caller may hand them over in
+    // any case, so match by lower-cased name instead of two exact spellings.
+    const wanted = name.toLowerCase();
+    const match = Object.entries(headers).find(([key]) => key.toLowerCase() === wanted);
+    const value = match?.[1];
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
   }
 }
