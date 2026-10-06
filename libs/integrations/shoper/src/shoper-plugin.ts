@@ -47,7 +47,10 @@ export const shoperAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPER_ADAPTER_KEY,
   platformType: SHOPER_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
+  // `OrderSource` is likewise opt-in: ingesting a shop's orders is polling load
+  // against a shop whose request ceiling is unknown (SPIKE-3638 C6), and a
+  // connection that exists only as a catalogue master must not start doing it.
   // `OrderProcessorManager` is supported but NOT on by default. Without this, a
   // connection created with no explicit capability list gets every capability
   // in the manifest, and `OrderSyncService` fans each ingested order out to every
@@ -123,6 +126,7 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
           {
             ProductMaster: async () => (await build()).productMaster,
             InventoryMaster: async () => (await build()).inventoryMaster,
+            OrderSource: async () => (await build()).orderSource,
             OrderProcessorManager: async () => {
               const { orderProcessor } = await build();
               if (orderProcessor === null) {

@@ -28,6 +28,8 @@ import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { ShoperOrderOptionsProvider } from '../infrastructure/shop-context/shoper-order-options.provider';
 import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
+import { ShoperOrderSourceAdapter } from '../infrastructure/adapters/order-source/shoper-order-source.adapter';
+import { ShoperOrderReferenceProvider } from '../infrastructure/shop-context/shoper-order-reference.provider';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
 import { ShoperProductReader } from '../infrastructure/readers/shoper-product.reader';
@@ -38,6 +40,8 @@ import { ShoperTaxTableProvider } from '../infrastructure/shop-context/shoper-ta
 export interface ShoperAdapters {
   readonly productMaster: ShoperProductMasterAdapter;
   readonly inventoryMaster: ShoperInventoryMasterAdapter;
+  /** Needs only the HTTP client and shop context, so it is always present. */
+  readonly orderSource: ShoperOrderSourceAdapter;
   /** Absent when the plugin was built without its Nest-provided dependencies. */
   readonly orderProcessor: ShoperOrderProcessorAdapter | null;
 }
@@ -98,6 +102,12 @@ export class ShoperAdapterFactory {
         identifierMapping,
         shopContext,
         productReader,
+        connection,
+      ),
+      orderSource: new ShoperOrderSourceAdapter(
+        client,
+        new ShoperOrderReferenceProvider(client),
+        shopContext,
         connection,
       ),
       orderProcessor:

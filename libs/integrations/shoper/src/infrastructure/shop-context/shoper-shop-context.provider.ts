@@ -107,6 +107,7 @@ export class ShoperShopContextProvider {
       weightUnit: data.locale_default_weight ?? FALLBACK_WEIGHT_UNIT,
       warehousesEnabled: isFlagOn(data.warehouses_enabled),
       decrementsStockOnOrder: isFlagOn(data.shopping_update_stock_on_buy),
+      timezone: nonBlank(data.locale_timezone),
     };
   }
 }
@@ -120,6 +121,10 @@ export class ShoperShopContextProvider {
  */
 function isFlagOn(value: unknown): boolean {
   return !(value === false || value === 0 || value === '0' || value === 'false');
+}
+
+function nonBlank(value: string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
 /** A cache entry written by another release must not be trusted blindly. */

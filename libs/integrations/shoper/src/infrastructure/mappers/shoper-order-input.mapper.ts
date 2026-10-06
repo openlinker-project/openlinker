@@ -16,8 +16,14 @@ import type { ShoperOrderDefaults } from '../../domain/types/shoper-config.types
 /** RFC-5322-lite: enough to refuse an obviously unusable value. */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Prefix of every `notes_priv` marker OpenLinker writes. The order SOURCE reads it
+ * to recognise an order it created itself, so both sides share this one string.
+ */
+export const ORDER_MARKER_PREFIX = 'OpenLinker order ';
+
 export function orderMarker(internalOrderId: string): string {
-  return `OpenLinker order ${internalOrderId}`;
+  return `${ORDER_MARKER_PREFIX}${internalOrderId}`;
 }
 
 export function readBuyerEmail(order: OrderCreate): string | undefined {

@@ -5,7 +5,7 @@ OpenLinker adapter for [Shoper](https://www.shoper.pl) (Polish SaaS e-commerce p
 **Status:** connection skeleton (#3639) plus the **read side of `ProductMaster`** (#3675): products, variants,
 search and id enumeration. Categories (#3676), tax rate (#3677) and deletion detection (#3678) complete
 ProductMaster. `InventoryMaster` (#3686, #3687) and the `OrderProcessorManager` skeleton (#3692) are described
-below; fulfilment writeback and webhooks land in their own epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
+below, and `OrderSource` (#3711) ingests the shop's own orders; fulfilment writeback and webhooks land in their own epics of the "Shoper MVP Integration" milestone. Evidence base: `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md`
 and the live findings recorded in `docs/plans/implementation-plan-shoper-product-master-read.md`.
 
 | | |
@@ -353,6 +353,45 @@ When OpenLinker ships an order it pushed into Shoper, the lifecycle relay (ADR-0
 **Partial shipment is not expressed.** The `dispatched` event carries no lines, and the line -> `order_product_id`
 mapping is not persisted at `createOrder`, so a parcel always ships the remainder. Shoper itself supports
 `products: [{ order_product_id, quantity }]`; using it needs both of those first.
+
+## OrderSource
+
+`ShoperOrderSourceAdapter` ingests orders placed in the shop (#3711). It is **opt-in**: `OrderSource` is in
+`supportedCapabilities` but not in `defaultEnabledCapabilities`, so a connection that exists only as a catalogue
+master never starts polling orders. **No scheduler task is registered** - a recurring poll is a separate decision,
+because the shop's request ceiling is unknown (SPIKE-3638 C5/C6, `x-shop-api-limit: 10`, unit unstated).
+
+- **Feed (`listOrderFeed`)**: an `order_id` keyset - `order=order_id ASC` plus `filters[order_id][>]=<cursor>`
+  (both live-verified). The cursor is the highest id seen, so no date, time zone or same-second edge is involved.
+  `limit` is capped at 50: Shoper silently answers 10 for anything larger.
+- **Order (`getOrder`)**: `GET /orders/:id` plus `GET /order-products?filters[order_id]=:id` - the order row carries
+  no lines. A line of another order in the answer proves the filter was ignored and the read is refused.
+- **Status**: `GET /statuses` `type` (1 new, 2 processing, 3 shipped, 4 terminal) becomes
+  `pending / processing / shipped`. Type 4 covers cancelled, rejected AND returned, so the status labels decide:
+  a label in the refund vocabulary (`zwrócone`, `refunded`, `returned`, ...) reads as `refunded`, anything else as
+  `cancelled` - the split PrestaShop makes the same way. A terminal status in a language outside that vocabulary
+  reads as `cancelled`; an unlisted status reads as `pending` and is warned about. A terminal order reports no
+  `paymentStatus`.
+- **Events**: an order that is already cancelled or refunded when first seen is reported as `cancelled`, which core
+  routes through the cancellation relay instead of the create/update path; everything else is `created`.
+- **Price and tax**: a line's `price` is the gross unit price the buyer paid and passes through untouched; the totals
+  are declared `inclusive`. A line's tax rate is read from its stored tax name and left **absent** when unreadable.
+  The tax in the totals is derived by division and is informational.
+- **Time zone**: Shoper timestamps are naive and shop-local. The zone comes from `application-config.locale_timezone`;
+  without it they are read as UTC.
+- **Buyer tax id**: `tax_identification_number`, blank reads as *unknown*, never as *asserted none*.
+
+**An order OpenLinker created in the shop is not re-ingested.** Core already skips a re-read of an order whose internal
+id belongs to another connection (the destination-echo guard, #940). On top of that the feed drops orders carrying
+`notes_priv = "OpenLinker order <id>"` (what `OrderProcessorManager` writes), so they cost no `getOrder` job and no
+requests; the cursor still advances over them.
+
+**Known limit: the poll sees NEW orders only.** Shoper has no bulk modified-since for orders (`object-mtime` is per
+object), so a later edit of an already-read order is not re-observed by a poll. The webhook backstop (#3644) is the
+update channel; until it exists, a status change in the shop reaches OpenLinker only through a re-sync of that order.
+
+**Not mapped**: pickup point (locker) data, and the order's payment / delivery method ids beyond the delivery
+method label.
 
 ## Known gaps
 

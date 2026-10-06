@@ -2,6 +2,7 @@ import type { Connection, IdentifierMappingPort } from '@openlinker/core/identif
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 
 import { ShoperConfigException } from '../../domain/exceptions/shoper-config.exception';
+import { ShoperOrderSourceAdapter } from '../../infrastructure/adapters/order-source/shoper-order-source.adapter';
 import { ShoperProductMasterAdapter } from '../../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperAdapterFactory } from '../shoper-adapter.factory';
 
@@ -36,6 +37,18 @@ describe('ShoperAdapterFactory', () => {
     );
 
     expect(adapters.productMaster).toBeInstanceOf(ShoperProductMasterAdapter);
+  });
+
+  it('should always build the order source, which needs no customer provisioner', async () => {
+    const adapters = await factory.createAdapters(
+      connection(),
+      mapping,
+      resolver({ token: TOKEN }),
+      fetchImpl,
+    );
+
+    expect(adapters.orderSource).toBeInstanceOf(ShoperOrderSourceAdapter);
+    expect(adapters.orderProcessor).toBeNull();
   });
 
   it('should resolve credentials per call from the connection credentialsRef', async () => {
