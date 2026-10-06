@@ -48,6 +48,12 @@ export function ShoperStructuredSection({
           connection. Enable it first, then configure webhooks.
         </Alert>
       )}
+      <ShoperOrderDefaultsSection
+        connection={connection}
+        form={form}
+        configIsParseable={configIsParseable}
+        syncStructuredToJson={syncStructuredToJson}
+      />
     </>
   );
 }
