@@ -1916,8 +1916,9 @@ export class AllegroOfferManagerAdapter
     // #431 — smart-link pre-step. Compute once at the top so the body
     // builder + platform-params applier stay synchronous (their current
     // contract). On `unique`, `productSet[0]` becomes a card-link reference
-    // and Allegro inherits GPSR + parameters from the card; otherwise we
-    // fall through to inline (which uses the seller-defaults checked above).
+    // and Allegro inherits name/parameters/images from the card (GPSR does
+    // not come from the card: the seller declares it); otherwise we fall
+    // through to inline. Both paths use the seller-defaults checked above.
     const cardLinkResult = await this.maybeResolveProductCard(cmd);
 
     const body = this.buildCreateOfferRequest(cmd, cardLinkResult);
@@ -2475,11 +2476,12 @@ export class AllegroOfferManagerAdapter
 
     // #431 — smart-link short-circuit. When the variant's EAN uniquely
     // matches an existing Allegro product card, build the productSet entry
-    // as a card reference: `product.id` only, plus the per-entry quantity.
-    // Allegro inherits `name`, `parameters`, `images`, and the EU GPSR
-    // fields (`responsibleProducer`, `safetyInformation`) from the card,
-    // so we **skip** writing all of those on the entry. Offer-section
-    // `body.parameters[]` (set above) still flows through normally.
+    // as a card reference: `product.id` plus the seller's GPSR declaration.
+    // Allegro inherits `name`, `parameters` and `images` from the card, so we
+    // skip those. `responsibleProducer` / `safetyInformation` are the
+    // seller's own declaration, not card properties, and Allegro rejects the
+    // create with RESPONSIBLE_PRODUCER_NOT_SPECIFIED without them (#3708).
+    // Offer-section `body.parameters[]` (set above) still flows through.
     if (cardLinkResult.kind === 'unique') {
       // Reference the catalogue card by id only. The offer's sellable quantity
       // lives on `body.stock.available` (set in buildCreateOfferRequest on
@@ -2488,7 +2490,16 @@ export class AllegroOfferManagerAdapter
       // sellable stock here was both wrong-typed (Allegro wants an object, not
       // a bare int → `JsonMappingException` at `productSet[0].quantity`) and
       // wrong semantics. OL lists 1 variant = 1 sale unit, so we omit it (#808).
-      body.productSet = [{ product: { id: cardLinkResult.productId } }];
+      // `sellerDefaults!` is guaranteed by the `createOffer` preflight
+      // (`collectMissingSellerDefaultsFields`), which runs on every path,
+      // card-linked included.
+      body.productSet = [
+        {
+          product: { id: cardLinkResult.productId },
+          responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
+          safetyInformation: this.sellerDefaults!.safetyInformation,
+        },
+      ];
       this.logger.log(
         `Allegro smart-link applied: connection=${this.connectionId} ` +
           `productId=${cardLinkResult.productId} outcome=unique`
