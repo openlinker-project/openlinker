@@ -12,6 +12,47 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.14.0](https://github.com/openlinker-project/openlinker/compare/v0.13.0...v0.14.0) (2026-10-06)
+
+
+### Features
+
+* **bench:** 'Change size' on the pack bench label card ([#3664](https://github.com/openlinker-project/openlinker/issues/3664)) ([d858c0f](https://github.com/openlinker-project/openlinker/commit/d858c0f8b6a926364abe1f19edf5c1dcff2e55c9))
+* **bench:** packers can change the parcel size and replace the label ([#3663](https://github.com/openlinker-project/openlinker/issues/3663)) ([343b1e5](https://github.com/openlinker-project/openlinker/commit/343b1e58c4729625fb7a6d5f5bf0c3e70ead6c19))
+* **bench:** the pack bench uses the application topbar ([#3658](https://github.com/openlinker-project/openlinker/issues/3658)) ([9a4ae69](https://github.com/openlinker-project/openlinker/commit/9a4ae694f63c62112ef6c3ba7aaea1f17b2635ca))
+* **connections:** archive and restore a disabled connection ([#3665](https://github.com/openlinker-project/openlinker/issues/3665)) ([4639b29](https://github.com/openlinker-project/openlinker/commit/4639b291271fdf3358982cd76a584449d152fe9d))
+* **connections:** flag a destination that packs and ships orders itself ([#2118](https://github.com/openlinker-project/openlinker/issues/2118)) ([#3672](https://github.com/openlinker-project/openlinker/issues/3672)) ([1a8ccce](https://github.com/openlinker-project/openlinker/commit/1a8ccce2dc0fa62067150a17ab05f92006050a48))
+* **fulfillment:** closing a parcel tells the sales channel it shipped, with the tracking number ([#3627](https://github.com/openlinker-project/openlinker/issues/3627)) ([7c0be13](https://github.com/openlinker-project/openlinker/commit/7c0be1310d3766216372feee0e620ee335f8117a))
+* **fulfillment:** fulfilment work detail page ([#3096](https://github.com/openlinker-project/openlinker/issues/3096)) ([#3632](https://github.com/openlinker-project/openlinker/issues/3632)) ([e710b59](https://github.com/openlinker-project/openlinker/commit/e710b59ef477c3c18017b7d3e87784adcc4d60ff))
+* **orders:** order search, internal notes, tags, column presets and CSV/XLSX export ([#3633](https://github.com/openlinker-project/openlinker/issues/3633)) ([edce7dd](https://github.com/openlinker-project/openlinker/commit/edce7dd16ae9b38bad2af150b187f747e4749960))
+* **platform:** migrations run on an empty database, sync job retention, dead-lettered stream entries and nightly backups ([#3631](https://github.com/openlinker-project/openlinker/issues/3631)) ([17aeb21](https://github.com/openlinker-project/openlinker/commit/17aeb21f461723a04290b84774f931991c373cd3))
+* **products:** fill empty variant weight and dimensions from the shop on master sync ([#3660](https://github.com/openlinker-project/openlinker/issues/3660)) ([3b97389](https://github.com/openlinker-project/openlinker/commit/3b97389fb7faffaca2aa775c596231106bbf80a5))
+* **shipping:** parcel profile per delivery method for automatic labels ([#3661](https://github.com/openlinker-project/openlinker/issues/3661)) ([9b062d0](https://github.com/openlinker-project/openlinker/commit/9b062d0c9b57b4ecc9bd491c893aedc0ef38b974))
+* **users:** admin creates an account with a one-time password ([#3456](https://github.com/openlinker-project/openlinker/issues/3456)) ([#3504](https://github.com/openlinker-project/openlinker/issues/3504)) ([10af9a3](https://github.com/openlinker-project/openlinker/commit/10af9a3ceec969bc90ec195e6d4a0c41caf00cfa))
+* **web,api:** OMS onboarding wizard - turn OpenLinker packing on from the UI ([#3457](https://github.com/openlinker-project/openlinker/issues/3457)) ([#3628](https://github.com/openlinker-project/openlinker/issues/3628)) ([3e4fd70](https://github.com/openlinker-project/openlinker/commit/3e4fd70d8f4ff11d8a48af749e13ec50903e6d61))
+* **web:** make the connection channel pill one clickable chip ([#3673](https://github.com/openlinker-project/openlinker/issues/3673)) ([2dbe581](https://github.com/openlinker-project/openlinker/commit/2dbe581c7359a430e8565dd0cbd3781fe9104fe1))
+* **web:** OMS setup wizard as seven steps, continuation of [#3457](https://github.com/openlinker-project/openlinker/issues/3457) ([#3668](https://github.com/openlinker-project/openlinker/issues/3668)) ([3c92c0d](https://github.com/openlinker-project/openlinker/commit/3c92c0d3d4b45663dc0d7fe41cebc3ef9533aa7b))
+* **web:** rename Document routing to Sales documents routing and link to it from /sales-documents ([#3659](https://github.com/openlinker-project/openlinker/issues/3659)) ([28facad](https://github.com/openlinker-project/openlinker/commit/28facad64a783b63ed0ce1d2ace8ae7ebc8445b0))
+* **web:** set a default parcel per delivery method and prefill label forms from it ([#3662](https://github.com/openlinker-project/openlinker/issues/3662)) ([762aa24](https://github.com/openlinker-project/openlinker/commit/762aa2468f25595c8b6bf2fc020528dbe7fb823f))
+
+
+### Bug Fixes
+
+* **bench:** name the order's sales document in every status, receipts included ([#3666](https://github.com/openlinker-project/openlinker/issues/3666)) ([dd390f8](https://github.com/openlinker-project/openlinker/commit/dd390f86750b48afc42e56d8c657375e3e915e27))
+* **bench:** show the order's receipt or invoice in every status on the pack bench ([#3667](https://github.com/openlinker-project/openlinker/issues/3667)) ([2f4f549](https://github.com/openlinker-project/openlinker/commit/2f4f549394d7a18e9535f738664c344369a46dc6))
+* **eparagony:** declare EparagonyInvoicingAdapter a DocumentNumberConsumer ([#3501](https://github.com/openlinker-project/openlinker/issues/3501)) ([146e60c](https://github.com/openlinker-project/openlinker/commit/146e60c8329f99f08752f60fe9c75d1206dc8a9f))
+* **integrations:** no duplicate labels, offers or orders when a write is retried; correct WooCommerce and PrestaShop order creation ([#3630](https://github.com/openlinker-project/openlinker/issues/3630)) ([64f91a8](https://github.com/openlinker-project/openlinker/commit/64f91a89c04b5e0242bee36c50156a04686bbbb8))
+* **inventory:** count a routed order's reserved units exactly once ([#3480](https://github.com/openlinker-project/openlinker/issues/3480)) ([#3491](https://github.com/openlinker-project/openlinker/issues/3491)) ([c5bce15](https://github.com/openlinker-project/openlinker/commit/c5bce15d6c6568382d7b2fb362c7396074690301))
+* **inventory:** give stock back to the product master on routed-order cancellation ([#3479](https://github.com/openlinker-project/openlinker/issues/3479)) ([#3493](https://github.com/openlinker-project/openlinker/issues/3493)) ([15c57b8](https://github.com/openlinker-project/openlinker/commit/15c57b82b1a7a1791ee530ccf6ee92eb42c9b276))
+* **inventory:** lower product-master stock once per routed order line ([#3453](https://github.com/openlinker-project/openlinker/issues/3453)) ([#3489](https://github.com/openlinker-project/openlinker/issues/3489)) ([a678d56](https://github.com/openlinker-project/openlinker/commit/a678d5608697e7218724a52252e61eeadac422b8))
+* **listings:** readiness/submit-gate drift + operator override for checksum-invalid EAN ([#3495](https://github.com/openlinker-project/openlinker/issues/3495)) ([a652d8a](https://github.com/openlinker-project/openlinker/commit/a652d8adfe6cdc76505a6339df14618445e4846f))
+* **oms:** route on live stock only, never on stale inventory rows ([#3481](https://github.com/openlinker-project/openlinker/issues/3481)) ([#3499](https://github.com/openlinker-project/openlinker/issues/3499)) ([cc6607c](https://github.com/openlinker-project/openlinker/commit/cc6607ca7e5ded7aee780cca5235e4963721c028))
+* **orders:** do not route an order the product master already had ([#3455](https://github.com/openlinker-project/openlinker/issues/3455)) ([#3497](https://github.com/openlinker-project/openlinker/issues/3497)) ([c73bc9d](https://github.com/openlinker-project/openlinker/commit/c73bc9d232e04b535b2dfbdda9e575af914a29e6))
+* **orders:** do not route orders another system has been told to ship ([#3488](https://github.com/openlinker-project/openlinker/issues/3488)) ([#3496](https://github.com/openlinker-project/openlinker/issues/3496)) ([f61ce22](https://github.com/openlinker-project/openlinker/commit/f61ce2260afa9da2def71f2fe1907e1379e9befb))
+* **orders:** do not route orders placed in the operator's own shop ([#3487](https://github.com/openlinker-project/openlinker/issues/3487)) ([#3490](https://github.com/openlinker-project/openlinker/issues/3490)) ([ec53478](https://github.com/openlinker-project/openlinker/commit/ec53478e8995ce50a45884ab3377929e707632b5))
+* **orders:** hold an order the OMS router cannot place instead of mirroring it ([#3485](https://github.com/openlinker-project/openlinker/issues/3485)) ([#3503](https://github.com/openlinker-project/openlinker/issues/3503)) ([0018bfa](https://github.com/openlinker-project/openlinker/commit/0018bfad6738bac7c9ebe2a8a6c627d3f98762f6))
+* **returns:** restock a returned line in the master that owns it ([#3486](https://github.com/openlinker-project/openlinker/issues/3486)) ([#3498](https://github.com/openlinker-project/openlinker/issues/3498)) ([01db5c6](https://github.com/openlinker-project/openlinker/commit/01db5c6d7ba8e70cb4b44a9d04ca5d68cb5d72ad))
+
 ## [0.13.0](https://github.com/openlinker-project/openlinker/compare/v0.12.0...v0.13.0) (2026-09-29)
 
 
