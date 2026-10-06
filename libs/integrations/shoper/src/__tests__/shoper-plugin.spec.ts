@@ -16,6 +16,7 @@ function hostWithRegistries(): {
   host: HostServices;
   registries: Record<string, { register: jest.Mock }>;
   webhookRegistries: { decoder: { register: jest.Mock }; translator: { register: jest.Mock } };
+  schedulerRegister: jest.Mock;
   credentialsGet: jest.Mock;
 } {
   const registries = {
@@ -26,6 +27,7 @@ function hostWithRegistries(): {
     retryClassifierRegistry: { register: jest.fn() },
   };
   const webhookRegistries = { decoder: { register: jest.fn() }, translator: { register: jest.fn() } };
+  const schedulerRegister = jest.fn();
   const credentialsGet = jest.fn().mockResolvedValue({ token: 'secret-token-value' });
   const host = {
     http: { forConnection: jest.fn().mockReturnValue(jest.fn()) },
@@ -33,9 +35,10 @@ function hostWithRegistries(): {
     credentialsResolver: { get: credentialsGet },
     inboundWebhookDecoderRegistry: webhookRegistries.decoder,
     webhookEventTranslatorRegistry: webhookRegistries.translator,
+    schedulerTaskRegistry: { register: schedulerRegister },
     ...registries,
   } as unknown as HostServices;
-  return { host, registries, webhookRegistries, credentialsGet };
+  return { host, registries, webhookRegistries, schedulerRegister, credentialsGet };
 }
 
 function connection(overrides: Record<string, unknown> = {}): Connection {
@@ -81,6 +84,17 @@ describe('Shoper plugin', () => {
       expect(registry.register).toHaveBeenCalledTimes(1);
       expect(registry.register).toHaveBeenCalledWith('shoper.restapi.v1', expect.any(Object));
     }
+  });
+
+  it('should register the orders-poll task that backs up a lost webhook', () => {
+    const { host, schedulerRegister } = hostWithRegistries();
+
+    createShoperPlugin().register?.(host);
+
+    expect(schedulerRegister).toHaveBeenCalledTimes(1);
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: 'shoper-orders-poll', jobType: 'marketplace.orders.poll' }),
+    );
   });
 
   it('should register the webhook decoder by PLATFORM TYPE and the translator by adapter key', () => {

@@ -34,6 +34,7 @@ import type { ShoperCustomerProvisioner } from './infrastructure/provisioners/sh
 import { ShoperAdapterFactory, type ShoperAdapters } from './application/shoper-adapter.factory';
 import { ShoperInboundWebhookDecoderAdapter } from './infrastructure/adapters/shoper-inbound-webhook-decoder.adapter';
 import { ShoperWebhookEventTranslatorAdapter } from './infrastructure/adapters/shoper-webhook-event-translator.adapter';
+import { buildShoperSchedulerTasks } from './infrastructure/scheduler/shoper-scheduler-tasks';
 import { ShoperRetryClassifierAdapter } from './infrastructure/adapters/shoper-retry-classifier.adapter';
 import { ShoperAuthFailureClassifierAdapter } from './infrastructure/adapters/shoper-auth-failure-classifier.adapter';
 import { ShoperConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/shoper-connection-config-shape-validator.adapter';
@@ -114,6 +115,10 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
         SHOPER_ADAPTER_KEY,
         new ShoperWebhookEventTranslatorAdapter(),
       );
+      // Orders-poll backstop for a lost webhook (#3644, #904).
+      for (const task of buildShoperSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     createCapabilityAdapter<T>(
