@@ -38,6 +38,12 @@ export interface ShoperMapContext {
   readonly currency: string | null;
   /** Shop weight unit (`application-config.locale_default_weight`). */
   readonly weightUnit: string;
+  /**
+   * Whether the shop runs the multi-warehouse module (`warehouses_enabled`).
+   * With it on, `product-stocks.stock` is no longer known to be the whole pool,
+   * so stock reads and writes refuse instead of reporting a wrong total.
+   */
+  readonly warehousesEnabled: boolean;
 }
 
 const KILOGRAM = 'KILOGRAM';
