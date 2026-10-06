@@ -51,6 +51,8 @@ export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secre
 export { useSetWebhookSecretMutation } from './hooks/use-set-webhook-secret-mutation';
 export { useWebhookStatusQuery } from './hooks/use-webhook-status-query';
 export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
+// #2118 - which connections the operator declared as packing and shipping by themselves.
+export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';

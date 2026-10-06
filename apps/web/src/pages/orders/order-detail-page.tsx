@@ -39,6 +39,8 @@ import { OrderBuyerTaxIdValue } from '../../features/orders/components/order-buy
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
+import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
+import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import {
   OrderNotesPanel,
@@ -95,6 +97,8 @@ export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const query = useOrderQuery(internalOrderId);
   const connectionsQuery = useConnectionsQuery();
+  // Destinations the operator declared as packing and shipping by themselves (#2118).
+  const fulfilmentOwnedIds = useFulfilmentOwnedConnectionIds();
   const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
   // Non-fatal by design: a returns read that could not answer must not take the
   // order's own timeline down with it — the page renders one section shorter.
@@ -462,11 +466,17 @@ export function OrderDetailPage(): ReactElement {
               rendered left stack rather than inside the capability-gated
               shipment panel — an order with no shipping-capable connection
               still gets packed. */}
-          <OrderPackedControl
-            internalOrderId={order.internalOrderId}
-            packedAt={order.packedAt}
-            packedByUserId={order.packedByUserId}
-          />
+          {/* #2118 - hidden for an order routed to a destination the operator
+              declared as packing and shipping by itself. Display-only: the
+              packed endpoint still accepts a write, so that system can still
+              report the order as packed. */}
+          {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+            <OrderPackedControl
+              internalOrderId={order.internalOrderId}
+              packedAt={order.packedAt}
+              packedByUserId={order.packedByUserId}
+            />
+          )}
 
           {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
               (#2081 rule 3). Beside the packed control for the same reason it
