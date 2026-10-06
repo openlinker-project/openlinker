@@ -78,6 +78,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     labelPrintedAt: null,
     completedAt: null,
     lines: [line()],
+    packerNotes: [],
     ...over,
   };
 }

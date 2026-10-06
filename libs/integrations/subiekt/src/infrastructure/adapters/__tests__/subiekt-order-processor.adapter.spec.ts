@@ -432,6 +432,19 @@ describe('SubiektOrderProcessorAdapter', () => {
       // only by luck - and an explicit key invites a future writer to trust it.
       expect(body && 'carrier' in body).toBe(false);
     });
+
+    it.each(['delivered', 'in-progress'] as const)(
+      'should decline a %s event without calling the bridge when no write is verified for it',
+      async (type) => {
+        let called = false;
+        const adapter = buildAdapter(() => (called = true));
+
+        const result = await adapter.write({ type, externalOrderId: '7' });
+
+        expect(result.outcome).toBe('unsupported');
+        expect(called).toBe(false);
+      },
+    );
   });
 
   describe('buyer country (adr__Ewid.adr_IdPanstwo)', () => {

@@ -20,6 +20,8 @@ export const benchQueryKeys = {
   // wrong box, which is the one thing this surface may never do.
   parcel: (workId: string) => ['bench', 'parcel', workId] as const,
   documents: (workId: string) => ['bench', 'documents', workId] as const,
+  // #3647. Its own key: the link is fetched only while the card offers it.
+  receiptLink: (workId: string) => ['bench', 'receipt-link', workId] as const,
   unlabelled: () => ['bench', 'unlabelled'] as const,
   // #3401 mockup-parity epic.
   activity: (workId: string) => ['bench', 'activity', workId] as const,

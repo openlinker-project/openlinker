@@ -90,6 +90,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     labelPrintedAt: null,
     completedAt: null,
     lines: [line()],
+    packerNotes: [],
     ...over,
   };
 }
@@ -179,6 +180,11 @@ describe('BenchParcelView (#2418)', () => {
   it('should render NO control that could commit or close the box', async () => {
     mount(parcel());
     await screen.findByTestId('bench-parcel');
+    // The documents panel reads separately and arrives later. Wait for it, so
+    // the inventory below is the box as the packer sees it, not whatever had
+    // rendered by the time the parcel did — reading too early hid its two
+    // print controls and made this pass or fail on timing.
+    await screen.findByRole('button', { name: 'Print label' });
 
     // Asserts the PERMITTED set, not a denied word list (#2905 review). A grep
     // for `done|finish|commit` can only refuse the spellings somebody thought
@@ -217,8 +223,75 @@ describe('BenchParcelView (#2418)', () => {
         // recent scan on an OPEN parcel, and cannot reach a closed box. A
         // deliberate addition to this allowlist, not an oversight.
         'Undo last scan',
+        // The documents panel's two print controls. Printing makes paper; it
+        // neither commits the contents nor closes the box.
+        'Print invoice',
+        'Print label',
       ].sort()
     );
+  });
+
+  describe('notes from the office (G03-6)', () => {
+    it('should show the flagged notes on the open parcel when packerNotes is non-empty', async () => {
+      mount(
+        parcel({
+          packerNotes: [
+            {
+              id: 'n1',
+              body: 'Put the printed invoice under the flap.',
+              authorUsername: 'marta.nowak',
+              createdAt: '2026-09-29T10:40:00Z',
+            },
+          ],
+        })
+      );
+
+      const block = await screen.findByTestId('bench-office-notes');
+      expect(block.textContent).toContain('Notes from the office (1)');
+      expect(block.textContent).toContain('Put the printed invoice under the flap.');
+      expect(block.textContent).toContain('marta.nowak');
+    });
+
+    it('should render no notes block when packerNotes is empty', async () => {
+      mount(parcel());
+
+      await screen.findByTestId('bench-parcel');
+      expect(screen.queryByTestId('bench-office-notes')).not.toBeInTheDocument();
+    });
+  });
+
+  // G03-6 — the panel used to say "packed … and it is closed" on a box at
+  // "0 of 1", because it keyed on the label state alone. The parcel view is
+  // the one place that knows whether the box is closed, so it must pass it.
+  describe('a missing label on an OPEN box (G03-6)', () => {
+    it('should show the pending label card, not the unlabelled block, while the box is open', async () => {
+      mount(parcel(), {
+        getDocuments: vi.fn().mockResolvedValue({
+          workId: 'w-1',
+          invoice: {
+            state: 'ready',
+            invoiceId: 'inv-1',
+            documentNumber: 'FV/2026/09/0412',
+            issuedAt: '2026-09-01T09:14:00Z',
+            blockReason: null,
+            unresolvedReason: null,
+          },
+          label: {
+            state: 'unavailable',
+            shipmentId: null,
+            carrier: null,
+            trackingNumber: null,
+            providerCode: 'ADDR_INCOMPLETE',
+            carrierMessage: null,
+            carrierMessageRedacted: false,
+            failedAt: '2026-09-04T14:20:00Z',
+          },
+        }),
+      });
+
+      expect(await screen.findByTestId('bench-documents-label-pending')).toBeInTheDocument();
+      expect(screen.queryByTestId('bench-documents-unlabelled')).not.toBeInTheDocument();
+    });
   });
 
   // ── #3406 — someone else has this box open ──────────────────────────────

@@ -11,6 +11,7 @@ import { WhoDecidesTile } from '../../features/fulfillment-authority';
 import { SourcingRulesTile } from '../../features/oms';
 import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
+import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -32,11 +33,12 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Document routing</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Sales documents routing</span> : null}
           {/* Ungated, unlike its admin-gated neighbours — see `WhoDecidesTile`'s docblock. */}
           <span className="toolbar-chip">Who decides what</span>
           {omsRoutingUi && isAdmin ? <span className="toolbar-chip">Sourcing rules</span> : null}
           {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Order tags</span> : null}
           {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
           {omsRoutingUi ? <span className="toolbar-chip">Inventory locations</span> : null}
           <span className="toolbar-chip">Upcoming</span>
@@ -126,6 +128,9 @@ export function SettingsPage(): ReactElement {
         {/* ── Sync pacing (admin-only, #2653) ───────────────────────── */}
         {isAdmin ? <SyncPacingTile /> : null}
 
+        {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
+        {isAdmin ? <OrderTagsSettingsTile /> : null}
+
         {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
         {omsRoutingUi ? <InventoryLocationsTile /> : null}
 
@@ -139,7 +144,8 @@ export function SettingsPage(): ReactElement {
             <span className="panel__meta">Coming soon</span>
           </div>
           <p className="muted-text panel-copy">
-            Sync failure alerts, manual-review triggers, and threshold notifications will be configurable here.
+            Sync failure alerts, manual-review triggers, and threshold notifications will be
+            configurable here.
           </p>
         </article>
 
@@ -170,7 +176,6 @@ export function SettingsPage(): ReactElement {
             Timezone, date format, and display density options will be available here.
           </p>
         </article>
-
       </div>
     </PageLayout>
   );

@@ -42,6 +42,21 @@ export class FulfillmentRoutingRuleOrmEntity {
   @Column({ type: 'uuid', name: 'processor_connection_id' })
   processorConnectionId!: string;
 
+  @Column({ type: 'varchar', length: 32, name: 'parcel_template', nullable: true })
+  parcelTemplate!: string | null;
+
+  @Column({ type: 'integer', name: 'parcel_length_mm', nullable: true })
+  parcelLengthMm!: number | null;
+
+  @Column({ type: 'integer', name: 'parcel_width_mm', nullable: true })
+  parcelWidthMm!: number | null;
+
+  @Column({ type: 'integer', name: 'parcel_height_mm', nullable: true })
+  parcelHeightMm!: number | null;
+
+  @Column({ type: 'integer', name: 'parcel_default_weight_grams', nullable: true })
+  parcelDefaultWeightGrams!: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

@@ -167,6 +167,7 @@ describe('ListingsController', () => {
       updateStatus: jest.fn(),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
+      markFailedIfPending: jest.fn(),
       findByBulkBatchId: jest.fn(),
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
@@ -208,6 +209,7 @@ describe('ListingsController', () => {
     findTaxRate: jest.fn(),
     clearTaxRate: jest.fn(),
     recordPhysicalDimensions: jest.fn(),
+    fillPhysicalDimensionsIfAbsent: jest.fn(),
     };
     categoryResolution = {
       resolveCategory: jest.fn(),

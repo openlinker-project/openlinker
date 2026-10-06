@@ -598,6 +598,23 @@ export interface OrderRecord {
   activeHold?: OrderHold | null;
   /** Every hold this order has ever carried, open and released (#2341). Detail only. */
   holdHistory?: OrderHold[] | null;
+  /**
+   * The Status-group "open return" badge (#2998). Absent means no OPEN
+   * return was found for this order — never a positive "no returns" claim,
+   * since the batched read is best-effort and degrades to absent on failure.
+   */
+  openReturn?: OrderOpenReturn;
+  /**
+   * Tag ids assigned to this order (#3532, D34). Absent means "not
+   * projected on this read"; an empty array is a positive "no tags".
+   */
+  tagIds?: string[];
+}
+
+/** The open-return badge payload (#2998) — count plus a stage hint. */
+export interface OrderOpenReturn {
+  count: number;
+  stage: string;
 }
 
 /** One inert state as an order row carries it (#2352). */
@@ -828,6 +845,27 @@ export interface OrderFilters {
    * filter on the page.
    */
   holdReason?: HoldReason;
+  /**
+   * "Is it packed" filter (#2997). ANDed with `health`, not a sixth bucket —
+   * an order is routinely packed AND `needs_attention`.
+   */
+  packed?: boolean;
+  /**
+   * Free-text search (#3527/#3528): order number, buyer name, buyer email,
+   * any line SKU, or a shipment tracking number. Debounced client-side
+   * before landing here (`?search=`).
+   */
+  search?: string;
+  /**
+   * "Has an open return" filter (#2998). "Open" is the `/returns` list's own
+   * `all_open` segment predicate, reused server-side rather than redefined
+   * here.
+   */
+  openReturn?: boolean;
+  /** One tag id (#3532, D34), `?tag=`. Mutually exclusive with `untagged`. */
+  tag?: string;
+  /** "No tags" filter (#3532), `?untagged=`. Mutually exclusive with `tag`. */
+  untagged?: boolean;
 }
 
 /**
@@ -900,4 +938,234 @@ export interface OrderLifecyclePhaseSummary {
   amending: number;
   blocked: number;
   ready: number;
+}
+
+/**
+ * An internal order note (#3531). `editedAt` is the "edited" marker (D33);
+ * `showToPacker` is decision D12's pack-bench visibility flag.
+ */
+export interface OrderNote {
+  id: string;
+  internalOrderId: string;
+  authorUserId: string;
+  /** Frozen at creation (#2282) — never a live lookup, so it survives a deleted author account. */
+  authorUsername: string;
+  body: string;
+  showToPacker: boolean;
+  editedAt: string | null;
+  /** null = not pinned. At most one note per order carries a value. */
+  pinnedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrderNoteRequest {
+  body: string;
+  showToPacker?: boolean;
+}
+
+export interface UpdateOrderNoteRequest {
+  body?: string;
+  showToPacker?: boolean;
+}
+
+/**
+ * One `GET /orders/:id/notes/timeline` entry (#3531) — an authored note act
+ * for the order's Activity timeline. `kind` is read as a plain string (see
+ * `order-note-timeline.schema.ts`): a kind this build predates still renders.
+ * `body` is the text as of that act; `null` for a deletion and a flag change.
+ */
+export interface OrderNoteTimelineEntry {
+  noteId: string;
+  kind: string;
+  occurredAt: string;
+  actorUsername: string;
+  body: string | null;
+  /** The packer flag as a result of the act; `null` when the act did not set it. */
+  showToPacker: boolean | null;
+}
+
+/**
+ * The closed `--tag-*` colour vocabulary (#3532/#3533). Mirrors
+ * `OrderTagColorValues` in `@openlinker/core/orders` — the FE-001 contract
+ * strategy (`apps/web` cannot import `@openlinker/core`, #591).
+ */
+export const OrderTagColorValues = [
+  'grey',
+  'blue',
+  'teal',
+  'green',
+  'amber',
+  'orange',
+  'pink',
+  'violet',
+] as const;
+export type OrderTagColorValue = (typeof OrderTagColorValues)[number];
+
+/** One order tag (#3532, D34). */
+export interface OrderTag {
+  id: string;
+  name: string;
+  color: OrderTagColorValue;
+  orderCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /order-tags/:tagId/bulk-assign` result (#3532). */
+export interface BulkAssignOrderTagResult {
+  tagId: string;
+  /** Orders that gained the tag by this call. */
+  added: number;
+  /** Orders that already carried it. */
+  alreadyTagged: number;
+}
+
+/**
+ * The export's own closed column vocabulary (#3534). Mirrors
+ * `ORDER_EXPORT_COLUMN_IDS`/`ORDER_EXPORT_COLUMN_LABELS` in
+ * `@openlinker/core/orders` (the FE-001 contract strategy, #591) — a column
+ * preset's `columns` array is free-form on the wire (#3530's own docblock),
+ * but a preset built from THIS list is guaranteed to survive
+ * `narrowOrderExportColumns` on the export job intact.
+ */
+export const ORDER_EXPORT_COLUMN_IDS = [
+  'internalOrderId',
+  'orderNumber',
+  'sourceConnectionId',
+  'customerName',
+  'customerEmail',
+  'country',
+  'placedAt',
+  'createdAt',
+  'recordStatus',
+  'currency',
+  'totalAmount',
+  'itemCount',
+  'skus',
+  'packed',
+  'fulfillmentState',
+] as const;
+export type OrderExportColumnIdValue = (typeof ORDER_EXPORT_COLUMN_IDS)[number];
+
+export const ORDER_EXPORT_COLUMN_LABELS: Record<OrderExportColumnIdValue, string> = {
+  internalOrderId: 'Order ID',
+  orderNumber: 'Order #',
+  sourceConnectionId: 'Source connection',
+  customerName: 'Buyer name',
+  customerEmail: 'Buyer email',
+  country: 'Country',
+  placedAt: 'Placed',
+  createdAt: 'Received',
+  recordStatus: 'Record status',
+  currency: 'Currency',
+  totalAmount: 'Total',
+  itemCount: 'Items',
+  skus: 'SKUs',
+  packed: 'Packed',
+  fulfillmentState: 'Fulfillment',
+};
+
+/**
+ * Mirrors core's `ORDER_EXPORT_DEFAULT_COLUMNS` — what the export job writes
+ * when a request names no columns. The dialog starts from THIS set so what it
+ * shows ticked is what the file would contain anyway (#3507 U1).
+ * Guarded, with the two lists around it, by
+ * `scripts/check-order-export-columns-mirror.mjs`.
+ */
+export const ORDER_EXPORT_DEFAULT_COLUMNS: readonly OrderExportColumnIdValue[] = [
+  'orderNumber',
+  'customerName',
+  'placedAt',
+  'currency',
+  'totalAmount',
+  'itemCount',
+  'recordStatus',
+];
+
+/**
+ * Mirrors core's `ORDER_EXPORT_PII_COLUMNS` — the columns the job blanks under
+ * `OL_STORE_PII=false`, and the ones the dialog's personal-data warning keys on.
+ * `country` is deliberately absent: redaction keeps it.
+ */
+export const ORDER_EXPORT_PII_COLUMNS: readonly OrderExportColumnIdValue[] = [
+  'customerName',
+  'customerEmail',
+];
+
+/**
+ * The `/orders` LIST's own toggleable-column vocabulary (#3530 recovery
+ * pass) — structurally distinct from `ORDER_EXPORT_COLUMN_IDS`
+ * (spreadsheet-shaped scalars) because the list's columns are composite
+ * (`customer` renders a name AND a city; `money` renders four stacked
+ * figures). Deliberately DISJOINT id strings from the export vocabulary, so
+ * one saved `OrderColumnPreset.columns` array can hold both sets at once —
+ * each surface's `OrderColumnPresetManager` narrows to the ids it
+ * recognises and ignores the rest (`order-column-preset-manager.tsx`'s own
+ * docblock).
+ *
+ * `select` (the bulk-action checkbox) and `order` (row identity) are NOT
+ * here — they are structural, not optional, and always render first.
+ */
+export const ORDER_LIST_COLUMN_IDS = ['customer', 'channel', 'status', 'shipment', 'money'] as const;
+export type OrderListColumnIdValue = (typeof ORDER_LIST_COLUMN_IDS)[number];
+
+export const ORDER_LIST_COLUMN_LABELS: Record<OrderListColumnIdValue, string> = {
+  customer: 'Customer',
+  channel: 'Channel',
+  status: 'Status',
+  shipment: 'Shipment',
+  money: 'Money',
+};
+
+/**
+ * A personal, named, ordered column set (#3530, D32). `userId: null` marks
+ * the single workspace default the read API resolves separately — it never
+ * appears inside a user's own array.
+ */
+export interface OrderColumnPreset {
+  id: string;
+  userId: string | null;
+  name: string;
+  columns: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The orders export run vocabulary (#3534, D35). Mirrors `@openlinker/core/orders`. */
+export const OrderExportFormatValues = ['csv', 'xlsx'] as const;
+export type OrderExportFormatValue = (typeof OrderExportFormatValues)[number];
+
+export const OrderExportScopeValues = ['filtered', 'selected'] as const;
+export type OrderExportScopeValue = (typeof OrderExportScopeValues)[number];
+
+export const OrderExportStatusValues = ['pending', 'ready', 'failed'] as const;
+export type OrderExportStatusValue = (typeof OrderExportStatusValues)[number];
+
+/** Above this row count, the export runs in the background (D47). */
+export const ORDER_EXPORT_BACKGROUND_THRESHOLD = 5000;
+
+export interface OrderExportRun {
+  id: string;
+  status: OrderExportStatusValue;
+  format: OrderExportFormatValue;
+  scope: OrderExportScopeValue;
+  rowCount: number | null;
+  containsPii: boolean | null;
+  errorMessage: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface CreateOrderExportRequest {
+  format?: OrderExportFormatValue;
+  scope?: OrderExportScopeValue;
+  selectedOrderIds?: string[];
+  columns?: string[];
+  placedFrom?: string;
+  placedTo?: string;
+  // The rest of the current /orders filters + sort, merged in verbatim by
+  // the caller (`buildExportFilterParams`) so the export always matches
+  // "current view" without restating every field here.
+  [key: string]: unknown;
 }

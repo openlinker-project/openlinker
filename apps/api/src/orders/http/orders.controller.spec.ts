@@ -53,6 +53,9 @@ import type {
   IFulfillmentRoutingService,
   IDeliveryRiderService,
 } from '@openlinker/core/mappings';
+import { SHIPMENT_QUERY_SERVICE_TOKEN } from '@openlinker/core/shipping';
+import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
+import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
 
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
 
@@ -121,6 +124,8 @@ describe('OrdersController', () => {
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
       updateFulfillmentBlock: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      updateFulfillmentRoutingSkipReason: jest.fn(),
       updateOmsAttention: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),
@@ -145,6 +150,8 @@ describe('OrdersController', () => {
       clearFxStampForRestatement: jest.fn(),
       countRemainingCurrencyMismatch: jest.fn(),
       stampPreRolloutEraForTesting: jest.fn(),
+      findSearchTextReindexPage: jest.fn(),
+      rewriteSearchText: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -217,6 +224,7 @@ describe('OrdersController', () => {
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
       getForOrder: jest.fn().mockResolvedValue(null),
+      getReceiptHandoverArtefact: jest.fn().mockResolvedValue(null),
       listSalesDocuments: jest.fn().mockResolvedValue({
         items: [],
         nextCursor: { invoice: null, fiscal: null },
@@ -277,6 +285,24 @@ describe('OrdersController', () => {
         {
           provide: ORDER_TEST_FIXTURE_SERVICE_TOKEN,
           useValue: mockTestFixtureService,
+        },
+        // #3528 / #2998 / #3532 — the three read seams the list and detail
+        // routes gained on this branch. Neutral defaults: no tracking match,
+        // no open returns, no tags — so every pre-existing expectation holds.
+        {
+          provide: SHIPMENT_QUERY_SERVICE_TOKEN,
+          useValue: { list: jest.fn().mockResolvedValue({ items: [], total: 0 }) },
+        },
+        {
+          provide: RETURNS_SERVICE_TOKEN,
+          useValue: { getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
+        },
+        {
+          provide: ORDER_TAG_SERVICE_TOKEN,
+          useValue: {
+            getForOrders: jest.fn().mockResolvedValue(new Map()),
+            listForOrder: jest.fn().mockResolvedValue([]),
+          },
         },
       ],
     }).compile();
@@ -643,7 +669,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true },
+        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true, parcelProfile: null },
       ]);
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -656,6 +682,7 @@ describe('OrdersController', () => {
         processorKind: 'ol_managed_carrier',
         processorConnectionId: 'conn-inpost',
         processorAvailable: true,
+        parcelProfile: null,
       });
       expect(result.items[1].deliveryResolution).toBeUndefined();
     });
@@ -683,7 +710,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([
         { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
@@ -726,7 +753,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
 
@@ -907,6 +934,7 @@ describe('OrdersController', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
 
       const result = await controller.getOrder('ol_order_shipped');
@@ -920,6 +948,7 @@ describe('OrdersController', () => {
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
         processorAvailable: true,
+        parcelProfile: null,
       });
     });
 
@@ -950,6 +979,7 @@ describe('OrdersController', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
       deliveryRider.resolve.mockResolvedValue({
         rider: 'not-connected',
@@ -1381,6 +1411,7 @@ describe('OrdersController', () => {
             failureMode: null,
             failureReason: null,
             artefactCount: 0,
+            artefacts: [],
             identity: { ...identity, recordId: 'fis-1', documentNumber: 'DOC/1' },
           },
         })

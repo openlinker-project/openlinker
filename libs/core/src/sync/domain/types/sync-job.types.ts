@@ -221,6 +221,14 @@ export const JobTypeValues = [
   // stock drop puts at risk, as persisted episodes. Reads OL's own tables and
   // repairs nothing; no platform call.
   'inventory.reservations.shortfall',
+  // #3453 — the routed-order SALE DECREMENT. With the OMS on, a routed order is
+  // never created in the product master, so OpenLinker lowers each line's stock
+  // in the master that owns it. One job per routed work; the per-line
+  // at-most-once guarantee is a Postgres claim, not this job's dedupe key.
+  // Unlike its `inventory.*` neighbours it DOES call a platform
+  // (`InventoryMasterPort.adjustInventory`). `connectionId` is the order's
+  // source connection, never a synthetic id (#2609).
+  'inventory.saleDecrement',
   // Repairs the `order_records.activeHoldReason` cache against `order_holds`
   // (#2340). Deliberately NOT named `marketplace.*`: it makes zero platform
   // calls and reads only OL's own tables - `inventory.provenance.backfill` is
@@ -284,12 +292,30 @@ export const JobTypeValues = [
   // nil-UUID system connection id, like its timeout-sweep sibling.
   'fulfillment.work.relaySweep',
 
+  // The reroute sweep (#3485, epic #3460). With the OMS on, an order the router
+  // refused (a line out of stock) or failed to route is HELD in OpenLinker
+  // rather than created in every product master; this pass re-enters routing
+  // for those orders by enqueueing `fulfillment.work.route`, so they route once
+  // stock arrives. Global scope under the nil-UUID system connection id, like
+  // its timeout- and relay-sweep siblings.
+  'fulfillment.work.rerouteSweep',
+
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is
   // filed under is the scope's own connection when the operator narrowed to
   // one, and otherwise diagnostic only — `SyncJob.connectionId` is
   // non-nullable, pending #1943.
   'analytics.currency.recalculate',
+
+  // Orders CSV/XLSX export (#3534, D35, mockup M5). One-shot: generates the
+  // file from the requesting operator's filters/scope/columns and writes it
+  // onto its own `order_exports` row. `bulk` lane (ADR-050) — a background
+  // export a human is waiting on, but a query-then-write job rather than a
+  // buyer-facing write, the same cost-of-starvation reasoning the catalogue
+  // sweeps use. `SyncJob.connectionId` is the system nil UUID, like
+  // `analytics.currency.recalculate` above, since an export spans every
+  // connection the operator's filters admit.
+  'orders.export',
 
   // Subiekt bridge reachability sweep (#3358). Before this, an unreachable
   // bridge produced no operator-facing signal at all — no alerting
@@ -346,6 +372,25 @@ export const JobStatusValues = ['queued', 'running', 'succeeded', 'dead'] as con
 export type JobStatus = (typeof JobStatusValues)[number];
 
 /**
+ * Sync Job Retention Status Values (#2946)
+ *
+ * A POSITIVE two-value whitelist, never an exclusion list — the
+ * ADR-049/#2604 outbox-retention shape applied to `sync_jobs`. A retention
+ * delete may target ONLY `succeeded` or `dead` rows; `queued`/`running` must
+ * never be reachable through this vocabulary, so a future `JobStatus` member
+ * cannot silently fall through into a prune the way it could if this were
+ * `Exclude<JobStatus, 'queued' | 'running'>`.
+ */
+export const SyncJobRetentionStatusValues = ['succeeded', 'dead'] as const;
+
+/**
+ * Sync Job Retention Status
+ *
+ * Derived union type from SyncJobRetentionStatusValues.
+ */
+export type SyncJobRetentionStatus = (typeof SyncJobRetentionStatusValues)[number];
+
+/**
  * Job Outcome Values
  *
  * Runtime array of all valid job outcome values. Outcome is the *business*
@@ -389,6 +434,7 @@ export const JobOutcomeReasonValues = [
   'auto_dispatch_payload_invalid',
   'auto_dispatch_not_enabled',
   'auto_dispatch_no_weight',
+  'auto_dispatch_no_dimensions',
   'auto_dispatch_no_address',
   'auto_dispatch_no_delivery_method',
   'auto_dispatch_work_not_eligible',
@@ -421,6 +467,21 @@ export type JobOutcomeReason = (typeof JobOutcomeReasonValues)[number];
 export interface SyncJobHandlerResult {
   outcome: JobOutcome;
   outcomeReason?: JobOutcomeReason;
+}
+
+/**
+ * Sync Job Dead Failure (#3505, G01-2)
+ *
+ * What the runner hands `SyncJobHandler.onDead` once a job has been marked
+ * `dead`. `nonRetryable` separates "a classifier called the error terminal"
+ * from "the retry ladder ran out" — a handler may word its own record
+ * differently for the two, but must treat both as final.
+ */
+export interface SyncJobDeadFailure {
+  /** The error message the runner persisted on the job. */
+  message: string;
+  /** `true` when the job died on a non-retryable error; `false` when attempts ran out. */
+  nonRetryable: boolean;
 }
 
 /**

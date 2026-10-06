@@ -33,6 +33,7 @@
  */
 import type { ReturnBucket } from './return-bucket.types';
 import type { ReturnStage } from './return-stage.types';
+
 import type { ReturnSegment } from './return-segment.types';
 import type { ReturnMoneyState } from './return-line.types';
 import type { RefundReason } from '@openlinker/core/orders/types';
@@ -223,4 +224,25 @@ export type ReturnDeclineUnsupportedReason =
 export interface ReturnDeclineAvailability {
   supported: boolean;
   reason: ReturnDeclineUnsupportedReason | null;
+}
+
+/**
+ * The "Open return" badge + filter for `/orders` (#2998).
+ *
+ * "Open" is the SAME `all_open` segment predicate `/returns` already uses
+ * (#2378, `ReturnSegmentValues`) — reused, never redefined, so the badge, the
+ * filter and the `/returns` worklist strip can never disagree about which
+ * returns count as open. Defined once here and read from the returns SQL
+ * (`ReturnRepository.SEGMENT_PREDICATES.all_open`).
+ */
+export interface OpenReturnOrderSummary {
+  /** How many `all_open` returns this order currently has. Always >= 1. */
+  openCount: number;
+  /**
+   * The stage of the MOST RECENTLY OPENED open return on this order — what
+   * the badge's hint renders. An order can have more than one open return;
+   * this reports one representative stage rather than a list, mirroring how
+   * the badge is a single pill.
+   */
+  latestStage: ReturnStage;
 }

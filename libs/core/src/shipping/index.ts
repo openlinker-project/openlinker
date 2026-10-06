@@ -59,6 +59,13 @@ export type {
   WaybillRelayFailure,
   RecordWaybillRelayFailureInput,
 } from './domain/types/waybill-relay-failure.types';
+// #3506 (G02-7) — the delivered-relay bookkeeping `Shipment.deliveredRelay`
+// carries. The re-drive bounds stay private to the status-sync service.
+export { NO_DELIVERED_RELAY_STATE } from './domain/types/delivered-relay.types';
+export type {
+  DeliveredRelayState,
+  FindDeliveredRelayPendingOptions,
+} from './domain/types/delivered-relay.types';
 
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
@@ -109,8 +116,18 @@ export {
   resolveAutoDispatchDeliveryIntent,
   resolveAutoDispatchParcel,
   resolveAutoDispatchRecipient,
+  resolveOrderDispatchTarget,
+  mergeAutoDispatchParcelOptions,
+  findMissingParcelRequirement,
 } from './domain/auto-dispatch';
-export type { AutoDispatchRefusalReason, AutoDispatchWorkLine } from './domain/auto-dispatch';
+export type {
+  AutoDispatchRefusalReason,
+  AutoDispatchWorkLine,
+  OrderDispatchTarget,
+  AutoDispatchParcelProfile,
+  AutoDispatchParcelOptions,
+} from './domain/auto-dispatch';
+export { resolveCarrierMethod } from './domain/delivery-intent-resolution';
 
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
@@ -145,6 +162,11 @@ export type { PickupPointQueryStatsPort } from './domain/ports/pickup-point-quer
 // engineering-standards §"Port sub-capabilities").
 export type { ShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
 export { isShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
+export type {
+  ParcelRequirements,
+  ParcelRequirementsReader,
+} from './domain/ports/capabilities/parcel-requirements-reader.capability';
+export { isParcelRequirementsReader } from './domain/ports/capabilities/parcel-requirements-reader.capability';
 export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export type { LabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
@@ -252,6 +274,16 @@ export type {
   FulfillmentStatusSyncResult,
 } from './application/types/fulfillment-status-sync.types';
 export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
+
+// Application — shipment-first dispatch routing for a fulfilment work (#3506,
+// G02-4). Interface + outcome types only; the service is injected via
+// FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN by the API's parcel-closure
+// notifier and the worker's `fulfillment.work.relaySweep` handler.
+export type { IFulfillmentWorkDispatchRouterService } from './application/interfaces/fulfillment-work-dispatch-router.service.interface';
+export type {
+  WorkDispatchRouteOutcome,
+  WorkDispatchRouteStatus,
+} from './application/types/fulfillment-work-dispatch-router.types';
 
 // Domain + application — line-grain shipment read model (#2727,
 // `DECISION-oms-fulfilment-grain` option C). Contracts and the pure capacity

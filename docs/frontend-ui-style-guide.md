@@ -513,6 +513,7 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 - `Input` / `Textarea` / native `Select` — 32 px height, `var(--radius-md)`. Invalid state via `aria-invalid` or the `invalid` prop (mirrors danger-tone focus ring).
 - Native `<input type="checkbox|radio">` — styled via `accent-color: var(--accent-primary)`. The form-controls rule excludes non-text input types so checkboxes keep their native 14 px size.
 - `FormField` — label + control + description + error wiring (`aria-invalid`, `aria-describedby`)
+- `RangeNumberInput` — a bounded whole number as a restyled range slider (4 px `--border-default` track, accent fill, 16 px thumb, `--shadow-focus` ring on the thumb) beside a 6.5 rem number box, kept in step both ways. Drag and keyboard snap to a zero-anchored `step` grid (native `step` stays 1); typed out-of-range / empty text shows an inline error and leaves the slider alone until blur / Enter clamps it. An optional `marker` draws a "suggested" tick on the track and tints the fill past it in the warning tone. 44 px tall below 768 px. Never put `.control` on the range itself.
 - `FieldError`, `FormErrorSummary`
 - `Alert` — tonal variants matching status tokens, left-rule accent
 
@@ -525,6 +526,10 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 - `StatusBadge` — tones: `success` / `warning` / `error` / `info` / `review` / `neutral`. Dot + text; never color alone.
 - `MetricCard` — label + value + hint + optional sparkline. Severity-tinted via `--kpi--error` / `--kpi--warning` modifiers when the metric carries operational alarm.
 - `KeyValueList` — definition list with `120px auto` grid, monospace values where appropriate, inline copy-to-clipboard buttons on hover.
+- `DetailSection` (#3096) — one card on a detail page: `--border-default`, `--radius-lg`, `--shadow-xs`, `--bg-surface`, 20 × 24 px inset, and a 12 px / 700 uppercase `--text-muted` title. `tone="hero"` (22 × 24 px) and `tone="actions"` (18 × 24 px) are the mockups' other two insets. Carries no outer margin — the parent stack's `gap` spaces the cards. Distinct from the order page's older unboxed `.detail-section` wrapper.
+- `KpiGrid` + `KpiCard density="compact"` (#3096) — a wrapping row of KPI cards on grid tracks (`repeat(auto-fit, minmax(160px, 1fr))`) at the mockups' metric-card scale (16 px inset, 28 px value), for operational boards; the default density stays the Insights headline scale.
+- `AccessDeniedState` / `QueryErrorState` (#3096) — a 403 renders as a fact about the session's role, `role="status"`, with no Retry; `QueryErrorState` picks it, a not-found or the ordinary error-with-Retry from one failed read.
+- `Alert density="compact"` (#3096) — the mockups' in-card banner (`.hold-banner`): 8 px radius, 13 × 15 px inset, no inset rule, a 14 px title in the tone's own ink. For a notice that sits inside a card.
 - `EntityLabel` — **name-first resolver** that takes an internal UUID + entity type and renders human name + monospace ID + copy button. Consumes `useConnectionsQuery` / `useCustomersQuery` / etc. Used on every list row and detail heading where an internal UUID would otherwise leak. `nameTitle` overrides the `title` on the rendered name — pass it whenever the caller SHORTENS what it hands to `name`, or the tooltip shows the shortened form and the full value becomes unreachable to a sighted user (#2089). `copyLabel` / `copiedLabel` mirror `CopyableId`'s and must name what Copy actually writes, which is always the `id`. The copy button also carries `title={id}` so a sighted operator can see the target on a row whose visible identity is something else — deliberately the raw id rather than a mirror of the accessible name, which would make `title` the accessible *description* of a control that already has that string as its name (#2091). `showCopy` (default `true`) suppresses the built-in copy button for a composite that pairs the label with its own copy affordance, so one id never grows two copy controls (#2027). The id-shortening rule is exported as `shortenId(id)` from `shared/ui` so such a composite reuses the exact algorithm instead of growing a second one.
 - `CopyableId` — monospace id + copy button. `copyLabel` / `copiedLabel` override the copy button's accessible name, which otherwise defaults to `Copy {id}` and is read out as a spelled-out UUID; a caller that can resolve the id to something human should pass it (`"Copy connection ID for Erli Demo"`, #1996).
 - `ConnectionCell` (`features/connections`) — the standard table cell for a connection reference: an optional leading `adornment` + resolved name + shortened, copyable id + an attention-only status note, driven by **one batched `useConnectionsQuery` for the whole page**. The adornment is pluggable and per-page: a `channel-pill` where the platform is the point (Products), a `ConnectionDot` where a carrier is (Shipments), nothing where a dedicated Channel column already carries it (Listings). Never resolve a connection per row (#1996/#2027). Its `connection` prop distinguishes `undefined` (still loading) from `null` (resolved, not found) — coalesce with `?? null` at the call site or a per-row fetch is silently reinstated.
@@ -549,7 +554,14 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 
 - `PageHeader` — page title + description + actions slot; page content begins ≤ 100 px from viewport top.
 - `PageShell` — sidebar (240 px) + topbar (52 px) + main. Enforced structure for every authenticated page.
-- `FilterBar` — chip-based filter surface above tables; chips are `{ label: value }` with a remove button each. Paired with `Add filter` affordance at the end.
+- `FilterBar` — chip-based filter surface above tables; chips are `{ label: value }` with a remove button each. Paired with `Add filter` affordance at the end. **Implemented (#3507) as composable parts in `shared/ui`**, first used by `/orders` (mockup `docs/plans/mockups/oms-mvp/m4b-orders-filters.html`, live examples on `/dev/ui` → Primitives → Filters):
+  - `FilterToggleButton` — "Filters (n) ▾" disclosure (`aria-expanded`/`aria-controls`; count badge hidden at 0).
+  - `FilterPanel` + `FilterGroup` + `FilterField` + `FilterRange` — the accordion body: up to four `<fieldset>` columns (2 × 2 below 1280 px) and a footer (`FilterPanelFooter`: hint + "Clear all" / "Hide filters"). **No Apply button** — every control writes the URL immediately.
+  - `FilterCheck` / `FilterChecks` — checkbox or radio row with a mono count (text, never colour alone).
+  - `ActiveFilterChips` — the `{label: value} ×` row + "Clear all"; renders nothing when unfiltered and moves focus to the next chip (or a fallback) on removal.
+  - `QuickFilters` (+ `QuickFiltersLabel`, `QuickFiltersSeparator`) — one labelled row of one-click `Chip` toggles with counts in `.chip__count`.
+  - `FilterSheet` + `FilterSection` — the phone bottom sheet (`Dialog` + `.dialog__content--sheet`) with native `<details>` sections whose summary shows the current value.
+  - `BareIconButton` (`.button--bare`) — the `×` inside a pill; resets the global button box so a 22 px pill stays 22 px, and grows its tap target with `::after` on a coarse pointer instead of the box.
 - `SetupStepper` — horizontal stepper for integration wizards (Allegro, PrestaShop). Per-step validation; next/back/save.
 - `BackLink` (+ `PageLayout.backTo`) — retreat-one-level navigation for detail and sub-pages. Rendered via `PageLayout.backTo={{ to, label }}` above the eyebrow, outside `actions` (which is reserved for forward CTAs — Cancel is a form concern, not navigation). Labels match sidebar-nav entry names (e.g. `"Jobs & Logs"`, not `"Jobs"`). The glyph is `aria-hidden` so accessible names read as the bare label. When all three slots are populated the vertical stack is `backTo → eyebrow → title` in that order — anticipate this composition when designing a page; if a tighter header is wanted, omit `eyebrow`. Also composable standalone for non-PageLayout hosts (e.g. the wizard-card back slot, via `className="wizard-card__back"`). Tokens only: `--text-muted`, `--text-primary`, `--accent-focus`.
 
@@ -644,6 +656,8 @@ Defaults (FE-002):
 | Orders Status cell | auto, ~144 px | Documented `DataTable` exception (#2310, extended #2342 / #2350 / #2356) — health badge + lifecycle-phase badge + optional stock-at-risk badge + optional hold badge + optional OMS attention badge(s) + optional failure reason, up to six stacked lines. See the carve-out below, including the Wave-2 composition note. |
 | Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
 | Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
+| Quick-filter `Chip` / tag pill | `22 px` | `.chip` and `.order-tag` (#3507). An icon button inside a pill is a `BareIconButton`, never a plain `<button>` (which inherits the 32 px box). |
+| Active-filter chip (`.filter-chip`) | `24 px` | `{label: value}` + an 18 px `BareIconButton`. |
 | Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
 | Button `md` | `32 px` | Default for page-header actions and forms. |
 | Input / Select | `32 px` | Never taller. |
@@ -691,6 +705,8 @@ Mechanics worth knowing before copying it:
 **Documented carve-out — the shared identity row (#2086).** The five lists that answer *which order is this* and *which connection did it come from* render those facts through two shared cells — `OrderIdentityCell` (24 px `ProductThumbnail` + order number/id line + item-name/`+N` line) and `ConnectionCell` (adornment + name line + shortened-id/status line). Either one makes the row two-line, so a table adopting them takes its height from content, same as the listings row above and for the same reason: every line is a fact an operator scans for.
 
 This entry exists because the listings carve-out explicitly refuses to cover a second table. It is deliberately **one entry for all five lists** (Shipments #2089, Invoices #2090, Orders #2091, Products #2092, Customers #2093) rather than one per page — the whole point of #2086 is that these rows are the same row.
+
+**Extended by #3533 — a third line, orders only.** `OrderIdentityCell`'s optional `tags` prop renders `.orders-tags-line` as a THIRD line below the item-name/`+N` line, on the Orders list only (Shipments, Invoices, Products and Customers pass no `tags` and are unaffected — the prop is optional precisely so the other four consumers of the shared cell stay two-line). At most 2 `OrderTagChip`s (`--sm` variant, 18 px) plus a `+N` overflow chip, matching the row-height budget the Status cell's four-line ceiling already established. Tags are **not** a status: they render in the identity column, never the Status group, and never affect `OrderHealthValues` or its KPI partition (`docs/architecture-overview.md § 6 Listings` — the same non-partitioning-field rule `salesDocumentBlocked` and `taxRateConflict` already follow). No alignment change: `.orders-table td` already top-aligns every cell, so a row with tags simply grows from content like every other multi-line cell on this table.
 
 **Documented carve-out — the orders Status cell (#2310, extended #2356).** The #2086 entry above covers the *identity* column; this one covers a different column on the same table, which is why it is a separate entry rather than a widening of that one. `.orders-cell-stack` in the orders Status cell is a vertical stack, and the ADR-059 lifecycle phase is appended **inside** it, so a row that carries both a phase and a sync-failure reason renders health badge / phase badge / reason — three lines where two was previously the worst case, and the column can now set the row height on its own rather than only the identity cell doing so.
 
@@ -856,6 +872,14 @@ Parity matrix — what changes across sizes:
 | Detail pages | single-column stack | 1-col or 60/40 split | 65/35 grid |
 | KPI strip | 1 × 4 vertical | 2 × 2 grid | 1 × 4 horizontal |
 | Analytics KPI strip (6 cards, #1990) | 1 × 6 vertical | 2 columns × 3 rows | 3 columns × 2 rows — see the analytics KPI card carve-out above |
+| Orders status segments (6 cards, `.orders-segments--6`, #3507) | **horizontal scroll-snap strip** (cards 9.5 rem) — documented departure below | 3 columns × 2 rows | 6 columns × 1 row (≥ 1280 px), 3 × 2 below |
+| List filters (`FilterBar` parts, #3507) | search 100 % + "Filters (n)" opening a **bottom sheet**; chip rows scroll horizontally | as desktop | search · "Filters (n)" accordion panel · active chips · quick-filter row |
+
+**Documented departure — orders status segments on a phone (#3507, DEC-8).** Six full-width KPI
+cards stacked vertically pushed the first order ~600 px down on a 390 × 844 screen, before any
+filter. The six partition cards become one horizontally scrolling, snap-aligned strip instead
+(still `aria-pressed` buttons, still the `health` filter), so the first order row is visible
+without scrolling. Other KPI strips keep the vertical stack.
 | `MetricCard` | full width | 2-col grid | 4-col grid |
 | Forms (single-column) | `max-width: 100%` | `max-width: 560 px` | `max-width: 560 px` |
 | Raw payload panel | collapsed by default | as desktop | as desktop |
@@ -871,6 +895,17 @@ a single column below 768 px with ≥ 44 px targets. Like the picker, it never s
 desktop" hint, because there is nothing it refuses to do at that width.
 
 **Documented departure — the offer-creation product picker modal (#1754/#1779)** folds into a two-step wizard (step 1 = product list, step 2 = selection review + connection + Continue) at **both** mobile *and* tablet width (≤ 1023 px), rather than staying "full interactive" at tablet as the *Complex editors* / *Wizards* rows above would suggest. This is deliberate: the modal's side-by-side list + review rail needs two comfortable columns, which only desktop (≥ 1024 px) affords; on an iPad the two-step flow is more usable than two cramped columns. Unlike the "complex editors" rule, the picker stays **fully interactive** at every width (it is a selection surface, not a data editor), so it never shows an "open on desktop" hint.
+
+**Documented departure — the fulfilment board's metric row and the task detail (#3096).**
+The board's three metric cards sit on `KpiGrid` (`repeat(auto-fit, minmax(160px, 1fr))`,
+the mockup's `.metric-row`) rather than the *KPI strip* row's 1 × N vertical stack: at
+390 px that is two cards and one beneath, of equal height, where the old wrapped flex
+row overlapped the lanes below it. The task detail is the *Detail pages* row's 65/35
+grid at ≥ 1024 px and one stack below it, in a fixed mobile reading order (hero →
+holds → lines → packer → shipment → sales document → payment → details → actions); its
+cards keep the mockup's 20 × 24 px inset down to 480 px and take the mockup's mobile
+16 × 20 px below that, and its two-column facts grid stays two columns at every width,
+as the mockup's phone render has it.
 
 Rules:
 

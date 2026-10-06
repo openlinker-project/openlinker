@@ -25,6 +25,8 @@
  * @module apps/web/src/features/bench/lib
  */
 
+import { formatVariantAttributes } from '../../../shared/lib/variant-attributes';
+
 export const benchParcelCopy = {
   header: {
     orderLabel: 'Order',
@@ -111,11 +113,7 @@ export const benchParcelCopy = {
      * value, and nothing guarantees that. Naming it costs a few characters and
      * always reads.
      */
-    attributesText: (attrs: Record<string, string>): string =>
-      Object.keys(attrs)
-        .sort()
-        .map((key) => `${key}: ${attrs[key] ?? ''}`)
-        .join(' · '),
+    attributesText: (attrs: Record<string, string>): string => formatVariantAttributes(attrs),
     /** Operator-authored bin/shelf code, rendered as a short label (#3402/#3410). */
     binCodeLabel: (code: string): string => `Bin ${code}`,
     /** Display-only physical master data — never a claim OpenLinker measured it. */
@@ -291,6 +289,19 @@ export const benchParcelCopy = {
      * button (#3339 review). Stated here rather than left undiscoverable.
      */
     keyboardHint: 'Not scanning? Press C to confirm the next open item by hand.',
+  },
+
+  /** Notes flagged "Show to packer" (D12), read only. */
+  officeNotes: {
+    title: (count: number): string => `Notes from the office (${String(count)})`,
+    /**
+     * Calendar words, not "3h ago": a packer reads an office instruction
+     * against the clock on the wall and the shift they are on, and "today"
+     * versus "yesterday" is what tells them whether it was written for this
+     * batch. Beyond yesterday the absolute date says it better than any word.
+     */
+    today: (time: string): string => `today ${time}`,
+    yesterday: (time: string): string => `yesterday ${time}`,
   },
 
   /** #3411 (epic #3401) — recent activity, newest first. */
@@ -479,6 +490,7 @@ export const benchParcelCopy = {
     printLabelAction: 'Print label',
     invoiceHint: 'Fold it once and drop it in on top of the goods, before you tape the box.',
     labelHint: 'Stick it flat on the largest side. Cover nothing else with it.',
+    changeSizeAction: 'Change size',
     invoiceTitle: (number: string | null): string =>
       number === null ? 'Invoice for this order' : `Invoice ${number}`,
     /**
@@ -499,10 +511,60 @@ export const benchParcelCopy = {
     trackingLabel: 'Tracking',
     printFailed: 'That did not print. Nothing changed — try again.',
 
+    /**
+     * #3647 - a document still being made, or one that failed. Each is its own
+     * fact; reporting any of them as "no invoice was made" told the packer
+     * something false.
+     */
+    doesNotStop: 'It does not stop the box going out.',
+    mentionOffice: 'Mention it to the office.',
+    invoiceStatus: {
+      inProgressBadge: 'Being issued',
+      inProgressTitle: 'Invoice on its way',
+      rejectedBadge: 'Not issued',
+      rejectedTitle: 'The invoice did not go through',
+      notConfirmedBadge: 'Not confirmed',
+      notConfirmedTitle: 'Invoice not confirmed',
+      notConfirmedBody: 'OpenLinker does not know if this invoice was made.',
+    },
+    /**
+     * #3647 - the fiscal receipt. Nothing here says anything about paper or the
+     * box (a provider may print on the seller's own fiscal printer, which
+     * OpenLinker cannot see), or that the buyer received it (`disposition` is a
+     * hint, never evidence).
+     */
+    receipt: {
+      slot: 'Receipt for this order',
+      title: (reference: string | null): string =>
+        reference === null ? 'Receipt' : `Receipt ${reference}`,
+      madeBadge: 'Receipt made',
+      linkBody: 'Open with the link below.',
+      openAction: 'Open receipt',
+      linkPending: 'Getting the link. One moment.',
+      linkFailed: 'The link did not load.',
+      retryAction: 'Try again',
+      printAction: 'Print receipt',
+      noArtefactBody: 'There is no link to this receipt in OpenLinker.',
+      inProgressBadge: 'Being registered',
+      inProgressTitle: 'Receipt on its way',
+      rejectedBadge: 'Not registered',
+      rejectedTitle: 'The receipt did not go through',
+      notConfirmedBadge: 'Not confirmed',
+      notConfirmedTitle: 'Receipt not confirmed',
+      notConfirmedBody: 'OpenLinker does not know if this receipt was made.',
+    },
+    /** #3647 - a document kind this build does not know. Should not happen today. */
+    unknownDocument: {
+      badge: 'Document',
+      slot: 'Document for this order',
+      title: 'This screen cannot show this document',
+    },
+
     /** F1's honest exception: the document exists but only as machine-readable source. */
-    notPrintableTitle: 'There is nothing to print for this one',
-    notPrintableBody:
-      'An invoice was made for this order, but it only exists in a form a printer cannot use. Send the box without it — the office will post it to the buyer.',
+    notPrintableBadge: 'Issued, not printable',
+    notPrintableTitle: (documentNumber: string | null): string =>
+      documentNumber === null ? 'Invoice issued' : `Invoice ${documentNumber}`,
+    notPrintableBody: 'Issued, but it cannot be printed here.',
 
     /** F2 — named, never silently skipped, and never blocking. */
     missingTitle: 'Carry on packing — one paper is not coming',
@@ -555,9 +617,78 @@ export const benchParcelCopy = {
      * worse than no reassurance at all.
      */
     printingTo: (label: string): string => `Printing to ${label}`,
+
+    /**
+     * The label card on a box that is still OPEN while no label exists yet.
+     * Deliberately not the unlabelled block's "this box cannot go out": that
+     * is a statement about a CLOSED box, and on an open one it told a packer
+     * at "0 of 1" that the box was finished and closed. Nothing here asks
+     * them to stop - the label is dispatch's to buy, and packing carries on.
+     */
+    labelPendingBadge: 'Not ready yet',
+    labelPendingTitle: 'The label is not ready yet',
+    labelPendingBody: 'Dispatch will sort it out. Carry on packing — nothing here waits for it.',
   },
 
   /** F3/F4 — packed, and it cannot go out. */
+  /** #3655 - replacing a label whose size or weight is wrong. Parcel data only. */
+  changeSize: {
+    title: 'Change the label size',
+    description: 'Tell us what this box really is. Nothing else about the order changes.',
+    modeLegend: 'What is wrong',
+    modeTemplate: 'Pick a size',
+    modeBox: 'Measure the box',
+    modeWeight: 'Weight only',
+    templateLabel: 'Size',
+    templatePlaceholder: 'Choose a size',
+    lengthLabel: 'Length (cm)',
+    widthLabel: 'Width (cm)',
+    heightLabel: 'Height (cm)',
+    weightKgLabel: 'Weight (kg)',
+    required: 'Enter a number above zero.',
+    tooLarge: 'That is more than a carrier will take.',
+    pickTemplate: 'Choose a size first.',
+    confirmNotice: 'The current label will be cancelled and a new one bought.',
+    confirmAction: 'Cancel it and buy a new label',
+    pendingAction: 'Buying a new label...',
+    cancelAction: 'Keep the current label',
+    refusedCannotCancel:
+      'This carrier does not let us cancel a label from the bench. The current label stays. Ask the office.',
+    /** Transient, unlike `refusedCannotCancel`: the connection, not the carrier (#1947's split). */
+    refusedAdapterUnresolved:
+      'We cannot reach the carrier connection right now, so the label cannot be replaced. The current label stays. Try again in a minute - ask the office if it keeps happening.',
+    refusedAlreadyHandedOver:
+      'The carrier already has this parcel, so its label cannot be replaced. The current label stays.',
+    refusedParcelCompleted:
+      'This box is already marked done, so its label cannot be replaced. The current label stays.',
+    refusedNoLabel: 'This box has no label yet, so there is nothing to replace. Ask the office to buy one.',
+    refusedRecipientUnavailable:
+      'The delivery address for this order is missing, so no new label can be bought. The current label stays. Ask the office.',
+    refusedParcelSizeUnknown:
+      'A weight alone is not enough here - choose a size or enter the box measurements too. The current label stays.',
+    refusedReplaceInProgress: 'A new label for this box is already being bought. Wait a moment, then look again.',
+    refusedUnknown:
+      'That did not go through and the current label stays. Show this screen to your supervisor.',
+    /**
+     * Any non-2xx that is not a refusal. Deliberately says nothing about the
+     * old label: this arm cannot know whether it was cancelled, and a retry is
+     * safe because the server re-reads the box and refuses if it changed.
+     */
+    failed: 'That did not go through - try again.',
+    voidTitle: 'The old label is void and no new one was bought',
+    voidBody:
+      'Do not stick the old label on the box. Tell the office - they need to buy a new label for this parcel.',
+    /** `voidState: 'in-doubt'`: the cancel's outcome is unknown, so neither answer is claimed. */
+    voidDoubtTitle: 'The old label may already be void, and no new one was bought',
+    voidDoubtBody:
+      'The carrier did not confirm whether it cancelled the old label, so do not use it - do not stick it on the box. Tell the office - they need to check it and buy a new label for this parcel.',
+    voidDismiss: 'Understood',
+    replacedNotice: 'New label bought. Print it now.',
+    /** The weight-only path keeps the connection's configured size; named so it is not a guess. */
+    replacedKeptSizeNotice: (template: string): string =>
+      `New label bought in size ${template}. Print it now.`,
+  },
+
   unlabelled: {
     eyebrow: 'This box cannot go out',
     title: 'Packed, but there is no label',

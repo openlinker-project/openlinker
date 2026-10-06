@@ -14,7 +14,8 @@ import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../shared/ui/tabs';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
-import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import { EmptyState } from '../../shared/ui/feedback-state';
+import { QueryErrorState } from '../../shared/ui/query-error-state';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Button } from '../../shared/ui/button';
 import { Alert } from '../../shared/ui/alert';
@@ -407,10 +408,16 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     if (allUsersQuery.isLoading) return <DataTableSkeleton columns={6} rows={5} />;
     if (allUsersQuery.error) {
       return (
-        <ErrorState
-          title="Unable to load users"
-          message={allUsersQuery.error.message}
-          action={<Button onClick={() => void allUsersQuery.refetch()}>Retry</Button>}
+        <QueryErrorState
+          error={allUsersQuery.error}
+          onRetry={() => void allUsersQuery.refetch()}
+          copy={{
+            error: { title: 'Unable to load users', message: allUsersQuery.error.message, retry: 'Retry' },
+            denied: {
+              title: 'User management is for administrators',
+              message: 'Your role cannot see or change accounts. Ask an administrator if you need access.',
+            },
+          }}
         />
       );
     }
@@ -434,10 +441,16 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
     if (pendingUsersQuery.isLoading) return <DataTableSkeleton columns={5} rows={3} />;
     if (pendingUsersQuery.error) {
       return (
-        <ErrorState
-          title="Unable to load users"
-          message={pendingUsersQuery.error.message}
-          action={<Button onClick={() => void pendingUsersQuery.refetch()}>Retry</Button>}
+        <QueryErrorState
+          error={pendingUsersQuery.error}
+          onRetry={() => void pendingUsersQuery.refetch()}
+          copy={{
+            error: { title: 'Unable to load users', message: pendingUsersQuery.error.message, retry: 'Retry' },
+            denied: {
+              title: 'User management is for administrators',
+              message: 'Your role cannot see or change accounts. Ask an administrator if you need access.',
+            },
+          }}
         />
       );
     }

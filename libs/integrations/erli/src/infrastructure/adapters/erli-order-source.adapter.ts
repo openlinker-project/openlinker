@@ -517,6 +517,12 @@ export class ErliOrderSourceAdapter
    *   either `offerManager` or `inventoryQuery` is absent (pre-wired callers and
    *   tests that don't set up those deps), `applied` on success, `rejected` on any
    *   error (order-fetch failure, inventory-read failure, or stock-write failure).
+   * - `delivered` / `in-progress` (#3526) → DECLINED (`unsupported`).
+   *   `erli-fulfillment.types.ts`'s own `ERLI_OL_TO_ORDER_STATUS` docblock
+   *   already records this: Erli's order-status enum is
+   *   `pending | purchased | cancelled | returned` — no `delivered` member at
+   *   all, and "processing" is already the ordinary `purchased` state with no
+   *   distinct status to push for it.
    *
    * `externalOrderId` is resolved upstream by the relay (this adapter does no
    * identifier mapping). Log hygiene: NEVER log `trackingNumber` / `externalOrderId`
@@ -524,6 +530,14 @@ export class ErliOrderSourceAdapter
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     switch (event.type) {
+      case 'delivered':
+      case 'in-progress': {
+        return {
+          outcome: 'unsupported',
+          detail: `Erli order-status enum has no '${event.type}' member`,
+        };
+      }
+
       case 'cancelled': {
         if (!this.offerManager || !this.inventoryQuery) {
           return {

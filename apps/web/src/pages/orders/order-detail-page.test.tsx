@@ -12,6 +12,7 @@ import {
 import { OrderDetailPage } from './order-detail-page';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
+import type { AuthorityAnswerRow, AuthorityStatus } from '../../features/fulfillment-authority';
 
 const sampleOrder: OrderRecord = {
   internalOrderId: 'ol_order_abc123',
@@ -778,6 +779,69 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
     );
     expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
     expect(screen.queryByTestId('order-buyer-tax-id-none')).not.toBeInTheDocument();
+  });
+
+  // #3505 — the fulfilment-tasks section is OMS chrome: with routing off an
+  // order with no tasks gets no section at all.
+  describe('fulfilment tasks section and routing state', () => {
+    afterEach(cleanup);
+
+    function authorityStatus(sourcingState: 'default' | 'resolved'): AuthorityStatus {
+      return {
+        rows: [
+          {
+            question: 'sourcing',
+            state: sourcingState,
+            answer: { kind: 'nobody-to-route' } as AuthorityAnswerRow['answer'],
+            why: { kind: 'default', code: 'a2-single-origin-nothing-to-choose' },
+            source: sourcingState === 'default' ? 'default' : 'operator-config',
+            inactiveClaimantConnectionIds: [],
+          },
+        ],
+        attention: { counted: [], routine: [], affectedOrderCount: 0 },
+        presets: [],
+        applied: null,
+      };
+    }
+
+    function renderWithRouting(
+      sourcingState: 'default' | 'resolved',
+      listByOrder: ReturnType<typeof vi.fn>,
+    ): void {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+        fulfillmentAuthority: {
+          getStatus: vi.fn().mockResolvedValue(authorityStatus(sourcingState)),
+        } as never,
+        fulfillment: { listByOrder } as never,
+      });
+      renderDetail(api);
+    }
+
+    it('should render no fulfilment tasks section when routing is off and the order has no tasks', async () => {
+      const listByOrder = vi
+        .fn()
+        .mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('default', listByOrder);
+
+      await screen.findByText('ol_order_abc123');
+      await waitFor(() => {
+        expect(listByOrder).toHaveBeenCalled();
+      });
+      expect(screen.queryAllByRole('heading', { name: 'Fulfilment tasks' })).toHaveLength(0);
+    });
+
+    it('should render the empty fulfilment tasks section when routing is on and the order has no tasks', async () => {
+      const listByOrder = vi
+        .fn()
+        .mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('resolved', listByOrder);
+
+      // Exactly one: the panel and `OrderReturnsPanel` once shared a React key,
+      // which duplicated this section as soon as it could render nothing.
+      expect(await screen.findByRole('heading', { name: 'Fulfilment tasks' })).toBeInTheDocument();
+      expect(await screen.findByText(/No fulfilment tasks/)).toBeInTheDocument();
+    });
   });
 });
 

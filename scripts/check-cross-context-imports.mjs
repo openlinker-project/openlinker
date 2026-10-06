@@ -453,6 +453,14 @@ const ALLOW_LIST = new Map([
     'apps/api/test/integration/order-health-summary.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
+  // #3527/#3528 — trigram search + diacritic folding + the tracking-number OR
+  // arm are claims about the repository's real SQL predicate, not about
+  // anything IOrderRecordService exposes distinctly. Like the #2944 row above,
+  // this has no rewire target and must NOT be swept when #722 lands.
+  [
+    'apps/api/test/integration/order-search-text.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
   [
     'apps/api/test/integration/order-dispatch-sla.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),

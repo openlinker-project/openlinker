@@ -13,6 +13,7 @@
  * @module apps/web/src/pages/settings
  */
 import type { ReactElement } from 'react';
+import { HelpLink } from '../../shared/ui/help-link';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { WhoDecidesPanel, WHO_DECIDES_PAGE_COPY } from '../../features/fulfillment-authority';
 
@@ -23,6 +24,7 @@ export function WhoDecidesPage(): ReactElement {
       title={WHO_DECIDES_PAGE_COPY.title}
       description={WHO_DECIDES_PAGE_COPY.lede}
       backTo={{ to: '/settings', label: WHO_DECIDES_PAGE_COPY.backLabel }}
+      actions={<HelpLink surfaceKey="who-decides" />}
     >
       <WhoDecidesPanel />
     </PageLayout>

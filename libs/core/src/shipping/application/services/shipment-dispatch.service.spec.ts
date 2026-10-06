@@ -109,6 +109,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.fulfillmentWorkId ?? null,
     // #2073 waybill-relay failure history — none by default.
     overrides.waybillRelayFailure ?? null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
@@ -121,6 +123,7 @@ function resolution(
       overrides.processorConnectionId === undefined ? INPOST : overrides.processorConnectionId,
     source: overrides.source ?? 'rule',
     processorAvailable: overrides.processorAvailable ?? true,
+    parcelProfile: null,
   };
 }
 
@@ -155,7 +158,11 @@ describe('ShipmentDispatchService', () => {
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
   let orderHolds: jest.Mocked<IOrderHoldService>;
-  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
+  let fulfillmentWorks: {
+    resolveLinkForOrder: jest.Mock;
+    listBlockingRejectionConnectionIds: jest.Mock;
+    findWorkById: jest.Mock;
+  };
   let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock };
   let service: ShipmentDispatchService;
 
@@ -171,11 +178,15 @@ describe('ShipmentDispatchService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      giveUpWaybillRelay: jest.fn(),
       clearWaybillRelayFailures: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
+      findDeliveredRelayPending: jest.fn(),
+      markDeliveredRelayed: jest.fn(),
+      recordDeliveredRelayFailure: jest.fn(),
     };
     routing = {
       getRules: jest.fn(),
@@ -213,6 +224,8 @@ describe('ShipmentDispatchService', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -250,6 +263,7 @@ describe('ShipmentDispatchService', () => {
     fulfillmentWorks = {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+      findWorkById: jest.fn().mockResolvedValue(null),
     };
     // #3365: every successful label buy enqueues the dispatch notification, so
     // the queue is present on every pre-existing test. Resolving by default

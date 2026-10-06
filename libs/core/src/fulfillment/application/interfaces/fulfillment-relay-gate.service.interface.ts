@@ -56,4 +56,27 @@ export interface IFulfillmentRelayGateService {
    * for that, which is why it is a sweep rather than a retry.
    */
   releaseDispatch(workId: string): Promise<void>;
+
+  /**
+   * Take the work's dispatch-relay slot WITHOUT relaying, because a caller
+   * already told the order's channel through a DIFFERENT path (#3525): the
+   * shipment-grain `IShipmentDispatchNotificationService.notifyDispatched`,
+   * which carries the tracking number and carrier the work-grain relay
+   * cannot (`FulfillmentShippedEvent` has neither field).
+   *
+   * Takes the SAME conditional claim `claimDispatch` does — the point is that
+   * the two are mutually exclusive on one slot, so whichever path notifies
+   * first is the one the #2728 reconcile sweep (which re-drives only
+   * UNCLAIMED work) will never re-fire the tracking-less work-grain relay
+   * behind. A dedicated method rather than reusing `claimDispatch` directly:
+   * that method's return shape (`orderId`, `holderConnectionId`) exists for
+   * the caller that is ABOUT to relay, which this caller is not, and naming
+   * the intent explicitly is what keeps the two call sites from being
+   * confused for each other later.
+   *
+   * @returns `true` when this call won the claim, `false` when a peer already
+   * holds it (an ordinary race — e.g. the work-grain relay claimed it a
+   * moment earlier — never an error).
+   */
+  markRelayedExternally(workId: string): Promise<boolean>;
 }

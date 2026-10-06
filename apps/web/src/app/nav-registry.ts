@@ -20,6 +20,7 @@ import { mergePluginNavContributions } from '../plugins/merge-nav-contributions'
 import { plugins } from '../plugins';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 import type { Permission, Session } from '../shared/auth/session.types';
+import type { OmsRoutingState } from '../features/fulfillment-authority';
 import type { LiveNavItem, NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
@@ -42,11 +43,21 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       { to: '/insights', label: 'Insights', requiresRole: ['admin', 'operator', 'viewer'] },
       // Role-gated (#3221): `GET /orders` is
       // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
-      { to: '/orders', label: 'Orders', countKey: 'orders', requiresRole: ['admin', 'operator', 'viewer'] },
+      {
+        to: '/orders',
+        label: 'Orders',
+        countKey: 'orders',
+        requiresRole: ['admin', 'operator', 'viewer'],
+      },
       { to: '/products', label: 'Products' },
       // Role-gated (#3221): `GET /customers` is
       // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
-      { to: '/customers', label: 'Customers', countKey: 'customers', requiresRole: ['admin', 'operator', 'viewer'] },
+      {
+        to: '/customers',
+        label: 'Customers',
+        countKey: 'customers',
+        requiresRole: ['admin', 'operator', 'viewer'],
+      },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
       // ONE entry, since the staffing board and the worklist merged into one
@@ -61,11 +72,20 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // looking for instead. This ALSO excludes `packer` (#3221) as a side
       // effect — `bench:write` is a packer's only permission, so a `packer`
       // 403s here exactly like a `viewer` does.
-      { to: '/fulfillment', label: 'Fulfilment', requiresPermission: 'orders:write' },
-      // The bench itself (#2413) had no way in but a typed URL. A packer still
-      // reaches it that way — they get no sidebar at all, since `/bench` renders
-      // outside `AuthenticatedAppLayout` on purpose — but an admin or operator
-      // checking the floor had to know the path by heart.
+      //
+      // `requiresOms` (#3505): with routing switched off no fulfilment task is
+      // ever created, so the screen is empty by construction.
+      {
+        to: '/fulfillment',
+        label: 'Fulfilment',
+        requiresPermission: 'orders:write',
+        requiresOms: true,
+      },
+      // The bench itself (#2413) had no way in but a typed URL. A packer never
+      // needs this entry: since #3096 every app address redirects a bench-only
+      // session to `/bench` (`AuthenticatedAppLayout`), and `/bench` renders
+      // outside that layout on purpose, so they get no sidebar at all - but an
+      // admin or operator checking the floor had to know the path by heart.
       //
       // Gated on `bench:write` (#3439/#3424), held by exactly admin + operator
       // + packer — the same set as the bench's own routes,
@@ -73,8 +93,14 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // al. `scripts/check-bench-write-roles.mjs` keeps that grant identical
       // to those `@Roles` lists, so this entry and the routes it points at
       // can't drift apart. A `viewer` shown this entry would 403 on the first
-      // request the page makes.
-      { to: '/bench', label: 'Pack bench', requiresPermission: 'bench:write' },
+      // request the page makes. `requiresOms` (#3505): the bench packs
+      // fulfilment tasks, which only routing creates.
+      {
+        to: '/bench',
+        label: 'Pack bench',
+        requiresPermission: 'bench:write',
+        requiresOms: true,
+      },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },
@@ -92,7 +118,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // guard, so this is not a partial fix. Renamed from "Invoices" to
       // "Sales documents" (invoicing/fiscalization routing); the gate
       // carries over unchanged.
-      { to: '/sales-documents', label: 'Sales documents', requiresRole: ['admin', 'operator', 'viewer'] },
+      {
+        to: '/sales-documents',
+        label: 'Sales documents',
+        requiresRole: ['admin', 'operator', 'viewer'],
+      },
     ],
   },
   {
@@ -156,11 +186,17 @@ export interface NavItemVisibilityInput {
  * An item declaring neither gate is visible to everyone (pre-existing
  * behaviour); one declaring both must satisfy both.
  */
-export function isNavItemVisible(item: LiveNavItem, { permissions = [], role }: NavItemVisibilityInput): boolean {
+export function isNavItemVisible(
+  item: LiveNavItem,
+  { permissions = [], role }: NavItemVisibilityInput
+): boolean {
   if (item.requiresPermission !== undefined && !permissions.includes(item.requiresPermission)) {
     return false;
   }
-  if (item.requiresRole !== undefined && (role === undefined || !(item.requiresRole as readonly string[]).includes(role))) {
+  if (
+    item.requiresRole !== undefined &&
+    (role === undefined || !(item.requiresRole as readonly string[]).includes(role))
+  ) {
     return false;
   }
   return true;
@@ -216,6 +252,46 @@ export interface BuildNavGroupsInput {
    * `Role` would claim a type guarantee that isn't true.
    */
   role?: string;
+  /**
+   * Whether fulfilment routing is on (#3505), for `requiresOms` items.
+   * Defaults to `unknown`, which hides them — same "not resolved yet sees no
+   * gated item" posture as `permissions`.
+   */
+  omsRouting?: OmsRoutingState;
+}
+
+/**
+ * The `requiresOms` gate (#3505), shared by the sidebar and the command
+ * palette so the two cannot disagree.
+ *
+ * `unreadable` SHOWS the item on purpose: the status read failing says nothing
+ * about whether routing is on, and hiding the entry would cost an operator the
+ * screen for as long as one endpoint is down. `unknown` (not answered yet)
+ * hides it, so a routing-off install never flashes the entry while loading.
+ */
+export function isOmsNavItemVisible(item: LiveNavItem, omsRouting: OmsRoutingState): boolean {
+  if (item.requiresOms !== true) return true;
+  return omsRouting === 'on' || omsRouting === 'unreadable';
+}
+
+/**
+ * Whether this session passes the permission and role gates of any
+ * `requiresOms` item — i.e. whether the routing-state read is worth issuing at
+ * all. A session that could not see those entries anyway (a viewer) skips the
+ * request rather than making one the API may refuse. Same `isNavItemVisible`
+ * rule as the sidebar, so the two cannot disagree about who sees what.
+ */
+export function sessionNeedsOmsRouting(
+  permissions: readonly Permission[] = [],
+  role?: string
+): boolean {
+  return BASE_NAV_GROUPS.some(
+    (group) =>
+      group.kind === 'live' &&
+      group.items.some(
+        (item) => item.requiresOms === true && isNavItemVisible(item, { permissions, role })
+      )
+  );
 }
 
 /**
@@ -238,6 +314,7 @@ export function buildNavGroups({
   demoMode,
   permissions = [],
   role,
+  omsRouting = 'unknown',
 }: BuildNavGroupsInput): NavGroup[] {
   // `mergePluginNavContributions` deep-clones each live group before mutating,
   // so pushing the readonly BASE group objects by reference is safe.
@@ -256,10 +333,14 @@ export function buildNavGroups({
       continue;
     }
     if (group.kind === 'live') {
-      // Per-ITEM gates: permission (#2358 review I5) and role (#3076/#3108). A
-      // live group whose every item is gated away is dropped entirely — an
-      // empty group heading advertises a section the session cannot reach.
-      const items = group.items.filter((item) => isNavItemVisible(item, { permissions, role }));
+      // Per-ITEM gates: permission (#2358 review I5), role (#3076/#3108) and
+      // routing (#3505). A live group whose every item is gated away is
+      // dropped entirely — an empty group heading advertises a section the
+      // session cannot reach.
+      const items = group.items.filter(
+        (item) =>
+          isNavItemVisible(item, { permissions, role }) && isOmsNavItemVisible(item, omsRouting)
+      );
       if (items.length === 0) continue;
       baseGroups.push(items.length === group.items.length ? group : { ...group, items });
       continue;

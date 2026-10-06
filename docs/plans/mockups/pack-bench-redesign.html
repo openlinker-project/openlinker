@@ -56,7 +56,12 @@
 
  /* ── Real shell topbar (mirrors AppShell's .shell-topbar / .shell-brand /
  .shell-crumbs / .shell-user-chip — no sidebar, since the bench route
- sits outside AuthenticatedAppLayout by design, #2413) ─────────────── */
+ sits outside AuthenticatedAppLayout by design, #2413). Since #3653 the
+ real bench renders the SAME ShellTopbar component every other page does,
+ with the logo in it because there is no sidebar to carry one. The
+ connectivity readout sits above the bench body instead, and there is no
+ separate "Signed in / Switch packer" strip: the user chip names the
+ packer, and its menu's Sign out goes to /login. ─────────────────────── */
  .topbar { display: flex; align-items: center; gap: var(--space-4); height: 52px; margin: 0 calc(var(--space-5) * -1) 0; padding: 0 var(--space-5); background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
  .shell-brand { display: flex; align-items: center; gap: 8px; }
  .shell-brand__mark { width: 24px; height: 24px; border-radius: 6px; background: var(--accent-primary); display: grid; place-items: center; color: var(--text-on-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; }
@@ -71,12 +76,6 @@
  .shell-user-chip__avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--status-review)); color: var(--text-inverse); display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 600; flex-shrink: 0; }
  .shell-user-chip__name { font-size: 12.5px; font-weight: 500; }
 
- /* ── Identity bar (real component: bench-identity-bar.tsx) ─────────── */
- .identity-bar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); background: var(--bg-surface-muted); border-bottom: 1px solid var(--border-subtle); }
- .identity-bar__who { font-size: 13px; color: var(--text-secondary); }
- .identity-bar__who strong { color: var(--text-primary); font-weight: 600; }
- .identity-bar__spacer { flex: 1; }
- .identity-bar__hint { font-size: 11.5px; color: var(--text-muted); }
 
  /* ── Buttons ─────────────────────────────────────────────────────── */
  .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); padding: 0 var(--space-4); height: 32px; background: var(--accent-primary); color: var(--text-on-primary); font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow-xs), var(--shadow-inset-top); }
@@ -301,12 +300,6 @@
 </button>
 </header>
 
- <div class="identity-bar">
- <span class="identity-bar__who" id="identityWho">Signed in <strong>Marta Kowalczyk</strong></span>
- <span class="identity-bar__spacer"></span>
- <span class="identity-bar__hint">Switch packer clears this session — the next person signs themself in</span>
- <button class="btn btn--secondary btn--sm" type="button">Switch packer</button>
-</div>
 
  <div id="connBanner" class="alert alert--warning" style="border-radius:0; border-left:none; border-right:none; border-top:none; margin:0; display:none; align-items:center;">
  <p id="connBannerText" style="margin:0"></p>
@@ -541,7 +534,49 @@
 </div>
  <div class="docs" style="margin-top:0">
  <div class="doc-card"><h4>Goes INSIDE the box</h4><p>Invoice OL-INV-4471</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Ready to print</span><button class="btn btn--secondary btn--sm" type="button">Print invoice</button></div></div>
+ <div class="doc-card"><h4>Goes ON the box</h4><p>Shipping label — InPost paczkomat</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Ready to print</span><button class="btn btn--secondary btn--sm" type="button">Print label</button><button class="btn btn--secondary btn--sm" type="button" data-state-btn="label-change">Change size</button></div></div>
+</div>
+</div>
+
+
+ <div data-state="label-change" hidden>
+ <div class="alert alert--info"><div><h4>Change the label size</h4>
+ <p>Tell us what this box really is. Nothing else about the order changes. Fields: Length (cm), Width (cm), Height (cm), Weight (kg) - or "Pick a size" / "Weight only". No address, recipient or carrier.</p>
+ <p><strong>The current label will be cancelled and a new one bought.</strong></p>
+ <button class="btn btn--secondary btn--sm" type="button" data-state-btn="ready">Keep the current label</button>
+ <button class="btn btn--primary btn--sm" type="button" data-state-btn="ready">Cancel it and buy a new label</button></div></div>
+</div>
+
+ <div data-state="label-refused" hidden>
+ <div class="alert alert--warning"><div><h4>Refused - the current label stays</h4>
+ <p>cannot-cancel: "This carrier does not let us cancel a label from the bench. The current label stays. Ask the office."</p>
+ <p>already-handed-over: "The carrier already has this parcel, so its label cannot be replaced. The current label stays."</p>
+ <p>parcel-completed: "This box is already marked done, so its label cannot be replaced. The current label stays."</p></div></div>
+</div>
+
+ <div data-state="label-void" hidden>
+ <div class="alert alert--warning"><div><h4>The old label is void and no new one was bought</h4>
+ <p>Do not stick the old label on the box. Tell the office - they need to buy a new label for this parcel.</p>
+ <button class="btn btn--secondary btn--sm" type="button" data-state-btn="ready">Understood</button></div></div>
+</div>
+
+ <!-- #3647: the order's document is a fiscal receipt. The card says only what
+      OpenLinker knows: nothing about paper or the box, nothing about the buyer
+      receiving it. The other two cards are the receipt's in-progress and
+      not-confirmed states, shown side by side so all three can be compared. -->
+ <div data-state="receipt" hidden>
+ <div class="order-head">
+ <div class="order-head__field"><dt>Order</dt><dd class="order-head__ref">OL-4471</dd></div>
+ <div class="order-head__field"><dt>Buyer</dt><dd>Anna Nowak</dd></div>
+ <div class="order-head__field"><dt>Parcel</dt><dd>1 of 1</dd></div>
+ <div class="order-head__spacer"></div>
+ <span class="status-badge status-badge--success">Closed</span>
+</div>
+ <div class="docs">
+ <div class="doc-card"><h4>Receipt for this order</h4><p>Receipt 16240. Open with the link below.</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Receipt made</span><a class="btn btn--secondary btn--sm" href="#" target="_blank" rel="noopener noreferrer">Open receipt</a></div></div>
  <div class="doc-card"><h4>Goes ON the box</h4><p>Shipping label — InPost paczkomat</p><div class="doc-card__footer"><span class="status-badge status-badge--success">Ready to print</span><button class="btn btn--secondary btn--sm" type="button">Print label</button></div></div>
+ <div class="doc-card"><h4>Receipt for this order</h4><p>Receipt on its way. It does not stop the box going out.</p><div class="doc-card__footer"><span class="status-badge status-badge--info">Being registered</span></div></div>
+ <div class="doc-card"><h4>Receipt for this order</h4><p>Receipt not confirmed. OpenLinker does not know if this receipt was made. It does not stop the box going out. Mention it to the office.</p><div class="doc-card__footer"><span class="status-badge status-badge--warning">Not confirmed</span></div></div>
 </div>
 </div>
 
@@ -601,7 +636,11 @@
       <span class="mockup-bar__label">Mockup · jump to a state</span>
       <button class="mockup-pill" data-state-btn="working" aria-pressed="true" type="button">Working the queue</button>
       <button class="mockup-pill" data-state-btn="ready" aria-pressed="false" type="button">Parcel ready to close</button>
+      <button class="mockup-pill" data-state-btn="receipt" aria-pressed="false" type="button">Order has a receipt</button>
       <button class="mockup-pill" data-state-btn="unlabelled" aria-pressed="false" type="button">Packed, no label</button>
+      <button class="mockup-pill" data-state-btn="label-change" aria-pressed="false" type="button">Change size dialog</button>
+      <button class="mockup-pill" data-state-btn="label-refused" aria-pressed="false" type="button">Change size refused</button>
+      <button class="mockup-pill" data-state-btn="label-void" aria-pressed="false" type="button">Old label void</button>
       <button class="mockup-pill" data-state-btn="hold" aria-pressed="false" type="button">Held parcel selected</button>
       <button class="mockup-pill" data-state-btn="empty" aria-pressed="false" type="button">Nothing routed</button>
       <button class="mockup-pill" data-state-btn="locked" aria-pressed="false" type="button">Bench locked</button>
@@ -618,7 +657,7 @@
     </div>
 
     <div class="legend" style="margin-top:-8px">
-      <span class="legend__item"><code>working</code> / <code>ready</code> / <code>unlabelled</code> / <code>hold</code> → <code>main [data-state="…"]</code>, toggled via <code>hidden</code></span>
+      <span class="legend__item"><code>working</code> / <code>ready</code> / <code>receipt</code> / <code>unlabelled</code> / <code>hold</code> → <code>main [data-state="…"]</code>, toggled via <code>hidden</code></span>
       <span class="legend__item"><code>empty</code> → <code>[data-bench-body="empty"]</code> vs <code>[data-bench-body="grid"]</code></span>
       <span class="legend__item"><code>locked</code> → <code>#lockOverlay[data-open="true"]</code>, layered over whichever <code>[data-state]</code> was active before the lock fired</span>
     </div>
@@ -1084,12 +1123,6 @@
       if (key === 'c') { document.getElementById('confirmManualBtn').click(); }
       else if (key === 'u') { document.getElementById('undoScanBtn').click(); }
       else if (key === 'n') { document.querySelector('.rail__search').nextElementSibling.querySelector('.btn--lg').click(); }
-    });
-
-    // Switch packer really does what its own hint says — it's a logout,
-    // dressed for a shared kiosk, so it opens the same lock/sign-in screen.
-    document.querySelectorAll('.identity-bar .btn--secondary').forEach(function (btn) {
-      btn.addEventListener('click', function () { setState('locked'); });
     });
 
     // Turn the sound off — a real toggle now wired to a real distinct

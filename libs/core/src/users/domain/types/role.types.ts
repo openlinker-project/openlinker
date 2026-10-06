@@ -106,6 +106,13 @@ export const PermissionValues = [
   // `viewer` so only `admin` (which holds the full `PermissionValues` set)
   // carries it, matching those admin-only `@Roles` guards.
   'analytics:write',
+  // D35 (#3534/#3535): admin and operator only, deliberately excluding
+  // `viewer` — an export takes buyer data out of the system, so read access
+  // to `/orders` does not imply the right to remove it in bulk. Backend
+  // authorization is enforced separately via `@Roles('admin', 'operator')`
+  // on `OrderExportsController`; this permission is what the FE's Export
+  // button and row checkboxes on the export dialog key on.
+  'orders:export',
 ] as const;
 
 /**
@@ -144,6 +151,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'webhooks:read',
     'content:write',
     'automations:read',
+    // D35: admin and operator only — see `PermissionValues`'s own comment.
+    'orders:export',
   ],
   viewer: [
     'connections:read',
