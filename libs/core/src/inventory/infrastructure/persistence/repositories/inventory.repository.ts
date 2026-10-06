@@ -306,7 +306,6 @@ export class InventoryRepository implements InventoryRepositoryPort {
     if (filters.sourceConnectionId) {
       where.sourceConnectionId = filters.sourceConnectionId;
     }
-
     const [entities, total] = await this.repository.findAndCount({
       where,
       order: { updatedAt: 'DESC' },
