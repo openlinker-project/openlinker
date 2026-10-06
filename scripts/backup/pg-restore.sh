@@ -1,7 +1,7 @@
 #!/bin/bash
 # Restore a `pg_dump -Fc` dump (as produced by pg-backup-once.sh) into a
 # target database. Part of #3618/#3537 — the documented restore path, and
-# the exact command `.github/workflows/backup-restore.yml` runs against an
+# the exact command the `Backup / Restore (#3618)` job in `.github/workflows/ci.yml` runs against an
 # empty database to prove a restore actually works rather than being assumed.
 #
 # Usage:

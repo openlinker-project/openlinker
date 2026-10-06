@@ -9,7 +9,7 @@
 # Nothing here reads a committed file for credentials.
 #
 # Runs standalone (no scheduler dependency), so it is also what
-# `.github/workflows/backup-restore.yml` calls directly to produce the dump
+# the `Backup / Restore (#3618)` job in `.github/workflows/ci.yml` calls directly to produce the dump
 # CI restores into an empty database — one script, two callers, so the CI
 # path can never drift from what actually runs at 03:00 in production.
 #
