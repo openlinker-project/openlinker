@@ -429,6 +429,12 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     if (filters.hasTracking !== undefined) {
       where.trackingNumber = filters.hasTracking ? Not(IsNull()) : IsNull();
     }
+    // #3528 — exact match, unlike `hasTracking`'s presence test. A tracking
+    // number is an opaque carrier-issued code; nobody types a partial one and
+    // gets a useful answer, so this is `=`, never `LIKE`.
+    if (filters.trackingNumber !== undefined) {
+      where.trackingNumber = filters.trackingNumber;
+    }
     if (filters.hasProviderShipmentId !== undefined) {
       where.providerShipmentId = filters.hasProviderShipmentId ? Not(IsNull()) : IsNull();
     }

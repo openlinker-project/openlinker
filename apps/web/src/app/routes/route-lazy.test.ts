@@ -122,8 +122,11 @@ const lazyRoutes = collectLazyRoutes([
  * The task detail page (#3098): `/fulfillment` became an INDEX child so
  * `/fulfillment/works/:workId` could sit beside it — one node became two,
  * net +1, from 71 to 72.
+ *
+ * #3533 (G03, epic #3507): `/settings/order-tags` — the workspace tag
+ * manager — is one more authenticated lazy route, from 72 to 73.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 72;
+const EXPECTED_LAZY_ROUTE_COUNT = 73;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

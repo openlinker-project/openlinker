@@ -90,6 +90,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     labelPrintedAt: null,
     completedAt: null,
     lines: [line()],
+    packerNotes: [],
     ...over,
   };
 }
@@ -228,6 +229,69 @@ describe('BenchParcelView (#2418)', () => {
         'Print label',
       ].sort()
     );
+  });
+
+  describe('notes from the office (G03-6)', () => {
+    it('should show the flagged notes on the open parcel when packerNotes is non-empty', async () => {
+      mount(
+        parcel({
+          packerNotes: [
+            {
+              id: 'n1',
+              body: 'Put the printed invoice under the flap.',
+              authorUsername: 'marta.nowak',
+              createdAt: '2026-09-29T10:40:00Z',
+            },
+          ],
+        })
+      );
+
+      const block = await screen.findByTestId('bench-office-notes');
+      expect(block.textContent).toContain('Notes from the office (1)');
+      expect(block.textContent).toContain('Put the printed invoice under the flap.');
+      expect(block.textContent).toContain('marta.nowak');
+    });
+
+    it('should render no notes block when packerNotes is empty', async () => {
+      mount(parcel());
+
+      await screen.findByTestId('bench-parcel');
+      expect(screen.queryByTestId('bench-office-notes')).not.toBeInTheDocument();
+    });
+  });
+
+  // G03-6 — the panel used to say "packed … and it is closed" on a box at
+  // "0 of 1", because it keyed on the label state alone. The parcel view is
+  // the one place that knows whether the box is closed, so it must pass it.
+  describe('a missing label on an OPEN box (G03-6)', () => {
+    it('should show the pending label card, not the unlabelled block, while the box is open', async () => {
+      mount(parcel(), {
+        getDocuments: vi.fn().mockResolvedValue({
+          workId: 'w-1',
+          invoice: {
+            state: 'ready',
+            invoiceId: 'inv-1',
+            documentNumber: 'FV/2026/09/0412',
+            issuedAt: '2026-09-01T09:14:00Z',
+            blockReason: null,
+            unresolvedReason: null,
+          },
+          label: {
+            state: 'unavailable',
+            shipmentId: null,
+            carrier: null,
+            trackingNumber: null,
+            providerCode: 'ADDR_INCOMPLETE',
+            carrierMessage: null,
+            carrierMessageRedacted: false,
+            failedAt: '2026-09-04T14:20:00Z',
+          },
+        }),
+      });
+
+      expect(await screen.findByTestId('bench-documents-label-pending')).toBeInTheDocument();
+      expect(screen.queryByTestId('bench-documents-unlabelled')).not.toBeInTheDocument();
+    });
   });
 
   // ── #3406 — someone else has this box open ──────────────────────────────

@@ -195,6 +195,22 @@ export interface BenchParcelView {
    */
   readonly completedAt: string | null;
   readonly lines: readonly BenchParcelLineView[];
+  /**
+   * Internal notes flagged "Show to packer" (D12, #3531) — read only, in
+   * creation order. Never a note's raw `showToPacker: false` sibling, and
+   * never a tag: decision D12 limits the packer projection to exactly this
+   * field plus the buyer note (#3509, not yet shipped). An empty array means
+   * no flagged note exists for this order, which is the ordinary case.
+   */
+  readonly packerNotes: readonly BenchPackerNoteView[];
+}
+
+/** One note flagged "Show to packer" (D12) — text, author, time, nothing else. */
+export interface BenchPackerNoteView {
+  readonly id: string;
+  readonly body: string;
+  readonly authorUsername: string;
+  readonly createdAt: string;
 }
 
 /**

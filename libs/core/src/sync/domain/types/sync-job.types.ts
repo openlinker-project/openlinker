@@ -307,6 +307,16 @@ export const JobTypeValues = [
   // non-nullable, pending #1943.
   'analytics.currency.recalculate',
 
+  // Orders CSV/XLSX export (#3534, D35, mockup M5). One-shot: generates the
+  // file from the requesting operator's filters/scope/columns and writes it
+  // onto its own `order_exports` row. `bulk` lane (ADR-050) — a background
+  // export a human is waiting on, but a query-then-write job rather than a
+  // buyer-facing write, the same cost-of-starvation reasoning the catalogue
+  // sweeps use. `SyncJob.connectionId` is the system nil UUID, like
+  // `analytics.currency.recalculate` above, since an export spans every
+  // connection the operator's filters admit.
+  'orders.export',
+
   // Subiekt bridge reachability sweep (#3358). Before this, an unreachable
   // bridge produced no operator-facing signal at all — no alerting
   // infrastructure exists anywhere in the product, and Subiekt registered no

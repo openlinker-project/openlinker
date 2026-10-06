@@ -194,6 +194,32 @@ describe('SyncJobsPage', () => {
     expect(await screen.findByText('Allegro Europe')).toBeInTheDocument();
   });
 
+  // #3507 G03-12: the type filter listed 21 of the core's job types, so an
+  // `orders.export` run — which the export dialog links to — could be seen but
+  // never filtered to. `scripts/check-job-type-mirror.mjs` guards the whole set.
+  it('should offer orders.export in the job type filter and apply it when the URL carries it', async () => {
+    const listMock = vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
+    const mockApi = createMockApiClient({
+      syncJobs: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, {
+      apiClient: mockApi,
+      route: '/sync-jobs?jobType=orders.export',
+    });
+
+    const typeFilter = await screen.findByRole('combobox', { name: /filter by job type/i });
+    expect(
+      await screen.findByRole('option', { name: 'orders.export' }),
+    ).toBeInTheDocument();
+    expect(typeFilter).toHaveValue('orders.export');
+    await waitFor(() => {
+      const lastCall = listMock.mock.calls.at(-1) as [SyncJobFilters, SyncJobPagination];
+      expect(lastCall[0].jobType).toBe('orders.export');
+    });
+  });
+
   it('filters sync jobs by the selected connection when changing the dropdown', async () => {
     const user = userEvent.setup();
     const connection = makeConnection();

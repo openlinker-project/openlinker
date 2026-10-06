@@ -46,6 +46,7 @@ import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
 import { OrderReservationShortfallDto } from './order-reservation-shortfall.dto';
+import { OrderOpenReturnDto } from './order-open-return.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
@@ -208,6 +209,26 @@ export class OrderRecordResponseDto {
       'the projection is best-effort and degrades to absent on failure.',
   })
   reservationShortfalls?: OrderReservationShortfallDto[];
+
+  @ApiPropertyOptional({
+    type: OrderOpenReturnDto,
+    description:
+      'The Status-group "open return" badge (#2998). Absent means no OPEN return was found for ' +
+      'this order, never a positive "no returns" claim — the batched projection is best-effort ' +
+      'and degrades to absent on a failed read. "Open" is the `/returns` list\'s own `all_open` ' +
+      'segment predicate, reused rather than redefined. An orphan return (unattributed to any ' +
+      'order) can never contribute to this field by construction.',
+  })
+  openReturn?: OrderOpenReturnDto;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Tag ids assigned to this order (#3532, D34). Absent means "not projected on this read" ' +
+      '(never used today — every read that returns this DTO batches it); an empty array is a ' +
+      'positive "no tags".',
+  })
+  tagIds?: string[];
 
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;

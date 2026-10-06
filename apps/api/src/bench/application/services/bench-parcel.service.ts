@@ -55,6 +55,8 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderRecordNotFoundException,
   IOrderRecordService,
+  ORDER_NOTE_SERVICE_TOKEN,
+  type IOrderNoteService,
 } from '@openlinker/core/orders';
 import {
   INVENTORY_QUERY_SERVICE_TOKEN,
@@ -136,6 +138,12 @@ export class BenchParcelService implements IBenchParcelService {
     // throws, so no pack action can fail because of it.
     @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
     private readonly users: IUserManagementService,
+    // D12 (#3531) - the packer-visible notes read. Notes-flagged-only, never
+    // a raw note list: the bench reads through `getPackerVisibleForOrders`,
+    // the same shape `showToPacker: false` notes and tags are structurally
+    // absent from.
+    @Inject(ORDER_NOTE_SERVICE_TOKEN)
+    private readonly notes: IOrderNoteService,
     // #3525 - the SAME notifier the desktop worklist's manual close uses.
     // Best-effort by contract; never able to fail the scan.
     @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
@@ -713,10 +721,11 @@ export class BenchParcelService implements IBenchParcelService {
     work: FulfillmentWorkView,
     state: ParcelVerificationState
   ): Promise<BenchParcelView> {
-    const [order, siblings, lines] = await Promise.all([
+    const [order, siblings, lines, packerNotesByOrder] = await Promise.all([
       this.orders.findByIds([work.orderId]).then((records) => records[0]),
       this.worklist.listSiblingWorkIds([work.orderId]),
       this.describeLines(work, state),
+      this.notes.getPackerVisibleForOrders([work.orderId]),
     ]);
 
     // A parcel whose siblings could not be read is "1 of 1" rather than "1 of
@@ -759,6 +768,15 @@ export class BenchParcelService implements IBenchParcelService {
       labelPrintedAt: work.labelPrintedAt?.toISOString() ?? null,
       completedAt: work.completedAt?.toISOString() ?? null,
       lines,
+      // D12 (#3531) - flagged notes only, read only, no tags. Absent from the
+      // map (an order with none) reads as an empty array here rather than
+      // undefined, matching every other array field on this view.
+      packerNotes: (packerNotesByOrder.get(work.orderId) ?? []).map((note) => ({
+        id: note.id,
+        body: note.body,
+        authorUsername: note.authorUsername,
+        createdAt: note.createdAt.toISOString(),
+      })),
     };
   }
 

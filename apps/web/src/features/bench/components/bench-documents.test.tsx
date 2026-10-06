@@ -59,14 +59,27 @@ function label(over: Partial<BenchLabel> = {}): BenchLabel {
   };
 }
 
+interface MountOptions {
+  readonly unlabelledTotal?: number;
+  readonly packStationLabel?: string | null;
+  /** Open is the ordinary state while a packer works a box. */
+  readonly closed?: boolean;
+  readonly plugins?: readonly OpenLinkerPlugin[];
+  readonly getReceiptLink?: (workId: string) => Promise<{ url: string }>;
+}
+
+/** F3/F4 is a closed-box state; every unlabelled-block test mounts one. */
+const CLOSED: MountOptions = { closed: true };
+
 function mount(
   documents: Partial<BenchDocuments> = {},
-  unlabelledTotal = 0,
-  packStationLabel: string | null = null,
-  options: {
-    readonly plugins?: readonly OpenLinkerPlugin[];
-    readonly getReceiptLink?: (workId: string) => Promise<{ url: string }>;
-  } = {},
+  {
+    unlabelledTotal = 0,
+    packStationLabel = null,
+    closed = false,
+    plugins,
+    getReceiptLink,
+  }: MountOptions = {}
 ) {
   const apiClient = createMockApiClient({
     bench: {
@@ -77,7 +90,7 @@ function mount(
         ...documents,
       }),
       getReceiptLink:
-        options.getReceiptLink ??
+        getReceiptLink ??
         vi.fn().mockResolvedValue({ url: 'https://receipts.example.test/r/16240' }),
       downloadReceipt: vi.fn().mockResolvedValue(new Blob(['%PDF'])),
       listUnlabelledParcels: vi
@@ -91,9 +104,9 @@ function mount(
 
   return {
     apiClient,
-    ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} />, {
+    ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} closed={closed} />, {
       apiClient,
-      ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
+      ...(plugins === undefined ? {} : { plugins }),
       sessionAdapter: createAuthenticatedSessionAdapter({
         ...PACKER,
         permissions: [],
@@ -233,7 +246,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
           providerCode: 'LOCKER_FULL',
         }),
       },
-      3
+      { unlabelledTotal: 3, closed: true }
     );
 
     expect(await screen.findByText(/Packed, but there is no label/i)).toBeInTheDocument();
@@ -258,7 +271,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         carrierMessage: null,
         carrierMessageRedacted: true,
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/turned it down with code LOCKER_FULL/i)).toBeInTheDocument();
     expect(screen.queryByText('“”')).toBeNull();
@@ -273,7 +286,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         carrierMessage: null,
         carrierMessageRedacted: false,
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/The carrier did not say why/i)).toBeInTheDocument();
   });
@@ -290,7 +303,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         carrierMessage: null,
         carrierMessageRedacted: true,
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/not shown at the bench/i)).toBeInTheDocument();
     expect(screen.queryByText(/The carrier did not say why/i)).toBeNull();
@@ -303,7 +316,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
         trackingNumber: null,
         providerCode: 'NO_LABEL',
       }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByText(/Packed, but there is no label/i)).toBeInTheDocument();
     // A control that cannot succeed is worse than none — buying a label needs
@@ -315,10 +328,58 @@ describe('BenchDocumentsPanel (#2418)', () => {
   it('should still offer the invoice for inside the box while the label is outstanding', async () => {
     mount({
       label: label({ state: 'unavailable', trackingNumber: null }),
-    });
+    }, CLOSED);
 
     expect(await screen.findByRole('button', { name: /print invoice/i })).toBeInTheDocument();
     expect(screen.getByText(/it is not missing later/i)).toBeInTheDocument();
+  });
+
+  // ── G03-6 — an OPEN box with no label yet is not "packed" ────────────────
+  //
+  // The unlabelled block says the box "is finished and correct … and it is
+  // closed". G03-6 found it on a parcel at "0 of 1": the panel keyed on the
+  // label state alone. The open arm must say the label is not ready and let
+  // packing carry on — and must not ask dispatch's list while it is open.
+  describe('a box that is still open while no label exists', () => {
+    const unavailable = label({ state: 'unavailable', trackingNumber: null, shipmentId: null });
+
+    it('should not render the unlabelled block when the box is open', async () => {
+      const { apiClient } = mount({ label: unavailable });
+
+      await screen.findByTestId('bench-documents-label-pending');
+      expect(screen.queryByTestId('bench-documents-unlabelled')).not.toBeInTheDocument();
+      expect(screen.queryByText(/This box cannot go out/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/it is closed/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/it is not missing later/i)).not.toBeInTheDocument();
+      expect(apiClient.bench.listUnlabelledParcels).not.toHaveBeenCalled();
+    });
+
+    it('should show a neutral label card that lets packing carry on when the box is open', async () => {
+      mount({ label: unavailable });
+
+      const card = await screen.findByTestId('bench-documents-label-pending');
+      expect(card).toHaveTextContent('Goes ON the box');
+      expect(card).toHaveTextContent('The label is not ready yet');
+      expect(card).toHaveTextContent(/Carry on packing/);
+      // Nothing to press: the label is dispatch's to buy, not this bench's.
+      expect(within(card).queryByRole('button')).toBeNull();
+      // The invoice card is unaffected.
+      expect(screen.getByRole('button', { name: /print invoice/i })).toBeInTheDocument();
+    });
+
+    it('should render the unlabelled block, not the pending card, once the box is closed', async () => {
+      mount({ label: unavailable }, CLOSED);
+
+      expect(await screen.findByTestId('bench-documents-unlabelled')).toBeInTheDocument();
+      expect(screen.queryByTestId('bench-documents-label-pending')).not.toBeInTheDocument();
+    });
+
+    it('should render no pending card when the label is ready', async () => {
+      mount();
+
+      await screen.findByTestId('bench-documents-label');
+      expect(screen.queryByTestId('bench-documents-label-pending')).not.toBeInTheDocument();
+    });
   });
 
   // #3420 was reverted: a control that does nothing is not rescued by a
@@ -336,7 +397,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
   // #3404 — the packer/printer binding made visible.
   describe('the printer-binding line', () => {
     it("should render the signed-in packer's own station label", async () => {
-      mount({}, 0, 'Zebra ZD420 · Bench 3');
+      mount({}, { packStationLabel: 'Zebra ZD420 · Bench 3' });
 
       const line = await screen.findByTestId('bench-documents-printer');
       expect(line).toHaveTextContent('Printing to Zebra ZD420 · Bench 3');
@@ -351,7 +412,7 @@ describe('BenchDocumentsPanel (#2418)', () => {
     });
 
     it('should render nothing when the packer has no station label set', async () => {
-      mount({}, 0, null);
+      mount({}, { packStationLabel: null });
 
       await screen.findByRole('button', { name: 'Print invoice' });
       expect(screen.queryByTestId('bench-documents-printer')).not.toBeInTheDocument();
@@ -443,7 +504,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
   });
 
   it('should keep Open receipt disabled until the link arrives', async () => {
-    mount(withDocument(receiptDoc()), 0, null, {
+    mount(withDocument(receiptDoc()), {
       getReceiptLink: vi
         .fn<(workId: string) => Promise<{ url: string }>>()
         .mockReturnValue(new Promise(() => undefined)),
@@ -455,7 +516,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
   });
 
   it('should say the link is on its way while it is fetched, never that there is nothing to open', async () => {
-    mount(withDocument(receiptDoc()), 0, null, {
+    mount(withDocument(receiptDoc()), {
       getReceiptLink: vi
         .fn<(workId: string) => Promise<{ url: string }>>()
         .mockReturnValue(new Promise(() => undefined)),
@@ -472,7 +533,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
       .fn<(workId: string) => Promise<{ url: string }>>()
       .mockRejectedValueOnce(new Error('boom'))
       .mockReturnValue(new Promise(() => undefined));
-    mount(withDocument(receiptDoc()), 0, null, { getReceiptLink });
+    mount(withDocument(receiptDoc()), { getReceiptLink });
 
     expect(await screen.findByText(/The link did not load/)).toBeInTheDocument();
     act(() => {
@@ -485,7 +546,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
   it.each(['javascript:alert(document.domain)', 'data:text/html,<script>alert(1)</script>'])(
     'should never render a %s receipt link as an href, and report the link as failed',
     async (url) => {
-      mount(withDocument(receiptDoc()), 0, null, {
+      mount(withDocument(receiptDoc()), {
         // Through the real boundary parser, which is where a hostile scheme is refused.
         getReceiptLink: () => Promise.resolve().then(() => parseBenchReceiptLink({ url })),
       });
@@ -500,7 +561,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
       .fn<(workId: string) => Promise<{ url: string }>>()
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValue({ url: 'https://receipts.example.test/r/16240' });
-    mount(withDocument(receiptDoc()), 0, null, { getReceiptLink });
+    mount(withDocument(receiptDoc()), { getReceiptLink });
 
     expect(await screen.findByText(/The link did not load/)).toBeInTheDocument();
     act(() => {
@@ -608,7 +669,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
     });
 
     it('should let a registered plugin replace the body while the host keeps the frame', async () => {
-      mount(withDocument(receiptDoc()), 0, null, { plugins: [slotPlugin('eparagony')] });
+      mount(withDocument(receiptDoc()), { plugins: [slotPlugin('eparagony')] });
 
       expect(await screen.findByTestId('plugin-receipt-body')).toHaveTextContent('Plugin body for 16240');
       // Badge, top line and title are the host's, never the plugin's.
@@ -618,7 +679,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
     });
 
     it('should use the host default when the receipt belongs to a different integration', async () => {
-      mount(withDocument(receiptDoc()), 0, null, { plugins: [slotPlugin('another-provider')] });
+      mount(withDocument(receiptDoc()), { plugins: [slotPlugin('another-provider')] });
 
       expect(await screen.findByText('Open with the link below.')).toBeInTheDocument();
       expect(screen.queryByTestId('plugin-receipt-body')).toBeNull();
@@ -644,7 +705,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
             getReceiptLink: vi.fn().mockResolvedValue({ url: 'https://receipts.example.test/r/16240' }),
           },
         });
-        renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={1} />, {
+        renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={1} closed={false} />, {
           apiClient,
           sessionAdapter: createAuthenticatedSessionAdapter({
             ...PACKER,

@@ -94,6 +94,13 @@ export interface BenchDocumentsPanelProps {
   readonly workId: string;
   /** Units verified into the box, for the unlabelled state's reassurance line. */
   readonly unitsPacked: number;
+  /**
+   * Whether the box is closed. The unlabelled block says "packed … and it is
+   * closed", so it is true only of a closed box: on an open one a missing
+   * label is not yet a problem at this bench, and the label card says so
+   * instead (G03-6 found the block on a parcel at "0 of 1").
+   */
+  readonly closed: boolean;
 }
 
 /**
@@ -122,6 +129,7 @@ function describeCarrierRefusal(label: BenchLabel): string {
 export function BenchDocumentsPanel({
   workId,
   unitsPacked,
+  closed,
 }: BenchDocumentsPanelProps): ReactElement | null {
   const apiClient = useApiClient();
   const documents = useBenchDocumentsQuery(workId);
@@ -151,7 +159,11 @@ export function BenchDocumentsPanel({
   const stationLabel = session.user?.packStationLabel ?? null;
 
   const data = documents.data;
-  const unlabelled = data?.label.state === 'unavailable';
+  const labelUnavailable = data?.label.state === 'unavailable';
+  // F3/F4 is a fact about a FINISHED box. An open box with no label yet gets
+  // the neutral pending card below, never "this box cannot go out".
+  const unlabelled = labelUnavailable && closed;
+  const labelPending = labelUnavailable && !closed;
   // Only asked for while this bench is actually looking at an unlabelled box.
   const others = useBenchUnlabelledQuery({ enabled: unlabelled });
 
@@ -336,10 +348,12 @@ export function BenchDocumentsPanel({
         })}
       </div>
 
-      {/* ── The label: on the box. Suppressed while unlabelled, which has its
-             own treatment above, and while the void notice is up: an in-doubt
-             void leaves the shipment row looking live, and a Print control
-             beside "do not use the old label" would contradict it. ────────── */}
+      {/* ── The label: on the box. Suppressed on a closed unlabelled box,
+             which has its own treatment above, and while the void notice is
+             up: an in-doubt void leaves the shipment row looking live, and a
+             Print control beside "do not use the old label" would contradict
+             it. On an OPEN box with no label yet, a neutral card keeps the
+             slot and the packer packing. ─────────────────────────────────── */}
       {label.state === 'ready' && voidNotice === null ? (
         <div
           className="bench-documents__card bench-documents__label"
@@ -381,6 +395,18 @@ export function BenchDocumentsPanel({
               </ReadOnlyLock>
             ) : null}
           </div>
+        </div>
+      ) : labelPending ? (
+        <div
+          className="bench-documents__card bench-documents__label"
+          data-testid="bench-documents-label-pending"
+        >
+          <StatusBadge tone="neutral" withDot>
+            {benchParcelCopy.documents.labelPendingBadge}
+          </StatusBadge>
+          <span className="bench-documents__slot">{benchParcelCopy.documents.onLabel}</span>
+          <h3>{benchParcelCopy.documents.labelPendingTitle}</h3>
+          <p>{benchParcelCopy.documents.labelPendingBody}</p>
         </div>
       ) : null}
       </div>

@@ -28,6 +28,7 @@ import { customersRoute } from './customers.route';
 import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
 import { inventoryLocationsRoute } from './inventory-locations.route';
+import { orderTagsSettingsRoute } from './order-tags-settings.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
@@ -46,10 +47,7 @@ import {
 } from './prompt-templates-legacy-redirects.route';
 import { automationsRoute } from './automations.route';
 import { returnsRoute } from './returns.route';
-import {
-  assignPackingWorkLegacyRedirectRoute,
-  fulfillmentRoute,
-} from './fulfillment.route';
+import { assignPackingWorkLegacyRedirectRoute, fulfillmentRoute } from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
@@ -86,6 +84,7 @@ export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
     salesDocumentsListRoute,
     connectionsRoute,
     ...(omsRoutingUiEnabled ? [inventoryLocationsRoute] : []),
+    orderTagsSettingsRoute,
     adaptersRoute,
     newConnectionRoute,
     advancedNewConnectionRoute,

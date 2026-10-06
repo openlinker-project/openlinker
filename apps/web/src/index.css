@@ -312,6 +312,24 @@
   --status-disabled-fg: oklch(38% 0.010 80);
   --status-disabled-strong: oklch(38% 0.010 80);
 
+  /* ── Tags (#3533) ─────────────────────────────────────────────────────
+   * A closed vocabulary of eight dot colours for the order-tag picker
+   * (`OrderTagPicker`) and the Settings tag manager. NOT status hues — a
+   * tag colour paints a small dot on a neutral pill (the `.channel-pill`
+   * precedent) and a tag always carries its name; colour is never the
+   * only signal. `[data-tag-color]` resolves one of these onto `--tag-c`,
+   * which `.order-tag__dot` reads. Single closed set, no per-tag custom
+   * hex — this is what "the design system's token set" means in #3532's
+   * AC. */
+  --tag-grey: oklch(62% 0.01 270);
+  --tag-blue: oklch(58% 0.15 255);
+  --tag-teal: oklch(60% 0.10 195);
+  --tag-green: oklch(60% 0.14 150);
+  --tag-amber: oklch(74% 0.15 80);
+  --tag-orange: oklch(66% 0.16 50);
+  --tag-pink: oklch(64% 0.17 350);
+  --tag-violet: oklch(58% 0.17 300);
+
   /* ── Elevation ────────────────────────────────────────────────────── */
   --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
   --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
@@ -490,6 +508,16 @@ html[data-theme='dark'] {
   --status-disabled-border: oklch(34% 0.012 270);
   --status-disabled-fg: oklch(82% 0.010 270);
   --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Tags (#3533) — lighter/brighter variants for dark surfaces. */
+  --tag-grey: oklch(70% 0.01 270);
+  --tag-blue: oklch(70% 0.14 255);
+  --tag-teal: oklch(72% 0.10 195);
+  --tag-green: oklch(72% 0.14 150);
+  --tag-amber: oklch(80% 0.14 80);
+  --tag-orange: oklch(74% 0.15 50);
+  --tag-pink: oklch(74% 0.15 350);
+  --tag-violet: oklch(72% 0.15 300);
 
   /* Elevation */
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
@@ -765,6 +793,49 @@ button:disabled,
 .button--icon.button--xs { width: 1.5rem; }
 .button--icon.button--sm { width: 1.75rem; }
 .button--icon.button--lg { width: 2.375rem; }
+
+/* ── Bare icon button (#3507) ──────────────────────────────────────
+ * A glyph-only button that sits INSIDE another component — the `×` in a tag
+ * pill or an active-filter chip. Every `<button>` inherits the global
+ * `button { height: 2rem; padding; border; background; box-shadow }` rule
+ * above, so an un-reset `×` silently grew a 22 px pill to 38 px. This modifier
+ * zeroes that whole box (the class is doubled to outrank the toned
+ * `.button--*` rules declared later). On a coarse pointer the global 44 px floor
+ * would blow the pill up again, so the TAP TARGET grows through an invisible
+ * `::after` instead of the box. */
+.button--bare.button--bare {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1;
+}
+.button--bare.button--bare-sm { width: 1.125rem; height: 1.125rem; }
+.button--bare.button--bare:hover {
+  background: var(--bg-surface-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+.button--bare.button--bare:active { background: var(--bg-surface-hover); }
+.button--bare.button--bare:focus-visible { box-shadow: var(--shadow-focus); }
+.button--bare.button--bare:disabled { cursor: not-allowed; opacity: 0.5; background: transparent; }
+@media (hover: none) and (pointer: coarse) {
+  .button--bare.button--bare { min-width: 0; min-height: 0; }
+  .button--bare.button--bare::after { content: ''; position: absolute; inset: -14px; }
+}
 
 /* ── Contextual help link (#81) ───────────────────────────────────── */
 .help-link {
@@ -1948,6 +2019,225 @@ textarea,
   font-family: var(--font-mono);
   font-size: 0.65rem;
   opacity: 0.85;
+}
+
+/* ── Filter primitives (#3507, mockup m4b-orders-filters) ──────────────
+ * The `FilterBar` the style guide describes (§ Composition patterns), split
+ * into composable pieces in `shared/ui`: `FilterToggleButton` ("Filters (n)"),
+ * `FilterPanel` + `FilterGroup` + `FilterField` (the accordion body),
+ * `FilterCheck` (checkbox/radio with a count), `ActiveFilterChips`
+ * (`{label: value} ×` + "Clear all"), `FilterSheet` + `FilterSection` (the
+ * mobile bottom sheet), and the `.quick-filters` row. Tokens only. */
+.filter-toggle { gap: var(--space-2); }
+.filter-toggle__count {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.125rem;
+  text-align: center;
+}
+.filter-toggle__chev {
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.filter-toggle[aria-expanded='true'] .filter-toggle__chev { transform: rotate(180deg); }
+.filter-toggle[aria-expanded='true'] {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-strong);
+}
+
+.filter-panel {
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+}
+.filter-panel__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.filter-group {
+  margin: 0;
+  padding: var(--space-4);
+  border: 0;
+  border-left: 1px solid var(--border-subtle);
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+.filter-group:first-child { border-left: 0; }
+/* A `<legend>` is laid out outside the fieldset's grid; floating it full-width
+   puts it back into the flow so the group's `gap` applies below it. */
+.filter-group__legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.filter-group > *:not(legend) { clear: both; }
+.filter-field { display: grid; gap: 6px; min-width: 0; }
+.filter-field__label { font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); }
+.filter-field .control,
+.filter-field select { width: 100%; max-width: none; }
+.filter-field .segmented-control { display: flex; width: 100%; }
+.filter-field .segmented-control__option { flex: 1 1 0; padding: 0 6px; font-size: 0.75rem; white-space: nowrap; }
+.filter-range { display: grid; gap: 6px; }
+.filter-range__row {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+}
+.filter-range__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.filter-checks { display: grid; gap: 2px; }
+.filter-checks--scroll { max-height: 9.5rem; overflow-y: auto; }
+.filter-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.filter-check input { margin: 0; flex: none; accent-color: var(--accent-primary); }
+.filter-check__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-check__label--muted { color: var(--text-muted); }
+.filter-check__count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.filter-check--warning .filter-check__count { color: var(--status-warning-strong); }
+.filter-check--error .filter-check__count { color: var(--status-error-strong); }
+.filter-panel__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.filter-panel__hint { font-size: 0.75rem; color: var(--text-muted); }
+.filter-panel__footer-end { margin-left: auto; display: flex; gap: var(--space-2); }
+@media (max-width: 1279.98px) {
+  .filter-panel__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filter-group:nth-child(odd) { border-left: 0; }
+  .filter-group:nth-child(n + 3) { border-top: 1px solid var(--border-subtle); }
+}
+
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 3px 0 var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  font-size: 0.75rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.filter-chip__label { color: var(--text-muted); }
+.filter-chip__value { display: inline-flex; align-items: center; color: var(--text-primary); font-weight: 500; }
+.filter-chip__value .order-tag { height: 18px; }
+
+.quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.quick-filters__label {
+  margin-right: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.quick-filters__sep { flex: none; width: 1px; height: 16px; margin: 0 var(--space-1); background: var(--border-default); }
+.quick-filters__end { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+
+.filter-section { border-bottom: 1px solid var(--border-subtle); }
+.filter-section > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  cursor: pointer;
+}
+.filter-section > summary::-webkit-details-marker { display: none; }
+.filter-section > summary:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+.filter-section__title { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+.filter-section__summary {
+  margin-left: auto;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.filter-section__summary--on { color: var(--accent-primary-soft-strong); font-weight: 500; }
+.filter-section__chev { color: var(--text-muted); transition: transform var(--duration-fast) var(--ease-out); }
+.filter-section[open] .filter-section__chev { transform: rotate(90deg); }
+.filter-section__body { display: grid; gap: var(--space-3); padding: 0 0 var(--space-4); }
+.filter-section .control,
+.filter-section select { width: 100%; max-width: none; min-height: 44px; }
+.filter-section .filter-check { min-height: 44px; }
+.filter-section .segmented-control__option { min-height: 44px; }
+
+@media (max-width: 767.98px) {
+  .active-filters,
+  .quick-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .active-filters > *,
+  .quick-filters > * { flex: none; }
+  .quick-filters__end { display: none; }
+  .filter-toggle { min-height: 44px; }
 }
 
 /* ── Price changes review queue (#3147, ADR-072) ──────────────────────
@@ -7012,6 +7302,61 @@ a.kpi-card:focus-visible {
 .dialog__overlay--elevated { z-index: 100; }
 .dialog__content--elevated { z-index: 101; }
 
+/* Bottom sheet (#3507) — the same Radix Dialog (focus trap, Esc, scroll lock,
+ * `aria-modal`) docked to the bottom edge on a phone: the filter sheet, the
+ * mobile tag picker. Header / body / footer are flex children so only the body
+ * scrolls and the footer stays reachable above the home indicator. */
+.dialog__content.dialog__content--sheet {
+  top: auto;
+  bottom: 0;
+  left: 0;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  max-height: 88dvh;
+  padding: 0;
+  border-bottom: 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: sheet-slide-up var(--duration-normal) var(--ease-out);
+}
+.sheet__grabber {
+  flex: none;
+  width: 36px;
+  height: 4px;
+  margin: var(--space-2) auto 0;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.sheet__header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sheet__header .dialog__title { margin: 0; }
+.sheet__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 var(--space-4); }
+.sheet__footer {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+}
+.sheet__footer > .button,
+.sheet__footer > button { flex: 1 1 0; min-height: 44px; }
+
+@keyframes sheet-slide-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
 .dialog__title {
   margin: 0 0 var(--space-1);
   font-size: 1.0625rem;
@@ -11253,9 +11598,6 @@ a.kpi-card:focus-visible {
   gap: var(--space-2);
   font-size: 0.8125rem;
 }
-/* The neutral "issued on request" count beside the health chips (#2554).
-   Its own class rather than an inline `fontSize` (#2761 review). */
-.orders-summary-note { font-size: 0.75rem; }
 .sales-doc-fact__label { color: var(--text-muted); font-size: 0.75rem; }
 .sales-doc-fact__value { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; }
 .sales-doc-tone { font-weight: 500; font-size: 0.8125rem; }
@@ -11447,36 +11789,80 @@ a.kpi-card:focus-visible {
 .data-table__card-disclosure:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
 .data-table__card-disclosure-chev { color: var(--accent-primary); }
 
-/* ── Orders list filter/sort bar (#939) ─────────────────────────────── */
-.orders-toolbar {
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-/* The `flex-wrap: wrap` above lives on `.orders-toolbar` itself, but its
-   only DOM child is `.toolbar__group` (a nested flex row holding the
-   actual source/date/SLA/fulfillment controls) — a single flex item never
-   wraps. `.toolbar__group` (shared with connections/products/etc.) stays
-   `nowrap` by default because those simpler toolbars fit in one row; the
-   5-control orders bar needs it to wrap so the controls can drop onto
-   their own line(s) instead of shrinking past their native min-content
-   width and overflowing the viewport on mobile (#1669).
-*/
-.orders-toolbar .toolbar__group {
-  flex-wrap: wrap;
-}
-/* Inline date field: small mono-caps label sitting left of the native input. */
-.orders-toolbar__field {
-  display: inline-flex;
+/* ── Orders list search + filter bar (#3507, mockup m4b-orders-filters) ──
+ * One row: search (flex, capped at 40rem) · "Filters (n)" · result count on the
+ * right. Built from the shared filter primitives (`.filter-*`, `.quick-filters`);
+ * only the search row's own layout lives here. */
+.orders-filterbar {
+  display: flex;
   align-items: center;
   gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
-.orders-toolbar__label {
-  font-size: 0.6875rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
+.orders-filterbar__search { position: relative; flex: 1 1 auto; min-width: 0; max-width: 40rem; }
+.orders-filterbar__search .control {
+  width: 100%;
+  max-width: none;
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+.orders-filterbar__search-glyph {
+  position: absolute;
+  left: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--text-muted);
-  font-weight: 600;
+  font-size: 0.8125rem;
+  pointer-events: none;
+}
+.orders-filterbar__kbd {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.orders-filterbar__count { margin-left: auto; font-size: 0.75rem; white-space: nowrap; }
+
+/* KPI strip: the six partition cards on ONE row on a desktop (the 6th used to
+   wrap alone onto a second row), 3×2 on a tablet, and a horizontally scrolling
+   snap strip on a phone instead of six full-width cards stacked before the
+   first order (#3507, DEC-8). */
+.orders-segments.orders-segments--6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: auto;
+  gap: var(--space-3);
+}
+/* `space-between`: a label that wraps (an icon + "AWAITING MAPPING" in a
+   narrow sixth of the row) must not push its value below its neighbours'. */
+.orders-segments--6 .metric-card {
+  padding: var(--space-3) var(--space-4);
+  min-height: 0;
+  gap: var(--space-1);
+  justify-content: space-between;
+}
+.orders-segments--6 .metric-card__value { font-size: 1.5rem; }
+@media (max-width: 1279.98px) {
+  .orders-segments.orders-segments--6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767.98px) {
+  .orders-segments.orders-segments--6 {
+    display: flex;
+    overflow-x: auto;
+    gap: var(--space-2);
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding: 2px 2px var(--space-1);
+    margin-left: -2px;
+    margin-right: -2px;
+  }
+  .orders-segments--6 > * { flex: 0 0 9.5rem; scroll-snap-align: start; }
+  .orders-filterbar { flex-wrap: wrap; }
+  .orders-filterbar__search { flex: 1 1 100%; max-width: none; }
+  .orders-filterbar__kbd { display: none; }
 }
 
 /* ── Surface card used for grouping demos ────────────────────────── */
@@ -11650,6 +12036,180 @@ a.kpi-card:focus-visible {
    the grey fallback dot on every surface using the pill (#2028). */
 .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
 .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
+
+/* ── Patterns: order tag pill (#3532/#3533) ───────────────────────
+ * The `.channel-pill` shape, applied to an operator-defined workspace tag: a
+ * neutral pill (never a coloured background — colour is never the only
+ * signal for a tag, which always shows its name) with a coloured dot from
+ * the closed `--tag-*` set via `[data-tag-color]`. */
+.order-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.order-tag__dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--tag-c, var(--tag-grey));
+}
+.order-tag__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-tag--sm { height: 18px; padding: 0 6px; gap: 4px; font-size: 0.6875rem; }
+.order-tag--sm .order-tag__dot { width: 6px; height: 6px; }
+/* The `×` is a `BareIconButton` (`.button--bare`, which owns the box reset);
+   this only tucks it into the pill's right padding. */
+.order-tag .order-tag__remove { margin-right: -4px; }
+
+.order-header__tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.8125rem; }
+.order-header__tags-label { color: var(--text-muted); }
+
+/* Tag picker (mockup M3 `default`): the rows ARE `.dropdown-menu__item`s, so
+ * they take the menu's 6 px / 12 px box and 13 px type; this only aligns them
+ * and paints the hover/keyboard highlight a `<label>` row cannot get from
+ * Radix's `[data-highlighted]`. */
+.tag-picker { display: grid; gap: var(--space-1); width: min(300px, 86vw); padding: var(--space-2); font-size: 0.8125rem; }
+.tag-picker__search { width: 100%; }
+.tag-picker__list { display: grid; gap: 1px; max-height: 240px; overflow-y: auto; }
+.tag-picker__item { justify-content: flex-start; }
+.tag-picker__item:hover,
+.tag-picker__item:focus-within { background: var(--bg-surface-hover); }
+.tag-picker__item input { margin: 0; }
+.tag-picker__item .order-tag { margin-right: auto; }
+.tag-picker__hint { font-size: 0.6875rem; color: var(--text-muted); font-family: var(--font-mono); }
+.tag-picker__foot { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2) 0; border-top: 1px solid var(--border-subtle); font-size: 0.75rem; }
+.tag-picker__saved { margin-left: auto; }
+.tag-picker__empty { margin: 0; padding: 6px var(--space-3); color: var(--text-muted); font-size: 0.8125rem; }
+/* The "+ Create “x”" row is a real <button> for Enter/click; the doubled class
+   outranks the global `button` box (32 px, border, fill, shadow) so it reads as
+   one more menu row, not a primary button. */
+.tag-picker__create.tag-picker__create {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: left;
+}
+.tag-picker__create.tag-picker__create:hover,
+.tag-picker__create.tag-picker__create:focus-visible { background: var(--bg-surface-hover); border-color: transparent; }
+.tag-picker__create.tag-picker__create:focus-visible { box-shadow: var(--shadow-focus); }
+/* In the phone sheet the panel is the sheet body: no popover width cap, and the
+   body's own side padding replaces the popover's. */
+.tag-picker.tag-picker--sheet { width: auto; padding: var(--space-3) var(--space-4); }
+.tag-picker--sheet .tag-picker__list { max-height: none; }
+
+.bulk-menu__hint { font-size: 0.6875rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+.tag-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); border: 0; margin: 0; padding: 0; min-width: 0; }
+.tag-swatch {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 var(--space-2);
+  border: 1px solid var(--border-default); border-radius: var(--radius-pill);
+  font-size: 0.75rem; color: var(--text-secondary); cursor: pointer;
+}
+.tag-swatch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.tag-swatch:has(input:checked) { border-color: var(--text-primary); color: var(--text-primary); background: var(--bg-surface-muted); }
+.tag-swatch:has(input:focus-visible) { box-shadow: var(--shadow-focus); }
+.tag-swatches legend { padding: 0; margin-bottom: var(--space-2); font-size: 0.8125rem; font-weight: 500; color: var(--text-primary); }
+
+/* Settings tag manager "New tag" card (mockup M3 `tags`). */
+.tag-new { display: grid; gap: var(--space-4); margin-bottom: var(--space-5); }
+.tag-new__row { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); align-items: start; }
+.tag-new__foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.tag-new__preview-label { color: var(--text-muted); font-size: 0.8125rem; }
+.tag-new__actions { margin-left: auto; }
+.tag-new__counter { font-family: var(--font-mono); }
+@media (max-width: 767.98px) { .tag-new__row { grid-template-columns: minmax(0, 1fr); } }
+.tag-manager__actions { justify-content: flex-end; }
+.tag-manager__usage { margin-top: var(--space-3); font-size: 0.8125rem; }
+
+/* Bulk "Tags ▾" menu (mockup M3 `bulk`) — Radix menu items, tag-first. */
+.bulk-menu { width: min(300px, 86vw); }
+.bulk-menu .dropdown-menu__item { justify-content: flex-start; }
+.bulk-menu .dropdown-menu__item:hover { background: var(--bg-surface-hover); }
+.bulk-menu a.dropdown-menu__item { text-decoration: none; }
+.bulk-menu .order-tag { margin-right: auto; }
+
+[data-tag-color='grey']   { --tag-c: var(--tag-grey); }
+[data-tag-color='blue']   { --tag-c: var(--tag-blue); }
+[data-tag-color='teal']   { --tag-c: var(--tag-teal); }
+[data-tag-color='green']  { --tag-c: var(--tag-green); }
+[data-tag-color='amber']  { --tag-c: var(--tag-amber); }
+[data-tag-color='orange'] { --tag-c: var(--tag-orange); }
+[data-tag-color='pink']   { --tag-c: var(--tag-pink); }
+[data-tag-color='violet'] { --tag-c: var(--tag-violet); }
+
+/* ── Patterns: order tags line on a list row (#3533) ──────────────
+ * Third line of the shared identity row's "Order" cell (mockup M3): tags
+ * beneath the item preview line, wrapping, max 2 + "+N" (rendered by the
+ * consumer, not this rule). */
+.orders-tags-line { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+
+/* ── Patterns: order notes (#3531/#3533, mockup M3) ────────────────
+ * The Notes `detail-section`: a bordered composer card ABOVE an unboxed
+ * thread (`.order-notes` > `.order-note`, hairline-separated), each note's
+ * head line carrying author · time · badges · inline xs actions. The pinned
+ * note also gets the full-width slot under the order header
+ * (`.order-note-pinned`, `PinnedOrderNoteBanner`). */
+.order-note-pinned {
+  display: grid; gap: var(--space-1);
+  margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle); border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-lg); background: var(--bg-surface);
+}
+.order-note-pinned__label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
+}
+.order-note-pinned__label svg { flex: none; color: var(--text-muted); }
+
+.order-notes-section:focus { outline: none; }
+.order-notes__privacy { font-size: 0.75rem; }
+.order-notes__read-only { margin: 0; font-size: 0.8125rem; }
+
+.order-notes { list-style: none; margin: 0; padding: 0; display: grid; }
+.order-note { display: grid; gap: var(--space-1); padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle); }
+.order-note:first-child { border-top: 0; padding-top: 0; }
+.order-note__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.75rem; color: var(--text-muted); }
+.order-note__author { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+.order-note__body {
+  margin: 0; max-width: 72ch; font-size: 0.875rem; line-height: 1.5;
+  color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.order-note__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-left: auto; }
+.order-note__editor { display: grid; gap: var(--space-2); }
+.order-note__editor textarea { resize: vertical; }
+.order-note__editor-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.order-note__editor-foot .ack-row { margin: 0; }
+.order-note__editor-hint { font-size: 0.75rem; color: var(--text-muted); }
+
+.order-notes__composer {
+  display: grid; gap: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.order-notes__composer textarea { resize: vertical; min-height: 4.5rem; }
+.order-notes__composer-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.order-notes__composer-foot .ack-row { margin: 0; }
+.order-notes__counter { margin-left: auto; font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+.order-notes__packer-warning { margin: 0; font-size: 0.75rem; color: var(--text-secondary); }
 
 /* ── Connection chip (#3670) ───────────────────────────────────────────
  * A connection's channel as one link: the platform at rest, the connection
@@ -12799,8 +13359,13 @@ html[data-density='compact'] .status-badge {
     flex-basis: 100%;
     order: 3;
   }
+  /* Four actions (Clear · Tags · Export N · Dispatch N, #3507) no longer fit
+     one 358 px row: let them wrap rather than spill past the bar's edge. */
   .bulk-action-bar__actions {
     margin-left: auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
   }
 }
 
@@ -15971,8 +16536,15 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .order-detail__stack {
   display: grid;
+  /* `minmax(0, …)`, not the implicit `auto`: one wide panel (a line-items
+     table, a long carrier name) otherwise floors the track at its min-content
+     and pushes every section in the stack past the page gutter on a phone. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   align-content: start;
+}
+@media (max-width: 767.98px) {
+  .order-detail__primary-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Failure banner rows */
@@ -21284,7 +21856,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* ── Analytics date-range toolbar (#1986) ──
-   Mirrors .orders-toolbar__field / __label (line ~9097) — same inline
+   Mirrored the orders list's former inline date field (retired by #3507's
+   filter panel) — same inline
    mono-caps label + native date input shape, wrap allowed on narrow
    viewports so fields land on their own line instead of overflowing. */
 .analytics-toolbar .toolbar__group {
@@ -27330,6 +27903,36 @@ legend.analytics-settings-dialog__label {
   margin-left: auto;
 }
 
+/* ── Notes from the office (D12, G03-6) ──────────────────────────────────
+ * The mockup's `.alert--info.bench-office-note`: the box itself is the Alert
+ * primitive's, unchanged. Notes stack at the mockup's `--space-3` and wrap
+ * freely, so a long note never forces horizontal scroll on a phone. */
+.bench-office-note {
+  margin: 0;
+}
+
+.bench-office-note__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.bench-office-note__body {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.bench-office-note__meta {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* ── The two papers, as cards (mockup-parity epic #3401) ─────────────────
  * The mockup's `.docs`: one card for what goes IN the box and one for what
  * goes ON it, side by side, so the distinction is structural rather than
@@ -28980,6 +29583,184 @@ legend.analytics-settings-dialog__label {
   .dialog__footer-group {
     flex-direction: column-reverse;
   }
+}
+
+/* ============================================================
+   ORDERS EXPORT DIALOG (#3534/#3535, #3507 PR 8, mockup M5)
+
+   Ported class for class from the page <style> of
+   `docs/plans/mockups/oms-mvp/m5-orders-export.html`, so the committed mockup
+   and the live dialog share one box model. Not ported: the mockup-only bar
+   offset, the preview table and the "rows per line item" radios (no backend
+   field for either yet).
+   ============================================================ */
+
+.export-dialog { padding-bottom: 0; }
+
+/* The long configuration dialog keeps its footer (and the Export button) in view while it scrolls. */
+.export-dialog .dialog__footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-bottom: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.export-dialog__summary { font-size: 0.75rem; }
+.export-dialog__top { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--space-6); }
+@media (min-width: 768px) {
+  .export-dialog__top { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+}
+.export-dialog__stack { display: grid; gap: var(--space-4); }
+/* The CSV separator is a fact of the file, not a choice - stated, not drawn as a control. */
+.export-dialog__fact { margin: 0; font-size: 0.8125rem; color: var(--text-primary); }
+.export-dialog__notice { margin-bottom: var(--space-4); }
+.export-dialog .dialog-section__head .mono { text-transform: none; letter-spacing: 0; margin-left: 6px; font-weight: 500; }
+.export-dialog .form-field > .segmented-control { justify-self: start; }
+
+/* Scope options reuse the marketplace-picker option card. */
+.export-scope { margin: 0; }
+.export-scope .marketplace-picker__option { padding: var(--space-2) var(--space-3); align-items: flex-start; }
+.export-scope__lead { display: flex; gap: var(--space-2); align-items: flex-start; min-width: 0; }
+.export-scope__lead input { margin-top: 3px; }
+.export-scope__hint { font-size: 0.75rem; }
+.export-scope__count { font-size: 0.8125rem; color: var(--text-primary); white-space: nowrap; padding-top: 1px; }
+.export-scope__option--disabled { cursor: not-allowed; opacity: 0.62; }
+.export-scope__option--disabled:hover { background: var(--bg-surface); }
+.export-scope__dates { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.export-scope__dates .form-field { flex: 1 1 130px; gap: var(--space-1); }
+.export-scope__dates .form-field__label { font-size: 0.75rem; color: var(--text-muted); }
+
+/* Columns picker. */
+.export-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; margin-bottom: var(--space-4); }
+.export-presets__select { flex: 1 1 240px; max-width: 340px; }
+.export-presets__save { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; flex: 1 1 100%; }
+.export-presets__save .control { max-width: 260px; }
+.export-presets__note { flex: 1 1 100%; }
+.export-columns { display: grid; gap: var(--space-4) var(--space-5); grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.export-columns fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 6px; align-content: start; }
+.export-columns legend { display: flex; justify-content: space-between; gap: var(--space-2); width: 100%; padding: 0; margin-bottom: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+.export-columns legend .mono { font-weight: 400; color: var(--text-muted); font-size: 0.75rem; white-space: nowrap; }
+.export-check { display: flex; gap: var(--space-2); align-items: center; font-size: 0.8125rem; color: var(--text-secondary); cursor: pointer; }
+.export-check--disabled { color: var(--text-disabled); cursor: not-allowed; }
+.export-columns__hint { font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0; }
+.export-columns__empty { margin-top: var(--space-3); }
+
+.export-pii { display: flex; gap: var(--space-2); align-items: flex-start; cursor: pointer; }
+.export-pii input { margin-top: 3px; }
+.export-pii__text { display: grid; gap: 2px; font-size: 0.8125rem; color: var(--text-primary); font-weight: 500; }
+.export-pii + .alert { margin-top: var(--space-3); }
+
+/* Preparing / ready / error: the 520px card, as in M5. */
+.export-progress { display: grid; gap: var(--space-1); margin: var(--space-5) 0 var(--space-4); }
+.export-progress__row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 0.8125rem; flex-wrap: wrap; }
+/* The run reports no progress (no backend field yet), so the bar is
+   indeterminate rather than a number it would have to invent. */
+.export-progress__fill { width: 40%; animation: export-progress-slide 1.4s var(--ease-standard) infinite; }
+@keyframes export-progress-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .export-progress__fill { width: 100%; opacity: 0.45; animation: none; }
+}
+.export-small-dialog .dialog__body { display: grid; gap: var(--space-3); margin-top: var(--space-4); font-size: 0.875rem; }
+.export-small-dialog .key-value-list { margin-top: var(--space-4); }
+.export-heading-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+
+/* Phone: the configuration dialog is a full-screen sheet; its footer stays on
+   the bottom edge, clear of the home indicator. */
+@media (max-width: 767.98px) {
+  .dialog__content.export-dialog {
+    top: 0;
+    left: 0;
+    transform: none;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    padding: var(--space-4) var(--space-4) 0;
+    display: flex;
+    flex-direction: column;
+    animation-name: export-dialog-sheet-in;
+  }
+  .export-dialog__body { flex: 1 0 auto; display: flex; flex-direction: column; }
+  .export-dialog .dialog__footer {
+    margin: auto calc(var(--space-4) * -1) 0;
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
+  }
+}
+@keyframes export-dialog-sheet-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (max-width: 480px) {
+  /* The shared footer stacks every action full-width at this size; with a
+     summary line plus two actions that is three rows of a sticky bar. Keep the
+     summary on its own line and the two actions side by side instead. */
+  .export-dialog .dialog__footer { flex-direction: row; align-items: center; row-gap: var(--space-2); }
+  .export-dialog .dialog__footer .export-dialog__summary { flex: 1 1 100%; }
+  .export-dialog .dialog__footer-group { flex: 1 1 100%; flex-direction: row; }
+  .export-dialog .dialog__footer-group .button { flex: 1 1 0; width: auto; }
+}
+
+/* ============================================================
+   ORDERS LIST COLUMNS PANEL (#3530, #3507 PR 7)
+
+   The /orders "Columns" popover. Its own block rather than borrowing the tag
+   picker's: a preset field, then one checkbox list in table order (ticked
+   columns with reorder arrows, hidden ones greyed at the end), then a footer.
+   ============================================================ */
+
+.columns-panel.popover__content {
+  width: min(320px, calc(100vw - 16px));
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-3);
+}
+.columns-panel__presets { display: grid; gap: var(--space-2); }
+.columns-panel__actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.columns-panel__save { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.columns-panel__save .control { flex: 1 1 140px; min-width: 0; }
+.columns-panel__note { margin: 0; flex: 1 1 100%; }
+.columns-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  border-top: 1px solid var(--border-subtle);
+  display: grid;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.columns-panel__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 28px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+.columns-panel__item:hover { background: var(--bg-surface-hover); }
+.columns-panel__item--hidden { color: var(--text-muted); }
+.columns-panel__check { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.columns-panel__move { display: inline-flex; gap: 2px; flex: none; }
+.columns-panel__move-button { width: 1.5rem; padding: 0; }
+.columns-panel__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
 }
 
 /* ── PricingAndSyncSection (#3149, ADR-072) ──

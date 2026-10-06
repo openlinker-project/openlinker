@@ -53,6 +53,17 @@ export interface BenchParcelLine {
   readonly heightMm: number | null;
 }
 
+/**
+ * A note an office user flagged "Show to packer" (D12). Read only - unflagged
+ * notes and tags are never on this wire.
+ */
+export interface BenchPackerNote {
+  readonly id: string;
+  readonly body: string;
+  readonly authorUsername: string;
+  readonly createdAt: string;
+}
+
 /** One box, as the bench sees it. */
 export interface BenchParcel {
   readonly workId: string;
@@ -101,6 +112,8 @@ export interface BenchParcel {
    */
   readonly completedAt: string | null;
   readonly lines: readonly BenchParcelLine[];
+  /** Notes flagged "Show to packer". Empty is the ordinary case. */
+  readonly packerNotes: readonly BenchPackerNote[];
 }
 
 /** What one verification did. `parcel` comes back on every outcome, refusals included. */

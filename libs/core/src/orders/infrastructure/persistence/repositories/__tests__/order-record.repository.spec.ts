@@ -1750,6 +1750,8 @@ describe('OrderRecordRepository', () => {
       'sourceConnectionId',
       'sourceEventId',
       'orderSnapshot',
+      // #3507 G03-1 — derived from the snapshot, so written whenever it is.
+      'searchText',
       'recordStatus',
       'mappingFailureReason',
       'dispatchByAt',
@@ -1846,6 +1848,106 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  /**
+   * #3507 G03-1 — the statement enumerates its own columns, so `toOrm`
+   * stamping `entity.searchText` wrote nothing: a new order kept the column
+   * default `''` (unsearchable) and `ON CONFLICT` never refreshed a re-ingested
+   * one. Asserted against the REAL builder for BOTH paths, since the column
+   * belongs to the shared half.
+   */
+  describe('searchText in the frozen-attribution upsert (#3507 G03-1, G03-14)', () => {
+    type Builder = {
+      buildFrozenAttributionUpsert: (
+        entity: OrderRecordOrmEntity,
+        includeReadyPathColumns: boolean
+      ) => { sql: string; params: unknown[]; writeSet: ReadonlySet<string> };
+    };
+
+    const originalStorePii = process.env.OL_STORE_PII;
+
+    afterEach(() => {
+      if (originalStorePii === undefined) {
+        delete process.env.OL_STORE_PII;
+      } else {
+        process.env.OL_STORE_PII = originalStorePii;
+      }
+    });
+
+    it.each<[string, boolean]>([
+      ['upsert', false],
+      ['upsertWithLineItems', true],
+    ])(
+      'should name "searchText" in both the INSERT and the DO UPDATE SET halves when building the %s statement',
+      (_path, includeReadyPathColumns) => {
+        const entity = createOrmEntity();
+        entity.searchText = 'ord-001 sku-1';
+
+        const { sql, params, writeSet } = (
+          repository as unknown as Builder
+        ).buildFrozenAttributionUpsert(entity, includeReadyPathColumns);
+
+        const insertHalf = sql.slice(0, sql.indexOf('VALUES'));
+        const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+        expect(insertHalf).toContain('"searchText"');
+        expect(updateHalf).toContain('"searchText" = EXCLUDED."searchText"');
+        expect(writeSet.has('searchText')).toBe(true);
+        expect(params).toContain('ord-001 sku-1');
+      }
+    );
+
+    it('should write the text derived from the snapshot when upserting with PII stored', async () => {
+      process.env.OL_STORE_PII = 'true';
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(
+        new OrderRecord(
+          'order-123',
+          null,
+          'source-connection-123',
+          null,
+          {
+            orderNumber: 'ORD-001',
+            customerEmail: 'anna@example.test',
+            billingAddress: { firstName: 'Anna', lastName: 'Nowąk' },
+            items: [{ sku: 'SKU-1' }],
+          },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z')
+        )
+      );
+
+      expect(upsertParams()[5]).toBe('ord-001 anna@example.test anna nowak sku-1');
+    });
+
+    it('should index only the order number and SKUs when upserting with OL_STORE_PII=false', async () => {
+      process.env.OL_STORE_PII = 'false';
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(
+        new OrderRecord(
+          'order-123',
+          null,
+          'source-connection-123',
+          null,
+          {
+            orderNumber: 'ORD-001',
+            customerEmail: 'anna@example.test',
+            billingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+            items: [{ sku: 'SKU-1' }],
+          },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z')
+        )
+      );
+
+      expect(upsertParams()[5]).toBe('ord-001 sku-1');
+    });
+  });
+
   describe('upsert', () => {
     it('should create new order record', async () => {
       const domainEntity = createDomainEntity();
@@ -1925,8 +2027,9 @@ describe('OrderRecordRepository', () => {
 
       await repository.upsert(domainEntity);
 
-      // `recordStatus` IS in the write set - the 6th bound parameter.
-      expect(upsertParams()[5]).toBe('awaiting_mapping');
+      // `recordStatus` IS in the write set - the 7th bound parameter, after
+      // the snapshot and the `searchText` derived from it (#3507 G03-1).
+      expect(upsertParams()[6]).toBe('awaiting_mapping');
     });
 
     it('should report cancelledAt as null even though RETURNING carries it (#2282)', async () => {
@@ -2137,7 +2240,7 @@ describe('OrderRecordRepository', () => {
 
       // No interpolation: the connection id reaches Postgres as a bound param.
       expect(upsertSql()).not.toContain('source-connection-123');
-      expect(upsertParams()).toHaveLength(10);
+      expect(upsertParams()).toHaveLength(11);
       expect(upsertParams()[2]).toBe('source-connection-123');
       expect(typeof upsertParams()[4]).toBe('string');
       expect(JSON.parse(upsertParams()[4] as string)).toEqual({

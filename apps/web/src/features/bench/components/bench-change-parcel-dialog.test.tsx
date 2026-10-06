@@ -79,7 +79,7 @@ function mount(
     },
     system: { getConfig: vi.fn().mockResolvedValue({ demoMode: options.demoMode ?? false }) },
   });
-  renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={2} />, {
+  renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={2} closed={false} />, {
     apiClient,
     sessionAdapter: createAuthenticatedSessionAdapter({
       ...PACKER,

@@ -73,6 +73,13 @@ export const benchParcelLineSchema = z.object({
   heightMm: nullableNumber,
 });
 
+export const benchPackerNoteSchema = z.object({
+  id: z.string(),
+  body: z.string(),
+  authorUsername: z.string(),
+  createdAt: z.string(),
+});
+
 export const benchParcelSchema = z.object({
   workId: z.string(),
   version: z.number(),
@@ -94,6 +101,12 @@ export const benchParcelSchema = z.object({
   labelPrintedAt: nullableString,
   completedAt: nullableString,
   lines: z.array(benchParcelLineSchema),
+  // Defaulted, unlike `lines`: an API that predates the field, or null, means
+  // "no notes", and failing the parse would hide the whole box from the packer.
+  packerNotes: z
+    .array(benchPackerNoteSchema)
+    .nullish()
+    .transform((value) => value ?? []),
 });
 
 export const benchVerificationResultSchema = z.object({

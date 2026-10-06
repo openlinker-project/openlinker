@@ -53,6 +53,9 @@ import type {
   IFulfillmentRoutingService,
   IDeliveryRiderService,
 } from '@openlinker/core/mappings';
+import { SHIPMENT_QUERY_SERVICE_TOKEN } from '@openlinker/core/shipping';
+import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
+import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
 
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
 
@@ -147,6 +150,8 @@ describe('OrdersController', () => {
       clearFxStampForRestatement: jest.fn(),
       countRemainingCurrencyMismatch: jest.fn(),
       stampPreRolloutEraForTesting: jest.fn(),
+      findSearchTextReindexPage: jest.fn(),
+      rewriteSearchText: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -280,6 +285,24 @@ describe('OrdersController', () => {
         {
           provide: ORDER_TEST_FIXTURE_SERVICE_TOKEN,
           useValue: mockTestFixtureService,
+        },
+        // #3528 / #2998 / #3532 — the three read seams the list and detail
+        // routes gained on this branch. Neutral defaults: no tracking match,
+        // no open returns, no tags — so every pre-existing expectation holds.
+        {
+          provide: SHIPMENT_QUERY_SERVICE_TOKEN,
+          useValue: { list: jest.fn().mockResolvedValue({ items: [], total: 0 }) },
+        },
+        {
+          provide: RETURNS_SERVICE_TOKEN,
+          useValue: { getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
+        },
+        {
+          provide: ORDER_TAG_SERVICE_TOKEN,
+          useValue: {
+            getForOrders: jest.fn().mockResolvedValue(new Map()),
+            listForOrder: jest.fn().mockResolvedValue([]),
+          },
         },
       ],
     }).compile();

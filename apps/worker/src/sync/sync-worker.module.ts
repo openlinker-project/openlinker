@@ -92,6 +92,7 @@ import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
+import { OrdersExportHandler } from './handlers/orders-export.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
@@ -136,6 +137,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOrderFxStampSweepHandler,
     OrdersTaxRateBackfillHandler,
     AnalyticsCurrencyRecalculateHandler,
+    OrdersExportHandler,
     MarketplaceOfferQuantityUpdateHandler,
     MarketplaceOfferQuantityReconcileHandler,
     MarketplaceOfferFieldUpdateHandler,

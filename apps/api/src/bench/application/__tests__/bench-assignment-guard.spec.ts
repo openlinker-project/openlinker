@@ -51,7 +51,7 @@ import type {
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
 import type { IInventoryQueryService } from '@openlinker/core/inventory';
-import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
+import type { IOrderNoteService, IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
@@ -174,6 +174,10 @@ function harness() {
     recordBenchActivity: jest.fn().mockResolvedValue(undefined),
   } as unknown as IUserManagementService;
 
+  const notes = {
+    getPackerVisibleForOrders: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as IOrderNoteService;
+
   const parcelClosureNotifier = {
     notifyParcelClosed: jest.fn().mockResolvedValue(undefined),
   } as unknown as IFulfillmentParcelClosureNotifier;
@@ -188,6 +192,7 @@ function harness() {
       shipments,
       inventory,
       users,
+      notes,
       parcelClosureNotifier
     ),
     verification,

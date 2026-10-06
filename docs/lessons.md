@@ -241,6 +241,39 @@ where the tip branch is also the working branch.
 
 ---
 
+## Shared UI primitives take `tone`, not `variant` - `tsc -b` catches it, a fast visual skim does not
+
+**Context**: building the order-notes panel (#3531/#3533), copying an
+`order-hold-panel.tsx`-style `<Button tone="secondary">` usage from memory
+rather than re-reading the component.
+
+**Problem**: `Button` (`apps/web/src/shared/ui/button.tsx`) exposes
+`ButtonProps.tone: ButtonTone`, not `variant` - a prop name common enough in
+other component libraries that writing `<Button variant="ghost">` compiles
+under a loose editor but fails `tsc -b` with a real type error (an unknown
+prop, since `ButtonHTMLAttributes` has no `variant`). The same session also
+mis-guessed `TimeDisplay`'s `value` prop (it is `iso`) and rendered
+`<ReadOnlyLock message="...">`, standalone, as if it were a lock icon with a
+tooltip - it is a WRAPPER (`{ active, message, children }`) that always
+renders its children and dims them only when `active`, the
+`order-hold-panel.tsx` precedent for how a demo-read-only affordance stays
+visible-but-locked rather than disappearing.
+
+**Rule**: before reusing a shared `shared/ui/*` primitive by name-recall,
+open the file and read its prop interface - do not infer it from a sibling
+component's *usage* site, which shows only the props that call site happened
+to set. `pnpm type-check` (never `tsc --noEmit` on a hand-picked file) is
+what actually catches a wrong prop name; a subjective "looks right" pass over
+JSX does not, because a misnamed prop on an untyped-looking spread often
+renders as if it worked and simply drops the value.
+
+**Applies to**: any new component consuming `apps/web/src/shared/ui/*`
+primitives, especially `Button`, `TimeDisplay`, `ReadOnlyLock`.
+
+**Source**: #3507 (Pilot G03 - orders list search/notes/tags/export), 2026-09-28.
+
+---
+
 ## A test fixture that contradicts the call under test passes until a guard is added
 
 **Context**: ADR-074 gained a rule that a parcel cannot be made exclusive
@@ -266,9 +299,14 @@ lost-race case here is the worked example: its premise is that its own
 which is both more realistic than the unassigned row it had and the shape the
 rule needs.
 
-**Applies to**: any spec suite built on a `makeX(over)` factory.
+**Applies to**: any spec suite built on a `makeX(over)` factory — and any hand-written fixture of a
+stored document (an `orderSnapshot`, a payload), which must be copied from the producer's type, not
+from the reader under test.
 
-**Source**: #3360, 2026-09-23.
+**Source**: #3360, 2026-09-23. Recurred in #3507 G03-11: `order-export-columns.spec.ts` put
+`currency` at the snapshot's top level, where `readTotals` wrongly looked, instead of on `totals`
+(`OrderTotals.currency`) where every producer writes it — so the export's Currency column was empty
+for every real order while the spec stayed green.
 
 ---
 
@@ -2083,6 +2121,97 @@ record file — currently `startSharedPrestashopContainer()` in
 `apps/api/test/integration/helpers/prestashop-container.helper.ts`.
 
 **Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+---
+
+## `internalOrderId` is `text` (`ol_order_{uuid}`), never a bare `uuid` column
+
+**Context**: the G03 orders-list epic (#3507) added `order_notes` and `order_tag_assignments`,
+each carrying an `internalOrderId` column, and both migrations declared it `uuid NOT NULL` — matching
+`authorUserId`/`assignedByUserId` right next to it, which really are uuids.
+
+**Problem**: an internal order id has the shape `ol_order_{uuid}` (`docs/architecture-overview.md §
+Identifier Mapping Service` — `ol_{prefix}_{uuid}`, stored as `TEXT`), so a real order id is not
+valid `uuid` input and every insert against a real order would fail with a Postgres type error. Every
+other reference to this exact column in the same context — `order_holds`, `order_changes`,
+`refund_records` — already types it `text`; the two new tables were the only ones that got it wrong,
+and nothing caught it because the integration test fixtures happened to use literal uuid-shaped
+strings as order ids, which pass a `uuid` column silently.
+
+**Rule**: when adding a column that stores an internal id (`internalOrderId`, `internalProductId`,
+etc.), grep the SAME entity type in a sibling table first (`grep -B2 'internalOrderId!:' libs/core/src/orders/infrastructure/persistence/entities/*.ts`)
+rather than inferring the column type from what LOOKS like a uuid in a test fixture. An internal id's
+wire format is `text`; only a genuine platform-native uuid (`users.id`, a Postgres-generated PK) is
+`uuid`.
+
+**Applies to**: any new ORM entity/migration carrying `internalOrderId`, `internalProductId`, or any
+other `ol_*`-prefixed internal id as a foreign-value column.
+
+**Source**: session-013 recovery pass on #3507 (G03), caught by code review before merge — no
+migration had shipped yet, so both were fixed in place rather than needing a follow-up migration.
+
+---
+
+## A migration backfill must copy application logic, never call it — and never lean on an optional Postgres extension for correctness
+
+**Context**: the `order_records.searchText` backfill migration (#3527) used PostgreSQL's `unaccent()`
+extension to normalize existing rows, reasoning that it was "close enough" to the application's own
+`deriveOrderSearchText`/`normalizeOrderSearchText`.
+
+**Problem**: two separate problems compound. First, `unaccent` is an optional contrib extension not
+guaranteed available on every managed Postgres, and even where installed its diacritic-folding table
+is NOT guaranteed byte-identical to the application's own normalizer — `normalizeOrderSearchText`'s
+own docblock names the exact trap (`ł`/`ø`/`ß`-class letters plain NFD does not decompose, which is
+why that function carries a hand-maintained `NON_DECOMPOSING_LETTERS` table `unaccent` may fold
+differently or not at all). Second, and more generally: any migration backfill that calls a database
+extension or re-derives logic separately from the application's own function is a SECOND
+implementation of that logic, which drifts the moment either side changes.
+
+**Rule**: a migration backfill of an application-derived column copies the application's pure
+function verbatim into the migration file (with a comment naming the source function and the
+migration that must be kept in sync), and runs it in TypeScript against pages of rows read with
+`SELECT`, never inside a bare SQL `UPDATE` calling a database extension. This is the same rule
+`1892000000000-inline-sales-document-rule-amounts.ts` already established for its own hash
+canonicalization ("the canonicalisation is COPIED, not imported... a migration has to reproduce the
+rule as it stands AT THE MOMENT IT RUNS") — apply it to a backfill's *value computation* too, not
+only to its hashing.
+
+**Applies to**: any migration backfilling a column that mirrors what an application-layer pure
+function computes.
+
+**Source**: session-013 recovery pass on #3507 (G03) review, fixed same-branch before the migration
+had run anywhere.
+
+---
+
+## A static route under a parametric controller's prefix must be registered BEFORE that controller
+
+**Context**: #3530 added `OrderColumnPresetsController` at `@Controller('orders/column-presets')`
+beside `OrdersController` at `@Controller('orders')`, whose detail route is `@Get(':internalOrderId')`.
+The new controller was appended to `OrdersModule.controllers` after `OrdersController`.
+
+**Problem**: Express matches routes in registration order and Nest registers controllers in the
+order of the module's `controllers` array, so `GET /orders/column-presets` — two segments, the same
+shape as `/orders/:internalOrderId` — was answered by the order-detail handler with `404 Order not
+found: column-presets`. Every three-segment preset route (`workspace-default`, `:id`) still worked,
+so saving a preset succeeded while listing presets failed; the defect only showed on the live API
+(#3507 G03-10). No gate notices: the route-authorization coverage spec reads decorators, not path
+precedence, and a controller unit spec calls the handler directly, bypassing routing entirely.
+
+**Rule**: when a controller's prefix extends another controller's prefix with a STATIC segment
+(`orders/column-presets`, `orders/export` under `orders`), list it before the parametric controller in
+the module's `controllers` array, with a comment saying why the order is load-bearing. Prove it with
+an HTTP int-spec that hits the static path's shortest route (the one with the same segment count as
+the parametric route) AND a real id on the parametric route, so the fix cannot invert the defect.
+Cross-module shadowing follows the same rule at the `imports` level of the host app.
+
+**Applies to**: `apps/api/src/**/*.module.ts` `controllers` arrays; any new controller whose prefix
+starts with another controller's prefix (`grep -rn "@Controller('" apps/api/src` — the companion
+lesson above on prefix collisions).
+
+**Source**: #3507 G03-10 (live API: `GET /v1/orders/column-presets` → 404); fixed in
+`apps/api/src/orders/orders.module.ts`, guarded by
+`apps/api/test/integration/orders/order-column-presets-routing.int-spec.ts`.
 
 ---
 

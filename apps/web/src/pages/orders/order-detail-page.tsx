@@ -40,6 +40,15 @@ import { OrderActivityTimeline } from '../../features/orders/components/order-ac
 import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
+import {
+  OrderNotesPanel,
+  PinnedOrderNoteBanner,
+} from '../../features/orders/components/order-notes-panel';
+import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
+import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
+import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
+import { resolvePlatformLabel } from '../../features/mappings';
+import { usePlatforms } from '../../shared/plugins';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
@@ -90,6 +99,10 @@ export function OrderDetailPage(): ReactElement {
   // Non-fatal by design: a returns read that could not answer must not take the
   // order's own timeline down with it — the page renders one section shorter.
   const returnEventsQuery = useOrderReturnEventsQuery(internalOrderId || null);
+  // #3531 — the notes' authored acts, same non-fatal contract as returns: an
+  // unreadable answer contributes no rows rather than failing the timeline.
+  const noteTimelineQuery = useOrderNotesTimelineQuery(internalOrderId);
+  const platforms = usePlatforms();
   // #3505 — whether fulfilment routing is on decides whether an order with no
   // fulfilment tasks gets a section saying so.
   const omsRouting = useOmsRoutingState();
@@ -213,9 +226,20 @@ export function OrderDetailPage(): ReactElement {
     returnEventsQuery.data ?? [],
     session.user?.id ?? null,
   );
+  const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
 
   const connections = connectionsQuery.data ?? [];
+  // The notes section's "Never sent to …" promise names THIS order's channels
+  // (source + destinations), not every connection in the workspace.
+  const orderChannelNames = Array.from(
+    new Set(
+      [order.sourceConnectionId, ...order.syncStatus.map((s) => s.destinationConnectionId)]
+        .map((id) => connections.find((c) => c.id === id))
+        .filter((c): c is NonNullable<typeof c> => c !== undefined)
+        .map((c) => resolvePlatformLabel(platforms, c)),
+    ),
+  );
   const hasShippingCapability = connections.some((c) =>
     c.supportedCapabilities.includes(SHIPPING_CAPABILITY),
   );
@@ -351,7 +375,13 @@ export function OrderDetailPage(): ReactElement {
       eyebrow="Orders"
       title="Order detail"
     >
-      <OrderDetailHeader order={order} snapshot={snapshot} />
+      <OrderDetailHeader
+        order={order}
+        snapshot={snapshot}
+        tags={<OrderTagsHeaderRow internalOrderId={order.internalOrderId} />}
+      />
+
+      <PinnedOrderNoteBanner internalOrderId={order.internalOrderId} />
 
       <OrderHealthSummary
         syncStatus={order.syncStatus}
@@ -453,6 +483,14 @@ export function OrderDetailPage(): ReactElement {
             internalOrderId={order.internalOrderId}
             activeHold={order.activeHold}
             holdHistory={order.holdHistory}
+          />
+
+          {/* #3531/#3533 — beside Hold and Packing: notes are a fact about
+              every order, independent of which integration it came through. */}
+          <OrderNotesPanel
+            key={order.internalOrderId}
+            internalOrderId={order.internalOrderId}
+            channelNames={orderChannelNames}
           />
 
           <section className="detail-section">
@@ -588,7 +626,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={returnTimelineEvents}
+          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
         />

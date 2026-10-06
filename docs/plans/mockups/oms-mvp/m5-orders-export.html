@@ -1,0 +1,760 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Orders export</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific layout only. Everything visual comes from ol.css classes and tokens. */
+  .export-modal[hidden], .toast-region[hidden], .orders-table [hidden], .js-viewer-pin[hidden] { display: none; }
+  .dialog-section__head .mono { text-transform: none; letter-spacing: 0; margin-left: 6px; font-weight: 500; }
+
+  /* The long configuration dialog keeps its footer (and the Export button) in view while it scrolls. */
+  .export-dialog { padding-bottom: 0; }
+  .export-dialog .dialog__footer {
+    position: sticky; bottom: 0; z-index: 1; margin-bottom: 0; flex-wrap: wrap; align-items: center;
+  }
+  .export-dialog__summary { font-size: 0.75rem; }
+  .export-dialog__top { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--space-6); }
+  @media (min-width: 768px) {
+    .export-dialog__top { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+  }
+  .export-dialog__stack { display: grid; gap: var(--space-4); }
+
+  /* Scope options reuse the marketplace-picker option card. */
+  .export-scope { margin: 0; }
+  .export-scope .marketplace-picker__option { padding: var(--space-2) var(--space-3); align-items: flex-start; }
+  .export-scope__lead { display: flex; gap: var(--space-2); align-items: flex-start; min-width: 0; }
+  .export-scope__lead input { margin-top: 3px; }
+  .export-scope__hint { font-size: 0.75rem; }
+  .export-scope__count { font-size: 0.8125rem; color: var(--text-primary); white-space: nowrap; padding-top: 1px; }
+  .export-scope__option--disabled { cursor: not-allowed; opacity: 0.62; }
+  .export-scope__option--disabled:hover { background: var(--bg-surface); }
+  .export-scope__dates { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+  .export-scope__dates .form-field { flex: 1 1 130px; gap: var(--space-1); }
+  .export-scope__dates .form-field__label { font-size: 0.75rem; color: var(--text-muted); }
+
+  .export-radio { display: flex; gap: var(--space-2); align-items: flex-start; font-size: 0.8125rem; color: var(--text-primary); cursor: pointer; }
+  .export-radio input { margin-top: 3px; }
+  .export-radio__text { display: grid; gap: 1px; }
+  .export-radio__meta { font-size: 0.75rem; color: var(--text-muted); }
+  .export-radio-list { display: grid; gap: var(--space-2); }
+
+  /* Columns picker. */
+  .export-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; margin-bottom: var(--space-4); }
+  .export-presets__select { flex: 1 1 240px; max-width: 340px; }
+  .export-presets__save { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; flex: 1 1 100%; }
+  .export-presets__save[hidden] { display: none; }
+  .export-presets__save .control { max-width: 260px; }
+  .export-columns { display: grid; gap: var(--space-4) var(--space-5); grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .export-columns fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 6px; align-content: start; }
+  .export-columns legend { display: flex; justify-content: space-between; gap: var(--space-2); width: 100%; padding: 0; margin-bottom: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+  .export-columns legend .mono { font-weight: 400; color: var(--text-muted); font-size: 0.75rem; white-space: nowrap; }
+  .export-dialog .form-field > .segmented-control { justify-self: start; }
+  /* Mockup only: keep dialogs clear of the mockup bar, which the real app does not have. */
+  .export-modal .dialog__content { top: calc(50% + var(--mk-bar-h, 0px) / 2); max-height: min(calc(100vh - var(--mk-bar-h, 0px) - 24px), 880px); }
+  .export-check { display: flex; gap: var(--space-2); align-items: center; font-size: 0.8125rem; color: var(--text-secondary); cursor: pointer; }
+  .export-check--disabled { color: var(--text-disabled); cursor: not-allowed; }
+  .export-columns__hint { font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 0; }
+
+  .export-pii { display: flex; gap: var(--space-2); align-items: flex-start; cursor: pointer; }
+  .export-pii input { margin-top: 3px; }
+  .export-pii__text { display: grid; gap: 2px; font-size: 0.8125rem; color: var(--text-primary); font-weight: 500; }
+  .export-pii + .alert { margin-top: var(--space-3); }
+
+  /* The file preview: the one thing this dialog shows that nothing else does - the exact header row. */
+  .export-preview { font-size: 0.75rem; }
+  .export-preview th, .export-preview td { white-space: nowrap; max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+  .export-preview td { font-family: var(--font-mono); }
+  .export-preview__note { margin: var(--space-2) 0 0; }
+
+  .export-progress { display: grid; gap: var(--space-1); margin: var(--space-5) 0 var(--space-4); }
+  .export-progress__row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 0.8125rem; flex-wrap: wrap; }
+  .export-small-dialog .dialog__body { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+  .export-small-dialog .key-value-list { margin-top: var(--space-4); }
+  .export-heading-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+
+  .orders-header-actions { display: flex; gap: var(--space-2); align-items: center; }
+
+  /* Mockup-only frame around a fragment of another screen (not app UI). */
+  .mk-frame { border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); padding: var(--space-4); margin: 0 0 var(--space-6); background: var(--bg-canvas); }
+  .mk-frame__label { margin: 0 0 var(--space-3); font: 600 11px/1.4 'IBM Plex Mono', ui-monospace, monospace; color: var(--text-muted); }
+  .mk-frame .page-header { margin-bottom: var(--space-4); }
+  .mk-frame .alert { margin-bottom: var(--space-4); }
+  .mk-tooltip { position: relative; display: inline-flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .mk-tooltip .tooltip__content { position: static; }
+</style>
+
+<div data-ol-page data-active="Orders" data-crumb-group="Operations" data-crumb="Orders">
+
+  <!-- ============ STATE 1: dialog, default (current view) ============ -->
+  <div data-mk-state="default" data-mk-label="Domyślny">
+    <div class="export-modal">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content dialog__content--wide export-dialog js-export" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-1"
+           data-scope="view" data-format="csv" data-gran="order" data-preset="accounting" data-pii="false">
+        <div class="dialog__header">
+          <h2 class="dialog__title" id="export-title-1">Export orders</h2>
+          <p class="dialog__description">Download orders as a spreadsheet file. Nothing in OpenLinker or on your channels changes.</p>
+        </div>
+        <div class="js-export-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATE 2: selected rows ============ -->
+  <div data-mk-state="selected" data-mk-label="Zaznaczone" hidden>
+    <div class="export-modal">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content dialog__content--wide export-dialog js-export" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-2"
+           data-scope="selected" data-format="xlsx" data-gran="order" data-preset="warehouse" data-pii="true">
+        <div class="dialog__header">
+          <h2 class="dialog__title" id="export-title-2">Export orders</h2>
+          <p class="dialog__description">Download orders as a spreadsheet file. Nothing in OpenLinker or on your channels changes.</p>
+        </div>
+        <div class="js-export-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATE 3: preparing ============ -->
+  <div data-mk-state="preparing" data-mk-label="Przygotowanie" hidden>
+    <div class="export-modal">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content export-small-dialog" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-3">
+        <div class="dialog__header">
+          <h2 class="dialog__title" id="export-title-3">Preparing export</h2>
+          <p class="dialog__description mono-text">orders_2026-09-01_2026-09-25.csv</p>
+        </div>
+        <div class="export-progress" role="status" aria-live="polite">
+          <div class="publish-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="1284" aria-valuenow="612" aria-label="Orders written">
+            <div class="publish-progress__fill js-progress-fill" style="width: 48%"></div>
+          </div>
+          <div class="export-progress__row">
+            <span class="mono tabular js-progress-count">612 of 1 284 orders</span>
+            <span class="text-muted">Writing rows</span>
+          </div>
+        </div>
+        <div class="dialog__body">
+          <p>You can close this window. The export keeps running, and the file appears in Jobs &amp; Logs when it is ready.</p>
+        </div>
+        <div class="dialog__footer dialog__footer--split">
+          <span><button type="button" class="button button--ghost">Cancel export</button><span class="mk-pin">10</span></span>
+          <button type="button" class="button button--secondary js-close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATE 4: ready to download ============ -->
+  <div data-mk-state="ready" data-mk-label="Gotowy" hidden>
+    <div class="export-modal">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content export-small-dialog" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-4">
+        <div class="dialog__header">
+          <div class="export-heading-row">
+            <h2 class="dialog__title" id="export-title-4">Export ready</h2>
+            <span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>ready</span></span>
+          </div>
+          <p class="dialog__description">1 284 orders from the current view, one row per order.</p>
+        </div>
+        <dl class="key-value-list">
+          <dt class="key-value-list__label">File</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">orders_2026-09-01_2026-09-25.csv</dd>
+          <dt class="key-value-list__label">Rows</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">1 284</dd>
+          <dt class="key-value-list__label">Columns</dt><dd class="key-value-list__value">8, Accounting preset</dd>
+          <dt class="key-value-list__label">Size</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">186 KB</dd>
+          <dt class="key-value-list__label">Personal data</dt><dd class="key-value-list__value">Not included</dd>
+          <dt class="key-value-list__label">Available until</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">2026-10-02 14:07</dd>
+        </dl>
+        <div class="dialog__body">
+          <p class="text-muted">You can download it again from <a href="#">Jobs &amp; Logs</a> until then.<span class="mk-pin">11</span></p>
+        </div>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary js-close">Close</button>
+          <a class="button button--primary" href="#">Download file</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATE 5: too large -> background job ============ -->
+  <div data-mk-state="large" data-mk-label="Za duży" hidden>
+    <div class="export-modal">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content dialog__content--wide export-dialog js-export" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-5"
+           data-scope="range" data-format="xlsx" data-gran="line" data-preset="saved" data-pii="false" data-large="true">
+        <div class="dialog__header">
+          <h2 class="dialog__title" id="export-title-5">Export orders</h2>
+          <p class="dialog__description">Download orders as a spreadsheet file. Nothing in OpenLinker or on your channels changes.</p>
+        </div>
+        <div class="js-export-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATE 6: background job, seen from the toast and Jobs & Logs ============ -->
+  <div data-mk-state="background" data-mk-label="W tle" hidden>
+    <div class="mk-frame">
+      <p class="mk-frame__label">Fragment ekranu Jobs &amp; Logs → szczegóły zadania (otwierany z powiadomienia „View job”)</p>
+      <div class="page-header page-header--split">
+        <div class="page-header__content">
+          <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Jobs &amp; Logs</span></a>
+          <p class="eyebrow">Sync Jobs</p>
+          <h2 class="page-title"><span class="mono-text">orders.export</span></h2>
+        </div>
+        <div class="page-header__actions"><a class="button button--primary" href="#">Download file</a><span class="mk-pin">13</span></div>
+      </div>
+      <dl class="key-value-list">
+        <dt class="key-value-list__label">Status</dt><dd class="key-value-list__value"><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span><span>succeeded</span></span></dd>
+        <dt class="key-value-list__label">Job ID</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">3f9c1e27-58b0-4d1a-9e3c-7a2b64d0c915</dd>
+        <dt class="key-value-list__label">Connection</dt><dd class="key-value-list__value">System</dd>
+        <dt class="key-value-list__label">Requested by</dt><dd class="key-value-list__value">Katarzyna Wiśniewska (admin)</dd>
+        <dt class="key-value-list__label">File</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">orders_2026-01-01_2026-09-25.xlsx</dd>
+        <dt class="key-value-list__label">Rows</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">43 870 (18 412 orders)</dd>
+        <dt class="key-value-list__label">Size</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">3.4 MB</dd>
+        <dt class="key-value-list__label">Personal data</dt><dd class="key-value-list__value">Not included</dd>
+        <dt class="key-value-list__label">Available until</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">2026-10-02 14:31</dd>
+        <dt class="key-value-list__label">Attempts</dt><dd class="key-value-list__value">1 / 3</dd>
+        <dt class="key-value-list__label">Last attempt duration</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">2m 41s</dd>
+        <dt class="key-value-list__label">Created</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">2026-09-25 14:28</dd>
+      </dl>
+    </div>
+    <div class="toast-region">
+      <div class="toast toast--success" role="status">
+        <div class="toast__content">
+          <div>
+            <div class="toast__title">Export ready</div>
+            <div class="toast__description">18 412 orders in orders_2026-01-01_2026-09-25.xlsx.</div>
+          </div>
+        </div>
+        <button type="button" class="toast__action">View job</button>
+        <button type="button" class="toast__dismiss" aria-label="Dismiss">×</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATE 7: error ============ -->
+  <div data-mk-state="error" data-mk-label="Błąd" hidden>
+    <div class="export-modal">
+      <div class="dialog__overlay"></div>
+      <div class="dialog__content export-small-dialog" data-testid="order-export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title-7">
+        <div class="dialog__header">
+          <h2 class="dialog__title" id="export-title-7">Export failed</h2>
+          <p class="dialog__description mono-text">orders_2026-09-01_2026-09-25.csv</p>
+        </div>
+        <div class="dialog__body">
+          <div class="alert alert--error" role="alert">
+            <div class="alert__content">
+              <strong class="alert__title">The export stopped at 612 of 1 284 orders</strong>
+              <div class="alert__description">Reading orders from the database timed out, 3 times in a row. No file was created. Try again, or narrow the date range to export fewer orders.</div>
+            </div>
+          </div>
+          <p class="text-muted">The job and its error stay in <a href="#">Jobs &amp; Logs</a>.<span class="mk-pin">14</span></p>
+        </div>
+        <div class="dialog__footer dialog__footer--split">
+          <button type="button" class="button button--ghost js-go" data-go="default">Change settings</button>
+          <div class="dialog__footer-group">
+            <button type="button" class="button button--secondary js-close">Close</button>
+            <button type="button" class="button button--primary js-go" data-go="preparing">Try again</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATE 8: viewer role ============ -->
+  <div data-mk-state="viewer" data-mk-label="Viewer" hidden>
+    <div class="mk-frame">
+      <p class="mk-frame__label">Fragment ekranu Jobs &amp; Logs, widziany przez użytkownika z rolą viewer (viewer ma sync:read)</p>
+      <div class="page-header page-header--split">
+        <div class="page-header__content">
+          <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">←</span><span class="back-link__label">Jobs &amp; Logs</span></a>
+          <p class="eyebrow">Sync Jobs</p>
+          <h2 class="page-title"><span class="mono-text">orders.export</span></h2>
+        </div>
+        <div class="page-header__actions">
+          <span class="mk-tooltip">
+            <span class="read-only-lock" tabindex="0"><button type="button" class="button button--primary" disabled>Download file</button></span>
+            <span class="tooltip__content" role="tooltip">Only the person who started this export and admins can download it.</span>
+          </span><span class="mk-pin">16</span>
+        </div>
+      </div>
+      <dl class="key-value-list">
+        <dt class="key-value-list__label">Status</dt><dd class="key-value-list__value"><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span><span>succeeded</span></span></dd>
+        <dt class="key-value-list__label">Connection</dt><dd class="key-value-list__value">System</dd>
+        <dt class="key-value-list__label">Requested by</dt><dd class="key-value-list__value">Katarzyna Wiśniewska (admin)</dd>
+        <dt class="key-value-list__label">File</dt><dd class="key-value-list__value key-value-list__value--mono mono-text">orders_2026-09-01_2026-09-25.xlsx</dd>
+        <dt class="key-value-list__label">Personal data</dt><dd class="key-value-list__value"><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>included</span></span></dd>
+      </dl>
+    </div>
+  </div>
+
+  <!-- ============ The /orders page behind every dialog ============ -->
+  <section class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <p class="eyebrow">Synced 2 min ago</p>
+        <h2 class="page-title">Orders</h2>
+      </div>
+      <div class="page-header__actions">
+        <div class="orders-header-actions">
+          <span class="js-export-entry"><button type="button" class="button button--secondary button--sm js-open-export">Export</button><span class="mk-pin">1</span></span>
+          <span class="mk-pin js-viewer-pin" hidden>15</span>
+          <button type="button" class="button button--ghost button--sm">Refresh <span class="button__shortcut">R</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ds-grid ds-grid--5 orders-segments">
+      <button type="button" class="card-button-reset orders-segment orders-segment--active" aria-pressed="true"><div class="metric-card"><span class="metric-card__label">All orders</span><span class="metric-card__value">1 284</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--error"><span class="metric-card__label">Source deleted</span><span class="metric-card__value">0</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--error"><span class="metric-card__label">Needs attention</span><span class="metric-card__value">7</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--warning"><span class="metric-card__label">Awaiting mapping</span><span class="metric-card__value">3</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--info"><span class="metric-card__label">Awaiting dispatch</span><span class="metric-card__value">41</span></div></button>
+      <button type="button" class="card-button-reset orders-segment" aria-pressed="false"><div class="metric-card metric-card--success"><span class="metric-card__label">Synced</span><span class="metric-card__value">1 233</span></div></button>
+    </div>
+
+    <div class="toolbar orders-toolbar">
+      <div class="toolbar__group">
+        <select class="control" aria-label="Filter by source"><option>All sources</option><option>Allegro – Sklep główny</option><option>Erli – Sklep główny</option><option>PrestaShop – sklep-kuchnia.pl</option></select>
+        <label class="orders-toolbar__field"><span class="orders-toolbar__label">From</span><input type="date" class="control" aria-label="Created from" value="2026-09-01"></label>
+        <label class="orders-toolbar__field"><span class="orders-toolbar__label">To</span><input type="date" class="control" aria-label="Created to" value="2026-09-25"></label>
+        <select class="control" aria-label="Filter by ship-by SLA"><option>Any SLA</option></select>
+        <select class="control" aria-label="Filter by fulfillment"><option>Any fulfillment</option></select>
+      </div>
+    </div>
+
+    <div class="ds-row" style="gap: var(--space-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-3)">
+      <button type="button" class="chip chip--warning" aria-pressed="false">Ship-by ≤ 24h / overdue</button>
+      <span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>2 overdue</span></span>
+      <span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>9 at risk</span></span>
+      <a class="nav-link" href="#">Review dispatch risk</a>
+      <span class="text-muted mono tabular" style="margin-left: auto; font-size: 0.75rem">1 284 results</span>
+    </div>
+
+    <div class="data-table__container">
+      <table class="data-table orders-table">
+        <caption class="sr-only">Orders</caption>
+        <thead>
+          <tr>
+            <th style="width: 36px"><input type="checkbox" aria-label="Select all orders on this page"></th>
+            <th>Order</th><th>Customer</th><th>Channel</th><th>Status</th><th>Ship-by</th><th class="data-table__cell--right">Total</th>
+          </tr>
+        </thead>
+        <tbody class="js-order-rows">
+          <tr data-selectable="true">
+            <td><input type="checkbox" aria-label="Select order 6c0d1a90"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>K</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">6c0d1a90-7a41-11f1…</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Kubek ceramiczny 350 ml</span><span class="orders-more-count">+1</span></span></span></span></td>
+            <td>Anna Kowalska<br><span class="text-muted orders-cell-sub">Warszawa</span></td>
+            <td><span class="channel-pill" data-channel="allegro">Allegro</span> <span class="text-muted orders-cell-sub">→ PrestaShop</span></td>
+            <td><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Awaiting dispatch</span></span></td>
+            <td class="mono tabular">in 1d 9h</td>
+            <td class="data-table__cell--right mono tabular">150.95 PLN</td>
+          </tr>
+          <tr data-selectable="true">
+            <td><input type="checkbox" aria-label="Select order 88213407"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>D</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">88213407</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Deska do krojenia dębowa 40 cm</span></span></span></span></td>
+            <td>Tomasz Zieliński<br><span class="text-muted orders-cell-sub">Kraków</span></td>
+            <td><span class="channel-pill" data-channel="erli">Erli</span> <span class="text-muted orders-cell-sub">→ PrestaShop</span></td>
+            <td><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Awaiting dispatch</span></span></td>
+            <td class="mono tabular">in 7h</td>
+            <td class="data-table__cell--right mono tabular">129.00 PLN</td>
+          </tr>
+          <tr data-selectable="true">
+            <td><input type="checkbox" aria-label="Select order HWXPLQTZE"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>Z</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">HWXPLQTZE</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Zestaw noży kuchennych 5 el.</span><span class="orders-more-count">+2</span></span></span></span></td>
+            <td>Magdalena Wójcik<br><span class="text-muted orders-cell-sub">Gdańsk</span></td>
+            <td><span class="channel-pill" data-channel="prestashop">PrestaShop</span></td>
+            <td><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Needs attention</span></span></td>
+            <td class="mono tabular" style="color: var(--status-error-fg)">overdue 3h</td>
+            <td class="data-table__cell--right mono tabular">412.40 PLN</td>
+          </tr>
+          <tr>
+            <td><input type="checkbox" disabled aria-label="Order 91822734 is already shipped" title="Already shipped"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>M</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">91822734</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Młynek do kawy ręczny</span></span></span></span></td>
+            <td>Piotr Lewandowski<br><span class="text-muted orders-cell-sub">Poznań</span></td>
+            <td><span class="channel-pill" data-channel="erli">Erli</span> <span class="text-muted orders-cell-sub">→ PrestaShop</span></td>
+            <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Synced</span></span></td>
+            <td class="mono tabular text-muted">shipped</td>
+            <td class="data-table__cell--right mono tabular">89.90 PLN</td>
+          </tr>
+          <tr>
+            <td><input type="checkbox" disabled aria-label="Order 1f7b22c4 is already shipped" title="Already shipped"></td>
+            <td><span class="order-cell"><span class="product-thumbnail product-thumbnail--sm" aria-hidden="true"><span>T</span></span><span class="order-cell__body"><span class="entity-label"><a class="entity-label__name entity-label__name--link" href="#">1f7b22c4-79e8-11f1…</a></span><span class="orders-items-line"><span class="text-muted orders-cell-sub orders-items-preview">Termos stalowy 750 ml</span></span></span></span></td>
+            <td>Ewa Kamińska<br><span class="text-muted orders-cell-sub">Wrocław</span></td>
+            <td><span class="channel-pill" data-channel="allegro">Allegro</span> <span class="text-muted orders-cell-sub">→ PrestaShop</span></td>
+            <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Synced</span></span></td>
+            <td class="mono tabular text-muted">shipped</td>
+            <td class="data-table__cell--right mono tabular">64.99 PLN</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="bulk-action-bar bulk-action-bar--hidden js-bulk" role="region" aria-hidden="true">
+        <div class="bulk-action-bar__count"><strong class="bulk-action-bar__num tabular" aria-live="polite">3</strong><span class="bulk-action-bar__label">selected</span></div>
+        <div class="bulk-action-bar__hint">Max 100 per source</div>
+        <div class="bulk-action-bar__actions">
+          <button type="button" class="button button--ghost">Clear</button>
+          <button type="button" class="button button--secondary js-go" data-go="selected">Export 3</button><span class="mk-pin">3</span>
+          <button type="button" class="button button--primary">Dispatch 3</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje: eksport zamówień (M5)</h3>
+  <ol>
+    <li><span class="mk-pin">1</span> Przycisk <b>Export</b> w nagłówku /orders, obok Refresh. Nowe uprawnienie <code>orders:export</code> (tylko do UI, jak <code>shipments:write</code>) dla admin + operator, lustrzane do <code>@Roles('admin','operator')</code> na nowym <code>POST /orders/exports</code>. Viewer ma dziś <code>orders:read</code> i widzi dane osobowe na ekranie, więc blokada eksportu to decyzja produktowa, nie techniczna.</li>
+    <li><span class="mk-pin">2</span> „Current view” = dokładnie filtry z URL (źródło, daty, segment, faza, powód wstrzymania, chipy) i to samo sortowanie. Backend musi użyć tego samego <code>toOrderRecordFilters</code> co <code>GET /orders</code>. Liczba z <code>GET /orders/count</code> (drugi etap, #2944): do czasu odpowiedzi pokazujemy „Counting…”, nigdy 0.</li>
+    <li><span class="mk-pin">3</span> <b>Luka:</b> dzisiejsze zaznaczenie w tabeli służy do nadawania: wysłanych zamówień nie da się zaznaczyć („Already shipped”), jest limit 100 na źródło i działa tylko na bieżącej stronie. Eksport zaznaczonych wymaga oddzielnego trybu zaznaczania albo osobnej listy ID.</li>
+    <li><span class="mk-pin">4</span> Zakres dat: lista filtruje po <code>createdAt</code> (kiedy OpenLinker odebrał zamówienie), a księgowość zwykle chce <code>placedAt</code> (kiedy kupujący złożył). Pytanie otwarte, które pole domyślnie.</li>
+    <li><span class="mk-pin">5</span> XLSX: w repo nie ma żadnej biblioteki arkuszy, więc to nowa zależność (serwer, strumieniowo). CSV: UTF-8 z BOM, średnik dla polskiego Excela, ochrona przed formułami jak w <code>duplicate-positions-csv.ts</code> (apostrof tylko dla komórek tekstowych, liczby bez zmian). Excel mieści najwyżej 1 048 576 wierszy.</li>
+    <li><span class="mk-pin">6</span> „Per line item” liczymy z <code>orderSnapshot.items</code>, nie z <code>order_line_items</code> (ta tabela ma tylko zamówienia „ready”). Liczba wierszy dla trybu pozycji wymaga nowego licznika w backendzie.</li>
+    <li><span class="mk-pin">7</span> Presety wbudowane w kodzie. Zapisane presety nie mają gdzie żyć: backend nie ma tabeli preferencji, a <code>localStorage</code> to tylko wygoda jednej przeglądarki. Pytanie: preset osobisty czy wspólny dla zespołu?</li>
+    <li><span class="mk-pin">8</span> Dane osobowe domyślnie wyłączone. Przy <code>OL_STORE_PII=false</code> snapshot ma adresy „[REDACTED]”, brak e-maila i <code>buyerTaxId</code> = null: eksport musi zapisać puste komórki (nie „[REDACTED]”), kraj zostaje. Frontend nie zna trybu PII instalacji, więc liczba „bez danych osobowych” musi przyjść z backendu (np. pole w odpowiedzi count). Mieszanka jest możliwa, jeśli instalacja zmieniła tryb.</li>
+    <li><span class="mk-pin">9</span> Podgląd (2 wiersze) generuje backend tym samym serializerem co plik, żeby podgląd = plik. „—” w podglądzie = pusta komórka w pliku.</li>
+    <li><span class="mk-pin">10</span> Każdy eksport to zadanie <code>orders.export</code> w pasie <code>bulk</code> (ADR-050), z <code>connectionId</code> = systemowy nil-UUID (w Jobs &amp; Logs jako „System”, #2745). Okno odpytuje zadanie. <b>Luki:</b> <code>sync_jobs</code> nie ma pola postępu ani anulowania; potrzebne nowe pola lub tabela <code>order_exports</code>. Nowy typ zadania musi przejść <code>assertFullLaneCoverage</code>.</li>
+    <li><span class="mk-pin">11</span> <b>Luka:</b> backend nie przechowuje plików (etykiety są pobierane od przewoźnika na żądanie). Potrzebny magazyn plików z terminem ważności (proponujemy 7 dni) i zadanie sprzątające. Pobranie tylko przyciskiem: przeglądarka blokuje automatyczne pobieranie po czasie.</li>
+    <li><span class="mk-pin">12</span> Powyżej 5 000 zamówień (próg do ustalenia) eksport idzie w tle. Operator może pracować dalej, a gotowy plik czeka w Jobs &amp; Logs.</li>
+    <li><span class="mk-pin">13</span> Pobieranie z <code>/jobs-logs/:id</code>. <b>Luka:</b> <code>sync_jobs</code> nie zapisuje, kto zlecił zadanie (brak „Requested by”), a viewer ma <code>sync:read</code> i widzi każde zadanie z <code>payloadJson</code>. Payload nie może zawierać danych osobowych, a pobranie musi sprawdzać zleceniodawcę.</li>
+    <li><span class="mk-pin">14</span> Błąd: zadanie „dead” po 3 próbach. Błędy deterministyczne (np. za dużo wierszy na XLSX) powinny kończyć się od razu jako <code>business_failure</code>, bez ponawiania.</li>
+    <li><span class="mk-pin">15</span> Stan viewer: przycisk Export jest ukryty (zasada <code>useWriteAccess</code>: brak uprawnienia poza trybem demo = brak kontrolki; w demo: wyszarzony z podpowiedzią). Checkboxy wierszy też znikają, bo viewer nie ma <code>orders:write</code>.</li>
+    <li><span class="mk-pin">16</span> Viewer może otworzyć zadanie eksportu w Jobs &amp; Logs, ale nie pobierze pliku. Pytanie: czy viewer (np. księgowa) powinien móc eksportować chociaż bez danych osobowych?</li>
+    <li>Wszystkie dane są przykładowe (zamówienia Allegro, Erli, PrestaShop; osoby fikcyjne).</li>
+  </ol>
+</aside>
+
+<script>
+(function () {
+  var ROWS_ORDER = ['a', 'b'];
+  var ROWS_LINE = ['a1', 'a2'];
+  // Sample values: per-order rows a/b, per-line rows a1/a2 (a1/a2 fall back to a).
+  var COLS = [
+    { k: 'number', g: 'Order', l: 'Order number', v: { a: '6c0d1a90-7a41-11f1-b2f4-5b1e2c3d4e5f', b: '91822734' } },
+    { k: 'olid', g: 'Order', l: 'OpenLinker ID', v: { a: 'ol_order_4b1e9c2a7f604e1d', b: 'ol_order_7d02f1e8c3b94a55' } },
+    { k: 'source', g: 'Order', l: 'Source', v: { a: 'Allegro – Sklep główny', b: 'Erli – Sklep główny' } },
+    { k: 'placed', g: 'Order', l: 'Placed', v: { a: '2026-09-24 14:29', b: '2026-09-24 11:02' } },
+    { k: 'created', g: 'Order', l: 'Created', v: { a: '2026-09-24 14:32', b: '2026-09-24 11:05' } },
+    { k: 'status', g: 'Order', l: 'Status', v: { a: 'Awaiting dispatch', b: 'Synced' } },
+    { k: 'items', g: 'Order', l: 'Items', v: { a: '2', b: '1' } },
+    { k: 'total', g: 'Money', l: 'Total', v: { a: '150.95', b: '89.90' } },
+    { k: 'currency', g: 'Money', l: 'Currency', v: { a: 'PLN', b: 'PLN' } },
+    { k: 'shipcost', g: 'Money', l: 'Shipping cost', v: { a: '12.99', b: '0.00' } },
+    { k: 'payment', g: 'Money', l: 'Payment', v: { a: 'Paid', b: 'Paid' } },
+    { k: 'document', g: 'Money', l: 'Sales document', v: { a: 'FV 412/09/2026', b: 'Receipt' } },
+    { k: 'method', g: 'Delivery', l: 'Delivery method', v: { a: 'Allegro Paczkomaty InPost', b: 'DPD Kurier' } },
+    { k: 'pickup', g: 'Delivery', l: 'Pickup point', v: { a: 'WAW22M', b: '' } },
+    { k: 'shipby', g: 'Delivery', l: 'Ship by', v: { a: '2026-09-26 23:59', b: '2026-09-25 23:59' } },
+    { k: 'fulfil', g: 'Delivery', l: 'Fulfilment', v: { a: 'Not shipped', b: 'Dispatched' } },
+    { k: 'tracking', g: 'Delivery', l: 'Tracking number', v: { a: '', b: '1000634577982U' } },
+    { k: 'sku', g: 'Line item', l: 'SKU', line: true, v: { a1: 'KB-1102', a2: 'PK-0450' } },
+    { k: 'product', g: 'Line item', l: 'Product', line: true, v: { a1: 'Kubek ceramiczny 350 ml', a2: 'Podkładka korkowa' } },
+    { k: 'qty', g: 'Line item', l: 'Quantity', line: true, v: { a1: '2', a2: '4' } },
+    { k: 'unit', g: 'Line item', l: 'Unit price', line: true, v: { a1: '39.00', a2: '14.99' } },
+    { k: 'vat', g: 'Line item', l: 'VAT rate', line: true, v: { a1: '23', a2: '23' } },
+    { k: 'buyer', g: 'Buyer', l: 'Buyer name', pii: true, v: { a: 'Anna Kowalska', b: '' } },
+    { k: 'email', g: 'Buyer', l: 'Email', pii: true, v: { a: '8awgqyk6a5+cub31c122@allegromail.pl', b: '' } },
+    { k: 'phone', g: 'Buyer', l: 'Phone', pii: true, v: { a: '+48 601 234 567', b: '' } },
+    { k: 'shipaddr', g: 'Buyer', l: 'Shipping address', pii: true, v: { a: 'ul. Długa 12/4, 00-238 Warszawa, PL', b: 'PL' } },
+    { k: 'billaddr', g: 'Buyer', l: 'Billing address', pii: true, v: { a: 'ul. Długa 12/4, 00-238 Warszawa, PL', b: 'PL' } },
+    { k: 'taxid', g: 'Buyer', l: 'Buyer tax ID', pii: true, v: { a: '', b: '' } }
+  ];
+  var GROUPS = ['Order', 'Money', 'Delivery', 'Line item', 'Buyer'];
+  var PRESETS = {
+    accounting: { label: 'Accounting', keys: ['number', 'placed', 'source', 'total', 'currency', 'shipcost', 'payment', 'document', 'vat', 'unit', 'buyer', 'taxid', 'billaddr'] },
+    warehouse: { label: 'Warehouse', keys: ['number', 'created', 'method', 'pickup', 'shipby', 'fulfil', 'items', 'sku', 'product', 'qty', 'buyer', 'phone', 'shipaddr'] },
+    all: { label: 'All columns', keys: COLS.map(function (c) { return c.k; }) },
+    saved: { label: 'Allegro monthly VAT (saved by you)', keys: ['number', 'placed', 'source', 'total', 'currency', 'document', 'sku', 'qty', 'unit', 'vat'] }
+  };
+  // Order counts per scope: orders, line-item rows, orders stored without personal data.
+  var SCOPES = {
+    view: { orders: 1284, lines: 3010, noPii: 182, file: 'orders_2026-09-01_2026-09-25' },
+    selected: { orders: 3, lines: 6, noPii: 1, file: 'orders_selected_2026-09-25' },
+    range: { orders: 1507, lines: 3522, noPii: 0, file: 'orders_2026-08-01_2026-08-31' },
+    rangeLarge: { orders: 18412, lines: 43870, noPii: 3954, file: 'orders_2026-01-01_2026-09-25' }
+  };
+  var BACKGROUND_THRESHOLD = 5000;
+
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function plural(n, one, many) { return n === 1 ? one : many; }
+
+  function scopeData(st) { return st.scope === 'range' ? (st.large ? SCOPES.rangeLarge : SCOPES.range) : SCOPES[st.scope]; }
+  function allowed(c, st) { return (!c.line || st.gran === 'line') && (!c.pii || st.pii); }
+  function chosen(st) { return COLS.filter(function (c) { return st.sel[c.k] && allowed(c, st); }); }
+
+  function applyPreset(st, id) {
+    st.preset = id; st.modified = false; st.sel = {};
+    PRESETS[id].keys.forEach(function (k) { st.sel[k] = true; });
+  }
+
+  function scopeOption(st, id, name, hint, count, disabled) {
+    var picked = st.scope === id;
+    var cls = 'marketplace-picker__option' + (picked ? ' marketplace-picker__option--picked' : '') + (disabled ? ' export-scope__option--disabled' : '');
+    return '<label class="' + cls + '">' +
+      '<span class="export-scope__lead"><input type="radio" name="' + st.uid + '-scope" value="' + id + '"' + (picked ? ' checked' : '') + (disabled ? ' disabled' : '') + '>' +
+      '<span class="marketplace-picker__meta"><span class="marketplace-picker__name">' + name + '</span><span class="text-muted export-scope__hint">' + hint + '</span></span></span>' +
+      '<span class="mono tabular export-scope__count">' + count + '</span></label>';
+  }
+
+  function render(root) {
+    var st = root._st;
+    var sd = scopeData(st);
+    var rows = st.gran === 'line' ? sd.lines : sd.orders;
+    var cols = chosen(st);
+    var background = sd.orders > BACKGROUND_THRESHOLD;
+    var ext = st.format === 'xlsx' ? 'xlsx' : 'csv';
+    var h = '';
+
+    // ---- Orders + File (two columns on desktop) ----
+    h += '<div class="export-dialog__top">';
+    h += '<div class="dialog-section"><h3 class="dialog-section__head">Orders</h3>';
+    h += '<div class="marketplace-picker export-scope" role="radiogroup" aria-label="Orders to export">';
+    h += scopeOption(st, 'view', 'Current view', 'Created 1–25 Sep 2026, all sources, sorted by ship-by', fmt(SCOPES.view.orders) + '<span class="mk-pin">2</span>');
+    h += scopeOption(st, 'selected', 'Selected orders<span class="mk-pin">3</span>', st.hasSel ? 'The 3 orders you ticked on this page' : 'Tick orders in the table first', st.hasSel ? '3' : '0', !st.hasSel);
+    h += scopeOption(st, 'range', 'Date range', 'All sources, by created date', st.scope === 'range' ? fmt(sd.orders) : '');
+    h += '</div>';
+    if (st.scope === 'range') {
+      var from = st.large ? '2026-01-01' : '2026-08-01', to = st.large ? '2026-09-25' : '2026-08-31';
+      h += '<div class="export-scope__dates">' +
+        '<label class="form-field"><span class="form-field__label">Created from</span><input type="date" class="control" value="' + from + '"></label>' +
+        '<label class="form-field"><span class="form-field__label">Created to</span><input type="date" class="control" value="' + to + '"></label>' +
+        '<span class="mk-pin" style="align-self:flex-end;margin-bottom:8px">4</span></div>';
+    }
+    h += '</div>';
+
+    h += '<div class="dialog-section"><h3 class="dialog-section__head">File</h3><div class="export-dialog__stack">';
+    h += '<div class="form-field"><span class="form-field__label">Format<span class="mk-pin">5</span></span>' +
+      '<div class="segmented-control" role="radiogroup" aria-label="File format">' +
+      '<button type="button" role="radio" data-format="csv" aria-checked="' + (st.format === 'csv') + '" class="segmented-control__option' + (st.format === 'csv' ? ' segmented-control__option--active' : '') + '"><span class="segmented-control__label">CSV</span></button>' +
+      '<button type="button" role="radio" data-format="xlsx" aria-checked="' + (st.format === 'xlsx') + '" class="segmented-control__option' + (st.format === 'xlsx' ? ' segmented-control__option--active' : '') + '"><span class="segmented-control__label">Excel (XLSX)</span></button>' +
+      '</div></div>';
+    if (st.format === 'csv') {
+      h += '<label class="form-field"><span class="form-field__label">Separator</span><select class="control"><option>Semicolon (;), Excel in Polish</option><option>Comma (,)</option><option>Tab</option></select></label>';
+    }
+    h += '<div class="form-field"><span class="form-field__label">Rows<span class="mk-pin">6</span></span><div class="export-radio-list" role="radiogroup" aria-label="Rows">' +
+      '<label class="export-radio"><input type="radio" name="' + st.uid + '-gran" value="order"' + (st.gran === 'order' ? ' checked' : '') + '><span class="export-radio__text">One row per order<span class="export-radio__meta mono tabular">' + fmt(sd.orders) + ' rows</span></span></label>' +
+      '<label class="export-radio"><input type="radio" name="' + st.uid + '-gran" value="line"' + (st.gran === 'line' ? ' checked' : '') + '><span class="export-radio__text">One row per line item<span class="export-radio__meta"><span class="mono tabular">' + fmt(sd.lines) + ' rows</span>. Order details repeat on every line.</span></span></label>' +
+      '</div></div>';
+    h += '</div></div>';
+    h += '</div>';
+
+    // ---- Columns ----
+    var enabledCount = COLS.filter(function (c) { return allowed(c, st); }).length;
+    h += '<div class="dialog-section"><h3 class="dialog-section__head">Columns <span class="mono tabular">' + cols.length + ' of ' + enabledCount + '</span><span class="mk-pin">7</span></h3>';
+    h += '<div class="export-presets"><label class="form-field export-presets__select"><span class="form-field__label">Preset</span><select class="control js-preset">';
+    ['accounting', 'warehouse', 'all', 'saved'].forEach(function (id) {
+      var label = PRESETS[id].label + (id === 'accounting' || id === 'warehouse' ? ' (built-in)' : '');
+      if (st.preset === id && st.modified) label = PRESETS[id].label + ', edited';
+      h += '<option value="' + id + '"' + (st.preset === id ? ' selected' : '') + '>' + esc(label) + '</option>';
+    });
+    h += '</select></label>';
+    h += '<button type="button" class="button button--ghost button--sm js-save-open">Save as preset</button>';
+    h += '<div class="export-presets__save js-save-row"' + (st.saving ? '' : ' hidden') + '><input type="text" class="control" aria-label="Preset name" placeholder="Preset name" value="' + (st.saving ? 'Erli weekly' : '') + '"><button type="button" class="button button--secondary button--sm js-save-confirm">Save preset</button><button type="button" class="button button--ghost button--sm js-save-cancel">Cancel</button></div>';
+    h += '</div>';
+
+    h += '<div class="export-columns">';
+    GROUPS.forEach(function (g) {
+      var gc = COLS.filter(function (c) { return c.g === g; });
+      var groupDisabled = (g === 'Line item' && st.gran !== 'line') || (g === 'Buyer' && !st.pii);
+      var on = gc.filter(function (c) { return st.sel[c.k] && allowed(c, st); }).length;
+      h += '<fieldset' + (groupDisabled ? ' disabled' : '') + '><legend><span>' + g + '</span><span class="mono tabular">' + (groupDisabled ? '' : on + '/' + gc.length) + '</span></legend>';
+      gc.forEach(function (c) {
+        var checked = st.sel[c.k] && !groupDisabled;
+        h += '<label class="export-check' + (groupDisabled ? ' export-check--disabled' : '') + '"><input type="checkbox" data-col="' + c.k + '"' + (checked ? ' checked' : '') + '>' + esc(c.l) + '</label>';
+      });
+      if (g === 'Line item' && groupDisabled) h += '<p class="export-columns__hint">Choose one row per line item to add these.</p>';
+      if (g === 'Buyer' && groupDisabled) h += '<p class="export-columns__hint">Turn on Include personal data to add these.</p>';
+      h += '</fieldset>';
+    });
+    h += '</div></div>';
+
+    // ---- Personal data ----
+    h += '<div class="dialog-section"><h3 class="dialog-section__head">Personal data<span class="mk-pin">8</span></h3>';
+    h += '<label class="export-pii"><input type="checkbox" class="js-pii"' + (st.pii ? ' checked' : '') + '><span class="export-pii__text">Include personal data<span class="form-field__description">Buyer names, email addresses, phone numbers, shipping and billing addresses, and tax IDs.</span></span></label>';
+    if (st.pii) {
+      var n = sd.orders - sd.noPii;
+      var desc = 'The file will hold personal data for ' + fmt(n) + ' ' + plural(n, 'order', 'orders') + '. Store it securely and delete it when you no longer need it. Anyone you send it to gets the same data.';
+      if (sd.noPii > 0) {
+        desc += ' ' + fmt(sd.noPii) + ' of these ' + plural(sd.orders, 'order was', 'orders were') + ' received while personal data storage was turned off, so ' + plural(sd.noPii, 'its', 'their') + ' buyer columns will be empty.';
+      }
+      h += '<div class="alert alert--warning" role="status"><div class="alert__content"><strong class="alert__title">This file will contain personal data</strong><div class="alert__description">' + desc + '</div></div></div>';
+    }
+    h += '</div>';
+
+    // ---- Preview ----
+    var sampleRows = st.gran === 'line' ? ROWS_LINE : ROWS_ORDER;
+    h += '<div class="dialog-section"><h3 class="dialog-section__head">Preview<span class="mk-pin">9</span></h3>';
+    if (cols.length === 0) {
+      h += '<p class="form-field__description">Choose at least one column.</p>';
+    } else {
+      h += '<div class="data-table__container"><table class="data-table export-preview"><caption class="sr-only">First rows of the file</caption><thead><tr>';
+      cols.forEach(function (c) { h += '<th scope="col">' + esc(c.l) + '</th>'; });
+      h += '</tr></thead><tbody>';
+      sampleRows.forEach(function (r) {
+        h += '<tr>';
+        cols.forEach(function (c) {
+          var val = c.v[r];
+          if (val === undefined) val = c.v[r.charAt(0)];
+          h += val ? '<td title="' + esc(val) + '">' + esc(val) + '</td>' : '<td class="text-muted" title="Empty in the file">—</td>';
+        });
+        h += '</tr>';
+      });
+      h += '</tbody></table></div>';
+      h += '<p class="form-field__description export-preview__note">First 2 of ' + fmt(rows) + ' rows. A dash means the cell is empty in the file.</p>';
+    }
+    h += '</div>';
+
+    // ---- Background notice ----
+    if (background) {
+      h += '<div class="alert alert--info" role="status" style="margin-bottom: var(--space-4)"><div class="alert__content"><strong class="alert__title">This export runs in the background<span class="mk-pin">12</span></strong><div class="alert__description">' + fmt(sd.orders) + ' orders is more than can be prepared here (up to ' + fmt(BACKGROUND_THRESHOLD) + '). You can keep working. Download the file from Jobs &amp; Logs when it is ready; it stays there for 7 days.</div></div></div>';
+    }
+
+    // ---- Footer ----
+    var fileLabel = ext === 'xlsx' ? 'Excel' : 'CSV';
+    h += '<div class="dialog__footer dialog__footer--split">' +
+      '<span class="text-muted mono tabular export-dialog__summary">' + fmt(rows) + ' rows · ' + cols.length + ' columns · ' + fileLabel + '</span>' +
+      '<div class="dialog__footer-group"><button type="button" class="button button--secondary js-close">Cancel</button>' +
+      '<button type="button" class="button button--primary js-submit"' + (cols.length === 0 ? ' disabled' : '') + '>' +
+      (background ? 'Start background export' : 'Export ' + fmt(sd.orders) + ' ' + plural(sd.orders, 'order', 'orders')) + '</button></div></div>';
+
+    root.querySelector('.js-export-body').innerHTML = h;
+    root._background = background;
+  }
+
+  function initExport(root, i) {
+    var st = {
+      uid: 'x' + i,
+      scope: root.dataset.scope, format: root.dataset.format, gran: root.dataset.gran,
+      pii: root.dataset.pii === 'true', large: root.dataset.large === 'true', saving: false,
+      hasSel: root.dataset.scope === 'selected'
+    };
+    applyPreset(st, root.dataset.preset);
+    root._st = st;
+    render(root);
+
+    root.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t.name === st.uid + '-scope') { st.scope = t.value; }
+      else if (t.name === st.uid + '-gran') { st.gran = t.value; }
+      else if (t.classList.contains('js-preset')) { applyPreset(st, t.value); }
+      else if (t.classList.contains('js-pii')) { st.pii = t.checked; }
+      else if (t.dataset.col) { st.sel[t.dataset.col] = t.checked; st.modified = true; }
+      else return;
+      render(root);
+    });
+    root.addEventListener('click', function (e) {
+      var t = e.target.closest('button');
+      if (!t) return;
+      if (t.dataset.format) { st.format = t.dataset.format; render(root); }
+      else if (t.classList.contains('js-save-open')) { st.saving = true; render(root); }
+      else if (t.classList.contains('js-save-cancel') || t.classList.contains('js-save-confirm')) { st.saving = false; render(root); }
+      else if (t.classList.contains('js-submit')) {
+        if (root._background) { goState('background'); } else { goState('preparing'); runProgress(); }
+      }
+    });
+  }
+
+  function goState(name) {
+    var btn = document.querySelector('.mk-bar__states button[data-s="' + name + '"]');
+    if (btn) btn.click();
+    var el = document.querySelector('[data-mk-state="' + name + '"]');
+    if (el) onEnter(el);
+  }
+
+  // Progress animation only runs in answer to the operator pressing Export; opening the
+  // state from the mockup bar shows a still frame at 48 %.
+  var timer = null;
+  function setProgress(done) {
+    var fill = document.querySelector('.js-progress-fill');
+    var count = document.querySelector('.js-progress-count');
+    fill.style.width = Math.round(done / 1284 * 100) + '%';
+    count.textContent = fmt(done) + ' of 1\u00a0284 orders';
+    fill.parentNode.setAttribute('aria-valuenow', String(done));
+  }
+  function stopProgress(reset) {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (reset) setProgress(612);
+  }
+  function runProgress() {
+    stopProgress(false);
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var done = 0; setProgress(0);
+    timer = setInterval(function () {
+      done = Math.min(1284, done + (reduce ? 1284 : 107));
+      setProgress(done);
+      if (done >= 1284) {
+        stopProgress(false);
+        setTimeout(function () {
+          var c = current();
+          if (c && c.getAttribute('data-mk-state') === 'preparing') goState('ready');
+        }, 400);
+      }
+    }, reduce ? 1000 : 220);
+  }
+
+  var chipName, chipAvatar;
+  function onEnter(el) {
+    var name = el.getAttribute('data-mk-state');
+    var modal = el.querySelector('.export-modal');
+    if (modal) modal.hidden = false;
+    var toast = el.querySelector('.toast-region');
+    if (toast) toast.hidden = false;
+    if (name !== 'preparing') stopProgress(true);
+    var viewer = name === 'viewer';
+    document.querySelectorAll('.js-export-entry').forEach(function (n) { n.hidden = viewer; });
+    document.querySelectorAll('.js-viewer-pin').forEach(function (n) { n.hidden = !viewer; });
+    if (chipName) { chipName.textContent = viewer ? 'viewer' : 'admin'; chipAvatar.textContent = viewer ? 'V' : 'A'; }
+    // Viewer has no orders:write, so the dispatch selection column disappears too.
+    document.querySelectorAll('.orders-table tr > :first-child').forEach(function (c) { c.hidden = viewer; });
+    var selected = name === 'selected';
+    document.querySelectorAll('.js-order-rows tr[data-selectable] input').forEach(function (cb) { cb.checked = selected; });
+    var bulk = document.querySelector('.js-bulk');
+    bulk.classList.toggle('bulk-action-bar--hidden', !selected);
+    bulk.setAttribute('aria-hidden', selected ? 'false' : 'true');
+  }
+
+  function current() {
+    return Array.prototype.find.call(document.querySelectorAll('[data-mk-state]'), function (s) { return !s.hidden; });
+  }
+
+  function init() {
+    var bar = document.querySelector('.mk-bar');
+    function syncBar() { if (bar) document.documentElement.style.setProperty('--mk-bar-h', bar.offsetHeight + 'px'); }
+    syncBar(); window.addEventListener('resize', syncBar);
+    chipName = document.querySelector('.shell-user-chip__name');
+    chipAvatar = document.querySelector('.shell-user-chip__avatar');
+    document.querySelectorAll('.js-export').forEach(initExport);
+
+    var obs = new MutationObserver(function (muts) {
+      muts.forEach(function (m) { if (!m.target.hidden) onEnter(m.target); });
+    });
+    document.querySelectorAll('[data-mk-state]').forEach(function (s) { obs.observe(s, { attributes: true, attributeFilter: ['hidden'] }); });
+    var cur = current(); if (cur) onEnter(cur);
+
+    document.addEventListener('click', function (e) {
+      var t = e.target.closest('button, a');
+      if (!t) return;
+      if (t.classList.contains('js-close')) {
+        e.preventDefault();
+        var m = t.closest('.export-modal'); if (m) m.hidden = true;
+      } else if (t.classList.contains('js-go')) {
+        e.preventDefault(); goState(t.dataset.go);
+        if (t.dataset.go === 'preparing') runProgress();
+      } else if (t.classList.contains('js-open-export')) {
+        var c = current();
+        var name = c ? c.getAttribute('data-mk-state') : 'default';
+        if (name === 'default' || name === 'selected' || name === 'large') { onEnter(c); } else { goState('default'); }
+      } else if (t.getAttribute('href') === '#') {
+        e.preventDefault();
+      } else if (t.classList.contains('toast__dismiss')) {
+        var r = t.closest('.toast-region'); if (r) r.hidden = true;
+      }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else setTimeout(init, 0);
+})();
+</script>
+
+</body></html>
