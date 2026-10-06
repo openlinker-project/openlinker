@@ -31,4 +31,13 @@ describe('shoperPlugin', () => {
   it('is registered in the live plugin registry', () => {
     expect(plugins).toContain(shoperPlugin);
   });
+
+  it('contributes the order defaults section together with its config contribution', () => {
+    expect(shoperPlugin.platform?.StructuredConfigSection).toBeDefined();
+    expect(Object.keys(shoperPlugin.platform?.connectionConfig?.schemaShape ?? {}).sort()).toEqual([
+      'shoperPaymentId',
+      'shoperShippingId',
+      'shoperStatusId',
+    ]);
+  });
 });

@@ -1,15 +1,17 @@
 /**
  * Shoper plugin
  *
- * Front for the Shoper connection (#3639): the guided setup route and the
- * setup card. No capability-driven contributions yet (edit sections,
- * credentials panel, ...): the connection's capabilities come from the backend
- * manifest and are not branched on in the browser.
+ * Front for the Shoper connection (#3639): the guided setup route, the
+ * setup card, and the order defaults (delivery / payment / status) edit
+ * section (#3702). No other contributions yet. The section reads
+ * `enabledCapabilities` only to explain why its lists are unavailable.
  *
  * @module plugins/shoper
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { ShoperOrderDefaultsSection } from './components/shoper-order-defaults-section';
+import { shoperConnectionConfig } from './shoper-connection-config';
 import { shoperSetupRoute } from './shoper-setup.route';
 
 export const shoperPlugin: OpenLinkerPlugin = definePlugin({
@@ -26,5 +28,7 @@ export const shoperPlugin: OpenLinkerPlugin = definePlugin({
       to: '/connections/new/shoper',
       badge: 'API token',
     },
+    StructuredConfigSection: ShoperOrderDefaultsSection,
+    connectionConfig: shoperConnectionConfig,
   },
 });
