@@ -24,6 +24,10 @@ export interface PrestashopProduct {
   upc?: string;
   price?: string | number;
   weight?: string | number;
+  /** Product-level dimensions in the shop's `PS_DIMENSION_UNIT` (#3650). */
+  width?: string | number;
+  height?: string | number;
+  depth?: string | number;
   active?: string | number;
   /** Default leaf category id, used as the start of the F3 breadcrumb walk (#1096). */
   id_category_default?: string | number;

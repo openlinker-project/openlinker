@@ -6,8 +6,10 @@
  *   - Viewer session: those groups are HIDDEN in normal mode, or rendered
  *     DISABLED + locked in demo mode (branching on `GET /system/config`).
  *   - Direct navigation to `/users` as a viewer RENDERS the page and surfaces
- *     the API 403 as an error state — the URL stays on `/users` (no redirect
- *     to /login), proving there is no client-side role route guard.
+ *     the API 403 as an access-denied state with no Retry — the URL stays on
+ *     `/users` (no redirect to /login), proving there is no client-side role
+ *     route guard for a viewer. (A bench-only packer IS redirected, to
+ *     `/bench`, since #3096 — that is a shell decision, not a role guard.)
  *
  * The admin case uses the shared admin session (storageState + browserAuth).
  * The viewer case builds a fresh browser context and seeds a viewer session so
@@ -89,11 +91,15 @@ test.describe('access-control: UI reflection', () => {
       }
 
       // Direct nav to an admin route: the page renders and surfaces the API 403
-      // as an error state — no client-side redirect to /login.
+      // as an access-denied state with no Retry (#3096) — no client-side
+      // redirect to /login.
       await page.goto('/users');
       await expect(page).toHaveURL(/\/users(?:[/?#]|$)/);
       await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible();
-      await expect(page.getByText('Unable to load users')).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'User management is for administrators' })
+      ).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
     } finally {
       await context.close();
     }

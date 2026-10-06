@@ -45,6 +45,7 @@
  */
 import { DataSource } from 'typeorm';
 
+import { ensureMigrationPrerequisites } from '../../src/database/ensure-migration-prerequisites';
 import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
 
 // Every fulfillment table joins this one spec rather than getting a sibling:
@@ -153,27 +154,13 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     });
     await migrated.initialize();
 
-    // ## A pre-existing chain defect, tracked as #2684 — NOT something #2392 owns
-    //
-    // The FIRST migration (`1766246163229-add-connections-and-mappings`) creates
-    // `identifier_mappings` with `DEFAULT uuid_generate_v4()` but never issues
-    // `CREATE EXTENSION "uuid-ossp"` — so the chain cannot run against a
-    // genuinely empty database. Nothing noticed because no automated path ever
-    // ran migrations from empty (the harness uses `synchronize`), and real
-    // deployments happen to have the extension already.
-    //
-    // Creating it here satisfies the precondition without pretending the gap is
-    // absent. Fixing migration 1766246163229 is out of scope for this issue — it
-    // would rewrite the oldest migration in the tree for a defect this slice did
-    // not introduce, and the interesting part needs its own decision: an APPLIED
-    // migration never re-runs, so an in-place edit reaches nobody who already
-    // deployed. (#2392's own migration does issue the CREATE EXTENSION, which is
-    // why it is not implicated.)
-    //
-    // **Removal condition**: delete this line when #2684 lands. It is a
-    // workaround with an owner, not a permanent fixture — left unmarked it would
-    // quietly become the reason nobody notices the chain cannot bootstrap.
-    await migrated.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+    // The first migration (`1766246163229-add-connections-and-mappings`) uses
+    // `uuid_generate_v4()` without ever creating `uuid-ossp` itself (#2684) —
+    // this is the SAME bootstrap production runs on every `migration:run`
+    // (`BootstrappedDataSource.runMigrations` in `data-source.ts`), called here
+    // directly because this spec drives `runMigrations()` on a raw DataSource
+    // rather than through the CLI.
+    await ensureMigrationPrerequisites(migrated);
 
     await migrated.runMigrations();
   }, 180000);

@@ -97,6 +97,13 @@ export class BenchParcelLineResponseDto {
   heightMm!: number | null;
 }
 
+export class BenchPackerNoteResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() body!: string;
+  @ApiProperty() authorUsername!: string;
+  @ApiProperty() createdAt!: string;
+}
+
 export class BenchParcelResponseDto {
   @ApiProperty() workId!: string;
 
@@ -193,6 +200,14 @@ export class BenchParcelResponseDto {
 
   @ApiProperty({ type: [BenchParcelLineResponseDto] })
   lines!: BenchParcelLineResponseDto[];
+
+  @ApiProperty({
+    type: [BenchPackerNoteResponseDto],
+    description:
+      'Internal notes flagged "Show to packer" (D12), read only. Never an unflagged note, ' +
+      'never a tag. An empty array is the ordinary case.',
+  })
+  packerNotes!: BenchPackerNoteResponseDto[];
 }
 
 export class BenchVerificationResultResponseDto {

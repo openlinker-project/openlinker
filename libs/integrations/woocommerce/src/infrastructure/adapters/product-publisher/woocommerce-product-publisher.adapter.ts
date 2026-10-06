@@ -46,9 +46,11 @@ import {
   type ShopCategory,
   type ShopCategoryBrowser,
   type ShopProductManagerPort,
+  type ShopProductPriceUpdater,
   type ShopProductStatusReadResult,
   type ShopProductStatusReader,
   type ShopPublicationStatus,
+  type UpdateShopProductPriceCommand,
 } from '@openlinker/core/listings';
 
 import { WOOCOMMERCE_DESCRIPTION_FORMAT } from './woocommerce-description-format';
@@ -60,6 +62,7 @@ import type {
   WooCommerceAttributeTermResponse,
   WooCommerceCategoryResponse,
   WooCommercePriceCommerceFields,
+  WooCommercePriceOnlyUpdateRequest,
   WooCommerceProductAttribute,
   WooCommerceProductPublishRequest,
   WooCommerceProductResponse,
@@ -106,7 +109,8 @@ export class WooCommerceProductPublisherAdapter
     CategoryProvisioner,
     ShopCategoryBrowser,
     ShopAttributeReader,
-    ShopProductStatusReader
+    ShopProductStatusReader,
+    ShopProductPriceUpdater
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
 
@@ -252,6 +256,41 @@ export class WooCommerceProductPublisherAdapter
     }
 
     return { externalProductId: String(raw.id), status: cmd.status };
+  }
+
+  /**
+   * Price-only write (#3505, G01-10, `ShopProductPriceUpdater`): a sparse PUT
+   * carrying `regular_price` (and `sale_price` only when the command has one).
+   *
+   * Deliberately NOT `buildProductBody`: that body always sends
+   * `manage_stock: true` + `stock_quantity`, and name/description whenever
+   * content is present, so a price change through `publishProduct` overwrote
+   * the shop's stock — and turned stock management on for a product the shop
+   * did not manage — plus its title and description. A variation of a grouped
+   * publish lives under its parent (`products/{parentId}/variations/{id}`),
+   * the same addressing `getShopVariationStatus` uses.
+   */
+  async updateShopProductPrice(cmd: UpdateShopProductPriceCommand): Promise<void> {
+    const body: WooCommercePriceOnlyUpdateRequest = { regular_price: cmd.price.amount };
+    if (cmd.salePrice) body.sale_price = cmd.salePrice.amount;
+
+    const productPath = `${PRODUCTS_PATH}/${encodeURIComponent(cmd.externalProductId)}`;
+    const path = cmd.externalParentProductId
+      ? `${PRODUCTS_PATH}/${encodeURIComponent(cmd.externalParentProductId)}/variations/` +
+        encodeURIComponent(cmd.externalProductId)
+      : productPath;
+
+    this.logger.debug(
+      `Updating price only for product=${cmd.externalProductId}` +
+        `${cmd.externalParentProductId ? ` parent=${cmd.externalParentProductId}` : ''} ` +
+        `connection=${this.connection.id}`,
+    );
+
+    try {
+      await this.httpClient.put<WooCommerceProductResponse>(path, body);
+    } catch (err) {
+      throw this.toPublishError(err, true, cmd.externalProductId);
+    }
   }
 
   /**

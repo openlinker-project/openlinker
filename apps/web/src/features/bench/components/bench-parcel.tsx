@@ -103,7 +103,7 @@ import {
   isParcelClosed,
   parcelTotals,
 } from '../lib/bench-parcel-presentation';
-import { distinguishingAttributeKeys } from '../lib/bench-parcel-attributes';
+import { distinguishingAttributeKeys } from '../../../shared/lib/variant-attributes';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import {
   isBenchAudioMuted,
@@ -118,6 +118,7 @@ import { BenchActivityPanel } from './bench-activity-panel';
 import { BenchCompletionPanel } from './bench-completion-panel';
 import { BenchCopyButton } from './bench-copy-button';
 import { BenchDocumentsPanel } from './bench-documents';
+import { BenchOfficeNotes } from './bench-office-notes';
 import { BenchParcelHero } from './bench-parcel-hero';
 import { BenchParcelLineRow } from './bench-parcel-line';
 import { BenchScanDock } from './bench-scan-dock';
@@ -173,7 +174,7 @@ export function BenchParcelView({
   // A3. Off while the idle lock covers the bench — see the hook's docblock for
   // why a locked terminal must not keep announcing the packer who walked away.
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() });
-  // A3. False while the idle lock or the handover prompt covers the bench.
+  // A3. False while the idle lock covers the bench.
   const interactive = useBenchInteractive();
 
   const [notice, setNotice] = useState<ScanNotice | null>(null);
@@ -639,7 +640,7 @@ export function BenchParcelView({
   /**
    * Computed once for the whole box, never per row: which attribute actually
    * tells these items apart is a fact about the box's contents. See
-   * `bench-parcel-attributes.ts` for why the full set is the wrong thing to
+   * `shared/lib/variant-attributes.ts` for why the full set is the wrong thing to
    * print — the demo catalogue sends three attributes identical on every line.
    */
   const distinguishingAttributes = distinguishingAttributeKeys(parcel.lines);
@@ -771,6 +772,8 @@ export function BenchParcelView({
           )}
         </Alert>
       )}
+
+      <BenchOfficeNotes notes={parcel.packerNotes} />
 
       {/* The mockup's hero card (#3401): the ONE line this box is waiting for
           next, with the visible scan field. Derived, never stored — see
@@ -1049,8 +1052,8 @@ export function BenchParcelView({
           both doc cards beside the open parcel, because a packer prints the
           invoice while they pack rather than after. The panel already states
           per document whether it is ready, so an open box is never told a
-          label exists that does not. */}
-      <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} />
+          label exists that does not — nor told an open box is closed. */}
+      <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} closed={closed} />
 
       {/* #3411 (epic #3401). Rendered on every state — activity happened
           throughout packing, not only once the box is open. */}

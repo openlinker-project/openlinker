@@ -207,6 +207,7 @@ describe('OrderIngestionService', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       }),
     } as unknown as jest.Mocked<IFulfillmentRoutingService>;
 
@@ -313,6 +314,7 @@ describe('OrderIngestionService', () => {
         processorConnectionId: 'carrier-1',
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
 
       await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -328,6 +330,7 @@ describe('OrderIngestionService', () => {
         processorConnectionId: 'carrier-1',
         source: 'rule',
         processorAvailable: false,
+        parcelProfile: null,
       });
 
       await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -2672,6 +2675,7 @@ describe('OrderIngestionService', () => {
           processorConnectionId: 'shop-1',
           source: 'rule',
           processorAvailable: true,
+          parcelProfile: null,
         });
 
         await service.syncOrderFromSource(connectionId, externalOrderId);

@@ -21,15 +21,19 @@
 // ── Feedback / status ──────────────────────────────────────────────
 export { AbsentValue } from './absent-value';
 export { Alert } from './alert';
-export type { AlertTone } from './alert';
+export type { AlertDensity, AlertTone } from './alert';
 export { StatusBadge } from './status-badge';
 export type { StatusBadgeTone } from './status-badge';
-export { EmptyState, ErrorState, LoadingState } from './feedback-state';
+export { AccessDeniedState, EmptyState, ErrorState, LoadingState } from './feedback-state';
+export { QueryErrorState } from './query-error-state';
+export type { QueryErrorStateCopy, QueryErrorStateProps } from './query-error-state';
 export { StructuredErrorList } from './structured-error-list';
 
 // ── Controls ───────────────────────────────────────────────────────
 export { Button } from './button';
 export type { ButtonProps, ButtonTone } from './button';
+export { BareIconButton } from './bare-icon-button';
+export type { BareIconButtonProps, BareIconButtonSize } from './bare-icon-button';
 export { Input } from './input';
 export { Textarea } from './textarea';
 export { Select } from './select';
@@ -37,6 +41,22 @@ export { Combobox } from './combobox';
 export type { ComboboxOption, ComboboxValue } from './combobox';
 export { SegmentedControl } from './segmented-control';
 export type { SegmentedControlOption, SegmentedControlProps } from './segmented-control';
+
+// ── Filters (#3507 — the style guide's FilterBar, as composable parts) ──
+export { Chip } from './chip';
+export type { ChipProps, ChipTone } from './chip';
+export { FilterToggleButton } from './filter-toggle-button';
+export type { FilterToggleButtonProps } from './filter-toggle-button';
+export { FilterPanel, FilterPanelFooter, FilterGroup, FilterField, FilterRange } from './filter-panel';
+export type { FilterPanelProps, FilterGroupProps, FilterFieldProps } from './filter-panel';
+export { FilterCheck, FilterChecks } from './filter-check';
+export type { FilterCheckProps, FilterCheckTone } from './filter-check';
+export { ActiveFilterChips } from './active-filter-chips';
+export type { ActiveFilterChip, ActiveFilterChipsProps } from './active-filter-chips';
+export { FilterSheet, FilterSection } from './filter-sheet';
+export type { FilterSheetProps, FilterSectionProps } from './filter-sheet';
+export { QuickFilters, QuickFiltersLabel, QuickFiltersSeparator } from './quick-filters';
+export type { QuickFiltersProps } from './quick-filters';
 
 // ── Form composition ───────────────────────────────────────────────
 export { FormField } from './form-field';
@@ -70,7 +90,10 @@ export type { ListPaginationProps } from './list-pagination';
 export { RawPayloadPanel } from './raw-payload-panel';
 export { TimeDisplay } from './time-display';
 export { MetricCard } from './metric-card';
-export { KpiCard } from './kpi-card';
+export { KpiCard, KpiGrid } from './kpi-card';
+export type { KpiCardDensity, KpiGridProps } from './kpi-card';
+export { DetailSection } from './detail-section';
+export type { DetailSectionProps, DetailSectionTone } from './detail-section';
 
 // ── Sales documents (#2535) ────────────────────────────────────────
 export { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './document-kind-glyph';

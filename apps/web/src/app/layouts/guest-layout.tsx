@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react';
 import { useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { BENCH_PATH, resolveSessionSurface } from '../../shared/auth/session-surface';
 import { useSession } from '../../shared/auth/use-session';
+import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { useSystemConfigQuery } from '../../features/system';
 import { captureMarketingLanding } from '../../features/demo';
@@ -46,7 +48,16 @@ export function GuestLayout(): ReactElement {
   }
 
   if (session.status === 'authenticated') {
-    return <Navigate to="/" replace />;
+    // #3096 (F-9): a bench-only session goes straight to the bench — never via
+    // `/`, which would flash Analytics before the app layout bounced it — and
+    // ignores `next`, because no app address is one it may open. Everyone else
+    // returns to the deep link they were sent away from, sanitised so `next`
+    // can never become an open redirect.
+    const target =
+      resolveSessionSurface(isReady, session) === 'bench-only'
+        ? BENCH_PATH
+        : resolveNextPath(new URLSearchParams(location.search).get('next'));
+    return <Navigate to={target} replace />;
   }
 
   return (

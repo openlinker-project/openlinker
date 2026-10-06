@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, Outlet, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
-import { resolveNextPath } from '../../features/demo';
+import { resolveNextPath } from '../../shared/lib/resolve-next-path';
 
 export function ConsentLayout(): ReactElement {
   const { isReady, session, adapter, refreshSession } = useSession();

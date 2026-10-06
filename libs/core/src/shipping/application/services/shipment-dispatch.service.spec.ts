@@ -109,6 +109,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.fulfillmentWorkId ?? null,
     // #2073 waybill-relay failure history — none by default.
     overrides.waybillRelayFailure ?? null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
@@ -121,6 +123,7 @@ function resolution(
       overrides.processorConnectionId === undefined ? INPOST : overrides.processorConnectionId,
     source: overrides.source ?? 'rule',
     processorAvailable: overrides.processorAvailable ?? true,
+    parcelProfile: null,
   };
 }
 
@@ -175,11 +178,15 @@ describe('ShipmentDispatchService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      giveUpWaybillRelay: jest.fn(),
       clearWaybillRelayFailures: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
+      findDeliveredRelayPending: jest.fn(),
+      markDeliveredRelayed: jest.fn(),
+      recordDeliveredRelayFailure: jest.fn(),
     };
     routing = {
       getRules: jest.fn(),

@@ -338,6 +338,71 @@ export type {
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
 export type { IOrderTestFixtureService } from './application/interfaces/order-test-fixture.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
+// Orders-list column presets (#3530).
+export type { IOrderColumnPresetService } from './application/services/order-column-preset.service.interface';
+export type {
+  OrderColumnPreset,
+  CreateOrderColumnPresetInput,
+  UpdateOrderColumnPresetInput,
+} from './domain/types/order-column-preset.types';
+export { OrderColumnPresetNotFoundError } from './domain/exceptions/order-column-preset-not-found.error';
+// Internal order notes (#3531).
+export type { IOrderNoteService } from './application/services/order-note.service.interface';
+export type {
+  OrderNote,
+  CreateOrderNoteInput,
+  UpdateOrderNoteInput,
+  OrderNoteTimelineEntry,
+  OrderNoteTimelineEventKind,
+} from './domain/types/order-note.types';
+export { OrderNoteTimelineEventKindValues } from './domain/types/order-note.types';
+export { OrderNoteNotFoundError } from './domain/exceptions/order-note-not-found.error';
+export { OrderNoteNotAuthoredError } from './domain/exceptions/order-note-not-authored.error';
+// Order tags (#3532, D34).
+export type { IOrderTagService } from './application/services/order-tag.service.interface';
+export type {
+  OrderTag,
+  OrderTagColor,
+  OrderTagWithCount,
+  BulkAssignOrderTagResult,
+} from './domain/types/order-tag.types';
+export { OrderTagColorValues, ORDER_TAG_WORKSPACE_LIMIT } from './domain/types/order-tag.types';
+export { OrderTagLimitReachedError } from './domain/exceptions/order-tag-limit-reached.error';
+export { OrderTagNotFoundError } from './domain/exceptions/order-tag-not-found.error';
+// Orders CSV/XLSX export (#3534, D35).
+export type { IOrderExportService } from './application/services/order-export.service.interface';
+export { OrderExportRun } from './domain/entities/order-export-run.entity';
+export type {
+  OrderExportFile,
+  OrderExportFormat,
+  OrderExportScope,
+  OrderExportStatus,
+  CreateOrderExportRunInput,
+} from './domain/types/order-export.types';
+export {
+  OrderExportFormatValues,
+  OrderExportScopeValues,
+  OrderExportStatusValues,
+  ORDER_EXPORT_BACKGROUND_THRESHOLD,
+  ORDER_EXPORT_TTL_DAYS,
+} from './domain/types/order-export.types';
+export {
+  ORDER_EXPORT_COLUMN_IDS,
+  ORDER_EXPORT_COLUMN_LABELS,
+  ORDER_EXPORT_DEFAULT_COLUMNS,
+  ORDER_EXPORT_PII_COLUMNS,
+  narrowOrderExportColumns,
+  resolveOrderExportCell,
+} from './domain/order-export-columns';
+export type { OrderExportColumnId, OrderExportCellValue } from './domain/order-export-columns';
+export { buildOrderExportCsv } from './domain/order-export-csv';
+// `searchText` re-derivation under the current PII mode (#3507 G03-14).
+export type { IOrderSearchTextReindexService } from './application/services/order-search-text-reindex.service.interface';
+export type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+  OrderSearchTextReindexRunResult,
+} from './domain/types/order-search-text-reindex.types';
 export * from './orders.tokens';
 
 // Domain entities

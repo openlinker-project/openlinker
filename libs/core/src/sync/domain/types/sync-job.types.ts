@@ -307,6 +307,16 @@ export const JobTypeValues = [
   // non-nullable, pending #1943.
   'analytics.currency.recalculate',
 
+  // Orders CSV/XLSX export (#3534, D35, mockup M5). One-shot: generates the
+  // file from the requesting operator's filters/scope/columns and writes it
+  // onto its own `order_exports` row. `bulk` lane (ADR-050) — a background
+  // export a human is waiting on, but a query-then-write job rather than a
+  // buyer-facing write, the same cost-of-starvation reasoning the catalogue
+  // sweeps use. `SyncJob.connectionId` is the system nil UUID, like
+  // `analytics.currency.recalculate` above, since an export spans every
+  // connection the operator's filters admit.
+  'orders.export',
+
   // Subiekt bridge reachability sweep (#3358). Before this, an unreachable
   // bridge produced no operator-facing signal at all — no alerting
   // infrastructure exists anywhere in the product, and Subiekt registered no
@@ -362,6 +372,25 @@ export const JobStatusValues = ['queued', 'running', 'succeeded', 'dead'] as con
 export type JobStatus = (typeof JobStatusValues)[number];
 
 /**
+ * Sync Job Retention Status Values (#2946)
+ *
+ * A POSITIVE two-value whitelist, never an exclusion list — the
+ * ADR-049/#2604 outbox-retention shape applied to `sync_jobs`. A retention
+ * delete may target ONLY `succeeded` or `dead` rows; `queued`/`running` must
+ * never be reachable through this vocabulary, so a future `JobStatus` member
+ * cannot silently fall through into a prune the way it could if this were
+ * `Exclude<JobStatus, 'queued' | 'running'>`.
+ */
+export const SyncJobRetentionStatusValues = ['succeeded', 'dead'] as const;
+
+/**
+ * Sync Job Retention Status
+ *
+ * Derived union type from SyncJobRetentionStatusValues.
+ */
+export type SyncJobRetentionStatus = (typeof SyncJobRetentionStatusValues)[number];
+
+/**
  * Job Outcome Values
  *
  * Runtime array of all valid job outcome values. Outcome is the *business*
@@ -405,6 +434,7 @@ export const JobOutcomeReasonValues = [
   'auto_dispatch_payload_invalid',
   'auto_dispatch_not_enabled',
   'auto_dispatch_no_weight',
+  'auto_dispatch_no_dimensions',
   'auto_dispatch_no_address',
   'auto_dispatch_no_delivery_method',
   'auto_dispatch_work_not_eligible',
@@ -437,6 +467,21 @@ export type JobOutcomeReason = (typeof JobOutcomeReasonValues)[number];
 export interface SyncJobHandlerResult {
   outcome: JobOutcome;
   outcomeReason?: JobOutcomeReason;
+}
+
+/**
+ * Sync Job Dead Failure (#3505, G01-2)
+ *
+ * What the runner hands `SyncJobHandler.onDead` once a job has been marked
+ * `dead`. `nonRetryable` separates "a classifier called the error terminal"
+ * from "the retry ladder ran out" — a handler may word its own record
+ * differently for the two, but must treat both as final.
+ */
+export interface SyncJobDeadFailure {
+  /** The error message the runner persisted on the job. */
+  message: string;
+  /** `true` when the job died on a non-retryable error; `false` when attempts ran out. */
+  nonRetryable: boolean;
 }
 
 /**

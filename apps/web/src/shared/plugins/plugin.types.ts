@@ -25,7 +25,7 @@
  *
  * @module shared/plugins
  */
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { RouteObject } from 'react-router-dom';
 import type { RefinementCtx, ZodType } from 'zod';
@@ -568,6 +568,36 @@ export interface InvoiceDetailSectionProps {
 }
 
 /**
+ * Props the per-integration receipt section on the pack bench receives (#3647).
+ *
+ * Content-only, the `invoiceDetailSection` pattern: the host keeps the card's
+ * badge, top line and title, so no integration can restate a status the host
+ * owns. A plugin replaces the body and the actions of a REGISTERED receipt only.
+ * Resolved via `usePlatform(document.platformType)`; absent means the host
+ * renders its neutral default (a file prints, a link opens, nothing says so).
+ *
+ * The same rules bind a plugin as the host: say nothing about paper or the box
+ * that OpenLinker cannot see, and never that the buyer received the receipt.
+ */
+export interface BenchReceiptArtefactLike {
+  /** `document` | `link` | `markup` | `code` | `text`, or something newer. */
+  readonly medium: string;
+  /** A hint, never evidence of delivery. */
+  readonly disposition: string;
+  readonly label: string | null;
+  readonly contentType: string | null;
+}
+
+export interface BenchReceiptSectionProps {
+  readonly workId: string;
+  readonly documentReference: string | null;
+  /** Payload-free: the bench is never handed a receipt's content in its read. */
+  readonly artefacts: readonly BenchReceiptArtefactLike[];
+  /** The host's own body and actions, for a plugin that only adds to them. */
+  readonly defaultBody: ReactNode;
+}
+
+/**
  * Props the per-provider correction flow receives (#1240, Wave C). Launched
  * from "Issue correction" on an issued invoice. The form is per-provider by
  * design (KSeF emits a KOR linked to the original KSeF number; Subiekt issues a
@@ -615,6 +645,14 @@ export interface BuildContribution {
 export interface PlatformContribution {
   /** Human-readable display name (dropdown labels, etc.). */
   displayName: string;
+  /**
+   * Compact label for space-constrained surfaces such as the connection chip
+   * face (#3670). Set it only when part of `displayName` is incidental detail
+   * (`Subiekt GT (Sfera GT bridge)` → `Subiekt GT`); omitted, surfaces use
+   * `displayName`. Declared here because only the plugin knows which part of
+   * its own name is detail - see `resolvePlatformShortLabel`.
+   */
+  shortLabel?: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
   /**
@@ -761,6 +799,12 @@ export interface PlatformContribution {
    * the correction affordance is hidden for that provider.
    */
   invoiceCorrectionFlow?: ComponentType<InvoiceCorrectionFlowProps>;
+  /**
+   * Pack bench: the body and actions of a registered fiscal receipt's card
+   * (#3647). Resolved via `usePlatform(document.platformType)`. Absent means the
+   * host's neutral default by artefact medium.
+   */
+  benchReceiptSection?: ComponentType<BenchReceiptSectionProps>;
 }
 
 /**

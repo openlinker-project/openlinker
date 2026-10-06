@@ -89,6 +89,7 @@ function renderPanel(
     user?: SessionUser;
     applyAction?: ReturnType<typeof vi.fn>;
     listByOrder?: ReturnType<typeof vi.fn>;
+    hideWhenEmpty?: boolean;
   } = {}
 ): ReturnType<typeof renderWithProviders> & {
   applyAction: ReturnType<typeof vi.fn>;
@@ -104,10 +105,13 @@ function renderPanel(
     fulfillment: { listByOrder, applyAction } as never,
   });
 
-  const utils = renderWithProviders(<OrderFulfillmentTasksPanel internalOrderId={ORDER_ID} />, {
-    apiClient: api,
-    sessionAdapter: createAuthenticatedSessionAdapter(opts.user ?? OPERATOR),
-  });
+  const utils = renderWithProviders(
+    <OrderFulfillmentTasksPanel internalOrderId={ORDER_ID} hideWhenEmpty={opts.hideWhenEmpty} />,
+    {
+      apiClient: api,
+      sessionAdapter: createAuthenticatedSessionAdapter(opts.user ?? OPERATOR),
+    }
+  );
 
   return { ...utils, applyAction, listByOrder };
 }
@@ -404,6 +408,55 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
 
       expect(screen.getByText(/Loading fulfilment tasks/)).toBeInTheDocument();
       expect(screen.queryByText(/No fulfilment tasks/)).not.toBeInTheDocument();
+    });
+
+    it('should point at the shipping address and sourcing rules when routing is on and nothing was routed', async () => {
+      renderPanel([]);
+
+      expect(
+        await screen.findByText(/check the order.s shipping address and the sourcing rules/)
+      ).toBeInTheDocument();
+    });
+  });
+
+  // #3505 — with routing switched off the section is noise for an order with no
+  // tasks, but an order routed while it WAS on keeps its tasks and actions.
+  describe('hideWhenEmpty', () => {
+    it('should render no section when the order has no tasks', async () => {
+      const { listByOrder } = renderPanel([], { hideWhenEmpty: true });
+
+      await waitFor(() => {
+        expect(listByOrder).toHaveBeenCalled();
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole('heading', { name: 'Fulfilment tasks' })).not.toBeInTheDocument();
+      });
+      expect(screen.queryByText(/No fulfilment tasks/)).not.toBeInTheDocument();
+    });
+
+    it('should still render the tasks when the order has historical ones', async () => {
+      renderPanel([task()], { hideWhenEmpty: true });
+
+      expect(await screen.findByRole('heading', { name: 'Fulfilment tasks' })).toBeInTheDocument();
+    });
+
+    it('should render nothing rather than an error when the read failed', async () => {
+      const listByOrder = vi.fn().mockRejectedValue(new ApiError('boom', 500, {}));
+      renderPanel([], { listByOrder, hideWhenEmpty: true });
+
+      await waitFor(() => {
+        expect(listByOrder).toHaveBeenCalled();
+      });
+      expect(screen.queryByText(/Could not load/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Fulfilment tasks' })).not.toBeInTheDocument();
+    });
+
+    it('should render nothing while the read is pending', () => {
+      const listByOrder = vi.fn().mockReturnValue(new Promise(() => {}));
+      renderPanel([], { listByOrder, hideWhenEmpty: true });
+
+      expect(screen.queryByText(/Loading fulfilment tasks/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Fulfilment tasks' })).not.toBeInTheDocument();
     });
   });
 

@@ -44,6 +44,13 @@ export interface ShipmentFilters {
   /** `true` → only shipments with a tracking number; `false` → only those without. */
   hasTracking?: boolean;
   /**
+   * Exact tracking-number match (#3528) — backs the `/orders` search bar's
+   * "find by waybill number" path. `undefined` here (unlike an empty string)
+   * means "don't filter"; an empty string is not a valid tracking number and
+   * the caller is expected not to pass one.
+   */
+  trackingNumber?: string;
+  /**
    * Branch discriminator at the row level (#834). `true` → only rows with a
    * provider-issued id (branches 2/3); `false` → only branch-1 projection
    * rows (no provider id). Used by the branch-1 sync service's find-existing

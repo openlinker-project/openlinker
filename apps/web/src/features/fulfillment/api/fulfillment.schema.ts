@@ -23,7 +23,8 @@
  */
 import { z } from 'zod';
 
-import type { FulfillmentTask, FulfillmentTaskPage } from './fulfillment.types';
+import type { ShipmentStatus } from '../../shipments';
+import type { FulfillmentTask, FulfillmentTaskPage, FulfillmentTaskShipment } from './fulfillment.types';
 
 /** `null` for a nullish input; the value otherwise. */
 const nullableString = z
@@ -31,10 +32,28 @@ const nullableString = z
   .nullish()
   .transform((value) => value ?? null);
 
+/**
+ * A variant's attributes. Nullish for an API that predates the field, and a
+ * value that is not a string map degrades to `null` rather than failing the
+ * whole task to parse — an attribute is a description, never a gate.
+ */
+const attributesSchema = z
+  .record(z.string(), z.string())
+  .nullish()
+  .catch(null)
+  .transform((value) => value ?? null);
+
 export const fulfillmentTaskLineSchema = z.object({
   id: z.string(),
   orderLineId: z.string(),
   productVariantId: z.string(),
+  // #3426 / #3096 — what the line's product card renders. All nullish: an API
+  // that predates them sends nothing, and the card falls back to the variant id.
+  productName: nullableString,
+  sku: nullableString,
+  ean: nullableString,
+  imageUrl: nullableString,
+  attributes: attributesSchema,
   totalQuantity: z.number(),
   fulfilledQuantity: z.number(),
   cancelledQuantity: z.number(),
@@ -79,6 +98,22 @@ export const fulfillmentTaskSchema = z.object({
   externalWorkId: nullableString,
   acceptedAt: nullableString,
   cancelledAt: nullableString,
+  /**
+   * An ISO STRING, never a `Date` (#3247). The DTO declares `Date` because
+   * that is what Nest serialises FROM; what arrives is a string, and a
+   * `Date`-typed field holding one type-checks and then throws on
+   * `.toLocaleString()`.
+   */
+  expeditedAt: nullableString,
+  // #3096 (G02-3) — what the bench has done to the box and whether the channel
+  // has been told. Nullish against an API that predates them. `parcelClosedAt`
+  // alone keeps `undefined` distinct from `null`: it gates the bench rows, and
+  // an API that does not send it must leave them ABSENT rather than have every
+  // task read "Still open".
+  parcelClosedAt: z.string().nullish(),
+  packedByUserId: nullableString,
+  completedAt: nullableString,
+  channelNotifiedAt: nullableString,
   createdAt: z.string(),
   updatedAt: z.string(),
   lines: z
@@ -106,8 +141,40 @@ export const fulfillmentTaskPageSchema = z.object({
   offset: z.number(),
 });
 
+/**
+ * `GET /fulfillment/works/:workId/shipments` (#3292).
+ *
+ * `status` is parsed as `z.string()`, never `z.enum(SHIPMENT_STATUS_VALUES)`:
+ * the same reasoning as the module docblock's rule for the fulfilment-task
+ * axes applies here too, one context over — a status this build does not yet
+ * know must not fail the whole panel to parse. The cast to `ShipmentStatus`
+ * is safe precisely because nothing branches exhaustively on it:
+ * `ShipmentStatusBadge`'s `Record` lookup already falls back to `'neutral'`
+ * for a value outside the union, so an unrecognised status degrades to a
+ * plain badge rather than a runtime error.
+ */
+export const fulfillmentTaskShipmentSchema = z.object({
+  id: z.string(),
+  status: z.string().transform((value) => value as ShipmentStatus),
+  carrier: nullableString,
+  trackingNumber: nullableString,
+  hasLabel: z.boolean(),
+  createdAt: z.string(),
+  dispatchedAt: nullableString,
+  deliveredAt: nullableString,
+});
+
+export const fulfillmentTaskShipmentsSchema = z
+  .array(fulfillmentTaskShipmentSchema)
+  .nullish()
+  .transform((value) => value ?? []);
+
 export function parseFulfillmentTask(payload: unknown): FulfillmentTask {
   return fulfillmentTaskSchema.parse(payload);
+}
+
+export function parseFulfillmentTaskShipments(payload: unknown): FulfillmentTaskShipment[] {
+  return fulfillmentTaskShipmentsSchema.parse(payload);
 }
 
 export function parseFulfillmentTaskPage(payload: unknown): FulfillmentTaskPage {

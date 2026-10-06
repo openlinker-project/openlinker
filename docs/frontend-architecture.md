@@ -121,6 +121,74 @@ titles/descriptions — in `lib/fulfillment-task.copy.ts`. A copy table named
 `…-copy.ts`, or left as a `Record` inside a component, is scanned by nothing:
 adding the scan root does not by itself make the copy covered.
 
+**A routed task detail, beside the worklist (#3096).** `/fulfillment/works/:workId`
+is a second page, reached by clicking a task's own id on the assign board or on the
+order-detail panel — not a split screen. The detail is two columns of cards
+(`DetailSection`) on the order page's own grid (`.order-detail__primary-grid--split`):
+the left column is the mockup — hero, holds, lines, facts, the action card — and the
+right column is the Packer card plus the order page's own `OrderShipmentPanel`,
+`SalesDocumentPanel` and `OrderTotalsPanel`, fed by one `useOrderQuery`, rather than
+new variations of them (#3096). The assign board is already lane-grouped with its own
+filters and paging, so side by side collapses one of them at every width an operator
+actually uses; a page also has an ADDRESS an operator can paste into a ticket, which
+"the third row I had selected" cannot be. Its own copy lives in `lib/fulfillment-work-detail.copy.ts` —
+the same `*.copy.ts` gate rule as `fulfillment-task.copy.ts` above, and load-bearing
+for the same reason: `scripts/check-ui-vocabulary.mjs` does not scan
+`apps/web/src/pages` at all, so the page file itself (`pages/fulfillment/fulfillment-work-detail-page.tsx`)
+carries no string literal of its own. Both the detail page and the assign board share
+ONE toast surface (`useToast()`) for reporting an action's outcome — there is
+deliberately no page-local result banner on either, because a second place for an
+outcome to be reported is a second place for it to drift. The back link between the
+two pages is built from one shared whitelist
+(`fulfillmentWorkDetailPath` / `fulfillmentWorklistPath`, `lib/fulfillment-filters.ts`)
+so the assign board's filters, paging and `?groupBy=` axis survive a round trip through
+the detail page rather than being lost the moment an operator drills into one task.
+
+**The "vs Orders" framing is stated once, here, not only inside a component
+(#3096/#3102).** An order is one commercial row always; a fulfilment task is one
+physical packing job, and one order becomes more than one task the moment it ships
+from more than one place. `FulfillmentVsOrdersExplainer` renders this distinction —
+always visible on the detail page, never behind a disclosure, because the operator
+who needs the explanation is the one who does not know they need it.
+
+**A frontend derivation may narrow the "server decides, frontend renders" rule for
+DISPLAY only, never for legality (#3099, ADR-076).** `fulfillment-work-summary.ts`
+derives one plain-language sentence from `status`, `requestStatus`, `activeHolds.length`,
+`locationId`, `expeditedAt` and `cancellationReason` — a held task reads
+`status: 'open'` with a non-empty `activeHolds`, since nothing writes `status: 'on_hold'`,
+so the raw status alone can mislead. The function takes a narrow six-field struct, never
+the whole `FulfillmentTask`, so `supportedActions` is structurally unreachable from
+inside it; an unrecognised `(status, requestStatus)` combination returns `null` rather
+than a guessed sentence, and the hero's two raw axis labels render regardless, so the
+page is never blank. See ADR-076 for the decision, the rejected alternatives and the
+fail-closed rule in full.
+
+**The board and the detail are admin + operator screens (#3096).** Both pages render
+inside `AccessGate require="orders:write"` with an `AccessDeniedState` fallback, so no
+query mounts for a session that would be refused, and the API matches:
+`GET /fulfillment/works/:workId` and its `/shipments` are `@Roles('admin', 'operator')`.
+`GET /fulfillment/works` stays open to `viewer` — the order-detail panel reads it. The
+board asks for `active=true`, a server-resolved alias for "every status outside the
+domain's terminal set", so closed and cancelled work never reaches its lanes without
+this app mirroring the status vocabulary.
+
+**A bench-only session never renders the app shell (#3096, F-9).**
+`resolveSessionSurface` (`shared/auth/session-surface.ts`) derives "bench-only" from
+`permissions[]` — `bench:write` without `orders:read` — never from the role name, and
+`AuthenticatedAppLayout` redirects such a session to `/bench` BEFORE its loading branch
+(which already renders `AppShell`). `/bench` sits outside that layout, so one check
+closes every core and plugin route. `GuestLayout` sends a signed-in bench-only session
+to `/bench` and everyone else to their `?next=` deep link, sanitised by
+`shared/lib/resolve-next-path.ts`. `role.types.spec.ts` pins that exactly one role
+matches the predicate.
+
+**A 403 is a role fact, not an outage (#3096).** `QueryErrorState` (`shared/ui`) picks
+`AccessDeniedState` for a 403 (`isAccessDeniedError`, which excludes the demo-consent
+403 that has its own redirect), `EmptyState` for a 404 when the caller supplies copy,
+and `ErrorState` with a Retry for anything else — so no 403 offers a Retry that cannot
+succeed. The fulfilment pages, the Analytics coverage card and `/users` use it; the
+remaining `ErrorState` call sites migrate to it as they are touched.
+
 **Cross-feature consumption example (#2150):** `invoicing` type-imports `OrderRecord` from the `orders` feature's public barrel (`import type { OrderRecord } from '../../orders';`) in `order-invoice-panel.tsx` and `sales-document-block-copy.ts`, and `shipments` imports `ordersQueryKeys` the same way in `use-notify-dispatched-mutation.ts`. `orders` is now the most cross-imported feature barrel in the app — five call sites (Orders, Shipments, Invoices, Products, Customers) render its `OrderIdentityCell` — so the slug was added to both `no-restricted-imports` pattern groups (`features/**` and `plugins/**`) in `.eslintrc.js`, for every canonical subdirectory (`orders/api`, `orders/hooks`, `orders/components`, `orders/lib`, `orders/types`).
 
 **Cross-feature consumption example (#2761):** `orders` imports `resolveSalesDocumentReasonCopy` and the `SalesDocumentReasonTone` type from the `sales-documents` feature's public barrel (`import { resolveSalesDocumentReasonCopy } from '../../sales-documents';` in `sales-document-cell-state.ts`) to resolve the orders-list sales-document cell's persisted block/unresolved reason into operator copy, reusing the same reason vocabulary the settings-page routing rules render. The `sales-documents` slug is now registered in both `no-restricted-imports` pattern groups for every canonical subdirectory — it was a pre-existing omission (every other cross-imported feature was already enumerated), newly load-bearing once this consumer appeared.
@@ -371,7 +439,7 @@ This means FE-001 intentionally preserves the adapter boundary while avoiding an
 
 The session's `permissions[]` array (derived backend-side from `ROLE_PERMISSIONS`, `libs/core/src/users/domain/types/role.types.ts`) is the authorization input the frontend reads **wherever a permission exists to read**. `session.user.role` is typed `string` and must never be compared inline — a typo type-checks and silently evaluates false. Backend endpoint authorization is a **separate** axis (`@Roles(...)` guards); a permission drives UI visibility only, and some permissions exist for exactly that purpose (`shipments:write` is documented display-only, #1826).
 
-Four primitives cover every case, chosen by **what** is being gated:
+Four primitives cover every case, chosen by **what** is being gated, plus one role helper for the case the fifth row names:
 
 | Gating | Primitive | Behaviour for a session lacking it |
 |---|---|---|
@@ -379,6 +447,7 @@ Four primitives cover every case, chosen by **what** is being gated:
 | A write affordance — button, checkbox, form, menu item | `useWriteAccess` (`shared/auth/use-permission.ts`) + `ReadOnlyLock` (`shared/ui/read-only-lock.tsx`) | in demo mode: rendered **disabled** with a tooltip; otherwise hidden |
 | Anything that is not a subtree — a query's `enabled:`, a computed `disabled`, derived copy | `usePermission` (`shared/auth/use-permission.ts`) | plain `false` |
 | A nav entry whose audience has **no permission to gate on** | `LiveNavItem.requiresRole` (`app/nav-registry.types.ts`), applied by `isNavItemVisible` | the item is hidden — from the sidebar *and* ⌘K, which read the same function |
+| A control whose endpoint's `@Roles(...)` is strictly narrower than any permission that implies it (e.g. an admin-only route under `orders:write`) | `useIsAdmin` (`shared/auth/use-permission.ts`), **paired with** the permission, never replacing it | plain `false`, including while the session hydrates — render the affordance or nothing, never a denial |
 
 **The fourth row is the exception the first sentence now allows for, and it is narrow.** `packer` (ADR-071/#2413) holds an intentionally EMPTY `ROLE_PERMISSIONS` grant — its access is enforced route-by-route by `@Roles(...)` and nothing else — so there is no permission in existence that "a packer may open the pack bench" could be expressed as. `requiresPermission` is still the default and still correct everywhere a permission exists; reach for `requiresRole` only when none does.
 

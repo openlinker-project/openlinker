@@ -530,6 +530,38 @@ export class OrderRecordOrmEntity {
   fulfillmentBlockDetail!: string | null;
 
   /**
+   * Denormalized, diacritic-folded free-text search corpus (#3527) — order
+   * number, buyer name, buyer email and every line SKU, space-joined; under
+   * `OL_STORE_PII=false` the order number and SKUs only (#3507 G03-14).
+   * Recomputed on EVERY write by `OrderRecordRepository.toOrm` (via
+   * `deriveOrderSearchText`) and written by both halves of the
+   * frozen-attribution upsert (#3507 G03-1), never incrementally maintained:
+   * the snapshot it derives from is itself rewritten wholesale on every
+   * ingestion, so a separate write path would only be a second place to
+   * forget. The one out-of-band writer is `OrderSearchTextReindexService`,
+   * which re-derives rows stored before the PII flag was turned off.
+   *
+   * `NOT NULL DEFAULT ''` rather than nullable — the `DestinationCategory.
+   * searchText` precedent — so the trigram index and the `LIKE` predicate
+   * never have to special-case a NULL. An order with no matchable text
+   * (no order number captured, no buyer stored, no SKUs) legitimately carries
+   * `''`, which no non-empty query can match.
+   *
+   * Backed by `IDX_order_records_searchText_trgm`, a GIN `gin_trgm_ops` index
+   * (`docs/architecture-overview.md § Listings, destination taxonomy read
+   * model` — the same precedent). The repository matches with `LIKE`, never
+   * the `%` similarity operator, so correctness never depends on `pg_trgm`
+   * being installed.
+   *
+   * Not domain data — deliberately absent from `OrderRecord` and from
+   * `toDomain`, exactly as `DestinationCategory` drops its own `searchText`:
+   * it is an index-serving derivation of fields the domain entity already
+   * carries inside `orderSnapshot`.
+   */
+  @Column({ type: 'text', default: '' })
+  searchText!: string;
+
+  /**
    * Why OpenLinker deliberately did NOT route this order while the OMS is on
    * (#3455; also #3487 / #3488). `null` means routed, not yet decided, or the OMS
    * is off. Distinct from `fulfillmentBlockReason`: a skipped order is not held,

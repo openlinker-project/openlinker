@@ -20,6 +20,7 @@ import { MarketplaceReturnsStatusSyncHandler } from './marketplace-returns-statu
 import { ReturnsOrphanReconcileHandler } from './returns-orphan-reconcile.handler';
 import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './analytics-currency-recalculate.handler';
+import { OrdersExportHandler } from './orders-export.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
@@ -91,6 +92,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly returnsOrphanReconcileHandler: ReturnsOrphanReconcileHandler,
     private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
     private readonly analyticsCurrencyRecalculateHandler: AnalyticsCurrencyRecalculateHandler,
+    private readonly ordersExportHandler: OrdersExportHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
@@ -680,6 +682,12 @@ export class HandlerRegistrationService implements OnModuleInit {
       this.analyticsCurrencyRecalculateHandler,
       'bulk'
     );
+
+    // Orders CSV/XLSX export (#3534, D35). 'bulk': a background export the
+    // requesting operator is waiting on, but a query-then-write job rather
+    // than a buyer-facing write — the same reasoning as the currency
+    // restatement driver directly above, never 'realtime'.
+    this.handlerRegistry.register('orders.export', this.ordersExportHandler, 'bulk');
 
     // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be
     // in the lane partition, or lane-aware claiming would strand its queued
