@@ -42,16 +42,25 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
+import type { ShoperImageWriteBody } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
 import {
   buildShoperProductBody,
   parseShoperCategoryIds,
+  planShoperImageUploads,
 } from '../../mappers/shoper-product-write.mapper';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 import { SHOPER_DESCRIPTION_FORMAT } from './shoper-description-format';
 
 const PRODUCTS_PATH = '/products';
+
+const IMAGES_PATH = '/product-images';
+
+/** A short, token-free reason for a warning. */
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
@@ -99,11 +108,70 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
       ? await this.update(String(cmd.externalProductId), body)
       : await this.create(body);
 
+    // After the product exists, and never allowed to throw: the caller persists the
+    // product mapping only once this method returns, so a failure here would make
+    // the job retry into a SECOND product.
+    warnings.push(...(await this.publishImages(externalProductId, cmd, isUpsert)));
+
     return {
       externalProductId,
       status: cmd.status,
       ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  /**
+   * Sends the command's images, in order, after the product exists. Shoper fetches
+   * each from its URL; the first becomes the main image.
+   *
+   * Images are only added to a product that has none: a re-publish would
+   * otherwise append the same pictures again, and Shoper offers no way to tell
+   * which of its images came from which URL. A product that already carries
+   * images keeps them. Every failure is a warning, never an error (see the call).
+   */
+  private async publishImages(
+    externalProductId: string,
+    cmd: PublishProductCommand,
+    isUpsert: boolean,
+  ): Promise<string[]> {
+    const plan = planShoperImageUploads(cmd);
+    const warnings = [...plan.skipped];
+    if (plan.urls.length === 0) {
+      return warnings;
+    }
+
+    try {
+      if (isUpsert && (await this.hasImages(externalProductId))) {
+        warnings.push('The product already has images in Shoper, so they were left as they are.');
+        return warnings;
+      }
+    } catch (error) {
+      warnings.push(`Product images were not sent: the shop's current images could not be read (${describe(error)}).`);
+      return warnings;
+    }
+
+    const alt = cmd.content?.title?.trim();
+    for (const url of plan.urls) {
+      const body: ShoperImageWriteBody = {
+        product_id: Number(externalProductId),
+        url,
+        ...(alt !== undefined && alt.length > 0 ? { name: alt } : {}),
+      };
+      try {
+        await this.client.post<unknown>(IMAGES_PATH, body);
+      } catch (error) {
+        warnings.push(`Shoper did not take the image ${url}: ${describe(error)}`);
+      }
+    }
+    return warnings;
+  }
+
+  /** Whether Shoper already holds an image for the product; `main_image` is `null` when it holds none. */
+  private async hasImages(externalProductId: string): Promise<boolean> {
+    const { data } = await this.client.get<{ main_image?: unknown }>(
+      `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
+    );
+    return data.main_image !== null && data.main_image !== undefined;
   }
 
   private async create(body: unknown): Promise<string> {

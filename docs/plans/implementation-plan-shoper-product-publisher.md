@@ -2,7 +2,7 @@
 
 Layer: Integration (adapter + wiring). No CORE change. Branch `3712-shoper-product-publisher`, stacked on `3644-shoper-webhooks` (#3716).
 
-Non-goals: category provisioning (#3713; a publish with no category is refused until it lands), images, global-attribute linking, multi-variant products, AI descriptions.
+Non-goals: category provisioning (#3713; a publish with no category is refused until it lands), global-attribute linking, multi-variant products, AI descriptions. Images were first left out and added in a follow-up commit of the same PR (see § Images).
 
 ## Live verification (sklep729770.shoparena.pl, 2026-10-07)
 
@@ -23,7 +23,7 @@ Shop languages `pl_PL` + `en_US`; API root `/webapi/rest`; Bearer token. Test pr
 1. **Single-variant only.** `variantGroup` -> `ProductPublishRejectedException` (status 0, code `shoper_variants_unsupported`) with an actionable message. Reason: variants need pre-existing option ids and the default-plus-extended stock model; the issue allows refusing when the live check does not show it is expressible without side effects on shop configuration.
 2. **A create needs a category.** `destinationCategoryIds` empty on create -> rejected (`shoper_category_required`) naming #3713 / the picker. On update an empty list leaves categories alone.
 3. **Never default silently.** No `tax_id` is sent on create (shop default applies, documented) and never on update; the command carries no Shoper tax class.
-4. **Unsupported fields are reported as `warnings`**, not dropped silently: images, tags, parameters, sale price, dimensions.
+4. **Unsupported fields are reported as `warnings`**, not dropped silently: tags, parameters, sale price, dimensions (images, see § Images).
 5. Language key = `ShoperShopContextProvider` `language` (default shop language, e.g. `pl_PL`); weight is sent in the shop's unit.
 6. Errors: `ShoperApiError` 404 (`isResourceNotFound`) on upsert -> `ProductPublishTargetNotFoundException`; 4xx (not 408/429) -> `ProductPublishRejectedException` carrying Shoper's own description; everything else propagates for the retry classifier.
 
@@ -41,5 +41,14 @@ Shop languages `pl_PL` + `en_US`; API root `/webapi/rest`; Bearer token. Test pr
 ## Risks / open
 
 - Variants stay unsupported; a follow-up needs option/option-value provisioning verified live.
-- Image upload (`/product-images`) not investigated.
 - Per-connection `weight`/`dimensions` units assumed to match the shop's configured unit.
+
+## Images (live-verified 2026-10-07)
+
+| Question | Observed |
+|---|---|
+| Upload | `POST /product-images {product_id, url}`: Shoper fetches the image itself. The first image of a product becomes the main one (`main: 1`), the next get the next `order`. `content` (base64) is the alternative (`Nie można zdekodować zawartości pliku` for a bad payload). `name` is the alternative text. |
+| Unfetchable URL | `localhost` / an internal host -> 400 `Url '...' is not valid`; a URL that 404s -> 500 `Operation Failed`. |
+| Listing a product's images | `filters[product_id]=` on `/product-images` answers 500; the JSON `filters={...}` form works. Not used: `GET /products/:id` carries `main_image`, which is `null` for a product with no image. |
+
+Decisions: after the product exists, `content.imageUrls` are sent in order (at most 10, de-duplicated, absolute http(s) only; the title is the alternative text). A product that already has images keeps them (a re-publish would otherwise append the same pictures again and Shoper cannot say which image came from which URL). **Every image failure is a warning and never an error**: the caller persists the product mapping only after `publishProduct` returns, so a throw here would make the job retry into a second product. Consequence for a dev stack: images served from an internal host (a Docker PrestaShop) cannot be fetched by Shoper and come back as warnings; the shop must serve them from a public URL.

@@ -37,3 +37,15 @@ export interface ShoperProductWriteBody {
   categories?: number[];
   stock?: ShoperProductStockWrite;
 }
+
+/**
+ * The body of `POST /product-images` (#3712 follow-up). Verified live: Shoper
+ * fetches the image itself from `url` (the first image of a product becomes the
+ * main one, the next ones get the next `order`); `content` (base64) is the
+ * alternative. `name` is the alternative text.
+ */
+export interface ShoperImageWriteBody {
+  product_id: number;
+  url: string;
+  name?: string;
+}

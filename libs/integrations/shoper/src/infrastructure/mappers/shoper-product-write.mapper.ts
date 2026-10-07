@@ -109,9 +109,6 @@ export function collectUnsupportedWarnings(
         'the amount was written as is, without conversion.',
     );
   }
-  if ((cmd.content?.imageUrls?.length ?? 0) > 0) {
-    warnings.push('Product images are not published to Shoper yet.');
-  }
   if ((cmd.content?.tags?.length ?? 0) > 0) {
     warnings.push('Tags are not published to Shoper yet.');
   }
@@ -129,4 +126,40 @@ export function collectUnsupportedWarnings(
     warnings.push("The tax class is not published to Shoper; the shop's own tax rate applies.");
   }
   return warnings;
+}
+
+/** Most images one publish uploads: each is a request against a shop whose ceiling is unknown. */
+export const SHOPER_MAX_IMAGES_PER_PUBLISH = 10;
+
+export interface ShoperImagePlan {
+  /** The URLs to send, in display order (the first becomes the main image). */
+  readonly urls: string[];
+  /** Why some were not sent, for the publish warnings. */
+  readonly skipped: string[];
+}
+
+/**
+ * Which of the command's image URLs are sent. Shoper fetches the image itself,
+ * so only an absolute http(s) URL is worth sending; anything else is reported
+ * rather than guessed at. Duplicates collapse and the count is capped.
+ */
+export function planShoperImageUploads(cmd: PublishProductCommand): ShoperImagePlan {
+  const urls: string[] = [];
+  const skipped: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of cmd.content?.imageUrls ?? []) {
+    const url = raw.trim();
+    if (seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    if (!/^https?:\/\/\S+$/i.test(url)) {
+      skipped.push(`An image URL is not an absolute http(s) address and was not sent: ${url}`);
+    } else if (urls.length >= SHOPER_MAX_IMAGES_PER_PUBLISH) {
+      skipped.push(`Only the first ${SHOPER_MAX_IMAGES_PER_PUBLISH} images are sent; ${url} was not.`);
+    } else {
+      urls.push(url);
+    }
+  }
+  return { urls, skipped };
 }

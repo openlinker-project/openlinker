@@ -33,6 +33,7 @@ interface Harness {
   adapter: ShoperProductPublisherAdapter;
   post: jest.Mock;
   put: jest.Mock;
+  get: jest.Mock;
 }
 
 /** The body of the first write a mock received. */
@@ -43,12 +44,14 @@ function bodyOf(write: jest.Mock): ShoperProductWriteBody {
 function setup(context: Partial<typeof MAP_CONTEXT> = {}): Harness {
   const post = jest.fn().mockResolvedValue({ status: 200, data: 130 });
   const put = jest.fn().mockResolvedValue({ status: 200, data: 1 });
+  // A product with no image: `main_image` is null in Shoper's answer.
+  const get = jest.fn().mockResolvedValue({ status: 200, data: { main_image: null } });
   const adapter = new ShoperProductPublisherAdapter(
-    { post, put } as unknown as ShoperHttpClient,
+    { post, put, get } as unknown as ShoperHttpClient,
     { get: () => Promise.resolve({ ...MAP_CONTEXT, ...context }) } as unknown as ShoperShopContextProvider,
     { id: 'conn-1', adapterKey: 'shoper.restapi.v1' } as unknown as Connection,
   );
-  return { adapter, post, put };
+  return { adapter, post, put, get };
 }
 
 describe('ShoperProductPublisherAdapter', () => {
@@ -218,14 +221,13 @@ describe('ShoperProductPublisherAdapter', () => {
 
       const result = await adapter.publishProduct(
         command({
-          content: { title: 'Misa', imageUrls: ['https://x/a.png'], tags: ['a'] },
+          content: { title: 'Misa', tags: ['a'] },
           commerce: { dimensions: { length: 1 } },
         }),
       );
 
       expect(result.warnings).toEqual(
         expect.arrayContaining([
-          expect.stringContaining('images'),
           expect.stringContaining('Tags'),
           expect.stringContaining('dimensions'),
         ]),
@@ -255,6 +257,113 @@ describe('ShoperProductPublisherAdapter', () => {
       const result = await adapter.publishProduct(command());
 
       expect(result).not.toHaveProperty('warnings');
+    });
+  });
+
+  describe('images', () => {
+    const imageCalls = (post: jest.Mock): [string, { product_id: number; url: string; name?: string }][] =>
+      (post.mock.calls as [string, { product_id: number; url: string; name?: string }][]).filter(
+        ([path]) => path === '/product-images',
+      );
+
+    it('should send every image, in order, to the new product, the title being its alternative text', async () => {
+      const { adapter, post } = setup();
+
+      const result = await adapter.publishProduct(
+        command({ content: { title: 'Misa', imageUrls: ['https://x/a.png', 'https://x/b.png'] } }),
+      );
+
+      expect(imageCalls(post).map(([, body]) => body)).toEqual([
+        { product_id: 130, url: 'https://x/a.png', name: 'Misa' },
+        { product_id: 130, url: 'https://x/b.png', name: 'Misa' },
+      ]);
+      expect(result).not.toHaveProperty('warnings');
+    });
+
+    it('should not upload a second time to a product that already has images', async () => {
+      const { adapter, post, get } = setup();
+      get.mockResolvedValue({ status: 200, data: { main_image: { gfx_id: '1' } } });
+
+      const result = await adapter.publishProduct(
+        command({ externalProductId: '130', content: { title: 'Misa', imageUrls: ['https://x/a.png'] } }),
+      );
+
+      expect(imageCalls(post)).toHaveLength(0);
+      expect(result.warnings).toEqual([expect.stringContaining('already has images')]);
+    });
+
+    it('should add the images to an existing product that has none', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.publishProduct(
+        command({ externalProductId: '130', content: { title: 'Misa', imageUrls: ['https://x/a.png'] } }),
+      );
+
+      expect(imageCalls(post)).toHaveLength(1);
+    });
+
+    it('should turn a refused image into a warning and carry on with the rest, never failing the publish', async () => {
+      const { adapter, post } = setup();
+      post.mockImplementation((path: string, body: { url?: string }) =>
+        path === '/product-images' && body.url === 'https://x/a.png'
+          ? Promise.reject(new ShoperApiError(400, 'invalid_request', "Url 'https://x/a.png' is not valid"))
+          : Promise.resolve({ status: 200, data: 130 }),
+      );
+
+      const result = await adapter.publishProduct(
+        command({ content: { title: 'Misa', imageUrls: ['https://x/a.png', 'https://x/b.png'] } }),
+      );
+
+      expect(result.externalProductId).toBe('130');
+      expect(imageCalls(post)).toHaveLength(2);
+      expect(result.warnings).toEqual([expect.stringContaining('https://x/a.png')]);
+    });
+
+    it('should not throw on a network failure while sending an image, because the product already exists', async () => {
+      const { adapter, post } = setup();
+      post.mockImplementation((path: string) =>
+        path === '/product-images'
+          ? Promise.reject(new ShoperNetworkError('timed out'))
+          : Promise.resolve({ status: 200, data: 130 }),
+      );
+
+      const result = await adapter.publishProduct(
+        command({ content: { title: 'Misa', imageUrls: ['https://x/a.png'] } }),
+      );
+
+      expect(result.externalProductId).toBe('130');
+      expect(result.warnings).toEqual([expect.stringContaining('timed out')]);
+    });
+
+    it('should not send a URL that is not an absolute http(s) address, and say so', async () => {
+      const { adapter, post } = setup();
+
+      const result = await adapter.publishProduct(
+        command({ content: { title: 'Misa', imageUrls: ['/img/a.png', 'ftp://x/a.png'] } }),
+      );
+
+      expect(imageCalls(post)).toHaveLength(0);
+      expect(result.warnings).toHaveLength(2);
+    });
+
+    it('should send only the first ten images and say what it left out', async () => {
+      const { adapter, post } = setup();
+      const urls = Array.from({ length: 12 }, (_v, i) => `https://x/${i}.png`);
+
+      const result = await adapter.publishProduct(command({ content: { title: 'Misa', imageUrls: urls } }));
+
+      expect(imageCalls(post)).toHaveLength(10);
+      expect(result.warnings).toHaveLength(2);
+    });
+
+    it('should send a repeated URL once', async () => {
+      const { adapter, post } = setup();
+
+      await adapter.publishProduct(
+        command({ content: { title: 'Misa', imageUrls: ['https://x/a.png', 'https://x/a.png'] } }),
+      );
+
+      expect(imageCalls(post)).toHaveLength(1);
     });
   });
 
