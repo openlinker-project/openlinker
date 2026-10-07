@@ -30,6 +30,7 @@ import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/s
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperOrderSourceAdapter } from '../infrastructure/adapters/order-source/shoper-order-source.adapter';
 import { ShoperOrderReferenceProvider } from '../infrastructure/shop-context/shoper-order-reference.provider';
+import { ShoperProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shoper-product-publisher.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
 import { ShoperProductReader } from '../infrastructure/readers/shoper-product.reader';
@@ -40,6 +41,7 @@ import { ShoperTaxTableProvider } from '../infrastructure/shop-context/shoper-ta
 export interface ShoperAdapters {
   readonly productMaster: ShoperProductMasterAdapter;
   readonly inventoryMaster: ShoperInventoryMasterAdapter;
+  readonly productPublisher: ShoperProductPublisherAdapter;
   /** Needs only the HTTP client and shop context, so it is always present. */
   readonly orderSource: ShoperOrderSourceAdapter;
   /** Absent when the plugin was built without its Nest-provided dependencies. */
@@ -104,6 +106,7 @@ export class ShoperAdapterFactory {
         productReader,
         connection,
       ),
+      productPublisher: new ShoperProductPublisherAdapter(client, shopContext, connection),
       orderSource: new ShoperOrderSourceAdapter(
         client,
         // Through the host cache: the bag is rebuilt per call, so a per-instance memo
