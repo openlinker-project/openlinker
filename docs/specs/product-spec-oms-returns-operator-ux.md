@@ -451,6 +451,11 @@ not because filing was hard. The prompt is the product; the write is a convenien
 
 ### 5.8 The credit-note proposal (T7, P3)
 
+> **Read the amendment at the end of this section first (#3116).** The per-row picker described
+> below is retired; the design of record is the invoice-line grid in
+> `docs/plans/mockups/correction-proposal-3087.html`. The text is kept because the amendment
+> argues against it, not because it still holds.
+
 **A proposal, never an issue.** The panel leads with what is at stake:
 
 > **Credit note proposal.** OpenLinker has matched these returned lines to lines on invoice
@@ -473,6 +478,56 @@ through the existing `CorrectionIssuer` review flow with the operator's confirme
 
 **Hard AC:** a fully `Matched` proposal and one with a single `Ambiguous` line must be visibly different
 **before** the operator reaches the confirm button — not in a dialog after it.
+
+#### Amendment (#3116) — the picker is retired; the grid is the design
+
+Everything above this amendment *within § 5.8* describes the panel as first specified and is
+**superseded** by
+`docs/plans/mockups/correction-proposal-3087.html`, which is the design of record for epic #3087.
+The change was driven by two independent reviews (an OMS domain review and a competitor review)
+concluding that the **Ambiguous** row's question is both unanswerable and unnecessary, and it is
+recorded here rather than left to be discovered from the mockup.
+
+**Unanswerable.** The operator holds a parcel. `InvoiceLine` is `{name, quantity, unitPriceGross,
+taxRate, unit?}` — no id, no SKU — and on an ambiguous line both candidates carry the same product
+name. The buyer never chose a line either. Asking the operator to pick is asking them to invent an
+answer, which is the opposite of "shown rather than resolved".
+
+**Unnecessary.** OpenLinker builds that invoice itself from the order's own items, in order
+(`order-to-issue-invoice-command.mapper.ts:113`), so invoice line *N* is `order.items[N-1]`; the
+return line already arrives carrying `offerId`, `sku` and `unitPrice`. The join exists at ingestion
+and was simply never persisted — `ReturnLine.resolvedOrderLineId` was hardcoded `null`.
+**#3171 / #3172 resolved it**: the field is populated at ingestion today and is trustworthy. What
+remains a hard prerequisite for this section is narrowing `return-correction-matching
+.domain-service.ts` onto that field instead of matching by product name — until it is narrowed, the
+matcher still emits `status: 'ambiguous'` with a `candidates` list, a shape this grid cannot render,
+and no frontend sub-issue of #3087 should start.
+
+**What replaces it.** A grid over the **invoice's own lines**, in document order — a recessed
+read-only *as invoiced* column, an editable *after correction* column carrying both the target
+quantity and the target unit price (`CorrectionLine` has always had `newQuantity` **and**
+`newUnitPriceGross`; the returns path used only the first, so a discount or an agreed reduction was
+unexpressible), and a computed *credit*. A row's position **is** the line number a correction
+addresses, so nothing is ever asked. Alongside it, a reconciliation against the refund the channel
+has already paid — OpenLinker holds both figures and compares them nowhere today, and the first
+thing that comparison catches is delivery cost, which a name-join can never match.
+
+**What does NOT change.**
+
+- **A proposal, never an automatic issue.** Nothing is transmitted without the operator's confirmed
+  act, and `RETURN_PROPOSAL_COPY.noAutoIssue` still states that in the panel.
+- **The irreversibility warning.** It is `RETURN_PROPOSAL_COPY.irreversible`, verbatim, in the panel
+  lead, beside the issue action, and in the confirm dialog. Note the shipped wording says *"issued
+  and sent"* rather than the `{authority}` of the quoted lead above: `check-ui-vocabulary` (design
+  rule P9) bans that word from operator copy, and the constant's docblock records the trade.
+- **⚠ No match still never vanishes silently.** The grid iterates the *invoice's* lines, so a
+  returned item matching none of them has no row in it. Those items get their own block —
+  *"Came back, but not on this invoice"* (`body[data-state]="credit-unmatched"`) — carrying
+  `no-line-by-name`, `no-line-name` and `quantity-exceeds-invoiced` with the reason stated per item.
+  `disposition-not-confirmed` keeps its row in the grid, because that item *is* on the invoice.
+- **The Hard AC survives in its intent**, restated for the new shape: a draft with nothing needing
+  attention and one carrying either a blocked line or unmatched returned items must be visibly
+  different **before** the operator reaches the confirm button, not in a dialog after it.
 
 ### 5.9 Loading / empty / error, detail
 
