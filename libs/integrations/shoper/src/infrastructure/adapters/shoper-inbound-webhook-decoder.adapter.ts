@@ -11,7 +11,8 @@
  * (13 candidates ruled out in SPIKE-3638 X5). What the token buys is that a
  * caller who merely learns a connection id cannot trigger re-reads. What it does
  * not buy is payload integrity - which is not load-bearing here, because the body
- * is never trusted (below). No timestamp is signed, so `verify` omits
+ * is never trusted (below). The token travels in the URL, so it can appear in
+ * reverse-proxy / CDN / tunnel access logs; re-running webhook install rotates it. No timestamp is signed, so `verify` omits
  * `timestampMs` and the host's replay-window check never fires (the WooCommerce
  * and Erli posture).
  *

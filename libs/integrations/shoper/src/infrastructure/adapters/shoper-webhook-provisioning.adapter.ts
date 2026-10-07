@@ -12,8 +12,16 @@
  * IDEMPOTENT: the token changes on every install (the secret is rotated), so the
  * webhook is recognised by its URL WITHOUT the query string; matching the whole URL
  * would stack a new registration on the shop per install. A match is `PUT`, no
- * match is `POST`. A second match (a duplicate left by hand) is reported and never
- * deleted.
+ * match is `POST`. Every match (duplicates left by hand included) is `PUT`, so none
+ * keeps a rotated-out token; duplicates are warned about and never deleted.
+ *
+ * ROTATE-THEN-REGISTER: the new secret must go into the URL, so `rotate()` runs
+ * first and invalidates the old token at once. If the shop write then fails, a
+ * previously working setup rejects deliveries until install is re-run
+ * (`webhooksConfigured` is flipped to false meanwhile). `shoper-orders-poll` is what
+ * covers that window - for new orders only - and must therefore not be turned off.
+ * Re-running install also rotates the token, which is the remedy if it leaks (it
+ * travels in the URL and so can appear in proxy/CDN access logs).
  *
  * REFUSES WHEN `OrderSource` IS NOT ENABLED on the connection. `OrderSource` is
  * opt-in for Shoper (#3711) and the routing gate (`InboundRoutingPolicy`) answers
@@ -167,18 +175,21 @@ export class ShoperWebhookProvisioningAdapter implements WebhookProvisioningPort
     connectionId: string,
   ): Promise<void> {
     const ours = (await this.listWebhooks(client)).filter((row) => isOurs(row.url, endpoint));
-    const [existing, ...duplicates] = ours;
-    if (duplicates.length > 0) {
-      this.logger.warn(
-        `Shoper shop of connection ${connectionId} holds ${ours.length} webhooks for ${endpoint}; ` +
-          `updating ${String(existing?.webhook_id)} and leaving the others for the operator to delete`,
-      );
-    }
-    if (existing === undefined) {
+    if (ours.length === 0) {
       await client.post<unknown>(SHOPER_WEBHOOKS_PATH, body);
       return;
     }
-    await client.put(`${SHOPER_WEBHOOKS_PATH}/${String(existing.webhook_id)}`, body);
+    if (ours.length > 1) {
+      // Every duplicate is updated: one left on the rotated-out token would have each
+      // delivery rejected and read as an attack on the auth-failing surface (#1814).
+      this.logger.warn(
+        `Shoper shop of connection ${connectionId} holds ${ours.length} webhooks for ${endpoint}; ` +
+          'updating all of them so none keeps the rotated-out token (delete the extras in the shop)',
+      );
+    }
+    for (const row of ours) {
+      await client.put(`${SHOPER_WEBHOOKS_PATH}/${String(row.webhook_id)}`, body);
+    }
   }
 
   /** Every webhook of the shop. The `url` filter matches by equality only, so ours is found by listing. */

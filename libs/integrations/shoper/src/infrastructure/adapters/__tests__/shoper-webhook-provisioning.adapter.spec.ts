@@ -254,7 +254,7 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       expect(f.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
     });
 
-    it('should update the first of two duplicates and delete neither', async () => {
+    it('should update every duplicate, so none keeps the rotated-out token, and delete none', async () => {
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       const f = setup({
         shopWebhooks: [
@@ -265,7 +265,8 @@ describe('ShoperWebhookProvisioningAdapter', () => {
 
       await f.adapter.install(CONNECTION_ID);
 
-      expect(f.calls.filter((c) => c.method === 'PUT').map((c) => c.path)).toEqual(['/webhooks/6']);
+      expect(f.calls.filter((c) => c.method === 'PUT').map((c) => c.path)).toEqual(['/webhooks/6', '/webhooks/7']);
+      expect(f.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
       expect(f.calls.filter((c) => c.method === 'DELETE')).toHaveLength(0);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('2 webhooks'));
       warn.mockRestore();
