@@ -1,5 +1,9 @@
 import type { ShoperCategory, ShoperCategoryTreeNode } from '../../../domain/types/shoper-api.types';
-import { flattenShoperCategoryTree, joinShoperCategories } from '../shoper-category.mapper';
+import {
+  findShoperCategoryChild,
+  flattenShoperCategoryTree,
+  joinShoperCategories,
+} from '../shoper-category.mapper';
 
 function category(id: string, name: string | null, active = '1'): ShoperCategory {
   return { category_id: id, translations: { pl_PL: { name, active }, en_US: { name: `${name ?? ''}-en`, active } } };
@@ -120,5 +124,41 @@ describe('joinShoperCategories', () => {
       'pl_PL',
     );
     expect(categories.map((c) => c.name)).toEqual(['Zestawy']);
+  });
+});
+
+describe('findShoperCategoryChild', () => {
+  const categories = [
+    { id: '45', name: 'Kuchnia', depth: 0 },
+    { id: '38', name: 'Zestawy', parentId: '45', depth: 1 },
+    { id: '60', name: 'Zestawy', parentId: '45', depth: 1 },
+    { id: '70', name: 'Zestawy', depth: 0 },
+    { id: '80', name: 'Zestawy' },
+  ];
+
+  it('should find a root by name', () => {
+    expect(findShoperCategoryChild(categories, null, 'Kuchnia')).toBe('45');
+  });
+
+  it('should find a child under its own parent only', () => {
+    expect(findShoperCategoryChild(categories, '45', 'Zestawy')).toBe('38');
+    expect(findShoperCategoryChild(categories, '38', 'Zestawy')).toBeNull();
+  });
+
+  it('should take the lowest id when the shop holds a duplicate, so racing publishes converge', () => {
+    expect(findShoperCategoryChild(categories, '45', 'Zestawy')).toBe('38');
+    expect(findShoperCategoryChild(categories, null, 'Zestawy')).toBe('70');
+  });
+
+  it('should never match a category the tree does not place, whose parent is unknown', () => {
+    expect(findShoperCategoryChild([{ id: '80', name: 'Loose' }], null, 'Loose')).toBeNull();
+  });
+
+  it('should ignore surrounding whitespace in the wanted name', () => {
+    expect(findShoperCategoryChild(categories, null, '  Kuchnia ')).toBe('45');
+  });
+
+  it('should be exact about case, because the shop stores the name as typed', () => {
+    expect(findShoperCategoryChild(categories, null, 'kuchnia')).toBeNull();
   });
 });

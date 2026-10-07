@@ -1,4 +1,5 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { isCategoryProvisioner } from '@openlinker/core/listings';
 import { isOrderStatusWriteback } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
@@ -58,6 +59,7 @@ describe('Shoper plugin', () => {
 
     expect(defaults).toEqual(['ProductMaster', 'InventoryMaster']);
     expect(defaults).not.toContain('ProductPublisher');
+    expect(defaults).not.toContain('CategoryProvisioner');
     expect(defaults).not.toContain('OrderProcessorManager');
     expect(defaults).not.toContain('OrderSource');
     // Every default must be a capability the adapter really supports.
@@ -66,7 +68,7 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should expose the documented manifest with its five capabilities', () => {
+  it('should expose the documented manifest with its six capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
@@ -74,6 +76,7 @@ describe('Shoper plugin', () => {
         'ProductMaster',
         'InventoryMaster',
         'ProductPublisher',
+        'CategoryProvisioner',
         'OrderProcessorManager',
         'OrderSource',
       ],
@@ -144,6 +147,16 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperProductPublisherAdapter);
+  });
+
+  it('should resolve CategoryProvisioner to the same publisher adapter, which satisfies the capability guard', async () => {
+    const { host } = hostWithRegistries();
+    const plugin = createShoperPlugin();
+
+    const adapter = await plugin.createCapabilityAdapter<unknown>(connection(), 'CategoryProvisioner', host);
+
+    expect(adapter).toBeInstanceOf(ShoperProductPublisherAdapter);
+    expect(isCategoryProvisioner(adapter as ShoperProductPublisherAdapter)).toBe(true);
   });
 
   it('should resolve InventoryMaster to the Shoper inventory master adapter', async () => {

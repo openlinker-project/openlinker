@@ -54,12 +54,15 @@ export const shoperAdapterManifest: AdapterMetadata = {
     'ProductMaster',
     'InventoryMaster',
     'ProductPublisher',
+    'CategoryProvisioner',
     'OrderProcessorManager',
     'OrderSource',
   ],
   // `ProductPublisher` is opt-in as well: it WRITES products to the shop, so a
   // connection that exists only as a catalogue master must not become a publish
   // destination until an operator enables it.
+  // `CategoryProvisioner` is the same class and the same opt-in: it creates
+  // categories in the shop, which a catalogue-only connection must never do.
   // `OrderSource` is likewise opt-in: ingesting a shop's orders is polling load
   // against a shop whose request ceiling is unknown (SPIKE-3638 C6), and a
   // connection that exists only as a catalogue master must not start doing it.
@@ -157,6 +160,10 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
             ProductMaster: async () => (await build()).productMaster,
             InventoryMaster: async () => (await build()).inventoryMaster,
             ProductPublisher: async () => (await build()).productPublisher,
+            // The same instance: CategoryProvisioner is a sub-capability of the
+            // publisher, narrowed at the call site via `isCategoryProvisioner`, and
+            // the registry refuses a declared name that has no dispatch entry.
+            CategoryProvisioner: async () => (await build()).productPublisher,
             OrderSource: async () => (await build()).orderSource,
             OrderProcessorManager: async () => {
               const { orderProcessor } = await build();
