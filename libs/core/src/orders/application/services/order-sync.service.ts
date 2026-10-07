@@ -239,6 +239,12 @@ export class OrderSyncService implements IOrderSyncService {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
+        // #3710 - the source-reported display label. Without it WooCommerce
+        // creates every line unnamed and Shoper falls back to the SKU or the
+        // raw internal line id: a wrong product name on a merchant's sales
+        // order, with no error anywhere. Spread conditionally so absence stays
+        // absence and the adapters' own fallbacks still apply.
+        ...(item.name !== undefined ? { name: item.name } : {}),
         // Destinations that convert a gross-priced line to net (WooCommerce) need
         // the per-line rate settled at ingestion; absence must stay absence so
         // they refuse rather than guess.
