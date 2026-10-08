@@ -150,6 +150,12 @@ const benchSalesDocumentSchema = z.object({
     .boolean()
     .nullish()
     .transform((value) => value ?? false),
+  // Invoices only (#3648): the authority's public link, when the provider cannot
+  // render. Absent from an older API, which reads as "no link".
+  verificationUrl: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? null),
   artefacts: z
     .array(benchFiscalArtefactSchema)
     .nullish()
@@ -165,6 +171,10 @@ export const benchDocumentsSchema = z.object({
       invoiceId: nullableString,
       documentNumber: nullableString,
       issuedAt: nullableString,
+      verificationUrl: z
+        .string()
+        .nullish()
+        .transform((value) => value ?? null),
       blockReason: nullableString,
       unresolvedReason: nullableString,
     })
