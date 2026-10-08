@@ -290,10 +290,10 @@ export interface ShoperOrderRow {
   readonly paid?: string | number | null;
   readonly shipping_id?: string | number | null;
   /**
-   * Pickup point the buyer chose at checkout (`"POP-WAW579"`, verified live); absent or
-   * blank for a courier order. Typed `unknown` because the wire is not trusted.
+   * Pickup point the buyer chose at checkout (`"POP-WAW579"`); absent, blank or null
+   * for a courier order.
    */
-  readonly pickup_point?: unknown;
+  readonly pickup_point?: string | null;
   readonly shipping_cost?: string | number | null;
   /** Percent of the shipping method's tax (`23`). */
   readonly shipping_tax_value?: string | number | null;
