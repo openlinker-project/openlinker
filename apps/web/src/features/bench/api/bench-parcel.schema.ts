@@ -137,6 +137,23 @@ const benchFiscalArtefactSchema = z.object({
 // #3646. Kind and status stay open strings: a value this build does not know
 // must reach the card logic, which renders a neutral state for it, rather than
 // fail the whole parse and blank the label beside it.
+/**
+ * The authority's public invoice link (#3648), which reaches an `href`.
+ *
+ * Constrained to absolute http(s) AT THE PARSE, like `benchReceiptLinkSchema`:
+ * the capability that supplies it is open to any invoicing adapter, so the
+ * browser cannot rely on which provider answered, and `target="_blank"` does not
+ * neutralise a `javascript:` href. Absent reads as "no link". A value that is
+ * present but not http(s) ALSO reads as "no link" (`.catch`) rather than failing
+ * the whole documents read, so the card falls back to `issued-not-printable` and
+ * the rest of the panel - label included - still renders.
+ */
+const benchVerificationUrlSchema = z
+  .url({ protocol: /^https?$/ })
+  .nullish()
+  .catch(null)
+  .transform((value) => value ?? null);
+
 const benchSalesDocumentSchema = z.object({
   kind: z.string(),
   recordId: z.string(),
@@ -150,6 +167,9 @@ const benchSalesDocumentSchema = z.object({
     .boolean()
     .nullish()
     .transform((value) => value ?? false),
+  // Invoices only (#3648): the authority's public link, when the provider cannot
+  // render. Absent from an older API, which reads as "no link".
+  verificationUrl: benchVerificationUrlSchema,
   artefacts: z
     .array(benchFiscalArtefactSchema)
     .nullish()
@@ -165,6 +185,7 @@ export const benchDocumentsSchema = z.object({
       invoiceId: nullableString,
       documentNumber: nullableString,
       issuedAt: nullableString,
+      verificationUrl: benchVerificationUrlSchema,
       blockReason: nullableString,
       unresolvedReason: nullableString,
     })

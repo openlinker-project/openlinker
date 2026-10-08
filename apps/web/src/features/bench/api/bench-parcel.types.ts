@@ -172,11 +172,13 @@ export interface BenchUndoCompletionResult {
 
 /** The paper that goes INSIDE the box. */
 export interface BenchInvoice {
-  /** `ready` | `issued-not-printable` | `missing`. */
+  /** `ready` | `link` | `issued-not-printable` | `missing`, or something newer. */
   readonly state: string;
   readonly invoiceId: string | null;
   readonly documentNumber: string | null;
   readonly issuedAt: string | null;
+  /** Set when `state` is `link` (#3648): the authority's public verification link. */
+  readonly verificationUrl: string | null;
   /** The persisted sales-document block reason, verbatim. Never blocks packing. */
   readonly blockReason: string | null;
   /** The routing half of the same answer. */
@@ -247,6 +249,12 @@ export interface BenchSalesDocument {
   readonly completedAt: string | null;
   /** Invoices only: issued AND printable. */
   readonly printable: boolean;
+  /**
+   * Invoices only (#3648): the authority's public link, present when the
+   * provider cannot render a document but can point at one a person prints from.
+   * Built by the backend - the browser never assembles it.
+   */
+  readonly verificationUrl: string | null;
   /** Receipts only. `null` = nothing produced yet; `[]` = registered with nothing attached. */
   readonly artefacts: readonly BenchFiscalArtefact[] | null;
 }

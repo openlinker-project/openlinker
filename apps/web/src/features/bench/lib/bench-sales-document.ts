@@ -45,6 +45,12 @@ export function selectReceiptHandover(
 export type BenchDocumentCard =
   | { readonly kind: 'invoice-ready'; readonly documentNumber: string | null }
   | { readonly kind: 'invoice-not-printable'; readonly documentNumber: string | null }
+  | {
+      /** Nothing to render, but the authority's own page can be opened and printed from (#3648). */
+      readonly kind: 'invoice-link';
+      readonly documentNumber: string | null;
+      readonly verificationUrl: string;
+    }
   | { readonly kind: 'invoice-in-progress' }
   | { readonly kind: 'invoice-rejected' }
   | { readonly kind: 'invoice-not-confirmed' }
@@ -82,6 +88,13 @@ export function describeBenchDocumentCard(documents: BenchDocuments): BenchDocum
     if (invoice.state === 'ready') {
       return { kind: 'invoice-ready', documentNumber: invoice.documentNumber };
     }
+    if (invoice.state === 'link' && invoice.verificationUrl !== null) {
+      return {
+        kind: 'invoice-link',
+        documentNumber: invoice.documentNumber,
+        verificationUrl: invoice.verificationUrl,
+      };
+    }
     if (invoice.state === 'issued-not-printable') {
       return { kind: 'invoice-not-printable', documentNumber: invoice.documentNumber };
     }
@@ -109,8 +122,15 @@ export function describeBenchDocumentCard(documents: BenchDocuments): BenchDocum
       case 'issuing':
         return { kind: 'invoice-in-progress' };
       case 'issued':
-        return document.printable
-          ? { kind: 'invoice-ready', documentNumber: document.documentNumber }
+        if (document.printable) {
+          return { kind: 'invoice-ready', documentNumber: document.documentNumber };
+        }
+        return document.verificationUrl !== null
+          ? {
+              kind: 'invoice-link',
+              documentNumber: document.documentNumber,
+              verificationUrl: document.verificationUrl,
+            }
           : { kind: 'invoice-not-printable', documentNumber: document.documentNumber };
       case 'failed':
         return isRejected(document.failureMode)
@@ -174,6 +194,7 @@ export function benchDocumentsRefetchInterval(
       return BENCH_DOCUMENTS_UNSETTLED_REFETCH_MS;
     case 'invoice-ready':
     case 'invoice-not-printable':
+    case 'invoice-link':
     case 'receipt-made':
       return false;
   }
