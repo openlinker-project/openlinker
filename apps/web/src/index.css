@@ -9522,6 +9522,8 @@ a.kpi-card:focus-visible {
 }
 .offer-product-picker__rail-body {
   flex: 1 1 auto;
+  /* Keeps the batch review readable when the destination list is tall (#3725). */
+  min-height: 9rem;
   overflow-y: auto;
   padding: var(--space-1) var(--space-3) var(--space-3);
 }
@@ -9594,6 +9596,8 @@ a.kpi-card:focus-visible {
 }
 
 .offer-product-picker__rail-foot {
+  /* Never shrink: the summary + Cancel/Continue row must stay reachable (#3725). */
+  flex: none;
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-subtle);
   display: flex;
@@ -9604,6 +9608,9 @@ a.kpi-card:focus-visible {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  /* Many connections scroll inside the rail instead of pushing the actions out (#3725). */
+  max-height: min(30vh, 14rem);
+  overflow-y: auto;
 }
 .offer-product-picker__eyebrow {
   font-family: var(--font-mono);
