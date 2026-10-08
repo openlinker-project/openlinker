@@ -29,11 +29,18 @@ export interface InboundWebhookDecoderPort {
    * shared secret. Returns `ok` plus the normalized (epoch-ms) timestamp the
    * host feeds to the shared replay-window check. A scheme without a shared
    * secret (e.g. cert-based) resolves its own material and may ignore `secret`.
+   *
+   * `query` carries the delivery URL's query parameters (first value of each
+   * key). It exists for a provider that authenticates by a token in the URL
+   * because it offers no signature a decoder can verify (Shoper). It is OPTIONAL
+   * and ignored by every signature-based decoder, so adding it did not touch an
+   * existing implementer. Never log it: it may hold the credential.
    */
   verify(input: {
     rawBody: Buffer;
     headers: Record<string, string>;
     secret: string;
+    query?: Readonly<Record<string, string>>;
   }): WebhookVerifyResult;
 
   /**

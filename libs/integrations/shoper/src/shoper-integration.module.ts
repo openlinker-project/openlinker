@@ -18,6 +18,8 @@ import {
   IdentifierMappingModule,
   IDENTIFIER_MAPPING_PORT_TOKEN,
   IdentifierMappingPort,
+  CONNECTION_PORT_TOKEN,
+  ConnectionPort,
   type Connection,
 } from '@openlinker/core/identifier-mapping';
 import type { AdapterFactoryPort } from '@openlinker/core/integrations';
@@ -47,6 +49,8 @@ import {
   OAuthCompletionRegistryService,
   CREDENTIALS_RESOLVER_TOKEN,
   CredentialsResolverPort,
+  WEBHOOK_SECRET_SERVICE_TOKEN,
+  IWebhookSecretService,
 } from '@openlinker/core/integrations';
 import {
   SyncModule,
@@ -67,6 +71,7 @@ import { CACHE_PORT_TOKEN, type CachePort } from '@openlinker/shared';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { RateLimitModule, HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
 import { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import { ShoperWebhookProvisioningAdapter } from './infrastructure/adapters/shoper-webhook-provisioning.adapter';
 import { ShoperCustomerProvisioner } from './infrastructure/provisioners/shoper-customer.provisioner';
 import { createShoperPlugin } from './shoper-plugin';
 
@@ -121,6 +126,10 @@ export class ShoperIntegrationModule implements OnModuleInit {
     private readonly customerProvisioner: ShoperCustomerProvisioner,
     @Inject(MAPPING_CONFIG_SERVICE_TOKEN)
     private readonly mappingConfigService: IMappingConfigService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
+    @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
+    private readonly webhookSecretService: IWebhookSecretService,
     @Inject(CACHE_PORT_TOKEN)
     private readonly cache?: CachePort,
   ) {}
@@ -171,6 +180,19 @@ export class ShoperIntegrationModule implements OnModuleInit {
     };
     host.factoryResolver.registerFactory(plugin.manifest.adapterKey, factoryAdapter);
     plugin.register?.(host);
+
+    // The webhook provisioner needs `ConnectionPort` and `IWebhookSecretService`, which
+    // the `HostServices` bag does not carry, so it is registered here rather than in
+    // the plugin descriptor (the WooCommerce arrangement).
+    this.webhookProvisioningRegistry.register(
+      plugin.manifest.adapterKey,
+      new ShoperWebhookProvisioningAdapter(
+        this.connectionPort,
+        this.webhookSecretService,
+        this.credentialsResolver,
+        this.http,
+      ),
+    );
 
     this.logger.log('Shoper plugin registered successfully');
   }

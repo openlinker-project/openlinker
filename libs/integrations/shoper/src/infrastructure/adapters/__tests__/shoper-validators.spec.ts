@@ -46,6 +46,27 @@ describe('ShoperConnectionConfigShapeValidatorAdapter', () => {
     ]);
   });
 
+  it.each([[undefined], [null], [''], ['https://openlinker.example.com'], ['http://host.docker.internal:3000']])(
+    'should accept the callback URL %p',
+    async (callback) => {
+      await expect(
+        validator.validate({ baseUrl: 'sklep729770.shoparena.pl', openlinkerCallbackBaseUrl: callback }),
+      ).resolves.toBeUndefined();
+    },
+  );
+
+  it.each([
+    ['not a URL', 'not a url', 'must be a valid URL'],
+    ['a non-http scheme', 'ftp://openlinker.example.com', 'must use http:// or https://'],
+    ['a non-string', 42, 'must be a string'],
+  ])('should reject a callback URL that is %s, naming the key', async (_name, callback, message) => {
+    await expect(
+      validator.validate({ baseUrl: 'sklep729770.shoparena.pl', openlinkerCallbackBaseUrl: callback }),
+    ).rejects.toMatchObject({
+      errors: [{ path: 'openlinkerCallbackBaseUrl', message }],
+    });
+  });
+
   it('should reject a missing baseUrl with a path-tagged issue', async () => {
     const error = await validator.validate({}).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(InvalidConnectionConfigException);

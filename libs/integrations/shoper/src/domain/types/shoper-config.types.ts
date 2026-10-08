@@ -29,4 +29,12 @@ export interface ShoperConnectionConfig {
   readonly baseUrl: string;
   /** Fallback ids for the three order fields Shoper requires; see `ShoperOrderDefaults`. */
   readonly defaults?: ShoperOrderDefaults;
+  /**
+   * OpenLinker's public URL as the SHOP sees it (#3644). The webhook install posts
+   * `${openlinkerCallbackBaseUrl}/webhooks/shoper/<connectionId>` to Shoper, so it
+   * must be reachable from the shop. Same wire key PrestaShop and WooCommerce read.
+   */
+  readonly openlinkerCallbackBaseUrl?: string;
+  /** Written by the webhook install: true once the shop holds the webhook. */
+  readonly webhooksConfigured?: boolean;
 }
