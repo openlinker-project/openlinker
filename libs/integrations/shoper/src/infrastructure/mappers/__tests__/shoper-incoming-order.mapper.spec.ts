@@ -2,6 +2,7 @@ import {
   mapShoperOrderStatus,
   mapShoperOrderToIncoming,
   mapShoperPaymentStatus,
+  mapShoperPickupPoint,
   shopLocalToIso,
 } from '../shoper-incoming-order.mapper';
 import {
@@ -266,5 +267,41 @@ describe('mapShoperOrderToIncoming', () => {
 
     expect(incoming).not.toHaveProperty('customerExternalId');
     expect(incoming).not.toHaveProperty('shippingAddress');
+  });
+});
+
+describe('mapShoperPickupPoint', () => {
+  it('should carry the id the buyer chose, classifying a POP- code as a pickup point', () => {
+    expect(mapShoperPickupPoint('POP-WAW579')).toEqual({ id: 'POP-WAW579', pointType: 'pop' });
+  });
+
+  it('should classify a bare locker code as a locker', () => {
+    expect(mapShoperPickupPoint('WAW123M')).toEqual({ id: 'WAW123M', pointType: 'apm' });
+    expect(mapShoperPickupPoint('POZ08A')).toEqual({ id: 'POZ08A', pointType: 'apm' });
+  });
+
+  it('should trim the id and leave the type out when the id settles nothing', () => {
+    expect(mapShoperPickupPoint('  X-1  ')).toEqual({ id: 'X-1' });
+  });
+
+  it.each([[undefined], [null], [''], ['   '], [42], [{ id: 'WAW123M' }], [['WAW123M']]])(
+    'should read %p as no pickup point',
+    (raw) => {
+      expect(mapShoperPickupPoint(raw)).toBeUndefined();
+    },
+  );
+});
+
+describe('mapShoperOrderToIncoming - pickup point', () => {
+  it('should put the order pickup_point on the incoming order', () => {
+    const incoming = mapShoperOrderToIncoming(buildOrderRow({ pickup_point: 'POP-WAW579' }), LINES, CTX);
+
+    expect(incoming.pickupPoint).toEqual({ id: 'POP-WAW579', pointType: 'pop' });
+  });
+
+  it('should leave pickupPoint out for a courier order', () => {
+    const incoming = mapShoperOrderToIncoming(buildOrderRow({ pickup_point: '' }), LINES, CTX);
+
+    expect(incoming).not.toHaveProperty('pickupPoint');
   });
 });
