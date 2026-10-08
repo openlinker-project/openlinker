@@ -4,7 +4,7 @@ Layer: Integration (adapter + wiring). No CORE change. Branch `3712-shoper-produ
 
 Non-goals: category provisioning (#3713; a publish with no category is refused until it lands), global-attribute linking, multi-variant products, AI descriptions. Images were first left out and added in a follow-up commit of the same PR (see § Images).
 
-## Live verification (sklep729770.shoparena.pl, 2026-10-07)
+## Live verification (trial shop, 2026-10-07)
 
 Shop languages `pl_PL` + `en_US`; API root `/webapi/rest`; Bearer token. Test products were created and deleted again (shop back at 36 products).
 
@@ -31,7 +31,7 @@ Shop languages `pl_PL` + `en_US`; API root `/webapi/rest`; Bearer token. Test pr
 
 1. `product-publisher/shoper-product-publisher.adapter.ts` - `ShoperProductPublisherAdapter implements ShopProductManagerPort`: `publishProduct`, `getDescriptionFormat`.
 2. `product-publisher/shoper-description-format.ts` - declared grammar from the observed table (flat allowlist, `href`/`target` on `a`, `src`/`alt` on `img`, no content model).
-3. `mappers/shoper-product-write.mapper.ts` - pure `buildShoperProductBody(cmd, {language, isCreate})` + `collectUnsupportedWarnings(cmd)`.
+3. `mappers/shoper-product-write.mapper.ts` - pure `buildShoperProductBody(cmd, ctx)` + `collectUnsupportedWarnings(cmd, ctx)`.
 4. `domain/types/shoper-product-write.types.ts` - request body types.
 5. `application/shoper-adapter.factory.ts` - `productPublisher` in `ShoperAdapters`.
 6. `shoper-plugin.ts` - `ProductPublisher` in `supportedCapabilities` + dispatch entry, together with the adapter. Not in `defaultEnabledCapabilities` (writes to the shop are opt-in).
@@ -52,3 +52,10 @@ Shop languages `pl_PL` + `en_US`; API root `/webapi/rest`; Bearer token. Test pr
 | Listing a product's images | `filters[product_id]=` on `/product-images` answers 500; the JSON `filters={...}` form works. Not used: `GET /products/:id` carries `main_image`, which is `null` for a product with no image. |
 
 Decisions: after the product exists, `content.imageUrls` are sent in order (at most 10, de-duplicated, absolute http(s) only; the title is the alternative text). A product that already has images keeps them (a re-publish would otherwise append the same pictures again and Shoper cannot say which image came from which URL). **Every image failure is a warning and never an error**: the caller persists the product mapping only after `publishProduct` returns, so a throw here would make the job retry into a second product. Consequence for a dev stack: images served from an internal host (a Docker PrestaShop) cannot be fetched by Shoper and come back as warnings; the shop must serve them from a public URL.
+
+## Review follow-ups
+
+- A price in another currency than the shop's is refused (`shoper_currency_mismatch`), not written unconverted.
+- A create answered without an id is refused (terminal), because the product may exist and a retry would duplicate it.
+- Known limit: a partial image upload leaves a main image, so a re-publish does not add the missing ones.
+- Merge order: do not merge before #3719 (`CategoryProvisioner`); until then every create without a category is refused.

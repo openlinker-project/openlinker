@@ -207,11 +207,14 @@ describe('ShoperProductPublisherAdapter', () => {
       await expect(adapter.publishProduct(command())).rejects.toBe(failure);
     });
 
-    it('should fail rather than invent an id when Shoper answers a create without one', async () => {
+    it('should refuse, not retry, when Shoper answers a create without an id, since the product may exist', async () => {
       const { adapter, post } = setup();
       post.mockResolvedValue({ status: 200, data: { ok: true } });
 
-      await expect(adapter.publishProduct(command())).rejects.toBeInstanceOf(ShoperNetworkError);
+      const error: unknown = await adapter.publishProduct(command()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ProductPublishRejectedException);
+      expect((error as ProductPublishRejectedException).errors[0]?.code).toBe('shoper_create_answer_unreadable');
     });
   });
 
@@ -243,12 +246,16 @@ describe('ShoperProductPublisherAdapter', () => {
       expect(result.warnings).toEqual([expect.stringContaining('multi-warehouse')]);
     });
 
-    it("should warn when the price currency differs from the shop's", async () => {
-      const { adapter } = setup();
+    it("should refuse a price in another currency than the shop's, without calling the shop", async () => {
+      const { adapter, post } = setup();
 
-      const result = await adapter.publishProduct(command({ price: { amount: 10, currency: 'EUR' } }));
+      const error: unknown = await adapter
+        .publishProduct(command({ price: { amount: 10, currency: 'EUR' } }))
+        .catch((e: unknown) => e);
 
-      expect(result.warnings).toEqual([expect.stringContaining('EUR')]);
+      expect(error).toBeInstanceOf(ProductPublishRejectedException);
+      expect((error as ProductPublishRejectedException).errors[0]?.code).toBe('shoper_currency_mismatch');
+      expect(post).not.toHaveBeenCalled();
     });
 
     it('should omit the warnings field when there is nothing to report', async () => {

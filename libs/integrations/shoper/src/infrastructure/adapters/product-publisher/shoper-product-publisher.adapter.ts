@@ -41,7 +41,6 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
-import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import type { ShoperImageWriteBody } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
@@ -58,7 +57,7 @@ const PRODUCTS_PATH = '/products';
 const IMAGES_PATH = '/product-images';
 
 /** A short, token-free reason for a warning. */
-function describe(error: unknown): string {
+function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -98,6 +97,15 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
       );
     }
 
+    if (context.currency !== null && cmd.price.currency.toUpperCase() !== context.currency.toUpperCase()) {
+      // Writing the amount as is would put a wrong price on the storefront, so refuse.
+      throw this.refuse(
+        'shoper_currency_mismatch',
+        `The price is in ${cmd.price.currency} but the shop's currency is ${context.currency}; ` +
+          'convert the price before publishing.',
+      );
+    }
+
     const { body, warnings } = buildShoperProductBody(cmd, context);
     this.logger.debug(
       `Publishing variant=${cmd.internalVariantId} connection=${this.connection.id} ` +
@@ -127,13 +135,19 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
    * Images are only added to a product that has none: a re-publish would
    * otherwise append the same pictures again, and Shoper offers no way to tell
    * which of its images came from which URL. A product that already carries
-   * images keeps them. Every failure is a warning, never an error (see the call).
+   * images keeps them. Known limit: if an earlier publish uploaded only some of the
+   * images (the first succeeded, a later one failed), the product now has a main
+   * image and the missing ones are NOT added on a re-publish. Every failure is a
+   * warning, never an error (see the call).
    */
   private async publishImages(
     externalProductId: string,
     cmd: PublishProductCommand,
     isUpsert: boolean,
   ): Promise<string[]> {
+    if (!/^\d+$/.test(externalProductId)) {
+      return ['Product images were not sent: the product id is not a Shoper id.'];
+    }
     const plan = planShoperImageUploads(cmd);
     const warnings = [...plan.skipped];
     if (plan.urls.length === 0) {
@@ -146,7 +160,7 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
         return warnings;
       }
     } catch (error) {
-      warnings.push(`Product images were not sent: the shop's current images could not be read (${describe(error)}).`);
+      warnings.push(`Product images were not sent: the shop's current images could not be read (${reasonOf(error)}).`);
       return warnings;
     }
 
@@ -160,7 +174,7 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
       try {
         await this.client.post<unknown>(IMAGES_PATH, body);
       } catch (error) {
-        warnings.push(`Shoper did not take the image ${url}: ${describe(error)}`);
+        warnings.push(`Shoper did not take the image ${url}: ${reasonOf(error)}`);
       }
     }
     return warnings;
@@ -179,7 +193,13 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
       const { data } = await this.client.post<unknown>(PRODUCTS_PATH, body);
       const id = String(data);
       if (!/^\d+$/.test(id)) {
-        throw new ShoperNetworkError('Shoper answered a product create without a product id');
+        // The product may already exist, so a retry would create a second one: refuse
+        // (terminal) and let the operator check the shop.
+        throw this.refuse(
+          'shoper_create_answer_unreadable',
+          'Shoper answered a product create without a product id. The product may have been created: ' +
+            'check the shop before publishing again.',
+        );
       }
       return id;
     } catch (error) {

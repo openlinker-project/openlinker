@@ -103,12 +103,6 @@ export function collectUnsupportedWarnings(
   if (ctx.warehousesEnabled) {
     warnings.push('The shop runs the multi-warehouse module, so the stock quantity was not written.');
   }
-  if (ctx.currency !== null && cmd.price.currency.toUpperCase() !== ctx.currency.toUpperCase()) {
-    warnings.push(
-      `The price is in ${cmd.price.currency} but the shop's currency is ${ctx.currency}; ` +
-        'the amount was written as is, without conversion.',
-    );
-  }
   if ((cmd.content?.tags?.length ?? 0) > 0) {
     warnings.push('Tags are not published to Shoper yet.');
   }
