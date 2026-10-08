@@ -4,7 +4,7 @@ Layer: Integration (adapter + wiring). No CORE change. Branch `3713-shoper-categ
 
 Non-goals: browsing the shop's tree for the operator's picker (`ShopCategoryBrowser`), category rename/deletion, per-language names beyond the shop default.
 
-## Live verification (sklep729770.shoparena.pl, 2026-10-07)
+## Live verification (trial shop, 2026-10-07)
 
 Categories created for the check were deleted again (shop back at 8 categories).
 
@@ -23,7 +23,7 @@ Categories created for the check were deleted again (shop back at 8 categories).
 2. **Duplicates resolve to the LOWEST id.** Shoper accepts a duplicate, so two publishes that raced to create the same node both re-read after their create and settle on the same lowest-id node. The loser's empty twin is logged and left for the operator, never deleted: the other publisher may already have returned it.
 3. **One reader.** The tree + list read moved out of the ProductMaster adapter into `ShoperCategoryReader`, which both adapters use; the join stays `joinShoperCategories`. ProductMaster still memoises its own directory; the provisioner reads fresh because it changes what it reads.
 4. **All names are validated before anything is created**, so a refused path never leaves its first nodes behind.
-5. `CategoryProvisioner` is declared in `supportedCapabilities` together with the adapter, dispatched to the SAME publisher instance (the registry refuses a declared name with no dispatch entry), and is not in `defaultEnabledCapabilities`.
+5. `CategoryProvisioner` is a first-class capability name (as on WooCommerce), declared in `supportedCapabilities` together with the adapter and dispatched to the SAME publisher instance; it is not in `defaultEnabledCapabilities`. The publish builder narrows the `ProductPublisher` adapter with `isCategoryProvisioner`, so `ProductPublisher` is what gates provisioning on the publish path today.
 6. Errors from Shoper propagate untouched (the retry classifier decides); only an empty path / blank name / unknown language are refused locally.
 
 ## Steps
@@ -35,6 +35,12 @@ Categories created for the check were deleted again (shop back at 8 categories).
 5. `shoper-plugin.ts` - manifest entry + dispatch entry.
 6. Specs: provisioner (create root / nested / reuse / partial / other-parent / trim / language / race / adopt lower-id twin / refusals / error propagation), `findShoperCategoryChild`, plugin dispatch + guard.
 7. Docs: one bullet in `docs/architecture-overview.md`.
+
+## Behaviour worth knowing
+
+- A category is created `active: 1`, so a draft publish can add a live (initially empty) category to the storefront menu; only the default-language name is written.
+- Matching is exact and case-sensitive on the trimmed name, and an inactive category with that name IS reused (the directory carries it like any other).
+- An unreadable create answer is refused (terminal), not retried as a network fault; a later publish is safe because the lookup runs before every create.
 
 ## Risks / open
 

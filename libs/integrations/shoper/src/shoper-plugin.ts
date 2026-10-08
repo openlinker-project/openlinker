@@ -61,8 +61,11 @@ export const shoperAdapterManifest: AdapterMetadata = {
   // `ProductPublisher` is opt-in as well: it WRITES products to the shop, so a
   // connection that exists only as a catalogue master must not become a publish
   // destination until an operator enables it.
-  // `CategoryProvisioner` is the same class and the same opt-in: it creates
-  // categories in the shop, which a catalogue-only connection must never do.
+  // `CategoryProvisioner` is the same class, and a first-class capability name
+  // (as on WooCommerce): it creates categories in the shop, which a
+  // catalogue-only connection must never do. Note that the publish builder
+  // narrows the dispatched `ProductPublisher` adapter, so it is `ProductPublisher`
+  // that actually gates provisioning on the publish path today.
   // `OrderSource` is likewise opt-in: ingesting a shop's orders is polling load
   // against a shop whose request ceiling is unknown (SPIKE-3638 C6), and a
   // connection that exists only as a catalogue master must not start doing it.

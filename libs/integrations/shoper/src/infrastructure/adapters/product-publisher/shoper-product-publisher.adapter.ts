@@ -52,7 +52,6 @@ import type { Category } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
-import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import type {
   ShoperCategoryWriteBody,
   ShoperImageWriteBody,
@@ -253,8 +252,11 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
       parentId = id;
     }
 
+    if (parentId === null) {
+      throw this.refuse('shoper_category_path_empty', 'There is no category path to create on Shoper.');
+    }
     return {
-      destinationCategoryId: parentId as string,
+      destinationCategoryId: parentId,
       ...(createdPath.length > 0 ? { createdPath } : {}),
     };
   }
@@ -272,7 +274,13 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
     const { data } = await this.client.post<unknown>(CATEGORIES_PATH, body);
     const id = String(data);
     if (!/^\d+$/.test(id)) {
-      throw new ShoperNetworkError('Shoper answered a category create without a category id');
+      // Refused, not retried as a network fault: the answer was readable, just not an id.
+      // A later publish is still safe, because the lookup before every create finds
+      // the category if Shoper did create it.
+      throw this.refuse(
+        'shoper_category_create_answer_unreadable',
+        'Shoper answered a category create without a category id. The category may have been created; publish again.',
+      );
     }
     return id;
   }

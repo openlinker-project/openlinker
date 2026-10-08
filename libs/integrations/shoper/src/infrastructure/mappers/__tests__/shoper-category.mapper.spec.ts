@@ -161,4 +161,10 @@ describe('findShoperCategoryChild', () => {
   it('should be exact about case, because the shop stores the name as typed', () => {
     expect(findShoperCategoryChild(categories, null, 'kuchnia')).toBeNull();
   });
+
+  it('should match an inactive category too, since the directory carries it like any other', () => {
+    const withInactive = [{ id: '90', name: 'Ukryta', depth: 0, active: false }];
+
+    expect(findShoperCategoryChild(withInactive, null, 'Ukryta')).toBe('90');
+  });
 });

@@ -2,7 +2,6 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { ProductPublishRejectedException } from '@openlinker/core/listings';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
-import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network.error';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
 import { MAP_CONTEXT } from '../../../__tests__/shoper-test-data';
@@ -27,16 +26,16 @@ interface Harness {
   raceNextCreate: (parent: number, name: string) => void;
 }
 
-/**
- * A tiny stateful shop: the tree, the list and the create all read one array, so
- * what the adapter creates is what it reads back - which is the whole question
- * for an ensure-exists operation.
- */
 /** The body of the n-th create the adapter issued. */
 function createBody(post: jest.Mock, n = 0): CategoryBody {
   return (post.mock.calls[n] as [string, CategoryBody])[1];
 }
 
+/**
+ * A tiny stateful shop: the tree, the list and the create all read one array, so
+ * what the adapter creates is what it reads back - which is the whole question
+ * for an ensure-exists operation.
+ */
 function setup(initial: FakeCategory[] = [], language = 'pl_PL'): Harness {
   const shop: FakeCategory[] = [...initial];
   let nextId = Math.max(100, ...shop.map((c) => c.id + 1));
@@ -225,12 +224,17 @@ describe('ShoperProductPublisherAdapter.provisionCategory', () => {
       await expect(adapter.provisionCategory({ connectionId: 'c', path: path('Kuchnia') })).rejects.toBe(failure);
     });
 
-    it('should fail rather than invent an id when Shoper answers a create without one', async () => {
+    it('should refuse, not retry as a network fault, when Shoper answers a create without an id', async () => {
       const { adapter, post } = setup();
       post.mockResolvedValue({ status: 200, data: { ok: true } });
 
-      await expect(adapter.provisionCategory({ connectionId: 'c', path: path('Kuchnia') })).rejects.toBeInstanceOf(
-        ShoperNetworkError,
+      const error: unknown = await adapter
+        .provisionCategory({ connectionId: 'c', path: path('Kuchnia') })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ProductPublishRejectedException);
+      expect((error as ProductPublishRejectedException).errors[0]?.code).toBe(
+        'shoper_category_create_answer_unreadable',
       );
     });
   });
