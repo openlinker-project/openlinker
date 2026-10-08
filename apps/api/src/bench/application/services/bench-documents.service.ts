@@ -43,7 +43,10 @@ import {
 import {
   INVOICE_SERVICE_TOKEN,
   isRegulatoryDocumentReader,
+  isRegulatoryVerificationLinkReader,
+  supportsRegulatoryDocumentKind,
   type IInvoiceService,
+  type InvoiceRecord,
   type InvoicingPort,
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
@@ -71,6 +74,7 @@ import type {
   BenchLabelView,
   BenchNoSalesDocumentView,
   BenchSalesDocumentView,
+  InvoicePrintability,
   BenchUnlabelledParcelListView,
   BenchUnlabelledParcelView,
 } from '../types/bench-parcel.types';
@@ -142,6 +146,16 @@ export class BenchDocumentsService implements IBenchDocumentsService {
     }
 
     if (document.kind === 'invoice') {
+      // The projection carries no document bytes, so the record is read only
+      // when it could possibly be printable or linkable.
+      const record =
+        document.status === 'issued'
+          ? await this.invoices.getInvoiceById(document.identity.recordId)
+          : null;
+      const { printable, verificationUrl } =
+        record === null
+          ? { printable: false, verificationUrl: null }
+          : await this.assessPrintability(record);
       return {
         document: {
           kind: 'invoice',
@@ -151,9 +165,8 @@ export class BenchDocumentsService implements IBenchDocumentsService {
           failureMode: document.failureMode,
           documentNumber: document.identity.documentNumber,
           completedAt: document.identity.completedAt,
-          printable:
-            document.status === 'issued' &&
-            (await this.canRenderDocument(document.identity.connectionId, document.regulatoryStatus)),
+          printable,
+          verificationUrl,
         },
         noDocument: null,
       };
@@ -223,13 +236,15 @@ export class BenchDocumentsService implements IBenchDocumentsService {
       };
     }
 
-    const printable = await this.canRenderDocument(record.connectionId, record.regulatoryStatus);
-    return {
-      state: printable ? 'ready' : 'issued-not-printable',
+    const { printable, verificationUrl } = await this.assessPrintability(record);
+    const identity = {
       invoiceId: record.id,
       documentNumber: record.documentNumber ?? null,
       issuedAt: record.issuedAt?.toISOString() ?? null,
     };
+    if (printable) return { state: 'ready', ...identity };
+    if (verificationUrl !== null) return { state: 'link', verificationUrl, ...identity };
+    return { state: 'issued-not-printable', ...identity };
   }
 
   /**
@@ -241,20 +256,34 @@ export class BenchDocumentsService implements IBenchDocumentsService {
    * degrades to "not printable" rather than failing the read — a disabled
    * invoicing connection must not blank the label half of this surface too.
    */
-  private async canRenderDocument(connectionId: string, regulatoryStatus: string): Promise<boolean> {
-    if (regulatoryStatus !== 'accepted') return false;
+  private async assessPrintability(record: InvoiceRecord): Promise<InvoicePrintability> {
+    const notPrintable: InvoicePrintability = { printable: false, verificationUrl: null };
+    if (record.regulatoryStatus !== 'accepted') return notPrintable;
     try {
       const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
-        connectionId,
+        record.connectionId,
         'Invoicing'
       );
-      return isRegulatoryDocumentReader(adapter);
+      // The SAME question the print route asks, including the kind it asks for
+      // (#3648): implementing the reader is not enough, since a provider that
+      // only has a confirmation document (KSeF's UPO) would be reported ready
+      // and then refused on the press.
+      if (isRegulatoryDocumentReader(adapter) && supportsRegulatoryDocumentKind(adapter, 'rendered')) {
+        return { printable: true, verificationUrl: null };
+      }
+      // Nothing to render, but the authority may give the document a public link
+      // a person can print from. Neutral URL only - its format is the adapter's.
+      if (isRegulatoryVerificationLinkReader(adapter)) {
+        const link = await adapter.getVerificationLink(record);
+        return { printable: false, verificationUrl: link?.url ?? null };
+      }
+      return notPrintable;
     } catch (error) {
       this.logger.warn(
-        `Could not resolve the invoicing adapter for connection ${connectionId}; reporting the ` +
+        `Could not resolve the invoicing adapter for connection ${record.connectionId}; reporting the ` +
           `invoice as not printable at the bench: ${error instanceof Error ? error.message : String(error)}`
       );
-      return false;
+      return notPrintable;
     }
   }
 

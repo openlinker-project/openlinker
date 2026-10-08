@@ -280,10 +280,31 @@ export interface BenchUndoResultView {
  * packer cannot fix; refusing to pack piles boxes at a bench while somebody
  * hunts for an admin, and the order still needs shipping.
  */
+/**
+ * What the bench can do with an issued invoice (#3648): print a rendering of it,
+ * point at the authority's public link, or neither. Internal to the read.
+ */
+export interface InvoicePrintability {
+  readonly printable: boolean;
+  readonly verificationUrl: string | null;
+}
+
 export type BenchInvoiceView =
   | {
       /** Issued AND the provider can produce something printable. */
       readonly state: 'ready';
+      readonly invoiceId: string;
+      readonly documentNumber: string | null;
+      readonly issuedAt: string | null;
+    }
+  | {
+      /**
+       * Issued, nothing to render, but the authority gives the document a public
+       * link to open and print from (#3648 - KSeF's KOD I). A distinct state, not
+       * `ready`: the press route has no bytes to stream for it.
+       */
+      readonly state: 'link';
+      readonly verificationUrl: string;
       readonly invoiceId: string;
       readonly documentNumber: string | null;
       readonly issuedAt: string | null;
@@ -406,6 +427,11 @@ export type BenchSalesDocumentView =
        * and then refused.
        */
       readonly printable: boolean;
+      /**
+       * The authority's public verification link when the provider cannot render
+       * but can link (#3648); `null` otherwise. Neutral URL - never built here.
+       */
+      readonly verificationUrl: string | null;
     }
   | {
       readonly kind: 'fiscal-receipt';

@@ -82,6 +82,8 @@ import {
 import {
   INVOICE_SERVICE_TOKEN,
   isRegulatoryDocumentReader,
+  supportsRegulatoryDocumentKind,
+  UnsupportedRegulatoryDocumentKindError,
   type IInvoiceService,
   type InvoicingPort,
 } from '@openlinker/core/invoicing';
@@ -231,7 +233,13 @@ export class BenchDocumentsController {
         'This invoice has no printable version. Send the box without it.'
       );
     }
-    if (record.regulatoryStatus !== 'accepted' || !isRegulatoryDocumentReader(adapter)) {
+    if (
+      record.regulatoryStatus !== 'accepted' ||
+      !isRegulatoryDocumentReader(adapter) ||
+      // The same test the read applies (#3648): a reader that only has a
+      // confirmation document must not be asked for a rendering.
+      !supportsRegulatoryDocumentKind(adapter, 'rendered')
+    ) {
       // 409, matching what this route ADVERTISES (#2905 review). It threw 404,
       // which contradicted the `@ApiResponse` two decorators up — reported not
       // matching enforced, on a published contract — and additionally collapsed
@@ -247,7 +255,19 @@ export class BenchDocumentsController {
       );
     }
 
-    const document = await adapter.getRegulatoryDocument(record, 'rendered');
+    // Defence in depth: an adapter that declares no kind hint but still refuses
+    // `rendered` is a 409 like any other "nothing printable", never a 500.
+    let document: Awaited<ReturnType<typeof adapter.getRegulatoryDocument>>;
+    try {
+      document = await adapter.getRegulatoryDocument(record, 'rendered');
+    } catch (error) {
+      if (error instanceof UnsupportedRegulatoryDocumentKindError) {
+        throw new ConflictException(
+          'This invoice has no printable version. Send the box without it.'
+        );
+      }
+      throw error;
+    }
 
     // Best-effort (pack-bench completion): the print itself already succeeded above, so a
     // failure to STAMP that it happened must never turn a working download
@@ -449,6 +469,7 @@ export class BenchDocumentsController {
         invoiceId: invoice.state === 'missing' ? null : invoice.invoiceId,
         documentNumber: invoice.state === 'missing' ? null : invoice.documentNumber,
         issuedAt: invoice.state === 'missing' ? null : invoice.issuedAt,
+        verificationUrl: invoice.state === 'link' ? invoice.verificationUrl : null,
         blockReason: invoice.state === 'missing' ? invoice.blockReason : null,
         unresolvedReason: invoice.state === 'missing' ? invoice.unresolvedReason : null,
       },
@@ -468,6 +489,7 @@ export class BenchDocumentsController {
                   : document.documentNumber,
               completedAt: document.completedAt,
               printable: document.kind === 'invoice' ? document.printable : false,
+              verificationUrl: document.kind === 'invoice' ? document.verificationUrl : null,
               // Field by field: the summary carries no payload, and a spread
               // would inherit one the day the summary type grows it.
               artefacts:
