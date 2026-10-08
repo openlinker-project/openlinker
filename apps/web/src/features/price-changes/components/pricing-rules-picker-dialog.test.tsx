@@ -43,6 +43,25 @@ describe('PricingRulesPickerDialog', () => {
     expect(screen.getByText(/1 source with a different rule/)).toBeInTheDocument();
   });
 
+  it('shows "no adjustment" for a destination with no pricing rule (rule: null)', async () => {
+    const apiClient = createMockApiClient({
+      pricingSync: {
+        get: vi.fn().mockResolvedValue({ default: { mode: 'manual', rule: null }, sources: [] }),
+      },
+    });
+
+    renderWithProviders(
+      <PricingRulesPickerDialog
+        open
+        onOpenChange={vi.fn()}
+        destinationConnections={[conn('dest-1', 'Allegro — PL')]}
+      />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/Default: Manual review · no adjustment/)).toBeInTheDocument();
+  });
+
   it('links to the connection pricing-sync page and closes the dialog on click (#3167 review, finding 4b)', async () => {
     const apiClient = createMockApiClient({
       pricingSync: {

@@ -55,4 +55,22 @@ describe('SourceConnectionPricingRollup', () => {
     // the whole section.
     expect(screen.getByText('How your prices get adjusted')).toBeInTheDocument();
   });
+
+  it('renders a destination with no pricing rule as "no adjustment" instead of crashing', async () => {
+    const asSource = vi.fn().mockResolvedValue([
+      {
+        destinationConnectionId: 'dest-1',
+        destinationLabel: 'Allegro — PL',
+        effectiveMode: 'manual',
+        effectiveRuleSummary: null,
+        isCustomOverride: false,
+      },
+    ]);
+    const apiClient = createMockApiClient({ pricingSync: { asSource } });
+
+    renderWithProviders(<SourceConnectionPricingRollup connectionId="src-1" />, { apiClient });
+
+    expect(await screen.findByText('Allegro — PL')).toBeInTheDocument();
+    expect(screen.getByText(/no adjustment/i)).toBeInTheDocument();
+  });
 });

@@ -14,7 +14,8 @@ export interface PricingRule {
 
 export interface PricingSyncSetting {
   mode: PriceSyncMode;
-  rule: PricingRule;
+  /** `null` = no rule configured; the master price passes through unchanged. */
+  rule: PricingRule | null;
 }
 
 export interface PricingSyncSourceEntry {
@@ -44,6 +45,7 @@ export interface ConnectionAsSourceEntry {
   destinationConnectionId: string;
   destinationLabel: string;
   effectiveMode: PriceSyncMode;
-  effectiveRuleSummary: PricingRule;
+  /** `null` = no rule configured on the destination for this source. */
+  effectiveRuleSummary: PricingRule | null;
   isCustomOverride: boolean;
 }
