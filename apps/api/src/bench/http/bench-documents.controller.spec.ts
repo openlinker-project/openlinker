@@ -6,7 +6,10 @@ import type { Response } from 'express';
 import { Reflector } from '@nestjs/core';
 
 import type { FulfillmentWorkView, IFulfillmentVerificationService } from '@openlinker/core/fulfillment';
-import type { IInvoiceService } from '@openlinker/core/invoicing';
+import {
+  UnsupportedRegulatoryDocumentKindError,
+  type IInvoiceService,
+} from '@openlinker/core/invoicing';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ISalesDocumentViewService } from '@openlinker/core/orders';
 import type { IShipmentLabelService, LabelDocument } from '@openlinker/core/shipping';
@@ -366,6 +369,7 @@ describe('BenchDocumentsController — receipt (#3646)', () => {
       documentNumber: '16240',
       completedAt: '2026-09-30T09:00:00.000Z',
       printable: false,
+      verificationUrl: null,
       artefacts: [{ medium: 'link', disposition: 'send', label: 'Receipt', contentType: null }],
     });
     expect(Object.keys(dto.document?.artefacts?.[0] ?? {}).sort()).toEqual([
@@ -458,5 +462,41 @@ describe('BenchDocumentsController — invoice Content-Disposition (#3646 review
       'Content-Disposition',
       'attachment; filename="invoice-inv-1"'
     );
+  });
+
+  describe('a provider that cannot render (#3648)', () => {
+    it('should answer 409 without asking for a rendering when the adapter declares confirmation only', async () => {
+      getRegulatoryDocument.mockResolvedValue({ contentType: 'application/pdf', content: new Uint8Array() });
+      const integrations = {
+        getCapabilityAdapter: jest.fn().mockResolvedValue({
+          getRegulatoryDocument,
+          supportedRegulatoryDocumentKinds: () => ['confirmation'],
+        }),
+      } as unknown as IIntegrationsService;
+      const c = new BenchDocumentsController(
+        {} as IBenchDocumentsService,
+        { getWorkForDocuments: jest.fn().mockResolvedValue(work()) } as unknown as IBenchParcelService,
+        {
+          getLatestIssuedInvoiceForOrder: jest
+            .fn()
+            .mockResolvedValue({ id: 'inv-1', connectionId: 'c', regulatoryStatus: 'accepted' }),
+        } as unknown as IInvoiceService,
+        integrations,
+        { markInvoicePrinted: jest.fn() } as unknown as IFulfillmentVerificationService,
+        {} as IShipmentLabelService,
+        {} as ISalesDocumentViewService
+      );
+
+      await expect(c.downloadInvoice('work-1', makeRes().res)).rejects.toBeInstanceOf(ConflictException);
+      expect(getRegulatoryDocument).not.toHaveBeenCalled();
+    });
+
+    it('should map UnsupportedRegulatoryDocumentKindError from an adapter with no hint to 409, never 500', async () => {
+      getRegulatoryDocument.mockRejectedValue(new UnsupportedRegulatoryDocumentKindError('rendered'));
+
+      await expect(controller.downloadInvoice('work-1', makeRes().res)).rejects.toBeInstanceOf(
+        ConflictException
+      );
+    });
   });
 });

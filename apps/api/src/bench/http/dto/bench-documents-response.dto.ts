@@ -20,9 +20,9 @@ import {
 
 export class BenchInvoiceResponseDto {
   @ApiProperty({
-    enum: ['ready', 'issued-not-printable', 'missing'],
+    enum: ['ready', 'link', 'issued-not-printable', 'missing'],
     description:
-      'ready: issued, and the provider can produce something printable. issued-not-printable: the document exists but only as machine-readable source, so there is nothing to fold into the box. missing: never issued — see blockReason.',
+      'ready: issued, and the provider can produce something printable. link: issued, nothing to render, but the authority gives the document a public link (see verificationUrl). issued-not-printable: the document exists but only as machine-readable source, so there is nothing to fold into the box. missing: never issued — see blockReason.',
   })
   state!: string;
 
@@ -34,6 +34,12 @@ export class BenchInvoiceResponseDto {
 
   @ApiProperty({ nullable: true })
   issuedAt!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Set only when state is link: the authority\'s public verification link.',
+  })
+  verificationUrl!: string | null;
 
   @ApiProperty({
     nullable: true,
@@ -155,6 +161,13 @@ export class BenchSalesDocumentResponseDto {
       'Invoices only: issued AND the provider can render something to print. Always false for a receipt - read `artefacts`.',
   })
   printable!: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "Invoices only: the authority's public verification link, present when the provider cannot render a document but can link to one a person prints from (#3648). Null otherwise.",
+  })
+  verificationUrl!: string | null;
 
   @ApiProperty({
     type: [BenchFiscalArtefactSummaryResponseDto],

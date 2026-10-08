@@ -94,12 +94,16 @@ import type {
   RegulatoryLocateResult,
   RegulatoryRecordLocator,
   RegulatoryTransmitter,
+  RegulatoryVerificationLink,
+  RegulatoryVerificationLinkReader,
   StoredDocument,
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
 import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
 import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
+import { resolveKsefQrBaseUrl } from '../http/ksef-hosts';
+import type { KsefEnvironment } from '../../domain/types/ksef-connection.types';
 import type { KsefSessionCryptoService } from '../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext } from '../http/ksef-crypto.types';
 import type { IFa3XmlBuilder } from '../fa3/builders/fa3-xml-builder.port';
@@ -175,7 +179,8 @@ export class KsefInvoicingAdapter
     CorrectionIssuer,
     DocumentNumberConsumer,
     OfflineResubmitter,
-    RegulatoryRecordLocator
+    RegulatoryRecordLocator,
+    RegulatoryVerificationLinkReader
 {
   private readonly logger = new Logger(KsefInvoicingAdapter.name);
 
@@ -216,6 +221,9 @@ export class KsefInvoicingAdapter
    */
   private readonly defaultTaxRate: string | undefined;
 
+  /** Environment, for the verification-link host only (#3648). */
+  private readonly environment: KsefEnvironment | undefined;
+
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   private readonly now: () => Date;
 
@@ -235,6 +243,7 @@ export class KsefInvoicingAdapter
     this.payment = options.payment;
     this.defaultLineUnit = options.defaultLineUnit;
     this.defaultTaxRate = options.defaultTaxRate;
+    this.environment = options.environment;
     this.now = options.now ?? ((): Date => new Date());
     this.numberingTimeZone = options.numberingTimeZone ?? DEFAULT_NUMBERING_TIME_ZONE;
   }
@@ -939,6 +948,41 @@ export class KsefInvoicingAdapter
    * transport exception the controller maps (404/409/502); core sees only neutral
    * bytes, never a KSeF/UPO wire detail.
    */
+  /**
+   * KSeF produces the UPO only: it has no server-side rendering, so `rendered`
+   * is declared unsupported and a surface never offers it (#3648).
+   */
+  supportedRegulatoryDocumentKinds(): readonly RegulatoryDocumentKind[] {
+    return ['confirmation'];
+  }
+
+  /**
+   * `RegulatoryVerificationLinkReader` (#3648) - the public KOD I link MF gives
+   * every cleared invoice: `{qr host}/invoice/{seller NIP}/{P_1 DD-MM-YYYY}/{SHA-256
+   * of the FA(3) XML, base64url}`. The hash is over the persisted source bytes,
+   * and the date is read from that same XML's `P_1`, so the link can only ever
+   * describe the document that was sent. Anything it cannot establish (not
+   * cleared, no stored XML, no `P_1`, no environment) yields `null`, never a guess.
+   */
+  getVerificationLink(record: InvoiceRecordType): Promise<RegulatoryVerificationLink | null> {
+    // Pure computation over the persisted record - no I/O - so no `async`.
+    if (record.regulatoryStatus !== 'accepted') return Promise.resolve(null);
+    if (this.environment === undefined || record.sourceDocument === null) {
+      return Promise.resolve(null);
+    }
+
+    const xml = Buffer.from(record.sourceDocument.contentBase64, 'base64');
+    const issueDate = /<P_1>(\d{4})-(\d{2})-(\d{2})<\/P_1>/.exec(xml.toString('utf8'));
+    if (issueDate === null) return Promise.resolve(null);
+
+    const hash = createHash('sha256').update(xml).digest('base64url');
+    const [, year, month, day] = issueDate;
+    const nip = encodeURIComponent(this.seller.nip);
+    return Promise.resolve({
+      url: `${resolveKsefQrBaseUrl(this.environment)}/invoice/${nip}/${day}-${month}-${year}/${hash}`,
+    });
+  }
+
   async getRegulatoryDocument(
     record: InvoiceRecordType,
     kind: RegulatoryDocumentKind = 'confirmation',

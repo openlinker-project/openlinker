@@ -87,7 +87,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         sessionCrypto,
         fa3Builder,
         seller,
-        { payment, defaultTaxRate, defaultLineUnit, numberingTimeZone },
+        { payment, defaultTaxRate, defaultLineUnit, numberingTimeZone, environment: env },
       ),
     };
   }
