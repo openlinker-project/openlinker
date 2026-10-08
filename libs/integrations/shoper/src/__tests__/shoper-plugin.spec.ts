@@ -5,6 +5,7 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
+import { ShoperOrderSourceAdapter } from '../infrastructure/adapters/order-source/shoper-order-source.adapter';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
 import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
@@ -42,22 +43,23 @@ function connection(overrides: Record<string, unknown> = {}): Connection {
 }
 
 describe('Shoper plugin', () => {
-  it('should not enable OrderProcessorManager by default, so a catalogue-only shop receives no orders', () => {
+  it('should not enable OrderProcessorManager or OrderSource by default, so a catalogue-only shop neither receives nor ingests orders', () => {
     const defaults = shoperAdapterManifest.defaultEnabledCapabilities;
 
     expect(defaults).toEqual(['ProductMaster', 'InventoryMaster']);
     expect(defaults).not.toContain('OrderProcessorManager');
+    expect(defaults).not.toContain('OrderSource');
     // Every default must be a capability the adapter really supports.
     for (const capability of defaults ?? []) {
       expect(shoperAdapterManifest.supportedCapabilities).toContain(capability);
     }
   });
 
-  it('should expose the documented manifest with its three capabilities', () => {
+  it('should expose the documented manifest with its four capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
       isDefault: true,
     });
     expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
@@ -97,6 +99,18 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperInventoryMasterAdapter);
+  });
+
+  it('should resolve OrderSource to the Shoper order source adapter without the Nest-provided deps', async () => {
+    const { host } = hostWithRegistries();
+
+    const adapter = await createShoperPlugin().createCapabilityAdapter<unknown>(
+      connection(),
+      'OrderSource',
+      host,
+    );
+
+    expect(adapter).toBeInstanceOf(ShoperOrderSourceAdapter);
   });
 
   it('should resolve OrderProcessorManager to the Shoper order processor adapter', async () => {
@@ -140,15 +154,15 @@ describe('Shoper plugin', () => {
       const { host } = hostWithRegistries();
 
       await expect(
-        createShoperPlugin().createCapabilityAdapter(connection(), 'OrderSource', host),
-      ).rejects.toThrow(/does not support capability: OrderSource/);
+        createShoperPlugin().createCapabilityAdapter(connection(), 'OfferManager', host),
+      ).rejects.toThrow(/does not support capability: OfferManager/);
     });
 
     it('should not decrypt the credentials or open a transport to say so', async () => {
       const { host, credentialsGet } = hostWithRegistries();
 
       await createShoperPlugin()
-        .createCapabilityAdapter(connection(), 'OrderSource', host)
+        .createCapabilityAdapter(connection(), 'OfferManager', host)
         .catch(() => undefined);
 
       expect(credentialsGet).not.toHaveBeenCalled();
@@ -161,7 +175,7 @@ describe('Shoper plugin', () => {
       await expect(
         createShoperPlugin().createCapabilityAdapter(
           connection({ config: {} }),
-          'OrderSource',
+          'OfferManager',
           host,
         ),
       ).rejects.toThrow(/does not support capability/);
