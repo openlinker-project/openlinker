@@ -275,9 +275,12 @@ describe('mapShoperPickupPoint', () => {
     expect(mapShoperPickupPoint('POP-WAW579')).toEqual({ id: 'POP-WAW579', pointType: 'pop' });
   });
 
-  it('should classify a bare locker code as a locker', () => {
-    expect(mapShoperPickupPoint('WAW123M')).toEqual({ id: 'WAW123M', pointType: 'apm' });
-    expect(mapShoperPickupPoint('POZ08A')).toEqual({ id: 'POZ08A', pointType: 'apm' });
+  it('should leave a bare locker code untyped rather than guess the carrier', () => {
+    expect(mapShoperPickupPoint('WAW123M')).toEqual({ id: 'WAW123M' });
+  });
+
+  it('should not classify a lowercase pop- prefix, which was never seen live', () => {
+    expect(mapShoperPickupPoint('pop-waw579')).toEqual({ id: 'pop-waw579' });
   });
 
   it('should trim the id and leave the type out when the id settles nothing', () => {

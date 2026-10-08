@@ -91,30 +91,27 @@ function nonEmpty(raw: string | null | undefined): string | undefined {
   return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : undefined;
 }
 
-/** InPost locker (APM) code: three letters, two to four digits, an optional letter (`WAW123M`). */
-const LOCKER_CODE_RE = /^[A-Z]{3}\d{2,4}[A-Z]?$/;
+/** Prefix of a pickup-point (POP) id, case-sensitive as seen live (`POP-WAW579`). */
+const POP_ID_PREFIX = 'POP-';
 
 /**
- * The pickup point the buyer chose at checkout (#3711 follow-up), from the order's
- * top-level `pickup_point` (`"POP-WAW579"`, verified live), or `undefined` when the
- * order carries none.
+ * The pickup point the buyer chose at checkout (#3720), from the order's top-level
+ * `pickup_point` (`"POP-WAW579"`, verified live), or `undefined` when the order
+ * carries none.
  *
  * The id is carried verbatim (trimmed) - Shoper sends only the code, so no label is
- * invented. `pointType` is set only where the id itself settles it (a `POP-` prefix
- * is a pickup point, a bare locker code is a locker) and omitted otherwise, since a
- * wrong classification would send the shipment to the wrong kind of point.
- * Anything that is not a non-empty string reads as no point.
+ * invented. `pointType` is set only for the `POP-` prefix, the one shape verified
+ * live. A bare code is left untyped: Shoper serves several carriers, so inferring a
+ * locker from the code's shape would be an InPost guess that could send the shipment
+ * to the wrong kind of point. Anything that is not a non-empty string reads as no point.
  */
 export function mapShoperPickupPoint(raw: unknown): OrderPickupPoint | undefined {
   const id = typeof raw === 'string' ? nonEmpty(raw) : undefined;
   if (id === undefined) {
     return undefined;
   }
-  if (/^POP-/i.test(id)) {
+  if (id.startsWith(POP_ID_PREFIX)) {
     return { id, pointType: 'pop' };
-  }
-  if (LOCKER_CODE_RE.test(id.toUpperCase())) {
-    return { id, pointType: 'apm' };
   }
   return { id };
 }
