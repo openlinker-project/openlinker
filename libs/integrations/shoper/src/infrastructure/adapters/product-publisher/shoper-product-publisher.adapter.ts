@@ -22,6 +22,13 @@
  *   - whatever Shoper itself rejects (duplicate code, invalid EAN, unknown
  *     category) is surfaced with the shop's own words.
  *
+ * It also implements `CategoryProvisioner` (#3713): the category path of the
+ * master product is mirrored onto the shop, creating whatever is missing. Shoper
+ * accepts a duplicate name under one parent and an unknown parent id, so the
+ * lookup before every create is the whole of the idempotency, and after a create
+ * the directory is read again so two publishes that raced settle on the same
+ * (lowest-id) node.
+ *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
  * the worker retries the job.
@@ -33,17 +40,26 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
   ProductPublishTargetNotFoundException,
+  type CategoryProvisioner,
   type DescriptionFormat,
+  type ProvisionCategoryCommand,
+  type ProvisionCategoryResult,
   type PublishProductCommand,
   type PublishProductResult,
   type ShopProductManagerPort,
 } from '@openlinker/core/listings';
+import type { Category } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
-import type { ShoperImageWriteBody } from '../../../domain/types/shoper-product-write.types';
+import type {
+  ShoperCategoryWriteBody,
+  ShoperImageWriteBody,
+} from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
+import { findShoperCategoryChild, joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
 import {
   buildShoperProductBody,
   parseShoperCategoryIds,
@@ -54,6 +70,7 @@ import { SHOPER_DESCRIPTION_FORMAT } from './shoper-description-format';
 
 const PRODUCTS_PATH = '/products';
 
+const CATEGORIES_PATH = '/categories';
 const IMAGES_PATH = '/product-images';
 
 /** A short, token-free reason for a warning. */
@@ -61,14 +78,17 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
+export class ShoperProductPublisherAdapter implements ShopProductManagerPort, CategoryProvisioner {
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
+  private readonly categoryReader: ShoperCategoryReader;
 
   constructor(
     private readonly client: ShoperHttpClient,
     private readonly shopContext: ShoperShopContextProvider,
     private readonly connection: Connection,
-  ) {}
+  ) {
+    this.categoryReader = new ShoperCategoryReader(client);
+  }
 
   getDescriptionFormat(): DescriptionFormat {
     return SHOPER_DESCRIPTION_FORMAT;
@@ -186,6 +206,83 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort {
       `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
     );
     return data.main_image !== null && data.main_image !== undefined;
+  }
+
+  async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {
+    if (cmd.path.length === 0) {
+      throw this.refuse('shoper_category_path_empty', 'There is no category path to create on Shoper.');
+    }
+    const { language } = await this.shopContext.get();
+    if (language.length === 0) {
+      throw this.refuse(
+        'shoper_language_unknown',
+        'The shop did not report a default language, so a category name cannot be addressed.',
+      );
+    }
+
+    // Every name is checked before anything is created: a path refused halfway
+    // would leave its first nodes behind in the shop.
+    const names = cmd.path.map((node) => node.name.trim());
+    if (names.some((name) => name.length === 0)) {
+      throw this.refuse('shoper_category_name_required', 'A category on the path has no name.');
+    }
+
+    let directory = await this.readCategories(language);
+    let parentId: string | null = null;
+    const createdPath: string[] = [];
+
+    for (const name of names) {
+      let id = findShoperCategoryChild(directory, parentId, name);
+      if (id === null) {
+        const createdId = await this.createCategory(parentId, name, language);
+        // Shoper does not refuse a duplicate name, so a publish racing this one may
+        // have created the same node. Looking again and taking the lowest id makes
+        // both settle on one; the loser's empty twin is left for the operator.
+        directory = await this.readCategories(language);
+        id = findShoperCategoryChild(directory, parentId, name) ?? createdId;
+        if (id === createdId) {
+          createdPath.push(createdId);
+        } else {
+          this.logger.warn(
+            `Shoper category "${name}" was created concurrently (connection ${this.connection.id}); ` +
+              `using ${id}, ${createdId} is an unused duplicate`,
+          );
+        }
+      }
+      parentId = id;
+    }
+
+    if (parentId === null) {
+      throw this.refuse('shoper_category_path_empty', 'There is no category path to create on Shoper.');
+    }
+    return {
+      destinationCategoryId: parentId,
+      ...(createdPath.length > 0 ? { createdPath } : {}),
+    };
+  }
+
+  private async readCategories(language: string): Promise<Category[]> {
+    const raw = await this.categoryReader.read();
+    return joinShoperCategories(raw.list, raw.tree, language).categories;
+  }
+
+  private async createCategory(parentId: string | null, name: string, language: string): Promise<string> {
+    const body: ShoperCategoryWriteBody = {
+      parent_id: parentId === null ? 0 : Number(parentId),
+      translations: { [language]: { name, active: 1 } },
+    };
+    const { data } = await this.client.post<unknown>(CATEGORIES_PATH, body);
+    const id = String(data);
+    if (!/^\d+$/.test(id)) {
+      // Refused, not retried as a network fault: the answer was readable, just not an id.
+      // A later publish is still safe, because the lookup before every create finds
+      // the category if Shoper did create it.
+      throw this.refuse(
+        'shoper_category_create_answer_unreadable',
+        'Shoper answered a category create without a category id. The category may have been created; publish again.',
+      );
+    }
+    return id;
   }
 
   private async create(body: unknown): Promise<string> {

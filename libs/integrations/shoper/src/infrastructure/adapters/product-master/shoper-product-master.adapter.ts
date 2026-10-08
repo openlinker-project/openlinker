@@ -45,14 +45,12 @@ import type { IdentifierMappingPort, Connection } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
-import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import type {
-  ShoperCategory,
-  ShoperCategoryTreeNode,
   ShoperProduct,
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
+import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
 import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
 import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
 import type { ShoperOptionEntry, ShoperOptionTableProvider } from '../../shop-context/shoper-option-table.provider';
@@ -86,6 +84,7 @@ const SHOPER_ID = /^\d+$/;
 export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
+  private readonly categoryReader: ShoperCategoryReader;
   private readonly productReader: ShoperProductReader;
 
   constructor(
@@ -100,6 +99,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     productReader: ShoperProductReader,
   ) {
     this.productReader = productReader;
+    this.categoryReader = new ShoperCategoryReader(client);
   }
 
   // ─── Read methods ──────────────────────────────────────────────────────────
@@ -259,18 +259,8 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   }
 
   private async loadCategoryDirectory(): Promise<Category[]> {
-    const [tree, list, ctx] = await Promise.all([
-      this.client.get<ShoperCategoryTreeNode[]>('/categories-tree'),
-      this.fetchAllCategories(),
-      this.shopContext.get(),
-    ]);
-    // A legitimately empty tree is `[]`. Anything else that is not an array is
-    // an unreadable answer, and reading it as "no structure" would return every
-    // category as an unplaced root, dressed up as the real directory.
-    if (!Array.isArray(tree.data)) {
-      throw new ShoperNetworkError('Shoper returned an unreadable category tree');
-    }
-    const joined = joinShoperCategories(list, tree.data, ctx.language);
+    const [raw, ctx] = await Promise.all([this.categoryReader.read(), this.shopContext.get()]);
+    const joined = joinShoperCategories(raw.list, raw.tree, ctx.language);
     if (joined.unnamedIds.length > 0) {
       this.logger.warn(
         `Shoper categories with no name in any language, skipped: ${joined.unnamedIds.join(',')} ` +
@@ -448,21 +438,6 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       products.push({ ...mapShoperProduct(raw, ctx), id: internalId });
     }
     return products;
-  }
-
-  private async fetchAllCategories(): Promise<ShoperCategory[]> {
-    const categories: ShoperCategory[] = [];
-    for (let page = 1; ; page += 1) {
-      const result = await fetchShoperPage<ShoperCategory>(this.client, '/categories', {
-        page,
-        limit: SHOPER_MAX_PAGE_SIZE,
-        query: { order: 'category_id ASC' },
-      });
-      categories.push(...result.items);
-      if (page >= result.pages) {
-        return categories;
-      }
-    }
   }
 
   /** Exhausts every page of a product's stocks (a product may have more than 50 variants). */
