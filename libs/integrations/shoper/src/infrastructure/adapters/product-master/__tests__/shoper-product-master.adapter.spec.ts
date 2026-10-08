@@ -4,6 +4,9 @@ import { ShoperNetworkError } from '../../../../domain/exceptions/shoper-network
 import { ShoperNotMappedException } from '../../../../domain/exceptions/shoper-not-mapped.exception';
 import { ShoperNotSupportedException } from '../../../../domain/exceptions/shoper-not-supported.exception';
 import {
+  LIVE_OPTION_COLOUR,
+  LIVE_OPTION_VALUES,
+  LIVE_VARIANT_STOCKS,
   MAP_CONTEXT,
   buildProduct,
   buildStock,
@@ -12,6 +15,7 @@ import {
 import { ShoperProductReader } from '../../../readers/shoper-product.reader';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
+import { ShoperOptionTableProvider } from '../../../shop-context/shoper-option-table.provider';
 import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
 import {
   MasterProductNotFoundError,
@@ -32,6 +36,12 @@ interface Harness {
   };
   taxTable: { get: jest.Mock };
 }
+
+/**
+ * The live-captured stocks of product 127, re-pointed at this spec's product 93: the
+ * adapter drops rows of another product, and the mapping above resolves 93.
+ */
+const LIVE_STOCKS_OF_PRODUCT_93 = LIVE_VARIANT_STOCKS.map((s) => ({ ...s, product_id: '93' }));
 
 /** The live trial shop's /taxes table. */
 const TAX_TABLE = new Map(
@@ -69,6 +79,7 @@ function setup(): Harness {
     mapping as unknown as IdentifierMappingPort,
     { get: () => Promise.resolve(MAP_CONTEXT) } as unknown as ShoperShopContextProvider,
     taxTable as unknown as ShoperTaxTableProvider,
+    new ShoperOptionTableProvider({ get } as unknown as ShoperHttpClient),
     { id: CONNECTION_ID } as Connection,
     new ShoperProductReader({ get } as unknown as ShoperHttpClient, CONNECTION_ID),
   );
@@ -542,6 +553,53 @@ describe('ShoperProductMasterAdapter', () => {
 
       expect(variants.map((v) => v.id)).toEqual(['ol_181']);
       expect(variants.every((v) => v.productId === 'ol_product_1')).toBe(true);
+    });
+
+    it('should map the live multi-variant product options to attributes, and a simple stock to null', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope(LIVE_STOCKS_OF_PRODUCT_93),
+        '/options/10': LIVE_OPTION_COLOUR,
+        '/option-values': envelope(LIVE_OPTION_VALUES),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.attributes])).toEqual([
+        ['ol_215', null],
+        ['ol_217', { Kolor: 'biszkoptowy' }],
+        ['ol_218', { Kolor: 'Shoper blue' }],
+      ]);
+      // One option is read once for both siblings that use it.
+      expect(get.mock.calls.filter(([path]) => path === '/options/10')).toHaveLength(1);
+    });
+
+    it('should sync a variant with null attributes, not fail, when its option cannot be read', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string) => {
+        if (path === '/product-stocks') {
+          return Promise.resolve({ status: 200, data: envelope([LIVE_STOCKS_OF_PRODUCT_93[1]]) });
+        }
+        if (path === '/options/10') return Promise.reject(new ShoperApiError(404, 'invalid_request'));
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants).toHaveLength(1);
+      expect(variants[0].attributes).toBeNull();
+    });
+
+    it('should propagate a transport failure on an option read instead of wiping attributes', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string) => {
+        if (path === '/product-stocks') {
+          return Promise.resolve({ status: 200, data: envelope([LIVE_STOCKS_OF_PRODUCT_93[1]]) });
+        }
+        return Promise.reject(new ShoperNetworkError('connection reset'));
+      });
+
+      await expect(adapter.getProductVariants('ol_product_1')).rejects.toThrow('connection reset');
     });
 
     it('should not mint a synthetic variant for a simple product', async () => {

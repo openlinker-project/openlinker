@@ -60,8 +60,28 @@ export interface ShoperStock {
   readonly default: string | null;
   readonly code: string | null;
   readonly ean: string | null;
-  /** Variant option values. Shape not live-verified: the trial shop has no multi-variant product. */
-  readonly options: readonly unknown[];
+  /** Variant option values; see {@link ShoperStockOptions}. */
+  readonly options: ShoperStockOptions;
+}
+
+/**
+ * `options` of a `product-stocks` row, verified live (product 127, 5 Oct 2026):
+ * `{ "<option_id>": "<ovalue_id>" }` - IDS ONLY, the names live in `/options` and
+ * `/option-values`. A stock with no options carries `[]` (PHP's empty array), not `{}`.
+ */
+export type ShoperStockOptions = Readonly<Record<string, string>> | readonly [];
+
+/** A `GET /options/:id` row (an option such as "Kolor"); only what the mapper reads. */
+export interface ShoperOption {
+  readonly option_id: string;
+  readonly translations: Readonly<Record<string, { readonly name?: string | null }>>;
+}
+
+/** A `GET /option-values` row (a value such as "biszkoptowy"); only what the mapper reads. */
+export interface ShoperOptionValue {
+  readonly ovalue_id: string;
+  readonly option_id: string;
+  readonly translations: Readonly<Record<string, { readonly value?: string | null }>>;
 }
 
 /** A `products` row. The list endpoint embeds the same shape, `stock` included. */
@@ -75,7 +95,8 @@ export interface ShoperProduct {
   readonly translations: Readonly<Record<string, ShoperProductTranslation>>;
   readonly main_image: ShoperMainImage | null;
   readonly stock: ShoperStock | null;
-  readonly options: readonly unknown[];
+  /** Ids of the product's non-default stocks (live: `[217, 218]`) - not option data. */
+  readonly options: readonly number[];
 }
 
 /** Per-language text of a category. */
