@@ -41,6 +41,7 @@ import type {
   RawFa3Xml,
   SellerProfile,
 } from '../../fa3/domain/fa3-xml.types';
+import type { NbpExchangeRateResolverPort } from '../../fx/nbp-exchange-rate.types';
 
 const SELLER: SellerProfile = {
   nip: '1234567890',
@@ -598,6 +599,38 @@ describe('KsefInvoicingAdapter', () => {
       expect(built?.correction?.correctedLines?.[0]?.quantity).toBe(1);
     });
 
+    it('should use the buyerOverride buyer for the KOR when supplied (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const override = new BuyerProfile(
+        'Corrected Buyer Sp. z o.o.',
+        { scheme: 'pl-nip', value: '5252248481' },
+        { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
+        'company',
+      );
+
+      await adapter(http, builder).issueCorrection(correctionCommand({ buyerOverride: override }));
+
+      const built = lastInput();
+      // The KOR carries the OVERRIDE buyer, not the original snapshot's buyer.
+      expect(built?.buyerName).toBe('Corrected Buyer Sp. z o.o.');
+      expect(built?.buyer).toEqual({ kind: 'nip', nip: '5252248481' });
+    });
+
+    it('should fall back to the original snapshot buyer when no buyerOverride is supplied (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(correctionCommand());
+
+      const built = lastInput();
+      expect(built?.buyerName).toBe('Klient Sp. z o.o.');
+      expect(built?.buyer).toEqual({ kind: 'nip', nip: '9876543210' });
+    });
+
     it('should use the core-allocated correction-series documentNumber as the KOR P_2 (#1575)', async () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
@@ -754,6 +787,42 @@ describe('KsefInvoicingAdapter', () => {
 
       expect(result.regulatoryStatus).toBe('submitted');
       expect(result.clearanceReference).toBeNull();
+    });
+
+    it('should capture the authority rejection detail as clearanceDetail (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: {
+          status: {
+            code: 440,
+            description: 'Weryfikacja negatywna',
+            details: ['NIP nabywcy niepoprawny'],
+          },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('rejected');
+      expect(result.clearanceDetail).toContain('440');
+      expect(result.clearanceDetail).toContain('Weryfikacja negatywna');
+      expect(result.clearanceDetail).toContain('NIP nabywcy niepoprawny');
+    });
+
+    it('should not set clearanceDetail on a non-rejection (submitted) read (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: { status: { code: 150, description: 'W trakcie przetwarzania' } },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('submitted');
+      expect(result.clearanceDetail ?? null).toBeNull();
     });
 
     it('should return rejected (terminal) on a known business-rejection code (440)', async () => {
@@ -1285,6 +1354,80 @@ describe('KsefInvoicingAdapter', () => {
       });
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('foreign-currency PLN/VAT conversion (art. 106e ust. 11, #1581)', () => {
+    function fakeResolver(): NbpExchangeRateResolverPort & { resolveRate: jest.Mock } {
+      return {
+        resolveRate: jest
+          .fn()
+          .mockResolvedValue({ rate: 4.5, rateDate: '2026-06-22', table: '119/A/NBP/2026' }),
+      };
+    }
+
+    function adapterWithFx(
+      http: FakeKsefHttpClient,
+      builder: IFa3XmlBuilder,
+      resolver: NbpExchangeRateResolverPort,
+    ): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', http, fakeCrypto(), builder, SELLER, {
+        now: () => new Date('2026-06-23T10:00:00.000Z'),
+        exchangeRateResolver: resolver,
+      });
+    }
+
+    it('should resolve the NBP rate and thread it onto the builder input for a non-PLN invoice', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(command({ currency: 'EUR' }));
+
+      // Tax point for a plain invoice with no saleDate = the issue date (now).
+      expect(resolver.resolveRate).toHaveBeenCalledWith('EUR', '2026-06-23');
+      expect(lastInput()?.exchangeRate).toEqual({
+        rate: 4.5,
+        rateDate: '2026-06-22',
+        table: '119/A/NBP/2026',
+      });
+    });
+
+    it('should key the correction rate to the ORIGINAL issue date (immutable historical rate)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(
+        command({
+          currency: 'EUR',
+          documentType: 'corrected',
+          correction: {
+            originalClearanceReference: null,
+            originalDocumentNumber: 'FV/2026/05/0042',
+            originalIssueDate: '2026-05-01',
+            reason: 'Return',
+            correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '23' }],
+          },
+        }),
+      );
+
+      // Not the KOR's own issue date (2026-06-23) — the original document's.
+      expect(resolver.resolveRate).toHaveBeenCalledWith('EUR', '2026-05-01');
+    });
+
+    it('should NOT resolve a rate for a PLN invoice', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(command({ currency: 'PLN' }));
+
+      expect(resolver.resolveRate).not.toHaveBeenCalled();
+      expect(lastInput()?.exchangeRate).toBeUndefined();
     });
   });
 });

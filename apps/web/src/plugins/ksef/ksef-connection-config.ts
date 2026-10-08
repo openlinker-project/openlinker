@@ -28,7 +28,7 @@
 import { z } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readConfigString, readOptionalConfigString } from '../../shared/plugins';
-import { normalizeNip } from './lib/ksef-nip';
+import { normalizeNip, isValidNipChecksum } from './lib/ksef-nip';
 import { normalizeNrRb } from './lib/ksef-nrb';
 import { applyKsefSellerToConfig, type KsefSellerProfileInput } from './lib/ksef-seller-config';
 import { applyKsefPaymentToConfig, type KsefPaymentInput } from './lib/ksef-payment-config';
@@ -100,6 +100,10 @@ const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
         .transform(normalizeNip)
         .refine((v) => v === '' || /^\d{10}$/.test(v), {
           message: 'Seller NIP must be 10 digits.',
+        })
+        // mod-11 check digit (#1595) - parity with the create wizard.
+        .refine((v) => v === '' || isValidNipChecksum(v), {
+          message: 'Seller NIP has an invalid checksum.',
         }),
       z.literal(''),
     ])

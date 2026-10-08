@@ -168,6 +168,7 @@ One pointer per section, identical format every time.
 | [ADR-074](./074-fulfillment-work-pre-assignment.md) | Pre-assigning a `FulfillmentWork` to a packer | Proposed | 2026-09-21 |
 | [ADR-075](./075-per-destination-relay-claims.md) | Per-destination relay claims | Proposed | 2026-09-25 |
 | [ADR-076](./076-frontend-display-derivation-over-server-vocabularies.md) | A frontend may derive a display sentence from server-owned vocabularies, never legality | Accepted | 2026-09-28 |
+| [ADR-077](./077-neutral-fiscal-annotation-flags.md) | Neutral fiscal-annotation flags on the invoicing command (cash-basis/self-billing/split-payment/margin/exemption/triangulation) - provider maps to FA(3) Adnotacje | Accepted | 2026-07-15 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

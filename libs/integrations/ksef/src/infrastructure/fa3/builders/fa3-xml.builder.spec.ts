@@ -85,6 +85,47 @@ describe('buildFa3Xml', () => {
     expect(buildFa3Xml(b2bInput())).toContain('<RodzajFaktury>VAT</RodzajFaktury>');
   });
 
+  describe('address city/postcode + JST/GV (#1580)', () => {
+    it('folds postalCode + city into the buyer AdresL2 (art. 106e ust. 1 pkt 3)', () => {
+      const xml = buildFa3Xml(b2bInput());
+      // Buyer AdresL1 = street, AdresL2 = "postalCode city" — both now present.
+      expect(xml).toContain('<AdresL1>Main St 5</AdresL1>');
+      expect(xml).toContain('<AdresL2>10115 Berlin</AdresL2>');
+    });
+
+    it('folds seller postalCode + city into the seller AdresL2', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<AdresL1>ul. Testowa 1</AdresL1>');
+      expect(xml).toContain('<AdresL2>00-001 Warszawa</AdresL2>');
+    });
+
+    it('joins a supplementary line2 onto AdresL1 while postcode+city stay on AdresL2', () => {
+      const input = b2bInput();
+      input.buyerAddress = { ...input.buyerAddress, line2: 'Suite 4' };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<AdresL1>Main St 5, Suite 4</AdresL1>');
+      expect(xml).toContain('<AdresL2>10115 Berlin</AdresL2>');
+    });
+
+    it('defaults JST/GV to 2 ("does not apply") when the buyer flags are absent', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<JST>2</JST>');
+      expect(xml).toContain('<GV>2</GV>');
+    });
+
+    it('emits JST=1 when the buyer is flagged a public-sector entity', () => {
+      const xml = buildFa3Xml({ ...b2bInput(), buyerIsPublicSectorEntity: true });
+      expect(xml).toContain('<JST>1</JST>');
+      expect(xml).toContain('<GV>2</GV>');
+    });
+
+    it('emits GV=1 when the buyer is flagged a VAT-group member', () => {
+      const xml = buildFa3Xml({ ...b2bInput(), buyerIsVatGroupMember: true });
+      expect(xml).toContain('<JST>2</JST>');
+      expect(xml).toContain('<GV>1</GV>');
+    });
+  });
+
   it('should emit the required Adnotacje children with "nothing special" defaults', () => {
     const xml = buildFa3Xml(b2bInput());
     // The five TWybor1_2 flags default to "2" (no).
@@ -97,6 +138,70 @@ describe('buildFa3Xml', () => {
     expect(xml).toContain('<Zwolnienie><P_19N>1</P_19N></Zwolnienie>');
     expect(xml).toContain('<NoweSrodkiTransportu><P_22N>1</P_22N></NoweSrodkiTransportu>');
     expect(xml).toContain('<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>');
+  });
+
+  describe('Adnotacje classification (#1580)', () => {
+    it('keeps the all-negative default for a plain standard-rate invoice', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).toContain('<P_16>2</P_16>');
+      expect(xml).toContain('<P_18>2</P_18>');
+      expect(xml).toContain('<Zwolnienie><P_19N>1</P_19N></Zwolnienie>');
+      expect(xml).toContain('<PMarzy><P_PMarzyN>1</P_PMarzyN></PMarzy>');
+      expect(() => validateFa3Xml(buildFa3Xml(b2bInput()))).not.toThrow();
+    });
+
+    it('emits the PMarzy yes-branch (used-goods sub-kind) when marginScheme is set', () => {
+      const xml = buildFa3Xml({ ...b2bInput(), marginScheme: true });
+      expect(xml).toContain('<PMarzy><P_PMarzy>1</P_PMarzy><P_PMarzy_3_1>1</P_PMarzy_3_1></PMarzy>');
+      expect(xml).not.toContain('<P_PMarzyN>');
+      expect(() => validateFa3Xml(buildFa3Xml({ ...b2bInput(), marginScheme: true }))).not.toThrow();
+    });
+
+    it('flips the Zwolnienie group to its yes-branch when a line is VAT-exempt (zw)', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        lines: [{ name: 'Used book', quantity: 1, unitPriceGross: 50, p12: 'zw' }],
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toMatch(/<Zwolnienie><P_19>1<\/P_19><P_19C>[^<]+<\/P_19C><\/Zwolnienie>/);
+      expect(xml).not.toContain('<P_19N>');
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+
+    it('carries the operator exemptionLegalBasis text into P_19C', () => {
+      const xml = buildFa3Xml({
+        ...b2bInput(),
+        lines: [{ name: 'Exempt service', quantity: 1, unitPriceGross: 100, p12: 'zw' }],
+        exemptionLegalBasis: 'art. 43 ust. 1 pkt 1 ustawy o VAT',
+      });
+      expect(xml).toContain('<P_19C>art. 43 ust. 1 pkt 1 ustawy o VAT</P_19C>');
+    });
+
+    it('sets P_18 (reverse charge) from a line carrying the oo band', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        lines: [{ name: 'Reverse-charge good', quantity: 1, unitPriceGross: 200, p12: 'oo' }],
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_18>1</P_18>');
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
+
+    it('emits each operator flag on its yes-branch when set (P_16/P_17/P_18A/P_23)', () => {
+      const input: Fa3BuilderInput = {
+        ...b2bInput(),
+        cashAccounting: true,
+        selfBilling: true,
+        splitPayment: true,
+        triangulation: true,
+      };
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<P_16>1</P_16>');
+      expect(xml).toContain('<P_17>1</P_17>');
+      expect(xml).toContain('<P_18A>1</P_18A>');
+      expect(xml).toContain('<P_23>1</P_23>');
+      expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
+    });
   });
 
   it('should emit Fa children in schema order (P_15 → Adnotacje → RodzajFaktury → FaWiersz)', () => {
@@ -177,6 +282,30 @@ describe('buildFa3Xml', () => {
       expect(xml).toContain('<RodzajFaktury>KOR</RodzajFaktury>');
       expect(xml).toContain('<TypKorekty>2</TypKorekty>');
       expect(xml).toContain('<PrzyczynaKorekty>Customer returned 1 unit</PrzyczynaKorekty>');
+    });
+
+    it('should OMIT PrzyczynaKorekty entirely when the reason is empty (#1582)', () => {
+      // minOccurs=0 + minLength=1: an empty element is invalid, so the builder
+      // omits it rather than emitting `<PrzyczynaKorekty></PrzyczynaKorekty>`.
+      const input = korInput('1111111111-20260501-ABCDEF-01');
+      input.correction!.reason = '';
+      const xml = buildFa3Xml(input);
+      expect(xml).not.toContain('<PrzyczynaKorekty>');
+      expect(xml).not.toContain('<PrzyczynaKorekty/>');
+    });
+
+    it('should OMIT PrzyczynaKorekty when the reason is only whitespace (#1582)', () => {
+      const input = korInput('1111111111-20260501-ABCDEF-01');
+      input.correction!.reason = '   ';
+      const xml = buildFa3Xml(input);
+      expect(xml).not.toContain('<PrzyczynaKorekty>');
+    });
+
+    it('should trim the reason it emits (#1582)', () => {
+      const input = korInput('1111111111-20260501-ABCDEF-01');
+      input.correction!.reason = '  wrong NIP  ';
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<PrzyczynaKorekty>wrong NIP</PrzyczynaKorekty>');
     });
 
     it('should emit the NrKSeF flag + NrKSeFFaKorygowanej pair when the original was a KSeF invoice', () => {
@@ -625,6 +754,123 @@ describe('buildFa3Xml', () => {
       expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
     });
   });
+
+  describe('foreign-currency PLN/VAT conversion (art. 106e ust. 11, #1581)', () => {
+    function eurMultiBandInput(): Fa3BuilderInput {
+      return {
+        ...b2bInput(),
+        currency: 'EUR',
+        saleDate: '2026-06-20',
+        lines: [
+          { name: 'Standard widget', quantity: 1, unitPriceGross: 123.0, p12: '23' },
+          { name: 'Reduced book', quantity: 2, unitPriceGross: 54.0, p12: '8' },
+          { name: 'Super-reduced food', quantity: 1, unitPriceGross: 21.0, p12: '5' },
+        ],
+        exchangeRate: { rate: 4.321, rateDate: '2026-06-19', table: '117/A/NBP/2026' },
+      };
+    }
+
+    it('should emit KursWaluty (4dp) on every FaWiersz line for a non-PLN invoice', () => {
+      const xml = buildFa3Xml(eurMultiBandInput());
+      // 3 lines → 3 KursWaluty elements, each the resolved NBP rate at 4dp.
+      expect(xml.match(/<KursWaluty>4\.3210<\/KursWaluty>/g)?.length).toBe(3);
+    });
+
+    it('should emit the per-band PLN-converted VAT amounts (P_14_xW)', () => {
+      const xml = buildFa3Xml(eurMultiBandInput());
+      // 23%: VAT 23.00 EUR × 4.3210 = 99.383 → 99.38 PLN
+      expect(xml).toContain('<P_14_1>23.00</P_14_1><P_14_1W>99.38</P_14_1W>');
+      // 8%: VAT 8.00 EUR × 4.3210 = 34.568 → 34.57 PLN
+      expect(xml).toContain('<P_14_2>8.00</P_14_2><P_14_2W>34.57</P_14_2W>');
+      // 5%: VAT 1.00 EUR × 4.3210 = 4.321 → 4.32 PLN
+      expect(xml).toContain('<P_14_3>1.00</P_14_3><P_14_3W>4.32</P_14_3W>');
+    });
+
+    it('should place each P_14_xW immediately after its P_14_x (XSD band order)', () => {
+      const xml = buildFa3Xml(eurMultiBandInput());
+      expect(xml).toMatch(
+        /<P_13_1>[^<]*<\/P_13_1><P_14_1>[^<]*<\/P_14_1><P_14_1W>[^<]*<\/P_14_1W>/,
+      );
+    });
+
+    it('should pass the structural FA(3) validator for a multi-band non-PLN invoice', () => {
+      expect(() => validateFa3Xml(buildFa3Xml(eurMultiBandInput()))).not.toThrow();
+    });
+
+    it('should emit KursWaluty + P_14_xW on a foreign-currency correction (converted difference)', () => {
+      const input = eurMultiBandInput();
+      input.correction = {
+        typKorekty: '2',
+        reason: 'Return',
+        originalIssueDate: '2026-06-20',
+        originalInvoiceNumber: 'FV/2026/06/0001',
+        originalKsefNumber: null,
+        // After: the 23% line quantity drops to 0 (full return of that line).
+        correctedLines: [
+          { name: 'Standard widget', quantity: 0, unitPriceGross: 123.0, p12: '23' },
+          { name: 'Reduced book', quantity: 2, unitPriceGross: 54.0, p12: '8' },
+          { name: 'Super-reduced food', quantity: 1, unitPriceGross: 21.0, p12: '5' },
+        ],
+      };
+      const xml = buildFa3Xml(input);
+      // 23% band VAT difference: 0 − 23.00 = −23.00 EUR × 4.3210 = −99.38 PLN.
+      expect(xml).toContain('<P_14_1>-23.00</P_14_1><P_14_1W>-99.38</P_14_1W>');
+      expect(xml).toContain('<KursWaluty>4.3210</KursWaluty>');
+      expect(() => validateFa3Xml(xml)).not.toThrow();
+    });
+
+    it('should NOT emit KursWaluty or P_14_xW for a PLN invoice', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).not.toContain('<KursWaluty>');
+      expect(xml).not.toContain('P_14_1W');
+    });
+  });
+  describe('per-line GTU / Procedura markers (#1586)', () => {
+    it('should emit GTU and Procedura on a line when present', () => {
+      const input = b2bInput();
+      input.lines = [
+        { name: 'Flagged goods', quantity: 1, unitPriceGross: 123, p12: '23', gtuCode: 'GTU_01', procedureCode: 'SW' },
+      ];
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<GTU>GTU_01</GTU>');
+      expect(xml).toContain('<Procedura>SW</Procedura>');
+    });
+
+    it('should omit GTU and Procedura when absent', () => {
+      const xml = buildFa3Xml(b2bInput());
+      expect(xml).not.toContain('<GTU>');
+      expect(xml).not.toContain('<Procedura>');
+    });
+
+    it('should position GTU/Procedura after P_12 and before KursWaluty (XSD order)', () => {
+      const input = b2bInput();
+      input.currency = 'EUR';
+      input.exchangeRate = { rate: 4.321, rateDate: '2026-06-20', table: 'A/120/2026' };
+      input.lines = [
+        { name: 'Flagged goods', quantity: 1, unitPriceGross: 123, p12: '23', gtuCode: 'GTU_01', procedureCode: 'SW' },
+      ];
+      const xml = buildFa3Xml(input);
+      const p12 = xml.indexOf('<P_12>');
+      const gtu = xml.indexOf('<GTU>');
+      const proc = xml.indexOf('<Procedura>');
+      const kurs = xml.indexOf('<KursWaluty>');
+      expect(p12).toBeLessThan(gtu);
+      expect(gtu).toBeLessThan(proc);
+      expect(proc).toBeLessThan(kurs);
+      // Structural validator agrees the FaWiersz child order is XSD-legal.
+      expect(() => validateFa3Xml(xml)).not.toThrow();
+    });
+
+    it('should keep a validatable document with only GTU set', () => {
+      const input = b2bInput();
+      input.lines = [{ name: 'Widget', quantity: 1, unitPriceGross: 123, p12: '23', gtuCode: 'GTU_07' }];
+      const xml = buildFa3Xml(input);
+      expect(xml).toContain('<GTU>GTU_07</GTU>');
+      expect(xml).not.toContain('<Procedura>');
+      expect(() => validateFa3Xml(xml)).not.toThrow();
+    });
+  });
+
 });
 
 describe('unit-price precision (#2251)', () => {

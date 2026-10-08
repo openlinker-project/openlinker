@@ -103,7 +103,8 @@ import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
 import type { KsefSessionCryptoService } from '../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext } from '../http/ksef-crypto.types';
 import type { IFa3XmlBuilder } from '../fa3/builders/fa3-xml-builder.port';
-import type { Fa3PaymentInput, SellerProfile } from '../fa3/domain/fa3-xml.types';
+import type { Fa3ExchangeRate, Fa3PaymentInput, SellerProfile } from '../fa3/domain/fa3-xml.types';
+import type { NbpExchangeRateResolverPort } from '../fx/nbp-exchange-rate.types';
 import {
   FA3_FORM_CODE,
   FA3_SCHEMA_VERSION,
@@ -112,6 +113,7 @@ import {
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
 import { describeFa3LineAmounts } from '../fa3/builders/fa3-xml.builder';
 import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
+import { assertCrossBorderHandled } from '../fa3/domain/fa3-cross-border-guard';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
 import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
@@ -167,6 +169,13 @@ const DEFAULT_UPO_CONTENT_TYPE = 'application/xml';
  */
 const MAX_LOGGED_ERROR_LENGTH = 500;
 
+/**
+ * Upper bound on the neutral `clearanceDetail` diagnostic (#1582) persisted to
+ * the projection and shown to operators. Bounds an unexpectedly verbose
+ * authority payload from bloating the row / detail page.
+ */
+const MAX_CLEARANCE_DETAIL_LENGTH = 500;
+
 export class KsefInvoicingAdapter
   implements
     InvoicingPort,
@@ -219,6 +228,19 @@ export class KsefInvoicingAdapter
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   private readonly now: () => Date;
 
+  /**
+   * Interim cross-border escape hatch (#1586). `true` skips the
+   * `assertCrossBorderHandled` guard; defaults to `false` (refuse cross-border).
+   */
+  private readonly allowCrossBorder: boolean;
+
+  /**
+   * NBP exchange-rate resolver (#1581) for the art. 106e ust. 11 PLN/VAT
+   * conversion of foreign-currency invoices. `undefined` in bare unit specs;
+   * the factory always wires the concrete client.
+   */
+  private readonly exchangeRateResolver: NbpExchangeRateResolverPort | undefined;
+
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IKsefHttpClient,
@@ -237,6 +259,8 @@ export class KsefInvoicingAdapter
     this.defaultTaxRate = options.defaultTaxRate;
     this.now = options.now ?? ((): Date => new Date());
     this.numberingTimeZone = options.numberingTimeZone ?? DEFAULT_NUMBERING_TIME_ZONE;
+    this.exchangeRateResolver = options.exchangeRateResolver;
+    this.allowCrossBorder = options.allowCrossBorder ?? false;
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
@@ -250,6 +274,19 @@ export class KsefInvoicingAdapter
     // correction, or a correction without the corrected type) would silently emit
     // the wrong document. Assert the two agree, terminally, before any build/send.
     this.assertCorrectionConsistency(cmd);
+    // Interim cross-border guard (#1586): refuse a sale to a country other than
+    // the seller's own before any build/send, unless the connection opted in.
+    // The pipeline cannot yet select the correct WDT/export/`np`/OSS tax band
+    // from the buyer country, so issuing would emit a silently-wrong
+    // domestic-rate document. A terminal fault - the service marks the record
+    // failed (no retry). See FA3_IMPLEMENTATION_NOTES.md for the deferred
+    // per-order band-selection follow-up.
+    assertCrossBorderHandled(
+      this.seller.address.countryIso2,
+      cmd.buyer.address.countryIso2,
+      this.allowCrossBorder,
+      cmd.lines.every((line) => line.taxRate.trim().length > 0),
+    );
 
     // Single issuance instant (#1692): the core `InvoiceService` threads ONE
     // `issuedAt` so the FA(3) `P_1` (legal issue date) and the allocated `P_2`
@@ -269,6 +306,12 @@ export class KsefInvoicingAdapter
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
 
+    // Foreign-currency PLN/VAT conversion (art. 106e ust. 11, #1581): resolve the
+    // NBP average rate for the last business day preceding the tax point. Resolved
+    // BEFORE any session opens so a resolution failure fails the record (compliance
+    // over availability) rather than emitting a conversion-less document.
+    const exchangeRate = await this.resolveExchangeRate(cmd, issuedAt);
+
     // 1. neutral → FA(3) (C4). Deterministic build faults throw the mapper's own
     //    typed exceptions; the service maps those to a failed record (no retry).
     const builderInput = mapToFa3BuilderInput(cmd, {
@@ -285,6 +328,7 @@ export class KsefInvoicingAdapter
         : { defaultTaxRate: this.defaultTaxRate }),
       defaultLineUnit: this.defaultLineUnit,
       payment: this.payment,
+      ...(exchangeRate !== undefined ? { exchangeRate } : {}),
     });
     const xml = this.fa3Builder.build(builderInput);
     // #2251: KSeF has nothing external to copy back - OpenLinker builds the
@@ -376,6 +420,48 @@ export class KsefInvoicingAdapter
       sourceDocument: this.toSourceDocument(xml),
       documentLines,
     };
+  }
+
+  /**
+   * Resolve the foreign-currency exchange rate for the art. 106e ust. 11 PLN/VAT
+   * conversion (#1581). Returns `undefined` for a PLN invoice (no conversion
+   * needed) or when no resolver is wired (bare unit specs).
+   *
+   * RATE TIMING (snapshot-vs-fresh decision): the rate is resolved FRESH at issue
+   * time, keyed to the document's tax point. For a plain invoice the tax point is
+   * `saleDate ?? issueDate`; for a CORRECTION it is deliberately the ORIGINAL
+   * document's issue date, NOT the KOR's own (later) issue date. Because NBP
+   * publishes immutable historical rates, re-resolving a correction against the
+   * original tax point returns the exact same rate the original was issued at —
+   * giving snapshot-equivalent "as issued" consistency (#1297 philosophy) WITHOUT
+   * persisting the rate on the country-agnostic core snapshot (ADR-026 keeps all
+   * NBP/PLN vocabulary inside this package).
+   */
+  private async resolveExchangeRate(
+    cmd: IssueInvoiceCommand,
+    issuedAt: Date,
+  ): Promise<Fa3ExchangeRate | undefined> {
+    const currency = cmd.currency.trim().toUpperCase();
+    if (currency === 'PLN') {
+      return undefined;
+    }
+    if (!this.exchangeRateResolver) {
+      this.logger.warn(
+        `KSeF document (connection ${this.connectionId}, order ${cmd.orderId}) is in ${currency} ` +
+          'but no NBP exchange-rate resolver is wired — skipping the art. 106e ust. 11 PLN/VAT ' +
+          'conversion (KursWaluty / P_14_xW will be absent).',
+      );
+      return undefined;
+    }
+    const taxPoint = cmd.correction
+      ? cmd.correction.originalIssueDate
+      : cmd.saleDate ?? this.toIsoDate(issuedAt);
+    const resolved = await this.exchangeRateResolver.resolveRate(currency, taxPoint);
+    this.logger.log(
+      `Resolved NBP rate ${resolved.rate} for ${currency} (table ${resolved.table}, ` +
+        `${resolved.rateDate}; tax point ${taxPoint}) for connection ${this.connectionId}`,
+    );
+    return { rate: resolved.rate, rateDate: resolved.rateDate, table: resolved.table };
   }
 
   /**
@@ -769,6 +855,10 @@ export class KsefInvoicingAdapter
     // allocated from the connection's CORRECTION series and passed as
     // `cmd.documentNumber`. Threaded onto the delegated `issueInvoice` so the KOR
     // carries a distinct, series-owned number — no per-correction suffix hack.
+    // #1582: a buyer-identity correction (e.g. a wrong NIP on the original) sends
+    // the OVERRIDE buyer on the KOR instead of the original snapshot's buyer.
+    // Neutral - the adapter just prefers the override when present (ADR-026).
+    const correctionBuyer = cmd.buyerOverride ?? cmd.originalDocument.buyer;
     const issueCmd: IssueInvoiceCommand = {
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,
@@ -776,7 +866,7 @@ export class KsefInvoicingAdapter
       // Thread the single issuance instant (#1692) onto the delegated issue so
       // the KOR's `P_1` matches the instant its correction number was allocated at.
       issuedAt: cmd.issuedAt,
-      buyer: cmd.originalDocument.buyer,
+      buyer: correctionBuyer,
       currency: cmd.originalDocument.currency,
       // Deliberately the UNMODIFIED original lines, NOT `correctedLines` — per
       // `CorrectionReference`'s contract, the command's top-level `lines` carry
@@ -921,7 +1011,14 @@ export class KsefInvoicingAdapter
 
     if (regulatoryStatus !== 'accepted') {
       // Non-terminal (submitted) or terminal-failure (rejected): no KSeF number yet.
-      return { regulatoryStatus, clearanceReference: null };
+      // On a REJECTED read, capture the authority's operator-facing diagnostic
+      // (#1582) so the detail page can explain WHY the document was refused -
+      // opaque to core (ADR-026); no KSeF vocabulary crosses the neutral shape.
+      const clearanceDetail =
+        regulatoryStatus === 'rejected'
+          ? this.formatClearanceDetail(response.data.status)
+          : null;
+      return { regulatoryStatus, clearanceReference: null, clearanceDetail };
     }
 
     return this.buildClearedStatus(response.data, sessionRef, invoiceRef);
@@ -978,6 +1075,32 @@ export class KsefInvoicingAdapter
    * for traceability. C8 (UPO download) resolves the UPO document from the
    * `clearanceReference` (KSeF number) the record already carries.
    */
+  /**
+   * Compose the neutral operator-facing rejection diagnostic (#1582) from KSeF's
+   * status block (`description` + optional `details[]`). Bounded and PII-free by
+   * construction on the KSeF side; the code is prefixed so the operator always
+   * has a stable anchor even when the authority omits free text. Returns a plain
+   * opaque string - core never parses it (ADR-026).
+   */
+  private formatClearanceDetail(status: InvoiceStatusResponse['status']): string {
+    const parts: string[] = [];
+    if (typeof status.description === 'string' && status.description.trim().length > 0) {
+      parts.push(status.description.trim());
+    }
+    if (Array.isArray(status.details)) {
+      for (const detail of status.details) {
+        if (typeof detail === 'string' && detail.trim().length > 0) {
+          parts.push(detail.trim());
+        }
+      }
+    }
+    const suffix = parts.length > 0 ? `: ${parts.join('; ')}` : '';
+    const detail = `KSeF status ${status.code}${suffix}`;
+    return detail.length <= MAX_CLEARANCE_DETAIL_LENGTH
+      ? detail
+      : `${detail.slice(0, MAX_CLEARANCE_DETAIL_LENGTH - 3)}...`;
+  }
+
   private async buildClearedStatus(
     data: InvoiceStatusResponse,
     sessionRef: string,

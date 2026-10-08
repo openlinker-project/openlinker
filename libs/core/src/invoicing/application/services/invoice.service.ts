@@ -1208,7 +1208,7 @@ export class InvoiceService implements IInvoiceService {
     if (!isCorrectionIssuer(adapter)) {
       // Adapter resolved but doesn't implement CorrectionIssuer: update the row
       // to failed (in-doubt) and throw so the caller can surface the 422.
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: 'Provider does not support correction issuance.',
         failureMode: 'rejected',
@@ -1255,9 +1255,9 @@ export class InvoiceService implements IInvoiceService {
       const failureCode = this.classifyFailureCode(error, failureMode);
       const failureReason = this.deriveFailureReason(failureCode);
       this.logger.warn(
-        `Correction issuance failed for record ${pending.id} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
+        `Correction issuance failed for record ${recordId} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
       );
-      await this.repo.updateOutcome(pending.id, {
+      await this.repo.updateOutcome(recordId, {
         status: 'failed',
         errorMessage: sanitized,
         failureMode,
@@ -1271,35 +1271,41 @@ export class InvoiceService implements IInvoiceService {
 
     const { record: issued, seller, sourceDocument, documentLines } = issueResult;
 
+    // #1582: the buyer captured on the correction's own snapshot is the OVERRIDE
+    // buyer when one was supplied (a buyer-identity correction), else the original
+    // document's buyer - so a correction-of-correction diffs against the buyer as
+    // actually corrected.
+    const correctionBuyer = cmd.buyerOverride ?? cmd.originalDocument?.buyer;
+
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
     // from the caller-assembled original snapshot (`cmd.originalDocument.lines`,
     // the "before" state) with the per-line deltas applied. Only when the caller
-    // supplied `originalDocument` (order still resolvable); absent → persist null
+    // supplied `originalDocument` (order still resolvable); absent -> persist null
     // and the next correction falls back to order-derived reconstruction.
     const correctedLines = cmd.originalDocument
       ? applyCorrectionDeltas(cmd.originalDocument.lines, cmd.lines)
       : null;
     const issuedLineSnapshot: IssuedLineSnapshot | null =
-      cmd.originalDocument && correctedLines
+      cmd.originalDocument && correctedLines && correctionBuyer
         ? {
-            buyer: cmd.originalDocument.buyer,
+            buyer: correctionBuyer,
             currency: cmd.originalDocument.currency,
             lines: correctedLines,
           }
         : null;
     // W2/W3 (#1229 follow-up): a correction's displayed content and source
-    // document were previously never persisted at all — every corrected
+    // document were previously never persisted at all - every corrected
     // invoice's "View"/"Preview" 409'd with "no source document available"
     // even when the adapter (KSeF) had built and submitted a real FA(3) XML.
     // Mirrors `issueInvoice`'s persistence exactly, built from the corrected
     // ("after") lines rather than the original ones.
     const documentContent =
-      correctedLines && cmd.originalDocument
+      correctedLines && cmd.originalDocument && correctionBuyer
         ? this.buildContent(
             {
               lines: correctedLines,
-              buyer: cmd.originalDocument.buyer,
+              buyer: correctionBuyer,
               currency: cmd.originalDocument.currency,
             },
             issued,
@@ -1311,7 +1317,7 @@ export class InvoiceService implements IInvoiceService {
           )
         : null;
 
-    return this.repo.updateOutcome(pending.id, {
+    return this.repo.updateOutcome(recordId, {
       status: 'issued',
       providerType: issued.providerType,
       documentType: issued.documentType,
@@ -1486,6 +1492,9 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.updateOutcome(invoiceId, {
       regulatoryStatus: result.regulatoryStatus,
       clearanceReference: result.clearanceReference ?? null,
+      // #1582: persist the authority's operator-facing rejection diagnostic (or
+      // clear a stale one when a resend moves the document off `rejected`).
+      clearanceDetail: result.clearanceDetail ?? null,
     });
   }
 

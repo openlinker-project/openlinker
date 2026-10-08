@@ -75,10 +75,18 @@ Unknown codes throw `UnmappedTaxRateException` (no silent default).
 > `taxRate` *before* calling `resolveP12` — `resolveP12` itself is unchanged
 > and still throws on a genuinely unmapped non-empty code. This is a flat
 > per-connection default, not a real per-line VAT rate: an order mixing
-> goods at different rates (23%/8%/0%) will mis-tax every line at the
-> connection default until `OrderItem` carries a real per-item tax rate
-> end-to-end — a larger, separate follow-up spanning every order-source
-> adapter, intentionally out of scope for #1290.
+> goods at different rates (23%/8%/0%) mis-taxes every line at the connection
+> default *only when the source adapter did not report per-line rates*.
+>
+> **UPDATE (#1586 Phase 2):** `OrderItem` / `InvoiceLine` now carry an optional
+> neutral per-line `taxRate` (ADR-063), and an order-source adapter that reports
+> a genuine per-line rate populates it end-to-end. **PrestaShop** does so today —
+> `PrestashopOrderSourceAdapter` derives the whole-percent rate from each
+> `order_details` row's tax-inclusive/exclusive unit prices and maps it to the
+> neutral vocabulary. A populated mixed-rate order now produces a correctly-split
+> FA(3) band breakdown. ⏸ Deferred (documented follow-ups): **WooCommerce**
+> (line_items expose only a `taxes`/`tax_class` delta, not a clean per-line rate —
+> left on the flat-default fallback), plus Allegro/Erli.
 
 > **OPEN:** the canonical neutral tax-rate code set (UNCL 5305 vs OpenLinker
 > custom) is being settled upstream; the keys above are provisional and must be
@@ -199,6 +207,48 @@ specifics live only in this adapter package.
   so a transient KSeF response can never strand a document in a wrong terminal
   state; the crash-recovery sweep is the second-layer net.
 
+## Verification code (QR / kod weryfikacyjny - #1579)
+
+Since 1 Feb 2026 any structured invoice handed to a buyer **outside** KSeF
+(PDF / email / on-screen copy) must carry a QR verification code so the
+recipient can confirm the document against the authority. This is OpenLinker's
+dominant scenario - e-commerce orders issued to consumers, no-NIP buyers,
+VAT-exempt or foreign buyers - so it is not optional.
+
+**What OL emits: KOD I (online verification code).** KOD I is purely
+deterministic from **public** data and needs no signing key or certificate. It
+encodes the URL:
+
+```
+https://{host}/invoice/{NIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawXmlBytes))}
+```
+
+- `host` - `ksef.mf.gov.pl` on `prod`; `qr-test.ksef.mf.gov.pl` on every
+  non-prod tier (`test` / `demo`). Threaded from the connection's `config.env`.
+- `NIP` - seller NIP (digits only).
+- `DD-MM-RRRR` - the invoice issue date (FA(3) `P_1`, stored ISO `YYYY-MM-DD`,
+  reformatted day-month-year).
+- hash - SHA-256 over the **exact raw, unencrypted FA(3) XML bytes as
+  submitted** (the persisted `sourceDocument` snapshot - NOT re-serialized /
+  pretty-printed), **Base64URL**-encoded (URL-safe alphabet, padding stripped -
+  not standard Base64).
+
+**Where:** generated entirely in the frontend from the already-loaded source XML
+(`apps/web/src/plugins/ksef/lib/ksef-verification.ts` + `shared/ui/qr-code.tsx`,
+rendered by `ksef-fa3-view.tsx`). No backend/adapter change is required because
+the byte-exact submitted document is the persisted `sourceDocument`
+(`KsefInvoicingAdapter.toSourceDocument` base64-encodes the same `xml` string it
+submits), served verbatim via `GET /invoices/:id/document?kind=source`. Encoding
+that text back to UTF-8 bytes round-trips the submitted bytes exactly, so the
+hash matches what KSeF computed. The KSeF number is shown as the QR caption.
+
+**KOD II (offline certificate-signed code) is NOT implemented.** KOD II is
+required for documents issued in KSeF *offline* mode and is signed with the
+seller's KSeF certificate private key. OpenLinker does issue offline since the
+offline24 window (#1700-#1702, see *Session-lifecycle resilience* above), so a
+`pending-submission` document handed to a buyer before it clears currently lacks
+the code it needs. Tracked in #3620.
+
 ## Known limitations / deferred work
 
 - ⏸ Reconcile the neutral tax-rate code set (UNCL 5305 vs OpenLinker-custom) —
@@ -212,7 +262,12 @@ specifics live only in this adapter package.
   (`1` = effects in the period of the original, `3` = on terms set by separate
   regulations) are not yet caller-selectable; the neutral `CorrectionReference`
   carries no `typKorekty` field. Deferred until a caller needs a non-default variant.
-- ⏸ Per-line GTU / Procedura codes (not in the neutral `InvoiceLine`; sourcing TBD).
+- ✅ Per-line GTU / Procedura codes (#1586 Phase 2): the neutral `InvoiceLine`
+  now carries optional opaque `gtuCode` / `procedureCode`, threaded through
+  `Fa3Line` and emitted as `FaWiersz/GTU` (`TGTU` enum) + `FaWiersz/Procedura`
+  (`TOznaczenieProcedury`), positioned after `P_12` and before `KursWaluty`
+  per the XSD, omitted when absent. ⏸ Deferred: a category→GTU
+  operator-configurable mapping UI (codes must be supplied on the command today).
 - ⏸ `Podmiot2` `JST` / `GV` flags are hard-coded to `2` ("no") in `buyerNode`.
   Both elements are required by the XSD, and `2` is correct for the common
   buyer — but a buyer that actually *is* a local-government (JST) subsidiary
@@ -231,6 +286,13 @@ specifics live only in this adapter package.
   bounded (ciphertext travels only over TLS to MF; the FA(3) header prefix is
   public structure) and cannot be fixed client-side without breaking
   server-side decryption (the observed status-430 rejection of per-document IVs).
+- ⏸ Cross-border tax-band SELECTION (#1586): an interim guard
+  (`fa3-cross-border-guard.ts`) now REFUSES a sale whose buyer country differs
+  from the seller's own country (throwing `KsefCrossBorderUnsupportedException`
+  before build/send) unless the connection sets `allowCrossBorder`. The full
+  per-order band-selection function (choose WDT / export / `np I`/`np II` / OSS
+  from the buyer country + EU membership) is the deferred follow-up that
+  promotes this guard into real banding.
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.
 - ⏸ MF-announced `offline` (planned-outage) and `awaria` (declared-failure) regimes

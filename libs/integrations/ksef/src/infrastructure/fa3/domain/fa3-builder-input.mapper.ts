@@ -18,12 +18,14 @@
 import type {
   BuyerAddress,
   CorrectionReference,
+  InvoiceAnnotations,
   InvoiceLine,
   IssueInvoiceCommand,
 } from '@openlinker/core/invoicing';
 import type {
   Fa3BuilderInput,
   Fa3CorrectionContext,
+  Fa3ExchangeRate,
   Fa3Line,
   Fa3PaymentInput,
   SellerProfile,
@@ -76,6 +78,13 @@ export interface Fa3MappingContext {
    * `Platnosc` entirely.
    */
   payment?: Fa3PaymentInput;
+  /**
+   * Resolved foreign-currency exchange rate (#1581) — supplied by the adapter
+   * ONLY when the command currency is not PLN (the adapter resolves the NBP
+   * table-A average for the last business day preceding the tax point). Absent
+   * for PLN invoices; forwarded verbatim so the mapper stays pure.
+   */
+  exchangeRate?: Fa3ExchangeRate;
 }
 
 /**
@@ -96,6 +105,19 @@ export function mapToFa3BuilderInput(
     buyer: resolveBuyerIdentity(cmd.buyer.taxId),
     buyerName: cmd.buyer.name,
     buyerAddress: normalizeAddressCountry(cmd.buyer.address),
+    // Operator-supplied buyer classification → FA(3) JST/GV (#1580). Forwarded
+    // only when set; absent leaves the flags undefined so the builder emits the
+    // "does not apply" (2) default.
+    ...(cmd.buyer.isPublicSectorEntity !== undefined
+      ? { buyerIsPublicSectorEntity: cmd.buyer.isPublicSectorEntity }
+      : {}),
+    ...(cmd.buyer.isVatGroupMember !== undefined
+      ? { buyerIsVatGroupMember: cmd.buyer.isVatGroupMember }
+      : {}),
+    // Operator-supplied fiscal annotation flags → the FA(3) Adnotacje block
+    // (#1580). Forwarded only when set; the builder derives reverse-charge /
+    // exemption from the lines' own p12 codes independently of these.
+    ...mapAnnotations(cmd.annotations),
     currency: resolveKodWaluty(cmd.currency),
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
@@ -108,7 +130,43 @@ export function mapToFa3BuilderInput(
       ? { correction: mapCorrection(cmd.correction, context) }
       : {}),
     ...(context.payment !== undefined ? { payment: context.payment } : {}),
+    ...(context.exchangeRate !== undefined ? { exchangeRate: context.exchangeRate } : {}),
   };
+}
+
+/**
+ * Flatten the neutral {@link InvoiceAnnotations} bag onto the builder input's
+ * flat annotation fields, forwarding only the flags the operator actually set
+ * (each absent flag lets the builder emit its "does not apply" default). Kept as
+ * a conditional copy — mirroring the JST/GV forwarding above — so an undefined
+ * flag never lands as an explicit `undefined` on the builder input.
+ */
+function mapAnnotations(
+  annotations: InvoiceAnnotations | undefined,
+): Partial<Fa3BuilderInput> {
+  if (annotations === undefined) {
+    return {};
+  }
+  const out: Partial<Fa3BuilderInput> = {};
+  if (annotations.cashAccounting !== undefined) {
+    out.cashAccounting = annotations.cashAccounting;
+  }
+  if (annotations.selfBilling !== undefined) {
+    out.selfBilling = annotations.selfBilling;
+  }
+  if (annotations.splitPayment !== undefined) {
+    out.splitPayment = annotations.splitPayment;
+  }
+  if (annotations.triangulation !== undefined) {
+    out.triangulation = annotations.triangulation;
+  }
+  if (annotations.marginScheme !== undefined) {
+    out.marginScheme = annotations.marginScheme;
+  }
+  if (annotations.exemptionLegalBasis !== undefined) {
+    out.exemptionLegalBasis = annotations.exemptionLegalBasis;
+  }
+  return out;
 }
 
 /**
@@ -136,6 +194,11 @@ function mapLine(line: InvoiceLine, context: Fa3MappingContext): Fa3Line {
   // configured default, else the element is omitted (empty/whitespace counts
   // as absent so a hollow value never reaches the wire).
   const unit = line.unit?.trim() || context.defaultLineUnit?.trim() || undefined;
+  // Per-line GTU/Procedura markers (#1586) — opaque neutral codes forwarded
+  // verbatim; empty/whitespace counts as absent so a hollow value never reaches
+  // the wire (mirrors the P_8A precedence above). No connection-level default.
+  const gtuCode = line.gtuCode?.trim() || undefined;
+  const procedureCode = line.procedureCode?.trim() || undefined;
   return {
     name: line.name,
     quantity: line.quantity,
@@ -147,6 +210,8 @@ function mapLine(line: InvoiceLine, context: Fa3MappingContext): Fa3Line {
     // before this runs.
     p12: resolveP12(line.taxRate || (context.defaultTaxRate ?? '')),
     ...(unit !== undefined ? { unit } : {}),
+    ...(gtuCode !== undefined ? { gtuCode } : {}),
+    ...(procedureCode !== undefined ? { procedureCode } : {}),
   };
 }
 

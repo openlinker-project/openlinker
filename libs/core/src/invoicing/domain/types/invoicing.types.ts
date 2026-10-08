@@ -213,6 +213,15 @@ export interface RegulatoryClearanceResult {
    * a reference a prior submit could not. `null`/absent until assigned.
    */
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing diagnostic the authority returned for the clearance
+   * verdict (#1582) - typically the provider's `description`/`details` on a
+   * `rejected` read, so an operator can see WHY the authority refused the
+   * document rather than only that it was rejected. Country/provider-agnostic
+   * (ADR-026): a free-text blob the adapter fills from its regime's rejection
+   * fields, never interpreted in core. Absent on non-rejection reads.
+   */
+  clearanceDetail?: string | null;
 }
 
 /**
@@ -450,6 +459,24 @@ export interface InvoiceLine {
    * never as a guess.
    */
   orderLineId?: string;
+  /**
+   * Opaque per-line goods/services classification code (#1586 Phase 2). Neutral
+   * seam carrying an operator-asserted classification the provider maps onto its
+   * regime's line-level marker (a PL adapter maps it onto the FA(3) `GTU_xx`
+   * enumeration for flagged goods categories - fuel, alcohol, tobacco, certain
+   * electronics, scrap, etc.). Country-agnostic: core never interprets the code,
+   * it forwards it verbatim (ADR-026). Optional - absent means "no line-level
+   * classification", the common case; a provider with no such concept ignores it.
+   */
+  gtuCode?: string;
+  /**
+   * Opaque per-line transaction-procedure marker (#1586 Phase 2). Neutral seam
+   * carrying an operator-asserted procedure code the provider maps onto its
+   * regime's line-level procedure marker (a PL adapter maps it onto the FA(3)
+   * `Procedura` enumeration). Country-agnostic: forwarded verbatim, never
+   * interpreted in core (ADR-026). Optional and omitted when absent.
+   */
+  procedureCode?: string;
 }
 
 /**
@@ -475,6 +502,9 @@ export interface IssuedSnapshotBuyer {
    * never calls `sendByEmail`.
    */
   email: string | null;
+  /** Operator-supplied fiscal classification as issued (#1580); see {@link BuyerProfile}. */
+  isPublicSectorEntity?: boolean;
+  isVatGroupMember?: boolean;
 }
 
 /**
@@ -635,6 +665,39 @@ export interface StoredDocument {
 }
 
 /**
+ * Neutral, operator-supplied fiscal annotation flags on an invoice (#1580,
+ * ADR-077). Country-agnostic (ADR-026): each flag is a generic commercial /
+ * fiscal concept a provider maps to its own regime — a KSeF adapter maps them
+ * to the FA(3) `Adnotacje` block. Every field is optional; an absent flag ⇒ the
+ * provider emits its own "does not apply" default. Core never interprets them.
+ *
+ * Note what is *deliberately absent*: reverse-charge and VAT-exemption are NOT
+ * boolean flags here. A provider derives both from the per-line tax codes it
+ * already receives ({@link InvoiceLine.taxRate}), so re-declaring them at the
+ * header level would risk contradicting the lines. `exemptionLegalBasis` is the
+ * sole exemption-adjacent field — it carries the free-text legal grounds a
+ * provider that annotates exemptions must cite.
+ */
+export interface InvoiceAnnotations {
+  /** Supply settled on a cash basis (KSeF: `P_16`). */
+  cashAccounting?: boolean;
+  /** Buyer issues the invoice on the seller's behalf (KSeF: `P_17`). */
+  selfBilling?: boolean;
+  /** The split-payment mechanism applies (KSeF: `P_18A`). */
+  splitPayment?: boolean;
+  /** Simplified intra-EU triangular transaction (KSeF: `P_23`). */
+  triangulation?: boolean;
+  /** The VAT margin scheme applies (KSeF: `PMarzy` / `P_PMarzy`). */
+  marginScheme?: boolean;
+  /**
+   * Free-text legal grounds for a VAT-exempt sale (KSeF: `Zwolnienie` / `P_19`).
+   * When a provider annotates an exemption (e.g. because a line is exempt), it
+   * cites this text; supplying it also asserts the exemption annotation applies.
+   */
+  exemptionLegalBasis?: string;
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
@@ -651,6 +714,8 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /** Operator-supplied fiscal annotation flags (#1580); see {@link InvoiceAnnotations}. */
+  annotations?: InvoiceAnnotations;
   /**
    * Date of supply / sale, ISO 8601 calendar `YYYY-MM-DD` (#1525). Filled from
    * the order's marketplace placement timestamp (`Order.placedAt`) - NEVER from
@@ -845,6 +910,17 @@ export interface IssueCorrectionCommand {
    * original's number. Absent for a self-numbering provider.
    */
   documentNumber?: string;
+  /**
+   * OPTIONAL buyer-identity override (#1582). When present, the adapter uses THIS
+   * buyer for the correcting document instead of the buyer captured on
+   * {@link OriginalDocumentSnapshot} - the fix path for a "wrong buyer identity
+   * (e.g. NIP) on the original" correction (a document already cleared by the
+   * authority cannot be deleted, only corrected). Mirrors how `originalDocument`
+   * is a caller-assembled reconstruction; reuses the neutral {@link BuyerProfile}
+   * shape (ADR-026 - no regime/provider vocabulary). Absent ⇒ the original
+   * snapshot's buyer is used unchanged.
+   */
+  buyerOverride?: BuyerProfile;
 }
 
 /**
@@ -1124,6 +1200,14 @@ export interface InvoiceOutcomePatch {
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing clearance diagnostic (#1582). Set from a
+   * `RegulatoryClearanceResult.clearanceDetail` (typically the authority's
+   * rejection description/details) so the projection can surface WHY a document
+   * was rejected. Country/provider-agnostic (ADR-026); omitted when a patch does
+   * not carry a fresh diagnostic so an unrelated outcome patch never resets it.
+   */
+  clearanceDetail?: string | null;
   /**
    * Neutral payment lifecycle (#1354). Set by the payment-status refresh
    * service from an authoritative `PaymentStatusReader` read; omitted otherwise

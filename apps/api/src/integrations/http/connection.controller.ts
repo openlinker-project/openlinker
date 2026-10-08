@@ -106,7 +106,8 @@ export class ConnectionController {
 
   private async toResponse(
     connection: Connection,
-    user?: AuthenticatedUser
+    user?: AuthenticatedUser,
+    warnings?: string[]
   ): Promise<ConnectionResponseDto> {
     let supported: string[] = [];
     let variantGrouping: VariantGroupingModel = resolveVariantGroupingModel(undefined);
@@ -144,7 +145,8 @@ export class ConnectionController {
       user?.role,
       this.demoModeService.isDemoModeEnabled(),
       requiresCredentials,
-      archivable
+      archivable,
+      warnings
     );
   }
 
@@ -164,7 +166,8 @@ export class ConnectionController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.create(dto);
-    return this.toResponse(connection, user);
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -229,7 +232,8 @@ export class ConnectionController {
       }),
     };
     const connection = await this.connectionService.update(id, patch);
-    return this.toResponse(connection, user);
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')

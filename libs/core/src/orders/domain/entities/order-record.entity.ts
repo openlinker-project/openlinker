@@ -26,6 +26,8 @@ import type {
   SalesDocumentUnresolvedReason,
   TaxRateEra,
 } from '@openlinker/core/sales-documents';
+import { OrderStatusValues } from '../types/order.types';
+import type { OrderStatus } from '../types/order.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -644,5 +646,21 @@ export class OrderRecord {
         Number.isFinite(price)
       );
     });
+  }
+
+  /**
+   * Typed, fail-safe read of the order's neutral lifecycle status (#1596) from
+   * the snapshot. Pure derivation of an already-loaded field (ADR-011): no I/O,
+   * no mutation. Mirrors {@link paymentStatus} — lets the #1596 auto-issuance
+   * race gate re-check the order's LIVE status against a typed contract rather
+   * than the snapshot's internal JSON layout. Returns `undefined` when the
+   * source didn't populate status or the stored value isn't a recognised
+   * `OrderStatus`.
+   */
+  get status(): OrderStatus | undefined {
+    const value = this.orderSnapshot.status;
+    return typeof value === 'string' && (OrderStatusValues as readonly string[]).includes(value)
+      ? (value as OrderStatus)
+      : undefined;
   }
 }

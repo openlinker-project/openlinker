@@ -1841,6 +1841,24 @@ describe('InvoiceService', () => {
         expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
       });
     });
+
+    it('snapshots the buyerOverride buyer (not the original) when supplied (#1582)', async () => {
+      const override = new BuyerProfile(
+        'Corrected Buyer',
+        { scheme: 'pl-nip', value: '5252248481' },
+        { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
+        'company',
+      );
+
+      await service.issueCorrection(makeCorrectionCmd({ buyerOverride: override }));
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ buyer: override }),
+        }),
+      );
+    });
   });
 
   describe('numbering allocation (#1575)', () => {
@@ -1988,6 +2006,39 @@ describe('InvoiceService', () => {
       expect(consumer.issueInvoice).toHaveBeenCalledWith(
         expect.objectContaining({ documentNumber: 'FV/2026/06/0007' }),
       );
+    });
+  });
+
+  describe('applyRegulatoryClearance (#1582)', () => {
+    it('persists the clearanceDetail from the clearance result', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+    });
+
+    it('clears a stale clearanceDetail when the result carries none (e.g. a resend)', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+        clearanceDetail: null,
+      });
     });
   });
 });

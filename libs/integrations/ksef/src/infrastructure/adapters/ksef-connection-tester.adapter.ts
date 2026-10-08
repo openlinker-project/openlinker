@@ -36,6 +36,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { createKsefHttpClient } from '../http/ksef-http-client.factory';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
+import { KsefPermissionDeniedException } from '../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
 import { KsefSessionCryptoException } from '../../domain/exceptions/ksef-session-crypto.exception';
@@ -123,6 +124,20 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
   }
 
   private toFailure(error: unknown, latencyMs: number): ConnectionTestResult {
+    if (error instanceof KsefPermissionDeniedException) {
+      // Authenticated, but the token is not authorized for the action. KSeF has
+      // no token-scope introspection endpoint, so this runtime 403 is the earliest
+      // machine-detectable least-privilege signal - surface it distinctly with an
+      // operator-actionable hint rather than a generic auth failure.
+      return {
+        success: false,
+        status: 403,
+        message:
+          'KSeF token authenticated but is not authorized - ensure the token was ' +
+          'generated with the "wystawianie faktur" (invoice issuance) permission',
+        latencyMs,
+      };
+    }
     if (
       error instanceof KsefAuthenticationException ||
       error instanceof KsefApiException ||

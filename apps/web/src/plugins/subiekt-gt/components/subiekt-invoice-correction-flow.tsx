@@ -4,7 +4,7 @@
  * Per-provider `invoiceCorrectionFlow` slot for Subiekt. Issues a correcting
  * document (faktura korygująca) via the #1241 HTTP endpoint
  * `POST /invoices/:invoiceId/correct`. The operator supplies:
- *   - an optional free-text reason;
+ *   - a required free-text reason (art. 106j ust. 2 pkt 5);
  *   - per-line new quantity and/or new unit price gross.
  *
  * The line table is the shared `CorrectionLineGrid` (#3090) whenever the
@@ -68,6 +68,7 @@ export function SubiektInvoiceCorrectionFlow({
   const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
@@ -118,11 +119,22 @@ export function SubiektInvoiceCorrectionFlow({
       parsedLines = parsed;
     }
     setLinesError(null);
+    // #1582: the correction reason is legally required and must be non-empty
+    // (art. 106j ust. 2 pkt 5). Checked after line validation so a line problem
+    // surfaces its own error first.
+    const trimmedReason = reason.trim();
+    if (trimmedReason === '') {
+      setReasonError(
+        t('subiekt.correction.reasonRequired', 'A reason for the correction is required.'),
+      );
+      return;
+    }
+    setReasonError(null);
     mutation.mutate(
       {
         invoiceId: invoice.id,
         input: {
-          reason: reason.trim() !== '' ? reason.trim() : undefined,
+          reason: trimmedReason,
           lines: parsedLines,
           idempotencyKey: idempotencyKeyRef.current,
         },
@@ -203,7 +215,13 @@ export function SubiektInvoiceCorrectionFlow({
           onChange={(e) => setReason(e.target.value)}
           disabled={isSubmitting}
           rows={3}
+          aria-invalid={reasonError !== null}
         />
+        {reasonError ? (
+          <p className="error-text" role="alert">
+            {reasonError}
+          </p>
+        ) : null}
       </div>
 
       {/* Line items */}

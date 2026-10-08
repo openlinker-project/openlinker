@@ -83,6 +83,14 @@ export interface OrderToIssueInvoiceCommandInput {
    * and every issuance caller already reads the record.
    */
   taxRateEra?: string | null;
+  /**
+   * Optional operator-supplied buyer fiscal classification (#1580), forwarded
+   * onto the {@link BuyerProfile}. Neutral flags a provider maps to its regime
+   * (KSeF → FA(3) `JST`/`GV`). Absent on the auto-issue path (no order source
+   * carries them) ⇒ the provider emits its "does not apply" default.
+   */
+  buyerIsPublicSectorEntity?: boolean;
+  buyerIsVatGroupMember?: boolean;
 }
 
 /**
@@ -105,6 +113,8 @@ export function toIssueInvoiceCommand(
     shippingLineName,
     source,
     taxRateEra,
+    buyerIsPublicSectorEntity,
+    buyerIsVatGroupMember,
   } = input;
 
   // GROSS-only: an `exclusive` (net) order would mislabel net as gross. Fail
@@ -119,7 +129,10 @@ export function toIssueInvoiceCommand(
     throw new UnsupportedPriceTreatmentError(refusal);
   }
 
-  const buyer = buildBuyerProfile(order, buyerTaxId ?? null);
+  const buyer = buildBuyerProfile(order, buyerTaxId ?? null, {
+    isPublicSectorEntity: buyerIsPublicSectorEntity,
+    isVatGroupMember: buyerIsVatGroupMember,
+  });
   const lines = order.items.map((item) => toInvoiceLine(item, order.id));
 
   // Buyer-paid shipping is part of the invoice total (invoice gross must equal
@@ -185,7 +198,11 @@ export function toIssueInvoiceCommand(
  * the tax id's value. Throws {@link InvalidBuyerProfileError} (PII-clean,
  * cites only `order.id`) when no address or no name can be derived.
  */
-function buildBuyerProfile(order: Order, buyerTaxId: TaxIdentifier | null): BuyerProfile {
+function buildBuyerProfile(
+  order: Order,
+  buyerTaxId: TaxIdentifier | null,
+  classification: { isPublicSectorEntity?: boolean; isVatGroupMember?: boolean } = {},
+): BuyerProfile {
   const source = order.billingAddress ?? order.shippingAddress;
   if (!source) {
     throw new InvalidBuyerProfileError(
@@ -206,7 +223,15 @@ function buildBuyerProfile(order: Order, buyerTaxId: TaxIdentifier | null): Buye
   // #1797: thread the order's buyer e-mail (already captured from the
   // source platform, #948) into the invoicing domain so providers that
   // support InvoiceEmailSender can actually deliver to a known address.
-  return new BuyerProfile(name, buyerTaxId, address, type, order.customerEmail ?? null);
+  return new BuyerProfile(
+    name,
+    buyerTaxId,
+    address,
+    type,
+    order.customerEmail ?? null,
+    classification.isPublicSectorEntity,
+    classification.isVatGroupMember,
+  );
 }
 
 /**

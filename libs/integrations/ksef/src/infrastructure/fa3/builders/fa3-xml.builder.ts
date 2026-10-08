@@ -28,11 +28,13 @@ import {
   FA3_RODZAJ_KOREKTA,
   FA3_SCHEMA_VERSION,
   FA3_SYSTEM_CODE,
+  FA3_DEFAULT_EXEMPTION_BASIS,
   FA3_WYBOR_NIE,
   FA3_WYBOR_TAK,
   type Fa3BankAccount,
   type Fa3BuilderInput,
   type Fa3CorrectionContext,
+  type Fa3ExchangeRate,
   type Fa3Line,
   type Fa3PaymentInput,
   type RawFa3Xml,
@@ -148,6 +150,17 @@ function unitMoney(value: number): string {
 }
 
 /**
+ * Render an exchange rate (`KursWaluty`, type `TIlosci` — decimal, ≤6 fraction
+ * digits). NBP table-A rates are published to 4 decimal places, so 4dp is the
+ * exact source precision and stays comfortably inside `TIlosci`'s 6-digit
+ * fraction limit. The `TIlosci` pattern rejects `-0`; a resolved NBP rate is
+ * always positive so no `-0` normalisation is needed here (unlike `money`).
+ */
+function rate(value: number): string {
+  return value.toFixed(4);
+}
+
+/**
  * Per-line net (`P_11` = "wartość sprzedaży NETTO"). For a positive-rate band
  * the gross line is divided out (`net = gross / (1 + rate)`); zero-rate / exempt
  * / reverse-charge bands carry net = gross (no embedded VAT). This is the single
@@ -171,14 +184,30 @@ function quantity(value: number): string {
   return fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
 }
 
-/** Seller / Podmiot1 address → FA(3) `Adres` element. */
+/**
+ * Party address → FA(3) `Adres` element (#1580). The FA(3) `Adres` type carries
+ * two free-text lines: `AdresL1` (street + building/apartment number) and
+ * `AdresL2` (postal code + locality) — the standard Polish invoice fold. Art.
+ * 106e ust. 1 pkt 3 requires the FULL address of both parties, so `postalCode`
+ * and `city` (both required on `BuyerAddress`, previously dropped) are now
+ * folded into `AdresL2`; any supplementary `line2` (suite/apartment) joins the
+ * street on `AdresL1`. `AdresL2` is omitted only in the degenerate case where
+ * neither postal code, city, nor `line2` is present.
+ */
 function addressNode(address: BuyerAddress): XmlNodeObject {
+  const streetLine = [address.line1, address.line2]
+    .filter((part): part is string => part !== null && part.trim() !== '')
+    .join(', ');
+  const postalCity = [address.postalCode, address.city]
+    .filter((part) => typeof part === 'string' && part.trim() !== '')
+    .join(' ')
+    .trim();
   const adres: XmlNodeObject = {
     KodKraju: address.countryIso2,
-    AdresL1: address.line1,
+    AdresL1: streetLine,
   };
-  if (address.line2 !== null && address.line2 !== '') {
-    adres.AdresL2 = address.line2;
+  if (postalCity !== '') {
+    adres.AdresL2 = postalCity;
   }
   return adres;
 }
@@ -202,7 +231,12 @@ function buyerIdentificationNode(buyer: BuyerIdentity): XmlNodeObject {
  * "before" rows carry `StanPrzed=1` (the FA(3) before/after correction model);
  * a plain invoice and the KOR "after" rows omit it.
  */
-function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObject {
+function lineNode(
+  line: Fa3Line,
+  ordinal: number,
+  stanPrzed = false,
+  exchangeRate?: Fa3ExchangeRate,
+): XmlNodeObject {
   const node: XmlNodeObject = {
     NrWierszaFa: ordinal,
     P_7: line.name,
@@ -230,6 +264,23 @@ function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObj
     P_11: money(lineNet(line)),
     P_12: line.p12,
   };
+  // GTU / Procedura (per-line goods & procedure markers, #1586) sit after P_12
+  // and before KursWaluty in the FaWiersz sequence (XSD lines ~3189/~3194).
+  // Already precedence-resolved by the mapper (absent = omitted); forwarded as
+  // opaque tokens - an out-of-enum value is caught by KSeF at clearance.
+  if (line.gtuCode !== undefined) {
+    node.GTU = line.gtuCode;
+  }
+  if (line.procedureCode !== undefined) {
+    node.Procedura = line.procedureCode;
+  }
+  // KursWaluty (per-line dział-VI conversion rate, art. 106e ust. 11) sits after
+  // P_12 and before StanPrzed (XSD FaWiersz sequence). Emitted only for a
+  // foreign-currency invoice; the same single invoice-level rate is stamped on
+  // every line (#1581).
+  if (exchangeRate !== undefined) {
+    node.KursWaluty = rate(exchangeRate.rate);
+  }
   if (stanPrzed) {
     node.StanPrzed = 1;
   }
@@ -275,7 +326,10 @@ function aggregateBands(lines: Fa3Line[]): BandAggregate {
  * by *either* side of a correction (so a band reduced to zero by the correction
  * still surfaces its zero/negative difference).
  */
-function formatTotals(agg: BandAggregate): { bands: XmlNodeObject; grandTotal: string } {
+function formatTotals(
+  agg: BandAggregate,
+  exchangeRate?: Fa3ExchangeRate,
+): { bands: XmlNodeObject; grandTotal: string } {
   const bands: XmlNodeObject = {};
   for (const p12 of BAND_EMIT_ORDER) {
     const net = agg.netByBand.get(p12);
@@ -285,7 +339,16 @@ function formatTotals(agg: BandAggregate): { bands: XmlNodeObject; grandTotal: s
     const target = VAT_BANDS[p12];
     bands[target.net] = money(net);
     if (target.vat !== undefined) {
-      bands[target.vat] = money(agg.vatByBand.get(p12) ?? 0);
+      const vat = agg.vatByBand.get(p12) ?? 0;
+      bands[target.vat] = money(vat);
+      // P_14_xW: the same band's VAT expressed in PLN (art. 106e ust. 11), only
+      // for a foreign-currency invoice. Emitted immediately after its P_14_x so
+      // the XSD band sequence (P_13_x, P_14_x, P_14_xW) holds. On a correction
+      // `vat` is already the after−before difference, so the converted amount is
+      // the converted difference (#1581).
+      if (exchangeRate !== undefined) {
+        bands[`${target.vat}W`] = money(vat * exchangeRate.rate);
+      }
     }
   }
   return { bands, grandTotal: money(agg.grandTotal) };
@@ -343,13 +406,14 @@ function buyerNode(input: Fa3BuilderInput): XmlNodeObject {
       Nazwa: input.buyerName,
     },
     Adres: addressNode(input.buyerAddress),
-    // JST and GV are REQUIRED by the FA(3) XSD (no minOccurs="0").
-    // 2 = "nie dotyczy" — not a JST subsidiary unit / not a VAT group member.
-    // KNOWN LIMITATION: hard-coded — a buyer that IS a JST unit / VAT-group
-    // member gets a false declaration; see FA3_IMPLEMENTATION_NOTES.md
-    // § Known limitations (PR #1317 review).
-    JST: 2,
-    GV: 2,
+    // JST and GV are REQUIRED by the FA(3) XSD (no minOccurs="0"): 1 = "dotyczy"
+    // (applies), 2 = "nie dotyczy" (does not apply). Driven by the operator-
+    // supplied neutral buyer classification (#1580) — no order-source platform
+    // carries this, so it defaults to 2 when the flag is absent (the prior
+    // hard-coded behaviour, now the correct default rather than a false
+    // declaration for the B2G niche that does set it).
+    JST: input.buyerIsPublicSectorEntity ? 1 : 2,
+    GV: input.buyerIsVatGroupMember ? 1 : 2,
   };
 }
 
@@ -382,30 +446,63 @@ function correctedInvoiceNode(correction: Fa3CorrectionContext): XmlNodeObject {
  * continuously across both blocks.
  */
 function correctionLineNodes(input: Fa3BuilderInput, correction: Fa3CorrectionContext): XmlNode {
-  const before = input.lines.map((line, idx) => lineNode(line, idx + 1, true));
+  const before = input.lines.map((line, idx) => lineNode(line, idx + 1, true, input.exchangeRate));
   const after = correction.correctedLines.map((line, idx) =>
-    lineNode(line, input.lines.length + idx + 1),
+    lineNode(line, input.lines.length + idx + 1, false, input.exchangeRate),
   );
   return [...before, ...after];
 }
 
 /**
- * The required `Adnotacje` block (XSD line ~2641) emitted with the "nothing
- * special" defaults for a plain domestic sale: every `etd:TWybor1_2` flag set to
- * "no" (`2`), and each choice group taking its negative branch (`P_19N`, `P_22N`,
- * `P_PMarzyN`, all `etd:TWybor1` = `1`). The schema-mandated child order is
+ * The required `Adnotacje` block (XSD line ~2641), emitted per the invoice's
+ * actual classification (#1580) rather than unconditionally on its negative
+ * branch. The schema-mandated child order (preserved by the object key order) is
  * P_16, P_17, P_18, P_18A, Zwolnienie, NoweSrodkiTransportu, P_23, PMarzy.
+ *
+ * Two sources feed it:
+ *  - **Line-derived** (can never contradict the per-line treatment): `P_18`
+ *    ("odwrotne obciążenie") is `1` when any line carries the reverse-charge
+ *    `p12` band (`oo`); the `Zwolnienie` group takes its yes-branch (`P_19` = `1`
+ *    plus a `P_19C` grounds text) when any line is exempt (`zw`) OR an explicit
+ *    `exemptionLegalBasis` was supplied.
+ *  - **Operator-declared** (neutral `IssueInvoiceCommand.annotations`, absent ⇒
+ *    negative): `P_16` cash-basis, `P_17` self-billing, `P_18A` split-payment,
+ *    `P_23` triangulation, and the `PMarzy` group (yes-branch = `P_PMarzy` = `1`
+ *    with `P_PMarzy_3_1`, the used-goods sub-kind — the secondhand e-commerce
+ *    default; per-kind selection is a follow-up).
+ *
+ * The `Zwolnienie`/`PMarzy` yes-branches are XSD `choice`s whose "applies" arm
+ * is a SEQUENCE requiring a nested child: `Zwolnienie` needs exactly one of
+ * `P_19A`/`P_19B`/`P_19C` after `P_19` (we emit `P_19C`, the open catch-all
+ * grounds), and `PMarzy` needs exactly one of `P_PMarzy_2`/`_3_1`/`_3_2`/`_3_3`
+ * after `P_PMarzy`. `NoweSrodkiTransportu` stays on its negative branch
+ * (`P_22N`) — new-means-of-transport supply is out of scope.
+ *
+ * @param lines the effective lines to derive line-level annotations from — a
+ *   plain invoice's own lines, or a KOR's post-correction ("after") lines.
  */
-function adnotacjeNode(): XmlNodeObject {
+function adnotacjeNode(input: Fa3BuilderInput, lines: Fa3Line[]): XmlNodeObject {
+  const anyReverseCharge = lines.some((line) => line.p12 === 'oo');
+  const exemptionApplies =
+    lines.some((line) => line.p12 === 'zw') || input.exemptionLegalBasis !== undefined;
+
+  const zwolnienie: XmlNodeObject = exemptionApplies
+    ? { P_19: FA3_WYBOR_TAK, P_19C: input.exemptionLegalBasis ?? FA3_DEFAULT_EXEMPTION_BASIS }
+    : { P_19N: FA3_WYBOR_TAK };
+
+  const pMarzy: XmlNodeObject = input.marginScheme
+    ? { P_PMarzy: FA3_WYBOR_TAK, P_PMarzy_3_1: FA3_WYBOR_TAK }
+    : { P_PMarzyN: FA3_WYBOR_TAK };
+
   return {
-    P_16: FA3_WYBOR_NIE,
-    P_17: FA3_WYBOR_NIE,
-    P_18: FA3_WYBOR_NIE,
-    P_18A: FA3_WYBOR_NIE,
-    Zwolnienie: { P_19N: FA3_WYBOR_TAK },
+    P_16: input.cashAccounting ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    P_17: input.selfBilling ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    P_18: anyReverseCharge ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    P_18A: input.splitPayment ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    Zwolnienie: zwolnienie,
     NoweSrodkiTransportu: { P_22N: FA3_WYBOR_TAK },
-    P_23: FA3_WYBOR_NIE,
-    PMarzy: { P_PMarzyN: FA3_WYBOR_TAK },
+    P_23: input.triangulation ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
+    PMarzy: pMarzy,
   };
 }
 
@@ -485,12 +582,13 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
             aggregateBands(correction.correctedLines),
             aggregateBands(input.lines),
           ),
+          input.exchangeRate,
         )
-      : formatTotals(aggregateBands(input.lines));
+      : formatTotals(aggregateBands(input.lines), input.exchangeRate);
   const wiersze: XmlNode =
     correction !== undefined
       ? correctionLineNodes(input, correction)
-      : input.lines.map((line, idx) => lineNode(line, idx + 1));
+      : input.lines.map((line, idx) => lineNode(line, idx + 1, false, input.exchangeRate));
 
   const node: XmlNodeObject = {
     KodWaluty: input.currency,
@@ -502,13 +600,25 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
     ...(input.saleDate !== undefined ? { P_6: input.saleDate } : {}),
     ...bands,
     P_15: grandTotal,
-    Adnotacje: adnotacjeNode(),
+    // Header annotations derive from the EFFECTIVE lines: a KOR's post-
+    // correction ("after") lines, else the plain invoice's own lines (#1580).
+    Adnotacje: adnotacjeNode(
+      input,
+      correction !== undefined ? correction.correctedLines : input.lines,
+    ),
     RodzajFaktury: correction !== undefined ? FA3_RODZAJ_KOREKTA : FA3_RODZAJ_FAKTURY_VAT,
   };
   if (correction !== undefined) {
     // The KOR correction metadata follows RodzajFaktury in schema order, before
     // the FaWiersz rows.
-    node.PrzyczynaKorekty = correction.reason;
+    // #1582: `PrzyczynaKorekty` is `minOccurs=0` but `minLength=1` when present -
+    // emitting an empty/whitespace element is an XSD content-constraint violation
+    // KSeF rejects at clearance. OMIT the element when the reason is blank
+    // (belt-and-suspenders; the DTO boundary already requires a non-empty reason).
+    const trimmedReason = correction.reason.trim();
+    if (trimmedReason.length > 0) {
+      node.PrzyczynaKorekty = trimmedReason;
+    }
     node.TypKorekty = correction.typKorekty;
     node.DaneFaKorygowanej = correctedInvoiceNode(correction);
   }

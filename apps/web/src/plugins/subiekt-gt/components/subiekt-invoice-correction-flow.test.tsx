@@ -105,6 +105,28 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('blocks submit and shows an error when the reason is empty (art. 106j)', async () => {
+    const issueCorrection = vi.fn();
+    renderWithProviders(
+      <SubiektInvoiceCorrectionFlow
+        invoice={makeInvoice()}
+        connection={subiektConnection}
+        onClose={vi.fn()}
+        onCorrectionIssued={vi.fn()}
+      />,
+      { apiClient: createMockApiClient({ invoicing: { issueCorrection } }) },
+    );
+
+    const lineInput = await screen.findByLabelText(/Line number 1/i);
+    fireEvent.change(lineInput, { target: { value: '1' } });
+    const qtyInput = await screen.findByLabelText(/New qty, line 1/i);
+    fireEvent.change(qtyInput, { target: { value: '0' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
+
+    expect(await screen.findByText(/A reason for the correction is required/i)).toBeTruthy();
+    expect(issueCorrection).not.toHaveBeenCalled();
+  });
+
   it('submits issueCorrection with reason and line data on form submit', async () => {
     const correctionInvoice = makeInvoice({ id: 'ol_invoice_correction' });
     const issueCorrection = vi.fn().mockResolvedValue(correctionInvoice);

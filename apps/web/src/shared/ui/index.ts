@@ -137,3 +137,7 @@ export { deriveRichTextProfile, byteLength, exceedsDescriptionCap } from './rich
 export type { RichTextProfile } from './rich-text-profiles';
 export type { DescriptionFormat, DescriptionRewrite, RichTextMark } from './rich-text.types';
 export { MASTER_DESCRIPTION_FORMAT } from './rich-text.types';
+
+// ── QR verification code (#1579) ────────────────────────────
+export { QrCode } from './qr-code';
+export type { QrCodeErrorCorrectionLevel } from './qr-code';

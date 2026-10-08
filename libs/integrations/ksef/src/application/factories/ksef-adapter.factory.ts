@@ -31,8 +31,13 @@ import type { Connection, IdentifierMappingPort } from '@openlinker/core/identif
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
 import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
+import { getSharedKsefRateLimiter } from '../../infrastructure/http/ksef-rate-limiter';
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
+import {
+  NbpExchangeRateClient,
+  createNbpFetch,
+} from '../../infrastructure/fx/nbp-exchange-rate.client';
 import type { Fa3PaymentInput, SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
@@ -66,6 +71,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const defaultTaxRate = this.resolveDefaultTaxRate(connection);
     const defaultLineUnit = this.resolveDefaultLineUnit(connection);
     const numberingTimeZone = this.resolveNumberingTimeZone(connection);
+    const allowCrossBorder = this.resolveAllowCrossBorder(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -73,12 +79,23 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       authMaterial,
       cache: this.cache,
       fetchImpl,
+      // #1594: proactive per-hour pacing keyed on the seller NIP (KSeF buckets by
+      // NIP), shared process-wide so sibling connections on the same NIP throttle
+      // against one bucket rather than each other.
+      rateLimiter: getSharedKsefRateLimiter(),
+      rateLimitBucketKey: seller.nip,
     });
 
     // C5 issuance dependencies: the session-crypto service (shares the same
     // MF public-key cache as the transport) + the FA(3) build/validate pipeline.
     const sessionCrypto = new KsefSessionCryptoService(publicKeyCache);
     const fa3Builder = new Fa3WithValidationBuilder();
+    // NBP exchange-rate resolver (#1581) — used only when a command's currency is
+    // not PLN (art. 106e ust. 11 PLN/VAT conversion). Reads go through this
+    // connection's own transport (#1810), so they share its rate limit.
+    const exchangeRateResolver = new NbpExchangeRateClient({
+      fetchImpl: createNbpFetch(fetchImpl),
+    });
 
     return {
       invoicing: new KsefInvoicingAdapter(
@@ -87,7 +104,14 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         sessionCrypto,
         fa3Builder,
         seller,
-        { payment, defaultTaxRate, defaultLineUnit, numberingTimeZone },
+        {
+          payment,
+          defaultTaxRate,
+          defaultLineUnit,
+          numberingTimeZone,
+          exchangeRateResolver,
+          allowCrossBorder,
+        },
       ),
     };
   }
@@ -188,6 +212,17 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
     const zone = config?.invoiceDefaults?.numberingTimeZone;
     return typeof zone === 'string' && zone.trim().length > 0 ? zone.trim() : undefined;
+  }
+
+  /**
+   * Resolve the interim cross-border escape hatch (#1586) from
+   * `config.allowCrossBorder`. Defaults to `false` (refuse cross-border sales)
+   * for any connection that has not explicitly opted in - only a literal `true`
+   * enables issuance of a sale to a country other than the seller's own.
+   */
+  private resolveAllowCrossBorder(connection: Connection): boolean {
+    const config = connection.config as Partial<KsefConnectionConfig> | undefined;
+    return config?.allowCrossBorder === true;
   }
 
   /**

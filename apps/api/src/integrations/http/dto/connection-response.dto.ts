@@ -102,6 +102,15 @@ export class ConnectionResponseDto {
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt!: Date;
 
+  @ApiPropertyOptional({
+    description:
+      'Non-blocking advisory warnings about this connection (#1594), e.g. it shares a ' +
+      'provider-side rate-limit bucket with another active connection on the same seller ' +
+      'tax id. Present only on create/update responses that detected one; never a hard error.',
+    type: [String],
+  })
+  warnings?: string[];
+
   static fromDomain(
     connection: Connection,
     supportedCapabilities: string[],
@@ -110,7 +119,8 @@ export class ConnectionResponseDto {
     role?: UserRole,
     isDemoModeEnabled = false,
     requiresCredentials = true,
-    archivable = true
+    archivable = true,
+    warnings?: string[]
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
@@ -141,6 +151,9 @@ export class ConnectionResponseDto {
     dto.defaultRateLimit = defaultRateLimit;
     dto.createdAt = connection.createdAt;
     dto.updatedAt = connection.updatedAt;
+    if (warnings && warnings.length > 0) {
+      dto.warnings = warnings;
+    }
     return dto;
   }
 }

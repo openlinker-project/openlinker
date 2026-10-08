@@ -101,6 +101,54 @@ describe('validateFa3Xml', () => {
     }
   });
 
+  it('should reject an empty PrzyczynaKorekty element (#1582)', () => {
+    // minOccurs=0 but minLength=1 when present: an empty text body is a content-
+    // constraint violation that would otherwise only fail at live KSeF clearance.
+    const bad = builtDoc().replace(
+      '</RodzajFaktury>',
+      '</RodzajFaktury><PrzyczynaKorekty></PrzyczynaKorekty>',
+    ) as RawFa3Xml;
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/PrzyczynaKorekty');
+    }
+  });
+
+  it('should reject a whitespace-only PrzyczynaKorekty element (#1582)', () => {
+    const bad = builtDoc().replace(
+      '</RodzajFaktury>',
+      '</RodzajFaktury><PrzyczynaKorekty>   </PrzyczynaKorekty>',
+    ) as RawFa3Xml;
+    try {
+      validateFa3Xml(bad);
+      fail('expected Fa3XsdValidationException');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Fa3XsdValidationException);
+      const paths = (error as Fa3XsdValidationException).issues.map((i) => i.path);
+      expect(paths).toContain('/Faktura/Fa/PrzyczynaKorekty');
+    }
+  });
+
+  it('should reject a self-closed empty PrzyczynaKorekty element (#1582)', () => {
+    const bad = builtDoc().replace(
+      '</RodzajFaktury>',
+      '</RodzajFaktury><PrzyczynaKorekty/>',
+    ) as RawFa3Xml;
+    expect(() => validateFa3Xml(bad)).toThrow(Fa3XsdValidationException);
+  });
+
+  it('should accept a non-empty PrzyczynaKorekty element (#1582)', () => {
+    const good = builtDoc().replace(
+      '</RodzajFaktury>',
+      '</RodzajFaktury><PrzyczynaKorekty>wrong NIP</PrzyczynaKorekty>',
+    ) as RawFa3Xml;
+    expect(() => validateFa3Xml(good)).not.toThrow();
+  });
+
   it('should accept the np II token (a valid TStawkaPodatku value)', () => {
     // Swapping the P_12 value for a valid token keeps the document otherwise
     // valid; the token guard must NOT reject `np II`.

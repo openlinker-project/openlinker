@@ -458,6 +458,9 @@ export class InvoicingController {
         // route too - this endpoint is exactly where an operator releases an
         // order the auto path skipped.
         taxRateEra: record.taxRateEra,
+        // #1580: operator-supplied buyer classification → provider JST/GV.
+        buyerIsPublicSectorEntity: dto.buyerIsPublicSectorEntity,
+        buyerIsVatGroupMember: dto.buyerIsVatGroupMember,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -636,7 +639,10 @@ export class InvoicingController {
       'deterministic key `invoice:{connectionId}:{orderId}` (same key the auto-issue ' +
       'trigger uses), so a re-submitted batch does not double-issue. Orders already ' +
       'issued / in progress are skipped; a per-order failure is captured without ' +
-      'aborting the rest. At most 100 order ids per request. Returns a per-id summary.',
+      'aborting the rest. At most 100 order ids per request. Returns a per-id summary ' +
+      '(partial-completion feedback). The provider adapter self-paces its own per-hour ' +
+      'rate-limit ceilings (#1594), so a large batch throttles itself rather than ' +
+      'relying solely on reactive backoff.',
   })
   @ApiResponse({ status: 200, description: 'Per-id issue summary', type: BulkIssueInvoicesResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error (empty array, blank ids, or batch > 100)' })
@@ -656,7 +662,17 @@ export class InvoicingController {
 
     const issued = results.filter((r) => r.outcome === 'issued').length;
     const skipped = results.filter((r) => r.outcome === 'skipped').length;
-    return { issued, skipped, failed: results.length - issued - skipped, results };
+    // Partial-completion feedback (#1594): every id is processed and reported
+    // per-outcome (no all-or-nothing), with `total` as the progress denominator.
+    // Live streaming progress for very large batches is a documented follow-up;
+    // the max-100 cap bounds the synchronous call duration until then.
+    return {
+      total: results.length,
+      issued,
+      skipped,
+      failed: results.length - issued - skipped,
+      results,
+    };
   }
 
   /**
@@ -936,6 +952,27 @@ export class InvoicingController {
         idempotencyKey: dto.idempotencyKey,
         originalDocument,
         source,
+        // #1582: optional buyer-identity override (e.g. a wrong NIP on the
+        // original). Re-wrapped into the neutral BuyerProfile the adapter uses
+        // for the KOR; absent ⇒ the original snapshot's buyer is reused.
+        buyerOverride: dto.buyerOverride
+          ? new BuyerProfile(
+              dto.buyerOverride.name,
+              dto.buyerOverride.taxId ?? null,
+              {
+                line1: dto.buyerOverride.address.line1,
+                line2: dto.buyerOverride.address.line2 ?? null,
+                city: dto.buyerOverride.address.city,
+                postalCode: dto.buyerOverride.address.postalCode,
+                countryIso2: dto.buyerOverride.address.countryIso2,
+              },
+              dto.buyerOverride.type,
+              // The original buyer's e-mail is not re-asserted by a correction.
+              null,
+              dto.buyerOverride.isPublicSectorEntity,
+              dto.buyerOverride.isVatGroupMember,
+            )
+          : undefined,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -1588,6 +1625,7 @@ export class InvoicingController {
       warehouseReleaseNumber: record.warehouseReleaseNumber,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
+      clearanceDetail: record.clearanceDetail,
       // W1 failure semantics (errorMessage stays omitted — PII).
       failureMode: record.failureMode,
       failureCode: record.failureCode,

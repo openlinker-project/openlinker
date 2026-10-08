@@ -627,6 +627,7 @@ Adopted (FE-002):
 | `@radix-ui/react-toast` | queue + focus management | `Toast` |
 | `@radix-ui/react-tabs` | roving tabindex | `Tabs` |
 | `cmdk` | headless command menu: keyboard nav, filtering, composable groups | `CommandPalette` |
+| `qrcode-generator` | QR module-matrix computation (KOD I invoice verification, #1579) | `QrCode` |
 
 Adopted (#2193, [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md)):
 

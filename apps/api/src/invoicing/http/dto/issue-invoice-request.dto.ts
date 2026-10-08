@@ -10,7 +10,14 @@
  *
  * @module apps/api/src/invoicing/http/dto
  */
-import { IsString, IsNotEmpty, IsUUID, IsOptional, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsUUID,
+  IsOptional,
+  IsBoolean,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BuyerTaxIdDto } from './buyer-tax-id.dto';
@@ -43,4 +50,22 @@ export class IssueInvoiceRequestDto {
   @IsOptional()
   @IsString()
   idempotencyKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Operator flag: the buyer is a public-sector / local-government entity (#1580). ' +
+      'Neutral classification the provider maps to its regime (KSeF → FA(3) JST). Absent ⇒ does not apply.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  buyerIsPublicSectorEntity?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Operator flag: the buyer is a VAT-group member (#1580). Neutral classification ' +
+      'the provider maps to its regime (KSeF → FA(3) GV). Absent ⇒ does not apply.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  buyerIsVatGroupMember?: boolean;
 }

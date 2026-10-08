@@ -184,6 +184,27 @@ export function validateFa3Xml(xml: RawFa3Xml): void {
     }
   }
 
+  // 4. Content-constraint guard (#1582). `PrzyczynaKorekty` (the KOR correction
+  //    reason) is `minOccurs=0` but `minLength=1` when present, so an empty or
+  //    whitespace-only element is rejected by KSeF at clearance rather than
+  //    locally. Catch both the self-closed form (`<PrzyczynaKorekty/>`) and an
+  //    empty/whitespace text body here, cheaply, at build time. A blank reason
+  //    should be OMITTED entirely (the builder does), never emitted empty.
+  if (/<PrzyczynaKorekty\s*\/>/.test(xml)) {
+    issues.push({
+      path: `${root}/Fa/PrzyczynaKorekty`,
+      message: 'PrzyczynaKorekty must not be empty when present (minLength=1)',
+    });
+  }
+  for (const match of xml.matchAll(/<PrzyczynaKorekty>([^]*?)<\/PrzyczynaKorekty>/g)) {
+    if (match[1].trim().length === 0) {
+      issues.push({
+        path: `${root}/Fa/PrzyczynaKorekty`,
+        message: 'PrzyczynaKorekty must not be empty when present (minLength=1)',
+      });
+    }
+  }
+
   if (issues.length > 0) {
     throw new Fa3XsdValidationException(issues);
   }

@@ -33,6 +33,7 @@ import {
 import { KsefFa3View } from './ksef-fa3-view';
 import { KSEF_REGULATORY_STATUS_LABELS } from '../lib/ksef-regulatory-status-labels';
 import { Button } from '../../../shared/ui/button';
+import { CopyableId } from '../../../shared/ui/copyable-id';
 import {
   Dialog,
   DialogClose,
@@ -58,6 +59,7 @@ function resolveKsefNumber(
 
 export function KsefInvoiceDetailSection({
   invoice,
+  connection,
 }: InvoiceDetailSectionProps): ReactElement | null {
   const { t } = useTranslation();
   const upoDownload = useKsefUpoDownload();
@@ -71,6 +73,12 @@ export function KsefInvoiceDetailSection({
   const handleFa3ParseError = useCallback(() => setViewParseFailed(true), []);
 
   const ksefNumber = resolveKsefNumber(invoice.clearanceReference, invoice.providerInvoiceNumber);
+  // KSeF target environment for this connection ('test' | 'demo' | 'prod'),
+  // used to pick the verification-code (QR) host (prod vs test portal). The FE
+  // Connection config is untyped, so narrow defensively; absence falls back to
+  // the test verification host in the lib, never prod.
+  const ksefEnvironment =
+    typeof connection.config.env === 'string' ? connection.config.env : undefined;
   const hasRegulatoryData = invoice.regulatoryStatus !== 'not-applicable';
 
   if (!hasRegulatoryData && !ksefNumber) {
@@ -162,15 +170,45 @@ export function KsefInvoiceDetailSection({
           </div>
         ) : null}
 
+        {/* Rejection detail (#1582): when the authority rejected the document,
+            surface its operator-facing diagnostic so the operator can see WHY. */}
+        {invoice.regulatoryStatus === 'rejected' && invoice.clearanceDetail ? (
+          <div className="slot-row">
+            <div>
+              <div className="slot-row__label">
+                {t('invoice.ksef.rejectionDetail', 'Rejection detail')}
+              </div>
+              <div className="slot-row__hint">
+                {t('invoice.ksef.rejectionDetailHint', 'Reported by the authority (KSeF)')}
+              </div>
+            </div>
+            <span className="text-danger" role="status">
+              {invoice.clearanceDetail}
+            </span>
+          </div>
+        ) : null}
+
         <div className="slot-row">
           <div>
             <div className="slot-row__label">{t('invoice.ksef.number', 'KSeF number')}</div>
             <div className="slot-row__hint">
               {t('invoice.ksef.numberHint', 'Authority-assigned on clearance')}
             </div>
+            {/* Art. 108g (transitional from 2026): a bank transfer paying a KSeF
+                invoice must carry this 35-character KSeF number in the payment
+                title. We surface it copyable so the operator/buyer can paste it
+                into the transfer — OpenLinker does not initiate the transfer. */}
+            {ksefNumber ? (
+              <div className="slot-row__hint">
+                {t(
+                  'invoice.ksef.art108gHint',
+                  'Art. 108g: include this KSeF number in the bank-transfer title when paying this invoice.',
+                )}
+              </div>
+            ) : null}
           </div>
           {ksefNumber ? (
-            <span className="mono-text text-sm">{ksefNumber}</span>
+            <CopyableId id={ksefNumber} label={ksefNumber} />
           ) : (
             <span className="text-muted">
               {t('invoice.ksef.numberPending', 'Pending')}
@@ -262,6 +300,7 @@ export function KsefInvoiceDetailSection({
                 <KsefFa3View
                   xmlText={fa3.viewText}
                   ksefNumber={ksefNumber}
+                  environment={ksefEnvironment}
                   onParseError={handleFa3ParseError}
                 />
               ) : (

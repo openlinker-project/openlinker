@@ -197,6 +197,35 @@ describe('KsefFa3View', () => {
       expect(screen.getByText('ul. Kupiecka 7')).toBeInTheDocument();
     });
 
+    it('should render the KOD I verification QR code with the KSeF number caption (#1579)', async () => {
+      renderWithProviders(
+        <KsefFa3View
+          xmlText={buildXml({ issueDate: '2026-07-01' })}
+          ksefNumber="1234567890-20260701-ABCDEF-000001"
+          environment="test"
+        />,
+      );
+
+      // The QR URL is computed via an async Web Crypto SHA-256, so it lands
+      // after an effect tick - query with findBy*.
+      const qr = await screen.findByRole('img', { name: /verification QR code/i });
+      expect(qr).toBeInTheDocument();
+      expect(qr.tagName.toLowerCase()).toBe('svg');
+      // KSeF number is shown as the caption below the QR (and also in the
+      // header), so it appears twice.
+      const captionEl = qr.closest('.ksef-fa3-view__verification');
+      expect(captionEl?.textContent).toContain('1234567890-20260701-ABCDEF-000001');
+    });
+
+    it('should not render a verification QR when the seller NIP is absent (#1579)', () => {
+      // A document with no Podmiot1 NIP cannot form a valid verification URL.
+      const xmlWithoutNip = buildXml()
+        .replace('<NIP>1234567890</NIP>', '')
+        .replace('<NIP>0987654321</NIP>', '');
+      renderWithProviders(<KsefFa3View xmlText={xmlWithoutNip} environment="prod" />);
+      expect(screen.queryByRole('img', { name: /verification QR code/i })).not.toBeInTheDocument();
+    });
+
     it('should render sale date, currency, and the "Standard invoice" subtitle', () => {
       renderWithProviders(<KsefFa3View xmlText={buildXml({ saleDate: '2026-06-28' })} />);
 
