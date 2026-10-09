@@ -95,7 +95,7 @@ describe('PricingAndSyncSection', () => {
 
     expect(await screen.findByText(/keep a 22% margin/, { selector: '#conn-rule-note' })).toBeInTheDocument();
     expect(screen.getByText('PrestaShop — Main Store')).toBeInTheDocument();
-    expect(screen.getByText(/using the default rule/)).toBeInTheDocument();
+    expect(screen.getByText(/using the default sync mode and rule/)).toBeInTheDocument();
   });
 
   describe('a connection with no pricing rule', () => {
@@ -277,8 +277,8 @@ describe('PricingAndSyncSection', () => {
     await userEvent.click(screen.getByTestId('source-rule-toggle'));
 
     // Copied from the current default (margin/22/endingIn99), so the summary
-    // no longer reads "using the default rule".
-    expect(screen.queryByText(/using the default rule/)).not.toBeInTheDocument();
+    // no longer reads "using the default sync mode and rule".
+    expect(screen.queryByText(/using the default sync mode and rule/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => {
@@ -294,7 +294,7 @@ describe('PricingAndSyncSection', () => {
     // Toggling back off displays the default rule again (never the stale
     // about-to-be-discarded override, #3166 review finding 4) ...
     await userEvent.click(screen.getByTestId('source-rule-toggle'));
-    expect(await screen.findByText(/using the default rule/)).toBeInTheDocument();
+    expect(await screen.findByText(/using the default sync mode and rule/)).toBeInTheDocument();
 
     // ... and Save on a PERSISTED override refuses to silently drop it.
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
