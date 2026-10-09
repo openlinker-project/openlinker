@@ -57,13 +57,15 @@ function controllerFor(result: BenchWorkListView): BenchWorkController {
 }
 
 describe('BenchWorkController (#2416)', () => {
-  it('should admit exactly admin, operator and packer', () => {
+  it('should admit exactly admin, operator, packer and viewer', () => {
     // A packer must reach it — this is the first route in the tree granted to
-    // that role — and `viewer` must not: the row carries a buyer name, and a
-    // read-only reporting role has no business at a bench.
+    // that role. `viewer` was refused until #3734 because the row carries a buyer
+    // name; it now reads it as a preview, since a viewer already holds
+    // `orders:read` and `customers:read` and sees that name on /orders. Every
+    // write stays closed to it.
     const roles = new Reflector().get<string[]>(ROLES_KEY, BenchWorkController.prototype.listBenchWork);
 
-    expect(roles).toEqual(['admin', 'operator', 'packer']);
+    expect(roles).toEqual(['admin', 'operator', 'packer', 'viewer']);
   });
 
   it('should project the list field by field', async () => {
