@@ -80,6 +80,7 @@ import {
   type PriceSyncMode,
   type PricingRuleType,
   type PriceRoundingMode,
+  type PricingSyncSourceOverride,
 } from '../../price-changes';
 import { useToast } from '../../../shared/ui/toast-provider';
 
@@ -93,7 +94,7 @@ export interface PricingAndSyncSectionProps {
   initialExpandSourceId?: string;
   /**
    * Pre-create an override for the named source, exactly as ticking its
-   * checkbox does: add it to `customSources` and seed its rule from the
+   * checkbox does: tick both its override boxes and seed it from the
    * default.
    *
    * **Separate from `initialExpandSourceId` on purpose (#3167 round-3
@@ -174,7 +175,7 @@ interface DraftView {
 /**
  * The "nothing changed yet" reference point for the dirty check — NOT the
  * same thing as the last server read. A deep-link arrival (`?source=`)
- * pre-populates `draft`/`customSources` exactly as a manual checkbox click
+ * pre-populates `draft`/the override sets exactly as a manual checkbox click
  * would, so an operator lands on the row already expanded and ready to
  * edit; diffing straight against server truth would then read that as an
  * unsaved change from the moment the page loads, with no operator act at
@@ -185,7 +186,25 @@ interface DraftView {
  */
 interface DraftBaseline {
   draft: DraftView;
-  customSources: Set<string>;
+  modeOverrides: Set<string>;
+  ruleOverrides: Set<string>;
+}
+
+/**
+ * A source can override its sync MODE, its pricing RULE, or both (#3729). The
+ * API keeps them as two independent maps, so the page tracks them as two
+ * independent sets rather than one "custom" flag - one flag cannot say what a
+ * Save would send or what a Save would drop.
+ */
+type OverrideAxis = 'mode' | 'rule';
+
+interface DroppedOverride {
+  label: string;
+  parts: string[];
+}
+
+function overrideAxisLabel(axis: OverrideAxis): string {
+  return axis === 'mode' ? 'own sync mode' : 'own rule';
 }
 
 /**
@@ -312,11 +331,12 @@ export function PricingAndSyncSection({
   const readOnly = !write.canWrite;
 
   const [draft, setDraft] = useState<DraftView | null>(null);
-  const [customSources, setCustomSources] = useState<Set<string>>(new Set());
+  const [modeOverrides, setModeOverrides] = useState<Set<string>>(new Set());
+  const [ruleOverrides, setRuleOverrides] = useState<Set<string>>(new Set());
   const [baseline, setBaseline] = useState<DraftBaseline | null>(null);
   const [ruleFormOpen, setRuleFormOpen] = useState(false);
   const [dropOverrideConfirm, setDropOverrideConfirm] = useState<{
-    droppedLabels: string[];
+    dropped: DroppedOverride[];
   } | null>(null);
   // Deep-link pre-expand (#3150, mirrors `MappingPanel`'s #1794 pattern): a
   // requested source not present among this connection's current sources
@@ -327,9 +347,13 @@ export function PricingAndSyncSection({
 
   useEffect(() => {
     if (query.data && draft === null) {
-      const alreadyCustom = query.data.sources
-        .filter((s) => s.isCustomOverride)
+      const alreadyMode = query.data.sources
+        .filter((s) => s.modeOverridden)
         .map((s) => s.sourceConnectionId);
+      const alreadyRule = query.data.sources
+        .filter((s) => s.ruleOverridden)
+        .map((s) => s.sourceConnectionId);
+      const alreadyCustom = new Set([...alreadyMode, ...alreadyRule]);
       const requestedFound = Boolean(
         initialExpandSourceId &&
           query.data.sources.some((s) => s.sourceConnectionId === initialExpandSourceId)
@@ -345,29 +369,37 @@ export function PricingAndSyncSection({
         query.data.sources.some(
           (s) => s.sourceConnectionId === initialCreateOverrideForSourceId
         ) &&
-        !alreadyCustom.includes(initialCreateOverrideForSourceId)
+        !alreadyCustom.has(initialCreateOverrideForSourceId)
           ? initialCreateOverrideForSourceId
           : null;
 
-      const seededCustomSources = new Set(
-        expandTarget ? [...alreadyCustom, expandTarget] : alreadyCustom
+      const seededModeOverrides = new Set(
+        expandTarget ? [...alreadyMode, expandTarget] : alreadyMode
+      );
+      const seededRuleOverrides = new Set(
+        expandTarget ? [...alreadyRule, expandTarget] : alreadyRule
       );
       const seededDraft = toDraftView(query.data);
       if (expandTarget) {
-        // Same effect a manual checkbox click has: copy the default rule
-        // in as the starting point for this source's override.
+        // Same effect ticking both boxes has: copy the default in as the
+        // starting point for this source's override.
         const source = seededDraft.sources.find((s) => s.sourceConnectionId === expandTarget);
-        if (source) source.effective = cloneDraftSetting(seededDraft.default);
+        if (source) {
+          source.effective = cloneDraftSetting(seededDraft.default);
+          source.effective.rule = source.effective.rule ?? { ...EMPTY_DRAFT_RULE };
+        }
       }
       setDraft(seededDraft);
-      setCustomSources(seededCustomSources);
+      setModeOverrides(seededModeOverrides);
+      setRuleOverrides(seededRuleOverrides);
       // The baseline is THIS seeded state, not the raw server read — see
       // `DraftBaseline`'s docblock. Cloned so a later in-place edit to
-      // `draft`/`customSources` can never also mutate the reference point
+      // `draft`/the override sets can never also mutate the reference point
       // it is being diffed against.
       setBaseline({
         draft: cloneDraftView(seededDraft),
-        customSources: new Set(seededCustomSources),
+        modeOverrides: new Set(seededModeOverrides),
+        ruleOverrides: new Set(seededRuleOverrides),
       });
       // Scrolling follows the VIEW request, not the create request — a bare
       // `?source=` must still land the operator on the row it names.
@@ -388,22 +420,32 @@ export function PricingAndSyncSection({
 
   // Re-seed from a SUCCESSFUL save's own response (#3166 review, finding 3) —
   // not only at mount. The server recomputes `sources[].effective` /
-  // `isCustomOverride` / `openEpisodeCount` on write, so comparing the local
+  // `modeOverridden` / `ruleOverridden` / `openEpisodeCount` on write, so comparing the local
   // draft against the STALE `query.data` snapshot would keep `isDirty` true
   // forever after the most common interaction this section offers. The
-  // baseline advances alongside `draft`/`customSources` — what was just
+  // baseline advances alongside `draft`/the override sets — what was just
   // saved is by definition the new "nothing changed yet" reference point.
   useEffect(() => {
     if (updateMutation.isSuccess && updateMutation.data) {
       const savedDraft = toDraftView(updateMutation.data);
-      const savedCustomSources = new Set(
+      const savedModeOverrides = new Set(
         updateMutation.data.sources
-          .filter((s) => s.isCustomOverride)
+          .filter((s) => s.modeOverridden)
+          .map((s) => s.sourceConnectionId)
+      );
+      const savedRuleOverrides = new Set(
+        updateMutation.data.sources
+          .filter((s) => s.ruleOverridden)
           .map((s) => s.sourceConnectionId)
       );
       setDraft(savedDraft);
-      setCustomSources(savedCustomSources);
-      setBaseline({ draft: cloneDraftView(savedDraft), customSources: new Set(savedCustomSources) });
+      setModeOverrides(savedModeOverrides);
+      setRuleOverrides(savedRuleOverrides);
+      setBaseline({
+        draft: cloneDraftView(savedDraft),
+        modeOverrides: new Set(savedModeOverrides),
+        ruleOverrides: new Set(savedRuleOverrides),
+      });
     }
   }, [updateMutation.isSuccess, updateMutation.data]);
 
@@ -429,15 +471,17 @@ export function PricingAndSyncSection({
   // Otherwise a deep-link's own pre-population would itself read as an
   // unsaved change on every load, before the operator has touched anything.
   const isDirty = baseline ? JSON.stringify(draft) !== JSON.stringify(baseline.draft) : false;
+  const sameSet = (a: Set<string>, b: Set<string>): boolean =>
+    JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
   const isCustomSourcesDirty = baseline
-    ? JSON.stringify([...customSources].sort()) !==
-      JSON.stringify([...baseline.customSources].sort())
+    ? !sameSet(modeOverrides, baseline.modeOverrides) ||
+      !sameSet(ruleOverrides, baseline.ruleOverrides)
     : false;
   const hasUnsavedChanges = isDirty || isCustomSourcesDirty;
 
   const defaultRuleError = validateRule(draft.default.rule);
   const activeSourceErrors = draft.sources
-    .filter((s) => customSources.has(s.sourceConnectionId))
+    .filter((s) => ruleOverrides.has(s.sourceConnectionId))
     .map((s) => validateRule(s.effective.rule));
   const firstSourceError = activeSourceErrors.find((e) => e !== null) ?? null;
   const hasInvalidRule = defaultRuleError !== null || firstSourceError !== null;
@@ -474,8 +518,13 @@ export function PricingAndSyncSection({
     });
   }
 
-  function toggleSourceCustom(sourceConnectionId: string, checked: boolean): void {
-    setCustomSources((prev) => {
+  function toggleSourceOverride(
+    sourceConnectionId: string,
+    axis: OverrideAxis,
+    checked: boolean
+  ): void {
+    const setOverrides = axis === 'mode' ? setModeOverrides : setRuleOverrides;
+    setOverrides((prev) => {
       const next = new Set(prev);
       if (checked) next.add(sourceConnectionId);
       else next.delete(sourceConnectionId);
@@ -486,16 +535,23 @@ export function PricingAndSyncSection({
       const next = cloneDraftView(prev);
       const source = next.sources.find((s) => s.sourceConnectionId === sourceConnectionId);
       if (!source) return next;
-      // Mirrors the mockup: `cfg.sources[srcKey].override = checked ? clone(cfg.default) : null`.
+      // Mirrors the mockup: ticking seeds the axis from the default. Only the
+      // ticked axis is touched, so ticking "own rule" never resets an own mode.
       if (checked) {
-        source.effective = cloneDraftSetting(next.default);
+        if (axis === 'mode') source.effective.mode = next.default.mode;
+        // A default with no rule seeds a neutral starting rule: the operator
+        // is explicitly authoring an override here, and a `null` rule would
+        // persist nothing at all, leaving the ticked box silently inert.
+        else
+          source.effective.rule = next.default.rule
+            ? { ...next.default.rule }
+            : { ...EMPTY_DRAFT_RULE };
       }
-      // Unchecked: leave `effective` as-is for STORAGE — it is dropped from
-      // `sourceOverrides` on Save (see `handleSave`) rather than reset here,
-      // so re-checking the box on the same visit does not lose the value.
-      // Display falls back to the default rule instead (see the render
-      // below) so the summary sentence never asserts a rule that is about
-      // to be discarded (#3166 review, finding 4).
+      // Unchecked: leave `effective` as-is for STORAGE - the axis is omitted
+      // from the payload on Save (see `persistSave`) rather than reset here,
+      // so re-checking on the same visit does not lose the value. Display
+      // falls back to the default so the summary never asserts a value that
+      // is about to be discarded (#3166 review, finding 4).
       return next;
     });
   }
@@ -517,25 +573,42 @@ export function PricingAndSyncSection({
   }
 
   /**
-   * Sources that carry a PERSISTED override (`isCustomOverride` on the last
-   * server read) which the current draft is about to drop by not being in
-   * `customSources` anymore (#3166 review, finding 4) — used to gate a
-   * confirmation before a destructive Save rather than silently discarding a
-   * configured rule with no warning.
+   * Overrides that carry a PERSISTED flag on the last server read which the
+   * current draft is about to drop by no longer ticking them (#3166 review,
+   * finding 4), per axis (#3729) - so the confirmation can say WHAT goes, not
+   * just who.
    */
-  function overridesAboutToBeDropped(): string[] {
+  function overridesAboutToBeDropped(): DroppedOverride[] {
     if (!query.data) return [];
-    return query.data.sources
-      .filter((s) => s.isCustomOverride && !customSources.has(s.sourceConnectionId))
-      .map((s) => s.sourceLabel);
+    const dropped: DroppedOverride[] = [];
+    for (const s of query.data.sources) {
+      const parts: string[] = [];
+      if (s.modeOverridden && !modeOverrides.has(s.sourceConnectionId)) {
+        parts.push(overrideAxisLabel('mode'));
+      }
+      if (s.ruleOverridden && !ruleOverrides.has(s.sourceConnectionId)) {
+        parts.push(overrideAxisLabel('rule'));
+      }
+      if (parts.length > 0) dropped.push({ label: s.sourceLabel, parts });
+    }
+    return dropped;
   }
 
   async function persistSave(): Promise<void> {
     if (!draft) return;
-    const sourceOverrides: Record<string, PricingSyncSetting> = {};
+    // Per axis: an axis that is not overridden is OMITTED, never filled from
+    // the default - a mode-only override that carried the default rule would
+    // freeze it into that source (#3729).
+    const sourceOverrides: Record<string, PricingSyncSourceOverride> = {};
     for (const source of draft.sources) {
-      if (customSources.has(source.sourceConnectionId)) {
-        sourceOverrides[source.sourceConnectionId] = toWireSetting(source.effective);
+      const id = source.sourceConnectionId;
+      const override: PricingSyncSourceOverride = {};
+      if (modeOverrides.has(id)) override.mode = source.effective.mode;
+      if (ruleOverrides.has(id) && source.effective.rule !== null) {
+        override.rule = toWireRule(source.effective.rule);
+      }
+      if (override.mode !== undefined || override.rule !== undefined) {
+        sourceOverrides[id] = override;
       }
     }
     try {
@@ -558,7 +631,7 @@ export function PricingAndSyncSection({
     if (hasInvalidRule) return;
     const dropped = overridesAboutToBeDropped();
     if (dropped.length > 0) {
-      setDropOverrideConfirm({ droppedLabels: dropped });
+      setDropOverrideConfirm({ dropped });
       return;
     }
     await persistSave();
@@ -577,7 +650,8 @@ export function PricingAndSyncSection({
     // away the pre-expansion the operator followed the link to see.
     if (!baseline) return;
     setDraft(cloneDraftView(baseline.draft));
-    setCustomSources(new Set(baseline.customSources));
+    setModeOverrides(new Set(baseline.modeOverrides));
+    setRuleOverrides(new Set(baseline.ruleOverrides));
   }
 
   const totalPendingChanges = draft.sources.reduce((sum, s) => sum + s.openEpisodeCount, 0);
@@ -672,7 +746,7 @@ export function PricingAndSyncSection({
       </div>
 
       <div className="pricing-sync__section">
-        <h3 className="pricing-sync__section-title">Give one source its own rule</h3>
+        <h3 className="pricing-sync__section-title">Give one source its own settings</h3>
         <p className="pricing-sync__section-desc pricing-sync__section-desc--spaced">
           Use this when one supplier or warehouse should be priced differently — for example, a
           second warehouse with its own margin.
@@ -685,64 +759,74 @@ export function PricingAndSyncSection({
         ) : null}
         <div className="pricing-sync__source-list" id="conn-source-list">
           {draft.sources.map((source) => {
-            const isCustom = customSources.has(source.sourceConnectionId);
-            // Falls back to the DEFAULT rule when unticked (#3166 review,
-            // finding 4) — `source.effective` is kept around only so
-            // re-checking the box on the same visit restores it, and
-            // displaying it while unticked asserted a rule that Save is
-            // about to discard.
-            const displayedRule = isCustom ? source.effective.rule : draft.default.rule;
-            const sourceError = isCustom ? validateRule(source.effective.rule) : null;
+            const id = source.sourceConnectionId;
+            const hasOwnMode = modeOverrides.has(id);
+            const hasOwnRule = ruleOverrides.has(id);
+            // Each axis falls back to the DEFAULT when unticked (#3166 review,
+            // finding 4, now per axis): `source.effective` is kept only so
+            // re-ticking restores it, and displaying it while unticked
+            // asserted a value Save is about to discard.
+            const displayedRule = hasOwnRule ? source.effective.rule : draft.default.rule;
+            const displayedMode = hasOwnMode ? source.effective.mode : draft.default.mode;
+            const sourceError = hasOwnRule ? validateRule(source.effective.rule) : null;
+            const inherited = [
+              !hasOwnMode ? 'sync mode' : null,
+              !hasOwnRule ? 'rule' : null,
+            ].filter((part): part is string => part !== null);
             return (
-              <div className="pricing-sync__source-row" key={source.sourceConnectionId}>
+              <div className="pricing-sync__source-row" key={id}>
                 <div className="pricing-sync__source-row-head">
-                  <span
-                    className="pricing-sync__source-row-name"
-                    id={`source-row-name-${source.sourceConnectionId}`}
-                  >
+                  <span className="pricing-sync__source-row-name" id={`source-row-name-${id}`}>
                     {source.sourceLabel}
                   </span>
                   <label className="pricing-sync__source-row-toggle">
                     <input
                       type="checkbox"
-                      id={`src-custom-${source.sourceConnectionId}`}
-                      data-testid="source-custom-toggle"
-                      checked={isCustom}
+                      id={`src-custom-mode-${id}`}
+                      data-testid="source-mode-toggle"
+                      checked={hasOwnMode}
                       disabled={readOnly}
-                      onChange={(e) =>
-                        toggleSourceCustom(source.sourceConnectionId, e.target.checked)
-                      }
+                      onChange={(e) => toggleSourceOverride(id, 'mode', e.target.checked)}
+                    />
+                    Use a different sync mode for this source
+                  </label>
+                  <label className="pricing-sync__source-row-toggle">
+                    <input
+                      type="checkbox"
+                      id={`src-custom-rule-${id}`}
+                      data-testid="source-rule-toggle"
+                      checked={hasOwnRule}
+                      disabled={readOnly}
+                      onChange={(e) => toggleSourceOverride(id, 'rule', e.target.checked)}
                     />
                     Use a different rule for this source
                   </label>
                 </div>
-                <div
-                  className="pricing-sync__source-row-summary"
-                  id={`source-row-summary-${source.sourceConnectionId}`}
-                >
+                <div className="pricing-sync__source-row-summary" id={`source-row-summary-${id}`}>
+                  {MODE_OPTIONS.find((o) => o.value === displayedMode)?.label}
+                  {' · '}
                   {sentenceForDraftRule(displayedRule)}
-                  {!isCustom ? ' (using the default rule)' : ''}
+                  {inherited.length > 0 ? ` (using the default ${inherited.join(' and ')})` : ''}
                 </div>
-                {isCustom ? (
-                  <div
-                    className="pricing-sync__source-row-body"
-                    id={`source-row-body-${source.sourceConnectionId}`}
-                  >
-                    <SegmentedControl
-                      aria-label={`Price sync mode for ${source.sourceLabel}`}
-                      options={MODE_OPTIONS.map((option) => ({ ...option, disabled: readOnly }))}
-                      value={source.effective.mode}
-                      onChange={(mode) => updateSource(source.sourceConnectionId, mode)}
-                    />
-                    <RuleFields
-                      rule={source.effective.rule}
-                      error={sourceError}
-                      disabled={readOnly}
-                      onChange={(patch) =>
-                        updateSource(source.sourceConnectionId, undefined, patch)
-                      }
-                      idPrefix={`source-${source.sourceConnectionId}`}
-                    />
+                {hasOwnMode || hasOwnRule ? (
+                  <div className="pricing-sync__source-row-body" id={`source-row-body-${id}`}>
+                    {hasOwnMode ? (
+                      <SegmentedControl
+                        aria-label={`Price sync mode for ${source.sourceLabel}`}
+                        options={MODE_OPTIONS.map((option) => ({ ...option, disabled: readOnly }))}
+                        value={source.effective.mode}
+                        onChange={(mode) => updateSource(id, mode)}
+                      />
+                    ) : null}
+                    {hasOwnRule ? (
+                      <RuleFields
+                        rule={source.effective.rule}
+                        error={sourceError}
+                        disabled={readOnly}
+                        onChange={(patch) => updateSource(id, undefined, patch)}
+                        idPrefix={`source-${id}`}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -797,12 +881,14 @@ export function PricingAndSyncSection({
         onOpenChange={(open) => {
           if (!open) setDropOverrideConfirm(null);
         }}
-        title="Discard the per-source rule?"
+        title="Remove this source's own settings?"
         tone="danger"
         confirmLabel="Discard and save"
         description={
           dropOverrideConfirm
-            ? `Saving will permanently remove the custom rule for ${dropOverrideConfirm.droppedLabels.join(', ')}. It will go back to using the default rule.`
+            ? `Saving will permanently remove: ${dropOverrideConfirm.dropped
+                .map((d) => `${d.label} (${d.parts.join(' and ')})`)
+                .join('; ')}. ${dropOverrideConfirm.dropped.length === 1 ? 'It' : 'They'} will go back to the default.`
             : ''
         }
         isConfirming={updateMutation.isPending}
