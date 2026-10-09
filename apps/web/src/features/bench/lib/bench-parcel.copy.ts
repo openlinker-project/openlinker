@@ -278,6 +278,12 @@ export const benchParcelCopy = {
     undoFailed: 'That did not go through. Nothing changed — try again.',
   },
 
+  /** #3734. Shown to a session that may read the bench but not pack at it. */
+  preview: {
+    title: 'Preview only',
+    body: 'You can look at this parcel, but you cannot scan, confirm or close it.',
+  },
+
   /** E5's promise, rendered on the verifying surface. */
   footer: {
     noCommit:

@@ -111,7 +111,7 @@ describe('ROLE_PERMISSIONS', () => {
      * permission cannot arrive without somebody deciding it should.
      */
     it('gives `packer` exactly the one permission its bench controls need', () => {
-      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
+      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write', 'bench:read']);
     });
 
     /**

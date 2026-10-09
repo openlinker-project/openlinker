@@ -10,8 +10,8 @@
  * tree granted to that role, and #2413's whole authorization posture is that a
  * packer is refused everywhere unless a grant is recorded, so "the decorator is
  * present" and "the session gets through" are different claims. And that a
- * `viewer` does NOT: the response carries a buyer name, and the unit test can
- * only read a decorator.
+ * `viewer` reads it but cannot write (#3734): the unit test can only read a
+ * decorator.
  *
  * And that decision D8 holds against real rows: a parcel routed to a logistics
  * provider must never appear here. The service spec proves the filter is ASKED
@@ -143,11 +143,12 @@ describe('Bench work list (#2416)', () => {
     expect(ids).not.toContain(theirs.id);
   });
 
-  it('refuses a viewer, whose role has no business reading a buyer name at a bench', async () => {
+  it('lets a viewer read the list as a preview, but never claim (#3734)', async () => {
     const http = harness.getHttp();
     const token = await loginAsViewer(http, harness.getDataSource());
 
-    await http.get('/v1/bench/work').set('Authorization', `Bearer ${token}`).expect(403);
+    await http.get('/v1/bench/work').set('Authorization', `Bearer ${token}`).expect(200);
+    await http.post('/v1/bench/work/claim-next').set('Authorization', `Bearer ${token}`).expect(403);
   });
 
   it('refuses an anonymous request', async () => {
