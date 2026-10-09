@@ -9,22 +9,25 @@
  * **"Preserves" means "re-sends only what was already an override" (#3148
  * review, finding 1).** `ConnectionPricingSyncView.sources[].effective` is
  * the RESOLVED value (override-then-default), not "this source carries an
- * override" — `isCustomOverride` is the field that distinguishes the two.
+ * override" — `modeOverridden` / `ruleOverridden` are the fields that distinguish the two.
  * `PATCH` is a full explicit-Save write (no partial patch), so seeding
  * `sourceOverrides` from every entry's `effective` value — as an earlier
  * revision did — stamps an explicit override onto every source that was
  * merely INHERITING the destination's default, including every one of the
  * connection's other open episodes. A later change to the destination's
  * default rule would then silently stop reaching any of them. Only rows
- * that already carry `isCustomOverride: true` are re-sent verbatim; the one
- * pair actually being changed is then set (or added) on top.
+ * that already carry an override are re-sent, PER AXIS (#3729): `mode` only
+ * when `modeOverridden`, `rule` only when `ruleOverridden`. Sending the
+ * resolved rule for a mode-only override would freeze the default rule into
+ * that source. The one pair actually being changed is then set on top, and
+ * gains no rule it did not already own.
  *
  * @module apps/web/src/features/price-changes/hooks
  */
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { PriceSyncMode } from '../api/price-changes.types';
-import type { PricingSyncSetting } from '../api/pricing-sync.types';
+import type { PricingSyncSourceOverride } from '../api/pricing-sync.types';
 import { priceChangesQueryKeys } from '../api/price-changes.query-keys';
 import { connectionPricingSyncQueryKey } from './use-connection-pricing-sync-query';
 
@@ -45,15 +48,16 @@ export function useSetSourceSyncModeMutation(): UseMutationResult<
   return useMutation({
     mutationFn: async ({ destinationConnectionId, sourceConnectionId, mode }) => {
       const view = await apiClient.pricingSync.get(destinationConnectionId);
-      const sourceOverrides: Record<string, PricingSyncSetting> = {};
+      const sourceOverrides: Record<string, PricingSyncSourceOverride> = {};
       for (const source of view.sources) {
-        if (source.isCustomOverride) {
-          sourceOverrides[source.sourceConnectionId] = source.effective;
+        const override: PricingSyncSourceOverride = {};
+        if (source.modeOverridden) override.mode = source.effective.mode;
+        if (source.ruleOverridden) override.rule = source.effective.rule;
+        if (source.modeOverridden || source.ruleOverridden) {
+          sourceOverrides[source.sourceConnectionId] = override;
         }
       }
-      const currentRule =
-        sourceOverrides[sourceConnectionId]?.rule ?? view.default.rule;
-      sourceOverrides[sourceConnectionId] = { mode, rule: currentRule };
+      sourceOverrides[sourceConnectionId] = { ...sourceOverrides[sourceConnectionId], mode };
       await apiClient.pricingSync.update(destinationConnectionId, {
         default: view.default,
         sourceOverrides,
