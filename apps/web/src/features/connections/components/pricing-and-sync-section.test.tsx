@@ -94,6 +94,26 @@ describe('PricingAndSyncSection', () => {
       expect(screen.getByText('PrestaShop — Main Store')).toBeInTheDocument();
     });
 
+    it('should send rule: null, not a synthesized passthrough, when only the mode is changed', async () => {
+      const savedView = buildView({ default: { mode: 'automatic', rule: null } });
+      const update = vi.fn().mockResolvedValue(savedView);
+      const get = vi.fn().mockResolvedValueOnce(noRuleView).mockResolvedValue(savedView);
+      const apiClient = createMockApiClient({ pricingSync: { get, update } });
+
+      renderWithProviders(<PricingAndSyncSection connectionId="dest-1" />, {
+        apiClient,
+        sessionAdapter: ADMIN_SESSION,
+      });
+      await screen.findByText(/No pricing rule is set/, { selector: '#conn-rule-note' });
+
+      const defaultGroup = screen.getByRole('radiogroup', { name: 'Default price sync mode' });
+      await userEvent.click(within(defaultGroup).getByRole('radio', { name: 'Automatic' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][1].default).toEqual({ mode: 'automatic', rule: null });
+    });
+
     it('should author a rule from the empty state and save it', async () => {
       const update = vi.fn().mockResolvedValue(
         buildView({ default: { mode: 'manual', rule: { type: 'markup', percent: 15, rounding: 'none' } } }),
