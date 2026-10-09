@@ -11,14 +11,32 @@ describe('SourceConnectionPricingRollup', () => {
         destinationLabel: 'Allegro — PL',
         effectiveMode: 'manual',
         effectiveRuleSummary: { type: 'margin', percent: 22, rounding: 'endingIn99' },
-        isCustomOverride: false,
+        modeOverridden: false,
+        ruleOverridden: false,
       },
       {
         destinationConnectionId: 'dest-2',
         destinationLabel: 'Erli — PL',
         effectiveMode: 'automatic',
         effectiveRuleSummary: { type: 'markup', percent: 15, rounding: 'none' },
-        isCustomOverride: true,
+        modeOverridden: false,
+        ruleOverridden: true,
+      },
+      {
+        destinationConnectionId: 'dest-3',
+        destinationLabel: 'Kaufland — DE',
+        effectiveMode: 'automatic',
+        effectiveRuleSummary: { type: 'margin', percent: 22, rounding: 'endingIn99' },
+        modeOverridden: true,
+        ruleOverridden: false,
+      },
+      {
+        destinationConnectionId: 'dest-4',
+        destinationLabel: 'Amazon — DE',
+        effectiveMode: 'automatic',
+        effectiveRuleSummary: { type: 'markup', percent: 5, rounding: 'none' },
+        modeOverridden: true,
+        ruleOverridden: true,
       },
     ]);
     const apiClient = createMockApiClient({ pricingSync: { asSource } });
@@ -27,7 +45,9 @@ describe('SourceConnectionPricingRollup', () => {
 
     expect(await screen.findByText('Allegro — PL')).toBeInTheDocument();
     expect(screen.getByText(/using Allegro — PL's default rule/)).toBeInTheDocument();
-    expect(screen.getByText(/a rule just for this source/)).toBeInTheDocument();
+    expect(screen.getByText(/— own rule just for this source/)).toBeInTheDocument();
+    expect(screen.getByText(/— own mode just for this source/)).toBeInTheDocument();
+    expect(screen.getByText(/— own mode and rule just for this source/)).toBeInTheDocument();
 
     // Read-only per ADR decision 2: the only interactive elements are the
     // "Manage" navigation links, never a form control that could mutate.
@@ -63,7 +83,8 @@ describe('SourceConnectionPricingRollup', () => {
         destinationLabel: 'Allegro — PL',
         effectiveMode: 'manual',
         effectiveRuleSummary: null,
-        isCustomOverride: false,
+        modeOverridden: false,
+        ruleOverridden: false,
       },
     ]);
     const apiClient = createMockApiClient({ pricingSync: { asSource } });

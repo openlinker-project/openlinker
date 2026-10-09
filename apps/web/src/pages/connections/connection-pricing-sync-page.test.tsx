@@ -24,7 +24,8 @@ function buildAsSourceEntries(): ConnectionAsSourceEntry[] {
       destinationLabel: 'Erli — PL',
       effectiveMode: 'automatic',
       effectiveRuleSummary: { type: 'markup', percent: 15, rounding: 'none' },
-      isCustomOverride: false,
+      modeOverridden: false,
+      ruleOverridden: false,
     },
   ];
 }
@@ -133,7 +134,8 @@ describe('ConnectionPricingSyncPage', () => {
         {
           sourceConnectionId: 'src-1',
           sourceLabel: 'PrestaShop — Main Store',
-          isCustomOverride: false,
+          modeOverridden: false,
+          ruleOverridden: false,
           effective: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
           openEpisodeCount: 0,
         },
@@ -160,7 +162,7 @@ describe('ConnectionPricingSyncPage', () => {
     // A bare `?source=` is the rollup's neutral "Manage" pointer: show me
     // this row. It must not stage an override, or the next unrelated save
     // persists a per-source rule nobody ticked.
-    const checkbox = await screen.findByTestId('source-custom-toggle');
+    const checkbox = await screen.findByTestId('source-rule-toggle');
     expect(checkbox).not.toBeChecked();
   });
 
@@ -171,7 +173,8 @@ describe('ConnectionPricingSyncPage', () => {
         {
           sourceConnectionId: 'src-1',
           sourceLabel: 'PrestaShop — Main Store',
-          isCustomOverride: false,
+          modeOverridden: false,
+          ruleOverridden: false,
           effective: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
           openEpisodeCount: 0,
         },
@@ -195,7 +198,7 @@ describe('ConnectionPricingSyncPage', () => {
       { apiClient, route: '/connections/dest-1/pricing-sync?source=src-1&override=1' },
     );
 
-    const checkbox = await screen.findByTestId('source-custom-toggle');
+    const checkbox = await screen.findByTestId('source-rule-toggle');
     expect(checkbox).toBeChecked();
   });
 

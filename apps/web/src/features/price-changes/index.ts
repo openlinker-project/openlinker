@@ -16,11 +16,13 @@ export type {
   ConnectionPricingSyncView,
   PricingSyncSetting,
   PricingSyncSourceEntry,
+  PricingSyncSourceOverride,
   UpdatePricingSyncInput,
   PricingRule,
 } from './api/pricing-sync.types';
 export { useConnectionPricingSyncQuery } from './hooks/use-connection-pricing-sync-query';
 export { useUpdateConnectionPricingSyncMutation } from './hooks/use-update-connection-pricing-sync-mutation';
+export { hasOwnOverride, describeOverride } from './lib/pricing-sync-overrides';
 export { useConnectionAsSourceQuery } from './hooks/use-connection-as-source-query';
 export type { ConnectionAsSourceEntry } from './api/pricing-sync.types';
 export { usePriceChangesQuery } from './hooks/use-price-changes-query';
