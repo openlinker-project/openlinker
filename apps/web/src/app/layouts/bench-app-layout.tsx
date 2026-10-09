@@ -22,6 +22,14 @@
  * bench's own lock does, because a shared terminal must not show the next
  * person what the last one was looking at.
  *
+ * ## A password change still owed is redirected here, not by the other layout
+ *
+ * `AuthenticatedAppLayout` owns that redirect for every route under it, but
+ * `/bench` is outside it for the reason above, so a packer created with a
+ * one-time password would otherwise sit on the bench's generic load error
+ * (#3732). The gate is on an authenticated session only, so the idle lock's
+ * anonymous session is untouched.
+ *
  * ## No search for a packer
  *
  * A packer is sent back to `/bench` from every other page, so a search across
@@ -50,7 +58,7 @@
  */
 import { useCallback, type PropsWithChildren, type ReactElement } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 
 import { useSession } from '../../shared/auth/use-session';
 import { useDensity } from '../../shared/ui/density-toggle';
@@ -77,6 +85,17 @@ export function BenchAppLayout({ children }: PropsWithChildren): ReactElement {
       }
     })();
   }, [clearSession, navigate, queryClient, showToast]);
+
+  // A signed-in account still owing its one-time-password change (#3456) must
+  // not mount the bench: the API refuses every bench read with 403
+  // PASSWORD_CHANGE_REQUIRED, and this route sits outside
+  // `AuthenticatedAppLayout`, which is where that redirect otherwise lives
+  // (#3732). Keyed on an AUTHENTICATED session only: the idle lock leaves an
+  // anonymous one, which must keep rendering the bench's own locked screen.
+  // Decided after every hook above so the hook order never changes.
+  if (session.status === 'authenticated' && session.user?.mustChangePassword === true) {
+    return <Navigate to={{ pathname: '/change-password', search: '?next=%2Fbench' }} replace />;
+  }
 
   const role = navRoleOf(session);
   const showSearch = role !== undefined && role !== 'packer';
