@@ -39,7 +39,8 @@ export function AuthenticatedAppLayout(): ReactElement {
   //
   // Except a packer still owing a password change (#3456): the API refuses
   // every route but the change itself, the bench included, so the
-  // change-password redirect below must win.
+  // change-password redirect below must win. (`/bench` is outside this layout,
+  // so it carries its own copy of that redirect in `BenchAppLayout`, #3732.)
   if (
     resolveSessionSurface(isReady, session) === 'bench-only' &&
     session.user?.mustChangePassword !== true
