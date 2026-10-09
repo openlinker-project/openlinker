@@ -104,7 +104,7 @@ export class BenchParcelController {
   ) {}
 
   @Get(':workId/parcel')
-  @Roles('admin', 'operator', 'packer')
+  @Roles('admin', 'operator', 'packer', 'viewer')
   @ApiOperation({
     summary: 'Open one parcel at the bench',
     description:
@@ -306,7 +306,7 @@ export class BenchParcelController {
   }
 
   @Get(':workId/activity')
-  @Roles('admin', 'operator', 'packer')
+  @Roles('admin', 'operator', 'packer', 'viewer')
   @ApiOperation({
     summary: 'Recent activity for this parcel',
     description:
