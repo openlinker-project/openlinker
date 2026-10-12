@@ -51,6 +51,7 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
 
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { ApiError } from '../../../shared/api/api-error';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
@@ -181,18 +182,30 @@ export function BenchDocumentsPanel({
 
   const label = data.label;
 
-  const print = (download: (id: string) => Promise<Blob>): void => {
+  const print = (
+    download: (id: string) => Promise<Blob>,
+    onConflict: string = benchParcelCopy.documents.printFailed
+  ): void => {
     setPrintError(null);
     void download(workId)
       .then((blob) => {
         if (!printBlob(blob)) setPrintError(benchParcelCopy.documents.printFailed);
       })
-      .catch(() => {
-        setPrintError(benchParcelCopy.documents.printFailed);
+      .catch((error: unknown) => {
+        // A 409 is the provider saying it has nothing to print - a statement
+        // about the document, not a transient failure, so it is not "try again".
+        setPrintError(
+          error instanceof ApiError && error.isConflict()
+            ? onConflict
+            : benchParcelCopy.documents.printFailed
+        );
       });
   };
   const printInvoice = (): void => {
-    print((id) => apiClient.bench.downloadInvoice(id));
+    print(
+      (id) => apiClient.bench.downloadInvoice(id),
+      benchParcelCopy.documents.printNotAvailable
+    );
   };
   const printReceipt = (): void => {
     print((id) => apiClient.bench.downloadReceipt(id));
@@ -511,6 +524,25 @@ function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardAction
           title={copy.notPrintableTitle(card.documentNumber)}
         >
           <p>{copy.notPrintableBody}</p>
+        </CardFrame>
+      );
+    case 'invoice-link':
+      return (
+        <CardFrame
+          tone="info"
+          badge={copy.link.badge}
+          slot={copy.insideLabel}
+          title={copy.invoiceTitle(card.documentNumber)}
+        >
+          <p>{copy.link.body}</p>
+          <a
+            className="button button--secondary"
+            href={card.verificationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {copy.link.openAction}
+          </a>
         </CardFrame>
       );
     case 'invoice-in-progress':

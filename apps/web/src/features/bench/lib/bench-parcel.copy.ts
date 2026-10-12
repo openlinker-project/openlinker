@@ -566,6 +566,18 @@ export const benchParcelCopy = {
       documentNumber === null ? 'Invoice issued' : `Invoice ${documentNumber}`,
     notPrintableBody: 'Issued, but it cannot be printed here.',
 
+    /**
+     * #3649 - the provider cannot render the invoice but the authority's own page
+     * can be printed from. Never "Ready to print": nothing here prints by itself.
+     */
+    link: {
+      badge: 'Print from KSeF',
+      body: 'This invoice cannot be printed from here. Open it, then print it from that page.',
+      openAction: 'Open invoice in KSeF',
+    },
+    /** A 409 from the print route: the provider has nothing printable (#3648). */
+    printNotAvailable: 'This invoice has no printable version. Send the box without it.',
+
     /** F2 — named, never silently skipped, and never blocking. */
     missingTitle: 'Carry on packing — one paper is not coming',
     missingBody:
