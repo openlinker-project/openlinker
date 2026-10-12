@@ -73,6 +73,7 @@ export * from './domain/ports/capabilities/offline-resubmitter.capability';
 export * from './domain/ports/capabilities/regulatory-record-locator.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
+export * from './domain/ports/capabilities/regulatory-verification-link-reader.capability';
 export * from './domain/ports/capabilities/bank-accounts-reader.capability';
 export * from './domain/ports/capabilities/bank-account-default-setter.capability';
 export * from './domain/ports/capabilities/invoice-email-sender.capability';
