@@ -249,6 +249,10 @@ export class OrderSyncService implements IOrderSyncService {
         // the order is refused for not reporting a figure the source DID
         // report. Spread conditionally so absence stays absence.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        // The resolved ADR-063 rate code. A destination that writes a per-line
+        // tax (Shoper) refuses the order without it, even though the snapshot
+        // holds it - the same invisible-in-the-allowlist failure as above.
+        ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
       })),
       totals: {
         subtotal: order.totals.subtotal,

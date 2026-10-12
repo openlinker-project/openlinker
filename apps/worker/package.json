@@ -35,6 +35,7 @@
     "@openlinker/integrations-inpost": "workspace:*",
     "@openlinker/integrations-ksef": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",
+    "@openlinker/integrations-shoper": "workspace:*",
     "@openlinker/integrations-subiekt": "workspace:*",
     "@openlinker/integrations-subiekt-nexo": "workspace:*",
     "@openlinker/integrations-woocommerce": "workspace:*",
