@@ -15,6 +15,37 @@ describe('ShoperConnectionConfigShapeValidatorAdapter', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('should accept order defaults that are positive integers, or unset', async () => {
+    await expect(
+      validator.validate({
+        baseUrl: 'xxxxx.shoparena.pl',
+        defaults: { shippingId: 8, paymentId: '1', statusId: null },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('should reject an order default that is not a positive integer', async () => {
+    const error = await validator
+      .validate({ baseUrl: 'xxxxx.shoparena.pl', defaults: { shippingId: 0, paymentId: 'cash' } })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(InvalidConnectionConfigException);
+    expect((error as InvalidConnectionConfigException).errors.map((e) => e.path)).toEqual([
+      'defaults.shippingId',
+      'defaults.paymentId',
+    ]);
+  });
+
+  it('should reject defaults that is not an object', async () => {
+    const error = await validator
+      .validate({ baseUrl: 'xxxxx.shoparena.pl', defaults: 5 })
+      .catch((e: unknown) => e);
+
+    expect((error as InvalidConnectionConfigException).errors).toEqual([
+      { path: 'defaults', message: 'must be an object' },
+    ]);
+  });
+
   it('should reject a missing baseUrl with a path-tagged issue', async () => {
     const error = await validator.validate({}).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(InvalidConnectionConfigException);

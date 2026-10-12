@@ -22,6 +22,7 @@ describe('ShoperShopContextProvider', () => {
       currency: 'PLN',
       weightUnit: 'KILOGRAM',
       warehousesEnabled: false,
+      decrementsStockOnOrder: true,
     });
     expect(get).toHaveBeenCalledWith('/application-config');
   });
@@ -80,6 +81,7 @@ describe('ShoperShopContextProvider', () => {
         currency: 'EUR',
         weightUnit: 'KILOGRAM',
         warehousesEnabled: false,
+        decrementsStockOnOrder: true,
       });
       const get = jest.fn();
 
@@ -93,6 +95,7 @@ describe('ShoperShopContextProvider', () => {
         currency: 'EUR',
         weightUnit: 'KILOGRAM',
         warehousesEnabled: false,
+        decrementsStockOnOrder: true,
       });
     });
 
@@ -142,6 +145,7 @@ describe('ShoperShopContextProvider', () => {
       weightUnit: 'KILOGRAM',
       // Not known to be off, so stock reads refuse rather than guess.
       warehousesEnabled: true,
+      decrementsStockOnOrder: true,
     });
   });
 
@@ -164,6 +168,20 @@ describe('ShoperShopContextProvider', () => {
         .mockResolvedValue({ status: 200, data: { ...CONFIG, warehouses_enabled: flag } });
 
       await expect(providerWith(get).get()).resolves.toMatchObject({ warehousesEnabled: true });
+    },
+  );
+
+  it.each([[false, false], ['0', false], [0, false], ['1', true], [true, true], [undefined, true], [null, true]])(
+    'should read shopping_update_stock_on_buy=%p as decrementsStockOnOrder=%p',
+    async (flag, expected) => {
+      const get = jest.fn().mockResolvedValue({
+        status: 200,
+        data: { ...CONFIG, shopping_update_stock_on_buy: flag },
+      });
+
+      await expect(providerWith(get).get()).resolves.toMatchObject({
+        decrementsStockOnOrder: expected,
+      });
     },
   );
 

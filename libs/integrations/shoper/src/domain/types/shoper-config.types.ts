@@ -9,6 +9,17 @@
  * @module libs/integrations/shoper/src/domain/types
  */
 
+/**
+ * Ids of rows in the shop's own `/shippings`, `/payments` and `/statuses`, used
+ * when no operator mapping resolves one. Shoper requires all three on an order
+ * and has no catch-all, so there is no value OpenLinker could guess.
+ */
+export interface ShoperOrderDefaults {
+  readonly shippingId?: number;
+  readonly paymentId?: number;
+  readonly statusId?: number;
+}
+
 export interface ShoperConnectionConfig {
   /**
    * The shop's own host, e.g. `xxxxx.shoparena.pl`. An `https://` URL naming
@@ -16,4 +27,6 @@ export interface ShoperConnectionConfig {
    * the only transport: the Bearer token travels on every request.
    */
   readonly baseUrl: string;
+  /** Fallback ids for the three order fields Shoper requires; see `ShoperOrderDefaults`. */
+  readonly defaults?: ShoperOrderDefaults;
 }

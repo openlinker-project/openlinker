@@ -23,6 +23,28 @@ function build(fetchImpl: jest.Mock): ShoperHttpClient {
 }
 
 describe('ShoperHttpClient', () => {
+  it('should POST a JSON body with a Bearer token and never follow redirects', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, 42));
+
+    const response = await build(fetchImpl).post<number>('/users', { email: 'a@b.pl' });
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://xxxxx.shoparena.pl/webapi/rest/users');
+    expect(init).toMatchObject({
+      method: 'POST',
+      body: '{"email":"a@b.pl"}',
+      redirect: 'manual',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    });
+    expect(response.data).toBe(42);
+  });
+
+  it('should map a failed POST to ShoperApiError', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(400, { error: 'invalid_request' }));
+
+    await expect(build(fetchImpl).post('/users', {})).rejects.toBeInstanceOf(ShoperApiError);
+  });
+
   it('should PUT a JSON body with a Bearer token and never follow redirects', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
 

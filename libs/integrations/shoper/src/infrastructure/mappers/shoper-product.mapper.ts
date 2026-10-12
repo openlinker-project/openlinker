@@ -44,6 +44,13 @@ export interface ShoperMapContext {
    * so stock reads and writes refuse instead of reporting a wrong total.
    */
   readonly warehousesEnabled: boolean;
+  /**
+   * Whether Shoper itself removes stock when an order line is created
+   * (`shopping_update_stock_on_buy`). OpenLinker never writes stock on account of
+   * an order it created, so this only decides whether a warning is due: when it
+   * is off, an order created here leaves the shop's stock unchanged.
+   */
+  readonly decrementsStockOnOrder: boolean;
 }
 
 const KILOGRAM = 'KILOGRAM';

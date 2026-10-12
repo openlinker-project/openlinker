@@ -29,15 +29,37 @@ export class ShoperConnectionConfigShapeValidatorAdapter
   constructor(private readonly pluginName: string) {}
 
   validate(config: Record<string, unknown>): Promise<void> {
+    const issues: Array<{ path: string; message: string }> = [];
     const parsed = parseShoperBaseUrl(config.baseUrl);
     if (!parsed.ok) {
-      return Promise.reject(
-        new InvalidConnectionConfigException(
-          this.pluginName,
-          parsed.issues.map((message) => ({ path: 'baseUrl', message })),
-        ),
-      );
+      issues.push(...parsed.issues.map((message) => ({ path: 'baseUrl', message })));
     }
-    return Promise.resolve();
+    issues.push(...validateDefaults(config.defaults));
+    return issues.length > 0
+      ? Promise.reject(new InvalidConnectionConfigException(this.pluginName, issues))
+      : Promise.resolve();
   }
+}
+
+const DEFAULT_KEYS = ['shippingId', 'paymentId', 'statusId'] as const;
+
+/** `defaults` is optional; when present each id must be a positive integer (an unset key is `null`/absent). */
+function validateDefaults(defaults: unknown): Array<{ path: string; message: string }> {
+  if (defaults === undefined || defaults === null) {
+    return [];
+  }
+  if (typeof defaults !== 'object' || Array.isArray(defaults)) {
+    return [{ path: 'defaults', message: 'must be an object' }];
+  }
+  const record = defaults as Record<string, unknown>;
+  return DEFAULT_KEYS.flatMap((key) => {
+    const value = record[key];
+    if (value === undefined || value === null) {
+      return [];
+    }
+    const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+    return Number.isInteger(n) && n > 0
+      ? []
+      : [{ path: `defaults.${key}`, message: 'must be a positive integer (an id from the shop)' }];
+  });
 }

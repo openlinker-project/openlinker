@@ -106,12 +106,13 @@ export class ShoperShopContextProvider {
       currency: data.default_currency_name ?? null,
       weightUnit: data.locale_default_weight ?? FALLBACK_WEIGHT_UNIT,
       warehousesEnabled: isFlagOn(data.warehouses_enabled),
+      decrementsStockOnOrder: isFlagOn(data.shopping_update_stock_on_buy),
     };
   }
 }
 
 /**
- * Shoper serves the flag as a JSON boolean (`false` on the live shop), but a
+ * Shoper serves a flag as a JSON boolean (`false` on the live shop), but a
  * `"1"` / `1` must also read as on. Only an explicit "off" reads as off: a
  * missing or unrecognised value reads as ON, because the flag gates whether a
  * stock level is safe to publish at all, and refusing is the side that cannot
@@ -131,6 +132,7 @@ function isUsableContext(value: ShoperMapContext | null): value is ShoperMapCont
     // An entry written before this field existed lacks it: ask the shop again
     // rather than assume "no warehouses" about a shop we did not check.
     typeof value.warehousesEnabled === 'boolean' &&
+    typeof value.decrementsStockOnOrder === 'boolean' &&
     (value.currency === null || typeof value.currency === 'string')
   );
 }
