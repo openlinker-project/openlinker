@@ -61,6 +61,10 @@ type DecodeResult =
 - OL-HMAC + `WebhookRequestDto` ship as the registered default decoder; PrestaShop/Allegro stay unchanged on the **status contract**, pinned by the existing webhook integration spec asserting 202/401/400 before and after the refactor.
 - InPost registers its decoder for the `inpost` provider. No schema change — dedup reuses `webhook_deliveries`; the secret reuses `WebhookSecretProviderPort` (OL-generated, handed to InPost). **Open:** confirm InPost sandbox offers the HMAC option (OQ-B3-adjacent).
 
+## Amendment (#3644): optional `query` on `verify`
+
+`InboundWebhookDecoderPort.verify` gains an OPTIONAL `query` (first value of each URL query key). It exists for a provider that offers no verifiable signature and authenticates by a token in the delivery URL (Shoper). It is ignored by every signature-based decoder, so the change is source-compatible. It is passed only to `verify` - never to routing or the delivery row - and must never be logged, since it may hold the credential.
+
 ## References
 
 - Related issues: #768, #727 (parent spec), #965 (DPD — next consumer)

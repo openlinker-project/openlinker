@@ -38,6 +38,7 @@ function receipt(over: Partial<BenchSalesDocument> = {}): BenchSalesDocument {
     documentNumber: '16240',
     completedAt: '2026-09-30T09:00:00Z',
     printable: false,
+    verificationUrl: null,
     artefacts: [{ medium: 'link', disposition: 'send', label: 'Receipt', contentType: null }],
     ...over,
   };
@@ -54,6 +55,7 @@ function invoiceDoc(over: Partial<BenchSalesDocument> = {}): BenchSalesDocument 
     documentNumber: 'FV/1',
     completedAt: '2026-09-30T09:00:00Z',
     printable: true,
+    verificationUrl: null,
     artefacts: null,
     ...over,
   };
@@ -160,6 +162,7 @@ describe('describeBenchDocumentCard (#3647)', () => {
         invoiceId: 'inv-1',
         documentNumber: 'FV/1',
         issuedAt: null,
+        verificationUrl: null,
         blockReason: null,
         unresolvedReason: null,
       },

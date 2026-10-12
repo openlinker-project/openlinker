@@ -27,6 +27,7 @@ export const PermissionValues = [
   'bench:write',
   // #3736 - read-only Fulfilment board and task detail (admin, operator, viewer).
   'fulfillment:read',
+  'bench:read',
   'shipments:read',
   'shipments:write',
   'invoices:read',
