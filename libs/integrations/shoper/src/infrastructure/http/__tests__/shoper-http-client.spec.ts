@@ -23,6 +23,31 @@ function build(fetchImpl: jest.Mock): ShoperHttpClient {
 }
 
 describe('ShoperHttpClient', () => {
+  it('should PUT a JSON body with a Bearer token and never follow redirects', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+
+    await build(fetchImpl).put('/product-stocks/181', { stock: 5 });
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://xxxxx.shoparena.pl/webapi/rest/product-stocks/181');
+    expect(init).toMatchObject({
+      method: 'PUT',
+      body: '{"stock":5}',
+      redirect: 'manual',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    });
+  });
+
+  it('should map a failed PUT to ShoperApiError', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(404, { error: 'invalid_request' }));
+
+    await expect(build(fetchImpl).put('/product-stocks/1', { stock: 1 })).rejects.toBeInstanceOf(
+      ShoperApiError,
+    );
+  });
+
   it('should GET the API URL with a Bearer token and never follow redirects', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
 

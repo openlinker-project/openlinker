@@ -16,6 +16,7 @@ export const MAP_CONTEXT: ShoperMapContext = {
   language: 'pl_PL',
   currency: 'PLN',
   weightUnit: 'KILOGRAM',
+  warehousesEnabled: false,
 };
 
 export function buildStock(overrides: Partial<ShoperStock> = {}): ShoperStock {

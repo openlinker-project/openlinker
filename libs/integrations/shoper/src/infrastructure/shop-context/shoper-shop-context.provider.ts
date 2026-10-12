@@ -20,6 +20,7 @@
  *
  * @module libs/integrations/shoper/src/infrastructure/shop-context
  */
+import { Logger } from '@openlinker/shared/logging';
 import type { CachePort } from '@openlinker/shared';
 
 import { SHOPER_CONNECTION_TEST_PATH } from '../../shoper.constants';
@@ -40,6 +41,8 @@ export interface ShoperShopContextCacheOptions {
 }
 
 export class ShoperShopContextProvider {
+  private readonly logger = new Logger(ShoperShopContextProvider.name);
+
   private pending: Promise<ShoperMapContext> | null = null;
 
   constructor(
@@ -91,13 +94,31 @@ export class ShoperShopContextProvider {
     const { data } = await this.client.get<Partial<ShoperApplicationConfig>>(
       SHOPER_CONNECTION_TEST_PATH,
     );
+    if (data.warehouses_enabled === undefined || data.warehouses_enabled === null) {
+      this.logger.warn(
+        'Shoper application-config carries no warehouses_enabled flag; treating the shop ' +
+          'as multi-warehouse, so InventoryMaster reads are refused',
+      );
+    }
     return {
       host: this.host,
       language: data.default_language_name ?? '',
       currency: data.default_currency_name ?? null,
       weightUnit: data.locale_default_weight ?? FALLBACK_WEIGHT_UNIT,
+      warehousesEnabled: isFlagOn(data.warehouses_enabled),
     };
   }
+}
+
+/**
+ * Shoper serves the flag as a JSON boolean (`false` on the live shop), but a
+ * `"1"` / `1` must also read as on. Only an explicit "off" reads as off: a
+ * missing or unrecognised value reads as ON, because the flag gates whether a
+ * stock level is safe to publish at all, and refusing is the side that cannot
+ * put a wrong number on a marketplace.
+ */
+function isFlagOn(value: unknown): boolean {
+  return !(value === false || value === 0 || value === '0' || value === 'false');
 }
 
 /** A cache entry written by another release must not be trusted blindly. */
@@ -107,6 +128,9 @@ function isUsableContext(value: ShoperMapContext | null): value is ShoperMapCont
     typeof value === 'object' &&
     typeof value.language === 'string' &&
     typeof value.weightUnit === 'string' &&
+    // An entry written before this field existed lacks it: ask the shop again
+    // rather than assume "no warehouses" about a shop we did not check.
+    typeof value.warehousesEnabled === 'boolean' &&
     (value.currency === null || typeof value.currency === 'string')
   );
 }

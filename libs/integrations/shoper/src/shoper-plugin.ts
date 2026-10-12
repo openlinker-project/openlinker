@@ -45,7 +45,7 @@ export const shoperAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPER_ADAPTER_KEY,
   platformType: SHOPER_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['ProductMaster'],
+  supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
   displayName: 'Shoper REST API',
   version: '1.0.0',
   isDefault: true,
@@ -103,7 +103,10 @@ export function createShoperPlugin(): AdapterPlugin {
       try {
         return dispatchCapability<Promise<T>>(
           capability,
-          { ProductMaster: async () => (await build()).productMaster },
+          {
+            ProductMaster: async () => (await build()).productMaster,
+            InventoryMaster: async () => (await build()).inventoryMaster,
+          },
           SHOPER_BRAND,
         );
       } catch (error) {

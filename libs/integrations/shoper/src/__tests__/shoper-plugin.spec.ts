@@ -1,6 +1,7 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
+import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
 
@@ -37,11 +38,11 @@ function connection(overrides: Record<string, unknown> = {}): Connection {
 }
 
 describe('Shoper plugin', () => {
-  it('should expose the documented manifest with the ProductMaster capability only', () => {
+  it('should expose the documented manifest with the ProductMaster and InventoryMaster capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
-      supportedCapabilities: ['ProductMaster'],
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
       isDefault: true,
     });
     expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
@@ -71,6 +72,18 @@ describe('Shoper plugin', () => {
     expect(adapter).toBeInstanceOf(ShoperProductMasterAdapter);
   });
 
+  it('should resolve InventoryMaster to the Shoper inventory master adapter', async () => {
+    const { host } = hostWithRegistries();
+
+    const adapter = await createShoperPlugin().createCapabilityAdapter<unknown>(
+      connection(),
+      'InventoryMaster',
+      host,
+    );
+
+    expect(adapter).toBeInstanceOf(ShoperInventoryMasterAdapter);
+  });
+
   it('should route the connection through the connection-bound transport', async () => {
     const { host } = hostWithRegistries();
     const conn = connection();
@@ -85,15 +98,15 @@ describe('Shoper plugin', () => {
       const { host } = hostWithRegistries();
 
       await expect(
-        createShoperPlugin().createCapabilityAdapter(connection(), 'InventoryMaster', host),
-      ).rejects.toThrow(/does not support capability: InventoryMaster/);
+        createShoperPlugin().createCapabilityAdapter(connection(), 'OrderSource', host),
+      ).rejects.toThrow(/does not support capability: OrderSource/);
     });
 
     it('should not decrypt the credentials or open a transport to say so', async () => {
       const { host, credentialsGet } = hostWithRegistries();
 
       await createShoperPlugin()
-        .createCapabilityAdapter(connection(), 'InventoryMaster', host)
+        .createCapabilityAdapter(connection(), 'OrderSource', host)
         .catch(() => undefined);
 
       expect(credentialsGet).not.toHaveBeenCalled();
@@ -106,7 +119,7 @@ describe('Shoper plugin', () => {
       await expect(
         createShoperPlugin().createCapabilityAdapter(
           connection({ config: {} }),
-          'InventoryMaster',
+          'OrderSource',
           host,
         ),
       ).rejects.toThrow(/does not support capability/);
