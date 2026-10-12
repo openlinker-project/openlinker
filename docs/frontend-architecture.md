@@ -168,7 +168,10 @@ Both pages render inside `AccessGate require="fulfillment:read"` with an `Access
 fallback, so no query mounts for a session that would be refused. `fulfillment:read` is held by
 admin, operator and viewer and never by `packer`, and must stay identical to the `@Roles` lists
 on `FulfillmentWorkController`'s GET routes and `GET /users/packers` (the roster the board names
-packers with) - `scripts/check-bench-write-roles.mjs` pins both. The API matches:
+packers with). `scripts/check-bench-write-roles.mjs` compares the permission against the UNION of
+roles across the controller's routes and against `GET /users/packers` alone; it cannot see a single
+GET narrowed back to admin + operator (the list route would keep `viewer` in the union), so the
+per-route lists are pinned by `fulfillment-work.controller.spec.ts`. The API matches:
 `GET /fulfillment/works`, `GET /fulfillment/works/:workId` and its `/shipments` are
 `@Roles('admin', 'operator', 'viewer')`, while `POST .../actions/:action` and
 `PATCH .../assignment` stay `@Roles('admin', 'operator')`. Every write control (assign/move,

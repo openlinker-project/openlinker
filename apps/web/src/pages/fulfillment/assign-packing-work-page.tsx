@@ -9,14 +9,15 @@
  * keyboard-reachable path — the mockup's own accessibility argument — and drag
  * is purely additive. Design of record: `docs/plans/mockups/assign-packing-work.html`.
  *
- * ## Admin and operator only (#3096)
+ * ## Read by admin, operator and viewer; written by admin and operator (#3096, #3736)
  *
- * The roster read and every write here are `@Roles('admin', 'operator')` —
- * exactly who holds `orders:write`. A viewer used to reach the board by URL
- * and meet a 403'd roster rendered as a lane of "No longer a packer". The page
- * is now gated on the permission and renders an access-denied state for
- * anyone else; nothing below the gate mounts, so no request is made only to
- * be refused.
+ * The task list and the roster read (`GET /users/packers`) are
+ * `@Roles('admin', 'operator', 'viewer')` — exactly who holds
+ * `fulfillment:read`, which gates the page. Anyone else (a packer) gets an
+ * access-denied state; nothing below the gate mounts, so no request is made
+ * only to be refused. Every write here is `@Roles('admin', 'operator')` and
+ * its control stays behind `orders:write`, so a viewer reads the board with no
+ * assign/move menu, self-serve toggle, action or drag.
  *
  * ## Only work that is still to be done, by default
  *

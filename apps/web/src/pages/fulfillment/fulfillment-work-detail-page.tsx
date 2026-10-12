@@ -6,13 +6,15 @@
  * the left column, `assign-packing-work.html` for the Packer card, and the
  * order page's own modules for the rest of the right column.
  *
- * ## Admin and operator only (#3096, F-9)
+ * ## Read by admin, operator and viewer; written by admin and operator (#3096, F-9, #3736)
  *
- * `GET /fulfillment/works/:workId` is `@Roles('admin', 'operator')` — exactly
- * who holds `orders:write`. The page is gated on that permission and renders
- * an access-denied state for anyone else, so the read is never sent only to be
- * refused, and a 403 that still arrives (a role changed mid-session) renders
- * the same state rather than "Could not load … [Retry]".
+ * `GET /fulfillment/works/:workId` is `@Roles('admin', 'operator', 'viewer')` —
+ * exactly who holds `fulfillment:read`. The page is gated on that permission
+ * and renders an access-denied state for anyone else (a packer is pointed at
+ * the bench), so the read is never sent only to be refused, and a 403 that
+ * still arrives (a role changed mid-session) renders the same state rather than
+ * "Could not load … [Retry]". The action card and the staffing controls stay
+ * behind `orders:write` (admin + operator), so a viewer sees neither.
  *
  * ## Five states, none impersonating another
  *
