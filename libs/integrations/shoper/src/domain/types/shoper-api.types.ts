@@ -207,6 +207,38 @@ export interface ShoperOrderRef {
   readonly status_id?: string | number | null;
 }
 
+/** The slice of `GET /orders/:id` the parcel writeback reads: the shipping method the order uses. */
+export interface ShoperOrderShipping {
+  readonly order_id: string | number;
+  readonly shipping_id?: string | number | null;
+}
+
+/** Row of `GET /parcels`. `shipping_code` is the carrier tracking number. */
+export interface ShoperParcel {
+  readonly parcel_id: string | number;
+  readonly order_id: string | number;
+  readonly shipping_code?: string | null;
+}
+
+/**
+ * Body of `POST /parcels` (#3643). No `products[]`: Shoper then ships exactly the
+ * quantity still unshipped on each line (#3638), i.e. the whole order the first time.
+ * Creating the parcel advances the order status per the shop's own
+ * `shopping_parcel_send_status_id`.
+ */
+export interface ShoperParcelCreateRequest {
+  readonly order_id: number;
+  readonly shipping_id: number;
+  readonly shipping_code?: string;
+  readonly sent: true;
+}
+
+/** Body of `PUT /parcels/:id` that attaches a tracking number arriving after the parcel. */
+export interface ShoperParcelTrackingUpdate {
+  readonly shipping_code: string;
+  readonly sent: true;
+}
+
 /** Row of `/shippings`, `/payments` or `/statuses`: the id plus per-language labels. */
 export interface ShoperOptionRow {
   readonly shipping_id?: string;

@@ -1,4 +1,5 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { isOrderStatusWriteback } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
@@ -112,6 +113,9 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperOrderProcessorAdapter);
+    // The lifecycle relay reaches a destination through exactly this narrowing
+    // (#3643): resolve as OrderProcessorManager, then isOrderStatusWriteback.
+    expect(isOrderStatusWriteback(adapter as object)).toBe(true);
   });
 
   it('should refuse OrderProcessorManager when built without the customer provisioner', async () => {
