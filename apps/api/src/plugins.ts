@@ -39,6 +39,7 @@ import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openlinker/integrations-subiekt-nexo';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
+import { ShoperIntegrationModule } from '@openlinker/integrations-shoper';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
 
@@ -68,6 +69,9 @@ export const apiPlugins: PluginEntry[] = [
   // 'Fiscalization' capability so an operator can register a completed sale
   // as a Polish fiscal e-receipt.
   EparagonyIntegrationModule,
+  // #3639: Shoper shop platform - connection skeleton only (tester + shape
+  // validators); capabilities land with the rest of the Shoper milestone.
+  ShoperIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB). NOT a plugin - it
   // registers no adapter manifest and exposes no capability; it appears here
   // purely as a module-composition seam, exactly as AiIntegrationModule does.

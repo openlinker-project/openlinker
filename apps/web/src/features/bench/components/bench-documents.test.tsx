@@ -14,6 +14,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import type { OpenLinkerPlugin } from '../../../shared/plugins';
+import { ApiError } from '../../../shared/api/api-error';
 import { parseBenchReceiptLink } from '../api/bench-parcel.schema';
 import type {
   BenchDocuments,
@@ -38,6 +39,7 @@ function invoice(over: Partial<BenchInvoice> = {}): BenchInvoice {
     invoiceId: 'inv-1',
     documentNumber: 'FV/2026/09/0412',
     issuedAt: '2026-09-01T09:14:00Z',
+    verificationUrl: null,
     blockReason: null,
     unresolvedReason: null,
     ...over,
@@ -433,6 +435,7 @@ function receiptDoc(over: Partial<BenchSalesDocument> = {}): BenchSalesDocument 
     documentNumber: '16240',
     completedAt: '2026-09-30T09:00:00Z',
     printable: false,
+    verificationUrl: null,
     artefacts: [{ medium: 'link', disposition: 'send', label: 'Receipt', contentType: null }],
     ...over,
   };
@@ -449,6 +452,7 @@ function invoiceDoc(over: Partial<BenchSalesDocument> = {}): BenchSalesDocument 
     documentNumber: 'FV/2026/09/0412',
     completedAt: null,
     printable: true,
+    verificationUrl: null,
     artefacts: null,
     ...over,
   };
@@ -637,6 +641,71 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
     expect(await screen.findByText('Invoice FV/2026/09/0412')).toBeInTheDocument();
     expect(screen.getByText('Goes INSIDE the box')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /print invoice/i })).toBeInTheDocument();
+  });
+
+  describe('an invoice the authority links to instead of rendering (#3649)', () => {
+    const KSEF_URL = 'https://qr.ksef.mf.gov.pl/invoice/1234567890/01-02-2026/abc';
+    const linkDoc = (): BenchSalesDocument =>
+      invoiceDoc({ printable: false, verificationUrl: KSEF_URL });
+
+    it('should offer the invoice number and an open-in-KSeF link, and not say ready to print', async () => {
+      mount(withDocument(linkDoc()));
+
+      const link = await screen.findByRole('link', { name: 'Open invoice in KSeF' });
+      expect(link).toHaveAttribute('href', KSEF_URL);
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(screen.getByText('Invoice FV/2026/09/0412')).toBeInTheDocument();
+      // Scoped to the invoice card: the label card legitimately says it too.
+      const card = screen.getByTestId('bench-documents-invoice');
+      expect(within(card).queryByText('Ready to print')).toBeNull();
+      expect(within(card).queryByRole('button', { name: /print invoice/i })).toBeNull();
+    });
+
+    it('should read the link from the legacy invoice slot of an API older than #3646', async () => {
+      mount({ invoice: invoice({ state: 'link', verificationUrl: KSEF_URL }), document: undefined });
+
+      expect(await screen.findByRole('link', { name: 'Open invoice in KSeF' })).toHaveAttribute(
+        'href',
+        KSEF_URL
+      );
+    });
+
+    it('should keep offering Print for a provider that renders (inFakt, Subiekt)', async () => {
+      mount(withDocument(invoiceDoc({ printable: true, verificationUrl: null })));
+
+      expect(await screen.findByRole('button', { name: /print invoice/i })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Open invoice in KSeF' })).toBeNull();
+    });
+
+    it('should say there is no printable version on a 409, not a generic failure', async () => {
+      const { apiClient } = mount(withDocument(invoiceDoc()));
+      apiClient.bench.downloadInvoice = vi
+        .fn()
+        .mockRejectedValue(new ApiError('conflict', 409, null));
+
+      const button = await screen.findByRole('button', { name: /print invoice/i });
+      act(() => {
+        button.click();
+      });
+
+      expect(
+        await screen.findByText('This invoice has no printable version. Send the box without it.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/did not print/i)).toBeNull();
+    });
+
+    it('should still say it did not print for any other failure', async () => {
+      const { apiClient } = mount(withDocument(invoiceDoc()));
+      apiClient.bench.downloadInvoice = vi.fn().mockRejectedValue(new ApiError('boom', 500, null));
+
+      const button = await screen.findByRole('button', { name: /print invoice/i });
+      act(() => {
+        button.click();
+      });
+
+      expect(await screen.findByText(/did not print/i)).toBeInTheDocument();
+    });
   });
 
   it('should report the block reason only when there is no document of any kind', async () => {

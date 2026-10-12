@@ -110,8 +110,8 @@ describe('ROLE_PERMISSIONS', () => {
      * `scripts/check-bench-write-roles.mjs` - and each is exact so a fifth
      * permission cannot arrive without somebody deciding it should.
      */
-    it('gives `packer` exactly the one permission its bench controls need', () => {
-      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
+    it('gives `packer` exactly the two permissions its bench controls need (write + read)', () => {
+      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write', 'bench:read']);
     });
 
     /**
