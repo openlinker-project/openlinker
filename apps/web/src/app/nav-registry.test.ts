@@ -250,7 +250,7 @@ describe('buildNavGroups', () => {
           demoMode: false,
           omsRouting: 'on',
           role,
-          permissions: ['fulfillment:read', 'bench:write', 'bench:read'],
+          permissions: ['bench:write', 'bench:read'],
         });
         expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
       }
