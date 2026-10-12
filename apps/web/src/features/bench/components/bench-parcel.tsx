@@ -177,6 +177,13 @@ export function BenchParcelView({
   // #3734. A session without `bench:write` (a viewer) is looking, not packing:
   // no scan surface, no completion, no reopen - and above all no presence ping,
   // which would advertise the viewer to a packer as someone standing at the box.
+  //
+  // The bench deliberately HIDES its write surfaces from a viewer rather than
+  // rendering them locked (`useWriteAccess` + `ReadOnlyLock`, which is what the
+  // frontend rules assign to write affordances): a disabled scan dock at a
+  // packing station is noise, and the demo-mode "show it, locked" policy exists
+  // to advertise capabilities, not to dress a preview as a working station. Do
+  // not "fix" it in either direction without revisiting that.
   const canWrite = usePermission('bench:write');
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() && canWrite });
   // A3. False while the idle lock covers the bench.

@@ -5,7 +5,7 @@
  * The grant's own comment in `role.types.ts` states the rule:
  *
  *   > The roles holding it MUST stay identical to the `@Roles` lists on
- *   > `BenchWorkController` and `BenchParcelController` … a UI that offers
+ *   > the bench controllers (work, parcel, documents, label) … a UI that offers
  *   > what the route refuses (or hides what it allows, which is what happened
  *   > here) is the defect either way.
  *
@@ -49,6 +49,11 @@ const ROLE_TYPES = 'libs/core/src/users/domain/types/role.types.ts';
 const CONTROLLERS = [
   'apps/api/src/bench/http/bench-work.controller.ts',
   'apps/api/src/bench/http/bench-parcel.controller.ts',
+  // `bench:read` is "the roles on ANY bench route", so the controllers that hold
+  // the viewer-CLOSED routes (buyer documents, label replace) must be read too:
+  // without them, adding 'viewer' to a document GET would pass silently.
+  'apps/api/src/bench/http/bench-documents.controller.ts',
+  'apps/api/src/bench/http/bench-label.controller.ts',
 ];
 
 /**
@@ -105,6 +110,17 @@ export function parseControllerRoles(source, routes = 'any') {
   return [...roles].sort();
 }
 
+/**
+ * A parser that reads ZERO values is a broken parser, never a pass (#3303): a
+ * reordered decorator or a refactored `ROLE_PERMISSIONS` shape makes both sides
+ * empty, and an empty set equals an empty set. Returns the reason, or null.
+ */
+export function zeroFloorViolation(holders, routeRoles) {
+  if (holders.length === 0) return 'holders';
+  if (routeRoles.length === 0) return 'routes';
+  return null;
+}
+
 export function diffRoleSets(holders, routeRoles) {
   const missingPermission = routeRoles.filter((r) => !holders.includes(r));
   const missingRoute = holders.filter((r) => !routeRoles.includes(r));
@@ -128,6 +144,13 @@ async function main() {
       for (const role of parseControllerRoles(source, routes)) routeRoles.add(role);
     }
     const names = [...routeRoles].sort();
+    const empty = zeroFloorViolation(holders, names);
+    if (empty !== null) {
+      console.error(
+        `check-bench-write-roles: parsed ZERO ${empty} for '${permission}' — did a controller path, decorator order or ROLE_PERMISSIONS shape change? Refusing to report a pass.`
+      );
+      process.exit(1);
+    }
     const { ok, missingPermission, missingRoute } = diffRoleSets(holders, names);
     if (ok) {
       console.log(
@@ -217,6 +240,15 @@ function selfCheck() {
     "'any' keeps a GET-only role",
     parseControllerRoles("@Get('a')\n@Roles('admin', 'viewer')\n@Post('b')\n@Roles('admin')", 'any'),
     ['admin', 'viewer']
+  );
+
+  expect('both sides empty trips the zero floor', zeroFloorViolation([], []), 'holders');
+  expect('no route roles trips the zero floor', zeroFloorViolation(['a'], []), 'routes');
+  expect('non-empty sides pass the zero floor', zeroFloorViolation(['a'], ['a']), null);
+  expect(
+    'a @Roles written ABOVE its verb parses to nothing, which the floor then catches',
+    parseControllerRoles("@Roles('admin')\n@Get('a')"),
+    []
   );
 
   expect('identical sets → ok', diffRoleSets(['a', 'b'], ['a', 'b']).ok, true);
