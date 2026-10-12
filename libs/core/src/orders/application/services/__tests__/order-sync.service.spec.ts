@@ -190,6 +190,37 @@ describe('OrderSyncService', () => {
       expect(command.totals.shipping).toBe(5.0);
     });
 
+    it('should carry the resolved line tax rate onto the destination command when the order has one', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.items[0].taxRate = '23';
+
+      await service.syncOrder({
+        order,
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].taxRate).toBe('23');
+    });
+
+    it('should leave taxRate absent on the destination command when the order line has none', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect('taxRate' in command.items[0]).toBe(false);
+    });
+
     it('leaves the gross keys absent when the source reported none', async () => {
       const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
