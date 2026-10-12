@@ -123,9 +123,13 @@ export class WooCommerceTaxClassResolver {
 
   private readGeneralSettings(): Promise<WooCommerceGeneralSetting[]> {
     if (this.generalSettings === undefined) {
-      const read = this.readGeneralSettingsFrom
-        ? this.readGeneralSettingsFrom()
-        : this.httpClient.get<WooCommerceGeneralSetting[]>('/wp-json/wc/v3/settings/general');
+      // `Promise.resolve` keeps the tolerance the previous `await` had: a
+      // client stub answering a non-promise reads as "no settings", not a crash.
+      const read = Promise.resolve(
+        this.readGeneralSettingsFrom
+          ? this.readGeneralSettingsFrom()
+          : this.httpClient.get<WooCommerceGeneralSetting[]>('/wp-json/wc/v3/settings/general')
+      );
       this.generalSettings = read
         .then((rows) => rows ?? [])
         .catch((error: unknown) => {

@@ -68,9 +68,25 @@ const mockConnection: Connection = {
   updatedAt: new Date(),
 };
 
+/**
+ * A real `/settings/general` payload for a store with taxes off, so every
+ * order path reads the store's tax setup the way it does in production (the
+ * `PL:MZ` country exercises the `country:state` split). Tests that need a
+ * different store override `get` themselves.
+ */
+const TAXES_OFF_GENERAL_SETTINGS = [
+  { id: 'woocommerce_calc_taxes', value: 'no' },
+  { id: 'woocommerce_default_country', value: 'PL:MZ' },
+  { id: 'woocommerce_price_num_decimals', value: '2' },
+];
+
 function makeHttpClient(): jest.Mocked<IWooCommerceHttpClient> {
   return {
-    get: jest.fn(),
+    get: jest.fn((path: string) =>
+      Promise.resolve(
+        path === '/wp-json/wc/v3/settings/general' ? TAXES_OFF_GENERAL_SETTINGS : undefined
+      )
+    ) as jest.Mocked<IWooCommerceHttpClient>['get'],
     post: jest.fn(),
     put: jest.fn(),
     delete: jest.fn(),

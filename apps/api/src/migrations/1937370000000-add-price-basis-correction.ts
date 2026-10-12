@@ -25,6 +25,24 @@
  * into ordinary price changes. Subiekt and every other master already report
  * gross and are not flagged.
  *
+ * Cost and lock (#3740 review). The matching product ids are collected into a
+ * temporary table FIRST, before anything locks `product_variants`: that read
+ * walks `connections` (a handful of rows) and probes `identifier_mappings`
+ * through its `(entityType, connectionId, internalId)` index once per
+ * matching connection, instead of once per variant. Only then does the
+ * `ALTER TABLE` take its lock, and the `UPDATE` is a single hash join against
+ * the temp table. Adding a column with a constant default is a metadata-only
+ * change in PostgreSQL 11+, so the lock is held for the `UPDATE` alone.
+ *
+ * This migration must never run its backfill twice. TypeORM decides pending
+ * by class name, so a renumber re-runs it on every database that already
+ * applied it, and by then `clearPriceBasisPending` has cleared the flag on
+ * every corrected variant: re-flagging them would open a SECOND correction
+ * wave over prices that were already corrected. So the backfill runs only
+ * when this migration itself creates the column; if the column is already
+ * there, the backfill is skipped. The `cause` column is `IF NOT EXISTS`
+ * guarded for the same reason.
+ *
  * `down()` drops both columns. Any correction episodes still open keep their
  * rows and simply lose the marker, after which an automatic pair would apply
  * them - the pre-#3737 behaviour.
@@ -35,25 +53,40 @@ export class AddPriceBasisCorrection1937370000000 implements MigrationInterface 
   name = 'AddPriceBasisCorrection1937370000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const existing = (await queryRunner.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'product_variants'
+          AND column_name = 'priceBasisPending'`
+    )) as unknown[];
+
+    if (existing.length === 0) {
+      // Read the mapping table once, before `product_variants` is locked.
+      await queryRunner.query(`
+        CREATE TEMP TABLE "price_basis_correction_products" AS
+        SELECT DISTINCT m."internalId" AS "productId"
+          FROM "connections" c
+          JOIN "identifier_mappings" m
+            ON m."connectionId" = c."id"
+           AND m."entityType" = 'Product'
+         WHERE c."platformType" IN ('prestashop', 'woocommerce')
+           AND c."enabledCapabilities" @> '["ProductMaster"]'::jsonb
+      `);
+      await queryRunner.query(
+        `ALTER TABLE "product_variants" ADD "priceBasisPending" boolean NOT NULL DEFAULT false`
+      );
+      await queryRunner.query(`
+        UPDATE "product_variants" v
+           SET "priceBasisPending" = true
+          FROM "price_basis_correction_products" t
+         WHERE v."productId" = t."productId"
+           AND v."price" IS NOT NULL
+      `);
+      await queryRunner.query(`DROP TABLE "price_basis_correction_products"`);
+    }
+
     await queryRunner.query(
-      `ALTER TABLE "product_variants" ADD "priceBasisPending" boolean NOT NULL DEFAULT false`
-    );
-    await queryRunner.query(`
-      UPDATE "product_variants" v
-         SET "priceBasisPending" = true
-       WHERE v."price" IS NOT NULL
-         AND EXISTS (
-           SELECT 1
-             FROM "identifier_mappings" m
-             JOIN "connections" c ON c."id" = m."connectionId"
-            WHERE m."entityType" = 'Product'
-              AND m."internalId" = v."productId"
-              AND c."platformType" IN ('prestashop', 'woocommerce')
-              AND c."enabledCapabilities" @> '["ProductMaster"]'::jsonb
-         )
-    `);
-    await queryRunner.query(
-      `ALTER TABLE "price_change_episodes" ADD "cause" character varying(32)`
+      `ALTER TABLE "price_change_episodes" ADD COLUMN IF NOT EXISTS "cause" character varying(32)`
     );
   }
 

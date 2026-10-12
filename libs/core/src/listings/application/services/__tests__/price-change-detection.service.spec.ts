@@ -8,6 +8,7 @@ import type { ConnectionPort, IIdentifierMappingService } from '@openlinker/core
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { PriceChangeDetectionService } from '../price-change-detection.service';
 import { PriceChangeEpisode } from '../../../domain/entities/price-change-episode.entity';
+import type { PriceChangeCause } from '../../../domain/types/price-change-episode.types';
 import type { PriceChangeEpisodeRepositoryPort } from '../../../domain/ports/price-change-episode-repository.port';
 import type { IDestinationCurrencyResolutionService } from '../destination-currency-resolution.service.interface';
 
@@ -626,6 +627,29 @@ describe('PriceChangeDetectionService', () => {
       });
 
       expect(episodes.upsertOpen).toHaveBeenCalledWith(expect.objectContaining({ cause: null }));
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should hold for review an episode whose stored cause is one this build does not know', async () => {
+      // Fail-safe direction: only an episode with NO cause may auto-apply, so a
+      // cause added later is held until someone decides otherwise.
+      connections.get.mockResolvedValue(automaticPln());
+      episodes.upsertOpen.mockResolvedValueOnce({
+        episode: buildEpisode({
+          id: 'ep-future-1',
+          cause: 'some-future-cause' as unknown as PriceChangeCause,
+        }),
+        wasRefresh: false,
+      });
+
+      await service.onMasterPriceChanged({
+        productVariantId: VARIANT_ID,
+        sourceConnectionId: SRC_ID,
+        sourceOldAmount: 100,
+        sourceNewAmount: 110,
+        sourceCurrency: 'PLN',
+      });
+
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 

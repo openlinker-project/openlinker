@@ -244,11 +244,14 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
     // true for any conflict-arm write, including a no-op repeat of an
     // already-stored, already-enqueued price, which must NOT re-enqueue.
     //
-    // A tax-basis correction (ADR-077) is never auto-applied, whatever the
-    // mode: it moves every affected offer by the VAT rate at once. The STORED
-    // cause is read, not the observation's, so an ordinary re-detection of a
-    // correction episode cannot re-enable the bypass.
-    if (!blockReason && episode.cause !== 'tax-basis-correction') {
+    // An episode that carries ANY cause is never auto-applied, whatever the
+    // mode. Today's only cause is a tax-basis correction (ADR-077), which moves
+    // every affected offer by the VAT rate at once. Testing for "no cause"
+    // rather than against that one value fails safe: a cause added later is
+    // held for review until someone decides otherwise. The STORED cause is
+    // read, not the observation's, so an ordinary re-detection of a correction
+    // episode cannot re-enable the bypass.
+    if (!blockReason && episode.cause === null) {
       const mode = readPriceSyncModeForSource(connection.config, observation.sourceConnectionId);
       if (mode === 'automatic') {
         const isFreshDetection = !openEpisode;
