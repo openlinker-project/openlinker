@@ -7,6 +7,7 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { UsersController } from './users.controller';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import {
   USER_MANAGEMENT_SERVICE_TOKEN,
   type IUserManagementService,
@@ -90,6 +91,14 @@ describe('UsersController', () => {
   });
 
   describe('listPackers', () => {
+    it('should be readable by viewer, so the read-only Fulfilment board can name packers (#3736)', () => {
+      expect(Reflect.getMetadata(ROLES_KEY, UsersController.prototype.listPackers)).toEqual([
+        'admin',
+        'operator',
+        'viewer',
+      ]);
+    });
+
     it('should request only active packers and project id+username only', async () => {
       const packer = new User(
         'p1',

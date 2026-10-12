@@ -132,6 +132,20 @@ describe('ROLE_PERMISSIONS', () => {
     });
   });
 
+  describe('fulfillment:read (#3736)', () => {
+    it('should be held by admin, operator and viewer, and never by packer', () => {
+      const holders = UserRoleValues.filter((role) =>
+        ROLE_PERMISSIONS[role].includes('fulfillment:read')
+      );
+      expect(holders).toEqual(['admin', 'operator', 'viewer']);
+    });
+
+    it('should not hand viewer any Fulfilment write permission', () => {
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('orders:write');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('bench:write');
+    });
+  });
+
   describe('admin', () => {
     it('should have all permissions', () => {
       expect([...ROLE_PERMISSIONS.admin].sort()).toEqual([...PermissionValues].sort());

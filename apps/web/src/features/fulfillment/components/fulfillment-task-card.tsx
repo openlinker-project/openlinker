@@ -88,7 +88,7 @@ export function FulfillmentTaskCard({
   rootProps,
 }: FulfillmentTaskCardProps): ReactElement {
   const held = task.activeHolds.length > 0;
-  const canOpenDetail = usePermission('orders:write');
+  const canOpenDetail = usePermission('fulfillment:read');
   const showLocation = useHasMultipleLocations();
   const distinguishing = distinguishingAttributeKeys(
     task.lines.map((line) => ({ attributes: line.attributes ?? null }))

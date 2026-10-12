@@ -69,6 +69,11 @@ export const PermissionValues = [
   // decorators gate the route, and a UI that offers what the route refuses
   // (or hides what it allows, which is what happened here) is the defect.
   'bench:write',
+  // Read-only Fulfilment board + task detail (#3736). Held by admin, operator
+  // and viewer - never packer, whose work is the bench. Must stay identical to
+  // the `@Roles` lists on the GET routes of `FulfillmentWorkController` and
+  // `GET /users/packers` (the roster the board names packers with).
+  'fulfillment:read',
   'shipments:read',
   // DISPLAY-ONLY (#1826): gates carrier-message disclosure on the shipments
   // read paths plus the FE's write affordances. It authorizes no mutation — the
@@ -145,6 +150,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'listings:write',
     'customers:read',
     'bench:write',
+    'fulfillment:read',
     'shipments:read',
     'shipments:write',
     'invoices:read',
@@ -164,6 +170,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'inventory:read',
     'listings:read',
     'customers:read',
+    'fulfillment:read',
     'shipments:read',
     'invoices:read',
     'webhooks:read',

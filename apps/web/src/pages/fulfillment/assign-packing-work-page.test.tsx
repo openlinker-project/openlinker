@@ -29,7 +29,7 @@ const OPERATOR: SessionUser = {
   username: 'operator',
   email: 'operator@example.com',
   role: 'operator',
-  permissions: ['orders:read', 'orders:write'],
+  permissions: ['orders:read', 'orders:write', 'fulfillment:read'],
 };
 
 const POOL_LABEL = 'Anyone can pick this up';
@@ -147,6 +147,30 @@ describe('AssignPackingWorkPage', () => {
       expect(list).not.toHaveBeenCalled();
       expect(listPackers).not.toHaveBeenCalled();
       expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('read-only for a viewer (#3736)', () => {
+    const VIEWER: SessionUser = {
+      ...OPERATOR,
+      role: 'viewer',
+      permissions: ['orders:read', 'fulfillment:read'],
+    };
+
+    it('should render the board and name packers, with no assignment control', async () => {
+      const { list, listPackers } = renderPage({
+        user: VIEWER,
+        list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: 'u_a' })])),
+        listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'packer-a' }] }),
+      });
+
+      expect(await screen.findByRole('region', { name: 'packer-a' })).toBeInTheDocument();
+      expect(list).toHaveBeenCalled();
+      expect(listPackers).toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: ASSIGN_MENU })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: 'The fulfilment board is for supervisors' })
+      ).not.toBeInTheDocument();
     });
   });
 

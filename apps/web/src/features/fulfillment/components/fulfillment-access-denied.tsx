@@ -33,7 +33,7 @@ export function FulfillmentAccessDenied({ copy }: FulfillmentAccessDeniedProps):
   // both, and still meets this state when a read is refused mid-session (a
   // role change), so `bench:write` alone must not pick the bench variant.
   const worksTheBench = usePermission('bench:write');
-  const supervises = usePermission('orders:write');
+  const supervises = usePermission('fulfillment:read');
   const bench = FULFILLMENT_WORK_DETAIL_COPY.states.deniedBench;
 
   if (worksTheBench && !supervises) {

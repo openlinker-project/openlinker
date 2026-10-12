@@ -6,7 +6,7 @@
  * can detect regressions per method.
  *
  * GET    /users                — list all users (optional ?status filter)
- * GET    /users/packers        — minimal active-packer roster (admin+operator, #3340)
+ * GET    /users/packers        — minimal active-packer roster (admin+operator+viewer, #3340/#3736)
  * POST   /users                — create an active account with a one-time password (#3456)
  * POST   /users/:id/temporary-password — re-issue a one-time password (#3456)
  * POST   /users/:id/approve    — approve a pending registration with a role
@@ -120,7 +120,7 @@ export class UsersController {
   }
 
   @Get('packers')
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({
     summary: 'List active packers for work assignment (admin/operator)',
     description:

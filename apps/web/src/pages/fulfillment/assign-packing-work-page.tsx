@@ -112,7 +112,7 @@ function readGroupBy(params: URLSearchParams, locationAxisOffered: boolean): Boa
 export function AssignPackingWorkPage(): ReactElement {
   return (
     <AccessGate
-      require="orders:write"
+      require="fulfillment:read"
       fallback={
         <PageLayout
           eyebrow={ASSIGN_PACKING_WORK_COPY.page.eyebrow}

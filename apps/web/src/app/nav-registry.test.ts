@@ -112,7 +112,7 @@ describe('buildNavGroups', () => {
         isAdmin: false,
         demoMode: false,
         role: 'operator',
-        permissions: ['orders:read', 'orders:write', 'bench:write'],
+        permissions: ['orders:read', 'orders:write', 'fulfillment:read', 'bench:write'],
         omsRouting,
       });
       const operations = byLabel(groups, 'Operations');
@@ -124,6 +124,21 @@ describe('buildNavGroups', () => {
       const items = operationsItems('on');
       expect(items).toContain('Fulfilment');
       expect(items).toContain('Pack bench');
+    });
+
+    it('should show Fulfilment, and not Pack bench, to a viewer when routing is on (#3736)', () => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        role: 'viewer',
+        permissions: ['orders:read', 'fulfillment:read'],
+        omsRouting: 'on',
+      });
+      const operations = byLabel(groups, 'Operations');
+      if (operations?.kind !== 'live') throw new Error('expected a live Operations group');
+      const items = operations.items.map((i) => i.label);
+      expect(items).toContain('Fulfilment');
+      expect(items).not.toContain('Pack bench');
     });
 
     it('should hide Fulfilment and Pack bench when routing is off', () => {
@@ -175,7 +190,7 @@ describe('buildNavGroups', () => {
 
   describe('sessionNeedsOmsRouting', () => {
     it('should need the routing state for a session that can see a routing-gated entry', () => {
-      expect(sessionNeedsOmsRouting(['orders:read', 'orders:write'], 'operator')).toBe(true);
+      expect(sessionNeedsOmsRouting(['orders:read', 'orders:write', 'fulfillment:read'], 'operator')).toBe(true);
       // Pack bench is gated on bench:write since #3439.
       expect(sessionNeedsOmsRouting(['bench:write'], 'operator')).toBe(true);
     });

@@ -90,7 +90,7 @@ export function FulfillmentWorkDetailPage(): ReactElement {
 
   return (
     <AccessGate
-      require="orders:write"
+      require="fulfillment:read"
       fallback={
         <PageLayout eyebrow={COPY.eyebrow} title={COPY.titleFallback} backTo={backTo}>
           <FulfillmentAccessDenied copy={COPY.states.denied} />
