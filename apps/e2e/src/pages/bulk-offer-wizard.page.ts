@@ -579,7 +579,9 @@ export class BulkOfferWizard {
    * confused with the duplicate guard that may precede it.
    */
   private get confirmModal(): Locator {
-    return this.page.getByRole('dialog', { name: /^Create \d+ .* offers on .+\?$/ });
+    // `offers?`: the title is singular for a one-offer batch (`countNoun`,
+    // `bulk-confirm-modal.tsx`), so a plural-only pattern never matched it.
+    return this.page.getByRole('dialog', { name: /^Create \d+ .* offers? on .+\?$/ });
   }
 
   get confirmModalConfirmButton(): Locator {

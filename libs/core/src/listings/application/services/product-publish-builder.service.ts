@@ -67,6 +67,7 @@ import type { RequiredToSellIssue } from '../../domain/types/required-to-sell.ty
 import { buildProjectionMetadata } from './build-projection-metadata';
 import { checkRequiredToSell } from './check-required-to-sell';
 import { flattenAttributes } from './variant-attributes.util';
+import { resolveCatalogueTaxRate } from './resolve-catalogue-tax-rate';
 
 @Injectable()
 export class ProductPublishBuilderService implements IProductPublishBuilderService {
@@ -205,6 +206,20 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
     // single-variant / simple products (mirrors the #1065 marketplace posture).
     if (variantGroup) {
       command.variantGroup = variantGroup;
+    }
+
+    // The gross price (ADR-077) has to become net in a shop that stores net, and
+    // only the shop's adapter knows whether it does - so the rate travels with
+    // the command, set only when the catalogue actually holds one.
+    const taxRate = await resolveCatalogueTaxRate(
+      this.productsService,
+      this.logger,
+      variant.productId,
+      input.internalVariantId
+    );
+    if (taxRate.code) {
+      command.taxRate = taxRate.code;
+      if (taxRate.countryIso2) command.taxRateCountry = taxRate.countryIso2;
     }
 
     // #1842 — required-to-sell preflight: a publish that succeeds on the

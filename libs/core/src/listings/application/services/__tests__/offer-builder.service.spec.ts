@@ -29,7 +29,9 @@ import { createFakeAvailabilityService } from './fake-availability-service';
 
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByProductId'>>;
+  let productsService: jest.Mocked<
+    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate'>
+  >;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let categoryResolution: jest.Mocked<Pick<ICategoryResolutionService, 'resolveCategory'>>;
@@ -66,6 +68,11 @@ describe('OfferBuilderService', () => {
     productsService = {
       getVariant: jest.fn().mockResolvedValue(defaultVariant),
       getVariantsByProductId: jest.fn().mockResolvedValue([defaultVariant]),
+      // #2249 / ADR-077: no catalogue rate by default, so every command below
+      // keeps its rate-less shape.
+      getEffectiveTaxRate: jest
+        .fn()
+        .mockResolvedValue({ code: null, countryIso2: null, readAt: null }),
     };
     connectionPort = {
       get: jest.fn().mockResolvedValue(defaultConnection as Connection),
@@ -1146,6 +1153,57 @@ describe('OfferBuilderService', () => {
 
       expect(first.variantGroup?.groupId).toBe('ol_product_456');
       expect(second.variantGroup?.groupId).toBe('ol_product_456');
+    });
+  });
+
+  describe('catalogue tax rate (#2249, ADR-077)', () => {
+    it('should stamp taxRate and taxRateCountry from the shared catalogue resolver when a rate exists', async () => {
+      productsService.getEffectiveTaxRate.mockResolvedValue({
+        code: '23',
+        countryIso2: 'PL',
+        readAt: new Date('2026-10-01T00:00:00Z'),
+      });
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(productsService.getEffectiveTaxRate).toHaveBeenCalledWith('ol_product_456', VARIANT_ID);
+      expect(result.taxRate).toBe('23');
+      expect(result.taxRateCountry).toBe('PL');
+    });
+
+    it('should leave the rate absent when the catalogue holds none', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result).not.toHaveProperty('taxRate');
+      expect(result).not.toHaveProperty('taxRateCountry');
+    });
+
+    it('should build the command without a rate and warn when the rate read throws', async () => {
+      productsService.getEffectiveTaxRate.mockRejectedValue(new Error('rate read failed'));
+      const warnSpy = jest.spyOn(
+        (service as unknown as { logger: { warn: (message: string) => void } }).logger,
+        'warn'
+      );
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+      });
+
+      expect(result).not.toHaveProperty('taxRate');
+      expect(result.price).toEqual({ amount: 49.99, currency: 'PLN' });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Could not read the catalogue tax rate')
+      );
     });
   });
 

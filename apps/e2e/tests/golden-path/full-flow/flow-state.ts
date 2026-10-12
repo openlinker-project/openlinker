@@ -43,6 +43,13 @@ export interface FlowState {
   invoiceIds: Map<string, string>;
   /** WooCommerce product id of the published product, captured in S2 for the post-sale re-read. */
   wcProductId?: number;
+  /**
+   * What a buyer pays for the product, as PrestaShop itself computes it for the
+   * connection's sales country (ADR-077). Captured in S1; S2-S4 compare every
+   * channel against it rather than against OpenLinker's own copy, so a price
+   * that loses its VAT on the way in cannot pass by matching itself.
+   */
+  masterBuyerPrice?: number;
 }
 
 export const state: FlowState = {

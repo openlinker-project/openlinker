@@ -534,14 +534,31 @@ export class PrestashopOrderProcessorManagerAdapter
             : order.orderNumber
               ? `order:${order.orderNumber}`
               : undefined;
+          // The OL Dynamic carrier carries no tax group, so PrestaShop adds no
+          // tax to this amount: it must be what the buyer PAID for shipping.
+          // A net-priced source (WooCommerce, PrestaShop) states that in
+          // `shippingGross`; writing its net `shipping` here booked the order
+          // short by the shipping VAT (ADR-077 audit).
+          const buyerPaidShipping =
+            order.totals.shippingGross ??
+            (order.totals.taxTreatment === 'exclusive' ? null : order.totals.shipping);
+          if (buyerPaidShipping === null) {
+            throw new PrestashopTaxRateUnknownException(
+              `Cannot create PrestaShop order: the source reports shipping without tax and no ` +
+                `tax-included shipping amount, so the price the buyer paid for shipping is ` +
+                `unknown. No order was created.`,
+              undefined,
+              this.connection.id
+            );
+          }
           await this.openlinkerModuleClient.writeCartShipping({
             idCart,
-            amountTaxExcl: order.totals.shipping,
-            amountTaxIncl: order.totals.shipping,
+            amountTaxExcl: buyerPaidShipping,
+            amountTaxIncl: buyerPaidShipping,
             source: sourceLabel,
           });
           this.logger.debug(
-            `OL sidecar written: idCart=${idCart} amountTaxIncl=${order.totals.shipping} ` +
+            `OL sidecar written: idCart=${idCart} amountTaxIncl=${buyerPaidShipping} ` +
               `source=${sourceLabel ?? '<none>'}`
           );
         }

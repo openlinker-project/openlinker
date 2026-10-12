@@ -789,6 +789,69 @@ export class PrestashopWebserviceClient {
    * Resolve a PrestaShop country id by its ISO 3166-1 alpha-2 code (e.g. `PL`).
    * Used so address creation never hardcodes an id that varies by install.
    */
+  /**
+   * Resolve a tax-rules group id by its exact name (e.g. `PL VAT 23%`), or
+   * `null` when the shop carries no group of that name. Groups are
+   * operator-authored, so a spec that needs a specific rate asks rather than
+   * assuming an id.
+   */
+  async getTaxRulesGroupIdByName(name: string): Promise<string | null> {
+    const body = await this.get(`/api/tax_rule_groups?filter[name]=${encodeURIComponent(`[${name}]`)}`);
+    const groups = asArray(pick(body, 'tax_rule_groups'));
+    if (groups.length === 0) return null;
+    return asStringOrNull(pick(asRecord(groups[0]), 'id'));
+  }
+
+  /**
+   * A product's price as PrestaShop ITSELF computes it, both without and with
+   * tax for a given country - the webservice's custom price fields
+   * (`price[name][use_tax]` / `price[name][country]`).
+   *
+   * `gross` is deliberately not derived here as `net * (1 + rate)`: the point of
+   * reading it is to compare what OpenLinker publishes against the number the
+   * SHOP would charge a buyer in that country, and the shop's own arithmetic is
+   * the only authority on that.
+   */
+  async getProductPrices(
+    productId: string,
+    countryId: string,
+    combinationId = '0',
+  ): Promise<{ net: number; gross: number }> {
+    // `product_attribute=0` asks for the product's own price, without the
+    // default combination's impact - the same base OpenLinker's master reads.
+    // A combination id gives that combination's full price (base + impact).
+    const attribute = encodeURIComponent(combinationId);
+    const body = await this.get(
+      `/api/products/${productId}?price[e2e_net][use_tax]=0&price[e2e_net][use_reduction]=0` +
+        `&price[e2e_net][product_attribute]=${attribute}` +
+        `&price[e2e_gross][use_tax]=1&price[e2e_gross][use_reduction]=0` +
+        `&price[e2e_gross][product_attribute]=${attribute}` +
+        `&price[e2e_gross][country]=${encodeURIComponent(countryId)}`,
+    );
+    const product = asRecord(pick(body, 'product'));
+    const net = Number(pick(product, 'e2e_net'));
+    const gross = Number(pick(product, 'e2e_gross'));
+    if (!Number.isFinite(net) || !Number.isFinite(gross)) {
+      throw new Error(
+        `PrestaShop getProductPrices(${productId}) returned no computed prices: ${JSON.stringify(product).slice(0, 200)}`,
+      );
+    }
+    return { net, gross };
+  }
+
+  /**
+   * The shop's default country (`PS_COUNTRY_DEFAULT`) - the country OpenLinker
+   * prices the catalogue for when the connection sets no `salesCountryIso2`.
+   */
+  async getDefaultCountryId(): Promise<string | null> {
+    const body = await this.get(
+      `/api/configurations?display=full&filter[name]=${encodeURIComponent('[PS_COUNTRY_DEFAULT]')}`,
+    );
+    const rows = asArray(pick(body, 'configurations'));
+    if (rows.length === 0) return null;
+    return asStringOrNull(pick(asRecord(rows[0]), 'value'));
+  }
+
   async getCountryIdByIso(iso: string): Promise<string | null> {
     const body = await this.get(`/api/countries?filter[iso_code]=${encodeURIComponent(iso)}`);
     const countries = asArray(pick(body, 'countries'));

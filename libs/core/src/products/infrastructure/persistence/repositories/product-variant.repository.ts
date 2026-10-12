@@ -288,6 +288,19 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
    * `id NOT IN ()` is invalid SQL. Already-stale rows are skipped so `staleAt`
    * keeps the first-marked timestamp.
    */
+  async clearPriceBasisPending(variantIds: readonly string[]): Promise<void> {
+    if (variantIds.length === 0) {
+      return;
+    }
+    await this.repository
+      .createQueryBuilder()
+      .update(ProductVariantOrmEntity)
+      .set({ priceBasisPending: false })
+      .where('id IN (:...ids)', { ids: [...variantIds] })
+      .andWhere('priceBasisPending = true')
+      .execute();
+  }
+
   async markStaleExceptVariants(
     productId: string,
     keepVariantIds: readonly string[]
@@ -371,6 +384,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       price: entity.price !== null ? Number(entity.price) : undefined,
       isStale: entity.isStale,
       staleAt: entity.staleAt,
+      priceBasisPending: entity.priceBasisPending,
       // #2255 — read surface for the variant table's rate column. An absent
       // override is rendered as "inherited from the product", never as a gap.
       taxRate: entity.taxRate,
@@ -404,6 +418,8 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     // intend to mark stale use markStaleExceptVariants, not upsert.
     entity.isStale = variant.isStale ?? false;
     entity.staleAt = variant.staleAt ?? null;
+    // `priceBasisPending` (ADR-077) is deliberately absent: it is cleared only
+    // by `clearPriceBasisPending`, once the corrected price was reported.
     // Adapters may omit timestamps on first insert; TypeORM's @CreateDateColumn
     // and @UpdateDateColumn populate them in that case.
     if (variant.createdAt) entity.createdAt = variant.createdAt;

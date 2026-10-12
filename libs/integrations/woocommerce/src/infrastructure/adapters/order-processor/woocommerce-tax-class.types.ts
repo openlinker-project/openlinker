@@ -21,4 +21,11 @@ export interface WooCommerceTaxClassTable {
    * `country` absent or empty matches only the store's wildcard rows.
    */
   resolve(country: string | undefined, ratePercent: number): string | null;
+  /**
+   * The effective rate (percent) a line of `lineTaxClass` (`''` = standard) is
+   * taxed at in `country`, or `null` when the class is unknown to the store or
+   * its rows for that country cannot be summarised as one rate (ADR-077). A
+   * class with no row for the country taxes at 0 - the stock "Zero rate".
+   */
+  rateFor(lineTaxClass: string, country: string | undefined): number | null;
 }

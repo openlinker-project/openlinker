@@ -53,6 +53,8 @@ function buildEpisode(overrides: Partial<PriceChangeEpisode> = {}): PriceChangeE
     resolvedByUserId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    claimedAt: null,
+    cause: null,
     ...overrides,
   };
   return new PriceChangeEpisode(
@@ -74,7 +76,9 @@ function buildEpisode(overrides: Partial<PriceChangeEpisode> = {}): PriceChangeE
     base.resolution,
     base.resolvedByUserId,
     base.createdAt,
-    base.updatedAt
+    base.updatedAt,
+    base.claimedAt,
+    base.cause
   );
 }
 
@@ -187,6 +191,21 @@ describe('PriceChangesService', () => {
             manualPriceOverride: false,
             resolvedByUserId: 'user-1',
           }),
+        })
+      );
+    });
+
+    it('should enqueue the apply job when the operator accepts a tax-basis correction (ADR-077)', async () => {
+      // The correction is withheld from AUTOMATIC apply only; it never blocks a
+      // manual decision.
+      episodes.findById.mockResolvedValue(buildEpisode({ cause: 'tax-basis-correction' }));
+
+      await service.accept('ep-1', { resolvedByUserId: 'user-1', expectedVersion: VALID_VERSION });
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobType: 'pricing.propagateToMarketplaces',
+          payload: expect.objectContaining({ amount: 399, episodeId: 'ep-1' }),
         })
       );
     });
@@ -649,6 +668,27 @@ describe('PriceChangesService', () => {
       expect(episodes.findOpenAll).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 200 })
       );
+    });
+
+    it('should map the episode cause onto the queue item when the episode is a tax-basis correction', async () => {
+      episodes.findOpenAll.mockResolvedValue([
+        buildEpisode({ id: 'ep-corr', productVariantId: 'v1', cause: 'tax-basis-correction' }),
+        buildEpisode({ id: 'ep-plain', productVariantId: 'v2' }),
+      ]);
+      episodes.countOpen.mockResolvedValue(2);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v1', productId: 'p1', sku: 'sku-1', attributes: null, isStale: false },
+        { id: 'v2', productId: 'p1', sku: 'sku-2', attributes: null, isStale: false },
+      ]);
+      productsService.getProductsByIds.mockResolvedValue([{ id: 'p1', name: 'Chair' }]);
+
+      const page = await service.listOpen({});
+
+      const byId = new Map(page.items.map((item) => [item.id, item]));
+      expect(byId.get('ep-corr')?.cause).toBe('tax-basis-correction');
+      // A correction is not a block: it stays actionable in the queue.
+      expect(byId.get('ep-corr')?.blockReason).toBeNull();
+      expect(byId.get('ep-plain')?.cause).toBeNull();
     });
 
     it('batches the connections read instead of one call per distinct id', async () => {

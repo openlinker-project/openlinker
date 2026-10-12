@@ -84,6 +84,7 @@ import {
   resolveOfferDescriptionFormat,
 } from './description-format-resolution';
 import { flattenAttributes } from './variant-attributes.util';
+import { resolveCatalogueTaxRate } from './resolve-catalogue-tax-rate';
 
 @Injectable()
 export class OfferBuilderService implements IOfferBuilderService {
@@ -315,8 +316,15 @@ export class OfferBuilderService implements IOfferBuilderService {
     // Set only when the shop actually has one: an absent rate must reach the
     // adapter as absent, so it can refuse rather than publish an offer with no
     // tax settings. Publishing rate-less is exactly what produced the offers
-    // whose orders report `tax: null` today.
-    const taxRate = await this.resolveTaxRate(product.id, input.internalVariantId);
+    // whose orders report `tax: null` today. What the adapter does with an
+    // absent rate depends on `OL_TAX_RATE_STRICT_ENABLED`: off (the default) it
+    // warns and publishes with the rate omitted; on, it refuses.
+    const taxRate = await resolveCatalogueTaxRate(
+      this.productsService,
+      this.logger,
+      product.id,
+      input.internalVariantId
+    );
     if (taxRate.code) {
       command.taxRate = taxRate.code;
       if (taxRate.countryIso2) command.taxRateCountry = taxRate.countryIso2;
@@ -583,30 +591,6 @@ export class OfferBuilderService implements IOfferBuilderService {
     return typeof value === 'string' && value.length > 0 ? value : null;
   }
 
-  /**
-   * The catalogue's rate for this variant (#2249).
-   *
-   * Best-effort: a read failure degrades to "no rate" - the same outcome as a
-   * genuinely rate-less product, so the two are handled identically downstream.
-   * What happens then depends on `OL_TAX_RATE_STRICT_ENABLED`: with it off (the
-   * default) the adapter warns and publishes with the rate omitted, exactly as
-   * before this epic; with it on the adapter refuses. The gate on the invoicing
-   * side is what makes a rate-less line visible either way.
-   */
-  private async resolveTaxRate(
-    productId: string,
-    variantId: string
-  ): Promise<{ code: string | null; countryIso2: string | null }> {
-    try {
-      const stored = await this.productsService.getEffectiveTaxRate(productId, variantId);
-      return { code: stored.code, countryIso2: stored.countryIso2 };
-    } catch (error) {
-      this.logger.warn(
-        `Could not read the catalogue tax rate for variant ${variantId}: ${(error as Error).message}`
-      );
-      return { code: null, countryIso2: null };
-    }
-  }
 }
 
 /**

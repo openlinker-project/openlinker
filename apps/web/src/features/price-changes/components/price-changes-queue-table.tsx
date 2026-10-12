@@ -711,6 +711,7 @@ export function PriceChangesQueueTable(): ReactElement {
             {formatAmount(item.sourceOldAmount, item.sourceCurrency)} →{' '}
             {formatAmount(item.sourceNewAmount, item.sourceCurrency)}
           </div>
+          <PriceChangeCauseNote item={item} />
         </>
       ),
     },
@@ -915,6 +916,7 @@ export function PriceChangesQueueTable(): ReactElement {
                             {formatAmount(item.sourceOldAmount, item.sourceCurrency)} →{' '}
                             {formatAmount(item.sourceNewAmount, item.sourceCurrency)}
                           </div>
+                          <PriceChangeCauseNote item={item} />
                         </>
                       ),
                     },
@@ -1191,6 +1193,35 @@ function ActionCell({
           Accept
         </Button>
       </ReadOnlyLock>
+    </div>
+  );
+}
+
+/**
+ * Says why a row exists when it is not an ordinary price move (ADR-077). The
+ * one-off net-to-gross correction lifts many prices by the VAT rate at once;
+ * without this an operator sees a wall of +23% changes and no reason for them.
+ * The backend never auto-applies these rows, so the note also explains why a
+ * pair in automatic mode is waiting for review.
+ */
+function PriceChangeCauseNote({ item }: { item: PriceChangeItem }): ReactElement | null {
+  if (item.cause !== 'tax-basis-correction') return null;
+  return (
+    <div className="cell-product__source">
+      <StatusBadge tone="info" compact data-testid="row-cause-tax-basis">
+        VAT correction
+      </StatusBadge>{' '}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" className="cell-continuation__help" aria-label="Why did this price change?">
+            ?
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          The shop used to send this price without VAT. The new price is what a buyer pays there, VAT
+          included. It is never published automatically - accept, edit or ignore it here.
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }
