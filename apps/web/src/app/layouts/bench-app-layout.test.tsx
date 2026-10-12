@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { BenchAppLayout } from './bench-app-layout';
 import { SessionProvider } from '../../shared/auth/session-provider';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
-import type { SessionUser } from '../../shared/auth/session.types';
+import { ANONYMOUS_SESSION, type Session, type SessionUser } from '../../shared/auth/session.types';
 import { ToastProvider } from '../../shared/ui/toast-provider';
 import { ApiClientProvider } from '../api/api-client-provider';
 import { ThemeProvider } from '../../shared/theme/theme-provider';
@@ -51,6 +51,7 @@ function renderBench(adapter: SessionAdapter): ReturnType<typeof render> {
         ),
       },
       { path: '/login', element: <p>Login page</p> },
+      { path: '/change-password', element: <p>Change password page</p> },
     ],
     { initialEntries: ['/bench'] }
   );
@@ -133,6 +134,29 @@ describe('BenchAppLayout (#3653)', () => {
     expect(
       await screen.findByRole('button', { name: /Open command palette/i })
     ).toBeInTheDocument();
+  });
+
+  it('redirects a signed-in packer owing a password change to /change-password without mounting the bench (#3732)', async () => {
+    renderWithUser({ ...PACKER, mustChangePassword: true });
+
+    expect(await screen.findByText('Change password page')).toBeInTheDocument();
+    expect(screen.queryByTestId('bench-body-stub')).not.toBeInTheDocument();
+  });
+
+  it('keeps an anonymous (idle-locked) session on the bench rather than redirecting it (#3732)', async () => {
+    renderBench({
+      async getSession(): Promise<Session> {
+        return ANONYMOUS_SESSION;
+      },
+      async getAccessToken(): Promise<string | null> {
+        return null;
+      },
+      async persistSession(): Promise<void> {},
+      async clearSession(): Promise<void> {},
+    });
+
+    expect(await screen.findByTestId('bench-body-stub')).toBeInTheDocument();
+    expect(screen.queryByText('Change password page')).not.toBeInTheDocument();
   });
 
   it('signs out to /login, like every other page', async () => {
