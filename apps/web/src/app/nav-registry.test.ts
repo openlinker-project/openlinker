@@ -321,8 +321,8 @@ describe('buildNavGroups', () => {
       'Insights',
       'Orders',
       'Customers',
-      // Hidden via its pre-existing `requiresPermission: 'orders:write'`
-      // gate (#3340/#3368), not a #3221 `requiresRole` addition.
+      // Hidden via its `requiresPermission: 'fulfillment:read'` gate
+      // (#3736), which `packer` does not hold - not a #3221 `requiresRole`.
       'Fulfilment',
       'Sales documents',
       // Already hidden pre-#3221 via the permission gate (#2358 review I5) —
@@ -340,7 +340,7 @@ describe('buildNavGroups', () => {
         demoMode: false,
         omsRouting: 'on',
         role: 'packer',
-        permissions: ['fulfillment:read', 'bench:write', 'bench:read'],
+        permissions: ['bench:write', 'bench:read'],
       });
       const labels = itemLabels(byLabel(groups, 'Operations'));
 

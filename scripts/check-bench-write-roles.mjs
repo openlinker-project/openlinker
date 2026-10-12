@@ -40,13 +40,7 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 // GET); `bench:read` (#3734) by the roles on ANY of its routes. A viewer is on
 // the GET routes only, so it holds the second and not the first - which is the
 // whole point of the read-only preview.
-const CHECKS = [
-  { permission: 'bench:write', routes: 'mutating' },
-  { permission: 'bench:read', routes: 'any' },
-];
-
-const ROLE_TYPES = 'libs/core/src/users/domain/types/role.types.ts';
-const CONTROLLERS = [
+const BENCH_CONTROLLERS = [
   'apps/api/src/bench/http/bench-work.controller.ts',
   'apps/api/src/bench/http/bench-parcel.controller.ts',
   // `bench:read` is "the roles on ANY bench route", so the controllers that hold
@@ -55,6 +49,21 @@ const CONTROLLERS = [
   'apps/api/src/bench/http/bench-documents.controller.ts',
   'apps/api/src/bench/http/bench-label.controller.ts',
 ];
+// `fulfillment:read` (#3736) is held by the roles on ANY FulfillmentWorkController
+// route. Its other consumer, `GET /users/packers`, cannot be covered here:
+// users.controller.ts carries unrelated admin-only routes a controller-wide union
+// would fold in, so that half needs per-route matching (follow-up).
+const CHECKS = [
+  { permission: 'bench:write', routes: 'mutating', controllers: BENCH_CONTROLLERS },
+  { permission: 'bench:read', routes: 'any', controllers: BENCH_CONTROLLERS },
+  {
+    permission: 'fulfillment:read',
+    routes: 'any',
+    controllers: ['apps/api/src/fulfillment/http/fulfillment-work.controller.ts'],
+  },
+];
+
+const ROLE_TYPES = 'libs/core/src/users/domain/types/role.types.ts';
 
 /**
  * Strip comments so a role named in prose is never mistaken for a decorator
@@ -129,11 +138,11 @@ export function diffRoleSets(holders, routeRoles) {
 
 async function main() {
   const roleSource = await readFile(join(ROOT, ROLE_TYPES), 'utf8');
-  const sources = [];
-  for (const file of CONTROLLERS) sources.push(await readFile(join(ROOT, file), 'utf8'));
 
   let failed = false;
-  for (const { permission, routes } of CHECKS) {
+  for (const { permission, routes, controllers } of CHECKS) {
+    const sources = [];
+    for (const file of controllers) sources.push(await readFile(join(ROOT, file), 'utf8'));
     const holders = parsePermissionHolders(roleSource, permission);
     if (holders === null) {
       console.error(`check-bench-write-roles: could not find ROLE_PERMISSIONS in ${ROLE_TYPES}`);
