@@ -69,6 +69,12 @@ export const PermissionValues = [
   // decorators gate the route, and a UI that offers what the route refuses
   // (or hides what it allows, which is what happened here) is the defect.
   'bench:write',
+  // The pack bench's read-only view (#3734): opening `/bench` and seeing the
+  // work list, a parcel and its activity. Held by every role the bench's GET
+  // routes admit - admin, operator, packer and viewer - and by none that they
+  // refuse. A holder without `bench:write` gets a preview: no scan, no claim,
+  // no presence ping (a viewer must never appear as someone standing at a box).
+  'bench:read',
   'shipments:read',
   // DISPLAY-ONLY (#1826): gates carrier-message disclosure on the shipments
   // read paths plus the FE's write affordances. It authorizes no mutation — the
@@ -145,6 +151,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'listings:write',
     'customers:read',
     'bench:write',
+    'bench:read',
     'shipments:read',
     'shipments:write',
     'invoices:read',
@@ -164,6 +171,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'inventory:read',
     'listings:read',
     'customers:read',
+    'bench:read',
     'shipments:read',
     'invoices:read',
     'webhooks:read',
@@ -193,5 +201,5 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   // client-side, and a client-side gate needs a permission to read. Without
   // it "Claim this parcel" and "Take next task" never rendered at all, while
   // the API behind them accepted a packer perfectly well.
-  packer: ['bench:write'],
+  packer: ['bench:write', 'bench:read'],
 } as const;

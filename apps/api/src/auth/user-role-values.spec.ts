@@ -79,6 +79,6 @@ describe('Role-set tripwire (#2079 / #2413)', () => {
     // Backend authorization is still `@Roles`, not this map. See
     // role.types.ts, and keep the roles holding `bench:write` identical to
     // the decorators on `BenchWorkController` / `BenchParcelController`.
-    expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
+    expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write', 'bench:read']);
   });
 });

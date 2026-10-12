@@ -112,7 +112,7 @@ describe('buildNavGroups', () => {
         isAdmin: false,
         demoMode: false,
         role: 'operator',
-        permissions: ['orders:read', 'orders:write', 'bench:write'],
+        permissions: ['orders:read', 'orders:write', 'bench:write', 'bench:read'],
         omsRouting,
       });
       const operations = byLabel(groups, 'Operations');
@@ -177,7 +177,7 @@ describe('buildNavGroups', () => {
     it('should need the routing state for a session that can see a routing-gated entry', () => {
       expect(sessionNeedsOmsRouting(['orders:read', 'orders:write'], 'operator')).toBe(true);
       // Pack bench is gated on bench:write since #3439.
-      expect(sessionNeedsOmsRouting(['bench:write'], 'operator')).toBe(true);
+      expect(sessionNeedsOmsRouting(['bench:read'], 'operator')).toBe(true);
     });
 
     it('should not need it for a session that cannot see any routing-gated entry', () => {
@@ -228,20 +228,31 @@ describe('buildNavGroups', () => {
   // this purpose.
   describe('"Pack bench" permission gate (#3439)', () => {
     it.each(['admin', 'operator', 'packer'])(
-      'is visible to a %s session holding bench:write',
+      'is visible to a %s session holding bench:read',
       (role) => {
         const groups = buildNavGroups({
           isAdmin: role === 'admin',
           demoMode: false,
           omsRouting: 'on',
           role,
-          permissions: ['bench:write'],
+          permissions: ['bench:write', 'bench:read'],
         });
         expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
       }
     );
 
-    it('is hidden from a viewer session, which holds no bench:write', () => {
+    it('is visible to a viewer session holding bench:read (#3734)', () => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        omsRouting: 'on',
+        role: 'viewer',
+        permissions: ['bench:read'],
+      });
+      expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
+    });
+
+    it('is hidden from a session holding no bench:read', () => {
       const groups = buildNavGroups({
         isAdmin: false,
         demoMode: false,
@@ -314,7 +325,7 @@ describe('buildNavGroups', () => {
         demoMode: false,
         omsRouting: 'on',
         role: 'packer',
-        permissions: ['bench:write'],
+        permissions: ['bench:write', 'bench:read'],
       });
       const labels = itemLabels(byLabel(groups, 'Operations'));
 

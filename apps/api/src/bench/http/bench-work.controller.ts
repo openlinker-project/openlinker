@@ -72,7 +72,7 @@ export class BenchWorkController {
   ) {}
 
   @Get('work')
-  @Roles('admin', 'operator', 'packer')
+  @Roles('admin', 'operator', 'packer', 'viewer')
   @ApiOperation({
     summary: 'Packing work waiting at the bench',
     description:
@@ -110,7 +110,7 @@ export class BenchWorkController {
   }
 
   @Get('work/packed-today')
-  @Roles('admin', 'operator', 'packer')
+  @Roles('admin', 'operator', 'packer', 'viewer')
   @ApiOperation({
     summary: 'Parcels this bench has closed today',
     description:
@@ -124,7 +124,7 @@ export class BenchWorkController {
   }
 
   @Get('metrics')
-  @Roles('admin', 'operator', 'packer')
+  @Roles('admin', 'operator', 'packer', 'viewer')
   @ApiOperation({
     summary: 'The bench metric row',
     description:
@@ -146,9 +146,9 @@ export class BenchWorkController {
    * with no permissions the same narrow answer a new `packer`-shaped role
    * ought to get, rather than silently defaulting it to supervisory — the
    * `hasShipmentsWrite` precedent on `ShipmentController` /
-   * `BenchDocumentsController` verbatim. `viewer` also lacks `orders:write` but
-   * cannot reach this route at all (`@Roles('admin', 'operator', 'packer')`
-   * above), so the two cases this needs to tell apart are covered.
+   * `BenchDocumentsController` verbatim. `viewer` also lacks `orders:write` and, since #3734, may read the
+   * list: it therefore gets the packer's narrow answer (its own work plus the
+   * unassigned pool), never the supervisor's view of other packers' work.
    */
   private supervises(user: AuthenticatedUser): boolean {
     const permissions = ROLE_PERMISSIONS[user.role];
