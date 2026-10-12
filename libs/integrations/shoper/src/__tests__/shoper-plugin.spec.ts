@@ -1,34 +1,54 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
+import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
 
 function hostWithRegistries(): {
   host: HostServices;
   registries: Record<string, { register: jest.Mock }>;
+  credentialsGet: jest.Mock;
 } {
   const registries = {
     connectionTesterRegistry: { register: jest.fn() },
     connectionConfigShapeValidatorRegistry: { register: jest.fn() },
     connectionCredentialsShapeValidatorRegistry: { register: jest.fn() },
     authFailureClassifierRegistry: { register: jest.fn() },
+    retryClassifierRegistry: { register: jest.fn() },
   };
-  return { host: { http: {}, ...registries } as unknown as HostServices, registries };
+  const credentialsGet = jest.fn().mockResolvedValue({ token: 'secret-token-value' });
+  const host = {
+    http: { forConnection: jest.fn().mockReturnValue(jest.fn()) },
+    identifierMapping: {},
+    credentialsResolver: { get: credentialsGet },
+    ...registries,
+  } as unknown as HostServices;
+  return { host, registries, credentialsGet };
+}
+
+function connection(overrides: Record<string, unknown> = {}): Connection {
+  return {
+    id: 'c',
+    platformType: 'shoper',
+    config: { baseUrl: 'sklep729770.shoparena.pl' },
+    credentialsRef: 'db:cred-1',
+    ...overrides,
+  } as unknown as Connection;
 }
 
 describe('Shoper plugin', () => {
-  it('should expose the documented manifest with no capabilities yet', () => {
+  it('should expose the documented manifest with the ProductMaster capability only', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
-      supportedCapabilities: [],
+      supportedCapabilities: ['ProductMaster'],
       isDefault: true,
     });
     expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
     expect(createShoperPlugin().manifest).toBe(shoperAdapterManifest);
   });
 
-  it('should register the tester, both shape validators and the auth classifier under its adapter key', () => {
+  it('should register the tester, both shape validators and both classifiers under its adapter key', () => {
     const { host, registries } = hostWithRegistries();
 
     createShoperPlugin().register?.(host);
@@ -39,15 +59,65 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should reject any capability request until a capability epic delivers one', async () => {
+  it('should resolve ProductMaster to the Shoper product master adapter', async () => {
+    const { host } = hostWithRegistries();
+
+    const adapter = await createShoperPlugin().createCapabilityAdapter<unknown>(
+      connection(),
+      'ProductMaster',
+      host,
+    );
+
+    expect(adapter).toBeInstanceOf(ShoperProductMasterAdapter);
+  });
+
+  it('should route the connection through the connection-bound transport', async () => {
+    const { host } = hostWithRegistries();
+    const conn = connection();
+
+    await createShoperPlugin().createCapabilityAdapter<unknown>(conn, 'ProductMaster', host);
+
+    expect(host.http.forConnection).toHaveBeenCalledWith(conn);
+  });
+
+  describe('an unsupported capability', () => {
+    it('should fail with the SDK’s uniform error', async () => {
+      const { host } = hostWithRegistries();
+
+      await expect(
+        createShoperPlugin().createCapabilityAdapter(connection(), 'InventoryMaster', host),
+      ).rejects.toThrow(/does not support capability: InventoryMaster/);
+    });
+
+    it('should not decrypt the credentials or open a transport to say so', async () => {
+      const { host, credentialsGet } = hostWithRegistries();
+
+      await createShoperPlugin()
+        .createCapabilityAdapter(connection(), 'InventoryMaster', host)
+        .catch(() => undefined);
+
+      expect(credentialsGet).not.toHaveBeenCalled();
+      expect(host.http.forConnection).not.toHaveBeenCalled();
+    });
+
+    it('should report the unsupported capability even when the connection config is broken', async () => {
+      const { host } = hostWithRegistries();
+
+      await expect(
+        createShoperPlugin().createCapabilityAdapter(
+          connection({ config: {} }),
+          'InventoryMaster',
+          host,
+        ),
+      ).rejects.toThrow(/does not support capability/);
+    });
+  });
+
+  it('should still surface a broken config for the capability it does support', async () => {
     const { host } = hostWithRegistries();
 
     await expect(
-      createShoperPlugin().createCapabilityAdapter(
-        { id: 'c' } as Connection,
-        'ProductMaster',
-        host,
-      ),
-    ).rejects.toThrow(/capability/);
+      createShoperPlugin().createCapabilityAdapter(connection({ config: {} }), 'ProductMaster', host),
+    ).rejects.toThrow(/misconfigured/);
   });
 });
