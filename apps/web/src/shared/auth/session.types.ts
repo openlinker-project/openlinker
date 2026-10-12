@@ -25,6 +25,7 @@ export const PermissionValues = [
   // #3424 - the pack bench's own write affordances. Its own value rather than
   // `orders:write` so a packer, who holds nothing else, can still claim work.
   'bench:write',
+  'bench:read',
   'shipments:read',
   'shipments:write',
   'invoices:read',

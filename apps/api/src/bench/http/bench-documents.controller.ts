@@ -391,7 +391,7 @@ export class BenchDocumentsController {
   }
 
   @Get('unlabelled-parcels')
-  @Roles('admin', 'operator', 'packer')
+  @Roles('admin', 'operator', 'packer', 'viewer')
   @ApiOperation({
     summary: 'Finished boxes with no label on them',
     description:

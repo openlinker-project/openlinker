@@ -98,7 +98,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       {
         to: '/bench',
         label: 'Pack bench',
-        requiresPermission: 'bench:write',
+        requiresPermission: 'bench:read',
         requiresOms: true,
       },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint

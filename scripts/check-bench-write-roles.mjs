@@ -5,7 +5,7 @@
  * The grant's own comment in `role.types.ts` states the rule:
  *
  *   > The roles holding it MUST stay identical to the `@Roles` lists on
- *   > `BenchWorkController` and `BenchParcelController` … a UI that offers
+ *   > the bench controllers (work, parcel, documents, label) … a UI that offers
  *   > what the route refuses (or hides what it allows, which is what happened
  *   > here) is the defect either way.
  *
@@ -36,12 +36,24 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
-const PERMISSION = 'bench:write';
+// `bench:write` is held by the roles on the bench's MUTATING routes (anything but
+// GET); `bench:read` (#3734) by the roles on ANY of its routes. A viewer is on
+// the GET routes only, so it holds the second and not the first - which is the
+// whole point of the read-only preview.
+const CHECKS = [
+  { permission: 'bench:write', routes: 'mutating' },
+  { permission: 'bench:read', routes: 'any' },
+];
 
 const ROLE_TYPES = 'libs/core/src/users/domain/types/role.types.ts';
 const CONTROLLERS = [
   'apps/api/src/bench/http/bench-work.controller.ts',
   'apps/api/src/bench/http/bench-parcel.controller.ts',
+  // `bench:read` is "the roles on ANY bench route", so the controllers that hold
+  // the viewer-CLOSED routes (buyer documents, label replace) must be read too:
+  // without them, adding 'viewer' to a document GET would pass silently.
+  'apps/api/src/bench/http/bench-documents.controller.ts',
+  'apps/api/src/bench/http/bench-label.controller.ts',
 ];
 
 /**
@@ -79,19 +91,34 @@ export function parsePermissionHolders(source, permission) {
 }
 
 /**
- * Every role named by any `@Roles(...)` in a controller, unioned.
+ * The roles named by `@Roles(...)` decorators, unioned.
  *
- * The union rather than a per-route set: `bench:write` is one permission
- * gating controls that reach several routes, so the question it answers is
- * "may this role use the bench at all".
+ * The union rather than a per-route set: each permission gates controls that
+ * reach several routes, so the question it answers is "may this role use that
+ * half of the bench at all". `routes: 'mutating'` keeps only the decorators that
+ * follow a non-GET verb; `'any'` keeps every one. A `@Roles` is read as the one
+ * following its verb decorator, which is the order every bench controller uses.
  */
-export function parseControllerRoles(source) {
+export function parseControllerRoles(source, routes = 'any') {
   const text = stripComments(source);
   const roles = new Set();
-  for (const m of text.matchAll(/@Roles\(([^)]*)\)/g)) {
-    for (const r of m[1].matchAll(/'([^']+)'/g)) roles.add(r[1]);
+  const route = /@(Get|Post|Put|Patch|Delete)\([^)]*\)\s*@Roles\(([^)]*)\)/g;
+  for (const m of text.matchAll(route)) {
+    if (routes === 'mutating' && m[1] === 'Get') continue;
+    for (const r of m[2].matchAll(/'([^']+)'/g)) roles.add(r[1]);
   }
   return [...roles].sort();
+}
+
+/**
+ * A parser that reads ZERO values is a broken parser, never a pass (#3303): a
+ * reordered decorator or a refactored `ROLE_PERMISSIONS` shape makes both sides
+ * empty, and an empty set equals an empty set. Returns the reason, or null.
+ */
+export function zeroFloorViolation(holders, routeRoles) {
+  if (holders.length === 0) return 'holders';
+  if (routeRoles.length === 0) return 'routes';
+  return null;
 }
 
 export function diffRoleSets(holders, routeRoles) {
@@ -101,43 +128,54 @@ export function diffRoleSets(holders, routeRoles) {
 }
 
 async function main() {
-  const holders = parsePermissionHolders(await readFile(join(ROOT, ROLE_TYPES), 'utf8'), PERMISSION);
-  if (holders === null) {
-    console.error(`check-bench-write-roles: could not find ROLE_PERMISSIONS in ${ROLE_TYPES}`);
-    process.exit(1);
-  }
+  const roleSource = await readFile(join(ROOT, ROLE_TYPES), 'utf8');
+  const sources = [];
+  for (const file of CONTROLLERS) sources.push(await readFile(join(ROOT, file), 'utf8'));
 
-  const routeRoles = new Set();
-  for (const file of CONTROLLERS) {
-    for (const role of parseControllerRoles(await readFile(join(ROOT, file), 'utf8'))) {
-      routeRoles.add(role);
+  let failed = false;
+  for (const { permission, routes } of CHECKS) {
+    const holders = parsePermissionHolders(roleSource, permission);
+    if (holders === null) {
+      console.error(`check-bench-write-roles: could not find ROLE_PERMISSIONS in ${ROLE_TYPES}`);
+      process.exit(1);
     }
-  }
-  const routes = [...routeRoles].sort();
+    const routeRoles = new Set();
+    for (const source of sources) {
+      for (const role of parseControllerRoles(source, routes)) routeRoles.add(role);
+    }
+    const names = [...routeRoles].sort();
+    const empty = zeroFloorViolation(holders, names);
+    if (empty !== null) {
+      console.error(
+        `check-bench-write-roles: parsed ZERO ${empty} for '${permission}' — did a controller path, decorator order or ROLE_PERMISSIONS shape change? Refusing to report a pass.`
+      );
+      process.exit(1);
+    }
+    const { ok, missingPermission, missingRoute } = diffRoleSets(holders, names);
+    if (ok) {
+      console.log(
+        `✓ check-bench-write-roles: '${permission}' is held by exactly the roles on the bench's ${routes} routes (${names.join(', ')}).`
+      );
+      continue;
+    }
 
-  const { ok, missingPermission, missingRoute } = diffRoleSets(holders, routes);
-  if (ok) {
-    console.log(
-      `✓ check-bench-write-roles: '${PERMISSION}' is held by exactly the bench routes' roles (${routes.join(', ')}).`
-    );
-    return;
+    failed = true;
+    console.error(`✗ check-bench-write-roles: '${permission}' and the bench routes disagree.\n`);
+    if (missingPermission.length > 0) {
+      console.error(
+        `  These roles CAN call the ${routes} bench routes but do NOT hold '${permission}', so the UI hides\n` +
+          `  controls the API would serve them (the #3424 defect):\n    ${missingPermission.join(', ')}\n`
+      );
+    }
+    if (missingRoute.length > 0) {
+      console.error(
+        `  These roles hold '${permission}' but are NOT on the ${routes} bench routes, so the UI offers\n` +
+          `  controls the API will refuse:\n    ${missingRoute.join(', ')}\n`
+      );
+    }
+    console.error(`  Fix in ${ROLE_TYPES} or in the controllers' @Roles lists — whichever is wrong.`);
   }
-
-  console.error(`✗ check-bench-write-roles: '${PERMISSION}' and the bench routes disagree.\n`);
-  if (missingPermission.length > 0) {
-    console.error(
-      `  These roles CAN call the bench routes but do NOT hold '${PERMISSION}', so the UI hides\n` +
-        `  controls the API would serve them (the #3424 defect):\n    ${missingPermission.join(', ')}\n`
-    );
-  }
-  if (missingRoute.length > 0) {
-    console.error(
-      `  These roles hold '${PERMISSION}' but are NOT on the bench routes, so the UI offers\n` +
-        `  controls the API will refuse:\n    ${missingRoute.join(', ')}\n`
-    );
-  }
-  console.error(`  Fix in ${ROLE_TYPES} or in the controllers' @Roles lists — whichever is wrong.`);
-  process.exit(1);
+  if (failed) process.exit(1);
 }
 
 function selfCheck() {
@@ -179,18 +217,38 @@ function selfCheck() {
 
   expect(
     'roles are unioned across decorators and de-duplicated',
-    parseControllerRoles("@Roles('admin', 'operator')\n@Roles('admin', 'packer')"),
+    parseControllerRoles("@Post('a')\n@Roles('admin', 'operator')\n@Get('b')\n@Roles('admin', 'packer')"),
     ['admin', 'operator', 'packer']
   );
   expect(
     'a role named in a comment is not a route role',
-    parseControllerRoles("// @Roles('viewer')\n@Roles('admin')"),
+    parseControllerRoles("// @Roles('viewer')\n@Post()\n@Roles('admin')"),
     ['admin']
   );
   expect(
     'a role named in a BLOCK comment is not a route role',
-    parseControllerRoles("/* @Roles('viewer') */\n@Roles('admin')"),
+    parseControllerRoles("/* @Roles('viewer') */\n@Post()\n@Roles('admin')"),
     ['admin']
+  );
+
+  expect(
+    "'mutating' leaves out a GET-only role (#3734: viewer reads, never writes)",
+    parseControllerRoles("@Get('a')\n@Roles('admin', 'viewer')\n@Post('b')\n@Roles('admin')", 'mutating'),
+    ['admin']
+  );
+  expect(
+    "'any' keeps a GET-only role",
+    parseControllerRoles("@Get('a')\n@Roles('admin', 'viewer')\n@Post('b')\n@Roles('admin')", 'any'),
+    ['admin', 'viewer']
+  );
+
+  expect('both sides empty trips the zero floor', zeroFloorViolation([], []), 'holders');
+  expect('no route roles trips the zero floor', zeroFloorViolation(['a'], []), 'routes');
+  expect('non-empty sides pass the zero floor', zeroFloorViolation(['a'], ['a']), null);
+  expect(
+    'a @Roles written ABOVE its verb parses to nothing, which the floor then catches',
+    parseControllerRoles("@Roles('admin')\n@Get('a')"),
+    []
   );
 
   expect('identical sets → ok', diffRoleSets(['a', 'b'], ['a', 'b']).ok, true);

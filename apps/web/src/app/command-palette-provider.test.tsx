@@ -230,7 +230,7 @@ describe('CommandPaletteProvider', () => {
       username: 'operator',
       email: 'operator@example.com',
       role: 'operator',
-      permissions: ['orders:read', 'orders:write', 'bench:write'],
+      permissions: ['orders:read', 'orders:write', 'bench:write', 'bench:read'],
     };
 
     function renderWithRouting(getStatus: ReturnType<typeof vi.fn>): void {
@@ -307,18 +307,24 @@ describe('CommandPaletteProvider', () => {
     // asserting an absence — otherwise "not found yet" and "correctly
     // excluded" are indistinguishable.
     it('shows "Pack bench" for a packer session holding bench:write', async () => {
-      renderPalette(userWithRole('packer', ['bench:write']));
+      renderPalette(userWithRole('packer', ['bench:write', 'bench:read']));
       fireEvent.keyDown(document, { key: 'k', metaKey: true });
       expect(await screen.findByText('Pack bench')).toBeInTheDocument();
     });
 
     it('shows "Pack bench" for an operator session holding bench:write', async () => {
-      renderPalette(userWithRole('operator', ['bench:write']));
+      renderPalette(userWithRole('operator', ['bench:write', 'bench:read']));
       fireEvent.keyDown(document, { key: 'k', metaKey: true });
       expect(await screen.findByText('Pack bench')).toBeInTheDocument();
     });
 
-    it('does not show "Pack bench" for a viewer session — viewer never holds bench:write', async () => {
+    it('shows "Pack bench" for a viewer session holding bench:read (#3734)', async () => {
+      renderPalette(userWithRole('viewer', ['bench:read']));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('does not show "Pack bench" for a session without bench:read', async () => {
       renderPalette(userWithRole('viewer'));
       fireEvent.keyDown(document, { key: 'k', metaKey: true });
       await screen.findByText(sampleConnection.name);
@@ -339,7 +345,7 @@ describe('CommandPaletteProvider', () => {
       // and is what makes "Pack bench" a reliable settle-signal here — without
       // it, the item would also be hidden, for the unrelated reason that its
       // own permission gate (#3439) never received one.
-      renderPalette(userWithRole('packer', ['bench:write']));
+      renderPalette(userWithRole('packer', ['bench:write', 'bench:read']));
       fireEvent.keyDown(document, { key: 'k', metaKey: true });
       // A visible, non-gated item confirms the whole provider has settled
       // (see the #3108 note above) before asserting the gated one's absence.
