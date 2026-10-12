@@ -99,6 +99,15 @@ A passing test does **not** prove every area above was granted; each capability 
 
 - **Variants:** one `product-stocks` row = one `ProductVariant`, keyed by its real `stock_id`. No synthetic
   variant is minted for a simple product - Shoper already gives it a stock row.
+- **Variant attributes (#3706):** a stock's `options` is `{ "<option_id>": "<ovalue_id>" }` - ids only (live:
+  product 127; a stock with none carries `[]`, not `{}`). The names come from `GET /options/:id`
+  (`translations[lang].name`) and `GET /option-values?filters[option_id]=:id` (`translations[lang].value`), read once
+  per option per adapter and mapped to `ProductVariant.attributes` (`{ Kolor: "biszkoptowy" }`) in the shop language,
+  so Erli's explicit variant grouping (#986) gets distinguishing values. **All or nothing**: a variant whose options
+  cannot ALL be resolved (unknown option or value, no readable text, two options sharing a name, an option-values
+  filter Shoper did not honour) syncs with `attributes: null` and a warning - never a partial set, never a guess. A
+  transport failure on those reads propagates rather than wiping attributes a variant already had. `options_non_stock`
+  (product add-ons with a price change) and `products.options` (a list of non-default stock ids) are not variant options.
 - **Text** is read from `translations[<shop default language>]` (`application-config.default_language_name`);
   the translations' own `isdefault` flag reads `"0"` on every language and is not used.
 - **Images:** only the main image, `https://<host>/userdata/public/gfx/<unic_name>.<extension>`.
@@ -354,10 +363,6 @@ mapping is not persisted at `createOrder`, so a parcel always ships the remainde
   overwritten, and a retry after a lost response applies the delta again. The remedy belongs at the call site: a
   short per-`(connection, stock)` `SyncLockPort` lock around the call, as #2617 does per offer.
 - The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
-- **Multi-variant products are not live-verified**: the trial shop has none, so a variant's `options` are not
-  mapped to `attributes` yet (they stay `null`) rather than guessed at; the adapter logs a warning per stock
-  that carries `options`. **Prerequisite before enabling the catalogue sweep on a live install**: probe a
-  multi-variant shop and map `options` (otherwise Erli's explicit variant grouping gets no distinguishing values).
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
 - Only the main image is exposed; the rest need `product-images` (one extra call per product).

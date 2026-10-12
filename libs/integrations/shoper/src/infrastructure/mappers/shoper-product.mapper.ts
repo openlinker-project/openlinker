@@ -13,9 +13,10 @@
  *   - `createdAt` / `updatedAt`: Shoper sends zone-less local timestamps
  *     (`2025-09-13 09:57:48`) and parsing them with the process time zone would
  *     stamp a wrong instant. Absent is honest; the fields are optional.
- *   - variant `attributes`: the shape of a variant's `options` is not
- *     live-verified (the trial shop has no multi-variant product), so it is not
- *     guessed at; see the implementation plan's stated gaps.
+ *   - variant `attributes` are never guessed: they come from a stock's `options`
+ *     (ids only, names resolved by the adapter through `/options` and
+ *     `/option-values`) and a variant whose options cannot ALL be resolved gets
+ *     `null` rather than a partial set.
  *
  * @module libs/integrations/shoper/src/infrastructure/mappers
  */
@@ -26,7 +27,9 @@ import type {
   ShoperProduct,
   ShoperProductTranslation,
   ShoperStock,
+  ShoperStockOptions,
 } from '../../domain/types/shoper-api.types';
+import type { ShoperOptionEntry } from '../shop-context/shoper-option-table.provider';
 
 /** What the mapper needs to know about the shop beyond the payload itself. */
 export interface ShoperMapContext {
@@ -120,6 +123,7 @@ export function mapShoperStockToVariant(
   stock: ShoperStock,
   productId: string,
   ctx: ShoperMapContext,
+  attributes: Record<string, string> | null = null,
 ): Omit<ProductVariant, 'id'> {
   const ean = nonEmpty(stock.ean);
   const weight = weightInKilograms(stock.weight, ctx.weightUnit);
@@ -128,7 +132,7 @@ export function mapShoperStockToVariant(
   return {
     productId,
     sku: nonEmpty(stock.code),
-    attributes: null,
+    attributes,
     ean,
     gtin: ean,
     ...(price === undefined ? {} : { price }),
@@ -153,4 +157,103 @@ export function mapShoperProduct(raw: ShoperProduct, ctx: ShoperMapContext): Omi
     categories: raw.categories.map(String),
     ...(weight === undefined ? {} : { weight }),
   };
+}
+
+const SHOPER_ID_PATTERN = /^\d+$/;
+
+/**
+ * The `[option_id, ovalue_id]` pairs of a stock's `options`, or `'malformed'`
+ * when the value is not the verified `{ "<id>": "<id>" }` object. A stock with no
+ * options is `[]` (an empty array on the wire, an empty object tolerated) and has
+ * no pairs - that is a simple variant, not a malformed one.
+ */
+export function shoperStockOptionPairs(
+  options: ShoperStockOptions | null | undefined,
+): ReadonlyArray<readonly [string, string]> | 'malformed' {
+  if (options === null || options === undefined) {
+    return [];
+  }
+  if (Array.isArray(options)) {
+    return options.length === 0 ? [] : 'malformed';
+  }
+  if (typeof options !== 'object') {
+    return 'malformed';
+  }
+  const pairs: Array<readonly [string, string]> = [];
+  for (const [optionId, valueId] of Object.entries(options)) {
+    if (!SHOPER_ID_PATTERN.test(optionId) || typeof valueId !== 'string' || !SHOPER_ID_PATTERN.test(valueId)) {
+      return 'malformed';
+    }
+    pairs.push([optionId, valueId]);
+  }
+  return pairs;
+}
+
+export interface ShoperVariantAttributesResult {
+  /** Option name -> value text, or `null` when there is nothing to report or it cannot be reported whole. */
+  readonly attributes: Record<string, string> | null;
+  /** Why a stock that HAS options got no attributes; absent for a simple variant. */
+  readonly problem?: string;
+}
+
+function translatedText(
+  translations: Readonly<Record<string, Record<string, string | null | undefined>>>,
+  field: string,
+  language: string,
+): string | null {
+  const preferred = nonEmpty(translations[language]?.[field]);
+  if (preferred !== null) {
+    return preferred;
+  }
+  for (const translation of Object.values(translations)) {
+    const text = nonEmpty(translation[field]);
+    if (text !== null) {
+      return text;
+    }
+  }
+  return null;
+}
+
+/**
+ * Option name -> value text for one stock, in the shop language.
+ *
+ * ALL or nothing: one option that cannot be resolved (unknown option or value, no
+ * name or text in any language, two options sharing a name) gives `null` and a
+ * reason, never a partial set - a sibling grouped on half its attributes would
+ * look distinguished while still colliding. Nothing is guessed from the ids.
+ */
+export function resolveShoperVariantAttributes(
+  options: ShoperStockOptions | null | undefined,
+  entries: ReadonlyMap<string, ShoperOptionEntry | null>,
+  language: string,
+): ShoperVariantAttributesResult {
+  const pairs = shoperStockOptionPairs(options);
+  if (pairs === 'malformed') {
+    return { attributes: null, problem: 'its options are not an { option_id: value_id } object' };
+  }
+  if (pairs.length === 0) {
+    return { attributes: null };
+  }
+
+  const attributes: Record<string, string> = {};
+  for (const [optionId, valueId] of pairs) {
+    const entry = entries.get(optionId);
+    if (entry === undefined || entry === null) {
+      return { attributes: null, problem: `option ${optionId} could not be read from the shop` };
+    }
+    const value = entry.values.get(valueId);
+    if (value === undefined) {
+      return { attributes: null, problem: `option ${optionId} has no value ${valueId}` };
+    }
+    const name = translatedText(entry.option.translations, 'name', language);
+    const text = translatedText(value.translations, 'value', language);
+    if (name === null || text === null) {
+      return { attributes: null, problem: `option ${optionId} / value ${valueId} has no readable name or text` };
+    }
+    if (name in attributes) {
+      return { attributes: null, problem: `two options are both named "${name}"` };
+    }
+    attributes[name] = text;
+  }
+  return { attributes };
 }

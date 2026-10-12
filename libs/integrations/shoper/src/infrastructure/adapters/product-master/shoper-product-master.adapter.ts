@@ -55,6 +55,7 @@ import type {
 } from '../../../domain/types/shoper-api.types';
 import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
 import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
+import type { ShoperOptionEntry, ShoperOptionTableProvider } from '../../shop-context/shoper-option-table.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
 import {
@@ -63,7 +64,12 @@ import {
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
 import { fetchShoperStocks } from '../../http/shoper-stocks';
-import { mapShoperProduct, mapShoperStockToVariant } from '../../mappers/shoper-product.mapper';
+import {
+  mapShoperProduct,
+  mapShoperStockToVariant,
+  resolveShoperVariantAttributes,
+  shoperStockOptionPairs,
+} from '../../mappers/shoper-product.mapper';
 import { resolveShoperExternalProductId } from '../../readers/shoper-product-id';
 import type { ShoperProductReader } from '../../readers/shoper-product.reader';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
@@ -87,6 +93,7 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     private readonly identifierMapping: IdentifierMappingPort,
     private readonly shopContext: ShoperShopContextProvider,
     private readonly taxTable: ShoperTaxTableProvider,
+    private readonly optionTable: ShoperOptionTableProvider,
     private readonly connection: Connection,
     // Shared with the InventoryMaster adapter of the same resolution, so a
     // product is read (and a deletion reported) once.
@@ -166,16 +173,8 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         this.logger.warn(`No internal id for Shoper stock ${stock.stock_id}`);
         continue;
       }
-      if (stock.options.length > 0) {
-        // Not guessed at (the shape is not live-verified), but not silent either:
-        // an attribute-less sibling groups with no distinguishing values on an
-        // explicit-grouping destination (#1065 / #986).
-        this.logger.warn(
-          `Shoper stock ${stock.stock_id} carries variant options that are not mapped; ` +
-            'its variant syncs without attributes'
-        );
-      }
-      variants.push({ ...mapShoperStockToVariant(stock, productId, ctx), id: internalId });
+      const attributes = await this.resolveVariantAttributes(stock, ctx.language);
+      variants.push({ ...mapShoperStockToVariant(stock, productId, ctx, attributes), id: internalId });
     }
     return variants;
   }
@@ -467,6 +466,30 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   }
 
   /** Exhausts every page of a product's stocks (a product may have more than 50 variants). */
+  /**
+   * `{ option name: value text }` for a stock, or `null` when it has no options or
+   * they cannot ALL be resolved - logged, never guessed. A transport failure
+   * propagates: turning it into `null` would let one 500 during a sweep wipe the
+   * attributes a variant already had.
+   */
+  private async resolveVariantAttributes(
+    stock: ShoperStock,
+    language: string,
+  ): Promise<Record<string, string> | null> {
+    const pairs = shoperStockOptionPairs(stock.options);
+    const optionIds = pairs === 'malformed' ? [] : [...new Set(pairs.map(([optionId]) => optionId))];
+    const loaded = await Promise.all(optionIds.map((id) => this.optionTable.get(id)));
+    const entries = new Map<string, ShoperOptionEntry | null>(optionIds.map((id, i) => [id, loaded[i]]));
+
+    const { attributes, problem } = resolveShoperVariantAttributes(stock.options, entries, language);
+    if (problem !== undefined) {
+      this.logger.warn(
+        `Shoper stock ${stock.stock_id} syncs without attributes: ${problem} (connection: ${this.connection.id})`,
+      );
+    }
+    return attributes;
+  }
+
   private fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {
     // The filter-ignored guard lives in `fetchShoperStocks`; this only reports it.
     return fetchShoperStocks(this.client, externalProductId, (count) =>

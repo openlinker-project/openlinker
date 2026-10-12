@@ -32,6 +32,7 @@ import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-m
 import { ShoperHttpClient } from '../infrastructure/http/shoper-http-client';
 import { ShoperProductReader } from '../infrastructure/readers/shoper-product.reader';
 import { ShoperShopContextProvider } from '../infrastructure/shop-context/shoper-shop-context.provider';
+import { ShoperOptionTableProvider } from '../infrastructure/shop-context/shoper-option-table.provider';
 import { ShoperTaxTableProvider } from '../infrastructure/shop-context/shoper-tax-table.provider';
 
 export interface ShoperAdapters {
@@ -88,6 +89,7 @@ export class ShoperAdapterFactory {
         identifierMapping,
         shopContext,
         taxTable,
+        new ShoperOptionTableProvider(client),
         connection,
         productReader,
       ),

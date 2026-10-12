@@ -1,15 +1,21 @@
 import {
+  LIVE_OPTION_COLOUR,
+  LIVE_OPTION_VALUES,
+  LIVE_VARIANT_STOCKS,
   MAP_CONTEXT,
   SHOP_HOST,
   buildProduct,
   buildStock,
 } from '../../__tests__/shoper-test-data';
+import type { ShoperOptionEntry } from '../../shop-context/shoper-option-table.provider';
 import {
   buildShoperImageUrl,
   mapShoperProduct,
   mapShoperStockToVariant,
   parseShoperNumber,
   pickShoperTranslation,
+  resolveShoperVariantAttributes,
+  shoperStockOptionPairs,
 } from '../shoper-product.mapper';
 
 describe('parseShoperNumber', () => {
@@ -191,5 +197,96 @@ describe('mapShoperProduct', () => {
     const product = mapShoperProduct(buildProduct(), MAP_CONTEXT);
     expect(product).not.toHaveProperty('createdAt');
     expect(product).not.toHaveProperty('updatedAt');
+  });
+});
+
+describe('shoperStockOptionPairs', () => {
+  it('should read the live {option_id: value_id} object into pairs', () => {
+    expect(shoperStockOptionPairs(LIVE_VARIANT_STOCKS[1].options)).toEqual([['10', '68']]);
+  });
+
+  it.each([[[]], [{}], [null], [undefined]])('should treat %p as no options, not as malformed', (options) => {
+    expect(shoperStockOptionPairs(options as never)).toEqual([]);
+  });
+
+  it.each([[[1, 2]], ['x'], [{ '10': 68 }], [{ Kolor: '68' }], [{ '10': '' }]])(
+    'should report %p as malformed',
+    (options) => {
+      expect(shoperStockOptionPairs(options as never)).toBe('malformed');
+    },
+  );
+});
+
+describe('resolveShoperVariantAttributes', () => {
+  const colour: ShoperOptionEntry = {
+    option: LIVE_OPTION_COLOUR,
+    values: new Map(LIVE_OPTION_VALUES.map((v) => [v.ovalue_id, v])),
+  };
+  const entries = new Map<string, ShoperOptionEntry | null>([['10', colour]]);
+
+  it('should resolve the live option and value ids to their names', () => {
+    expect(resolveShoperVariantAttributes(LIVE_VARIANT_STOCKS[1].options, entries, 'pl_PL')).toEqual({
+      attributes: { Kolor: 'biszkoptowy' },
+    });
+    expect(resolveShoperVariantAttributes(LIVE_VARIANT_STOCKS[2].options, entries, 'pl_PL')).toEqual({
+      attributes: { Kolor: 'Shoper blue' },
+    });
+  });
+
+  it('should give a variant with no options null attributes and no problem', () => {
+    expect(resolveShoperVariantAttributes(LIVE_VARIANT_STOCKS[0].options, entries, 'pl_PL')).toEqual({
+      attributes: null,
+    });
+  });
+
+  it('should fall back to another language when the shop language has no text', () => {
+    const result = resolveShoperVariantAttributes({ '10': '68' }, entries, 'en_US');
+    expect(result.attributes).toEqual({ Kolor: 'biszkoptowy' });
+  });
+
+  it.each([
+    ['an option the shop does not know', { '99': '68' }],
+    ['a value the option does not have', { '10': '999' }],
+    ['a malformed options value', [1, 2]],
+  ])('should give null attributes and a reason for %s', (_label, options) => {
+    const result = resolveShoperVariantAttributes(options as never, entries, 'pl_PL');
+    expect(result.attributes).toBeNull();
+    expect(result.problem).toEqual(expect.any(String));
+  });
+
+  it('should give null attributes when the option read was untrusted (null entry)', () => {
+    const result = resolveShoperVariantAttributes({ '10': '68' }, new Map([['10', null]]), 'pl_PL');
+    expect(result.attributes).toBeNull();
+    expect(result.problem).toContain('option 10');
+  });
+
+  it('should refuse a partial set when one of two options cannot be resolved', () => {
+    const result = resolveShoperVariantAttributes({ '10': '68', '11': '83' }, entries, 'pl_PL');
+    expect(result.attributes).toBeNull();
+  });
+
+  it('should refuse two options that share a name rather than overwrite one', () => {
+    const other: ShoperOptionEntry = {
+      option: { option_id: '13', translations: { pl_PL: { name: 'Kolor' } } },
+      values: new Map([['5', { ovalue_id: '5', option_id: '13', translations: { pl_PL: { value: 'x' } } }]]),
+    };
+    const result = resolveShoperVariantAttributes(
+      { '10': '68', '13': '5' },
+      new Map([['10', colour], ['13', other]]),
+      'pl_PL',
+    );
+    expect(result.attributes).toBeNull();
+    expect(result.problem).toContain('"Kolor"');
+  });
+});
+
+describe('mapShoperStockToVariant attributes', () => {
+  it('should carry the resolved attributes onto the variant', () => {
+    const variant = mapShoperStockToVariant(LIVE_VARIANT_STOCKS[1], 'p', MAP_CONTEXT, { Kolor: 'biszkoptowy' });
+    expect(variant.attributes).toEqual({ Kolor: 'biszkoptowy' });
+  });
+
+  it('should default to null attributes', () => {
+    expect(mapShoperStockToVariant(LIVE_VARIANT_STOCKS[0], 'p', MAP_CONTEXT).attributes).toBeNull();
   });
 });
