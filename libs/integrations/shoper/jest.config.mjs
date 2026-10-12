@@ -1,4 +1,8 @@
+import { createRequire } from 'node:module';
+
 import { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } from '../../../jest.esm-deps.cjs';
+
+const { resolveUnitTestWorkers } = createRequire(import.meta.url)('../../../jest.unit-workers.cjs');
 
 export default {
   testEnvironment: 'node',
@@ -39,4 +43,11 @@ export default {
   coverageDirectory: '<rootDir>/coverage',
   clearMocks: true,
   testTimeout: 30000,
+
+  // CI stability (#976): without a cap jest spawns ~(cores-1) workers per
+  // package, and this package runs beside others under --workspace-concurrency.
+  // Takes the shared unit-tier count (no measuredCiDefault) rather than
+  // jest.ci-stability.mjs, whose 8 was measured for prestashop/allegro only.
+  maxWorkers: resolveUnitTestWorkers(),
+  workerIdleMemoryLimit: '512MB',
 };
