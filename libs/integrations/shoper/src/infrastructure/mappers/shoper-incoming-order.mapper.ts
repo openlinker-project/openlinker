@@ -19,6 +19,7 @@ import type {
   IncomingOrderAddress,
   IncomingOrderItem,
   IncomingOrderItemRef,
+  OrderPickupPoint,
   PaymentStatus,
 } from '@openlinker/core/orders';
 import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
@@ -88,6 +89,31 @@ function num(raw: string | number | null | undefined): number | undefined {
 
 function nonEmpty(raw: string | null | undefined): string | undefined {
   return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : undefined;
+}
+
+/** Prefix of a pickup-point (POP) id, case-sensitive as seen live (`POP-WAW579`). */
+const POP_ID_PREFIX = 'POP-';
+
+/**
+ * The pickup point the buyer chose at checkout (#3720), from the order's top-level
+ * `pickup_point` (`"POP-WAW579"`, verified live), or `undefined` when the order
+ * carries none.
+ *
+ * The id is carried verbatim (trimmed) - Shoper sends only the code, so no label is
+ * invented. `pointType` is set only for the `POP-` prefix, the one shape verified
+ * live. A bare code is left untyped: Shoper serves several carriers, so inferring a
+ * locker from the code's shape would be an InPost guess that could send the shipment
+ * to the wrong kind of point. Anything that is not a non-empty string reads as no point.
+ */
+export function mapShoperPickupPoint(raw: unknown): OrderPickupPoint | undefined {
+  const id = typeof raw === 'string' ? nonEmpty(raw) : undefined;
+  if (id === undefined) {
+    return undefined;
+  }
+  if (id.startsWith(POP_ID_PREFIX)) {
+    return { id, pointType: 'pop' };
+  }
+  return { id };
 }
 
 function round2(value: number): number {
@@ -297,6 +323,7 @@ export function mapShoperOrderToIncoming(
   const shippingAddress = mapAddress(row.delivery_address);
   const billingAddress = mapAddress(row.billing_address);
   const currency = ctx.currencyCode ?? '';
+  const pickupPoint = mapShoperPickupPoint(row.pickup_point);
   const orderUrl = nonEmpty(row.order_url);
   const shippingId = nonEmpty(row.shipping_id === null || row.shipping_id === undefined ? undefined : String(row.shipping_id));
 
@@ -328,6 +355,7 @@ export function mapShoperOrderToIncoming(
             ...(ctx.shippingName === null ? {} : { methodName: ctx.shippingName }),
           },
         }),
+    ...(pickupPoint === undefined ? {} : { pickupPoint }),
     ...(row.is_cash_on_delivery === true && total > 0 && currency !== ''
       ? { codToCollect: { amount: total.toFixed(2), currency } }
       : {}),
