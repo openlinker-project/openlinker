@@ -3,6 +3,7 @@ import { isOrderStatusWriteback } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
+import { ShoperProductPublisherAdapter } from '../infrastructure/adapters/product-publisher/shoper-product-publisher.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
 import { ShoperInboundWebhookDecoderAdapter } from '../infrastructure/adapters/shoper-inbound-webhook-decoder.adapter';
@@ -52,10 +53,11 @@ function connection(overrides: Record<string, unknown> = {}): Connection {
 }
 
 describe('Shoper plugin', () => {
-  it('should not enable OrderProcessorManager or OrderSource by default, so a catalogue-only shop neither receives nor ingests orders', () => {
+  it('should not enable ProductPublisher, OrderProcessorManager or OrderSource by default, so a catalogue-only shop is neither written to nor fed orders', () => {
     const defaults = shoperAdapterManifest.defaultEnabledCapabilities;
 
     expect(defaults).toEqual(['ProductMaster', 'InventoryMaster']);
+    expect(defaults).not.toContain('ProductPublisher');
     expect(defaults).not.toContain('OrderProcessorManager');
     expect(defaults).not.toContain('OrderSource');
     // Every default must be a capability the adapter really supports.
@@ -64,11 +66,17 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should expose the documented manifest with its four capabilities', () => {
+  it('should expose the documented manifest with its five capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
-      supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
+      supportedCapabilities: [
+        'ProductMaster',
+        'InventoryMaster',
+        'ProductPublisher',
+        'OrderProcessorManager',
+        'OrderSource',
+      ],
       isDefault: true,
     });
     expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
@@ -124,6 +132,18 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperProductMasterAdapter);
+  });
+
+  it('should resolve ProductPublisher to the Shoper product publisher adapter', async () => {
+    const { host } = hostWithRegistries();
+
+    const adapter = await createShoperPlugin().createCapabilityAdapter<unknown>(
+      connection(),
+      'ProductPublisher',
+      host,
+    );
+
+    expect(adapter).toBeInstanceOf(ShoperProductPublisherAdapter);
   });
 
   it('should resolve InventoryMaster to the Shoper inventory master adapter', async () => {

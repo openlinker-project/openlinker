@@ -50,7 +50,16 @@ export const shoperAdapterManifest: AdapterMetadata = {
   adapterKey: SHOPER_ADAPTER_KEY,
   platformType: SHOPER_PLATFORM_TYPE,
   // A capability name enters this list together with the adapter that delivers it.
-  supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager', 'OrderSource'],
+  supportedCapabilities: [
+    'ProductMaster',
+    'InventoryMaster',
+    'ProductPublisher',
+    'OrderProcessorManager',
+    'OrderSource',
+  ],
+  // `ProductPublisher` is opt-in as well: it WRITES products to the shop, so a
+  // connection that exists only as a catalogue master must not become a publish
+  // destination until an operator enables it.
   // `OrderSource` is likewise opt-in: ingesting a shop's orders is polling load
   // against a shop whose request ceiling is unknown (SPIKE-3638 C6), and a
   // connection that exists only as a catalogue master must not start doing it.
@@ -147,6 +156,7 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
           {
             ProductMaster: async () => (await build()).productMaster,
             InventoryMaster: async () => (await build()).inventoryMaster,
+            ProductPublisher: async () => (await build()).productPublisher,
             OrderSource: async () => (await build()).orderSource,
             OrderProcessorManager: async () => {
               const { orderProcessor } = await build();
