@@ -16,12 +16,46 @@ function buildView(overrides: Partial<ConnectionPricingSyncView> = {}): Connecti
       {
         sourceConnectionId: 'src-1',
         sourceLabel: 'PrestaShop — Main Store',
-        isCustomOverride: false,
+        modeOverridden: false,
+        ruleOverridden: false,
         effective: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
         openEpisodeCount: 3,
       },
     ],
     ...overrides,
+  };
+}
+
+type SourceOverrideInput = {
+  mode?: 'manual' | 'automatic';
+  rule?: ConnectionPricingSyncView['default']['rule'];
+};
+type UpdateInput = {
+  default: ConnectionPricingSyncView['default'];
+  sourceOverrides: Record<string, SourceOverrideInput>;
+};
+
+/** Mirrors the API: each axis is overridden only when the payload names it. */
+function applyUpdate(
+  current: ConnectionPricingSyncView,
+  input: UpdateInput
+): ConnectionPricingSyncView {
+  return {
+    default: input.default,
+    sources: current.sources.map((s) => {
+      const override = input.sourceOverrides[s.sourceConnectionId];
+      const modeOverridden = override?.mode !== undefined;
+      const ruleOverridden = override?.rule !== undefined && override.rule !== null;
+      return {
+        ...s,
+        modeOverridden,
+        ruleOverridden,
+        effective: {
+          mode: override?.mode ?? input.default.mode,
+          rule: ruleOverridden ? (override?.rule ?? null) : input.default.rule,
+        },
+      };
+    }),
   };
 }
 
@@ -61,7 +95,7 @@ describe('PricingAndSyncSection', () => {
 
     expect(await screen.findByText(/keep a 22% margin/, { selector: '#conn-rule-note' })).toBeInTheDocument();
     expect(screen.getByText('PrestaShop — Main Store')).toBeInTheDocument();
-    expect(screen.getByText(/using the default rule/)).toBeInTheDocument();
+    expect(screen.getByText(/using the default sync mode and rule/)).toBeInTheDocument();
   });
 
   describe('a connection with no pricing rule', () => {
@@ -71,7 +105,8 @@ describe('PricingAndSyncSection', () => {
         {
           sourceConnectionId: 'src-1',
           sourceLabel: 'PrestaShop — Main Store',
-          isCustomOverride: false,
+          modeOverridden: false,
+          ruleOverridden: false,
           effective: { mode: 'manual', rule: null },
           openEpisodeCount: 0,
         },
@@ -225,17 +260,8 @@ describe('PricingAndSyncSection', () => {
     // changes" flash that is an artifact of the mock, not of the component.
     let serverState = buildView();
     const get = vi.fn(() => Promise.resolve(serverState));
-    const update = vi.fn((_connectionId: string, input: { default: unknown; sourceOverrides: Record<string, unknown> }) => {
-      serverState = {
-        default: input.default as ConnectionPricingSyncView['default'],
-        sources: serverState.sources.map((s) => ({
-          ...s,
-          isCustomOverride: s.sourceConnectionId in input.sourceOverrides,
-          effective:
-            (input.sourceOverrides[s.sourceConnectionId] as ConnectionPricingSyncView['default'] | undefined) ??
-            (input.default as ConnectionPricingSyncView['default']),
-        })),
-      };
+    const update = vi.fn((_connectionId: string, input: UpdateInput) => {
+      serverState = applyUpdate(serverState, input);
       return Promise.resolve(serverState);
     });
     const apiClient = createMockApiClient({
@@ -248,31 +274,32 @@ describe('PricingAndSyncSection', () => {
     });
     await screen.findByText('PrestaShop — Main Store');
 
-    await userEvent.click(screen.getByTestId('source-custom-toggle'));
+    await userEvent.click(screen.getByTestId('source-rule-toggle'));
 
     // Copied from the current default (margin/22/endingIn99), so the summary
-    // no longer reads "using the default rule".
-    expect(screen.queryByText(/using the default rule/)).not.toBeInTheDocument();
+    // no longer reads "using the default sync mode and rule".
+    expect(screen.queryByText(/using the default sync mode and rule/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => {
       expect(update).toHaveBeenCalledWith('dest-1', {
         default: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
         sourceOverrides: {
-          'src-1': { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
+          // Rule only - the mode box was not ticked, so no mode is sent.
+          'src-1': { rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
         },
       });
     });
 
     // Toggling back off displays the default rule again (never the stale
     // about-to-be-discarded override, #3166 review finding 4) ...
-    await userEvent.click(screen.getByTestId('source-custom-toggle'));
-    expect(await screen.findByText(/using the default rule/)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('source-rule-toggle'));
+    expect(await screen.findByText(/using the default sync mode and rule/)).toBeInTheDocument();
 
     // ... and Save on a PERSISTED override refuses to silently drop it.
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(
-      await screen.findByText(/Saving will permanently remove the custom rule/),
+      await screen.findByText(/Saving will permanently remove: PrestaShop — Main Store \(own rule\)/),
     ).toBeInTheDocument();
     expect(update).toHaveBeenCalledTimes(1);
 
@@ -310,7 +337,8 @@ describe('PricingAndSyncSection', () => {
             {
               sourceConnectionId: 'src-1',
               sourceLabel: 'PrestaShop — Main Store',
-              isCustomOverride: false,
+              modeOverridden: false,
+              ruleOverridden: false,
               effective: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
               openEpisodeCount: 1,
             },
@@ -397,7 +425,7 @@ describe('PricingAndSyncSection', () => {
         expect(radio).toBeDisabled();
       }
       expect(screen.getByRole('button', { name: 'Edit default rule' })).toBeDisabled();
-      expect(screen.getByTestId('source-custom-toggle')).toBeDisabled();
+      expect(screen.getByTestId('source-rule-toggle')).toBeDisabled();
     });
 
     it('disables every editable control for an operator too — the PATCH is admin-only', async () => {
@@ -430,6 +458,137 @@ describe('PricingAndSyncSection', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  describe('persisted per-source overrides (#3729)', () => {
+    const DEFAULT_RULE = { type: 'margin', percent: 22, rounding: 'endingIn99' } as const;
+    const OWN_RULE = { type: 'markup', percent: 15, rounding: 'none' } as const;
+
+    function viewWith(
+      flags: { modeOverridden: boolean; ruleOverridden: boolean },
+      effective: ConnectionPricingSyncView['default']
+    ): ConnectionPricingSyncView {
+      const base = buildView();
+      return { ...base, sources: [{ ...base.sources[0], ...flags, effective }] };
+    }
+
+    function render(serverView: ConnectionPricingSyncView): { update: ReturnType<typeof vi.fn> } {
+      let serverState = serverView;
+      const get = vi.fn(() => Promise.resolve(serverState));
+      const update = vi.fn((_id: string, input: UpdateInput) => {
+        serverState = applyUpdate(serverState, input);
+        return Promise.resolve(serverState);
+      });
+      const apiClient = createMockApiClient({ pricingSync: { get, update } });
+      renderWithProviders(<PricingAndSyncSection connectionId="dest-1" />, {
+        apiClient,
+        sessionAdapter: ADMIN_SESSION,
+      });
+      return { update };
+    }
+
+    async function changeDefaultMode(): Promise<void> {
+      const defaultGroup = await screen.findByRole('radiogroup', { name: 'Default price sync mode' });
+      await userEvent.click(within(defaultGroup).getByRole('radio', { name: 'Automatic' }));
+    }
+
+    it.each([
+      ['mode-only', { modeOverridden: true, ruleOverridden: false }, true, false],
+      ['rule-only', { modeOverridden: false, ruleOverridden: true }, false, true],
+      ['mode and rule', { modeOverridden: true, ruleOverridden: true }, true, true],
+      ['no override', { modeOverridden: false, ruleOverridden: false }, false, false],
+    ])('should show a %s override as ticked on the matching axes only', async (_name, flags, mode, rule) => {
+      render(viewWith(flags, { mode: 'automatic', rule: OWN_RULE }));
+
+      expect(await screen.findByTestId('source-mode-toggle')).toHaveProperty('checked', mode);
+      expect(screen.getByTestId('source-rule-toggle')).toHaveProperty('checked', rule);
+    });
+
+    it('should keep a mode-only override on Save, without sending or freezing the default rule', async () => {
+      const { update } = render(
+        viewWith({ modeOverridden: true, ruleOverridden: false }, { mode: 'automatic', rule: DEFAULT_RULE })
+      );
+      await changeDefaultMode();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      // No drop confirmation: nothing the operator did removes an override.
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      expect(update).toHaveBeenCalledWith('dest-1', {
+        default: { mode: 'automatic', rule: DEFAULT_RULE },
+        sourceOverrides: { 'src-1': { mode: 'automatic' } },
+      });
+    });
+
+    it('should keep a rule-only override on Save without sending a mode', async () => {
+      const { update } = render(
+        viewWith({ modeOverridden: false, ruleOverridden: true }, { mode: 'manual', rule: OWN_RULE })
+      );
+      await changeDefaultMode();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      expect(update).toHaveBeenCalledWith('dest-1', {
+        default: { mode: 'automatic', rule: DEFAULT_RULE },
+        sourceOverrides: { 'src-1': { rule: OWN_RULE } },
+      });
+    });
+
+    it('should keep both axes of a full override on Save', async () => {
+      const { update } = render(
+        viewWith({ modeOverridden: true, ruleOverridden: true }, { mode: 'automatic', rule: OWN_RULE })
+      );
+      // Edit the default RULE type so the draft diverges without touching the override.
+      await userEvent.click(await screen.findByRole('button', { name: 'Edit default rule' }));
+      await userEvent.selectOptions(document.getElementById('rule-type') as HTMLSelectElement, 'markup');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      expect(update).toHaveBeenCalledWith('dest-1', {
+        default: expect.anything(),
+        sourceOverrides: { 'src-1': { mode: 'automatic', rule: OWN_RULE } },
+      });
+    });
+
+    it('should name only the axis being removed when one of two overrides is unticked', async () => {
+      const { update } = render(
+        viewWith({ modeOverridden: true, ruleOverridden: true }, { mode: 'automatic', rule: OWN_RULE })
+      );
+      await userEvent.click(await screen.findByTestId('source-rule-toggle'));
+      await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      expect(
+        await screen.findByText(/Saving will permanently remove: PrestaShop — Main Store \(own rule\)/)
+      ).toBeInTheDocument();
+      expect(update).not.toHaveBeenCalled();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Discard and save' }));
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      // The own mode survives; only the rule is dropped.
+      expect(update).toHaveBeenCalledWith('dest-1', {
+        default: expect.anything(),
+        sourceOverrides: { 'src-1': { mode: 'automatic' } },
+      });
+    });
+
+    it('should seed a neutral rule when the own-rule box is ticked on a default with no rule', async () => {
+      const base = buildView({ default: { mode: 'manual', rule: null } });
+      const { update } = render({
+        ...base,
+        sources: [{ ...base.sources[0], effective: { mode: 'manual', rule: null } }],
+      });
+
+      await userEvent.click(await screen.findByTestId('source-rule-toggle'));
+      await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+      expect(update).toHaveBeenCalledWith('dest-1', {
+        default: { mode: 'manual', rule: null },
+        sourceOverrides: { 'src-1': { rule: { type: 'passthrough', percent: 0, rounding: 'none' } } },
+      });
+    });
+  });
+
   describe('deep-link intent split (#3167 round-3 review)', () => {
     it('does NOT stage an override for a bare ?source= link — looking is not an operator act', async () => {
       const apiClient = createMockApiClient({
@@ -446,7 +605,7 @@ describe('PricingAndSyncSection', () => {
       // here would persist a per-source rule nobody ticked on the next
       // unrelated save, because `persistSave` writes `sourceOverrides`
       // unconditionally.
-      expect(screen.queryByTestId('source-custom-toggle')).not.toBeChecked();
+      expect(screen.queryByTestId('source-rule-toggle')).not.toBeChecked();
       expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     });
 
@@ -464,7 +623,7 @@ describe('PricingAndSyncSection', () => {
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
-      const checkbox = await screen.findByTestId('source-custom-toggle');
+      const checkbox = await screen.findByTestId('source-rule-toggle');
       expect(checkbox).toBeChecked();
       // Bare navigation is not an operator act (#3167 review, blocking):
       // arriving here pre-expands the row so the operator can SEE and edit
@@ -490,13 +649,13 @@ describe('PricingAndSyncSection', () => {
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
-      await screen.findByTestId('source-custom-toggle');
+      await screen.findByTestId('source-rule-toggle');
       expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
 
       // Un-checking the pre-expanded override is a real operator act (it
       // diverges from the baseline the deep link seeded), so it must now
       // surface the unsaved bar rather than staying silent.
-      await user.click(screen.getByTestId('source-custom-toggle'));
+      await user.click(screen.getByTestId('source-rule-toggle'));
 
       expect(await screen.findByRole('button', { name: 'Save changes' })).toBeEnabled();
     });
@@ -516,7 +675,7 @@ describe('PricingAndSyncSection', () => {
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
-      const checkbox = await screen.findByTestId('source-custom-toggle');
+      const checkbox = await screen.findByTestId('source-rule-toggle');
       expect(checkbox).toBeChecked();
 
       await user.click(checkbox); // unchecks — diverges from baseline
@@ -526,7 +685,7 @@ describe('PricingAndSyncSection', () => {
       // unsaved bar — not the un-expanded state the raw server read would
       // produce, which would silently discard the reason the operator
       // followed the link in the first place.
-      expect(screen.getByTestId('source-custom-toggle')).toBeChecked();
+      expect(screen.getByTestId('source-rule-toggle')).toBeChecked();
       expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     });
 
@@ -547,7 +706,7 @@ describe('PricingAndSyncSection', () => {
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
-      await screen.findByTestId('source-custom-toggle');
+      await screen.findByTestId('source-rule-toggle');
       await waitFor(() => {
         expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
       });
@@ -565,7 +724,7 @@ describe('PricingAndSyncSection', () => {
 
       expect(await screen.findByText(/isn't one of this connection's current sources/)).toBeInTheDocument();
       // And nothing was spuriously pre-selected.
-      expect(screen.getByTestId('source-custom-toggle')).not.toBeChecked();
+      expect(screen.getByTestId('source-rule-toggle')).not.toBeChecked();
     });
   });
 });
