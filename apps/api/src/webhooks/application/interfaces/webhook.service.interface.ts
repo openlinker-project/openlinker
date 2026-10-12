@@ -25,6 +25,8 @@ export interface IWebhookService {
    * @param connectionId - Connection identifier (UUID)
    * @param rawBody - Raw request body bytes (the decoder verifies + parses these)
    * @param headers - Request headers (provider-specific signature/timestamp/topic)
+   * @param query - Delivery URL query parameters (first value per key); handed to the
+   *   decoder's `verify` for providers that authenticate by a URL token. Never logged.
    * @returns the handshake echo body when the request is a subscription
    *   verification ping; otherwise resolves with no value
    * @throws WebhookAuthenticationException if signature/connection is invalid (401)
@@ -35,6 +37,7 @@ export interface IWebhookService {
     provider: string,
     connectionId: string,
     rawBody: Buffer,
-    headers: Record<string, string>
+    headers: Record<string, string>,
+    query?: Readonly<Record<string, string>>
   ): Promise<Record<string, unknown> | void>;
 }

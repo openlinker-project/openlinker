@@ -5,6 +5,8 @@ import type { HostServices } from '@openlinker/plugin-sdk';
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
 import { ShoperProductMasterAdapter } from '../infrastructure/adapters/product-master/shoper-product-master.adapter';
 import { ShoperOrderProcessorAdapter } from '../infrastructure/adapters/order-processor/shoper-order-processor.adapter';
+import { ShoperInboundWebhookDecoderAdapter } from '../infrastructure/adapters/shoper-inbound-webhook-decoder.adapter';
+import { ShoperWebhookEventTranslatorAdapter } from '../infrastructure/adapters/shoper-webhook-event-translator.adapter';
 import { ShoperOrderSourceAdapter } from '../infrastructure/adapters/order-source/shoper-order-source.adapter';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { ShoperCustomerProvisioner } from '../infrastructure/provisioners/shoper-customer.provisioner';
@@ -13,6 +15,8 @@ import { createShoperPlugin, shoperAdapterManifest } from '../shoper-plugin';
 function hostWithRegistries(): {
   host: HostServices;
   registries: Record<string, { register: jest.Mock }>;
+  webhookRegistries: { decoder: { register: jest.Mock }; translator: { register: jest.Mock } };
+  schedulerRegister: jest.Mock;
   credentialsGet: jest.Mock;
 } {
   const registries = {
@@ -22,14 +26,19 @@ function hostWithRegistries(): {
     authFailureClassifierRegistry: { register: jest.fn() },
     retryClassifierRegistry: { register: jest.fn() },
   };
+  const webhookRegistries = { decoder: { register: jest.fn() }, translator: { register: jest.fn() } };
+  const schedulerRegister = jest.fn();
   const credentialsGet = jest.fn().mockResolvedValue({ token: 'secret-token-value' });
   const host = {
     http: { forConnection: jest.fn().mockReturnValue(jest.fn()) },
     identifierMapping: {},
     credentialsResolver: { get: credentialsGet },
+    inboundWebhookDecoderRegistry: webhookRegistries.decoder,
+    webhookEventTranslatorRegistry: webhookRegistries.translator,
+    schedulerTaskRegistry: { register: schedulerRegister },
     ...registries,
   } as unknown as HostServices;
-  return { host, registries, credentialsGet };
+  return { host, registries, webhookRegistries, schedulerRegister, credentialsGet };
 }
 
 function connection(overrides: Record<string, unknown> = {}): Connection {
@@ -75,6 +84,34 @@ describe('Shoper plugin', () => {
       expect(registry.register).toHaveBeenCalledTimes(1);
       expect(registry.register).toHaveBeenCalledWith('shoper.restapi.v1', expect.any(Object));
     }
+  });
+
+  it('should register the orders-poll task that backs up a lost webhook', () => {
+    const { host, schedulerRegister } = hostWithRegistries();
+
+    createShoperPlugin().register?.(host);
+
+    expect(schedulerRegister).toHaveBeenCalledTimes(1);
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: 'shoper-orders-poll', jobType: 'marketplace.orders.poll' }),
+    );
+  });
+
+  it('should register the webhook decoder by PLATFORM TYPE and the translator by adapter key', () => {
+    const { host, webhookRegistries } = hostWithRegistries();
+
+    createShoperPlugin().register?.(host);
+
+    expect(webhookRegistries.decoder.register).toHaveBeenCalledTimes(1);
+    expect(webhookRegistries.decoder.register).toHaveBeenCalledWith(
+      'shoper',
+      expect.any(ShoperInboundWebhookDecoderAdapter),
+    );
+    expect(webhookRegistries.translator.register).toHaveBeenCalledTimes(1);
+    expect(webhookRegistries.translator.register).toHaveBeenCalledWith(
+      'shoper.restapi.v1',
+      expect.any(ShoperWebhookEventTranslatorAdapter),
+    );
   });
 
   it('should resolve ProductMaster to the Shoper product master adapter', async () => {
