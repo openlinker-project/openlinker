@@ -132,6 +132,8 @@ export interface ShoperApplicationConfig {
   readonly default_language_name: string;
   readonly default_currency_name: string;
   readonly locale_default_weight: string;
+  /** IANA zone the shop's naive order timestamps are written in (`Europe/Warsaw` on the live shop). */
+  readonly locale_timezone?: string | null;
   /**
    * Multi-warehouse module (a paid Premium feature, SPIKE-3638 M10). A real JSON
    * boolean on the live shop (`false`). Only an explicit "off" (`false`, `0`,
@@ -267,4 +269,75 @@ export interface ShoperOptionRow {
   readonly status_id?: string;
   readonly name?: string | null;
   readonly translations?: Readonly<Record<string, { readonly name?: string | null; readonly title?: string | null }>>;
+}
+
+/**
+ * A `GET /orders` / `GET /orders/:id` row as an ORDER SOURCE reads it (live-verified
+ * 6 Oct 2026). The list endpoint returns the whole order, addresses and `notes_priv`
+ * included, but NOT its lines: those are `order-products` rows. Every number is a
+ * string; timestamps are naive and in the shop's own time zone.
+ */
+export interface ShoperOrderRow {
+  readonly order_id: string;
+  readonly user_id?: string | number | null;
+  /** Placement time, `YYYY-MM-DD HH:MM:SS`, shop-local. */
+  readonly date?: string | null;
+  /** Last status change, same format. The only update marker the order carries. */
+  readonly status_date?: string | null;
+  readonly status_id?: string | number | null;
+  readonly sum?: string | number | null;
+  /** Amount already paid; equals `sum` once the order is paid. */
+  readonly paid?: string | number | null;
+  readonly shipping_id?: string | number | null;
+  readonly shipping_cost?: string | number | null;
+  /** Percent of the shipping method's tax (`23`). */
+  readonly shipping_tax_value?: string | number | null;
+  readonly payment_id?: string | number | null;
+  readonly currency_id?: string | number | null;
+  readonly email?: string | null;
+  readonly notes_priv?: string | null;
+  readonly is_paid?: boolean | null;
+  readonly is_cash_on_delivery?: boolean | null;
+  readonly order_url?: string | null;
+  readonly billing_address?: ShoperOrderSourceAddress | null;
+  readonly delivery_address?: ShoperOrderSourceAddress | null;
+}
+
+/** Address of an order READ from Shoper (the create body has the same fields minus `country`). */
+export interface ShoperOrderSourceAddress {
+  readonly firstname?: string | null;
+  readonly lastname?: string | null;
+  readonly company?: string | null;
+  readonly street1?: string | null;
+  readonly street2?: string | null;
+  readonly city?: string | null;
+  readonly postcode?: string | null;
+  readonly state?: string | null;
+  readonly country_code?: string | null;
+  readonly phone?: string | null;
+  readonly tax_identification_number?: string | null;
+}
+
+/** An `order-products` row. `price` is GROSS; `tax` is the tax NAME (`23%`), `tax_value` its percent. */
+export interface ShoperOrderLineRow {
+  readonly id: string;
+  readonly order_id: string;
+  readonly product_id?: string | number | null;
+  readonly stock_id?: string | number | null;
+  readonly price?: string | number | null;
+  readonly quantity?: string | number | null;
+  readonly name?: string | null;
+  /** The product's own code (SKU). */
+  readonly code?: string | null;
+  readonly ean?: string | null;
+  readonly tax?: string | null;
+  readonly tax_value?: string | number | null;
+}
+
+/** A `GET /statuses` row: `type` is the coarse lifecycle (1 new, 2 processing, 3 shipped, 4 terminal). */
+export interface ShoperStatusRow {
+  readonly status_id: string;
+  readonly type?: string | number | null;
+  /** Per-language labels (`pl_PL: { name: 'zwrócone' }`); the row's own `name` is null on the live shop. */
+  readonly translations?: Readonly<Record<string, { readonly name?: string | null }>> | null;
 }

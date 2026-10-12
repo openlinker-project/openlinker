@@ -54,6 +54,12 @@ export interface ShoperMapContext {
    * is off, an order created here leaves the shop's stock unchanged.
    */
   readonly decrementsStockOnOrder: boolean;
+  /**
+   * IANA zone of the shop's naive order timestamps (`application-config.locale_timezone`).
+   * Optional: an entry cached by an earlier release lacks it, and the order source
+   * then reads timestamps as UTC rather than guess a zone.
+   */
+  readonly timezone?: string | null;
 }
 
 const KILOGRAM = 'KILOGRAM';

@@ -23,8 +23,19 @@ describe('ShoperShopContextProvider', () => {
       weightUnit: 'KILOGRAM',
       warehousesEnabled: false,
       decrementsStockOnOrder: true,
+      timezone: null,
     });
     expect(get).toHaveBeenCalledWith('/application-config');
+  });
+
+  it('should read the shop time zone, and treat a blank one as unknown', async () => {
+    const withZone = jest
+      .fn()
+      .mockResolvedValue({ status: 200, data: { ...CONFIG, locale_timezone: ' Europe/Warsaw ' } });
+    const blank = jest.fn().mockResolvedValue({ status: 200, data: { ...CONFIG, locale_timezone: '  ' } });
+
+    await expect(providerWith(withZone).get()).resolves.toMatchObject({ timezone: 'Europe/Warsaw' });
+    await expect(providerWith(blank).get()).resolves.toMatchObject({ timezone: null });
   });
 
   it('should share ONE request between concurrent callers and later ones', async () => {
@@ -146,6 +157,7 @@ describe('ShoperShopContextProvider', () => {
       // Not known to be off, so stock reads refuse rather than guess.
       warehousesEnabled: true,
       decrementsStockOnOrder: true,
+      timezone: null,
     });
   });
 
