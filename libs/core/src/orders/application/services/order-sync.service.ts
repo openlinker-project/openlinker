@@ -239,9 +239,16 @@ export class OrderSyncService implements IOrderSyncService {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
-        // Destinations that convert a gross-priced line to net (WooCommerce) need
-        // the per-line rate settled at ingestion; absence must stay absence so
-        // they refuse rather than guess.
+        // #3710 - the source-reported display label. Without it WooCommerce
+        // creates every line unnamed and Shoper falls back to the SKU or the
+        // raw internal line id: a wrong product name on a merchant's sales
+        // order, with no error anywhere. Spread conditionally so absence stays
+        // absence and the adapters' own fallbacks still apply.
+        ...(item.name !== undefined ? { name: item.name } : {}),
+        // Destinations that settle tax per line need the rate from ingestion:
+        // WooCommerce to convert a gross-priced line to net, Shoper because it
+        // writes a per-line tax and refuses the order without one. Absence must
+        // stay absence so they refuse rather than guess.
         ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
         ...(item.taxRateCountry !== undefined ? { taxRateCountry: item.taxRateCountry } : {}),
         // #3365 - the source-reported gross unit price. A destination whose
@@ -249,10 +256,6 @@ export class OrderSyncService implements IOrderSyncService {
         // the order is refused for not reporting a figure the source DID
         // report. Spread conditionally so absence stays absence.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
-        // The resolved ADR-063 rate code. A destination that writes a per-line
-        // tax (Shoper) refuses the order without it, even though the snapshot
-        // holds it - the same invisible-in-the-allowlist failure as above.
-        ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
       })),
       totals: {
         subtotal: order.totals.subtotal,
