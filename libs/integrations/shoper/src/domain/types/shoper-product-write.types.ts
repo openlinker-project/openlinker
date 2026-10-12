@@ -49,3 +49,13 @@ export interface ShoperImageWriteBody {
   url: string;
   name?: string;
 }
+
+/**
+ * The body of `POST /categories` (#3713). Verified live: `parent_id` is
+ * REQUIRED (`0` = a root) and Shoper accepts a duplicate name under one parent
+ * and an unknown parent id without complaint, so both are the caller's to guard.
+ */
+export interface ShoperCategoryWriteBody {
+  parent_id: number;
+  translations: Record<string, { name: string; active: 0 | 1 }>;
+}

@@ -125,3 +125,31 @@ export function joinShoperCategories(
   const unnamedTreeIds = [...positions.keys()].filter((id) => !listed.has(id));
   return { categories, unnamedTreeIds, unplacedIds, unnamedIds };
 }
+
+/**
+ * The id of the category called `name` directly under `parentId` (`null` = the
+ * root level), or `null` when there is none.
+ *
+ * Shoper does not refuse a duplicate name under one parent, so two can exist;
+ * the LOWEST id wins. That is deterministic, which is what lets two publishes
+ * that raced to create the same node both settle on the same one afterwards.
+ * A category the tree does not place (no `depth`) is never a candidate: its
+ * parent is unknown, so matching it would be a guess.
+ */
+export function findShoperCategoryChild(
+  categories: readonly Category[],
+  parentId: string | null,
+  name: string,
+): string | null {
+  const wanted = name.trim();
+  const candidates = categories.filter(
+    (category) =>
+      category.name === wanted &&
+      category.depth !== undefined &&
+      (parentId === null ? category.parentId === undefined : category.parentId === parentId),
+  );
+  const [lowest] = candidates
+    .map((category) => category.id)
+    .sort((a, b) => Number(a) - Number(b));
+  return lowest ?? null;
+}
