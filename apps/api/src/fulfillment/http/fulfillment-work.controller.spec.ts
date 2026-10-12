@@ -576,9 +576,18 @@ describe('FulfillmentWorkController', () => {
     const rolesOf = (handler: (...args: never[]) => unknown): unknown =>
       Reflect.getMetadata(ROLES_KEY, handler);
 
-    it('should narrow the single-task read and its shipments to admin and operator', () => {
-      expect(rolesOf(FulfillmentWorkController.prototype.get)).toEqual(['admin', 'operator']);
-      expect(rolesOf(FulfillmentWorkController.prototype.listShipments)).toEqual(['admin', 'operator']);
+    it('should open the single-task read and its shipments to viewer for the read-only board (#3736)', () => {
+      expect(rolesOf(FulfillmentWorkController.prototype.get)).toEqual(['admin', 'operator', 'viewer']);
+      expect(rolesOf(FulfillmentWorkController.prototype.listShipments)).toEqual([
+        'admin',
+        'operator',
+        'viewer',
+      ]);
+    });
+
+    it('should keep every write admin and operator only (#3736)', () => {
+      expect(rolesOf(FulfillmentWorkController.prototype.applyAction)).toEqual(['admin', 'operator']);
+      expect(rolesOf(FulfillmentWorkController.prototype.updateAssignment)).toEqual(['admin', 'operator']);
     });
 
     it('should keep the list open to viewer, because the order page reads it', () => {

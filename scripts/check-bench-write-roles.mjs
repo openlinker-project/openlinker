@@ -40,13 +40,7 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 // GET); `bench:read` (#3734) by the roles on ANY of its routes. A viewer is on
 // the GET routes only, so it holds the second and not the first - which is the
 // whole point of the read-only preview.
-const CHECKS = [
-  { permission: 'bench:write', routes: 'mutating' },
-  { permission: 'bench:read', routes: 'any' },
-];
-
-const ROLE_TYPES = 'libs/core/src/users/domain/types/role.types.ts';
-const CONTROLLERS = [
+const BENCH_CONTROLLERS = [
   'apps/api/src/bench/http/bench-work.controller.ts',
   'apps/api/src/bench/http/bench-parcel.controller.ts',
   // `bench:read` is "the roles on ANY bench route", so the controllers that hold
@@ -55,6 +49,30 @@ const CONTROLLERS = [
   'apps/api/src/bench/http/bench-documents.controller.ts',
   'apps/api/src/bench/http/bench-label.controller.ts',
 ];
+// `fulfillment:read` (#3736) is held by the roles on ANY FulfillmentWorkController
+// route, and by the roles on `GET /users/packers`, matched per route because
+// users.controller.ts carries unrelated admin-only routes a controller-wide union
+// would fold in. (File name is historical: it now guards every role-gated
+// permission whose holders must equal a controller's @Roles.)
+const CHECKS = [
+  { permission: 'bench:write', routes: 'mutating', controllers: BENCH_CONTROLLERS },
+  { permission: 'bench:read', routes: 'any', controllers: BENCH_CONTROLLERS },
+  {
+    permission: 'fulfillment:read',
+    routes: 'any',
+    controllers: ['apps/api/src/fulfillment/http/fulfillment-work.controller.ts'],
+  },
+  // The roster the read-only board names packers with: it must admit exactly
+  // the roles that hold the permission that opens the board.
+  {
+    permission: 'fulfillment:read',
+    routes: 'any',
+    controllers: ['apps/api/src/users/http/users.controller.ts'],
+    routePath: 'packers',
+  },
+];
+
+const ROLE_TYPES = 'libs/core/src/users/domain/types/role.types.ts';
 
 /**
  * Strip comments so a role named in prose is never mistaken for a decorator
@@ -99,13 +117,16 @@ export function parsePermissionHolders(source, permission) {
  * follow a non-GET verb; `'any'` keeps every one. A `@Roles` is read as the one
  * following its verb decorator, which is the order every bench controller uses.
  */
-export function parseControllerRoles(source, routes = 'any') {
+export function parseControllerRoles(source, routes = 'any', routePath = null) {
   const text = stripComments(source);
   const roles = new Set();
-  const route = /@(Get|Post|Put|Patch|Delete)\([^)]*\)\s*@Roles\(([^)]*)\)/g;
+  const route = /@(Get|Post|Put|Patch|Delete)\(([^)]*)\)\s*@Roles\(([^)]*)\)/g;
   for (const m of text.matchAll(route)) {
     if (routes === 'mutating' && m[1] === 'Get') continue;
-    for (const r of m[2].matchAll(/'([^']+)'/g)) roles.add(r[1]);
+    // A controller that mixes audiences (users.controller.ts) is matched per
+    // route: only the decorator whose path argument is exactly `routePath`.
+    if (routePath !== null && m[2].trim() !== `'${routePath}'`) continue;
+    for (const r of m[3].matchAll(/'([^']+)'/g)) roles.add(r[1]);
   }
   return [...roles].sort();
 }
@@ -129,11 +150,11 @@ export function diffRoleSets(holders, routeRoles) {
 
 async function main() {
   const roleSource = await readFile(join(ROOT, ROLE_TYPES), 'utf8');
-  const sources = [];
-  for (const file of CONTROLLERS) sources.push(await readFile(join(ROOT, file), 'utf8'));
 
   let failed = false;
-  for (const { permission, routes } of CHECKS) {
+  for (const { permission, routes, controllers, routePath = null } of CHECKS) {
+    const sources = [];
+    for (const file of controllers) sources.push(await readFile(join(ROOT, file), 'utf8'));
     const holders = parsePermissionHolders(roleSource, permission);
     if (holders === null) {
       console.error(`check-bench-write-roles: could not find ROLE_PERMISSIONS in ${ROLE_TYPES}`);
@@ -141,7 +162,7 @@ async function main() {
     }
     const routeRoles = new Set();
     for (const source of sources) {
-      for (const role of parseControllerRoles(source, routes)) routeRoles.add(role);
+      for (const role of parseControllerRoles(source, routes, routePath)) routeRoles.add(role);
     }
     const names = [...routeRoles].sort();
     const empty = zeroFloorViolation(holders, names);
@@ -219,6 +240,11 @@ function selfCheck() {
     'roles are unioned across decorators and de-duplicated',
     parseControllerRoles("@Post('a')\n@Roles('admin', 'operator')\n@Get('b')\n@Roles('admin', 'packer')"),
     ['admin', 'operator', 'packer']
+  );
+  expect(
+    'a per-route match keeps only the named path',
+    parseControllerRoles("@Get('x')\n@Roles('admin')\n@Get('packers')\n@Roles('operator', 'viewer')", 'any', 'packers'),
+    ['operator', 'viewer']
   );
   expect(
     'a role named in a comment is not a route role',

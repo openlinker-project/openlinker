@@ -230,7 +230,7 @@ describe('CommandPaletteProvider', () => {
       username: 'operator',
       email: 'operator@example.com',
       role: 'operator',
-      permissions: ['orders:read', 'orders:write', 'bench:write', 'bench:read'],
+      permissions: ['orders:read', 'orders:write', 'fulfillment:read', 'bench:write', 'bench:read'],
     };
 
     function renderWithRouting(getStatus: ReturnType<typeof vi.fn>): void {

@@ -163,14 +163,24 @@ than a guessed sentence, and the hero's two raw axis labels render regardless, s
 page is never blank. See ADR-076 for the decision, the rejected alternatives and the
 fail-closed rule in full.
 
-**The board and the detail are admin + operator screens (#3096).** Both pages render
-inside `AccessGate require="orders:write"` with an `AccessDeniedState` fallback, so no
-query mounts for a session that would be refused, and the API matches:
-`GET /fulfillment/works/:workId` and its `/shipments` are `@Roles('admin', 'operator')`.
-`GET /fulfillment/works` stays open to `viewer` — the order-detail panel reads it. The
-board asks for `active=true`, a server-resolved alias for "every status outside the
-domain's terminal set", so closed and cancelled work never reaches its lanes without
-this app mirroring the status vocabulary.
+**The board and the detail are readable by admin, operator and viewer; writes stay admin + operator (#3096, #3736).**
+Both pages render inside `AccessGate require="fulfillment:read"` with an `AccessDeniedState`
+fallback, so no query mounts for a session that would be refused. `fulfillment:read` is held by
+admin, operator and viewer and never by `packer`, and must stay identical to the `@Roles` lists
+on `FulfillmentWorkController`'s GET routes and `GET /users/packers` (the roster the board names
+packers with). `scripts/check-bench-write-roles.mjs` compares the permission against the UNION of
+roles across the controller's routes and against `GET /users/packers` alone; it cannot see a single
+GET narrowed back to admin + operator (the list route would keep `viewer` in the union), so the
+per-route lists are pinned by `fulfillment-work.controller.spec.ts`. The API matches:
+`GET /fulfillment/works`, `GET /fulfillment/works/:workId` and its `/shipments` are
+`@Roles('admin', 'operator', 'viewer')`, while `POST .../actions/:action` and
+`PATCH .../assignment` stay `@Roles('admin', 'operator')`. Every write control (assign/move,
+self-serve toggle, actions, drag-and-drop) stays behind `useWriteAccess('orders:write')`, so a
+regular viewer sees none and the public-demo viewer keeps the locked-but-visible rendering. The
+one disclosure a viewer gains is `GET /users/packers`: each active packer's id and username, so
+assignments render as names. The board asks for `active=true`, a server-resolved alias for "every
+status outside the domain's terminal set", so closed and cancelled work never reaches its lanes
+without this app mirroring the status vocabulary.
 
 **A bench-only session never renders the app shell (#3096, F-9).**
 `resolveSessionSurface` (`shared/auth/session-surface.ts`) derives "bench-only" from
