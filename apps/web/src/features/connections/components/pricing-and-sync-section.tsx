@@ -81,6 +81,7 @@ import {
   type PricingRuleType,
   type PriceRoundingMode,
   type PricingSyncSourceOverride,
+  describeOverrideAxis,
 } from '../../price-changes';
 import { useToast } from '../../../shared/ui/toast-provider';
 
@@ -201,10 +202,6 @@ type OverrideAxis = 'mode' | 'rule';
 interface DroppedOverride {
   label: string;
   parts: string[];
-}
-
-function overrideAxisLabel(axis: OverrideAxis): string {
-  return axis === 'mode' ? 'own sync mode' : 'own rule';
 }
 
 /**
@@ -584,10 +581,10 @@ export function PricingAndSyncSection({
     for (const s of query.data.sources) {
       const parts: string[] = [];
       if (s.modeOverridden && !modeOverrides.has(s.sourceConnectionId)) {
-        parts.push(overrideAxisLabel('mode'));
+        parts.push(describeOverrideAxis('mode'));
       }
       if (s.ruleOverridden && !ruleOverrides.has(s.sourceConnectionId)) {
-        parts.push(overrideAxisLabel('rule'));
+        parts.push(describeOverrideAxis('rule'));
       }
       if (parts.length > 0) dropped.push({ label: s.sourceLabel, parts });
     }
@@ -604,7 +601,14 @@ export function PricingAndSyncSection({
       const id = source.sourceConnectionId;
       const override: PricingSyncSourceOverride = {};
       if (modeOverrides.has(id)) override.mode = source.effective.mode;
-      if (ruleOverrides.has(id) && source.effective.rule !== null) {
+      // A ticked rule box always carries a non-null rule: the API reports
+      // ruleOverridden only for a persisted non-null rule, and
+      // toggleSourceOverride seeds one on every manual tick. Skipping on null
+      // would silently drop the override with no confirmation, so fail loudly.
+      if (ruleOverrides.has(id)) {
+        if (source.effective.rule === null) {
+          throw new Error(`Source ${id} has its own rule ticked but no rule to save`);
+        }
         override.rule = toWireRule(source.effective.rule);
       }
       if (override.mode !== undefined || override.rule !== undefined) {

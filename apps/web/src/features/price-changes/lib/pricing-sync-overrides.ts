@@ -17,9 +17,18 @@ export function hasOwnOverride(flags: OverrideFlags): boolean {
   return flags.modeOverridden || flags.ruleOverridden;
 }
 
+export type OverrideAxis = 'mode' | 'rule';
+
+/** Label for ONE overridden axis; `describeOverride` composes it. */
+export function describeOverrideAxis(axis: OverrideAxis): string {
+  return axis === 'mode' ? 'own mode' : 'own rule';
+}
+
 /** Names WHAT is overridden; only meaningful when `hasOwnOverride` is true. */
 export function describeOverride(flags: OverrideFlags): string {
-  if (flags.modeOverridden && flags.ruleOverridden) return 'own mode and rule';
-  if (flags.modeOverridden) return 'own mode';
-  return 'own rule';
+  const axes: OverrideAxis[] = [];
+  if (flags.modeOverridden) axes.push('mode');
+  if (flags.ruleOverridden) axes.push('rule');
+  if (axes.length === 2) return 'own mode and rule';
+  return axes.map(describeOverrideAxis).join('');
 }
