@@ -122,7 +122,7 @@ export class UsersController {
   @Get('packers')
   @Roles('admin', 'operator', 'viewer')
   @ApiOperation({
-    summary: 'List active packers for work assignment (admin/operator)',
+    summary: 'List active packers for work assignment (admin/operator/viewer)',
     description:
       'Minimal roster used by the Assign Packing Work screen (#3340) — id + ' +
       'username only, unlike GET /users which is admin-only and carries the ' +
@@ -131,7 +131,13 @@ export class UsersController {
       '(@Roles(admin, operator, packer)) and the claim predicate accept any user ' +
       'id — an operator/admin packing a shift is not offered as an assignment ' +
       'target here. Capped at 500 rows (pageSize) with no total reported back; ' +
-      'past that cap the board silently renders a partial roster.',
+      'past that cap the board silently renders a partial roster. ' +
+      'Disclosure (#3736): a viewer holds no users:read, so this is the one place ' +
+      'they can enumerate accounts - every active packer\'s id and username, ' +
+      'nothing else (no email, status or last-active). Accepted because the read-only ' +
+      'Fulfilment board resolves `assignedToUserId` to a name through it (raw ids ' +
+      'would make the board unreadable) and the projection is minimal and scoped to ' +
+      'role=packer; on a public demo instance the roster is effectively public.',
   })
   @ApiResponse({ status: 200, description: 'Packer roster', type: PackerListResponseDto })
   async listPackers(): Promise<PackerListResponseDto> {

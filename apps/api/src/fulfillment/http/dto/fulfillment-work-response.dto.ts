@@ -22,8 +22,11 @@
  *
  * ADR-062 is not the authority here: its subject is what crosses to a PLUGIN
  * (#2393's `RoutingInput`), and none of its guards apply to an HTTP response
- * read by a signed-in admin or operator. This route admits no packer, so the
- * packer-exclusion spec does not cover it either; the masking decision on
+ * read by a signed-in user. The audience is admin, operator AND viewer (the
+ * list since before #3736, the single-task read and its shipments since it):
+ * the server-side masking is what makes the viewer audience acceptable, and a
+ * field added here is disclosed to all three. These routes admit no packer, so
+ * the packer-exclusion spec does not cover them either; the masking decision on
  * #3425 is the whole of the argument.
  *
  * @module apps/api/src/fulfillment/http/dto
