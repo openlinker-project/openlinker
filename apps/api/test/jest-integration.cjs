@@ -205,6 +205,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/eparagony/src/$1',
     ),
+    '^@openlinker/integrations-shoper$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shoper/src/index.ts',
+    ),
+    '^@openlinker/integrations-shoper/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shoper/src/$1',
+    ),
     '^@openlinker/test-kit$': path.resolve(__dirname, '../../../libs/test-kit/src/index.ts'),
     '^@openlinker/test-kit/(.*)$': path.resolve(__dirname, '../../../libs/test-kit/src/$1'),
   },

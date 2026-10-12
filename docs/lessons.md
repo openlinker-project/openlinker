@@ -2589,3 +2589,28 @@ A container older than the commit under discussion invalidates every observation
 through it - including the ones that look like they confirm something.
 
 **Source**: PR #3365
+
+## Build web fixtures from the API's field names, not from the web type alone
+
+**Context**: the Pricing & sync page (#3149/#3166/#3167) declared a per-source
+`isCustomOverride` in `apps/web`, while the API had always sent two flags,
+`modeOverridden` and `ruleOverridden`.
+
+**Problem**: `apps/web` cannot import the API's DTOs, and the API client passes
+the response body through unmapped, so the web type was a hand-written claim
+about the wire. Every test built its fixtures from that same wrong type, so
+type-check and the whole suite stayed green while the field was `undefined` at
+runtime. Every reader of it saw "no override", and because the PATCH replaces
+both override maps wholesale, a Save silently deleted existing overrides with
+no confirmation (#3729).
+
+**Rule**: when a web type describes an API response, copy the field names from
+the DTO (`apps/api/.../*-response.dto.ts`) rather than from another web file,
+and make at least one test's fixture exercise each field the UI branches on.
+When the write is a full replace, test that an override the operator did not
+touch is re-sent - "does not crash" does not cover "does not delete".
+
+**Applies to**: `apps/web/src/features/**/api/*.types.ts` and the specs that
+mock them.
+
+**Source**: #3729

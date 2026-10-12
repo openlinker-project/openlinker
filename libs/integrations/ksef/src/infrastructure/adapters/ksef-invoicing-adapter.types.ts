@@ -10,6 +10,7 @@
  * @module libs/integrations/ksef/src/infrastructure/adapters
  * @see {@link KsefInvoicingAdapter}
  */
+import type { KsefEnvironment } from '../../domain/types/ksef-connection.types';
 import type { Fa3PaymentInput } from '../fa3/domain/fa3-xml.types';
 
 export interface KsefInvoicingAdapterOptions {
@@ -42,6 +43,12 @@ export interface KsefInvoicingAdapterOptions {
    * absent.
    */
   numberingTimeZone?: string;
+  /**
+   * The connection's KSeF environment (#3648), needed only to choose the host of
+   * the public verification link. Absent => the adapter builds no link rather
+   * than guessing an environment.
+   */
+  environment?: KsefEnvironment;
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   now?: () => Date;
 }

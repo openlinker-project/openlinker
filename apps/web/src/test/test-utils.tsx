@@ -947,6 +947,7 @@ export function createMockApiClient(
           invoiceId: null,
           documentNumber: null,
           issuedAt: null,
+          verificationUrl: null,
           blockReason: null,
           unresolvedReason: null,
         },

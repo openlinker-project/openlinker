@@ -29,6 +29,7 @@ import { Link } from 'react-router-dom';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { useConnectionAsSourceQuery } from '../hooks/use-connection-as-source-query';
 import { ruleLabelFor, toRuleSummary } from '../lib/price-change-copy';
+import { describeOverride, hasOwnOverride } from '../lib/pricing-sync-overrides';
 import type { ConnectionAsSourceEntry } from '../api/pricing-sync.types';
 
 export interface SourceConnectionPricingRollupProps {
@@ -38,8 +39,8 @@ export interface SourceConnectionPricingRollupProps {
 function summaryFor(entry: ConnectionAsSourceEntry): string {
   const modeLabel = entry.effectiveMode === 'automatic' ? 'Automatic' : 'Manual review';
   const ruleLabel = ruleLabelFor(toRuleSummary(entry.effectiveRuleSummary));
-  const suffix = entry.isCustomOverride
-    ? '— a rule just for this source'
+  const suffix = hasOwnOverride(entry)
+    ? `— ${describeOverride(entry)} just for this source`
     : `— using ${entry.destinationLabel}'s default rule`;
   return `${modeLabel} · ${ruleLabel} ${suffix}`;
 }
@@ -63,7 +64,7 @@ export function SourceConnectionPricingRollup({
 
   // The backend only lists a destination here once it has its own override
   // for this source OR an open price-change episode
-  // (`isCustomOverride || destinationIdsFromEpisodes.has(destination.id)`),
+  // (`modeOverridden || ruleOverridden || destinationIdsFromEpisodes.has(destination.id)`),
   // so a destination consuming this source with its DEFAULT rule and a
   // clean queue is filtered out — the common steady state. "No
   // destinations" would be a false claim in that state (#3167 review,
