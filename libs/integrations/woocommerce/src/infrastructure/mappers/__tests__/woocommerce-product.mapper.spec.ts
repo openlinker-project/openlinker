@@ -68,6 +68,33 @@ describe('WooCommerceProductMapper', () => {
       expect(result.price).toBeNull();
     });
 
+    // ADR-077: a catalogue price excludes promotions. `price` is the ACTIVE
+    // price - the sale price while one runs - so the regular price wins.
+    it('should read the regular price when the product carries one', () => {
+      const result = mapper.mapProduct(makeProduct({ regular_price: '39.99', price: '39.99' }));
+      expect(result.price).toBe(39.99);
+    });
+
+    it('should read the regular price, not the sale price, when a promotion is running', () => {
+      const result = mapper.mapProduct(makeProduct({ regular_price: '39.99', price: '29.99' }));
+      expect(result.price).toBe(39.99);
+    });
+
+    it('should fall back to the active price when the regular price is empty (variable parent)', () => {
+      const result = mapper.mapProduct(makeProduct({ regular_price: '', price: '29.99' }));
+      expect(result.price).toBe(29.99);
+    });
+
+    it('should keep a zero regular price rather than falling back to the active price', () => {
+      const result = mapper.mapProduct(makeProduct({ regular_price: '0', price: '29.99' }));
+      expect(result.price).toBe(0);
+    });
+
+    it('should return null price when both the regular and the active price are empty', () => {
+      const result = mapper.mapProduct(makeProduct({ regular_price: '', price: '' }));
+      expect(result.price).toBeNull();
+    });
+
     it('should preserve zero weight (digital goods)', () => {
       const result = mapper.mapProduct(makeProduct({ weight: '0' }));
       expect(result.weight).toBe(0);
@@ -143,6 +170,30 @@ describe('WooCommerceProductMapper', () => {
     it('should return undefined price for empty string', () => {
       const result = mapper.mapVariation(makeVariation({ price: '' }), 'prod-1');
       expect(result.price).toBeUndefined();
+    });
+
+    it('should read the variation regular price, not the sale price, when a promotion is running', () => {
+      const result = mapper.mapVariation(
+        makeVariation({ regular_price: '24.99', price: '19.99' }),
+        'prod-1',
+      );
+      expect(result.price).toBe(24.99);
+    });
+
+    it('should fall back to the variation active price when its regular price is empty', () => {
+      const result = mapper.mapVariation(
+        makeVariation({ regular_price: '', price: '19.99' }),
+        'prod-1',
+      );
+      expect(result.price).toBe(19.99);
+    });
+
+    it('should keep a zero variation regular price rather than falling back to the active price', () => {
+      const result = mapper.mapVariation(
+        makeVariation({ regular_price: '0', price: '19.99' }),
+        'prod-1',
+      );
+      expect(result.price).toBe(0);
     });
 
     it('should preserve zero variation weight', () => {

@@ -19,7 +19,13 @@ import { PlatformType } from '../../../src/world/world';
 import { assertProductFieldParity, type ProductParityView } from '../../../src/support/parity';
 import { state } from './flow-state';
 import { fullFlowSegment } from './segment';
-import { requireProduct, skipWhenResuming, externalIdFor, buildPrestashopClient } from './helpers';
+import {
+  requireProduct,
+  skipWhenResuming,
+  externalIdFor,
+  buildPrestashopClient,
+  readPrestashopBuyerPrice,
+} from './helpers';
 
 fullFlowSegment(() => {
   test('S1 — PrestaShop parity: OL product matches master (webservice)', async ({ api, world, env }) => {
@@ -63,10 +69,16 @@ fullFlowSegment(() => {
       ).toEqual([...psCombEans].sort());
     }
 
+    // The expected price is what PrestaShop charges a buyer in the connection's
+    // sales country, NOT `psProduct.price`: that field is tax-excluded, and
+    // comparing it with OpenLinker's price is exactly how a net price reached
+    // Allegro as gross without this check noticing (#3737, ADR-077).
+    const buyerPrice = await readPrestashopBuyerPrice(ps!, prestashop, externalProductId!);
+    state.masterBuyerPrice = buyerPrice.price;
     const expected: ProductParityView = {
       name: psProduct.name,
       ean: psCombEans.length > 0 ? (primary.ean ?? primary.gtin) : psProduct.ean13,
-      price: psProduct.price ?? undefined,
+      price: buyerPrice.price,
       currency: olProduct.currency ?? 'PLN',
     };
     const actual: ProductParityView = {
@@ -85,7 +97,7 @@ fullFlowSegment(() => {
     // cross-system parity. The real EAN coverage there is the set assertion
     // above, against the PS combination EANs.
     assertProductFieldParity({
-      label: 'OL↔PS product',
+      label: `OL↔PS product (buyer price in ${buyerPrice.countryLabel})`,
       expected,
       actual,
       required: psCombEans.length > 0 ? ['price'] : ['ean', 'price'],

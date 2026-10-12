@@ -76,6 +76,7 @@ describe('ProductsService', () => {
     findManyRows: jest.fn(),
     countMany: jest.fn(),
     markStaleExceptVariants: jest.fn(),
+    clearPriceBasisPending: jest.fn(),
     recordTaxRate: jest.fn(),
     clearTaxRate: jest.fn(),
     findTaxRate: jest.fn(),

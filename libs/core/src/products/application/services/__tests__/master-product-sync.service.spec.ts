@@ -51,6 +51,7 @@ describe('MasterProductSyncService', () => {
       | 'upsertProduct'
       | 'upsertVariants'
       | 'markVariantsStaleExcept'
+      | 'clearPriceBasisPending'
       | 'recordProductTaxRate'
       | 'recordVariantTaxRate'
       | 'clearVariantTaxRate'
@@ -84,6 +85,7 @@ describe('MasterProductSyncService', () => {
       upsertProduct: jest.fn().mockResolvedValue(makeProduct()),
       upsertVariants: jest.fn().mockResolvedValue(undefined),
       markVariantsStaleExcept: jest.fn().mockResolvedValue([]),
+      clearPriceBasisPending: jest.fn().mockResolvedValue(undefined),
       recordProductTaxRate: jest.fn().mockResolvedValue(undefined),
       recordVariantTaxRate: jest.fn().mockResolvedValue(undefined),
       clearVariantTaxRate: jest.fn().mockResolvedValue(undefined),
@@ -912,6 +914,239 @@ describe('MasterProductSyncService', () => {
           .getVariantsByProductIds
       ).toHaveBeenCalledWith(['ol_product_1', 'ol_product_2']);
       expect(priceChangeObserver.onMasterPriceChanged).toHaveBeenCalledTimes(2);
+    });
+
+    // ADR-077 - the price baseline read also carries `priceBasisPending`, so the
+    // one-off net-to-gross correction is marked without an extra query.
+    describe('tax-basis correction (ADR-077)', () => {
+      const baselineRead = (): jest.Mock =>
+        (productsService as unknown as { getVariantsByProductIds: jest.Mock })
+          .getVariantsByProductIds;
+
+      it('should mark the observation as a tax-basis correction when the variant is still basis-pending', async () => {
+        baselineRead().mockResolvedValue([
+          { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+        ]);
+        adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 123, currency: 'PLN' });
+        adapter.getProductVariants.mockResolvedValue([
+          { ...makeVariant('ol_variant_1'), price: 123 },
+        ]);
+
+        await service.syncFromMasterByExternalId(connectionId, externalId);
+
+        expect(baselineRead()).toHaveBeenCalledTimes(1);
+        expect(priceChangeObserver.onMasterPriceChanged).toHaveBeenCalledWith({
+          productVariantId: 'ol_variant_1',
+          sourceConnectionId: connectionId,
+          sourceOldAmount: 100,
+          sourceNewAmount: 123,
+          sourceCurrency: 'PLN',
+          cause: 'tax-basis-correction',
+        });
+      });
+
+      it('should carry no cause when the variant is not basis-pending', async () => {
+        baselineRead().mockResolvedValue([
+          { id: 'ol_variant_1', price: 100, priceBasisPending: false },
+        ]);
+        adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 123, currency: 'PLN' });
+        adapter.getProductVariants.mockResolvedValue([
+          { ...makeVariant('ol_variant_1'), price: 123 },
+        ]);
+
+        await service.syncFromMasterByExternalId(connectionId, externalId);
+
+        expect(priceChangeObserver.onMasterPriceChanged).toHaveBeenCalledTimes(1);
+        const [observation] = priceChangeObserver.onMasterPriceChanged.mock.calls[0];
+        expect(observation).not.toHaveProperty('cause');
+        expect(observation.sourceNewAmount).toBe(123);
+      });
+
+      it('should mark only the basis-pending sibling when a product has both kinds of variant', async () => {
+        baselineRead().mockResolvedValue([
+          { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+          // Absent flag (a repository that never set it) reads as not pending.
+          { id: 'ol_variant_2', price: 200 },
+        ]);
+        adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 123, currency: 'PLN' });
+        adapter.getProductVariants.mockResolvedValue([
+          { ...makeVariant('ol_variant_1'), price: 123 },
+          { ...makeVariant('ol_variant_2'), price: 210 },
+        ]);
+
+        await service.syncFromMasterByExternalId(connectionId, externalId);
+
+        const observations = priceChangeObserver.onMasterPriceChanged.mock.calls.map(
+          ([observation]) => observation
+        );
+        expect(observations).toHaveLength(2);
+        const byVariant = new Map(observations.map((o) => [o.productVariantId, o]));
+        expect(byVariant.get('ol_variant_1')?.cause).toBe('tax-basis-correction');
+        expect(byVariant.get('ol_variant_2')).not.toHaveProperty('cause');
+      });
+
+      it('should report nothing for a basis-pending variant whose price did not move', async () => {
+        // A 0% product: gross equals the stored net, so there is no correction
+        // to review - the next priced upsert simply clears the flag.
+        baselineRead().mockResolvedValue([
+          { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+        ]);
+        adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 100, currency: 'PLN' });
+        adapter.getProductVariants.mockResolvedValue([
+          { ...makeVariant('ol_variant_1'), price: 100 },
+        ]);
+
+        await service.syncFromMasterByExternalId(connectionId, externalId);
+
+        expect(priceChangeObserver.onMasterPriceChanged).not.toHaveBeenCalled();
+      });
+
+      it('should mark the correction on the batched page path too', async () => {
+        baselineRead().mockResolvedValue([
+          { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+          { id: 'ol_variant_2', price: 50, priceBasisPending: false },
+        ]);
+        identifierMapping.getOrCreateInternalId
+          .mockResolvedValueOnce('ol_product_1')
+          .mockResolvedValueOnce('ol_product_2');
+        adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 123, currency: 'PLN' });
+        adapter.getProductVariants.mockImplementation((productId: string) =>
+          Promise.resolve([
+            productId === 'ol_product_1'
+              ? { ...makeVariant('ol_variant_1'), price: 123 }
+              : { ...makeVariant('ol_variant_2'), price: 61.5 },
+          ])
+        );
+
+        await service.syncFromMasterByExternalIds(connectionId, ['1', '2']);
+
+        expect(baselineRead()).toHaveBeenCalledTimes(1);
+        const byVariant = new Map(
+          priceChangeObserver.onMasterPriceChanged.mock.calls.map(([o]) => [o.productVariantId, o])
+        );
+        expect(byVariant.get('ol_variant_1')?.cause).toBe('tax-basis-correction');
+        expect(byVariant.get('ol_variant_2')).not.toHaveProperty('cause');
+      });
+
+      it('should warn master_price_lost and report nothing when a priced variant comes back with no price', async () => {
+        // ADR-077: a master that cannot state a gross price reports none - the
+        // channel keeps its old price, which an operator needs to see.
+        baselineRead().mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+        adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: null, currency: 'PLN' });
+        adapter.getProductVariants.mockResolvedValue([makeVariant('ol_variant_1')]);
+        const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+        const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+        expect(priceChangeObserver.onMasterPriceChanged).not.toHaveBeenCalled();
+        expect(result.priceChangeObserverFailures).toBe(0);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('master_price_lost'));
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('ol_variant_1'));
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('350'));
+      });
+
+      describe('ending the correction window', () => {
+        const clearCalls = (): jest.Mock =>
+          (productsService as unknown as { clearPriceBasisPending: jest.Mock })
+            .clearPriceBasisPending;
+
+        beforeEach(() => {
+          adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 123, currency: 'PLN' });
+        });
+
+        it('should clear the flag once the correction was reported', async () => {
+          baselineRead().mockResolvedValue([
+            { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+          ]);
+          adapter.getProductVariants.mockResolvedValue([
+            { ...makeVariant('ol_variant_1'), price: 123 },
+          ]);
+
+          await service.syncFromMasterByExternalId(connectionId, externalId);
+
+          expect(clearCalls()).toHaveBeenCalledWith(['ol_variant_1']);
+        });
+
+        it('should clear the flag when the price did not move', async () => {
+          baselineRead().mockResolvedValue([
+            { id: 'ol_variant_1', price: 123, priceBasisPending: true },
+          ]);
+          adapter.getProductVariants.mockResolvedValue([
+            { ...makeVariant('ol_variant_1'), price: 123 },
+          ]);
+
+          await service.syncFromMasterByExternalId(connectionId, externalId);
+
+          expect(clearCalls()).toHaveBeenCalledWith(['ol_variant_1']);
+        });
+
+        it('should keep the flag when reporting the correction failed', async () => {
+          // Otherwise the next ordinary move on an automatic pair would apply
+          // the whole VAT jump with nobody reviewing it.
+          baselineRead().mockResolvedValue([
+            { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+          ]);
+          adapter.getProductVariants.mockResolvedValue([
+            { ...makeVariant('ol_variant_1'), price: 123 },
+          ]);
+          priceChangeObserver.onMasterPriceChanged.mockRejectedValueOnce(new Error('db down'));
+
+          const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+          expect(result.priceChangeObserverFailures).toBe(1);
+          expect(clearCalls()).not.toHaveBeenCalled();
+        });
+
+        it('should keep the flag when the master reports no price', async () => {
+          baselineRead().mockResolvedValue([
+            { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+          ]);
+          adapter.getProductVariants.mockResolvedValue([makeVariant('ol_variant_1')]);
+
+          await service.syncFromMasterByExternalId(connectionId, externalId);
+
+          expect(clearCalls()).not.toHaveBeenCalled();
+        });
+
+        it('should keep the flag when the product has no currency', async () => {
+          baselineRead().mockResolvedValue([
+            { id: 'ol_variant_1', price: 100, priceBasisPending: true },
+          ]);
+          adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 123, currency: null });
+          adapter.getProductVariants.mockResolvedValue([
+            { ...makeVariant('ol_variant_1'), price: 123 },
+          ]);
+
+          await service.syncFromMasterByExternalId(connectionId, externalId);
+
+          expect(clearCalls()).not.toHaveBeenCalled();
+        });
+
+        it('should not clear variants that were never pending', async () => {
+          baselineRead().mockResolvedValue([
+            { id: 'ol_variant_1', price: 100, priceBasisPending: false },
+          ]);
+          adapter.getProductVariants.mockResolvedValue([
+            { ...makeVariant('ol_variant_1'), price: 123 },
+          ]);
+
+          await service.syncFromMasterByExternalId(connectionId, externalId);
+
+          expect(clearCalls()).not.toHaveBeenCalled();
+        });
+      });
+
+      it('should not warn master_price_lost when the variant never had a price', async () => {
+        baselineRead().mockResolvedValue([{ id: 'ol_variant_1', price: null }]);
+        adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: null, currency: 'PLN' });
+        adapter.getProductVariants.mockResolvedValue([makeVariant('ol_variant_1')]);
+        const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+        await service.syncFromMasterByExternalId(connectionId, externalId);
+
+        expect(priceChangeObserver.onMasterPriceChanged).not.toHaveBeenCalled();
+        expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('master_price_lost'));
+      });
     });
   });
 });

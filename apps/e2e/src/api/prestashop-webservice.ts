@@ -812,10 +812,20 @@ export class PrestashopWebserviceClient {
    * SHOP would charge a buyer in that country, and the shop's own arithmetic is
    * the only authority on that.
    */
-  async getProductPrices(productId: string, countryId: string): Promise<{ net: number; gross: number }> {
+  async getProductPrices(
+    productId: string,
+    countryId: string,
+    combinationId = '0',
+  ): Promise<{ net: number; gross: number }> {
+    // `product_attribute=0` asks for the product's own price, without the
+    // default combination's impact - the same base OpenLinker's master reads.
+    // A combination id gives that combination's full price (base + impact).
+    const attribute = encodeURIComponent(combinationId);
     const body = await this.get(
       `/api/products/${productId}?price[e2e_net][use_tax]=0&price[e2e_net][use_reduction]=0` +
+        `&price[e2e_net][product_attribute]=${attribute}` +
         `&price[e2e_gross][use_tax]=1&price[e2e_gross][use_reduction]=0` +
+        `&price[e2e_gross][product_attribute]=${attribute}` +
         `&price[e2e_gross][country]=${encodeURIComponent(countryId)}`,
     );
     const product = asRecord(pick(body, 'product'));
@@ -827,6 +837,19 @@ export class PrestashopWebserviceClient {
       );
     }
     return { net, gross };
+  }
+
+  /**
+   * The shop's default country (`PS_COUNTRY_DEFAULT`) - the country OpenLinker
+   * prices the catalogue for when the connection sets no `salesCountryIso2`.
+   */
+  async getDefaultCountryId(): Promise<string | null> {
+    const body = await this.get(
+      `/api/configurations?display=full&filter[name]=${encodeURIComponent('[PS_COUNTRY_DEFAULT]')}`,
+    );
+    const rows = asArray(pick(body, 'configurations'));
+    if (rows.length === 0) return null;
+    return asStringOrNull(pick(asRecord(rows[0]), 'value'));
   }
 
   async getCountryIdByIso(iso: string): Promise<string | null> {

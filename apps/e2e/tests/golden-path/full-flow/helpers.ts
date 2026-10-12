@@ -551,6 +551,59 @@ export function buildWooClient(world: World): WooCommerceRestClient | null {
   return new WooCommerceRestClient({ siteUrl, consumerKey, consumerSecret });
 }
 
+/**
+ * What a buyer pays for a PrestaShop product, as the SHOP computes it for the
+ * connection's sales country: `salesCountryIso2` when set, else the shop's
+ * `PS_COUNTRY_DEFAULT` - the same country OpenLinker's master reads for
+ * (ADR-077). Rounded to 2 decimals half-up, as the master rounds it.
+ *
+ * Comparing a channel against this, instead of against PrestaShop's raw `price`
+ * field or OpenLinker's copy of it, is the point: those two are the same net
+ * figure, so a parity check between them stayed green while every offer was
+ * published without its VAT (#3737).
+ */
+export async function readPrestashopBuyerPrice(
+  ps: PrestashopWebserviceClient,
+  connection: Connection,
+  externalProductId: string,
+): Promise<{ price: number; countryLabel: string }> {
+  const configuredIso = readConfigString(connection.config, 'salesCountryIso2');
+  const countryId = configuredIso
+    ? await ps.getCountryIdByIso(configuredIso)
+    : await ps.getDefaultCountryId();
+  if (!countryId) {
+    throw new Error(
+      configuredIso
+        ? `PrestaShop has no country '${configuredIso}' (the connection's salesCountryIso2)`
+        : 'PrestaShop reports no PS_COUNTRY_DEFAULT',
+    );
+  }
+  const { gross } = await ps.getProductPrices(externalProductId, countryId);
+  return {
+    price: Math.round((gross + Number.EPSILON) * 100) / 100,
+    countryLabel: configuredIso ?? `shop default country #${countryId}`,
+  };
+}
+
+/**
+ * The price S2-S4 compare a channel against: the PrestaShop-computed buyer
+ * price S1 captured. Falls back to OpenLinker's own price only when S1 could
+ * not read PrestaShop, and says so on the report - that fallback compares
+ * OpenLinker with itself and proves nothing about the VAT.
+ */
+export function expectedBuyerPrice(testInfo: TestInfo): number | undefined {
+  if (state.masterBuyerPrice !== undefined) {
+    return state.masterBuyerPrice;
+  }
+  testInfo.annotations.push({
+    type: 'price-anchor',
+    description:
+      'No PrestaShop-computed buyer price was captured in S1 (webservice key missing or S1 skipped), ' +
+      "so this price check compares the channel with OpenLinker's own price, not with what the shop charges.",
+  });
+  return state.product?.price ?? undefined;
+}
+
 export function readConfigString(config: Record<string, unknown> | null | undefined, key: string): string | null {
   const value = config?.[key];
   return typeof value === 'string' && value.length > 0 ? value : null;

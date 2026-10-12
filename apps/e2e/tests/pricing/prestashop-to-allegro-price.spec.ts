@@ -31,6 +31,7 @@ import { PlatformType } from '../../src/world/world';
 import type { Product } from '../../src/api/api.types';
 import { buildFreshProductImages } from '../../src/api/generate-image';
 import {
+  FRESH_PRODUCT_ATTRIBUTE_GROUP,
   FRESH_PRODUCT_CATEGORY_NAME,
   buildPrestashopClient,
   computeEan13,
@@ -293,4 +294,89 @@ test('the Allegro offer carries the gross price a PL shop buyer pays', async ({
   if (live !== null) {
     expect.soft(live, `Allegro offer price should be the PL gross ${expectedGross}`).toBe(expectedGross);
   }
+});
+
+/**
+ * A combination's price in PrestaShop is the base plus its own impact, both
+ * net, and the shop adds VAT on top. ADR-077 has the master read each
+ * combination's OWN computed gross rather than adding a net impact to a gross
+ * base, so a variant with a price impact must import at exactly what the shop
+ * charges for that combination. Stops at the OpenLinker import: the Allegro
+ * half is the same path the test above already follows.
+ */
+test('each combination imports at the gross price the shop charges for it', async ({
+  api,
+  world,
+  jobs,
+  poll,
+}) => {
+  test.setTimeout(5 * 60_000);
+
+  const prestashop = world.connectionFor(PlatformType.prestashop);
+  test.skip(!prestashop, 'no PrestaShop connection on this stack');
+  const ps = buildPrestashopClient(world);
+  test.skip(!ps, 'OL_PS_WEBSERVICE_KEY / PrestaShop base URL not configured');
+
+  const taxGroupId = await ps!.getTaxRulesGroupIdByName(TAX_RULES_GROUP_NAME);
+  test.skip(!taxGroupId, `PrestaShop has no tax-rules group named "${TAX_RULES_GROUP_NAME}"`);
+  const plCountryId = await ps!.getCountryIdByIso('PL');
+  expect(plCountryId, 'PrestaShop knows Poland').toBeTruthy();
+
+  const suffix = Date.now().toString();
+  const reference = `E2E-PRICE-COMB-${suffix}`;
+  // Two impacts that do not round cleanly at 23%, so a variant priced by
+  // adding a net impact to a gross base (or by rounding twice) shows up.
+  const impacts = ['0', '12.35'];
+  const valueNames = ['S', 'M'];
+  const attributes = await ps!.ensureAttributeValues(FRESH_PRODUCT_ATTRIBUTE_GROUP, valueNames);
+  const categoryId =
+    (await ps!.getCategoryIdByName(FRESH_PRODUCT_CATEGORY_NAME)) ??
+    (await ps!.createCategory({ name: FRESH_PRODUCT_CATEGORY_NAME })).id;
+  const created = await ps!.createProduct({
+    name: `E2E Pricing combinations ${suffix}`,
+    reference,
+    ean13: computeEan13(`590${suffix.slice(-7)}78`),
+    price: NET_PRICE,
+    quantity: 0,
+    idCategoryDefault: categoryId,
+    idTaxRulesGroup: taxGroupId!,
+    combinations: attributes.valueIds.map((valueId, index) => ({
+      reference: `${reference}-${valueNames[index]}`,
+      ean13: computeEan13(`590${suffix.slice(-7)}7${index}`),
+      quantity: 5,
+      optionValueIds: [valueId],
+      priceImpact: impacts[index],
+    })),
+  });
+
+  await jobs.triggerAndWait(
+    {
+      connectionId: prestashop!.id,
+      jobType: 'master.product.syncByExternalId',
+      payload: { externalId: created.id, objectType: 'Product' },
+    },
+    { timeoutMs: 120_000 },
+  );
+  const olProduct = (await poll.until<Product | undefined>(
+    async () => (await api.products.list({ search: reference, limit: 5 })).items.find((p) => p.sku === reference),
+    (p) => !!p,
+    { message: `OL product with SKU ${reference}`, timeoutMs: 60_000 },
+  ))!;
+  const variants = await world.variantsOf(olProduct.id);
+
+  const rows: string[] = [];
+  for (const combination of created.combinations) {
+    const shop = await ps!.getProductPrices(created.id, plCountryId!, combination.id);
+    const olVariant = variants.find((v) => v.sku === combination.reference);
+    rows.push(
+      `${combination.reference.padEnd(28)} net ${shop.net.toFixed(2).padStart(8)}  ` +
+        `PL gross ${round2(shop.gross).toFixed(2).padStart(8)}  OpenLinker ${olVariant?.price ?? '(none)'}`,
+    );
+    expect.soft(shop.gross, `${combination.reference}: the tax group adds VAT for PL`).toBeGreaterThan(shop.net);
+    expect.soft(
+      olVariant?.price ?? null,
+      `${combination.reference}: OpenLinker variant price should be the PL gross ${round2(shop.gross)}, not the net ${round2(shop.net)}`,
+    ).toBe(round2(shop.gross));
+  }
+  await test.info().attach('combination-prices.txt', { body: rows.join('\n'), contentType: 'text/plain' });
 });
