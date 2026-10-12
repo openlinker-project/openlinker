@@ -12,6 +12,39 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.15.0](https://github.com/openlinker-project/openlinker/compare/v0.14.0...v0.15.0) (2026-10-12)
+
+
+### Features
+
+* **bench:** read-only pack bench preview for the viewer role ([#3734](https://github.com/openlinker-project/openlinker/issues/3734)) ([#3735](https://github.com/openlinker-project/openlinker/issues/3735)) ([5750380](https://github.com/openlinker-project/openlinker/commit/5750380ba0ffac54d51b71cf68a5811f935ca9fd))
+* **fulfillment:** read-only board and task detail for the viewer role ([#3736](https://github.com/openlinker-project/openlinker/issues/3736)) ([#3738](https://github.com/openlinker-project/openlinker/issues/3738)) ([2802aaf](https://github.com/openlinker-project/openlinker/commit/2802aafdb5981bc56dfbbff24d912034f2a73fa3))
+* **shoper:** CategoryProvisioner - ensure a category path exists before publishing ([#3713](https://github.com/openlinker-project/openlinker/issues/3713)) ([#3719](https://github.com/openlinker-project/openlinker/issues/3719)) ([67766db](https://github.com/openlinker-project/openlinker/commit/67766db7ddbd83a6d3bfa7518fbaa70ac307ffee))
+* **shoper:** connection skeleton - adapter registration, connection test, shape validators ([#3674](https://github.com/openlinker-project/openlinker/issues/3674)) ([7860ffb](https://github.com/openlinker-project/openlinker/commit/7860ffbcd5b2262f3843cdca9d26715b95182575))
+* **shoper:** fulfillment writeback - record a dispatch as a Shoper parcel ([#3643](https://github.com/openlinker-project/openlinker/issues/3643)) ([#3704](https://github.com/openlinker-project/openlinker/issues/3704)) ([a077f00](https://github.com/openlinker-project/openlinker/commit/a077f00f0078b18e09dd3c5bc4688f81920532df))
+* **shoper:** InventoryMaster - stock read and adjust ([#3641](https://github.com/openlinker-project/openlinker/issues/3641)) ([#3691](https://github.com/openlinker-project/openlinker/issues/3691)) ([128ddba](https://github.com/openlinker-project/openlinker/commit/128ddbadc6e0a6a4373c5f34f01c4a606bcf1231))
+* **shoper:** map variant options to ProductVariant.attributes ([#3706](https://github.com/openlinker-project/openlinker/issues/3706)) ([#3707](https://github.com/openlinker-project/openlinker/issues/3707)) ([46ad87b](https://github.com/openlinker-project/openlinker/commit/46ad87b648c3f76a6af45d0805a4a06aee4f8b01))
+* **shoper:** OrderProcessorManager - push orders, real price, idempotency ([#3642](https://github.com/openlinker-project/openlinker/issues/3642)) ([#3701](https://github.com/openlinker-project/openlinker/issues/3701)) ([21284b2](https://github.com/openlinker-project/openlinker/commit/21284b24bc01c2d189c4acfc4db9c252acee1393))
+* **shoper:** OrderSource - carry the order's pickup point ([#3720](https://github.com/openlinker-project/openlinker/issues/3720)) ([#3721](https://github.com/openlinker-project/openlinker/issues/3721)) ([bf88e36](https://github.com/openlinker-project/openlinker/commit/bf88e366565d217b76e5421e12561b41f9abf146))
+* **shoper:** OrderSource - ingest orders placed in the shop ([#3711](https://github.com/openlinker-project/openlinker/issues/3711)) ([#3714](https://github.com/openlinker-project/openlinker/issues/3714)) ([a5ee8c0](https://github.com/openlinker-project/openlinker/commit/a5ee8c08ab52411953e9415ade34290b4e7ce898))
+* **shoper:** ProductMaster - catalogue read, categories, tax rate, deletion detection ([#3640](https://github.com/openlinker-project/openlinker/issues/3640)) ([#3684](https://github.com/openlinker-project/openlinker/issues/3684)) ([664e8b4](https://github.com/openlinker-project/openlinker/commit/664e8b483e545f37fbe8c8982f0d762e2b4d40ec))
+* **shoper:** ProductPublisher - publish a product to the shop ([#3712](https://github.com/openlinker-project/openlinker/issues/3712)) ([#3718](https://github.com/openlinker-project/openlinker/issues/3718)) ([b4c0d94](https://github.com/openlinker-project/openlinker/commit/b4c0d9420374ed44212df1dcd1e4eb4aedf6275c))
+* **shoper:** webhooks - decoder, translator, provisioner, UI ([#3644](https://github.com/openlinker-project/openlinker/issues/3644)) ([#3716](https://github.com/openlinker-project/openlinker/issues/3716)) ([b23c187](https://github.com/openlinker-project/openlinker/commit/b23c187bb5cba692e2378f00572a417b3a58a84d))
+* **web:** Shoper guided connection setup ([#3702](https://github.com/openlinker-project/openlinker/issues/3702)) ([#3703](https://github.com/openlinker-project/openlinker/issues/3703)) ([bcbb9fd](https://github.com/openlinker-project/openlinker/commit/bcbb9fdd78f1004317898b929c66b4603d4ef6ff))
+
+
+### Bug Fixes
+
+* **allegro:** send GPSR fields on card-linked offers ([#3715](https://github.com/openlinker-project/openlinker/issues/3715)) ([ce6f2aa](https://github.com/openlinker-project/openlinker/commit/ce6f2aaee820a8a9c4eca79851cbd997b0056622))
+* **bench:** stop reporting KSeF invoices as printable and offer the KOD I link ([#3648](https://github.com/openlinker-project/openlinker/issues/3648)) ([#3722](https://github.com/openlinker-project/openlinker/issues/3722)) ([7000b24](https://github.com/openlinker-project/openlinker/commit/7000b24d8c999387c35358a02499a7a8bd9c4e04))
+* **orders:** carry OrderItem.name through the destination allowlist ([#3710](https://github.com/openlinker-project/openlinker/issues/3710)) ([#3717](https://github.com/openlinker-project/openlinker/issues/3717)) ([61afd7c](https://github.com/openlinker-project/openlinker/commit/61afd7cc2510678577ebe5baca020b4d934a51fa))
+* **pricing:** catalogue prices are gross - what the buyer pays ([#3740](https://github.com/openlinker-project/openlinker/issues/3740)) ([7b61d52](https://github.com/openlinker-project/openlinker/commit/7b61d525a51c1b535c7150667367e3a88cfd7e05))
+* **web:** bench offers the authority's invoice link instead of Print when nothing can render ([#3649](https://github.com/openlinker-project/openlinker/issues/3649)) ([#3723](https://github.com/openlinker-project/openlinker/issues/3723)) ([af894af](https://github.com/openlinker-project/openlinker/commit/af894af77355f36fa95096a42c8a603730e329b2))
+* **web:** keep Publish products modal actions reachable with many destinations ([#3726](https://github.com/openlinker-project/openlinker/issues/3726)) ([8a84511](https://github.com/openlinker-project/openlinker/commit/8a845118d7a012715cbaec90aa0c8b7f47a2922f))
+* **web:** Pricing & sync page no longer crashes when a connection has no pricing rule ([#3727](https://github.com/openlinker-project/openlinker/issues/3727)) ([#3728](https://github.com/openlinker-project/openlinker/issues/3728)) ([b249877](https://github.com/openlinker-project/openlinker/commit/b2498776b33e648736cbf7e3a54cf8027d951f18))
+* **web:** Pricing & sync reads the real per-source override flags ([#3729](https://github.com/openlinker-project/openlinker/issues/3729)) ([#3730](https://github.com/openlinker-project/openlinker/issues/3730)) ([b859a42](https://github.com/openlinker-project/openlinker/commit/b859a4253b6f3f9ebfaf67d08bb7b1846814d9db))
+* **web:** send a packer owing a password change from /bench to /change-password ([#3732](https://github.com/openlinker-project/openlinker/issues/3732)) ([#3733](https://github.com/openlinker-project/openlinker/issues/3733)) ([b605c6c](https://github.com/openlinker-project/openlinker/commit/b605c6c36cc48826cc55b6936382386b43bf4ecb))
+
 ## [0.14.0](https://github.com/openlinker-project/openlinker/compare/v0.13.0...v0.14.0) (2026-10-06)
 
 
