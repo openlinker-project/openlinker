@@ -157,7 +157,7 @@ describe('PriceChangesQueueTable', () => {
     const accept = vi.fn().mockResolvedValue(undefined);
     // A second, non-custom-override source (#3148 review, finding 1) — an
     // undo built from every `effective` value regardless of
-    // `isCustomOverride` would stamp an explicit override onto this row too,
+    // `modeOverridden`/`ruleOverridden` would stamp an explicit override onto this row too,
     // even though it was only ever inheriting the destination default.
     const get = vi.fn().mockResolvedValue({
       default: { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
@@ -165,7 +165,8 @@ describe('PriceChangesQueueTable', () => {
         {
           sourceConnectionId: 'src-2',
           sourceLabel: 'WooCommerce — EU',
-          isCustomOverride: false,
+          modeOverridden: false,
+          ruleOverridden: false,
           effective: { mode: 'automatic', rule: { type: 'markup', percent: 15, rounding: 'none' } },
           openEpisodeCount: 0,
         },
@@ -197,7 +198,8 @@ describe('PriceChangesQueueTable', () => {
         expect.objectContaining({
           // ONLY `src-1` (the pair being changed) — `src-2`'s non-custom
           // entry must never be re-sent as an explicit override.
-          sourceOverrides: { 'src-1': { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } } },
+          // Mode only: the default rule must NOT be copied in (#3729).
+          sourceOverrides: { 'src-1': { mode: 'manual' } },
         }),
       );
     });

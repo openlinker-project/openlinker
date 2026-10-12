@@ -54,6 +54,20 @@ export interface RegulatoryDocumentReader {
     record: InvoiceRecord,
     kind?: RegulatoryDocumentKind,
   ): Promise<RegulatoryDocument>;
+
+  /**
+   * Which {@link RegulatoryDocumentKind}s this provider can actually produce
+   * (#3648). OPTIONAL and probed, not trusted (the ADR-046 shape): the guard
+   * below tests only `getRegulatoryDocument`, so an out-of-tree plugin compiled
+   * before this member still narrows. ABSENT means "assume every kind", which is
+   * what keeps inFakt, Subiekt and any such plugin byte-identical.
+   *
+   * It exists so a surface can decide whether to OFFER a kind without fetching
+   * it - a provider that implements the reader for `confirmation` only (KSeF:
+   * the UPO, no server-side rendering) would otherwise pass the guard and then
+   * throw on `rendered`, which an offer-then-fail surface turns into a 500.
+   */
+  supportedRegulatoryDocumentKinds?(): readonly RegulatoryDocumentKind[];
 }
 
 export function isRegulatoryDocumentReader(
@@ -61,4 +75,18 @@ export function isRegulatoryDocumentReader(
 ): adapter is InvoicingPort & RegulatoryDocumentReader {
   const candidate = adapter as Partial<RegulatoryDocumentReader>;
   return typeof candidate.getRegulatoryDocument === 'function';
+}
+
+/**
+ * Can this adapter produce `kind`? One decision for both "should we offer it"
+ * and "may we ask for it", so a surface cannot report ready what its own route
+ * then refuses (#3648). An adapter declaring no hint is assumed to produce
+ * every kind (see {@link RegulatoryDocumentReader.supportedRegulatoryDocumentKinds}).
+ */
+export function supportsRegulatoryDocumentKind(
+  adapter: InvoicingPort & RegulatoryDocumentReader,
+  kind: RegulatoryDocumentKind,
+): boolean {
+  if (typeof adapter.supportedRegulatoryDocumentKinds !== 'function') return true;
+  return adapter.supportedRegulatoryDocumentKinds().includes(kind);
 }
