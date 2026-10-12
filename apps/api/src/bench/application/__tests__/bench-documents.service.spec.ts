@@ -92,7 +92,15 @@ describe('BenchDocumentsService - the sales-document slot (#3646)', () => {
     service = new BenchDocumentsService(
       {} as BenchExecutorResolver,
       {} as IFulfillmentWorklistService,
-      { getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null) } as unknown as IInvoiceService,
+      {
+        getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null),
+        // The projection carries no bytes, so the read loads the record itself.
+        getInvoiceById: jest.fn().mockResolvedValue({
+          id: 'rec-1',
+          connectionId: 'conn-1',
+          regulatoryStatus: 'accepted',
+        }),
+      } as unknown as IInvoiceService,
       integrations as unknown as IIntegrationsService,
       { findByIds: jest.fn().mockResolvedValue([]) } as unknown as IOrderRecordService,
       {
@@ -167,6 +175,55 @@ describe('BenchDocumentsService - the sales-document slot (#3646)', () => {
     const result = await service.getDocuments(work, false);
 
     expect(result.document).toMatchObject({ kind: 'invoice', status: 'issued', printable: true });
+  });
+
+  describe('a provider that cannot render (#3648)', () => {
+    const confirmationOnly = {
+      getRegulatoryDocument: jest.fn(),
+      supportedRegulatoryDocumentKinds: () => ['confirmation'],
+    };
+
+    it('should NOT mark the invoice printable when the adapter only has a confirmation document', async () => {
+      withView(view({ document: invoice() }));
+      integrations.getCapabilityAdapter.mockResolvedValue(confirmationOnly);
+
+      const result = await service.getDocuments(work, false);
+
+      expect(result.document).toMatchObject({ printable: false, verificationUrl: null });
+    });
+
+    it('should carry the neutral verification url when the adapter can link', async () => {
+      withView(view({ document: invoice() }));
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        ...confirmationOnly,
+        getVerificationLink: jest.fn().mockResolvedValue({ url: 'https://qr.example/invoice/1' }),
+      });
+
+      const result = await service.getDocuments(work, false);
+
+      expect(result.document).toMatchObject({
+        printable: false,
+        verificationUrl: 'https://qr.example/invoice/1',
+      });
+    });
+
+    it('should offer no link for an invoice that is not accepted', async () => {
+      const getVerificationLink = jest.fn();
+      withView(view({ document: invoice({ regulatoryStatus: 'submitted' }) }));
+      integrations.getCapabilityAdapter.mockResolvedValue({ ...confirmationOnly, getVerificationLink });
+      // The record, not the projection, decides - make it agree.
+      const invoices = (service as unknown as { invoices: { getInvoiceById: jest.Mock } }).invoices;
+      invoices.getInvoiceById.mockResolvedValue({
+        id: 'rec-1',
+        connectionId: 'conn-1',
+        regulatoryStatus: 'submitted',
+      });
+
+      const result = await service.getDocuments(work, false);
+
+      expect(result.document).toMatchObject({ printable: false, verificationUrl: null });
+      expect(getVerificationLink).not.toHaveBeenCalled();
+    });
   });
 
   it('should report the block reason only when the order has no document of any kind', async () => {
