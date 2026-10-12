@@ -142,10 +142,22 @@ interface DraftPricingRule {
   rounding: PriceRoundingMode;
 }
 
+/**
+ * `rule: null` is "no rule configured" - the master price passes through
+ * completely unchanged. It is a different state from an explicit
+ * `{type: 'passthrough'}` rule (which still applies rounding / float cleanup),
+ * so the draft keeps it as `null` and never synthesises a passthrough rule to
+ * fill the gap: doing that would silently change what is published the moment
+ * the operator next saves, with no visible edit (see
+ * `ConnectionPricingSyncSetting` on the API side).
+ */
 interface DraftPricingSyncSetting {
   mode: PriceSyncMode;
-  rule: DraftPricingRule;
+  rule: DraftPricingRule | null;
 }
+
+/** Starting point when an operator authors a rule on a connection that has none. */
+const EMPTY_DRAFT_RULE: DraftPricingRule = { type: 'passthrough', percent: '0', rounding: 'none' };
 
 interface DraftSourceEntry {
   sourceConnectionId: string;
@@ -185,7 +197,8 @@ interface DraftBaseline {
  * warning. `0` / `'none'` are the same defaults `toWireRule` already falls
  * back to on the way out, so a round-trip through this draft is a no-op.
  */
-function toDraftRule(rule: PricingRule): DraftPricingRule {
+function toDraftRule(rule: PricingRule | null): DraftPricingRule | null {
+  if (rule === null) return null;
   return { type: rule.type, percent: String(rule.percent ?? 0), rounding: rule.rounding ?? 'none' };
 }
 
@@ -206,7 +219,7 @@ function toDraftView(view: ConnectionPricingSyncView): DraftView {
 }
 
 function cloneDraftSetting(setting: DraftPricingSyncSetting): DraftPricingSyncSetting {
-  return { mode: setting.mode, rule: { ...setting.rule } };
+  return { mode: setting.mode, rule: setting.rule === null ? null : { ...setting.rule } };
 }
 
 function cloneDraftView(view: DraftView): DraftView {
@@ -235,8 +248,8 @@ const PERCENT_PATTERN = /^\d+(\.\d*)?$/;
  * `PricingRuleMarginCeilingConstraint` is the authoritative gate this
  * mirrors, not replaces.
  */
-function validateRule(rule: DraftPricingRule): string | null {
-  if (rule.type === 'passthrough') return null;
+function validateRule(rule: DraftPricingRule | null): string | null {
+  if (rule === null || rule.type === 'passthrough') return null;
   if (!PERCENT_PATTERN.test(rule.percent)) {
     return 'Enter a percentage, 0 or more.';
   }
@@ -265,21 +278,23 @@ function toWireRule(rule: DraftPricingRule): PriceChangeRuleSummary {
 }
 
 function toWireSetting(setting: DraftPricingSyncSetting): PricingSyncSetting {
-  return { mode: setting.mode, rule: toWireRule(setting.rule) };
+  return { mode: setting.mode, rule: setting.rule === null ? null : toWireRule(setting.rule) };
 }
 
 /** Presentational only — `ruleSentenceFor` takes the wire (numeric) shape. */
-function sentenceForDraftRule(rule: DraftPricingRule): string {
+function sentenceForDraftRule(rule: DraftPricingRule | null): string {
+  if (rule === null) return 'No pricing rule is set - the shop price is sent unchanged.';
   return ruleSentenceFor(toWireRule(rule));
 }
 
 type RulePatch = Partial<{ type: PricingRuleType; percent: string; rounding: PriceRoundingMode }>;
 
-function applyRulePatch(rule: DraftPricingRule, patch: RulePatch): DraftPricingRule {
+function applyRulePatch(rule: DraftPricingRule | null, patch: RulePatch): DraftPricingRule {
+  const base = rule ?? EMPTY_DRAFT_RULE;
   return {
-    type: patch.type ?? rule.type,
-    percent: patch.percent ?? rule.percent,
-    rounding: patch.rounding ?? rule.rounding,
+    type: patch.type ?? base.type,
+    percent: patch.percent ?? base.percent,
+    rounding: patch.rounding ?? base.rounding,
   };
 }
 
@@ -798,18 +813,21 @@ export function PricingAndSyncSection({
 }
 
 function RuleFields({
-  rule,
+  rule: ruleProp,
   error,
   disabled,
   onChange,
   idPrefix,
 }: {
-  rule: DraftPricingRule;
+  rule: DraftPricingRule | null;
   error: string | null;
   disabled?: boolean;
   onChange: (patch: RulePatch) => void;
   idPrefix: string;
 }): ReactElement {
+  // A connection with no rule shows the neutral starting values; the draft
+  // stays `null` until the operator actually changes a field.
+  const rule = ruleProp ?? EMPTY_DRAFT_RULE;
   return (
     <>
       <div className="field">
