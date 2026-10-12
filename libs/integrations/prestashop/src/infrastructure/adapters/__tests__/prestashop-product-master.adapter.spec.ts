@@ -964,7 +964,7 @@ describe('PrestashopProductMasterAdapter', () => {
       seedMapping();
       mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
       const taxRateResolver = makeTaxRateResolver();
-      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0.23 });
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0.23, matchedBy: 'catch-all' });
       const adapterWithResolver = new PrestashopProductMasterAdapter(
         mockHttpClient,
         mockIdentifierMapping,
@@ -993,7 +993,7 @@ describe('PrestashopProductMasterAdapter', () => {
     it('should keep a genuinely untaxed product as a resolved zero, not unknown', async () => {
       seedMapping();
       const taxRateResolver = makeTaxRateResolver();
-      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0 });
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0, matchedBy: 'no-tax-group' });
       const adapterWithResolver = new PrestashopProductMasterAdapter(
         mockHttpClient,
         mockIdentifierMapping,

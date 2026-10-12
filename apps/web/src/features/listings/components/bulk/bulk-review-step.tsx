@@ -452,7 +452,7 @@ export function BulkReviewStep({
           <span>Product</span>
           <span className="bulk-review__c-status">Status</span>
           <span className="bulk-review__c-stock">Stock</span>
-          <span className="bulk-review__c-price">Price</span>
+          <span className="bulk-review__c-price">Price (gross)</span>
           <span className="bulk-review__c-action" />
         </div>
 

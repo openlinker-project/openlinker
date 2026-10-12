@@ -51,6 +51,12 @@ export class PriceChangeItemResponseDto {
   @ApiProperty({ type: PriceChangeRuleSummaryDto }) ruleSummary!: PriceChangeRuleSummaryDto;
 
   @ApiPropertyOptional({ nullable: true }) blockReason!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Why the episode exists beyond an ordinary price move. `'tax-basis-correction'` marks the one-off net-to-gross catalogue price correction (ADR-077), which is never auto-applied.",
+  })
+  cause!: string | null;
   @ApiProperty() needsRefresh!: boolean;
   @ApiProperty() version!: string;
 

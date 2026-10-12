@@ -88,7 +88,7 @@ empty string or zero), so an upsert never clears a field the operator did not to
 | `sku` | master variant | `sku` |
 | `barcode` (GTIN/EAN) | master variant (`gtin` ?? `ean`) | `global_unique_id` (WooCommerce 9.2+) |
 | `weight` | master variant (`weight`) ?? product | `weight` (string) |
-| `price` | operator override ?? master | `regular_price` |
+| `price` | operator override ?? master | `regular_price` (converted to the store's basis - see Prices and tax below) |
 | `stock` | operator | `stock_quantity` (+ `manage_stock: true`) |
 | `status` | operator | `status` (`publish` / `draft`) |
 | `content.title` | operator ?? master | `name` |
@@ -98,7 +98,7 @@ empty string or zero), so an upsert never clears a field the operator did not to
 | `content.imageUrls` | operator ?? master | `images` (**create only** — see Publish correctness below) |
 | `content.seo.slug` | operator | `slug` (suffixed per-item — see below) |
 | `content.seo.title` / `content.seo.description` | operator | `meta_data` (see SEO below) |
-| `commerce.salePrice.amount` | operator | `sale_price` (store currency applies; amount only) |
+| `commerce.salePrice.amount` | operator | `sale_price` (store currency applies; amount only; converted like `price`) |
 | `commerce.saleStartsAt` / `saleEndsAt` | operator (UTC ISO-8601) | `date_on_sale_from_gmt` / `date_on_sale_to_gmt` (UTC; the site-local `date_on_sale_from`/`_to` are deliberately not used so the store timezone can't shift the window) |
 | `commerce.dimensions` | operator | `dimensions.{length,width,height}` (strings) |
 | `commerce.taxClass` | operator | `tax_class` |
@@ -109,6 +109,29 @@ empty string or zero), so an upsert never clears a field the operator did not to
 The table above describes a **single-variant / simple** product — one OL
 variant, one WooCommerce `type:'simple'` product. A **multi-variant** product
 publishes differently; see the next section.
+
+## Prices and tax (#3737, ADR-077)
+
+Every price inside OpenLinker is the price **with VAT** - what a buyer pays -
+and excludes promotions. A WooCommerce store keeps whatever its own setting
+**WooCommerce → Settings → Tax → Prices entered with tax** says. This adapter
+converts at the boundary, in both directions, with the store's own rate:
+
+- **Reading (product master)**: OpenLinker reads `regular_price` (never the
+  sale-inclusive `price`). If the store has taxes switched off, enters prices
+  with tax, or the product is `tax_status` `none` / `shipping`, the figure is
+  used as is. Otherwise it is grossed up with the rate the store's tax table
+  gives the product's tax class in the store's base country, rounded to the
+  store's price decimals. A variation with tax class `parent` uses its parent's
+  class.
+- **Writing (publisher and price updates)**: the same rule in reverse. Into a
+  store that enters prices without tax, `regular_price` and `sale_price` are
+  written as net, to 6 decimals, so WooCommerce's own gross lands back on the
+  exact OpenLinker price.
+- When no single rate applies (no rule for the class and the store's country,
+  or the store names no base country), a read reports **no price** - never a
+  net one - and a write is refused with `TAX_RATE_UNRESOLVED`. A failed request
+  to the store is retried instead, so a network error never blanks a price.
 
 ## Variable products / variations (#1836)
 

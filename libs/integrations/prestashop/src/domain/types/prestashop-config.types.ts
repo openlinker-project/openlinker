@@ -129,6 +129,16 @@ export interface PrestashopConnectionConfig {
   currency?: string;
 
   /**
+   * ISO 3166-1 alpha-2 country the catalogue's GROSS prices are stated for
+   * (ADR-077), e.g. `'PL'`. PrestaShop keys tax on the buyer's country, so a
+   * gross price needs one. When unset, the shop's own `PS_COUNTRY_DEFAULT` is
+   * used; set it when that default is not the market you sell in (a stock
+   * docker install defaults to the United States). A product whose tax group
+   * has no rule for this country reports no price rather than a net one.
+   */
+  salesCountryIso2?: string;
+
+  /**
    * Default PrestaShop carrier ID applied to incoming orders when no
    * connection-level carrier mapping resolves for the source delivery method.
    *

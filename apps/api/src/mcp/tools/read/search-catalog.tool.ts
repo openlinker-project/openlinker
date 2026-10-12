@@ -47,7 +47,7 @@ export function createSearchCatalogTool(productsService: IProductsService): McpT
     requiredScope: 'mcp:read',
     requiresAdmin: false,
     description:
-      "Search OpenLinker's product catalog by name or SKU. Returns internal product ids usable with get_product and get_availability. `connectionId` filters by which connection a product ORIGINATED from (its identifier mapping), not by where it is currently listed. An empty result means no product matched — the catalog is populated by sync, so a recently added connection may not have products yet.",
+      "Search OpenLinker's product catalog by name or SKU. Returns internal product ids usable with get_product and get_availability. `connectionId` filters by which connection a product ORIGINATED from (its identifier mapping), not by where it is currently listed. Prices are gross: what a buyer pays, VAT included, excluding promotions. An empty result means no product matched — the catalog is populated by sync, so a recently added connection may not have products yet.",
     inputSchema,
     handler: async (args: Record<string, unknown>): Promise<CallToolResult> => {
       // NARROWING, not validation: the SDK already validated `args` against

@@ -41,6 +41,10 @@ import type {
   WooCommerceTaxClassResponse,
   WooCommerceTaxClassTable,
 } from './woocommerce-tax-class.types';
+import {
+  WOOCOMMERCE_DEFAULT_PRICE_DECIMALS,
+  type WooCommerceStorePriceBasis,
+} from '../../tax/woocommerce-price-basis';
 
 /** WooCommerce's slug for the standard class on the taxes endpoints. */
 const STANDARD_CLASS_SLUG = 'standard';
@@ -64,8 +68,73 @@ interface ClassRateTable {
 
 export class WooCommerceTaxClassResolver {
   private table: Promise<WooCommerceTaxClassTable | null> | undefined;
+  private generalSettings: Promise<WooCommerceGeneralSetting[]> | undefined;
+  private priceBasis: Promise<WooCommerceStorePriceBasis> | undefined;
 
-  constructor(private readonly httpClient: IWooCommerceHttpClient) {}
+  /**
+   * @param readGeneralSettingsFrom - an owner that already reads and caches
+   *   `/settings/general` (the product master) hands its reader in, so the
+   *   same response is not fetched twice per adapter instance.
+   */
+  constructor(
+    private readonly httpClient: IWooCommerceHttpClient,
+    private readonly readGeneralSettingsFrom?: () => Promise<WooCommerceGeneralSetting[]>,
+  ) {}
+
+  /**
+   * The store's price-basis settings (ADR-077): whether taxes are on, whether
+   * stored prices already include tax, the display decimals and the base
+   * country. Read once per instance; a failed read is not cached and
+   * propagates, so a caller never converts a price on a guessed basis.
+   */
+  async readPriceBasis(): Promise<WooCommerceStorePriceBasis> {
+    if (this.priceBasis === undefined) {
+      this.priceBasis = this.readPriceBasisUncached().catch((error: unknown) => {
+        this.priceBasis = undefined;
+        throw error;
+      });
+    }
+    return this.priceBasis;
+  }
+
+  private async readPriceBasisUncached(): Promise<WooCommerceStorePriceBasis> {
+    const general = await this.readGeneralSettings();
+    const valueOf = (rows: readonly WooCommerceGeneralSetting[], id: string): string | undefined => {
+      const raw = rows.find((row) => row.id === id)?.value;
+      const value = Array.isArray(raw) ? raw[0] : raw;
+      return typeof value === 'string' ? value.trim() : undefined;
+    };
+    const taxesEnabled = valueOf(general, 'woocommerce_calc_taxes') === 'yes';
+    const decimals = Number.parseInt(valueOf(general, 'woocommerce_price_num_decimals') ?? '', 10);
+    const country = (valueOf(general, 'woocommerce_default_country') ?? '').split(':')[0]?.trim();
+    // Only a store that taxes needs the tax group read: with taxes off every
+    // stored price is what the buyer pays.
+    const taxSettings = taxesEnabled
+      ? await this.httpClient.get<WooCommerceGeneralSetting[]>('/wp-json/wc/v3/settings/tax')
+      : [];
+    return {
+      taxesEnabled,
+      pricesIncludeTax: valueOf(taxSettings ?? [], 'woocommerce_prices_include_tax') === 'yes',
+      priceDecimals:
+        Number.isFinite(decimals) && decimals >= 0 ? decimals : WOOCOMMERCE_DEFAULT_PRICE_DECIMALS,
+      storeCountry: country ? country.toUpperCase() : null,
+    };
+  }
+
+  private readGeneralSettings(): Promise<WooCommerceGeneralSetting[]> {
+    if (this.generalSettings === undefined) {
+      const read = this.readGeneralSettingsFrom
+        ? this.readGeneralSettingsFrom()
+        : this.httpClient.get<WooCommerceGeneralSetting[]>('/wp-json/wc/v3/settings/general');
+      this.generalSettings = read
+        .then((rows) => rows ?? [])
+        .catch((error: unknown) => {
+          this.generalSettings = undefined;
+          throw error;
+        });
+    }
+    return this.generalSettings;
+  }
 
   /**
    * The store's class table, or `null` when WooCommerce taxes are off. Read on
@@ -82,10 +151,8 @@ export class WooCommerceTaxClassResolver {
   }
 
   private async read(): Promise<WooCommerceTaxClassTable | null> {
-    const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
-      '/wp-json/wc/v3/settings/general',
-    );
-    const calcTaxes = (settings ?? []).find((row) => row.id === 'woocommerce_calc_taxes')?.value;
+    const settings = await this.readGeneralSettings();
+    const calcTaxes = settings.find((row) => row.id === 'woocommerce_calc_taxes')?.value;
     if (calcTaxes !== 'yes') {
       return null;
     }
@@ -199,6 +266,13 @@ function summariseClass(slug: string, rows: readonly WooCommerceTaxRate[]): Clas
 
 function createTable(classes: readonly ClassRateTable[]): WooCommerceTaxClassTable {
   return {
+    rateFor(lineTaxClass: string, country: string | undefined): number | null {
+      const table = classes.find((entry) => entry.lineTaxClass === lineTaxClass);
+      if (table === undefined) return null;
+      const key = (country ?? '').trim().toUpperCase();
+      const rate = key !== '' && table.byCountry.has(key) ? table.byCountry.get(key) : table.wildcard;
+      return rate ?? null;
+    },
     resolve(country: string | undefined, ratePercent: number): string | null {
       const key = (country ?? '').trim().toUpperCase();
       for (const table of classes) {

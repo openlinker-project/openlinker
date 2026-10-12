@@ -20,6 +20,7 @@
 import type {
   IPrestashopWebserviceClient,
   PrestashopQueryFilters,
+  PrestashopResourceReadOptions,
   PrestashopWriteOptions,
   RetryConfig,
   PrestashopWebserviceClientOptions,
@@ -141,9 +142,20 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     });
   }
 
-  async getResource<T = unknown>(resource: string, id: string | number): Promise<T> {
+  async getResource<T = unknown>(
+    resource: string,
+    id: string | number,
+    options?: PrestashopResourceReadOptions
+  ): Promise<T> {
     const path = PrestashopQueryBuilder.buildResourcePath(resource, id);
-    const url = `${this.baseUrl}${path}`;
+    const priceParams =
+      options?.priceFields && options.priceFields.length > 0
+        ? PrestashopQueryBuilder.buildPriceFieldParams(options.priceFields)
+        : [];
+    const url =
+      priceParams.length > 0
+        ? `${this.baseUrl}${path}?${priceParams.join('&')}`
+        : `${this.baseUrl}${path}`;
 
     this.logger.debug(`Fetching resource: ${resource}/${id}`);
 

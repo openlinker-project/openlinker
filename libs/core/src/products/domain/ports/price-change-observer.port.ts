@@ -31,9 +31,17 @@ export interface MasterPriceChangeObservation {
    * baseline to diff against.
    */
   sourceOldAmount: number | null;
+  /** The master's new GROSS catalogue price (ADR-077). */
   sourceNewAmount: number;
   /** ISO 4217. From `Product.currency` — resolved by the master adapter. */
   sourceCurrency: string;
+  /**
+   * Set when this change is the one-off correction of a master that used to
+   * report NET catalogue prices and now reports gross (ADR-077). The detector
+   * opens the episode as usual but never auto-applies it. Absent for an
+   * ordinary price move.
+   */
+  cause?: 'tax-basis-correction';
 }
 
 export interface PriceChangeObserverPort {

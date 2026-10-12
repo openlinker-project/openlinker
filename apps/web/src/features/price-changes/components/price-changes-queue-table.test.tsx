@@ -49,6 +49,7 @@ function buildItem(overrides: Partial<PriceChangeItem> = {}): PriceChangeItem {
     isSteep: false,
     ruleSummary: { type: 'margin', percent: 22, rounding: 'endingIn99' },
     blockReason: null,
+    cause: null,
     needsRefresh: false,
     version: '2026-09-10T10:00:00.000Z',
     manualPriceOverride: null,

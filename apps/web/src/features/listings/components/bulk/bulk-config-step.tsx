@@ -293,14 +293,14 @@ export function BulkConfigStep({
           checked={values.pricingMode === 'use-master'}
           onChange={() => setPricingMode('use-master')}
           label="Use master price"
-          hint="Each offer uses the product's own price. Rows without a master price are flagged."
+          hint="Each offer uses the product's own gross price (VAT included). Rows without a master price are flagged."
         />
         <PolicyRadio
           name="bulk-pricing-mode"
           checked={values.pricingMode === 'markup'}
           onChange={() => setPricingMode('markup')}
           label="Markup on master price"
-          hint="Apply a percentage to each master price (negative = discount)."
+          hint="Apply a percentage to each gross master price (negative = discount)."
         >
           {values.pricingMode === 'markup' ? (
             <FormField name="bulk-config-markup" label="Markup %">
@@ -318,7 +318,7 @@ export function BulkConfigStep({
           checked={values.pricingMode === 'flat'}
           onChange={() => setPricingMode('flat')}
           label="Flat price for all rows"
-          hint={`Same price (in ${values.currency}) for every offer, ignoring master prices.`}
+          hint={`Same gross price (in ${values.currency}, VAT included) for every offer, ignoring master prices.`}
         >
           {values.pricingMode === 'flat' ? (
             <FormField name="bulk-config-flat-price" label={`Flat price (${values.currency})`}>

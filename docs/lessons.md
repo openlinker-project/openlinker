@@ -2589,3 +2589,18 @@ A container older than the commit under discussion invalidates every observation
 through it - including the ones that look like they confirm something.
 
 **Source**: PR #3365
+
+## Anchor a price parity test on what the buyer pays, never on the previous hop
+
+**Context**: a PrestaShop product at 100.00 net in a 23% group was published to Allegro as an active offer at 100.00 (#3737, ADR-077).
+
+**Problem**: the golden path compared OL's price with PrestaShop's raw `price` field, then the Allegro offer with OL's price. A net figure carried through unchanged satisfies both equalities, so the suite stayed green while every PrestaShop-mastered offer was underpriced by the VAT. The local PrestaShop stack hid it a second time: its default country was the United States, so the storefront showed net prices as well. And `Product.price` had no stated tax basis, so each master adapter filled it with whatever field its platform stores.
+
+**Rule**:
+- A price test asserts against the platform's own figure for the buyer: PrestaShop's computed `price[..][use_tax]=1` for a stated country, or an explicit gross in the fixture. Never against the previous hop.
+- A numeric field that crosses a context boundary states its basis in its docblock.
+- A fixture that exercises tax must use a product whose tax group is not "No tax", with net and gross set apart.
+
+**Applies to**: `apps/e2e/tests/golden-path/full-flow/*`, `apps/e2e/tests/pricing/*`, master-adapter mapper specs, any `price` field on a core type.
+
+**Source**: #3737, [ADR-077](./architecture/adrs/077-catalogue-prices-are-gross.md)

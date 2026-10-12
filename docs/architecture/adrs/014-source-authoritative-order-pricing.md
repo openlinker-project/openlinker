@@ -332,3 +332,7 @@ side, and no rate is read on any path this change touches.
 It does not make `OL_TAX_RATE_STRICT_ENABLED` safe to turn on - that is a separate decision resting on
 catalogue coverage. And it says nothing about a source that reports neither a gross line price nor a
 rate: that order is still held, which is Decision 2 working as intended.
+
+## Amendment (#3737, 2026-10-12): the catalogue side gets the same basis rule
+
+This ADR fixed the tax basis of ORDER amounts. Catalogue prices had none, and a net PrestaShop price reached Allegro as a gross offer price. [ADR-077](./077-catalogue-prices-are-gross.md) makes a catalogue price gross. Conversion is adapter-owned, the pattern Decision 3 already uses for order lines.

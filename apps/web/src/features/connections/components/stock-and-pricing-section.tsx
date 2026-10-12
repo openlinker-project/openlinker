@@ -308,7 +308,7 @@ export function StockAndPricingSection({
       </div>
       <p className="rate-limit-section__help">
         By default this destination is told your catalogue quantity and your catalogue price,
-        unchanged.
+        unchanged. Catalogue prices are gross: what a buyer pays, VAT included.
       </p>
 
       <label className="rate-limit-section__toggle">

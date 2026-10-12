@@ -40,7 +40,10 @@ export class WooCommerceProductMapper implements IWooCommerceProductMapper {
     return {
       name: p.name ?? '',
       sku: p.sku || null,
-      price: this.parsePrice(p.price) ?? null,
+      // The REGULAR price: `price` is the active one, i.e. the sale price while a
+      // promotion runs, and a catalogue price excludes promotions (ADR-077).
+      // A variable parent has no `regular_price` of its own, so it falls back.
+      price: this.parsePrice(p.regular_price || p.price) ?? null,
       currency: this.options.currency ?? null,
       description: p.description || null,
       images: p.images?.map((i) => i.src) ?? null,
@@ -63,7 +66,7 @@ export class WooCommerceProductMapper implements IWooCommerceProductMapper {
     return {
       productId,
       sku: v.sku || null,
-      price: this.parsePrice(v.price) ?? undefined,
+      price: this.parsePrice(v.regular_price || v.price) ?? undefined,
       weight: this.parseOptionalNumber(v.weight),
       attributes: Object.keys(attributeRecord).length > 0 ? attributeRecord : null,
       ean: normalizeToEan13(this.extractMeta(metaData, ...EAN_KEYS)),

@@ -84,6 +84,12 @@ export class PrestashopConnectionConfigDto {
   })
   currency?: string;
   @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{2}$/, {
+    message: 'salesCountryIso2 must be a 2-letter uppercase ISO 3166-1 code (e.g. PL, DE)',
+  })
+  salesCountryIso2?: string;
+  @IsOptional()
   @IsInt()
   @Min(1)
   defaultCarrierId?: number;

@@ -240,12 +240,12 @@ const MODEL_PAGE_CAP = 20_000;
  * 18.7% underprice, with nothing thrown, nothing logged, and no way for an
  * operator to tell it apart from a correct price.
  *
- * Everything downstream treats this number as gross end to end (ADR-014, and
- * the bridge's own writer sends gross), so the net value is not a degraded
- * answer to the same question - it is an answer to a different one.
+ * A catalogue price is gross by contract (ADR-077), and the bridge's own
+ * writer sends gross, so the net value is not a degraded answer to the same
+ * question - it is an answer to a different one.
  *
  * Absent is therefore the honest result. A variant with no price is refused by
- * the publish path with a named `NON_POSITIVE` error the operator can act on,
+ * the publish path with a named `REQUIRED` error the operator can act on,
  * which is strictly better than a plausible wrong number.
  */
 function grossSalePrice(

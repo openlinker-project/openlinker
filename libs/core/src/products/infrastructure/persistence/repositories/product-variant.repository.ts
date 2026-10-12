@@ -371,6 +371,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       price: entity.price !== null ? Number(entity.price) : undefined,
       isStale: entity.isStale,
       staleAt: entity.staleAt,
+      priceBasisPending: entity.priceBasisPending,
       // #2255 — read surface for the variant table's rate column. An absent
       // override is rendered as "inherited from the product", never as a gap.
       taxRate: entity.taxRate,
@@ -404,6 +405,13 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     // intend to mark stale use markStaleExceptVariants, not upsert.
     entity.isStale = variant.isStale ?? false;
     entity.staleAt = variant.staleAt ?? null;
+    // ADR-077: a recorded price ends the tax-basis correction window for this
+    // variant. Left undefined otherwise, so `save` neither sets nor clears it -
+    // a variant whose master could not state a gross price stays pending until
+    // it can.
+    if (variant.price !== undefined && variant.price !== null) {
+      entity.priceBasisPending = false;
+    }
     // Adapters may omit timestamps on first insert; TypeORM's @CreateDateColumn
     // and @UpdateDateColumn populate them in that case.
     if (variant.createdAt) entity.createdAt = variant.createdAt;

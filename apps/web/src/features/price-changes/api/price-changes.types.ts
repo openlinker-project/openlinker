@@ -12,6 +12,12 @@ export type PricingRuleType = 'passthrough' | 'markup' | 'margin';
 export type PriceRoundingMode = 'none' | 'nearestWhole' | 'endingIn99';
 export type PriceSyncMode = 'manual' | 'automatic';
 export type PriceChangeBlockReason = 'currency-mismatch';
+/**
+ * `'tax-basis-correction'`: the one-off move of a master price from net to gross
+ * (ADR-077). Shown on the row so the operator knows why many prices rose at once;
+ * never auto-applied by the backend.
+ */
+export type PriceChangeCause = 'tax-basis-correction';
 export type PriceChangeResolution = 'accepted' | 'accepted-custom' | 'ignored';
 
 export interface PriceChangeRuleSummary {
@@ -48,6 +54,7 @@ export interface PriceChangeItem {
   ruleSummary: PriceChangeRuleSummary;
 
   blockReason: PriceChangeBlockReason | null;
+  cause: PriceChangeCause | null;
   needsRefresh: boolean;
   version: string;
 
