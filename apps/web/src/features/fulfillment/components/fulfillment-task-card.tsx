@@ -41,10 +41,10 @@
  * This card is only ever mounted inside `order-fulfillment-tasks-panel.tsx`,
  * which has no worklist position of its own to carry forward — an order page
  * is not a filtered list — so the link carries no query string, unlike the
- * assign board's own reference link (`fulfilmentWorkDetailPath`). Since #3096
- * it renders only for a session holding `orders:write`: the detail page is
- * admin + operator, and a viewer — who does see this panel — would follow the
- * link into "you don't have access". The id still renders for them, as text.
+ * assign board's own reference link (`fulfilmentWorkDetailPath`). It renders
+ * only for a session holding `fulfillment:read` (admin, operator and viewer
+ * since #3736), the permission that opens the detail page, so no one follows
+ * it into "you don't have access". Without it the id still renders, as text.
  *
  * ## Products, places and carriers by name, never by internal id (#3096)
  *
@@ -88,7 +88,7 @@ export function FulfillmentTaskCard({
   rootProps,
 }: FulfillmentTaskCardProps): ReactElement {
   const held = task.activeHolds.length > 0;
-  const canOpenDetail = usePermission('orders:write');
+  const canOpenDetail = usePermission('fulfillment:read');
   const showLocation = useHasMultipleLocations();
   const distinguishing = distinguishingAttributeKeys(
     task.lines.map((line) => ({ attributes: line.attributes ?? null }))

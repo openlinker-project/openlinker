@@ -69,6 +69,11 @@ export const PermissionValues = [
   // decorators gate the route, and a UI that offers what the route refuses
   // (or hides what it allows, which is what happened here) is the defect.
   'bench:write',
+  // Read-only Fulfilment board + task detail (#3736). Held by admin, operator
+  // and viewer - never packer, whose work is the bench. Must stay identical to
+  // the `@Roles` lists on the GET routes of `FulfillmentWorkController` and
+  // `GET /users/packers` (the roster the board names packers with).
+  'fulfillment:read',
   // The pack bench's read-only view (#3734): opening `/bench` and seeing the
   // work list, a parcel and its activity. Held by every role the bench's GET
   // routes admit - admin, operator, packer and viewer - and by none that they
@@ -151,6 +156,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'listings:write',
     'customers:read',
     'bench:write',
+    'fulfillment:read',
     'bench:read',
     'shipments:read',
     'shipments:write',
@@ -171,6 +177,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'inventory:read',
     'listings:read',
     'customers:read',
+    'fulfillment:read',
     'bench:read',
     'shipments:read',
     'invoices:read',

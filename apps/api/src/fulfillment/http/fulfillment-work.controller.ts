@@ -271,7 +271,7 @@ export class FulfillmentWorkController {
   }
 
   @Get(':workId')
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({ summary: 'Get one fulfilment task' })
   @ApiResponse({ status: 200, type: FulfillmentWorkResponseDto })
   @ApiResponse({ status: 404, description: 'No such fulfilment task' })
@@ -306,7 +306,7 @@ export class FulfillmentWorkController {
    * first one.
    */
   @Get(':workId/shipments')
-  @Roles('admin', 'operator')
+  @Roles('admin', 'operator', 'viewer')
   @ApiOperation({
     summary: 'List the shipments dispatched for one fulfilment task',
     description:

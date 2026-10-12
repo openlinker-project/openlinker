@@ -80,7 +80,10 @@ export const FULFILLMENT_WORK_DETAIL_COPY = {
       title: 'Task not found',
       message: 'No fulfilment task matches this address. It may have been removed.',
     },
-    /** A session without `orders:write` (#3096): the board and the detail are supervisors'. */
+    /**
+     * A session without `fulfillment:read` (#3096, #3736) that is not bench-only
+     * — in practice a role changed mid-session and the read was refused.
+     */
     denied: {
       title: 'Fulfilment tasks are for supervisors',
       message:

@@ -677,6 +677,14 @@ put a parcel in front of a named packer before they reach for it. Both read `Ful
   `apps/api/src/bench/__tests__/no-parcel-commit-route.spec.ts` fails the build if a bench route
   path ever gains a `close`/`commit`/`finish`/`seal` verb, and it is extended by naming the exact
   new path, never by loosening the keyword.
+- **The board is a read-only preview for `viewer` (#3736).** `fulfillment:read` (admin, operator,
+  viewer; never packer) opens the board and the task detail; `GET /fulfillment/works/:workId`, its
+  `/shipments` and `GET /users/packers` admit `viewer`, while the action and assignment writes stay
+  admin + operator. The viewer thereby gains one disclosure - every active packer's id and username
+  from `/users/packers` - accepted because the board must resolve `assignedToUserId` to a name and
+  the projection is minimal. `scripts/check-bench-write-roles.mjs` checks the permission against the
+  union of the controller's `@Roles` and against `GET /users/packers`; the per-route lists are
+  pinned by `fulfillment-work.controller.spec.ts`, since a union cannot see one GET narrowed alone.
 - **An assignment is a staffing hint, not a lock (ADR-074).** A packer may still claim an assigned
   parcel unless a supervisor set `selfServeEligible = false`, and "assigned to other packers" is
   the SUPERVISOR's view - a packer sees their own work and the unassigned pool, and nothing else.
