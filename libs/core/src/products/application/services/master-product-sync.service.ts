@@ -782,6 +782,10 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     priceBaseline: PriceBaseline
   ): Promise<number> {
     let failures = 0;
+    // ADR-077 correction window: a pending variant is settled once its price
+    // was reported, or turned out unchanged. One whose report failed stays
+    // pending, so its next move is still held for manual review.
+    const settledBasis: string[] = [];
     for (const variant of variants) {
       const newAmount = variant.price ?? null;
       const hadPriorRow = priceBaseline.prices.has(variant.id);
@@ -801,7 +805,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         }
         continue;
       }
+      const basisPending = priceBaseline.basisPending.has(variant.id);
       if (hadPriorRow && oldAmount === newAmount) {
+        if (basisPending) settledBasis.push(variant.id);
         continue; // unchanged — nothing to report
       }
       try {
@@ -811,10 +817,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
           sourceOldAmount: hadPriorRow ? oldAmount : null,
           sourceNewAmount: newAmount,
           sourceCurrency,
-          ...(priceBaseline.basisPending.has(variant.id)
-            ? { cause: 'tax-basis-correction' as const }
-            : {}),
+          ...(basisPending ? { cause: 'tax-basis-correction' as const } : {}),
         });
+        if (basisPending) settledBasis.push(variant.id);
       } catch (error) {
         failures++;
         this.logger.error(
@@ -822,6 +827,18 @@ export class MasterProductSyncService implements IMasterProductSyncService {
             `connectionId=${sourceConnectionId} was NOT reported to the price-change observer and ` +
             `is now unrecoverable (no reconcile pass exists for this yet, and the catalogue upsert ` +
             `already overwrote the prior price this pass compared against): ${(error as Error).message}`
+        );
+      }
+    }
+    if (settledBasis.length > 0) {
+      try {
+        await this.productsService.clearPriceBasisPending(settledBasis);
+      } catch (error) {
+        // Harmless to leave set: the next move re-reports as a correction,
+        // which only means one more manual review.
+        this.logger.warn(
+          `price_basis_clear_failed - connectionId=${sourceConnectionId} variants=${settledBasis.length}: ` +
+            `${(error as Error).message}`
         );
       }
     }

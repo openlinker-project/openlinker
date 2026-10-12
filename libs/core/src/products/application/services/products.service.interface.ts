@@ -247,4 +247,11 @@ export interface IProductsService {
    * on the next successful upsert of a reappearing variant.
    */
   markVariantsStaleExcept(productId: string, keepVariantIds: readonly string[]): Promise<string[]>;
+
+  /**
+   * End the ADR-077 tax-basis correction window for these variants. The master
+   * sync calls it only after the corrected price was reported (or found
+   * unchanged), so a failed report leaves the variant pending.
+   */
+  clearPriceBasisPending(variantIds: readonly string[]): Promise<void>;
 }

@@ -200,6 +200,22 @@ export class WooCommerceProductPublisherAdapter
       }
       taxClass ??= current.taxClass;
       taxStatus ??= current.taxStatus;
+    } else if (
+      !isUpsert &&
+      (taxClass === undefined || taxStatus === undefined) &&
+      cmd.variantGroup?.externalParentProductId
+    ) {
+      // A NEW variation under an existing parent: WooCommerce defaults its
+      // class to 'parent', so it is taxed at the parent's class, not standard.
+      const parentId = String(cmd.variantGroup.externalParentProductId);
+      let parent: { taxClass: string | undefined; taxStatus: string | undefined };
+      try {
+        parent = await this.readTargetTaxFields(parentId, undefined);
+      } catch (err) {
+        throw this.toPublishError(err, true, parentId);
+      }
+      taxClass ??= effectiveTaxClass(undefined, parent.taxClass);
+      taxStatus ??= parent.taxStatus;
     }
     if (isStoredPriceGross(basis, taxStatus)) {
       return cmd;

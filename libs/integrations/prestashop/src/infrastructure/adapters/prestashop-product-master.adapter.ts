@@ -301,7 +301,10 @@ export class PrestashopProductMasterAdapter
     }
     const shopGross = this.roundMoney(gross);
     const expected = this.roundMoney(input.netPrice * (1 + resolution.rate));
-    if (Math.abs(shopGross - expected) > GROSS_PRICE_TOLERANCE) {
+    // Compared in whole cents: `24.60 - 24.59` is 0.010000000000001563 in
+    // floating point, which a `> 0.01` test would reject.
+    const gapCents = Math.abs(Math.round(shopGross * 100) - Math.round(expected * 100));
+    if (gapCents > Math.round(GROSS_PRICE_TOLERANCE * 100)) {
       return this.grossUnavailable(
         input.externalProductId,
         `PrestaShop charges ${shopGross} for ${input.subject} in ${country.iso2} ` +

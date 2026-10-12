@@ -209,6 +209,10 @@ export class ProductsService implements IProductsService {
     return this.variantRepository.countMany(filters);
   }
 
+  async clearPriceBasisPending(variantIds: readonly string[]): Promise<void> {
+    await this.variantRepository.clearPriceBasisPending(variantIds);
+  }
+
   async markVariantsStaleExcept(
     productId: string,
     keepVariantIds: readonly string[]
