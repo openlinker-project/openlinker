@@ -652,7 +652,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       cancelledFromEarlySignal,
       // #3485: every OMS-routed order now stays in OpenLinker — including one
       // still waiting for an address — so its units are OpenLinker's to promise.
-      routingTarget.kind === 'route'
+      routingTarget.kind === 'route',
+      routingTarget.kind === 'skip' && routingTarget.reason === 'source-fulfilled'
     );
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
@@ -1177,6 +1178,10 @@ export class OrderIngestionService implements IOrderIngestionService {
 
   /**
    * Why this order should deliberately NOT be routed, or `null` (#3455).
+   *
+   * Level-triggered per ingestion: an order that was already routed before its
+   * source started asserting `fulfilledBySource` stays routed - nothing here
+   * un-routes existing work.
    *
    * First match wins, cheapest first:
    *  1. `own-shop-order` (#3487) — the source connection is a product master;
@@ -1945,7 +1950,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
     alreadyCancelled = false,
-    routedByOms = false
+    routedByOms = false,
+    sourceFulfilled = false
   ): Promise<void> {
     try {
       // A kill switch, default ON (#2344 review). The ledger is additive and
@@ -1977,9 +1983,17 @@ export class OrderIngestionService implements IOrderIngestionService {
       // (its default `omp_fulfilled` would stamp `diagnostic` and open an
       // oversell window until the sale decrement lands). The decrement then
       // consumes the hold, so the units are counted once.
-      const atpEffect: ReservationAtpEffect = routedByOms
-        ? 'published'
-        : this.toReservationAtpEffect(order, await fulfillmentRouting());
+      //
+      // #3636: an order the SOURCE ships itself is never executed by OpenLinker,
+      // whatever an ADR-012 rule says (a rule is only configuration, the source's
+      // statement is a fact), so its hold is always `diagnostic` - subtracting
+      // stock for a parcel OpenLinker will not pick is the over-subtraction
+      // ADR-061 calls worse than shipping nothing.
+      const atpEffect: ReservationAtpEffect = sourceFulfilled
+        ? 'diagnostic'
+        : routedByOms
+          ? 'published'
+          : this.toReservationAtpEffect(order, await fulfillmentRouting());
 
       let result;
       try {

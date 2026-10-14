@@ -4,10 +4,11 @@
  * Pure rules deciding whether an ingested order may be handed to the fulfilment
  * router at all, before any router is selected.
  *
- * Three rules live here, one per product decision in epic #3460: an order from
+ * Four rules live here, one per product decision in epic #3460: an order from
  * the operator's own shop (#3487), an order another system has been told to
- * ship (#3488) and an order the product master already received before routing
- * was switched on (#3455) all keep today's path.
+ * ship (#3488), an order the product master already received before routing
+ * was switched on (#3455) and an order its source asserts it ships itself
+ * (#3636) all keep today's path.
  *
  * Each skip is also REPORTED, as one {@link FulfillmentRoutingSkipReason}
  * persisted on the order: the operator's question is always the same ("why is

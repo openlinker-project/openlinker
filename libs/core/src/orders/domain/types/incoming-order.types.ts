@@ -94,9 +94,10 @@ export interface IncomingOrder {
    * Allegro One Fulfillment (#3636). Three-state like `buyerTaxId` (#2599):
    * `true` is a positive statement; ABSENT means "not asserted" and must never
    * be read as "the seller ships" - a source that cannot tell leaves it unset.
-   * There is deliberately no `false` a source needs to send.
+   * Typed `true` on purpose: there is no `false` a source needs to send, so a
+   * source that cannot tell leaves the field unset.
    */
-  fulfilledBySource?: boolean;
+  fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
 

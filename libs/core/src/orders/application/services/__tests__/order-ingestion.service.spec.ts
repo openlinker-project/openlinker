@@ -2576,6 +2576,69 @@ describe('OrderIngestionService', () => {
         ).toEqual(['ol_order_int', 'source-fulfilled']);
       });
 
+      // First match wins: the cheaper, more specific sentences outrank this one.
+      it('should record own-shop-order when an own-shop order is also source-fulfilled', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          { ...marketplaceSource, enabledCapabilities: ['ProductMaster', 'OrderSource'] },
+        ] as never);
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'own-shop-order']);
+      });
+
+      it('should record mirrored-before-routing when a mirrored order is also source-fulfilled', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [{ destinationConnectionId: 'shop-1', status: 'synced' }],
+        } as unknown as OrderRecord);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'mirrored-before-routing']);
+      });
+
+      // The hold must not subtract stock for a parcel OpenLinker will not pick,
+      // even when a rule says OpenLinker would ship that delivery method.
+      it('should hold a source-fulfilled order as diagnostic even when a rule names ol_managed_carrier', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+      });
+
       it('should still route an order whose source asserts nothing', async () => {
         orderSource.getOrder.mockResolvedValue(interceptIncoming as never);
         fulfillmentRouting.resolve.mockResolvedValue({
@@ -2678,7 +2741,7 @@ describe('OrderIngestionService', () => {
     });
 
     // #3455 — why an order was deliberately not routed is persisted on the order,
-    // one field for all three rules, and only while a connection claims A2.
+    // one field for all four rules, and only while a connection claims A2.
     describe('the persisted routing skip reason (#3455)', () => {
       const router = { route: jest.fn() };
 
