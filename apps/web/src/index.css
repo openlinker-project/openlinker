@@ -17424,7 +17424,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    invoice, so no new colors are introduced - only existing tokens. */
 .invoice-connection-lock {
   display: grid;
-  grid-template-columns: auto 1fr;
+  /* #3484 — column 2 gets a zero floor so it can never be sized by its content,
+     and the grid items below take their column explicitly. Without that a long
+     hint was auto-placed into the glyph's `auto` column, which grew to the
+     hint's width and squeezed the eyebrow and the name to one word per line. */
+  grid-template-columns: auto minmax(0, 1fr);
   column-gap: var(--space-3);
   row-gap: var(--space-1);
   align-items: center;
@@ -17453,6 +17457,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .invoice-connection-lock__eyebrow {
   grid-column: 2;
+  overflow-wrap: break-word;
   font-family: var(--font-mono);
   font-size: 0.625rem;
   letter-spacing: var(--tracking-caps);
@@ -17463,13 +17468,24 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   grid-column: 2;
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
+  /* #3484 — no wrap: a name too long for the row wraps INSIDE itself (below)
+     while the tag stays beside it, instead of the tag dropping to a line of its
+     own where its pill border reads as clipped. */
+  flex-wrap: nowrap;
   gap: var(--space-2);
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-primary);
 }
+/* The name is the one fact this component states, so it is never truncated:
+   it may shrink below its content and break anywhere, and stays fully visible. */
+.invoice-connection-lock__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .invoice-connection-lock__tag {
+  flex: none;
+  white-space: nowrap;
   font-size: 0.625rem;
   font-weight: 500;
   letter-spacing: var(--tracking-caps);
@@ -17480,6 +17496,10 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding: 1px 7px;
 }
 .invoice-connection-lock__hint {
+  /* #3484 — restores the placement #2047 shipped and #2809 dropped. A bare hint
+     (every non-settled status) has no `__why` wrapper to carry it. */
+  grid-column: 2;
+  overflow-wrap: break-word;
   font-size: 0.75rem;
   color: var(--text-muted);
 }
