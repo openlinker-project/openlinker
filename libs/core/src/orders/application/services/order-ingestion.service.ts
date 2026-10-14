@@ -102,6 +102,7 @@ import { withheldOnHoldError } from '../../domain/types/order-hold.types';
 import {
   isOrderFromOwnProductMaster,
   isOrderMirroredBeforeRouting,
+  isOrderFulfilledBySource,
   isOrderShippedElsewhere,
   type FulfillmentRoutingSkipReason,
 } from '../../domain/types/fulfillment-routing-eligibility.types';
@@ -640,7 +641,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       fulfillmentRouting,
       // #3455 — read from the PRE-persist `existing`: `persistOrder` never
       // writes `syncStatus` (#2140), so it is current, and no extra read is spent.
-      isOrderMirroredBeforeRouting(existing?.syncStatus)
+      isOrderMirroredBeforeRouting(existing?.syncStatus),
+      // #3636 - the source's own statement that it ships the order.
+      isOrderFulfilledBySource(order)
     );
     await this.reserveOrderInventory(
       order,
@@ -948,7 +951,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     orderId: string,
     orderSourceConnectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
-    alreadyMirrored: boolean
+    alreadyMirrored: boolean,
+    fulfilledBySource: boolean
   ): Promise<RoutingTarget> {
     try {
       const connections = await this.connections.list();
@@ -963,6 +967,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         orderSourceConnectionId,
         connections,
         alreadyMirrored,
+        fulfilledBySource,
         fulfillmentRouting
       );
       if (skipReason === 'routing-unknown') {
@@ -1178,7 +1183,9 @@ export class OrderIngestionService implements IOrderIngestionService {
    *     reads the connections already loaded.
    *  2. `mirrored-before-routing` (#3455) — the product master already has the
    *     order; a pre-read boolean.
-   *  3. `shipped-by-other-system` (#3488) — an ADR-012 rule routes the delivery
+   *  3. `source-fulfilled` (#3636) — the source asserts it ships the order
+   *     itself; a fact on the order, so it needs no read and outranks a rule.
+   *  4. `shipped-by-other-system` (#3488) — an ADR-012 rule routes the delivery
    *     method to `omp_fulfilled`; the one arm needing the (memoized, shared)
    *     routing resolve, so it runs last.
    *
@@ -1192,10 +1199,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     connections: readonly Connection[],
     alreadyMirrored: boolean,
+    fulfilledBySource: boolean,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>
   ): Promise<FulfillmentRoutingSkipReason | 'routing-unknown' | null> {
     if (isOrderFromOwnProductMaster(connections, connectionId)) return 'own-shop-order';
     if (alreadyMirrored) return 'mirrored-before-routing';
+    if (fulfilledBySource) return 'source-fulfilled';
     const routing = await fulfillmentRouting();
     // A failed read is not an answer; the caller must not route on it.
     if (routing === null) return 'routing-unknown';
@@ -2103,6 +2112,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       shipping: incoming.shipping,
       pickupPoint: incoming.pickupPoint,
       deliverySmart: incoming.deliverySmart,
+      fulfilledBySource: incoming.fulfilledBySource,
       paymentStatus: incoming.paymentStatus,
       codToCollect: incoming.codToCollect,
       dispatchTime: incoming.dispatchTime,

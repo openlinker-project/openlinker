@@ -51,6 +51,8 @@ export const FulfillmentRoutingSkipReasonValues = [
   'shipped-by-other-system',
   /** The product master already received it before routing was switched on, #3455. */
   'mirrored-before-routing',
+  /** The order's source (a marketplace) asserts it ships the order itself, #3636. */
+  'source-fulfilled',
 ] as const;
 
 export type FulfillmentRoutingSkipReason = (typeof FulfillmentRoutingSkipReasonValues)[number];
@@ -132,21 +134,30 @@ export type RoutingEligibilityResolution = Pick<
  * routing when the read failed, because routing on an unknown could ship a parcel
  * twice (#3496 review).
  *
- * Coverage is incidental for the headline case (a marketplace fulfilling its own
- * order): no neutral order field says so yet, so it is detected only when an
- * operator has mapped that delivery method to an `omp_fulfilled` rule (#3636).
+ * A marketplace fulfilling its own order is covered by the source's own
+ * assertion ({@link isOrderFulfilledBySource}, #3636), not by this rule.
  *
  * `processorAvailable` is deliberately not consulted. It reports whether OL can
  * drive the named processor, which says nothing about who ships the parcel; a
  * rule naming a disabled shop still says the shop ships it.
  */
-export function isOrderShippedElsewhere(
-  resolution: RoutingEligibilityResolution | null
-): boolean {
+export function isOrderShippedElsewhere(resolution: RoutingEligibilityResolution | null): boolean {
   return (
     resolution?.source === 'rule' &&
     resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled
   );
+}
+
+/**
+ * Whether the order's source asserts it ships the order itself (#3636), e.g.
+ * Allegro One Fulfillment. Only a positive `true` counts: an absent flag means
+ * "not asserted" and leaves routing unchanged.
+ *
+ * The source's statement is a fact, so it wins over an ADR-012 rule (which is
+ * only configuration) and is checked without reading the routing rules.
+ */
+export function isOrderFulfilledBySource(order: { readonly fulfilledBySource?: boolean }): boolean {
+  return order.fulfilledBySource === true;
 }
 
 /**

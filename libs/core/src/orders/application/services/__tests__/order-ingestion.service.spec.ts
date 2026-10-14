@@ -2527,6 +2527,70 @@ describe('OrderIngestionService', () => {
     // #3455 — an order the product master already received (a `synced`
     // destination row) before routing was switched on is not routed again on
     // re-ingest: it would be packed twice and its stock lowered twice (#3453).
+    describe('an order the source ships itself (#3636)', () => {
+      const router = { route: jest.fn() };
+
+      const marketplaceSource = {
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities: ['OrderSource', 'OfferManager'],
+        config: {},
+      };
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          marketplaceSource,
+        ] as never);
+      });
+
+      it('should not route the order and should follow today\'s path when the source asserts it ships it', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          fulfilledBySource: true,
+        } as never);
+        // No `omp_fulfilled` rule exists: the source's own statement is enough.
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(
+          (
+            orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+              IOrderRecordService['markFulfillmentRoutingSkip']
+            >
+          ).mock.calls.at(-1)
+        ).toEqual(['ol_order_int', 'source-fulfilled']);
+      });
+
+      it('should still route an order whose source asserts nothing', async () => {
+        orderSource.getOrder.mockResolvedValue(interceptIncoming as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'processor-1',
+          source: 'rule',
+          processorAvailable: true,
+        } as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('an order mirrored before routing was switched on (#3455)', () => {
       const router = { route: jest.fn() };
 

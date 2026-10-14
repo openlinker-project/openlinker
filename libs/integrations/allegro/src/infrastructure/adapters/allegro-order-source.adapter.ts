@@ -985,6 +985,9 @@ export class AllegroOrderSourceAdapter
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
+        // #3636: only a positive `ALLEGRO` is asserted; `SELLER` or an absent
+        // provider leave the fact unset rather than claiming the seller ships.
+        ...(checkoutForm.fulfillment?.provider?.id === 'ALLEGRO' && { fulfilledBySource: true }),
         paymentStatus,
         codToCollect,
         dispatchTime: this.resolveDispatchTime(checkoutForm),
