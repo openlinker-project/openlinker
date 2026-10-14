@@ -64,7 +64,7 @@ const CORE_TAX_ENFORCEMENT =
   'libs/core/src/sales-documents/domain/types/tax-rate-enforcement.types.ts';
 const FRONTEND = 'apps/web/src/plugins/eparagony/eparagony-config.types.ts';
 const FRONTEND_COPY = 'apps/web/src/plugins/eparagony/components/eparagony-tax-fallback-copy.ts';
-const FRONTEND_WIZARD = 'apps/web/src/features/connections/components/eparagony-setup.schema.ts';
+const FRONTEND_WIZARD = 'apps/web/src/plugins/eparagony/components/eparagony-setup.schema.ts';
 
 /**
  * Blank line/block comments to equal-length whitespace, preserving every

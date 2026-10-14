@@ -9,7 +9,7 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
-import type { WebhookStatus } from '../api/connections.types';
+import type { WebhookStatus } from '../../../features/connections';
 import { InfaktWebhookConfig } from './infakt-webhook-config';
 
 const infaktConnection = { ...sampleConnection, id: 'conn-if-1', platformType: 'infakt' };

@@ -397,11 +397,11 @@ describe('SalesDocumentPanel — manual actions when nothing is blocked', () => 
 describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
   const rejected = makeInvoice({ regulatoryStatus: 'rejected' });
 
-  function renderRejected(resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>): void {
+  function renderRejected(resendToAuthority: (invoiceId: string) => Promise<InvoiceRecord>): void {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
-        invoicing: { getForOrder: vi.fn().mockResolvedValue(rejected), resendToKsef },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(rejected), resendToAuthority },
       }),
       ...adminSession,
     });
@@ -409,10 +409,10 @@ describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
 
   it('reports a 501 as a structural refusal, not a transient failure worth retrying', async () => {
     const user = userEvent.setup();
-    const resendToKsef = vi
+    const resendToAuthority = vi
       .fn()
       .mockRejectedValue(new ApiError('Not Implemented', 501, { message: 'Not Implemented' }));
-    renderRejected(resendToKsef);
+    renderRejected(resendToAuthority);
 
     await user.click(await screen.findByRole('button', { name: 'Resend' }));
     // The structural-refusal distinction must reach a visible surface, not
@@ -425,10 +425,10 @@ describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
 
   it('keeps the generic message for any other failure', async () => {
     const user = userEvent.setup();
-    const resendToKsef = vi
+    const resendToAuthority = vi
       .fn()
       .mockRejectedValue(new ApiError('Service Unavailable', 503, { message: 'Service Unavailable' }));
-    renderRejected(resendToKsef);
+    renderRejected(resendToAuthority);
 
     await user.click(await screen.findByRole('button', { name: 'Resend' }));
     expect(await findToastTitle('Resend failed')).toBeInTheDocument();

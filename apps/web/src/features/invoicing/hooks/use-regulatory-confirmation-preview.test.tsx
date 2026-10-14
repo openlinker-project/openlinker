@@ -1,5 +1,5 @@
 /**
- * useKsefUpoPreview Tests (#1234)
+ * useRegulatoryConfirmationPreview Tests (#1234)
  *
  * Covers the object-URL lifecycle + content-type allowlist logic:
  *   - PDF blob → kind 'pdf', objectUrl created
@@ -14,7 +14,7 @@ import type { PropsWithChildren, ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiClientProvider } from '../../../app/api/api-client-provider';
 import { createMockApiClient } from '../../../test/test-utils';
-import { useKsefUpoPreview } from './use-ksef-upo-preview';
+import { useRegulatoryConfirmationPreview } from './use-regulatory-confirmation-preview';
 
 function createWrapper(overrides: Partial<Parameters<typeof createMockApiClient>[0]>) {
   const client = createMockApiClient(overrides);
@@ -23,7 +23,7 @@ function createWrapper(overrides: Partial<Parameters<typeof createMockApiClient>
   };
 }
 
-describe('useKsefUpoPreview', () => {
+describe('useRegulatoryConfirmationPreview', () => {
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
 
@@ -43,7 +43,7 @@ describe('useKsefUpoPreview', () => {
     const downloadUpo = vi.fn().mockResolvedValue(pdfBlob);
     const wrapper = createWrapper({ invoicing: { downloadUpo } });
 
-    const { result } = renderHook(() => useKsefUpoPreview(), { wrapper });
+    const { result } = renderHook(() => useRegulatoryConfirmationPreview(), { wrapper });
     let ok = false;
     await act(async () => {
       ok = await result.current.open('inv_1');
@@ -63,7 +63,7 @@ describe('useKsefUpoPreview', () => {
     const downloadUpo = vi.fn().mockResolvedValue(xmlBlob);
     const wrapper = createWrapper({ invoicing: { downloadUpo } });
 
-    const { result } = renderHook(() => useKsefUpoPreview(), { wrapper });
+    const { result } = renderHook(() => useRegulatoryConfirmationPreview(), { wrapper });
     await act(async () => { await result.current.open('inv_2'); });
 
     expect(result.current.preview?.kind).toBe('xml');
@@ -74,7 +74,7 @@ describe('useKsefUpoPreview', () => {
     const downloadUpo = vi.fn().mockResolvedValue(xmlBlob);
     const wrapper = createWrapper({ invoicing: { downloadUpo } });
 
-    const { result } = renderHook(() => useKsefUpoPreview(), { wrapper });
+    const { result } = renderHook(() => useRegulatoryConfirmationPreview(), { wrapper });
     await act(async () => { await result.current.open('inv_3'); });
 
     expect(result.current.preview?.kind).toBe('xml');
@@ -85,7 +85,7 @@ describe('useKsefUpoPreview', () => {
     const downloadUpo = vi.fn().mockResolvedValue(binBlob);
     const wrapper = createWrapper({ invoicing: { downloadUpo } });
 
-    const { result } = renderHook(() => useKsefUpoPreview(), { wrapper });
+    const { result } = renderHook(() => useRegulatoryConfirmationPreview(), { wrapper });
     await act(async () => { await result.current.open('inv_4'); });
 
     expect(result.current.preview?.kind).toBe('unsupported');
@@ -97,7 +97,7 @@ describe('useKsefUpoPreview', () => {
     const downloadUpo = vi.fn().mockRejectedValue(fetchError);
     const wrapper = createWrapper({ invoicing: { downloadUpo } });
 
-    const { result } = renderHook(() => useKsefUpoPreview(), { wrapper });
+    const { result } = renderHook(() => useRegulatoryConfirmationPreview(), { wrapper });
     let ok = true;
     await act(async () => { ok = await result.current.open('inv_5'); });
 
@@ -111,7 +111,7 @@ describe('useKsefUpoPreview', () => {
     const downloadUpo = vi.fn().mockResolvedValue(pdfBlob);
     const wrapper = createWrapper({ invoicing: { downloadUpo } });
 
-    const { result } = renderHook(() => useKsefUpoPreview(), { wrapper });
+    const { result } = renderHook(() => useRegulatoryConfirmationPreview(), { wrapper });
     await act(async () => { await result.current.open('inv_6'); });
     const createdUrl = result.current.preview?.objectUrl ?? '';
 
@@ -126,7 +126,7 @@ describe('useKsefUpoPreview', () => {
     const downloadUpo = vi.fn().mockResolvedValue(pdfBlob);
     const wrapper = createWrapper({ invoicing: { downloadUpo } });
 
-    const { result, unmount } = renderHook(() => useKsefUpoPreview(), { wrapper });
+    const { result, unmount } = renderHook(() => useRegulatoryConfirmationPreview(), { wrapper });
     await act(async () => { await result.current.open('inv_7'); });
     const createdUrl = result.current.preview?.objectUrl ?? '';
 

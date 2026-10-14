@@ -4,8 +4,8 @@
  * Page wrapper for the guided eparagony.pl (Fiscalization) connection wizard.
  */
 import type { ReactElement } from 'react';
-import { EparagonySetupForm } from '../../features/connections/components/eparagony-setup-form';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { EparagonySetupForm } from './eparagony-setup-form';
+import { PageLayout } from '../../../shared/ui/page-layout';
 
 export function EparagonySetupPage(): ReactElement {
   return (

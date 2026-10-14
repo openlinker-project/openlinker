@@ -1,5 +1,5 @@
 /**
- * useKsefFa3
+ * useInvoiceSourceDocument
  *
  * Provides FA(3) document access for accepted KSeF invoices (#1228, B5):
  *   - `loadView(invoiceId)` — fetch `kind=source` (XML) and expose as raw text
@@ -30,7 +30,7 @@ function xmlFilename(invoiceId: string): string {
   return `ol-fa3-${invoiceId}.xml`;
 }
 
-interface UseKsefFa3 {
+interface UseInvoiceSourceDocument {
   /** Raw XML text of the FA(3) source document, for client-side parsing by `KsefFa3View`. */
   viewText: string | null;
   isLoadingView: boolean;
@@ -53,7 +53,7 @@ interface UseKsefFa3 {
   downloadXml: (invoiceId: string) => Promise<Error | null>;
 }
 
-export function useKsefFa3(): UseKsefFa3 {
+export function useInvoiceSourceDocument(): UseInvoiceSourceDocument {
   const apiClient = useApiClient();
   const [viewText, setViewText] = useState<string | null>(null);
   const [isLoadingView, setIsLoadingView] = useState(false);

@@ -20,13 +20,16 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import {
+  useCreateConnectionMutation,
+  useTestConnectionMutation,
+  useUpdateConnectionMutation,
+  useBankAccountsQuery,
+  usePickBankAccount,
+  type Connection,
+  type ConnectionTestResult,
+} from '../../../features/connections';
 import { useNavigate } from 'react-router-dom';
-import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
-import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
-import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
-import { useBankAccountsQuery } from '../hooks/use-bank-accounts-query';
-import { usePickBankAccount } from '../hooks/use-pick-bank-account';
-import type { Connection, ConnectionTestResult } from '../api/connections.types';
 import {
   INFAKT_SETUP_DEFAULT_VALUES,
   infaktSetupSchema,

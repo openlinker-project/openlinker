@@ -62,16 +62,16 @@ export {
   useIssueCorrectionMutation,
   type IssueCorrectionVariables,
 } from './hooks/use-issue-correction-mutation';
-export { useResendToKsefMutation } from './hooks/use-resend-to-ksef-mutation';
+export { useResendToAuthorityMutation } from './hooks/use-resend-to-authority-mutation';
+export { useRegulatoryConfirmationPreview } from './hooks/use-regulatory-confirmation-preview';
+export type { ConfirmationPreviewKind } from './hooks/use-regulatory-confirmation-preview';
+export { useRegulatoryConfirmationDownload } from './hooks/use-regulatory-confirmation-download';
+export { useInvoiceSourceDocument } from './hooks/use-invoice-source-document';
+export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export {
   useSendInvoiceEmailMutation,
   type SendInvoiceEmailVariables,
 } from './hooks/use-send-invoice-email-mutation';
-export { useKsefUpoPreview } from './hooks/use-ksef-upo-preview';
-export type { UpoPreviewKind } from './hooks/use-ksef-upo-preview';
-export { useKsefUpoDownload } from './hooks/use-ksef-upo-download';
-export { useKsefFa3 } from './hooks/use-ksef-fa3';
-export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export { invoicingQueryKeys } from './api/invoicing.query-keys';
 
 // Invoice numbering (binds the numbering-series HTTP API). The API factory rides

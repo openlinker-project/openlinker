@@ -1,5 +1,5 @@
 /**
- * useKsefUpoDownload
+ * useRegulatoryConfirmationDownload
  *
  * One-shot action (NOT a TanStack mutation) that fetches a cleared/accepted
  * e-invoice's official UPO confirmation document via
@@ -47,7 +47,7 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
-interface UseKsefUpoDownload {
+interface UseRegulatoryConfirmationDownload {
   /** Fetch + trigger the browser download. Resolves `true` on success, `false`
    *  when the fetch failed (the error is also exposed via `error`). */
   download: (invoiceId: string) => Promise<boolean>;
@@ -55,7 +55,7 @@ interface UseKsefUpoDownload {
   error: Error | null;
 }
 
-export function useKsefUpoDownload(): UseKsefUpoDownload {
+export function useRegulatoryConfirmationDownload(): UseRegulatoryConfirmationDownload {
   const apiClient = useApiClient();
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
