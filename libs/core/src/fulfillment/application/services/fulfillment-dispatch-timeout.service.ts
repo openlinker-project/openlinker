@@ -26,12 +26,15 @@ import {
 } from '../../domain/ports/fulfillment-work-repository.port';
 import {
   deriveAcceptanceAttention,
+  type DeriveAcceptanceAttentionOptions,
   describeFulfillmentDispatchTimeout,
   FULFILLMENT_DISPATCH_TIMEOUT_IS_BLOCKING,
   FULFILLMENT_DISPATCH_TIMEOUT_REASON,
 } from '../../domain/types/fulfillment-dispatch-timeout.types';
 import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import type {
+  FindStalledUnsubmittedInput,
+  FindStalledUnsubmittedResult,
   FulfillmentAcceptanceAttentionIntent,
   ReapTimedOutDispatchesInput,
   ReapTimedOutDispatchesResult,
@@ -102,18 +105,58 @@ export class FulfillmentDispatchTimeoutService implements IFulfillmentDispatchTi
       skippedUnassigned,
       failed,
       timeoutMs: input.timeoutMs,
-      attentionIntents: await this.buildAttentionIntents(reapedOrderIds),
+      // The stalled arm is on here too (#3476): the reap recomputes the whole
+      // order, and leaving it off would let this write drop a stuck sibling.
+      attentionIntents: await this.buildAttentionIntents(reapedOrderIds, {
+        stalledUnsubmittedBefore: idleBefore,
+      }),
     };
   }
 
   async recomputeAcceptanceAttention(
-    orderId: string
+    orderId: string,
+    options: DeriveAcceptanceAttentionOptions = {}
   ): Promise<AuthorityAttentionOutcome<'acceptance'>> {
     // Throws on an infrastructure fault rather than reporting `none`: a failed
     // read must never be written as a CLEAR, which would erase a true reason
     // (#2100). The caller treats a throw as "leave the stored entry alone".
     const works = await this.repository.findByOrderId(orderId);
-    return deriveAcceptanceAttention(works);
+    return deriveAcceptanceAttention(works, options);
+  }
+
+  async findStalledUnsubmitted(
+    input: FindStalledUnsubmittedInput
+  ): Promise<FindStalledUnsubmittedResult> {
+    const idleBefore = new Date(input.now.getTime() - input.timeoutMs);
+    const rows = await this.repository.listStalledUnsubmittedWorks({
+      idleBefore,
+      afterWorkId: input.afterWorkId,
+      limit: input.limit,
+    });
+
+    if (rows.length > 0) {
+      this.logger.warn(
+        `Found ${String(rows.length)} fulfilment work object(s) routed to a holder and never ` +
+          `offered to it (idle since before ${idleBefore.toISOString()}); the holder's connection ` +
+          `most likely does not have FulfillmentExecutor enabled`
+      );
+    }
+
+    const works = rows.map((row) => ({
+      workId: row.workId,
+      orderId: row.orderId,
+      assignedConnectionId: row.assignedConnectionId,
+    }));
+
+    return {
+      works,
+      // A short page means the keyset reached the end: wrap to the start.
+      nextAfterWorkId: rows.length < input.limit ? null : (rows[rows.length - 1]?.workId ?? null),
+      attentionIntents: await this.buildAttentionIntents(
+        new Set(works.map((work) => work.orderId)),
+        { stalledUnsubmittedBefore: idleBefore }
+      ),
+    };
   }
 
   /**
@@ -193,7 +236,8 @@ export class FulfillmentDispatchTimeoutService implements IFulfillmentDispatchTi
    * must never erase a true reason.
    */
   private async buildAttentionIntents(
-    orderIds: ReadonlySet<string>
+    orderIds: ReadonlySet<string>,
+    options: DeriveAcceptanceAttentionOptions
   ): Promise<FulfillmentAcceptanceAttentionIntent[]> {
     const intents: FulfillmentAcceptanceAttentionIntent[] = [];
 
@@ -201,7 +245,7 @@ export class FulfillmentDispatchTimeoutService implements IFulfillmentDispatchTi
       try {
         // The SAME method the dispatch handler calls, so the sweep's verdict
         // and the handshake's cannot be computed two different ways.
-        intents.push({ orderId, outcome: await this.recomputeAcceptanceAttention(orderId) });
+        intents.push({ orderId, outcome: await this.recomputeAcceptanceAttention(orderId, options) });
       } catch (error) {
         this.logger.error(
           `Could not recompute the acceptance attention state for order ${orderId}: ${

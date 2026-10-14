@@ -13,6 +13,7 @@ import { checkRoutingPlanConservesQuantities, type RoutingInput } from '@openlin
 import { runFulfillmentRouterContract } from '@openlinker/core/fulfillment/testing';
 
 import type { createOlFulfillmentRouter} from './ol-fulfillment-router';
+import { HOLDER_CANNOT_EXECUTE_REASON } from './evaluate-routing';
 import { OlFulfillmentRouter } from './ol-fulfillment-router';
 import type { RoutingRule } from './routing-rule.types';
 
@@ -43,6 +44,8 @@ function buildRouter(options: {
   abundant?: boolean;
   /** Records every inventory filter the router asked with (#3481). */
   inventoryFilters?: Array<Record<string, unknown>>;
+  /** #3476 — whether the OMS connection has `FulfillmentExecutor` enabled. */
+  holderCanExecute?: boolean;
 }): OlFulfillmentRouter {
   const locations = options.locations ?? [{ id: 'loc-a', countryIso2: 'PL', postcode: '00-001' }];
 
@@ -89,6 +92,7 @@ function buildRouter(options: {
 
   return new OlFulfillmentRouter({
     connectionId: CONNECTION_ID,
+    holderCanExecute: options.holderCanExecute ?? true,
     rules,
     locations: locationService,
     inventory,
@@ -122,6 +126,57 @@ const input = (overrides: Partial<RoutingInput> = {}): RoutingInput => ({
 runFulfillmentRouterContract(() => buildRouter({ abundant: true }), { subject: 'OlFulfillmentRouter' });
 
 describe('OlFulfillmentRouter', () => {
+  // #3476 — a holder whose connection cannot execute must never be assigned:
+  // the dispatch job would dead-letter and leave the work `unsubmitted` for ever.
+  describe('when the holder cannot execute', () => {
+    it('should assign nothing and report every line unfulfillable with a named reason', async () => {
+      const router = buildRouter({ abundant: true, holderCanExecute: false });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:d1' });
+
+      expect(plan.status).toBe('resolved');
+      if (plan.status !== 'resolved') return;
+      expect(plan.assignments).toEqual([]);
+      expect(plan.unfulfillable).toEqual([
+        {
+          orderLineId: 'line-1',
+          quantity: 2,
+          resolution: 'refund',
+          reason: HOLDER_CANNOT_EXECUTE_REASON,
+        },
+      ]);
+    });
+
+    it('should name the holder guard in the explanation, ahead of any operator rule', async () => {
+      const router = buildRouter({
+        abundant: true,
+        holderCanExecute: false,
+        rules: [filter('in-stock')],
+      });
+
+      const evaluation = await router.evaluate(input());
+
+      expect(evaluation.explanation[0]).toEqual({
+        rule: {
+          ruleId: 'openlinker:holder-can-execute',
+          name: 'holder-can-execute',
+          displayLabel: 'Holder can execute',
+        },
+        eliminated: ['loc-a'],
+        score: null,
+        detail: HOLDER_CANNOT_EXECUTE_REASON,
+      });
+    });
+
+    it('should leave the explanation empty for an empty ruleset when the holder can execute', async () => {
+      const router = buildRouter({ abundant: true, holderCanExecute: true });
+
+      const evaluation = await router.evaluate(input());
+
+      expect(evaluation.explanation).toEqual([]);
+    });
+  });
+
   describe('the shared pipeline', () => {
     it('should explain evaluate() and route() identically for the same input', async () => {
       const router = buildRouter({ abundant: true, rules: [filter('in-stock'), sort('most-complete')] });

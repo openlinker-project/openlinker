@@ -207,3 +207,97 @@ describe('FulfillmentDispatchTimeoutService.recomputeAcceptanceAttention (#2712)
     await expect(service.recomputeAcceptanceAttention('ol_order_1')).rejects.toThrow('db down');
   });
 });
+
+describe('FulfillmentDispatchTimeoutService.findStalledUnsubmitted (#3476)', () => {
+  const stalledRow = (workId: string, orderId = 'ol_order_1') => ({
+    workId,
+    orderId,
+    assignedConnectionId: 'conn-oms',
+    idleSince: new Date('2026-09-08T06:00:00.000Z'),
+  });
+
+  const stalledWork = (id: string): FulfillmentWork =>
+    ({
+      id,
+      orderId: 'ol_order_1',
+      status: 'open',
+      requestStatus: 'unsubmitted',
+      assignedConnectionId: 'conn-oms',
+      updatedAt: new Date('2026-09-08T06:00:00.000Z'),
+    }) as unknown as FulfillmentWork;
+
+  let repository: jest.Mocked<
+    Pick<FulfillmentWorkRepositoryPort, 'listStalledUnsubmittedWorks' | 'findByOrderId'>
+  >;
+  let service: FulfillmentDispatchTimeoutService;
+
+  beforeEach(() => {
+    repository = {
+      listStalledUnsubmittedWorks: jest.fn().mockResolvedValue([]),
+      findByOrderId: jest.fn().mockResolvedValue([]),
+    };
+    service = new FulfillmentDispatchTimeoutService(
+      repository as unknown as FulfillmentWorkRepositoryPort
+    );
+  });
+
+  const find = (afterWorkId: string | null = null, limit = 2) =>
+    service.findStalledUnsubmitted({ limit, timeoutMs: TIMEOUT_MS, now: NOW, afterWorkId });
+
+  it('should read past the cursor at now minus the resolved timeout', async () => {
+    await find('ol_fwork_0');
+
+    expect(repository.listStalledUnsubmittedWorks).toHaveBeenCalledWith({
+      idleBefore: new Date(NOW.getTime() - TIMEOUT_MS),
+      afterWorkId: 'ol_fwork_0',
+      limit: 2,
+    });
+  });
+
+  it('should raise A3-X for each order on the page from ALL its works', async () => {
+    repository.listStalledUnsubmittedWorks.mockResolvedValue([stalledRow('w1')]);
+    repository.findByOrderId.mockResolvedValue([stalledWork('w1')]);
+
+    const result = await find();
+
+    expect(result.works).toEqual([
+      { workId: 'w1', orderId: 'ol_order_1', assignedConnectionId: 'conn-oms' },
+    ]);
+    expect(result.attentionIntents).toEqual([
+      {
+        orderId: 'ol_order_1',
+        outcome: expect.objectContaining({
+          kind: 'blocked',
+          reason: 'fulfillment-unaccepted',
+          subjectRef: 'w1',
+        }),
+      },
+    ]);
+  });
+
+  it('should recompute an order once even when several of its works are stalled', async () => {
+    repository.listStalledUnsubmittedWorks.mockResolvedValue([stalledRow('w1'), stalledRow('w2')]);
+
+    await find();
+
+    expect(repository.findByOrderId).toHaveBeenCalledTimes(1);
+  });
+
+  it('should continue the keyset after a full page and wrap after a short one', async () => {
+    repository.listStalledUnsubmittedWorks.mockResolvedValue([stalledRow('w1'), stalledRow('w2')]);
+    await expect(find()).resolves.toMatchObject({ nextAfterWorkId: 'w2' });
+
+    repository.listStalledUnsubmittedWorks.mockResolvedValue([stalledRow('w3')]);
+    await expect(find('w2')).resolves.toMatchObject({ nextAfterWorkId: null });
+  });
+
+  it('should emit no intent, rather than a clear, when the order cannot be re-read', async () => {
+    repository.listStalledUnsubmittedWorks.mockResolvedValue([stalledRow('w1')]);
+    repository.findByOrderId.mockRejectedValue(new Error('db down'));
+
+    const result = await find();
+
+    expect(result.works).toHaveLength(1);
+    expect(result.attentionIntents).toEqual([]);
+  });
+});

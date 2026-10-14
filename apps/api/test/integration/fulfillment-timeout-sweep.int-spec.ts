@@ -272,4 +272,79 @@ describe('Fulfilment dispatch timeout sweep (#2712)', () => {
       kind: 'none',
     });
   });
+
+  // #3476 — work routed to a holder whose dispatch job died before the
+  // handshake could claim it. The predicate is a claim about committed rows.
+  describe('stalled unsubmitted work (#3476)', () => {
+    const seedUnsubmitted = async (
+      orderId = 'ol_order_1',
+      assignedConnectionId: string | null = '11111111-1111-1111-1111-111111111111'
+    ): Promise<FulfillmentWork> =>
+      await repository().create({
+        orderId,
+        locationId: 'ol_location_1',
+        deliveryMethod: 'courier',
+        assignedConnectionId,
+        lines: [{ orderLineId: 'l-1', productVariantId: 'ol_variant_1', totalQuantity: 2 }],
+      });
+
+    const find = (afterWorkId: string | null = null, limit = 200) =>
+      sweep().findStalledUnsubmitted({ limit, timeoutMs: TIMEOUT_MS, now: new Date(), afterWorkId });
+
+    it('should find an idle unsubmitted work and raise A3-X for its order', async () => {
+      const work = await seedUnsubmitted();
+      await makeIdle(work.id, 6);
+
+      const result = await find();
+
+      expect(result.works.map((stalled) => stalled.workId)).toEqual([work.id]);
+      expect(result.attentionIntents).toEqual([
+        {
+          orderId: 'ol_order_1',
+          outcome: expect.objectContaining({
+            kind: 'blocked',
+            reason: 'fulfillment-unaccepted',
+            subjectRef: work.id,
+          }),
+        },
+      ]);
+      // Reporting writes nothing: the work is left exactly as it was.
+      expect((await repository().findById(work.id))?.requestStatus).toBe('unsubmitted');
+    });
+
+    it('should ignore unsubmitted work still inside the window', async () => {
+      const work = await seedUnsubmitted();
+      await makeIdle(work.id, 1);
+
+      await expect(find()).resolves.toMatchObject({ works: [] });
+    });
+
+    it('should ignore work that was offered, and work with no holder', async () => {
+      const submitted = await seedSubmitted('ol_order_2');
+      await makeIdle(submitted.id, 6);
+      const unheld = await seedUnsubmitted('ol_order_3', null);
+      await makeIdle(unheld.id, 6);
+
+      await expect(find()).resolves.toMatchObject({ works: [] });
+    });
+
+    it('should page by keyset past the cursor and wrap on a short page', async () => {
+      const first = await seedUnsubmitted('ol_order_1');
+      const second = await seedUnsubmitted('ol_order_2');
+      await makeIdle(first.id, 6);
+      await makeIdle(second.id, 6);
+      const [lowId, highId] = [first.id, second.id].sort();
+
+      const page1 = await find(null, 1);
+      expect(page1.works.map((stalled) => stalled.workId)).toEqual([lowId]);
+      expect(page1.nextAfterWorkId).toBe(lowId);
+
+      const page2 = await find(page1.nextAfterWorkId, 1);
+      expect(page2.works.map((stalled) => stalled.workId)).toEqual([highId]);
+
+      const page3 = await find(highId, 1);
+      expect(page3.works).toEqual([]);
+      expect(page3.nextAfterWorkId).toBeNull();
+    });
+  });
 });

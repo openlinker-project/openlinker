@@ -82,6 +82,13 @@ export type RoutingCommitOutcome =
       readonly status: 'refused';
       readonly decisionId: string;
       readonly reason: RoutingDecisionAbandonReason;
+      /**
+       * The router's own per-line reasons, distinct and sorted, when the plan
+       * was refused as `plan-carries-unfulfillable`; empty otherwise (#3476).
+       * Without them the operator learns only THAT a line cannot ship, not
+       * whether to restock or to fix the holder's connection.
+       */
+      readonly unfulfillableReasons: readonly string[];
     }
   /**
    * The router may or may not have committed on its side.

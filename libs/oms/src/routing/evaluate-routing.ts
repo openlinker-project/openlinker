@@ -27,6 +27,50 @@ export interface RoutingPipelineResult {
 
 const UNRANKED = Number.MAX_SAFE_INTEGER;
 
+/**
+ * The unfulfillable reason when the holder guard emptied the candidate set
+ * (#3476). A fixed sentence — no ids, no PII — because it is surfaced on the
+ * order's block detail, which must stay stable across re-routes.
+ */
+export const HOLDER_CANNOT_EXECUTE_REASON =
+  'the holding connection does not have the FulfillmentExecutor capability enabled, so no work can be dispatched to it';
+
+/** The explanation step's rule ref. Not an operator-authored rule, so no real id. */
+const HOLDER_GUARD_RULE = {
+  ruleId: 'openlinker:holder-can-execute',
+  name: 'holder-can-execute',
+  displayLabel: 'Holder can execute',
+} as const;
+
+/**
+ * Drop candidates whose holder cannot be dispatched to (#3476).
+ *
+ * Returns a step only when something was eliminated, so an install whose
+ * holder is fine keeps an EMPTY explanation for an empty ruleset.
+ */
+function applyHolderGuard(
+  candidates: readonly RoutingCandidate[],
+  facts: RoutingFacts
+): { readonly survivors: readonly RoutingCandidate[]; readonly step: RoutingExplanationStep | null } {
+  const eliminated = candidates.filter(
+    (candidate) => candidate.connectionId !== null && facts.nonExecutingHolderIds.has(candidate.connectionId)
+  );
+  if (eliminated.length === 0) {
+    return { survivors: candidates, step: null };
+  }
+
+  const eliminatedIds = new Set(eliminated.map((candidate) => candidate.locationId));
+  return {
+    survivors: candidates.filter((candidate) => !eliminatedIds.has(candidate.locationId)),
+    step: {
+      rule: HOLDER_GUARD_RULE,
+      eliminated: [...eliminatedIds],
+      score: null,
+      detail: HOLDER_CANNOT_EXECUTE_REASON,
+    },
+  };
+}
+
 function availableAt(facts: RoutingFacts, locationId: string, variantId: string): number {
   return facts.stock.get(stockKey(locationId, variantId)) ?? 0;
 }
@@ -253,13 +297,18 @@ function assignLines(
   ranked: readonly RoutingCandidate[],
   input: RoutingInput,
   facts: RoutingFacts,
-  allowance: RoutingAfterAction
+  allowance: RoutingAfterAction,
+  holderGuardEmptiedCandidates: boolean
 ): { readonly assignments: RoutingAssignment[]; readonly unfulfillable: RoutingUnfulfillableLine[] } {
   const assignments: RoutingAssignment[] = [];
   const unfulfillable: RoutingUnfulfillableLine[] = [];
 
   const noCandidates = ranked.length === 0;
-  const eliminatedReason = 'every candidate location was eliminated by the configured filters';
+  // Name the holder guard when IT is the cause: "eliminated by the configured
+  // filters" would send the operator to edit rules that are not the problem.
+  const eliminatedReason = holderGuardEmptiedCandidates
+    ? HOLDER_CANNOT_EXECUTE_REASON
+    : 'every candidate location was eliminated by the configured filters';
 
   if (allowance === 'no-split') {
     const sole = ranked.find((candidate) => coversWholeOrder(input, facts, candidate));
@@ -397,7 +446,12 @@ export function evaluateRouting(
   facts: RoutingFacts
 ): RoutingPipelineResult {
   const explanation: RoutingExplanationStep[] = [];
-  let survivors: readonly RoutingCandidate[] = facts.candidates;
+  const guard = applyHolderGuard(facts.candidates, facts);
+  let survivors: readonly RoutingCandidate[] = guard.survivors;
+  if (guard.step !== null) {
+    explanation.push(guard.step);
+  }
+  const holderGuardEmptiedCandidates = guard.step !== null && guard.survivors.length === 0;
 
   for (const rule of rules) {
     if (rule.kind !== 'filter') {
@@ -426,7 +480,13 @@ export function evaluateRouting(
     explanation.push(splitStep);
   }
 
-  const { assignments, unfulfillable } = assignLines(ranked, input, facts, allowance);
+  const { assignments, unfulfillable } = assignLines(
+    ranked,
+    input,
+    facts,
+    allowance,
+    holderGuardEmptiedCandidates
+  );
 
   return { assignments, unfulfillable, explanation };
 }
