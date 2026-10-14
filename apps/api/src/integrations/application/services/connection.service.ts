@@ -412,10 +412,7 @@ export class ConnectionService implements IConnectionService {
       );
     }
     const roundings = ['none', 'nearestWhole', 'endingIn99'];
-    if (
-      rounding !== undefined &&
-      (typeof rounding !== 'string' || !roundings.includes(rounding))
-    ) {
+    if (rounding !== undefined && (typeof rounding !== 'string' || !roundings.includes(rounding))) {
       throw new BadRequestException(`${path}.rounding must be one of ${roundings.join(', ')}`);
     }
     if (percent !== undefined && percent !== null) {
@@ -486,10 +483,8 @@ export class ConnectionService implements IConnectionService {
       throw new BadRequestException('config.autoDispatch must be an object');
     }
 
-    const { enabled, parcelTemplate, defaultWeightGrams } = autoDispatch as Record<
-      string,
-      unknown
-    >;
+    const { enabled, parcelTemplate, defaultWeightGrams, lengthMm, widthMm, heightMm } =
+      autoDispatch as Record<string, unknown>;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
       throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
     }
@@ -504,6 +499,23 @@ export class ConnectionService implements IConnectionService {
     ) {
       throw new BadRequestException(
         'config.autoDispatch.defaultWeightGrams must be a number greater than 0'
+      );
+    }
+    const dimensions = { lengthMm, widthMm, heightMm };
+    for (const [field, value] of Object.entries(dimensions)) {
+      if (
+        value !== undefined &&
+        (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+      ) {
+        throw new BadRequestException(
+          `config.autoDispatch.${field} must be a number greater than 0`
+        );
+      }
+    }
+    const setCount = Object.values(dimensions).filter((value) => value !== undefined).length;
+    if (setCount !== 0 && setCount !== 3) {
+      throw new BadRequestException(
+        'config.autoDispatch.lengthMm, widthMm and heightMm must be set together'
       );
     }
   }
