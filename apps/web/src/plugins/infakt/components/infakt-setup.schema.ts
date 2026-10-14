@@ -15,7 +15,7 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
-import type { CreateConnectionInput } from '../api/connections.types';
+import type { CreateConnectionInput } from '../../../features/connections';
 
 export const INFAKT_ADAPTER_KEY = 'infakt.accounting.v1';
 
