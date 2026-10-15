@@ -4,7 +4,7 @@ import { paymentMethodChipLabel, paymentMethodLabel } from './payment-method-cop
 
 describe('paymentMethodLabel', () => {
   it.each([
-    ['online', 'Paid online'],
+    ['online', 'Online payment'],
     ['bank_transfer', 'Bank transfer'],
     ['cash_on_delivery', 'Cash on delivery'],
   ] as const)('should label %s as "%s"', (method, label) => {

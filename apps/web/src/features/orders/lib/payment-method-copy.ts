@@ -11,7 +11,7 @@
 import type { PaymentMethod, PaymentStatus } from '../api/order-snapshot.schema';
 
 const PAYMENT_METHOD_LABEL: Partial<Record<PaymentMethod, string>> = {
-  online: 'Paid online',
+  online: 'Online payment',
   bank_transfer: 'Bank transfer',
   cash_on_delivery: 'Cash on delivery',
 };

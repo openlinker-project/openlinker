@@ -1089,6 +1089,10 @@ export class InfaktInvoicingAdapter
         // different currency than the document it corrects.
         currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        // Deliberately NOT the order's method (#3294): a correction carries no
+        // order context, so it keeps the connection default even when the
+        // original was issued as cash on delivery. Known gap, tracked with the
+        // returns correction flow rather than guessed here.
         payment_method: this.paymentMethod,
         // Required by Infakt on every invoice, corrective included — verified
         // live (2026-07-01): omitting it 422s with "client_id required". The

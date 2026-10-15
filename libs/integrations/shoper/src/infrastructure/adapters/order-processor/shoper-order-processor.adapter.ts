@@ -403,9 +403,22 @@ export class ShoperOrderProcessorAdapter
     const sourceConnectionId = order.source?.connectionId;
     const sourcePaymentMethod = order.sourcePaymentMethod;
     if (this.mappingConfig !== undefined && sourceConnectionId !== undefined && sourcePaymentMethod !== undefined) {
-      const mapped = toPositiveInt(await this.mappingConfig.resolvePaymentMapping(sourceConnectionId, sourcePaymentMethod));
-      if (mapped !== null) {
-        return mapped;
+      try {
+        const mapped = toPositiveInt(
+          await this.mappingConfig.resolvePaymentMapping(sourceConnectionId, sourcePaymentMethod),
+        );
+        if (mapped !== null) {
+          return mapped;
+        }
+      } catch (error) {
+        // The default is a safe answer, so a failed lookup degrades to it
+        // rather than costing the order - the PrestaShop and WooCommerce
+        // adapters do the same.
+        this.logger.warn(
+          `Payment mapping lookup failed for sourcePaymentMethod=${sourcePaymentMethod} ` +
+            `(sourceConnectionId=${sourceConnectionId}); using defaults.paymentId: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     return requireDefault(defaults.paymentId, 'defaults.paymentId', 'payment method', this.connection.id);

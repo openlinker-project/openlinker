@@ -11,7 +11,7 @@
  *
  * @module libs/core/src/invoicing/domain/types
  */
-import type { PaymentMethod } from '@openlinker/core/orders';
+import type { PaymentMethod } from '@openlinker/core/orders/types';
 import type { BuyerProfile } from '../entities/buyer-profile.entity';
 import type { InvoiceRecord } from '../entities/invoice-record.entity';
 

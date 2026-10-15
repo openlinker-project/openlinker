@@ -173,6 +173,27 @@ describe('mapToFa3BuilderInput - order payment method (#3294)', () => {
     expect(result.payment).toEqual({ formaPlatnosci: forma, paymentTermDays: 14 });
   });
 
+  it('should not print the connection bank account on a cash invoice', () => {
+    const context: Fa3MappingContext = {
+      ...CONTEXT,
+      payment: {
+        paymentTermDays: 7,
+        bankAccount: { nrRb: '61109010140000071219812874' },
+      },
+    };
+    const cash = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'cash_on_delivery' },
+      context,
+    );
+    expect(cash.payment).toEqual({ paymentTermDays: 7, formaPlatnosci: '1' });
+
+    const transfer = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'bank_transfer' },
+      context,
+    );
+    expect(transfer.payment?.bankAccount).toBeDefined();
+  });
+
   it('should emit a payment block from the order method even when the connection has none', () => {
     const result = mapToFa3BuilderInput(
       { ...baseCommand('23'), paymentMethod: 'bank_transfer' },

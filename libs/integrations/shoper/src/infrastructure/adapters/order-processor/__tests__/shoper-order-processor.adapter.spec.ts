@@ -199,6 +199,17 @@ describe('ShoperOrderProcessorAdapter', () => {
       expect((second.post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ payment_id: 1 });
     });
 
+    it('should fall back to defaults.paymentId when the payment mapping lookup fails (#3294)', async () => {
+      const { adapter, post, mappingConfig } = setup();
+      mappingConfig.resolvePaymentMapping.mockRejectedValue(new Error('db unavailable'));
+
+      await expect(adapter.createOrder(order({ sourcePaymentMethod: 'ONLINE' }))).resolves.toEqual({
+        orderId: '10',
+      });
+
+      expect((post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ payment_id: 1 });
+    });
+
     it('should use the source gross price for a net-priced line', async () => {
       const { adapter, post } = setup();
       const o = order({

@@ -130,7 +130,14 @@ function resolvePayment(
   if (forma === undefined) {
     return context.payment !== undefined ? { payment: context.payment } : {};
   }
-  return { payment: { ...context.payment, formaPlatnosci: forma } };
+  // A cash invoice must not print the seller's bank account: the connection's
+  // account describes where a transfer should land, which is a different
+  // statement from "paid in cash".
+  const payment = { ...context.payment, formaPlatnosci: forma };
+  if (forma === '1') {
+    delete payment.bankAccount;
+  }
+  return { payment };
 }
 
 /**
