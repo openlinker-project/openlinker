@@ -98,6 +98,7 @@ describe('OrderSyncService', () => {
       upsertPaymentMappings: jest.fn().mockResolvedValue([]),
       resolveStatusMapping: jest.fn().mockResolvedValue(null),
       resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+      resolvePaymentMapping: jest.fn().mockResolvedValue(null),
       getOrderStateMappings: jest.fn().mockResolvedValue([]),
       upsertOrderStateMappings: jest.fn().mockResolvedValue([]),
       resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
@@ -630,6 +631,32 @@ describe('OrderSyncService', () => {
       expect(adapter.createOrder).toHaveBeenCalledWith(
         expect.objectContaining({ paymentStatus: 'cod' })
       );
+    });
+
+    it('should pass the source payment method through as the payment-mapping key (#3474)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.sourcePaymentMethod = 'CASH_ON_DELIVERY';
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourcePaymentMethod: 'CASH_ON_DELIVERY',
+          source: expect.objectContaining({ connectionId: 'source-1' }),
+        })
+      );
+    });
+
+    it('should leave the source payment method absent when the source reported none (#3474)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder.mock.calls[0][0].sourcePaymentMethod).toBeUndefined();
     });
 
     it('should leave the payment status absent when the source reported none (#2600)', async () => {

@@ -605,6 +605,32 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.paymentStatus).toBe('paid');
       // #1435 — a prepaid (non-COD) order carries no sourced COD amount.
       expect(incoming.codToCollect).toBeUndefined();
+      // #3474 — Allegro's own payment type rides along as the payment-mapping key.
+      expect(incoming.sourcePaymentMethod).toBe('ONLINE');
+    });
+
+    it('should omit sourcePaymentMethod when the checkout carries no payment type (#3474)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-no-payment-type',
+        status: 'READY_FOR_PROCESSING',
+        updatedAt: '2024-01-02T00:00:00Z',
+        buyer: { id: 'b9', email: 'b9@example.com', login: 'b9' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: '' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-no-payment-type' });
+
+      expect('sourcePaymentMethod' in incoming).toBe(false);
     });
 
     it('should leave billingAddress undefined when the checkout carries no VAT invoice block (#2822)', async () => {
@@ -766,6 +792,9 @@ describe('AllegroOrderSourceAdapter', () => {
       // #1435 — a COD order carries the sourced collect amount (the full
       // order total the buyer pays on delivery) from summary.totalToPay.
       expect(incoming.codToCollect).toEqual({ amount: '10.00', currency: 'PLN' });
+      // #3474 — the native type, verbatim, so an operator's mapping row for
+      // CASH_ON_DELIVERY matches.
+      expect(incoming.sourcePaymentMethod).toBe('CASH_ON_DELIVERY');
     });
 
     it('should report cancelled status when the checkout-form transaction was voided on Allegro (#1322 manual E2E)', async () => {

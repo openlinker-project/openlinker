@@ -130,6 +130,8 @@ export interface Order {
   fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /** Source's own opaque payment-method id (#3474); see `IncomingOrder.sourcePaymentMethod`. */
+  sourcePaymentMethod?: string;
   /**
    * Marketplace-sourced cash-on-delivery collect amount (#1435). Present only
    * for a cash-on-delivery order whose source exposes the collectable amount
