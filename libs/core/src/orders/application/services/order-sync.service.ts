@@ -284,8 +284,12 @@ export class OrderSyncService implements IOrderSyncService {
       // what the order is worth (#2600). Passed through, never derived.
       paymentStatus: order.paymentStatus,
       // Opaque source payment-method id (#3474): the lookup key for a
-      // destination's operator-configured payment mapping.
-      sourcePaymentMethod: order.sourcePaymentMethod,
+      // destination's operator-configured payment mapping. Present only when
+      // the source reported one, so a payload without it stays byte-identical
+      // to what destinations received before the field existed.
+      ...(order.sourcePaymentMethod !== undefined
+        ? { sourcePaymentMethod: order.sourcePaymentMethod }
+        : {}),
       metadata: {
         // Required by destination adapters (e.g. WooCommerce) for idempotency checks.
         internalOrderId: order.id,
