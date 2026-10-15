@@ -497,7 +497,7 @@ describe('OrderRecordService', () => {
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
       expect(warnSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining('Contradictory payment facts')
+        expect.stringContaining('order_payment_facts_contradictory')
       );
     });
 

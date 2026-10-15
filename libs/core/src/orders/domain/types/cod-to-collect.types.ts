@@ -19,6 +19,7 @@
  *
  * @module libs/core/src/orders/domain/types
  */
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 
 export interface CodToCollect {
   /** Amount to collect on delivery, as a decimal string (e.g. `'510.94'`). */
@@ -40,9 +41,9 @@ export interface CodToCollect {
  *
  * `undefined` rather than `'0.00'` for a zero or unusable total and for a blank
  * currency: an amount that is not known must read as absent so a label never
- * pre-fills a figure nobody asserted. Two decimals, like every other COD amount
- * on this contract; the carriers that take COD all do so in two-decimal
- * currencies.
+ * pre-fills a figure nobody asserted. Formatted to the currency's own minor-unit
+ * exponent (`minorUnitExponentFor`, two decimals unless the currency is a known
+ * exception), so a zero-decimal currency is not stated with a spurious fraction.
  */
 export function toCodToCollect(total: number, currency: string): CodToCollect | undefined {
   if (!Number.isFinite(total) || total <= 0) {
@@ -52,5 +53,5 @@ export function toCodToCollect(total: number, currency: string): CodToCollect | 
   if (trimmed === '') {
     return undefined;
   }
-  return { amount: total.toFixed(2), currency: trimmed };
+  return { amount: total.toFixed(minorUnitExponentFor(trimmed)), currency: trimmed };
 }

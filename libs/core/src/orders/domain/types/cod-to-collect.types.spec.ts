@@ -16,6 +16,9 @@ describe('toCodToCollect', () => {
     [0.1 + 0.2, 'PLN', { amount: '0.30', currency: 'PLN' }],
     [99.999, 'PLN', { amount: '100.00', currency: 'PLN' }],
     [25, '  CZK ', { amount: '25.00', currency: 'CZK' }],
+    // Formatted to the currency's own minor unit, not a fixed two decimals.
+    [1500, 'JPY', { amount: '1500', currency: 'JPY' }],
+    [12.3456, 'KWD', { amount: '12.346', currency: 'KWD' }],
   ])('should state %s %s as a decimal string', (total, currency, expected) => {
     expect(toCodToCollect(total, currency)).toEqual(expected);
   });

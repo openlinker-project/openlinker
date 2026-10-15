@@ -246,7 +246,7 @@ export class OrderRecordService implements IOrderRecordService {
     const paymentFactsViolations = checkPaymentFactsConsistency(order);
     if (paymentFactsViolations.length > 0) {
       this.logger.warn(
-        `Contradictory payment facts on ingested order ${order.id} ` +
+        `order_payment_facts_contradictory: ingested order ${order.id} ` +
           `(source connection ${sourceConnectionId}): ${paymentFactsViolations.join(', ')} - ` +
           `paymentMethod=${order.paymentMethod ?? 'absent'} ` +
           `paymentStatus=${order.paymentStatus ?? 'absent'} ` +
