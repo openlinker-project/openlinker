@@ -107,8 +107,30 @@ export function mapToFa3BuilderInput(
     ...(cmd.correction !== undefined
       ? { correction: mapCorrection(cmd.correction, context) }
       : {}),
-    ...(context.payment !== undefined ? { payment: context.payment } : {}),
+    ...resolvePayment(cmd, context),
   };
+}
+
+/**
+ * FA(3) `TFormaPlatnosci` codes for the neutral methods a source positively
+ * identified (#3294): 1 = cash, 6 = transfer. `online` names no single form
+ * (card, mobile, voucher), so it keeps the connection default.
+ */
+const FORMA_PLATNOSCI_BY_METHOD: Readonly<Record<string, '1' | '6'>> = {
+  cash_on_delivery: '1',
+  bank_transfer: '6',
+};
+
+function resolvePayment(
+  cmd: IssueInvoiceCommand,
+  context: Fa3MappingContext,
+): { payment: NonNullable<Fa3MappingContext['payment']> } | Record<string, never> {
+  const forma =
+    cmd.paymentMethod !== undefined ? FORMA_PLATNOSCI_BY_METHOD[cmd.paymentMethod] : undefined;
+  if (forma === undefined) {
+    return context.payment !== undefined ? { payment: context.payment } : {};
+  }
+  return { payment: { ...context.payment, formaPlatnosci: forma } };
 }
 
 /**
