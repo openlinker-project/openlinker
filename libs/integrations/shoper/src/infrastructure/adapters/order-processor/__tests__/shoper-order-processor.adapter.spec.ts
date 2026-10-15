@@ -78,6 +78,7 @@ function setup(
   const mappingConfig = {
     resolveCarrierMapping: jest.fn().mockResolvedValue(null),
     resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
+    resolvePaymentMapping: jest.fn().mockResolvedValue(null),
   };
   const adapter = new ShoperOrderProcessorAdapter(
     { post, put, delete: del, get } as unknown as ShoperHttpClient,
@@ -104,7 +105,11 @@ interface Harness {
   del: jest.Mock;
   get: jest.Mock;
   options: { getShippingTaxId: jest.Mock; getCurrencyId: jest.Mock };
-  mappingConfig: { resolveCarrierMapping: jest.Mock; resolveOrderStateMapping: jest.Mock };
+  mappingConfig: {
+    resolveCarrierMapping: jest.Mock;
+    resolveOrderStateMapping: jest.Mock;
+    resolvePaymentMapping: jest.Mock;
+  };
   resolveOrCreateCustomer: jest.Mock;
 }
 
@@ -171,6 +176,27 @@ describe('ShoperOrderProcessorAdapter', () => {
 
       expect(mappingConfig.resolveCarrierMapping).toHaveBeenCalledWith('allegro-conn', 'allegro-m1');
       expect((post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ shipping_id: 3, status_id: 2 });
+    });
+
+    it('should prefer the payment mapping for the source payment type to defaults.paymentId (#3294)', async () => {
+      const { adapter, post, mappingConfig } = setup();
+      mappingConfig.resolvePaymentMapping.mockResolvedValue('5');
+
+      await adapter.createOrder(order({ sourcePaymentMethod: 'CASH_ON_DELIVERY' }));
+
+      expect(mappingConfig.resolvePaymentMapping).toHaveBeenCalledWith('allegro-conn', 'CASH_ON_DELIVERY');
+      expect((post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ payment_id: 5 });
+    });
+
+    it('should keep defaults.paymentId when there is no payment type or no mapping row (#3294)', async () => {
+      const first = setup();
+      await first.adapter.createOrder(order());
+      expect(first.mappingConfig.resolvePaymentMapping).not.toHaveBeenCalled();
+      expect((first.post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ payment_id: 1 });
+
+      const second = setup();
+      await second.adapter.createOrder(order({ sourcePaymentMethod: 'ONLINE' }));
+      expect((second.post.mock.calls[0] as [string, unknown])[1]).toMatchObject({ payment_id: 1 });
     });
 
     it('should use the source gross price for a net-priced line', async () => {

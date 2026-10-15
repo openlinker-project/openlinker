@@ -306,7 +306,7 @@ export class ShoperOrderProcessorAdapter
     const defaults = readDefaults(this.connection);
     const shippingId = await this.resolveShippingId(order, defaults);
     const statusId = await this.resolveStatusId(order, defaults);
-    const paymentId = requireDefault(defaults.paymentId, 'defaults.paymentId', 'payment method', this.connection.id);
+    const paymentId = await this.resolvePaymentId(order, defaults);
 
     const shippingTaxId = await this.resolveShippingTaxId(shippingId);
     const currencyId = await this.options.getCurrencyId(order.totals.currency);
@@ -393,6 +393,24 @@ export class ShoperOrderProcessorAdapter
     return requireDefault(defaults.shippingId, 'defaults.shippingId', 'shipping method', this.connection.id);
   }
 
+  /**
+   * The Shoper `payment_id` (#3294): the operator's payment mapping for the
+   * source's own payment type, else the connection default. Shoper's payment
+   * rows carry only an id and labels, so no row can be inferred from a neutral
+   * method - without a mapping the default stays the only source.
+   */
+  private async resolvePaymentId(order: OrderCreate, defaults: ShoperOrderDefaults): Promise<number> {
+    const sourceConnectionId = order.source?.connectionId;
+    const sourcePaymentMethod = order.sourcePaymentMethod;
+    if (this.mappingConfig !== undefined && sourceConnectionId !== undefined && sourcePaymentMethod !== undefined) {
+      const mapped = toPositiveInt(await this.mappingConfig.resolvePaymentMapping(sourceConnectionId, sourcePaymentMethod));
+      if (mapped !== null) {
+        return mapped;
+      }
+    }
+    return requireDefault(defaults.paymentId, 'defaults.paymentId', 'payment method', this.connection.id);
+  }
+
   private async resolveStatusId(order: OrderCreate, defaults: ShoperOrderDefaults): Promise<number> {
     if (this.mappingConfig !== undefined) {
       const mapped = toPositiveInt(await this.mappingConfig.resolveOrderStateMapping(this.connection.id, order.status));
@@ -437,9 +455,9 @@ export class ShoperOrderProcessorAdapter
   // ─── DestinationOptionsReader (mapping UI) ─────────────────────────────────
   //
   // The operator maps a source delivery method / order state onto one of the
-  // shop's own rows; `value` is the Shoper id `createOrder` writes. Payments are
-  // listed for the same screen but no mapping is consumed yet: the order carries
-  // no payment-method name, so `defaults.paymentId` is the only source.
+  // shop's own rows; `value` is the Shoper id `createOrder` writes. Payments follow
+  // the same rule, keyed on the source's own payment type (`sourcePaymentMethod`);
+  // `defaults.paymentId` is the fallback when no mapping applies.
 
   listCarriers(): Promise<MappingOption[]> {
     return this.listOptions('/shippings', 'shipping_id', 'shipping_id ASC');
