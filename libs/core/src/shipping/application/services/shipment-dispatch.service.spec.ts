@@ -726,6 +726,35 @@ describe('ShipmentDispatchService', () => {
       expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
     });
 
+    // An order that says nothing about how it is paid (an unrecognised plugin
+    // gateway, say) must never pre-fill a COD amount from the order record, even
+    // if one were present on the snapshot: only an order REPORTED cash-on-delivery
+    // may supply it (#3294). The operator's own figure stays authoritative.
+    it('should not take a COD amount from the order when its payment status is unreported (#3294)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(
+        makeOrderRecord(undefined, { amount: '510.94', currency: 'PLN' }),
+      );
+
+      const cod = { amount: '39.99', currency: 'PLN' };
+      await service.dispatch(makeInput({ cod }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    it('should send no COD at all when the order is unreported and the caller supplies none (#3294)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(
+        makeOrderRecord(undefined, { amount: '510.94', currency: 'PLN' }),
+      );
+
+      await service.dispatch(makeInput());
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: undefined }),
+      );
+    });
+
     it('should forward cod as undefined when the caller omits it', async () => {
       primeCodDispatch();
       adapter.generateLabel.mockResolvedValue({

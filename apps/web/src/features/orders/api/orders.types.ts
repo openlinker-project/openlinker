@@ -12,6 +12,7 @@
 // transitively naming a component module.
 import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
 import type { HoldReason, ProvisioningResume } from '../lib/order-hold.types';
+import type { PaymentMethod } from './order-snapshot.schema';
 
 // Re-exported so a consumer of the orders transport types can name a hold's
 // reason and the release outcome without also reaching into `lib/`.
@@ -609,6 +610,12 @@ export interface OrderRecord {
    * projected on this read"; an empty array is a positive "no tags".
    */
   tagIds?: string[];
+  /**
+   * How the buyer pays (#3294). The API always sends a value, with `unknown`
+   * for an unreported or unmappable one; optional here so a response from an
+   * older API still type-checks. Treat absent and `unknown` identically.
+   */
+  paymentMethod?: PaymentMethod;
 }
 
 /** The open-return badge payload (#2998) — count plus a stage hint. */

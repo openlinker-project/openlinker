@@ -633,6 +633,29 @@ describe('OrderSyncService', () => {
       );
     });
 
+    it('should pass the neutral payment method through to the destination (#3294)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.paymentMethod = 'cash_on_delivery';
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentMethod: 'cash_on_delivery' })
+      );
+    });
+
+    it('should leave the neutral payment method absent when the source reported none (#3294)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder.mock.calls[0][0].paymentMethod).toBeUndefined();
+    });
+
     it('should pass the source payment method through as the payment-mapping key (#3474)', async () => {
       const adapter = makeAdapter();
       registerDestinations([{ connectionId: 'dest-a', adapter }]);

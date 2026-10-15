@@ -20,9 +20,15 @@ import type {
   IncomingOrderItem,
   IncomingOrderItemRef,
   OrderPickupPoint,
+  PaymentMethod,
   PaymentStatus,
 } from '@openlinker/core/orders';
-import { PAYMENT_STATUS, readSourceBuyerTaxId } from '@openlinker/core/orders';
+import {
+  PAYMENT_METHOD,
+  PAYMENT_STATUS,
+  readSourceBuyerTaxId,
+  toCodToCollect,
+} from '@openlinker/core/orders';
 
 import type {
   ShoperOrderLineRow,
@@ -226,6 +232,19 @@ export function mapShoperPaymentStatus(
   return undefined;
 }
 
+/**
+ * How the buyer pays (#3294).
+ *
+ * Shoper names exactly one method: `is_cash_on_delivery` is set only by the
+ * "Pobranie" method. Everything else - a prepaid order, a bank transfer, cash at
+ * pickup - leaves it false, so `false` is NOT evidence of anything and the
+ * answer is `unknown`. Independent of the order's status: a terminal status
+ * hides the payment STATUS, but the method the buyer chose is still a fact.
+ */
+export function mapShoperPaymentMethod(row: ShoperOrderRow): PaymentMethod {
+  return row.is_cash_on_delivery === true ? PAYMENT_METHOD.CashOnDelivery : PAYMENT_METHOD.Unknown;
+}
+
 function mapAddress(raw: ShoperOrderSourceAddress | null | undefined): IncomingOrderAddress | undefined {
   if (raw === null || raw === undefined) {
     return undefined;
@@ -324,6 +343,10 @@ export function mapShoperOrderToIncoming(
   const billingAddress = mapAddress(row.billing_address);
   const currency = ctx.currencyCode ?? '';
   const pickupPoint = mapShoperPickupPoint(row.pickup_point);
+  // The courier collects the whole order on delivery; the amount rule is shared
+  // with every other source so none of them spells "how much" differently (#3294).
+  const codToCollect =
+    row.is_cash_on_delivery === true ? toCodToCollect(total, currency) : undefined;
   const orderUrl = nonEmpty(row.order_url);
   const shippingId = nonEmpty(row.shipping_id === null || row.shipping_id === undefined ? undefined : String(row.shipping_id));
 
@@ -333,6 +356,7 @@ export function mapShoperOrderToIncoming(
     ...(orderUrl === undefined ? {} : { externalUrl: orderUrl }),
     status: mapShoperOrderStatus(ctx.status),
     ...(paymentStatus === undefined ? {} : { paymentStatus }),
+    paymentMethod: mapShoperPaymentMethod(row),
     ...(userId !== undefined && userId > 0 ? { customerExternalId: String(row.user_id) } : {}),
     ...(email === undefined ? {} : { customerEmail: email }),
     items: lines.map(mapLine),
@@ -356,9 +380,7 @@ export function mapShoperOrderToIncoming(
           },
         }),
     ...(pickupPoint === undefined ? {} : { pickupPoint }),
-    ...(row.is_cash_on_delivery === true && total > 0 && currency !== ''
-      ? { codToCollect: { amount: total.toFixed(2), currency } }
-      : {}),
+    ...(codToCollect === undefined ? {} : { codToCollect }),
     ...(placedAt === null ? {} : { placedAt }),
     createdAt,
     updatedAt,

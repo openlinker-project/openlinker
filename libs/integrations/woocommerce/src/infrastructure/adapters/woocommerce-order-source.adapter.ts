@@ -21,7 +21,13 @@ import type {
   OrderFeedEventType,
   PaymentStatus,
 } from '@openlinker/core/orders';
-import { readSourceBuyerTaxId, PAYMENT_STATUS } from '@openlinker/core/orders';
+import {
+  readSourceBuyerTaxId,
+  PAYMENT_METHOD,
+  PAYMENT_STATUS,
+  toCodToCollect,
+} from '@openlinker/core/orders';
+import { deriveWooCommercePaymentMethod } from './woocommerce-payment-method';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
@@ -36,6 +42,17 @@ import type {
   WooCommerceShippingAddress,
   WooCommerceOrderMetaData,
 } from './order-source/woocommerce-order.types';
+
+/**
+ * Statuses in which a core COD order makes no payment claim (#3294): the order
+ * is dead, so neither "paid" nor "pays the courier" describes anything. They
+ * fall through to the ordinary status reading, which reports nothing for them.
+ */
+const COD_STATUSES_WITHOUT_PAYMENT_CLAIM: ReadonlySet<string> = new Set([
+  'cancelled',
+  'failed',
+  'trash',
+]);
 
 export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
@@ -160,8 +177,24 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       status: order.status,
       ...(() => {
         const paymentStatus = deriveWooCommercePaymentStatus(order);
-        return paymentStatus === undefined ? {} : { paymentStatus };
+        // The courier collects the whole order on delivery (#3294): nothing is
+        // paid in advance on a COD order and WooCommerce states no separate
+        // amount to collect, so it is the order's gross `total` (which, unlike
+        // the net line prices, includes tax and fees). Only while the order is
+        // reported `cod` - a COD order WooCommerce records as paid has nothing
+        // left to collect, and a dead one carries no claim at all.
+        const codToCollect =
+          paymentStatus === PAYMENT_STATUS.Cod
+            ? toCodToCollect(roundCurrency(Number(order.total)), order.currency)
+            : undefined;
+        return {
+          ...(paymentStatus === undefined ? {} : { paymentStatus }),
+          ...(codToCollect === undefined ? {} : { codToCollect }),
+        };
       })(),
+      // How the buyer pays (#3294): only WooCommerce core's own gateway ids
+      // are evidence; every plugin slug is `unknown`.
+      paymentMethod: deriveWooCommercePaymentMethod(order),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),
@@ -258,9 +291,26 @@ function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEvent
  *
  * A status this adapter has never seen answers nothing for a second reason: a
  * plugin's own word is not evidence about anybody's money.
+ *
+ * ## The one gateway that CAN be named: core cash on delivery (#3294)
+ *
+ * The paragraph above says WooCommerce cannot express cash on delivery, and
+ * that stays true of the free-text `payment_method` slugs plugins choose. The
+ * core `cod` gateway is the exception - its id is fixed and its meaning is not
+ * in doubt. And it matters here for a reason the original rule could not see:
+ * a core COD order is created `processing`, so the status fallback below used
+ * to read it as `paid`, and the shipment gate then STRIPPED the cash-on-delivery
+ * amount from its label while the label form hid the COD field. An unpaid order
+ * the courier must collect on was being reported as already paid.
+ *
+ * So a core `cod` order reports `cod` (dispatch permitted, nothing blocked) -
+ * unless WooCommerce itself stamped a payment date, which is the store's own
+ * statement that the money has arrived and stays the strongest evidence. The
+ * rule still never reports `awaiting`: COD is non-blocking, and everything else
+ * about the order is read exactly as before.
  */
 export function deriveWooCommercePaymentStatus(
-  order: Pick<WooCommerceOrder, 'status' | 'date_paid' | 'date_paid_gmt'>,
+  order: Pick<WooCommerceOrder, 'status' | 'date_paid' | 'date_paid_gmt' | 'payment_method'>,
 ): PaymentStatus | undefined {
   const status = order.status.toLowerCase();
   // Withheld, not reported: `refunded` is a dispatch-blocking status, and the
@@ -272,6 +322,12 @@ export function deriveWooCommercePaymentStatus(
   const paidAt = order.date_paid_gmt ?? order.date_paid;
   if (typeof paidAt === 'string' && paidAt.trim().length > 0) {
     return PAYMENT_STATUS.Paid;
+  }
+  if (
+    deriveWooCommercePaymentMethod(order) === PAYMENT_METHOD.CashOnDelivery &&
+    !COD_STATUSES_WITHOUT_PAYMENT_CLAIM.has(status)
+  ) {
+    return PAYMENT_STATUS.Cod;
   }
   if (status === 'processing' || status === 'completed') {
     return PAYMENT_STATUS.Paid;

@@ -7,6 +7,7 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
 import { DEFAULT_INSTALL_ORDER_STATES } from '../../../__tests__/fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
@@ -755,6 +756,56 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.items).toHaveLength(1);
       expect(incoming.items[0].productRef).toEqual({ type: 'product', externalId: '5' });
     });
+
+    // [module, state id, expected method, expected status, expect a COD amount]
+    it.each([
+      // The stock "Awaiting Cash on delivery validation" state is silent about
+      // money; a core COD module fills that silence so the label has an amount.
+      ['ps_cashondelivery', '13', 'cash_on_delivery', 'cod', true],
+      // A state that already says paid stays paid: the courier has collected.
+      ['ps_cashondelivery', '2', 'cash_on_delivery', 'paid', false],
+      // A dead order makes no payment claim.
+      ['ps_cashondelivery', '6', 'cash_on_delivery', undefined, false],
+      ['ps_wirepayment', '10', 'bank_transfer', undefined, false],
+      ['ps_wirepayment', '2', 'bank_transfer', 'paid', false],
+      ['payu', '13', 'unknown', undefined, false],
+      [undefined, '13', 'unknown', undefined, false],
+    ])(
+      'should report module %s in state %s as method %s, status %s (#3294)',
+      async (module, state, expectedMethod, expectedStatus, expectsCod) => {
+        const prestashopOrder: PrestashopOrder = {
+          id: '42',
+          reference: 'ORDER-042',
+          id_customer: '7',
+          current_state: state,
+          total_paid: '99.99',
+          total_paid_tax_incl: '99.99',
+          total_paid_tax_excl: '99.99',
+          total_shipping: '0',
+          date_add: '2024-01-01 10:00:00',
+          date_upd: '2024-01-01 12:00:00',
+          ...(module === undefined ? {} : { module }),
+        };
+
+        mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+        expect(incoming.paymentMethod).toBe(expectedMethod);
+        expect(incoming.paymentStatus).toBe(expectedStatus);
+        if (expectsCod) {
+          expect(incoming.codToCollect).toEqual({
+            amount: incoming.totals.total.toFixed(2),
+            currency: incoming.totals.currency,
+          });
+          expect(incoming.totals.total).toBeGreaterThan(0);
+        } else {
+          expect(incoming).not.toHaveProperty('codToCollect');
+        }
+        expect(checkPaymentFactsConsistency(incoming)).toEqual([]);
+      },
+    );
 
     describe('currency (#2277)', () => {
       const orderWithCurrency: PrestashopOrder = {

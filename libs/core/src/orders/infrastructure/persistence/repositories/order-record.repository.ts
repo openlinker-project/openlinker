@@ -91,6 +91,7 @@ import {
   isTaxRateEra,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
+import { isPaymentMethod } from '../../../domain/types/payment-method.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
@@ -3014,6 +3015,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // `persistIncomingSnapshot` has no resolved shipping address to hash, and
       // writing it there would NULL a hash a previous ready-path write settled.
       add('shippingAddressHash', entity.shippingAddressHash ?? null);
+      // #3294, added here for the reason `buyerTaxId` and `shippingAddressHash`
+      // are: this statement enumerates its own columns, so a column the caller
+      // stamps on the entity but never adds here is simply not written.
+      // Ready-path only, so an `awaiting_mapping` re-ingestion cannot null a
+      // value a previous ready-path write settled.
+      add('paymentMethod', entity.paymentMethod ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -3116,6 +3123,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `awaiting_mapping` re-ingestion reaching `toOrm` would write `null` over
     // a hash a previous ready-path ingestion had settled.
     entity.shippingAddressHash = orderRecord.shippingAddressHash;
+    // #3294 - stamped here, NOT in the shared `toOrm`, for the same
+    // single-writer reason: `persistOrder` also reaches the shared path on an
+    // `awaiting_mapping` re-ingestion, which would write `null` over a value a
+    // previous ready-path ingestion had settled.
+    entity.paymentMethod = orderRecord.paymentMethod;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -3333,7 +3345,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // block at all, never as an unknown literal.
       isFulfillmentBlockReason(entity.fulfillmentBlockReason)
         ? { reason: entity.fulfillmentBlockReason, detail: entity.fulfillmentBlockDetail ?? null }
-        : null
+        : null,
+      // #3294 - coerced, never cast: a value this build does not recognise
+      // (written by a newer release, then rolled back) reads as "not reported"
+      // rather than reaching a consumer as an unmapped literal.
+      isPaymentMethod(entity.paymentMethod) ? entity.paymentMethod : null
     );
   }
 

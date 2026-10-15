@@ -2506,6 +2506,89 @@ describe('OrderRecordRepository', () => {
       expect((await repository.findById('order-123'))?.shippingAddressHash).toBe('abc123hash');
     });
 
+    it('pins paymentMethod into the ready-path statement and reads it back (#3294)', async () => {
+      // Same argument as `shippingAddressHash` above: the frozen-attribution
+      // upsert ENUMERATES its columns, so a value stamped on the entity but never
+      // added to the statement is silently not written.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        'customer-456',
+        'source-connection-123',
+        'event-456',
+        { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2025-01-01T09:00:00Z'),
+        'PLN',
+        'inclusive',
+        199.99,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [],
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        'cash_on_delivery'
+      );
+      const savedOrm = createOrmEntity();
+      savedOrm.paymentMethod = 'cash_on_delivery';
+      transactionalManager.query.mockResolvedValue([savedOrm]);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const [sql, params] = transactionalManager.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"paymentMethod"');
+      expect(params).toContain('cash_on_delivery');
+
+      ormRepository.findOne.mockResolvedValue(savedOrm);
+      expect((await repository.findById('order-123'))?.paymentMethod).toBe('cash_on_delivery');
+    });
+
+    it.each([
+      ['online', 'online'],
+      ['bank_transfer', 'bank_transfer'],
+      [null, null],
+      // A value written by a newer release and then rolled back must read as
+      // "not reported", never reach a consumer as an unmapped literal.
+      ['crypto', null],
+      ['', null],
+    ])('coerces the stored paymentMethod %j to %j on read (#3294)', async (stored, expected) => {
+      const entity = createOrmEntity();
+      entity.paymentMethod = stored;
+      ormRepository.findOne.mockResolvedValue(entity);
+
+      const read = await repository.findById('order-123');
+
+      expect(read?.paymentMethod).toBe(expected);
+      expect(read?.paymentMethodOrUnknown).toBe(expected ?? 'unknown');
+    });
+
     it('decodes the round-tripped column back to the three domain states', async () => {
       const withColumn = (stored: string | null): OrderRecordOrmEntity => {
         const entity = createOrmEntity();

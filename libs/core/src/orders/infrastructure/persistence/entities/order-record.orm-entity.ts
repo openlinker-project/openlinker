@@ -316,6 +316,22 @@ export class OrderRecordOrmEntity {
   shippingAddressHash!: string | null;
 
   /**
+   * How the buyer pays (#3294) - one of `PaymentMethodValues`, or `NULL` when
+   * the source reported nothing. Existing rows are `NULL` and are not
+   * back-filled (ADR-039). A plain `varchar` with no CHECK, like every other
+   * vocabulary column here: the integration harness builds schema by
+   * `synchronize`, which would not emit one, so a constraint present only in
+   * the migration would hold in production and silently not in tests; the read
+   * path coerces instead.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the
+   * analytics scalars and `shippingAddressHash` above, so an
+   * `awaiting_mapping` re-ingestion cannot null a settled value.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  paymentMethod!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

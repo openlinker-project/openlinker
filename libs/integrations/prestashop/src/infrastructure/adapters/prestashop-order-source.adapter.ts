@@ -35,7 +35,7 @@ import type {
   IncomingOrderAddress,
   OrderPickupPoint,
 } from '@openlinker/core/orders';
-import { readSourceBuyerTaxId } from '@openlinker/core/orders';
+import { PAYMENT_STATUS, readSourceBuyerTaxId, toCodToCollect } from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import type {
   PrestashopAddress,
@@ -49,6 +49,10 @@ import type {
   PrestashopOrder,
   PrestashopOrderRow,
 } from '../mappers/prestashop.mapper.interface';
+import {
+  derivePrestashopPaymentMethod,
+  withCashOnDeliveryPaymentStatus,
+} from '../mappers/prestashop-payment-method';
 import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderStateSnapshot } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop-order-currency.resolver';
@@ -546,7 +550,14 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     // a warehouse release, and never moved stock, with nothing anywhere saying
     // why. An unknown state id stays `undefined` rather than claiming
     // `'awaiting'`: a missing row is not evidence about somebody's money.
-    const paymentStatus = orderStates.paymentStatusOf(prestashopOrder.current_state) ?? undefined;
+    const stateStatus = orderStates.paymentStatusOf(prestashopOrder.current_state) ?? undefined;
+    // How the buyer pays (#3294), from the order's payment module. Only the two
+    // modules PrestaShop ships are evidence; any other is `unknown`.
+    const paymentMethod = derivePrestashopPaymentMethod(prestashopOrder);
+    // The state row is silent about an unpaid order; for a core COD module that
+    // silence would leave the courier label with no COD amount, so it is filled
+    // - and only it, never a state that already says paid.
+    const paymentStatus = withCashOnDeliveryPaymentStatus(stateStatus, paymentMethod, status);
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
     // Resolved BEFORE the hydration reads below, and awaited rather than raced
@@ -625,11 +636,21 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const placedAtIso =
       typeof prestashopOrder.date_add === 'string' ? prestashopOrder.date_add : undefined;
 
+    const codToCollect =
+      paymentStatus === PAYMENT_STATUS.Cod
+        ? toCodToCollect(mapped.totals.total, currency)
+        : undefined;
+
     return {
       externalOrderId,
       orderNumber: mapped.orderNumber,
       status,
       ...(paymentStatus !== undefined && { paymentStatus }),
+      paymentMethod,
+      // The courier collects the whole order on delivery: nothing is paid in
+      // advance on a COD order and PrestaShop states no separate amount, so it
+      // is the order's gross total. Only while the order is reported `cod`.
+      ...(codToCollect === undefined ? {} : { codToCollect }),
       customerExternalId:
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
       customerEmail: await customerEmailPromise,

@@ -215,8 +215,10 @@ describe('GenerateLabelForm — happy path', () => {
       apiClient,
     });
 
-    // Read-only "from Allegro" panel: amount shown, no manual input rendered.
-    expect(screen.getByText(/from Allegro/i)).toBeInTheDocument();
+    // Read-only "from the order" panel: amount shown, no manual input rendered.
+    // The badge names no platform: since #3294 the amount comes from whichever
+    // source reported the order, not only Allegro.
+    expect(screen.getByText(/from the order/i)).toBeInTheDocument();
     expect(screen.getByText(/510\.94/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/COD amount to collect/i)).toBeNull();
 

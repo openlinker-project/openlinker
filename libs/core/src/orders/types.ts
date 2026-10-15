@@ -67,6 +67,10 @@ export {
   PAYMENT_STATUS,
 } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
+// Type-only (#3294): a runtime export here needs a registered reason and a concrete
+// consumer in `scripts/check-types-sub-barrels.mjs`; add the values when invoicing
+// actually value-imports them.
+export type { PaymentMethod } from './domain/types/payment-method.types';
 export type { Order } from './domain/types/order.types';
 export { OrderStatusValues } from './domain/types/order.types';
 export type { OrderStatus } from './domain/types/order.types';
