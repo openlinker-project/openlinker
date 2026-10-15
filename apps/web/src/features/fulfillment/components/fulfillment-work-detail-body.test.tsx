@@ -540,6 +540,24 @@ describe('FulfillmentWorkDetailBody', () => {
       expect(screen.queryByText(/collected on delivery/i)).not.toBeInTheDocument();
     });
 
+    it('should name how the buyer pays in the Payment card when the source said so (#3294)', async () => {
+      const snapshot = { ...(order().orderSnapshot as Record<string, unknown>), paymentMethod: 'cash_on_delivery' };
+      const apiClient = api({
+        orders: { getById: vi.fn().mockResolvedValue(order({ orderSnapshot: snapshot })) } as never,
+      });
+      renderBody(task(), apiClient);
+
+      const payment = await screen.findByRole('region', { name: COPY.sections.payment });
+      expect(within(payment).getByText('Cash on delivery')).toBeInTheDocument();
+    });
+
+    it('should say nothing about the method when the source could not tell (#3294)', async () => {
+      renderBody(task(), api({ orders: { getById: vi.fn().mockResolvedValue(order()) } as never }));
+
+      const payment = await screen.findByRole('region', { name: COPY.sections.payment });
+      expect(within(payment).queryByText(COPY.payment.method)).not.toBeInTheDocument();
+    });
+
     it('should keep the order page anchors so a #shipment deep link lands here too', async () => {
       renderBody(task(), api({ orders: { getById: vi.fn().mockResolvedValue(order()) } as never }));
 

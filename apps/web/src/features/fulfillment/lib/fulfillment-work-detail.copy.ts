@@ -156,6 +156,7 @@ export const FULFILLMENT_WORK_DETAIL_COPY = {
    */
   payment: {
     placedOn: 'Placed on',
+    method: 'Paid by',
     unavailable: "This order's payment summary could not be loaded.",
   },
 
