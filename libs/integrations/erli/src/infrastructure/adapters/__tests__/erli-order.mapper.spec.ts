@@ -125,16 +125,16 @@ describe('mapErliOrderToIncomingOrder', () => {
     expect(result.paymentStatus).toBe('paid');
   });
 
-  it('should report cash on delivery for a COD order and online for any other (#3294)', () => {
+  it('should report cash on delivery for a COD order and unknown for any other (#3294)', () => {
     const cod = mapErliOrderToIncomingOrder(
       buildErliOrder({ status: 'purchased', delivery: { cod: true } }),
     );
-    const online = mapErliOrderToIncomingOrder(
+    const prepaid = mapErliOrderToIncomingOrder(
       buildErliOrder({ status: 'purchased', delivery: { cod: false } }),
     );
 
     expect(cod.paymentMethod).toBe('cash_on_delivery');
-    expect(online.paymentMethod).toBe('online');
+    expect(prepaid.paymentMethod).toBe('unknown');
   });
 
   it.each(['pending', 'purchased', 'cancelled', 'returned'] as const)(
@@ -147,7 +147,7 @@ describe('mapErliOrderToIncomingOrder', () => {
   );
 
   it.each(['pending', 'purchased', 'cancelled', 'returned'] as const)(
-    'should keep method, status and amount consistent for an online order in status %s (#3294)',
+    'should keep method, status and amount consistent for a non-COD order in status %s (#3294)',
     (status) => {
       const result = mapErliOrderToIncomingOrder(buildErliOrder({ status, delivery: { cod: false } }));
 
@@ -169,7 +169,7 @@ describe('mapErliOrderToIncomingOrder', () => {
   });
 
   it.each([
-    ['an online order', 'purchased', false],
+    ['a non-COD order', 'purchased', false],
     ['a COD order still pending', 'pending', true],
     ['a cancelled COD order', 'cancelled', true],
     ['a returned COD order', 'returned', true],

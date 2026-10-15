@@ -141,14 +141,14 @@ function mapStatus(status: ErliOrderStatus): OrderStatus {
  * Derives the neutral payment method from `delivery.cod` (#3294).
  *
  * Erli carries no payment-method string - only the cash-on-delivery boolean
- * (see `erli-order.types.ts`). An order is either collected by the courier on
- * delivery or paid through the marketplace's own online checkout, so a
- * non-COD order is `online`: that is Erli's documented split, not an inference
- * from a status. Erli does not distinguish card from transfer, so nothing here
- * can claim `bank_transfer`.
+ * (see `erli-order.types.ts`). `cod: true` is evidence of cash on delivery.
+ * `cod: false` is evidence of "not COD" and nothing more: Erli does not say
+ * whether a prepaid order was settled by card or by transfer, so it is `unknown`
+ * rather than `online`. `unknown` never selects an invoice payment form, which
+ * is exactly what a wrong `online` on a transfer order would have done.
  */
 function derivePaymentMethod(cod: boolean): PaymentMethod {
-  return cod ? PAYMENT_METHOD.CashOnDelivery : PAYMENT_METHOD.Online;
+  return cod ? PAYMENT_METHOD.CashOnDelivery : PAYMENT_METHOD.Unknown;
 }
 
 /**
