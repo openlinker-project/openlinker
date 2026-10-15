@@ -108,12 +108,14 @@ describe('FulfillmentWorkTimeoutSweepHandler (#2712)', () => {
       await handler.execute(job());
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
-      const request = jobEnqueue.enqueueJob.mock.calls[0][0] as {
-        jobType: string;
-        connectionId: string;
-        payload: Record<string, unknown>;
-        idempotencyKey: string;
-      };
+      const [request] = jobEnqueue.enqueueJob.mock.calls[0] as [
+        {
+          jobType: string;
+          connectionId: string;
+          payload: Record<string, unknown>;
+          idempotencyKey: string;
+        },
+      ];
       expect(request.jobType).toBe('fulfillment.work.dispatch');
       expect(request.connectionId).toBe('conn-oms');
       expect(request.payload).toEqual({

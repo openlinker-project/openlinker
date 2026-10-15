@@ -130,17 +130,12 @@ describe('Fulfilment dispatch timeout sweep (#2712)', () => {
 
     await reap();
 
-    const rows = (await harness
+    const rows = await harness
       .getDataSource()
-      .query(
+      .query<Array<{ reason: string; blocking: boolean; connectionId: string; detail: string | null }>>(
         `SELECT "reason", "blocking", "connectionId", "detail" FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = $1`,
         [work.id]
-      )) as Array<{
-      reason: string;
-      blocking: boolean;
-      connectionId: string;
-      detail: string | null;
-    }>;
+      );
 
     expect(rows).toHaveLength(1);
     expect(rows[0].reason).toBe('openlinker:dispatch-timeout');
@@ -191,11 +186,11 @@ describe('Fulfilment dispatch timeout sweep (#2712)', () => {
 
     // And a rejection row exists only if the reap actually applied — a lost
     // guard must insert nothing (durability and rollback are separate claims).
-    const rejections = (await harness
+    const rejections = await harness
       .getDataSource()
-      .query(`SELECT 1 FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = $1`, [
+      .query<unknown[]>(`SELECT 1 FROM "fulfillment_work_rejections" WHERE "fulfillmentWorkId" = $1`, [
         work.id,
-      ])) as unknown[];
+      ]);
     expect(rejections).toHaveLength(reaped ? 1 : 0);
 
     // The attempt counter never moved, whichever side won.
@@ -239,15 +234,12 @@ describe('Fulfilment dispatch timeout sweep (#2712)', () => {
 
     const result = await reap();
 
-    expect(result.attentionIntents).toEqual([
-      {
-        orderId: 'ol_order_1',
-        outcome: expect.objectContaining({
-          kind: 'blocked',
-          reason: 'fulfillment-unaccepted',
-        }),
-      },
-    ]);
+    expect(result.attentionIntents).toHaveLength(1);
+    expect(result.attentionIntents[0].orderId).toBe('ol_order_1');
+    expect(result.attentionIntents[0].outcome).toMatchObject({
+      kind: 'blocked',
+      reason: 'fulfillment-unaccepted',
+    });
   });
 
   it('should clear the A3-X verdict once the work is accepted again', async () => {
@@ -298,16 +290,13 @@ describe('Fulfilment dispatch timeout sweep (#2712)', () => {
       const result = await find();
 
       expect(result.works.map((stalled) => stalled.workId)).toEqual([work.id]);
-      expect(result.attentionIntents).toEqual([
-        {
-          orderId: 'ol_order_1',
-          outcome: expect.objectContaining({
-            kind: 'blocked',
-            reason: 'fulfillment-unaccepted',
-            subjectRef: work.id,
-          }),
-        },
-      ]);
+      expect(result.attentionIntents).toHaveLength(1);
+      expect(result.attentionIntents[0].orderId).toBe('ol_order_1');
+      expect(result.attentionIntents[0].outcome).toMatchObject({
+        kind: 'blocked',
+        reason: 'fulfillment-unaccepted',
+        subjectRef: work.id,
+      });
       // Reporting writes nothing: the work is left exactly as it was.
       expect((await repository().findById(work.id))?.requestStatus).toBe('unsubmitted');
     });
