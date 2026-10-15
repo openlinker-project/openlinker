@@ -26,3 +26,31 @@ export interface CodToCollect {
   /** ISO 4217 currency code (e.g. `'PLN'`). */
   currency: string;
 }
+
+/**
+ * The amount a courier collects for a cash-on-delivery order whose source states
+ * no explicit "amount to collect" (#3294), or `undefined` when there is no
+ * honest figure to state.
+ *
+ * On a COD order nothing has been paid in advance, so the amount is the order's
+ * gross total - the figure Shoper already reports this way and Allegro reports
+ * as `summary.totalToPay`. Pure rule beside the
+ * type it builds (the pure-rule exception in `docs/engineering-standards.md`),
+ * so three adapters cannot spell "how much is collected" three ways.
+ *
+ * `undefined` rather than `'0.00'` for a zero or unusable total and for a blank
+ * currency: an amount that is not known must read as absent so a label never
+ * pre-fills a figure nobody asserted. Two decimals, like every other COD amount
+ * on this contract; the carriers that take COD all do so in two-decimal
+ * currencies.
+ */
+export function toCodToCollect(total: number, currency: string): CodToCollect | undefined {
+  if (!Number.isFinite(total) || total <= 0) {
+    return undefined;
+  }
+  const trimmed = currency.trim();
+  if (trimmed === '') {
+    return undefined;
+  }
+  return { amount: total.toFixed(2), currency: trimmed };
+}

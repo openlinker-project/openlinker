@@ -42,6 +42,31 @@ describe('parseOrderSnapshot', () => {
     expect(parsed.parseWarnings).toHaveLength(0);
   });
 
+  it.each(['online', 'bank_transfer', 'cash_on_delivery', 'unknown'] as const)(
+    'surfaces the payment method %s without a warning (#3294)',
+    (paymentMethod) => {
+      const parsed = parseOrderSnapshot({ paymentMethod });
+
+      expect(parsed.paymentMethod).toBe(paymentMethod);
+      expect(parsed.parseWarnings).toHaveLength(0);
+    }
+  );
+
+  it('leaves the payment method undefined when the key is absent or null (#3294)', () => {
+    expect(parseOrderSnapshot({}).paymentMethod).toBeUndefined();
+    expect(parseOrderSnapshot({ paymentMethod: null }).paymentMethod).toBeUndefined();
+    expect(parseOrderSnapshot({ paymentMethod: null }).parseWarnings).toHaveLength(0);
+  });
+
+  it('degrades an unrecognised payment method to absent with a warning (#3294)', () => {
+    const parsed = parseOrderSnapshot({ paymentMethod: 'crypto' });
+
+    expect(parsed.paymentMethod).toBeUndefined();
+    expect(parsed.parseWarnings).toEqual([
+      expect.objectContaining({ field: 'paymentMethod' }),
+    ]);
+  });
+
   it('surfaces totals.taxTreatment when present and leaves it undefined when absent', () => {
     const withTreatment = parseOrderSnapshot({
       totals: { subtotal: 10, tax: 2.3, shipping: 0, total: 12.3, currency: 'PLN', taxTreatment: 'inclusive' },

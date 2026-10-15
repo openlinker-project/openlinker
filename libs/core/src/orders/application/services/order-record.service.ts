@@ -10,6 +10,7 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
+import { checkPaymentFactsConsistency } from '../../domain/types/payment-facts-consistency.types';
 import {
   encodeBuyerTaxIdColumn,
   readBuyerTaxId,
@@ -189,6 +190,9 @@ export class OrderRecordService implements IOrderRecordService {
         fulfilledBySource: order.fulfilledBySource,
       }),
       ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
+      // How the buyer pays (#3294) - present-only like paymentStatus, and NOT
+      // PII (a closed four-value vocabulary), so it is kept in both PII modes.
+      ...(order.paymentMethod !== undefined && { paymentMethod: order.paymentMethod }),
       // Marketplace-sourced COD collect amount (#1435) — present-only, like
       // paymentStatus. Read back by `OrderRecord.codToCollect` for the dispatch
       // COD gate; absent for prepaid orders and sources that don't expose it.
@@ -233,6 +237,22 @@ export class OrderRecordService implements IOrderRecordService {
     // Order analytics read-model scalars (#1985) — denormalized alongside
     // dispatchByAt above, from the same already-resolved Order. See ADR-039.
     const analyticsScalars = deriveOrderAnalyticsScalars(order);
+
+    // Contradictory payment facts (#3294): a source adapter reported a method,
+    // a status and a collect amount that cannot all be true. Reported, never
+    // thrown or corrected - the order is the fact, the contradiction is a
+    // defect in an adapter, and refusing the order would lose a paid sale to
+    // surface it. The log is what lets an operator or a maintainer find it.
+    const paymentFactsViolations = checkPaymentFactsConsistency(order);
+    if (paymentFactsViolations.length > 0) {
+      this.logger.warn(
+        `Contradictory payment facts on ingested order ${order.id} ` +
+          `(source connection ${sourceConnectionId}): ${paymentFactsViolations.join(', ')} - ` +
+          `paymentMethod=${order.paymentMethod ?? 'absent'} ` +
+          `paymentStatus=${order.paymentStatus ?? 'absent'} ` +
+          `codToCollect=${order.codToCollect === undefined ? 'absent' : 'present'}`
+      );
+    }
 
     // Buyer tax id (#2599) - denormalized so routing and gating never expand
     // JSONB, and so the value outlives the snapshot's PII redaction.
@@ -316,7 +336,18 @@ export class OrderRecordService implements IOrderRecordService {
       [],
       buyerTaxId,
       shippingAddressHash,
-      analyticsScalars.totalTaxTreatment
+      analyticsScalars.totalTaxTreatment,
+      // salesDocumentMatchedRuleId, fulfillmentRoutingSkipReason and
+      // fulfillmentBlock: each owned by its own narrow writer, restated only
+      // because the new argument sits past them.
+      null,
+      null,
+      null,
+      // How the buyer pays (#3294). The `'ready'` path only, like the analytics
+      // scalars: an `awaiting_mapping` re-ingestion must not null a value a
+      // previous ready-path write settled. Stored as reported - `null` when the
+      // source said nothing - and read back as `'unknown'` in that case.
+      order.paymentMethod ?? null
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
@@ -424,6 +455,8 @@ export class OrderRecordService implements IOrderRecordService {
         fulfilledBySource: incoming.fulfilledBySource,
       }),
       ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
+      // How the buyer pays (#3294) - see persistOrder.
+      ...(incoming.paymentMethod !== undefined && { paymentMethod: incoming.paymentMethod }),
       // Marketplace-sourced COD collect amount (#1435) — see persistOrder.
       ...(incoming.codToCollect !== undefined && { codToCollect: incoming.codToCollect }),
       ...(incoming.dispatchTime !== undefined && { dispatchTime: incoming.dispatchTime }),

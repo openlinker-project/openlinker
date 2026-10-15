@@ -13,6 +13,7 @@
  * @module libs/integrations/erli/src/infrastructure/adapters/__tests__
  */
 import type { ErliOrder } from '../erli-order.types';
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import { mapErliOrderToIncomingOrder } from '../erli-order.mapper';
 
 function buildErliOrder(overrides: Partial<ErliOrder> = {}): ErliOrder {
@@ -122,6 +123,60 @@ describe('mapErliOrderToIncomingOrder', () => {
 
     expect(result.status).toBe('processing');
     expect(result.paymentStatus).toBe('paid');
+  });
+
+  it('should report cash on delivery for a COD order and online for any other (#3294)', () => {
+    const cod = mapErliOrderToIncomingOrder(
+      buildErliOrder({ status: 'purchased', delivery: { cod: true } }),
+    );
+    const online = mapErliOrderToIncomingOrder(
+      buildErliOrder({ status: 'purchased', delivery: { cod: false } }),
+    );
+
+    expect(cod.paymentMethod).toBe('cash_on_delivery');
+    expect(online.paymentMethod).toBe('online');
+  });
+
+  it.each(['pending', 'purchased', 'cancelled', 'returned'] as const)(
+    'should keep method, status and amount consistent for a COD order in status %s (#3294)',
+    (status) => {
+      const result = mapErliOrderToIncomingOrder(buildErliOrder({ status, delivery: { cod: true } }));
+
+      expect(checkPaymentFactsConsistency(result)).toEqual([]);
+    },
+  );
+
+  it.each(['pending', 'purchased', 'cancelled', 'returned'] as const)(
+    'should keep method, status and amount consistent for an online order in status %s (#3294)',
+    (status) => {
+      const result = mapErliOrderToIncomingOrder(buildErliOrder({ status, delivery: { cod: false } }));
+
+      expect(checkPaymentFactsConsistency(result)).toEqual([]);
+    },
+  );
+
+  it('should state the order total as the COD amount for a committed COD order (#3294)', () => {
+    const result = mapErliOrderToIncomingOrder(
+      buildErliOrder({ status: 'purchased', delivery: { cod: true } }),
+    );
+
+    expect(result.paymentStatus).toBe('cod');
+    expect(result.codToCollect).toEqual({
+      amount: result.totals.total.toFixed(2),
+      currency: 'PLN',
+    });
+    expect(result.totals.total).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['an online order', 'purchased', false],
+    ['a COD order still pending', 'pending', true],
+    ['a cancelled COD order', 'cancelled', true],
+    ['a returned COD order', 'returned', true],
+  ] as const)('should state no COD amount for %s (#3294)', (_label, status, cod) => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder({ status, delivery: { cod } }));
+
+    expect(result).not.toHaveProperty('codToCollect');
   });
 
   it('should map a pending order to pending + paymentStatus awaiting', () => {

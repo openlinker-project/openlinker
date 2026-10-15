@@ -16,6 +16,7 @@ import type {
   AllegroOrderEventsResponse,
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import type { OrderLifecycleEvent } from '@openlinker/core/orders';
 
 describe('AllegroOrderSourceAdapter', () => {
@@ -607,6 +608,33 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.codToCollect).toBeUndefined();
       // #3474 — Allegro's own payment type rides along as the payment-mapping key.
       expect(incoming.sourcePaymentMethod).toBe('ONLINE');
+      // #3294 - the neutral method beside it, consistent with the status.
+      expect(incoming.paymentMethod).toBe('online');
+    });
+
+    it('should report an unmapped payment type as unknown, never a guess (#3294)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-wallet',
+        status: 'READY_FOR_PROCESSING',
+        updatedAt: '2024-01-02T00:00:00Z',
+        buyer: { id: 'b8', email: 'b8@example.com', login: 'b8' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'WALLET', finishedAt: '2024-01-02T00:00:00Z' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-wallet' });
+
+      expect(incoming.paymentMethod).toBe('unknown');
+      expect(incoming.codToCollect).toBeUndefined();
     });
 
     it('should omit sourcePaymentMethod when the checkout carries no payment type (#3474)', async () => {
@@ -795,6 +823,9 @@ describe('AllegroOrderSourceAdapter', () => {
       // #3474 — the native type, verbatim, so an operator's mapping row for
       // CASH_ON_DELIVERY matches.
       expect(incoming.sourcePaymentMethod).toBe('CASH_ON_DELIVERY');
+      // #3294 - cash on delivery is reported as such, with the sourced amount.
+      expect(incoming.paymentMethod).toBe('cash_on_delivery');
+      expect(checkPaymentFactsConsistency(incoming)).toEqual([]);
     });
 
     it('should report cancelled status when the checkout-form transaction was voided on Allegro (#1322 manual E2E)', async () => {
