@@ -346,7 +346,9 @@ export class OrderRecordService implements IOrderRecordService {
       // How the buyer pays (#3294). The `'ready'` path only, like the analytics
       // scalars: an `awaiting_mapping` re-ingestion must not null a value a
       // previous ready-path write settled. Stored as reported - `null` when the
-      // source said nothing - and read back as `'unknown'` in that case.
+      // source said nothing - and read back as `'unknown'` in that case. The
+      // source is authoritative, so a later ready re-ingestion from a source
+      // that omits the field also writes `null` over an earlier value.
       order.paymentMethod ?? null
     );
 

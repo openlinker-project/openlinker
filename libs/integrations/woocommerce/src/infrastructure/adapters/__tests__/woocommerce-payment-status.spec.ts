@@ -87,6 +87,12 @@ describe('deriveWooCommercePaymentStatus', () => {
   // `payment_method` is a free-text slug a plugin chooses, so COD is never
   // inferred; an unpaid cash-on-delivery order is simply awaiting, which is
   // true.
+  it('reports paid for a completed core COD order - the cash was collected', () => {
+    expect(
+      deriveWooCommercePaymentStatus(order({ status: 'completed', payment_method: 'cod' })),
+    ).toBe('paid');
+  });
+
   it('never reports cod', () => {
     const answers = ['pending', 'on-hold', 'processing', 'completed', 'refunded'].map((status) =>
       deriveWooCommercePaymentStatus(order({ status })),
@@ -111,7 +117,7 @@ describe('deriveWooCommercePaymentStatus', () => {
 // adapter CAN state, so it wins over the status fallback - but never over
 // WooCommerce's own payment stamp, and never for a dead order.
 describe('deriveWooCommercePaymentStatus - core cash on delivery (#3294)', () => {
-  it.each(['processing', 'completed', 'on-hold', 'pending'])(
+  it.each(['processing', 'on-hold', 'pending'])(
     'reports cod, not paid, for a core COD order in status %s',
     (status) => {
       expect(deriveWooCommercePaymentStatus(order({ status, payment_method: 'cod' }))).toBe('cod');

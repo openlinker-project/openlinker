@@ -44,14 +44,20 @@ import type {
 } from './order-source/woocommerce-order.types';
 
 /**
- * Statuses in which a core COD order makes no payment claim (#3294): the order
- * is dead, so neither "paid" nor "pays the courier" describes anything. They
+ * Statuses in which a core COD order makes no `cod` claim (#3294): the order
+ * is dead or already settled, so neither "paid" nor "pays the courier" describes anything. They
  * fall through to the ordinary status reading, which reports nothing for them.
  */
 const COD_STATUSES_WITHOUT_PAYMENT_CLAIM: ReadonlySet<string> = new Set([
   'cancelled',
   'failed',
   'trash',
+  // A COD order only reaches `completed` once the goods were delivered and the
+  // cash collected, so nothing is left to collect and it must read as paid -
+  // otherwise an `auto-on-paid` invoicing connection never issues for it and a
+  // label would pre-fill an amount already taken. Falls through to the status
+  // fallback below, which reports `paid`.
+  'completed',
 ]);
 
 export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
