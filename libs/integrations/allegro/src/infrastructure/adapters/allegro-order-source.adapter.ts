@@ -986,6 +986,11 @@ export class AllegroOrderSourceAdapter
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
         paymentStatus,
+        // Allegro's own payment type (#3474) - the key of the operator's
+        // payment mapping. Opaque to core; omitted when Allegro sent none.
+        ...(checkoutForm.payment.type
+          ? { sourcePaymentMethod: checkoutForm.payment.type }
+          : {}),
         codToCollect,
         dispatchTime: this.resolveDispatchTime(checkoutForm),
         placedAt,

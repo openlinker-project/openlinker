@@ -97,7 +97,7 @@ const EMPTY_STATE_MESSAGE_BY_TAB: Record<
   carriers:
     'No mappings configured yet. An unmapped carrier can fail order sync unless a fallback carrier is set. Add one below.',
   payments:
-    'No mappings configured yet. Unmapped payment methods fall back to the default payment module. Add one below.',
+    'No mappings configured yet. Unmapped payment methods are recorded as "Check payment" on the order. A mapped one is recorded under the name you choose. Add one below.',
   'order-states':
     'No mappings configured yet. Unmapped statuses use the default-install order state. Add one below.',
 };

@@ -285,6 +285,38 @@ describe('MappingConfigService', () => {
     });
   });
 
+  describe('resolvePaymentMapping (#3474)', () => {
+    it('should return prestashopPaymentModule when the source payment type matches', async () => {
+      paymentRepo.findByConnectionId.mockResolvedValue([
+        new PaymentMapping('id-1', CONNECTION_ID, 'ONLINE', 'payu'),
+        new PaymentMapping('id-2', CONNECTION_ID, 'CASH_ON_DELIVERY', 'ps_cashondelivery'),
+      ]);
+
+      const result = await service.resolvePaymentMapping(CONNECTION_ID, 'CASH_ON_DELIVERY');
+
+      expect(result).toBe('ps_cashondelivery');
+      expect(paymentRepo.findByConnectionId).toHaveBeenCalledWith(CONNECTION_ID);
+    });
+
+    it('should return null when no mapping matches the source payment type', async () => {
+      paymentRepo.findByConnectionId.mockResolvedValue([
+        new PaymentMapping('id-1', CONNECTION_ID, 'ONLINE', 'payu'),
+      ]);
+
+      const result = await service.resolvePaymentMapping(CONNECTION_ID, 'WALLET');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when the connection has no payment mappings configured', async () => {
+      paymentRepo.findByConnectionId.mockResolvedValue([]);
+
+      const result = await service.resolvePaymentMapping(CONNECTION_ID, 'ONLINE');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('upsertPaymentMappings', () => {
     it('should delegate to replaceForConnection', async () => {
       const input = [{ allegroPaymentProvider: 'BLIK', prestashopPaymentModule: 'payu' }];
