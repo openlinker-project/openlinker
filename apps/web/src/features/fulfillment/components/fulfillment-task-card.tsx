@@ -67,11 +67,13 @@ import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
+import { FulfillmentTaskAcceptanceNotice } from './fulfillment-task-acceptance-notice';
 import {
   FULFILLMENT_EXPEDITED_BADGE,
-  fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
+  OWN_PACK_BENCH_NAME,
 } from '../lib/fulfillment-task.copy';
+import { describeTaskAcceptance, taskStateLine } from '../lib/fulfillment-task-acceptance';
 import { fulfillmentWorkDetailPath } from '../lib/fulfillment-filters';
 
 export interface FulfillmentTaskCardProps {
@@ -92,6 +94,10 @@ export function FulfillmentTaskCard({
   const showLocation = useHasMultipleLocations();
   const distinguishing = distinguishingAttributeKeys(
     task.lines.map((line) => ({ attributes: line.attributes ?? null }))
+  );
+  const acceptance = describeTaskAcceptance(
+    { requestStatus: task.requestStatus, createdAt: task.createdAt },
+    new Date()
   );
 
   return (
@@ -151,16 +157,15 @@ export function FulfillmentTaskCard({
         </ul>
       ) : null}
 
+      <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={OWN_PACK_BENCH_NAME} />
+
       <dl className="fulfilment-task__facts">
         {/* Rendered even when a hold leads, so the underlying state is never
-            hidden by the hold badge — "held" and "scheduled" are both true. */}
+            hidden by the hold badge — "held" and "scheduled" are both true.
+            Acceptance is folded in only when it is news (#3763). */}
         <div>
           <dt>State</dt>
-          <dd>{fulfillmentStatusLabel(task.status)}</dd>
-        </div>
-        <div>
-          <dt>Handshake</dt>
-          <dd>{fulfillmentRequestStatusLabel(task.requestStatus)}</dd>
+          <dd>{taskStateLine(fulfillmentStatusLabel(task.status), acceptance, OWN_PACK_BENCH_NAME)}</dd>
         </div>
         {/* Named, never an internal id (#3096): the location only where there
             is more than one to tell apart, the delivery as its carrier name. */}

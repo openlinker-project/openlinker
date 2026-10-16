@@ -86,12 +86,14 @@ import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
 import {
   FULFILLMENT_EXPEDITED_BADGE,
-  fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
+  OWN_PACK_BENCH_NAME,
 } from '../lib/fulfillment-task.copy';
+import { describeTaskAcceptance, taskStateLine } from '../lib/fulfillment-task-acceptance';
 import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
 import { summariseFulfillmentWork } from '../lib/fulfillment-work-summary';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
+import { FulfillmentTaskAcceptanceNotice } from './fulfillment-task-acceptance-notice';
 import { FulfillmentWorkPackerSection } from './fulfillment-work-packer-section';
 
 const COPY = FULFILLMENT_WORK_DETAIL_COPY;
@@ -150,13 +152,15 @@ function useExecutorFacts(task: FulfillmentTask): ExecutorFacts {
 }
 
 /**
- * The hero: the sub-line (task id · executor · location), the headline (both
- * axes joined, 22 px / 700, as the mockup draws it), the expedited pill beside
- * it, and the derived sentence.
+ * The hero: the sub-line (task id · executor · location), the headline (22 px
+ * / 700, as the mockup draws it), the expedited pill beside it, the derived
+ * sentence, and the "not on the pack bench" warning when there is one.
  *
- * Both axis labels always render. Heldness lives in `activeHolds` and nothing
- * writes `status: 'on_hold'`, so neither axis can be dropped without the page
- * losing a fact the other one cannot carry.
+ * The headline is the orchestration label plus the acceptance qualifier only
+ * when acceptance is news (#3763). It used to join both axes verbatim, which
+ * printed "Accepted" on almost every task: with OpenLinker's own OMS as the
+ * only executor, acceptance is automatic, and the state worth showing is the
+ * one where it did NOT happen - a parcel the pack bench cannot list.
  */
 function WorkDetailHero({
   task,
@@ -176,6 +180,10 @@ function WorkDetailHero({
     cancellationReason: task.cancellationReason,
     executorName: executor.name,
   });
+  const acceptance = describeTaskAcceptance(
+    { requestStatus: task.requestStatus, createdAt: task.createdAt },
+    new Date()
+  );
   const location = showLocation ? (task.locationName ?? task.locationId ?? COPY.facts.noLocation) : null;
   const subParts = [executor.label, location].filter((part): part is string => part !== null);
   const expeditedAt = task.expeditedAt ?? null;
@@ -192,7 +200,7 @@ function WorkDetailHero({
       </p>
       <div className="fulfilment-work-detail__hero-row">
         <p className="fulfilment-work-detail__headline">
-          {fulfillmentStatusLabel(task.status)} · {fulfillmentRequestStatusLabel(task.requestStatus)}
+          {taskStateLine(fulfillmentStatusLabel(task.status), acceptance, OWN_PACK_BENCH_NAME)}
         </p>
         {/* Display only (#3247): which expedite verb is offered comes from
             `supportedActions`. The wording is the card's own, one fact one
@@ -205,8 +213,9 @@ function WorkDetailHero({
         ) : null}
       </div>
       {/* `null` when this build cannot say — the headline above still carries
-          both axes, so the hero is never blank. */}
+          the state, so the hero is never blank. */}
       {summary !== null ? <p className="fulfilment-work-detail__summary">{summary}</p> : null}
+      <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={OWN_PACK_BENCH_NAME} />
     </DetailSection>
   );
 }
@@ -330,7 +339,6 @@ function WorkFactsSection({
     >
       <dl className="fulfilment-work-detail__facts">
         <Fact label={COPY.facts.state}>{fulfillmentStatusLabel(task.status)}</Fact>
-        <Fact label={COPY.facts.handshake}>{fulfillmentRequestStatusLabel(task.requestStatus)}</Fact>
         {showLocation ? (
           <Fact label={COPY.facts.location}>
             {task.locationName ?? task.locationId ?? COPY.facts.noLocation}

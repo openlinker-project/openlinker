@@ -188,20 +188,40 @@ export function fulfillmentStatusLabel(status: string): string {
   return STATUS_COPY[status] ?? humanise(status);
 }
 
-/** Handshake-status labels. Display only. */
-const REQUEST_STATUS_COPY: Record<string, string> = {
-  unsubmitted: 'Not offered yet',
-  submitted: 'Offered, awaiting reply',
-  accepted: 'Accepted',
-  rejected: 'Refused',
-  cancellation_requested: 'Cancellation requested',
-  cancellation_accepted: 'Cancellation accepted',
-  cancellation_rejected: 'Cancellation refused',
-};
+/**
+ * Where an accepted task lands, named for the operator (#3763).
+ *
+ * OpenLinker's own OMS is the only executor in the tree, and the work it
+ * accepts appears on the pack bench - so that is the place a task is "not on
+ * yet". Every sentence below takes it as a parameter rather than inlining it,
+ * so an external executor later supplies its own name instead of a rewrite.
+ */
+export const OWN_PACK_BENCH_NAME = 'the pack bench';
 
-export function fulfillmentRequestStatusLabel(requestStatus: string): string {
-  return REQUEST_STATUS_COPY[requestStatus] ?? humanise(requestStatus);
-}
+/**
+ * What a task's acceptance state says to an operator (#3763).
+ *
+ * Replaces the old "Handshake" field, whose name meant nothing outside the
+ * code and whose usual value ("Accepted") carried no news. Only the states an
+ * operator must notice get words; `accepted` deliberately has none.
+ */
+export const TASK_ACCEPTANCE_COPY = {
+  /** Appended to the state label, e.g. "Open · not on the pack bench yet". */
+  pending: (where: string): string => `not on ${where} yet`,
+  stuckTitle: (where: string): string => `Not on ${where} yet`,
+  /** `age` is pre-formatted by `formatCompactDuration`, e.g. "2h". */
+  stuck: (where: string, age: string): string =>
+    `This parcel has waited ${age} and is still not on ${where}. Packers cannot see it until it gets there.`,
+  refusedTitle: (where: string): string => `Did not reach ${where}`,
+  refused: (where: string): string =>
+    `This parcel was offered for packing but never reached ${where}, so packers cannot see it.`,
+  /** Appended to the state label while a cancellation is being negotiated. */
+  cancellation: {
+    cancellation_requested: 'cancellation requested',
+    cancellation_accepted: 'cancellation accepted',
+    cancellation_rejected: 'cancellation refused',
+  } as Readonly<Record<string, string>>,
+};
 
 /**
  * The three actions that need a form before they can be sent.

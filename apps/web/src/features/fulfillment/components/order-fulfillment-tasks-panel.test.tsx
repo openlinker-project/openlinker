@@ -14,6 +14,9 @@
  *      across two renders that differ ONLY in the counters.
  *   4. the version that was RENDERED is the version sent.
  *   5. loading / error / empty are three different answers, never one.
+ *   6. acceptance is shown only when it is news (#3763) - an accepted task
+ *      says nothing about it, an unaccepted one says it is not on the pack
+ *      bench, and a stuck or refused one warns that packers cannot see it.
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -58,7 +61,9 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
     assignedToUserId: null,
     selfServeEligible: true,
     status: 'open',
-    requestStatus: 'unsubmitted',
+    // Accepted is the state almost every live task sits in (OpenLinker's own
+    // OMS auto-accepts). The acceptance tests below override it explicitly.
+    requestStatus: 'accepted',
     assignmentAttempt: 0,
     cancellationReason: null,
     externalWorkId: null,
@@ -171,6 +176,41 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       // Badge + State row again. Drop the badge and this reads 1.
       expect(await screen.findAllByText('In progress')).toHaveLength(2);
       expect(screen.queryByText(/On hold/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('acceptance is shown only when it is news (#3763)', () => {
+    const minutesAgo = (minutes: number): string =>
+      new Date(Date.now() - minutes * 60_000).toISOString();
+
+    it('should say nothing about acceptance when the task is accepted', async () => {
+      renderPanel([task({ requestStatus: 'accepted' })]);
+
+      expect(await screen.findAllByText('Open')).toHaveLength(2);
+      expect(screen.queryByText(/Handshake/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/pack bench/)).not.toBeInTheDocument();
+    });
+
+    it('should say the task is not on the pack bench yet when it was just routed', async () => {
+      renderPanel([task({ requestStatus: 'submitted', createdAt: minutesAgo(2) })]);
+
+      expect(await screen.findByText('Open · not on the pack bench yet')).toBeInTheDocument();
+      expect(screen.queryByText(/Packers cannot see it/)).not.toBeInTheDocument();
+    });
+
+    it('should warn that packers cannot see a parcel stuck before acceptance', async () => {
+      renderPanel([task({ requestStatus: 'unsubmitted', createdAt: minutesAgo(120) })]);
+
+      expect(await screen.findByText('Not on the pack bench yet')).toBeInTheDocument();
+      expect(screen.getByText(/has waited 2h and is still not on the pack bench/)).toBeInTheDocument();
+      expect(screen.getByText('Open · not on the pack bench yet')).toBeInTheDocument();
+    });
+
+    it('should warn when the task was refused, without a qualifier in the state line', async () => {
+      renderPanel([task({ requestStatus: 'rejected' })]);
+
+      expect(await screen.findByText('Did not reach the pack bench')).toBeInTheDocument();
+      expect(screen.getAllByText('Open')).toHaveLength(2);
     });
   });
 

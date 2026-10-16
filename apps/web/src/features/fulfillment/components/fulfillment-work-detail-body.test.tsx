@@ -181,10 +181,23 @@ describe('FulfillmentWorkDetailBody', () => {
   });
 
   describe('the hero', () => {
-    it('should join both axis labels into the headline when rendered', () => {
+    it('should show the bare state in the headline when the task is accepted (#3763)', () => {
       renderBody(task({ status: 'open', requestStatus: 'accepted' }));
 
-      expect(screen.getByText('Open · Accepted')).toHaveClass('fulfilment-work-detail__headline');
+      // The facts card also says "Open", so read the headline by its class.
+      expect(document.querySelector('.fulfilment-work-detail__headline')).toHaveTextContent(/^Open$/);
+      expect(screen.queryByText(/pack bench/)).not.toBeInTheDocument();
+    });
+
+    it('should qualify the headline and warn when the task never reached the pack bench (#3763)', () => {
+      renderBody(
+        task({ status: 'open', requestStatus: 'unsubmitted', createdAt: '2020-01-01T00:00:00.000Z' })
+      );
+
+      expect(screen.getByText('Open · not on the pack bench yet')).toHaveClass(
+        'fulfilment-work-detail__headline'
+      );
+      expect(screen.getByText('Not on the pack bench yet')).toBeInTheDocument();
     });
 
     it('should name the in-house executor in the sub-line and the sentence when it resolves', async () => {
@@ -422,7 +435,6 @@ describe('FulfillmentWorkDetailBody', () => {
 
       expect(factLabels()).toEqual([
         COPY.facts.state,
-        COPY.facts.handshake,
         COPY.facts.delivery,
         COPY.facts.externalReference,
         COPY.facts.started,
