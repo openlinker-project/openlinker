@@ -44,21 +44,21 @@ import type {
 } from './order-source/woocommerce-order.types';
 
 /**
- * Statuses in which a core COD order makes no `cod` claim (#3294): the order
- * is dead or already settled, so neither "paid" nor "pays the courier" describes anything. They
- * fall through to the ordinary status reading, which reports nothing for them.
+ * Statuses in which a core COD order is dead (#3294): neither "paid" nor "pays
+ * the courier" describes anything, so no `cod` claim is made. They fall through
+ * to the ordinary status reading, which reports nothing for them.
  */
-const COD_STATUSES_WITHOUT_PAYMENT_CLAIM: ReadonlySet<string> = new Set([
-  'cancelled',
-  'failed',
-  'trash',
-  // A COD order only reaches `completed` once the goods were delivered and the
-  // cash collected, so nothing is left to collect and it must read as paid -
-  // otherwise an `auto-on-paid` invoicing connection never issues for it and a
-  // label would pre-fill an amount already taken. Falls through to the status
-  // fallback below, which reports `paid`.
-  'completed',
-]);
+const COD_DEAD_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'failed', 'trash']);
+
+/**
+ * Statuses in which a core COD order is already settled (#3294). A COD order
+ * only reaches `completed` once the goods were delivered and the cash
+ * collected, so nothing is left to collect and it must read as paid - otherwise
+ * an `auto-on-paid` invoicing connection never issues for it and a label would
+ * pre-fill an amount already taken. Falls through to the status fallback below,
+ * which reports `paid`.
+ */
+const COD_SETTLED_STATUSES: ReadonlySet<string> = new Set(['completed']);
 
 export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
@@ -331,7 +331,8 @@ export function deriveWooCommercePaymentStatus(
   }
   if (
     deriveWooCommercePaymentMethod(order) === PAYMENT_METHOD.CashOnDelivery &&
-    !COD_STATUSES_WITHOUT_PAYMENT_CLAIM.has(status)
+    !COD_DEAD_STATUSES.has(status) &&
+    !COD_SETTLED_STATUSES.has(status)
   ) {
     return PAYMENT_STATUS.Cod;
   }
