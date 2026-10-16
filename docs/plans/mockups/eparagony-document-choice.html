@@ -1,0 +1,1729 @@
+<title>eparagony.pl document choice</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* ── OpenLinker apps/web/src/index.css, extracted verbatim for the classes used below ── */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); 
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+  --tag-grey: oklch(62% 0.01 270);
+  --tag-blue: oklch(58% 0.15 255);
+  --tag-teal: oklch(60% 0.10 195);
+  --tag-green: oklch(60% 0.14 150);
+  --tag-amber: oklch(74% 0.15 80);
+  --tag-orange: oklch(66% 0.16 50);
+  --tag-pink: oklch(64% 0.17 350);
+  --tag-violet: oklch(58% 0.17 300);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+  --space-1: 0.25rem; 
+  --space-2: 0.5rem; 
+  --space-3: 0.75rem; 
+  --space-4: 1rem; 
+  --space-5: 1.5rem; 
+  --space-6: 2rem; 
+  --space-7: 3rem; 
+  --space-8: 4rem; 
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); 
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+  --tag-grey: oklch(70% 0.01 270);
+  --tag-blue: oklch(70% 0.14 255);
+  --tag-teal: oklch(72% 0.10 195);
+  --tag-green: oklch(72% 0.14 150);
+  --tag-amber: oklch(80% 0.14 80);
+  --tag-orange: oklch(74% 0.15 50);
+  --tag-pink: oklch(74% 0.15 350);
+  --tag-violet: oklch(72% 0.15 300);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+ color-scheme: dark; } }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); 
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+  --tag-grey: oklch(70% 0.01 270);
+  --tag-blue: oklch(70% 0.14 255);
+  --tag-teal: oklch(72% 0.10 195);
+  --tag-green: oklch(72% 0.14 150);
+  --tag-amber: oklch(80% 0.14 80);
+  --tag-orange: oklch(74% 0.15 50);
+  --tag-pink: oklch(74% 0.15 350);
+  --tag-violet: oklch(72% 0.15 300);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+ color-scheme: dark; }
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg-canvas);
+}
+a {
+  color: var(--accent-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+button, input, select, textarea {
+  font: inherit;
+}
+button, .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-4);
+  height: 2rem;
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-normal);
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.button:hover {
+  background: var(--button-primary-bg-hover);
+  border-color: var(--button-primary-bg-hover);
+  color: var(--text-on-primary);
+}
+.button:active {
+  background: var(--accent-primary-active);
+  border-color: var(--accent-primary-active);
+}
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.button:focus-visible, .control:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.button--secondary {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+}
+.button--secondary:hover {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.button--secondary:active {
+  background: var(--bg-surface-hover);
+}
+.button--danger {
+  border-color: color-mix(in oklab, var(--status-error) 80%, black);
+  background: var(--status-error);
+  color: #ffffff;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+}
+.button--danger:hover {
+  background: color-mix(in oklab, var(--status-error) 90%, black);
+  border-color: color-mix(in oklab, var(--status-error) 70%, black);
+  color: #ffffff;
+}
+.button--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+.button--ghost:hover {
+  background: var(--bg-surface-muted);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+.button__spinner {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: var(--space-2);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  opacity: 0.85;
+  animation: button-spinner-rotate var(--duration-slow) linear infinite;
+  vertical-align: -0.125em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .button__spinner {
+    animation: none;
+    border-top-color: currentColor;
+    opacity: 0.4;
+  }
+}
+.button--xs {
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+.button--sm {
+  height: 1.75rem;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+}
+.button--md {
+}
+.button--lg {
+  height: 2.375rem;
+  padding: 0 var(--space-5);
+  font-size: 0.875rem;
+}
+.button--icon {
+  padding: 0;
+  width: 2rem;
+}
+.button--icon.button--xs { width: 1.5rem; }
+.button--icon.button--sm { width: 1.75rem; }
+.button--icon.button--lg { width: 2.375rem; }
+.button--bare.button--bare {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1;
+}
+.button--bare.button--bare-sm { width: 1.125rem; height: 1.125rem; }
+.button--bare.button--bare:hover {
+  background: var(--bg-surface-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+.button--bare.button--bare:active { background: var(--bg-surface-hover); }
+.button--bare.button--bare:focus-visible { box-shadow: var(--shadow-focus); }
+.button--bare.button--bare:disabled { cursor: not-allowed; opacity: 0.5; background: transparent; }
+@media (hover: none) and (pointer: coarse) {
+  .button--bare.button--bare { min-width: 0; min-height: 0; }
+  .button--bare.button--bare::after { content: ''; position: absolute; inset: -14px; }
+}
+.button__shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 5px;
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: var(--tracking-wide);
+  border-radius: var(--radius-xs);
+  background: rgb(255 255 255 / 0.20);
+  color: inherit;
+  opacity: 0.85;
+}
+.button--secondary .button__shortcut, .button--ghost .button__shortcut {
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+.control, select, textarea {
+  width: 100%;
+  height: 2rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.control:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.control:disabled {
+  background: var(--bg-surface-muted);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.control {
+  appearance: none;
+}
+.control--select, select {
+  padding-right: var(--space-7);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 8px) calc(50% - 2px);
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+.control--invalid {
+  border-color: var(--status-error);
+}
+.control--invalid:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 30%, transparent);
+}
+textarea {
+  height: auto;
+  min-height: 5rem;
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+  line-height: 1.45;
+}
+.page-title {
+  margin: 0;
+  color: var(--text-primary);
+}
+.page-title__with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.page-description, .muted-text {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.form-actions, .toolbar, .toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.toolbar-chip {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+.alert {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem 0.875rem 1.125rem;
+  background: var(--bg-surface);
+  box-shadow: inset 3px 0 0 var(--border-default);
+}
+.alert--info {
+  border-color: var(--status-info-border);
+  background: var(--status-info-soft);
+  box-shadow: inset 3px 0 0 var(--status-info);
+}
+.alert--success {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  box-shadow: inset 3px 0 0 var(--status-success);
+}
+.alert--warning {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  box-shadow: inset 3px 0 0 var(--status-warning);
+}
+.alert--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  box-shadow: inset 3px 0 0 var(--status-conflict);
+}
+.alert--error {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  box-shadow: inset 3px 0 0 var(--status-error);
+}
+.alert__content {
+  display: grid;
+  gap: 0.35rem;
+}
+.alert__title {
+  color: var(--text-primary);
+}
+.alert__description {
+  color: var(--text-secondary);
+}
+.alert__description p {
+  margin: 0;
+}
+.alert__actions {
+  flex-shrink: 0;
+}
+.alert__count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: inherit;
+}
+@media (max-width: 767.98px) {
+  .alert {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .alert__actions {
+    display: flex;
+  }
+}
+.check-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.check-list, .page-section, .page-header {
+  display: grid;
+  gap: 0.75rem;
+}
+.page-section {
+  grid-template-columns: minmax(0, 1fr);
+}
+.page-header {
+  gap: 0.45rem;
+}
+.page-header--split {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  justify-self: start;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  transition: color 120ms ease;
+}
+.back-link:hover {
+  color: var(--text-primary);
+}
+.back-link:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+.back-link__glyph {
+  font-size: 0.9em;
+  line-height: 1;
+}
+.page-header__content, .page-header__actions {
+  display: grid;
+  gap: 0.75rem;
+}
+.page-header__actions {
+  justify-items: end;
+}
+.page-summary {
+  align-items: center;
+}
+.eyebrow {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-primary-hover);
+}
+.check-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.check-list li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.check-list li:last-child {
+  padding-bottom: 0;
+}
+.check-list li span {
+  margin: 0.25rem 0 0;
+}
+.toolbar {
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+}
+.toolbar--compact {
+  gap: var(--space-2);
+}
+.toolbar select, .toolbar .control--select, .toolbar .control {
+  max-width: 17.5rem;
+  width: 17.5rem;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .toolbar select, .toolbar .control--select, .toolbar .control {
+    width: 100%;
+    max-width: none;
+  }
+}
+.form-field {
+  display: grid;
+  gap: var(--space-2);
+}
+.form-field__label {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.form-field__description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.form-field__description--match {
+  color: var(--status-success-strong);
+}
+.form-field__error {
+  margin: 0;
+  color: var(--status-error-strong);
+  font-size: 0.75rem;
+}
+.form-error-summary__list {
+  margin: 0;
+  padding-left: 1rem;
+}
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border);
+  border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft);
+  color: var(--status-disabled-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.status-badge--compact {
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
+}
+.status-badge__dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+.status-badge--success {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+}
+.status-badge--warning {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.status-badge--error {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+.status-badge--review {
+  border-color: var(--status-review-border);
+  background: var(--status-review-soft);
+  color: var(--status-review-fg);
+}
+.status-badge--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  color: var(--status-conflict-strong);
+}
+.status-badge--info {
+  border-color: var(--status-info-border);
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+}
+.status-badge--neutral {
+  border-color: var(--status-disabled-border);
+  background: var(--status-disabled-soft);
+  color: var(--status-disabled-fg);
+}
+.status-badge--solid {
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  border-color: var(--text-primary);
+}
+.status-badge--pulse .status-badge__dot {
+  position: relative;
+  animation: status-badge-pulse 1.6s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-badge--pulse .status-badge__dot {
+    animation: none;
+  }
+}
+.alert--compact {
+  gap: var(--space-3);
+  padding: 0.8125rem 0.9375rem;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.alert--compact .alert__content {
+  gap: 0.1875rem;
+}
+.alert--compact .alert__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.alert--compact .alert__description {
+  font-size: 0.8125rem;
+}
+.alert--compact.alert--warning .alert__title {
+  color: var(--status-warning-fg);
+}
+.alert--compact.alert--error .alert__title {
+  color: var(--status-error-fg);
+}
+.alert--compact.alert--info .alert__title {
+  color: var(--status-info-fg);
+}
+.mono-text {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.toolbar__checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+@media (max-width: 900px) {
+  .toolbar, .form-actions, .check-list li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .page-header--split {
+    grid-template-columns: 1fr;
+  }
+  .alert {
+    flex-direction: column;
+  }
+  .page-header__actions {
+    justify-items: start;
+  }
+}
+.capability-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.capability-list__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.capability-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.capability-list__item:last-child {
+  border-bottom: none;
+}
+.capability-list__label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.capability-fieldset--invalid {
+  border-color: var(--status-error);
+}
+.capability-list__code {
+  margin-left: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+.setup-lane {
+  display: grid;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.setup-lane__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.setup-lane__help {
+  margin: calc(var(--space-2) * -1) 0 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.setup-lane__toggle {
+  display: grid;
+  gap: var(--space-1);
+}
+.setup-lane__toggle-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.setup-lane__toggle-label input {
+  margin-top: 0.2rem;
+}
+.next-steps {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.next-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.eparagony-seller__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.eparagony-seller__address {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.eparagony-seller__address > legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+.eparagony-seller__address-row {
+  display: grid;
+  gap: var(--space-3);
+  align-items: start;
+}
+.eparagony-seller__address-row .form-field__label {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.eparagony-seller__address-row--street {
+  grid-template-columns: minmax(0, 4fr) minmax(0, 1fr) minmax(0, 1.4fr);
+}
+.eparagony-seller__address-row--city {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 3fr) minmax(0, 1fr);
+}
+.eparagony-seller__readiness {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.eparagony-seller__readiness--complete {
+  color: var(--status-success-fg);
+}
+@media (max-width: 640px) {
+  .eparagony-seller__address-row--street {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .eparagony-seller__address-row--street > :first-child {
+    grid-column: 1 / -1;
+  }
+  .eparagony-seller__address-row--city {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  }
+}
+.capability-list__name {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+.capability-list__help {
+  margin: 0;
+  font-size: 0.8125rem;
+  padding-left: 1.5rem;
+}
+.capability-fieldset {
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin: 0;
+}
+.capability-fieldset__legend {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  padding: 0 0.5rem;
+}
+.capability-fieldset__help {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.8125rem;
+}
+@media (hover: none) and (pointer: coarse) {
+  button, .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .control, input, select, textarea {
+    min-height: 44px;
+  }
+  .status-badge, .toolbar-chip {
+    min-height: 28px; 
+  }
+}
+.wizard-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+  max-width: 100%;
+  min-width: 0;
+}
+.wizard-card__back {
+  justify-self: start;
+}
+@media (min-width: 768px) {
+  .wizard-card {
+    max-width: 560px;
+    margin-inline: auto;
+    min-width: 0;
+  }
+}
+html[data-density='compact'] .status-badge {
+  padding: 1px var(--space-2);
+  font-size: 0.625rem;
+}
+.segmented-control {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.segmented-control__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  position: relative;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-right: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.segmented-control__option:first-child {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+.segmented-control__option:last-child {
+  border-right: none;
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+.segmented-control__option:hover {
+  background: var(--bg-surface-hover);
+}
+.segmented-control__option--active {
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-weight: 600;
+}
+.segmented-control__option--active:hover {
+  background: var(--accent-primary-hover);
+}
+.segmented-control__option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  z-index: 1;
+}
+.segmented-control__hint {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  opacity: 0.7;
+}
+.inline-disclosure {
+  border: 1px dashed var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+.inline-disclosure__summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.inline-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+.inline-disclosure__summary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+.inline-disclosure__label {
+  color: var(--text-secondary);
+}
+.inline-disclosure__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.inline-disclosure__cta {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}
+.inline-disclosure__panel {
+  margin-top: var(--space-3);
+}
+.form-field__source {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;  font-weight: 400;
+  color: var(--text-muted);
+}
+.segmented-control__option--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.form-field__source[data-source='setting'] {
+  color: var(--status-info-fg);
+}
+.form-actions {
+  flex-wrap: wrap;
+  padding-top: var(--space-2);
+}
+.form-field__source[data-above-recommended='true'] {
+  color: var(--status-warning-fg);
+}
+.toolbar-chip--accent {
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+/* ── Proposal frame (not part of the product) ── */
+:root { --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; --font-mono: 'IBM Plex Mono', ui-monospace, monospace; }
+body { font-family: var(--font-sans); color: var(--text-primary); background: var(--bg-canvas); }
+.proposal { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1.5rem; max-width: 76rem; margin: 0 auto; padding-block: 1.5rem 3rem; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); align-items: start; }
+.proposal__app { min-width: 0; }
+.proposal__notes { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 1rem); display: grid; gap: 1rem; min-width: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.proposal__notes h3 { margin: 0; font-size: 0.875rem; color: var(--text-primary); }
+.proposal__notes ol, .proposal__notes ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.4rem; }
+.proposal__notes code { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; }
+.proposal__note { border: 1px dashed var(--border-strong); border-radius: 0.5rem; padding: 0.75rem 0.875rem; display: grid; gap: 0.5rem; background: var(--bg-surface); }
+.proposal__scenarios { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.proposal__scenarios .button { font-size: 0.75rem; }
+.proposal__badge { display: inline-block; font-family: var(--font-mono); font-size: 0.6875rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem; background: var(--accent-primary-soft); color: var(--text-primary); }
+@media (max-width: 1023.98px) { .proposal { grid-template-columns: minmax(0, 1fr); } .proposal__notes { position: static; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useId, Children, cloneElement, isValidElement } = React;
+
+/* ════════════════════════════════════════════════════════════════════
+ * shared/ui - ported 1:1 from apps/web/src/shared/ui (types dropped)
+ * ════════════════════════════════════════════════════════════════════ */
+
+function Alert({ action, children, className = '', density = 'default', title, tone = 'info' }) {
+  const classes = ['alert', `alert--${tone}`, density === 'compact' ? 'alert--compact' : '', className]
+    .filter(Boolean).join(' ');
+  return (
+    <div className={classes} role={tone === 'error' ? 'alert' : 'status'}>
+      <div className="alert__content">
+        {title ? <strong className="alert__title">{title}</strong> : null}
+        <div className="alert__description">{children}</div>
+      </div>
+      {action ? <div className="alert__actions">{action}</div> : null}
+    </div>
+  );
+}
+
+function FieldError({ id, message }) {
+  if (!message) return null;
+  return <p id={id} className="form-field__error" role="alert">{message}</p>;
+}
+
+function FormField({ children, description, error, label, name }) {
+  const child = Children.only(children);
+  const generatedId = useId();
+  const inputId = child.props.id ?? `${name}-${generatedId}`;
+  const descriptionId = description ? `${inputId}-description` : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const describedBy = [child.props['aria-describedby'], descriptionId, errorId].filter(Boolean).join(' ') || undefined;
+  return (
+    <div className="form-field">
+      <label htmlFor={inputId} className="form-field__label">{label}</label>
+      {cloneElement(child, { id: inputId, 'aria-describedby': describedBy, 'aria-invalid': Boolean(error) || Boolean(child.props['aria-invalid']) })}
+      {description ? <p id={descriptionId} className="form-field__description">{description}</p> : null}
+      <FieldError id={errorId ?? `${inputId}-error`} message={error} />
+    </div>
+  );
+}
+
+function Input({ className = '', invalid = false, ...props }) {
+  return <input className={['control', invalid ? 'control--invalid' : '', className].filter(Boolean).join(' ')} {...props} />;
+}
+
+function Select({ children, className = '', invalid = false, ...props }) {
+  return (
+    <select className={['control', 'control--select', invalid ? 'control--invalid' : '', className].filter(Boolean).join(' ')} {...props}>
+      {children}
+    </select>
+  );
+}
+
+function Button({ className = '', tone = 'primary', type = 'button', ...props }) {
+  return <button type={type} className={['button', `button--${tone}`, className].filter(Boolean).join(' ')} {...props} />;
+}
+
+function StatusBadge({ children, compact = false, tone = 'neutral' }) {
+  return (
+    <span className={['status-badge', `status-badge--${tone}`, compact ? 'status-badge--compact' : ''].filter(Boolean).join(' ')}>
+      <span>{children}</span>
+    </span>
+  );
+}
+
+function BackLink({ label, className = '' }) {
+  return (
+    <a href="#" onClick={(e) => e.preventDefault()} className={['back-link', className].filter(Boolean).join(' ')}>
+      <span className="back-link__glyph" aria-hidden="true">←</span>
+      <span className="back-link__label">{label}</span>
+    </a>
+  );
+}
+
+function FormErrorSummary({ errors, title = 'Please correct the highlighted fields.' }) {
+  if (errors.length === 0) return null;
+  return (
+    <Alert tone="error" title={title}>
+      <ul className="form-error-summary__list">{errors.map((e) => <li key={e}>{e}</li>)}</ul>
+    </Alert>
+  );
+}
+
+function PageLayout({ children, description, eyebrow, summary, title }) {
+  return (
+    <section className="page-section">
+      <div className="page-header">
+        <div className="page-header__content">
+          {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+          <h2 className="page-title">{title}</h2>
+          {description ? <p className="page-description">{description}</p> : null}
+        </div>
+      </div>
+      {summary ? <div className="toolbar page-summary">{summary}</div> : null}
+      {children}
+    </section>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * PROPOSAL - eparagony-setup.schema.ts (what changes)
+ *
+ * In the app this is the zod schema; here it is the same rules as a
+ * plain function so the page runs without a build. Each rule names the
+ * backend check it mirrors, so the form is never stricter than the gate.
+ * ════════════════════════════════════════════════════════════════════ */
+
+const DOCUMENT_CHOICES = [
+  {
+    capability: 'Fiscalization',
+    label: 'Fiscal e-receipts',
+    help: 'Registers a sale on your own fiscal printer through eparagony.pl.',
+  },
+  {
+    capability: 'Invoicing',
+    label: 'Invoices',
+    help: 'Issues VAT invoices through eparagony.pl. eparagony.pl can also send them on to KSeF.',
+  },
+];
+
+const ADDRESS_PARTS = ['merchantStreet', 'merchantNumber', 'merchantPostalCode', 'merchantCity', 'merchantCountry'];
+
+const DEFAULT_VALUES = {
+  enabledCapabilities: ['Fiscalization'],
+  name: '', environment: 'sandbox', clientId: '', clientSecret: '', posId: '', integrationId: '',
+  merchantTIN: '', merchantName: '',
+  merchantStreet: '', merchantNumber: '', merchantApartment: '', merchantPostalCode: '', merchantCity: '', merchantCountry: 'PL',
+  eInvoicingHubEnabled: false,
+};
+
+function validate(v) {
+  const e = {};
+  // superRefine #1: at least one document kind. Today the wizard hardcodes
+  // enabledCapabilities: ['Fiscalization'] and never asks.
+  if (v.enabledCapabilities.length === 0) e.enabledCapabilities = 'Pick at least one: e-receipts, invoices, or both.';
+  if (!v.name.trim()) e.name = 'Connection name is required';
+  if (!v.clientId.trim()) e.clientId = 'Client ID is required';
+  if (!v.clientSecret.trim()) e.clientSecret = 'Client secret is required';
+  if (!v.posId.trim()) e.posId = 'POS ID is required';
+  if (v.integrationId.trim() && !v.integrationId.includes(':')) e.integrationId = 'Must be of the form integration:secret, e.g. openlinker:abc123';
+  if (v.enabledCapabilities.includes('Invoicing')) {
+    // superRefine #2: the invoice mapper refuses every invoice without merchantTIN.
+    if (!v.merchantTIN.trim()) e.merchantTIN = 'Tax number (NIP) is required to issue invoices';
+    // superRefine #3: the validator refuses a half-filled merchantAddress.
+    // Apartment is the only optional part; Country is prefilled, so it alone
+    // does not count as "started".
+    const started = ['merchantStreet', 'merchantNumber', 'merchantApartment', 'merchantPostalCode', 'merchantCity']
+      .some((k) => v[k].trim() !== '');
+    if (started) for (const k of ADDRESS_PARTS) if (!v[k].trim()) e[k] = 'Required.';
+    if (v.merchantCountry.trim() && !/^[A-Za-z]{2}$/.test(v.merchantCountry.trim())) e.merchantCountry = 'Use the two-letter code, e.g. PL.';
+  }
+  return e;
+}
+
+/* toCreateConnectionInput - what the POST /connections body becomes. */
+function toCreateConnectionInput(v) {
+  const invoicing = v.enabledCapabilities.includes('Invoicing');
+  const address = ['merchantStreet', 'merchantNumber', 'merchantApartment', 'merchantPostalCode', 'merchantCity']
+    .some((k) => v[k].trim() !== '')
+    ? {
+        street: v.merchantStreet.trim(), number: v.merchantNumber.trim(),
+        ...(v.merchantApartment.trim() ? { apartment: v.merchantApartment.trim() } : {}),
+        postalCode: v.merchantPostalCode.trim(), city: v.merchantCity.trim(), country: v.merchantCountry.trim().toUpperCase(),
+      }
+    : undefined;
+  return {
+    name: v.name.trim(),
+    platformType: 'eparagony',
+    adapterKey: 'eparagony.documents.v3',
+    credentials: { clientId: v.clientId.trim(), clientSecret: '••••', ...(v.integrationId.trim() ? { integrationId: '••••' } : {}) },
+    config: {
+      environment: v.environment,
+      posId: v.posId.trim(),
+      ...(invoicing ? {
+        merchantTIN: v.merchantTIN.trim(),
+        ...(v.merchantName.trim() ? { merchantName: v.merchantName.trim() } : {}),
+        ...(address ? { merchantAddress: address } : {}),
+        eInvoicingHubEnabled: v.eInvoicingHubEnabled,
+      } : {}),
+    },
+    enabledCapabilities: v.enabledCapabilities,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * PROPOSAL - eparagony-setup-form.tsx
+ * ════════════════════════════════════════════════════════════════════ */
+
+const PRINTER_CHECKLIST = (
+  <Alert tone="info" title="Before you connect your printer">
+    <p>
+      eparagony.pl registers a sale with your own fiscal printer. Three things need to be set up
+      first, usually by your printer servicer:
+    </p>
+    <ul className="check-list">
+      <li><span><strong>An online fiscal printer</strong> - Posnet, Novitus or Elzab - connected to the internet.</span><StatusBadge tone="neutral" compact>Your equipment</StatusBadge></li>
+      <li><span><strong>eparagony.pl&apos;s printer-control software</strong> running on the machine next to the printer.</span><StatusBadge tone="neutral" compact>Your equipment</StatusBadge></li>
+      <li><span><strong>The device set up for e-receipts</strong> by your printer servicer.</span><StatusBadge tone="neutral" compact>Ask your servicer</StatusBadge></li>
+    </ul>
+  </Alert>
+);
+
+function EparagonySetupForm({ values, setValues, submitted, setSubmitted, created, setCreated }) {
+  const errors = submitted ? validate(values) : {};
+  const errorMessages = Object.values(errors).filter((m) => m !== 'Required.');
+  const addressErrorCount = ADDRESS_PARTS.filter((k) => errors[k]).length;
+  const receipts = values.enabledCapabilities.includes('Fiscalization');
+  const invoices = values.enabledCapabilities.includes('Invoicing');
+
+  const set = (key) => (event) => setValues({ ...values, [key]: event.target.value });
+  const toggleCapability = (capability) => {
+    const has = values.enabledCapabilities.includes(capability);
+    const next = has ? values.enabledCapabilities.filter((c) => c !== capability) : [...values.enabledCapabilities, capability];
+    // Keep the product order (receipts, invoices), not the click order.
+    setValues({ ...values, enabledCapabilities: DOCUMENT_CHOICES.map((d) => d.capability).filter((c) => next.includes(c)) });
+  };
+
+  const onSubmit = (event) => {
+    event.preventDefault();
+    setSubmitted(true);
+    if (Object.keys(validate(values)).length === 0) setCreated(toCreateConnectionInput(values));
+  };
+
+  if (created) return <CreatedState body={created} onBack={() => setCreated(null)} />;
+
+  const text = (key, label, description, extra = {}) => (
+    <FormField label={label} name={key} error={errors[key]} description={description}>
+      <Input value={values[key]} onChange={set(key)} autoComplete="off" invalid={Boolean(errors[key])} {...extra} />
+    </FormField>
+  );
+
+  return (
+    <form className="wizard-card" onSubmit={onSubmit} noValidate>
+      <BackLink label="Connections" className="wizard-card__back" />
+
+      {submitted && errorMessages.length + (addressErrorCount > 0 ? 1 : 0) > 0 ? (
+        <FormErrorSummary errors={[...errorMessages, ...(addressErrorCount > 0 ? ['Complete the seller address, or leave it empty.'] : [])]} />
+      ) : null}
+
+      <fieldset className={['capability-fieldset', errors.enabledCapabilities ? 'capability-fieldset--invalid' : ''].filter(Boolean).join(' ')} aria-describedby="doc-choice-help">
+        <legend className="capability-fieldset__legend">What should this connection issue?</legend>
+        <p className="muted-text capability-fieldset__help" id="doc-choice-help">
+          Pick one or both. You can change this later on the connection&rsquo;s detail page.
+        </p>
+        <ul className="capability-list">
+          {DOCUMENT_CHOICES.map((choice) => {
+            const id = `new-cap-${choice.capability}`;
+            return (
+              <li key={choice.capability} className="capability-list__item">
+                <label htmlFor={id} className="capability-list__label">
+                  <input id={id} type="checkbox" checked={values.enabledCapabilities.includes(choice.capability)} onChange={() => toggleCapability(choice.capability)} />
+                  <span className="capability-list__name">{choice.label}</span>
+                  <span className="capability-list__code">{choice.capability}</span>
+                </label>
+                <p className="capability-list__help muted-text">{choice.help}</p>
+              </li>
+            );
+          })}
+        </ul>
+        <FieldError id="doc-choice-error" message={errors.enabledCapabilities} />
+      </fieldset>
+
+      {receipts && invoices ? (
+        <Alert tone="info" density="compact">
+          An order gets one document, never both. After connecting, add a rule in Settings → Sales
+          documents that says which orders get a receipt and which get an invoice. Until then, orders
+          wait instead of getting a guessed document.
+        </Alert>
+      ) : null}
+
+      <div className="setup-lane">
+        <h3 className="setup-lane__title">eparagony.pl account</h3>
+        {text('name', 'Connection name', 'A label to identify this eparagony.pl account in OpenLinker.', { placeholder: 'My eparagony.pl account' })}
+        <FormField label="Environment" name="environment" description="Sandbox has no fiscal device attached, so nothing prints or registers for real.">
+          <Select value={values.environment} onChange={set('environment')}>
+            <option value="sandbox">Sandbox - https://sandbox.eparagony.pl</option>
+            <option value="production">Production - https://api.eparagony.pl</option>
+          </Select>
+        </FormField>
+        {text('clientId', 'Client ID', 'Issued by eparagony.pl when your integration was approved.')}
+        {text('clientSecret', 'Client secret', 'Stored securely on the server and never shown again after saving.', { type: 'password', placeholder: '••••••••••••••••••••••••' })}
+        {text('posId', 'POS ID', 'The register or till identifier eparagony.pl stamps on every document.')}
+        {text('integrationId', 'Integration ID (optional)', 'Of the form integration:secret. Leave blank if you were not given one.', { placeholder: 'openlinker:abc123' })}
+      </div>
+
+      {receipts ? (
+        <div className="setup-lane">
+          <h3 className="setup-lane__title">Fiscal e-receipts</h3>
+          {PRINTER_CHECKLIST}
+        </div>
+      ) : null}
+
+      {invoices ? (
+        <div className="setup-lane">
+          <h3 className="setup-lane__title">Seller on invoices</h3>
+          <p className="setup-lane__help">eparagony.pl prints these on every invoice this connection issues, as the seller.</p>
+          {text('merchantTIN', 'Tax number (NIP)', 'The NIP your eparagony.pl account is registered with. eparagony.pl refuses an invoice under any other number.', { inputMode: 'numeric', placeholder: '1234567890' })}
+          {text('merchantName', 'Seller name (optional)', 'The name as registered. Invoices work without it; a correction needs it.', { autoComplete: 'organization' })}
+          <fieldset className="eparagony-seller__address" aria-labelledby="seller-address-legend">
+            <legend className="form-field__label" id="seller-address-legend">Seller address (optional)</legend>
+            <div className="eparagony-seller__address-row eparagony-seller__address-row--street">
+              {text('merchantStreet', 'Street', undefined, { placeholder: 'Prosta' })}
+              {text('merchantNumber', 'Building', undefined, { placeholder: '51' })}
+              {text('merchantApartment', 'Apartment')}
+            </div>
+            <div className="eparagony-seller__address-row eparagony-seller__address-row--city">
+              {text('merchantPostalCode', 'Postal code', undefined, { placeholder: '00-838' })}
+              {text('merchantCity', 'City', undefined, { placeholder: 'Warszawa' })}
+              {text('merchantCountry', 'Country', undefined, { placeholder: 'PL' })}
+            </div>
+            <p className="form-field__description">
+              Invoices work without it; a correction needs it. Leave it empty, or fill in every part except the apartment.
+            </p>
+          </fieldset>
+          <div className="setup-lane__toggle">
+          <label className="setup-lane__toggle-label" htmlFor="eInvoicingHubEnabled">
+            <input id="eInvoicingHubEnabled" type="checkbox" checked={values.eInvoicingHubEnabled}
+              onChange={(e) => setValues({ ...values, eInvoicingHubEnabled: e.target.checked })} />
+            <span>Send invoices on to KSeF</span>
+          </label>
+          <p className="form-field__description">
+            {values.eInvoicingHubEnabled
+              ? 'Before the first invoice: give eparagony.pl permission to issue invoices in the KSeF taxpayer app, and switch KSeF on in panel.eparagony.pl. Without both, eparagony.pl refuses the invoice.'
+              : 'Off: invoices are issued outside KSeF, which is a complete result. Turn it on once eparagony.pl may send to KSeF for you.'}
+          </p>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="form-actions">
+        <Button type="submit">Connect eparagony.pl</Button>
+      </div>
+    </form>
+  );
+}
+
+function CreatedState({ body, onBack }) {
+  const invoices = body.enabledCapabilities.includes('Invoicing');
+  const both = body.enabledCapabilities.length === 2;
+  return (
+    <div className="wizard-card">
+      <Alert tone="success" title="Connection created">
+        eparagony.pl connection &ldquo;{body.name}&rdquo; was created
+        {invoices ? ' with the seller details invoices need.' : '.'}
+      </Alert>
+      {invoices || both ? (
+        <Alert tone="warning" title="Before the first invoice">
+          <ul className="next-steps">
+            {invoices ? (
+              <li>
+                <span>Set up an invoice numbering series. Without one, issuing an invoice stops and asks for it.</span>
+                <a href="#" onClick={(e) => e.preventDefault()}>Set up numbering</a>
+              </li>
+            ) : null}
+            {both ? (
+              <li>
+                <span>Add a sales-document rule: which orders get a receipt, which an invoice.</span>
+                <a href="#" onClick={(e) => e.preventDefault()}>Open sales documents</a>
+              </li>
+            ) : null}
+          </ul>
+        </Alert>
+      ) : null}
+      <div className="form-actions">
+        <Button type="button">Test connection</Button>
+        <Button tone="secondary" type="button" onClick={onBack}>Done</Button>
+      </div>
+    </div>
+  );
+}
+
+/* Stable state names. Issues, PRs and E2E specs cite these, never a
+   free-text description of the screen (docs/frontend-architecture.md § UX Mockups). */
+function stateOf(values, submitted, created) {
+  if (created) {
+    const caps = created.enabledCapabilities;
+    return caps.length === 2 ? 'created-both' : caps[0] === 'Invoicing' ? 'created-invoices' : 'created-receipts';
+  }
+  const errors = submitted ? validate(values) : {};
+  if (errors.enabledCapabilities) return 'none-selected';
+  if (errors.merchantTIN) return 'invoices-missing-nip';
+  const caps = values.enabledCapabilities;
+  if (caps.length === 2) return 'both';
+  return caps[0] === 'Invoicing' ? 'invoices-only' : 'receipts-only';
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * Proposal frame
+ * ════════════════════════════════════════════════════════════════════ */
+
+const SCENARIOS = {
+  'Receipts only': { ...DEFAULT_VALUES },
+  'Invoices only': { ...DEFAULT_VALUES, enabledCapabilities: ['Invoicing'] },
+  'Both': { ...DEFAULT_VALUES, enabledCapabilities: ['Fiscalization', 'Invoicing'] },
+  'Filled, invoices': {
+    ...DEFAULT_VALUES, enabledCapabilities: ['Invoicing'], name: 'eparagony.pl sandbox', clientId: 'demo-client-id',
+    clientSecret: 'x', posId: 'openlinker', merchantTIN: '5252556107', merchantName: 'OpenLinker Test Sp. z o.o.',
+  },
+};
+
+function App() {
+  const [values, setValues] = useState(SCENARIOS['Receipts only']);
+  const [submitted, setSubmitted] = useState(false);
+  const [created, setCreated] = useState(null);
+  const chips = [
+    ...(values.enabledCapabilities.includes('Fiscalization') ? ['Fiscalization'] : []),
+    ...(values.enabledCapabilities.includes('Invoicing') ? ['Invoicing'] : []),
+    'Guided setup',
+  ];
+  const load = (name, submit = false) => { setValues(SCENARIOS[name]); setCreated(null); setSubmitted(submit); };
+
+  return (
+    <div className="proposal">
+      <main className="proposal__app" data-state={stateOf(values, submitted, created)}>
+        <PageLayout
+          eyebrow="Integrations"
+          title="Connect eparagony.pl"
+          description="OpenLinker hands a sale to eparagony.pl, which issues a fiscal e-receipt on your own printer, an invoice, or both. Connecting does not issue anything by itself."
+          summary={<div className="toolbar__group">{chips.map((c) => <span key={c} className="toolbar-chip">{c}</span>)}</div>}
+        >
+          <EparagonySetupForm values={values} setValues={setValues} submitted={submitted} setSubmitted={setSubmitted} created={created} setCreated={setCreated} />
+        </PageLayout>
+      </main>
+
+      <aside className="proposal__notes" aria-label="Opis propozycji">
+        <div className="proposal__note">
+          <span className="proposal__badge">propozycja</span>
+          <h3>Podgląd stanów</h3>
+          <div className="proposal__scenarios">
+            {Object.keys(SCENARIOS).map((name) => (
+              <Button key={name} tone="secondary" onClick={() => load(name)}>{name}</Button>
+            ))}
+            <Button tone="secondary" onClick={() => { setValues({ ...DEFAULT_VALUES, enabledCapabilities: [] }); setCreated(null); setSubmitted(true); }}>Nic nie wybrane</Button>
+            <Button tone="secondary" onClick={() => { setValues({ ...SCENARIOS['Filled, invoices'], merchantTIN: '' }); setCreated(null); setSubmitted(true); }}>Faktury bez NIP</Button>
+            <Button tone="secondary" onClick={() => { const v = SCENARIOS['Filled, invoices']; setValues(v); setSubmitted(true); setCreated(toCreateConnectionInput(v)); }}>Po utworzeniu: faktury</Button>
+            <Button tone="secondary" onClick={() => { const v = { ...SCENARIOS['Filled, invoices'], enabledCapabilities: ['Fiscalization', 'Invoicing'] }; setValues(v); setSubmitted(true); setCreated(toCreateConnectionInput(v)); }}>Po utworzeniu: oba</Button>
+          </div>
+          <p style={{ margin: 0 }}>Formularz jest klikalny. „Connect” waliduje, a body requestu pojawia się w tym panelu.</p>
+          <p style={{ margin: 0 }}>Aktualny stan: <code>data-state="{stateOf(values, submitted, created)}"</code></p>
+        </div>
+
+        {created ? (
+          <div className="proposal__note">
+            <h3>Body wysłane do POST /connections</h3>
+            <pre className="mono-text" style={{ margin: 0, overflowX: 'auto', fontSize: '0.6875rem' }}>{JSON.stringify(created, null, 2)}</pre>
+          </div>
+        ) : null}
+
+        <div className="proposal__note">
+          <h3>Co się zmienia w kodzie</h3>
+          <ol>
+            <li><code>eparagony-setup.schema.ts</code>: <code>enabledCapabilities</code> z checkboxów (min. 1) zamiast zaszytego <code>['Fiscalization']</code>.</li>
+            <li>Gdy jest <code>Invoicing</code>: <code>merchantTIN</code> wymagany, adres wszystko albo nic, <code>eInvoicingHubEnabled</code> domyślnie off.</li>
+            <li>Lista „Before you connect” dotyczy drukarki, więc tylko przy e-paragonach.</li>
+            <li>Po utworzeniu: przy fakturach link do serii numeracji, przy obu typach link do reguł dokumentów. To dwa kolejne ciche faile.</li>
+          </ol>
+        </div>
+
+        <div className="proposal__note">
+          <h3>Bez zmian</h3>
+          <ul>
+            <li>Backend: walidator już przyjmuje te pola.</li>
+            <li>Komponenty i CSS: istniejące, wzorzec <code>capability-fieldset</code> z kreatora WooCommerce.</li>
+            <li>Edycja połączenia: akordeon „Seller on invoices” z poprzedniej zmiany.</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>

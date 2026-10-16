@@ -452,4 +452,128 @@ describe('EparagonyStructuredSection', () => {
     expect(screen.queryByLabelText(/tax rates/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Show raw config JSON/)).toBeInTheDocument();
   });
+
+  describe('seller on invoices', () => {
+    const INVOICING = ['Fiscalization', 'Invoicing'];
+    const COMPLETE_SELLER = {
+      eparagonyMerchantTIN: '5252556107',
+      eparagonyMerchantName: 'OpenLinker Test Sp. z o.o.',
+      eparagonyMerchantStreet: 'Prosta',
+      eparagonyMerchantNumber: '51',
+      eparagonyMerchantPostalCode: '00-838',
+      eparagonyMerchantCity: 'Warszawa',
+      eparagonyMerchantCountry: 'PL',
+    };
+
+    it('should not render the seller when the connection only issues receipts', () => {
+      renderWithProviders(<Harness enabledCapabilities={['Fiscalization']} />);
+      expect(screen.queryByText('Seller on invoices:')).toBeNull();
+      expect(screen.queryByLabelText('Tax number (NIP)')).toBeNull();
+    });
+
+    it('should render the seller when invoicing is enabled, with nothing stored yet', () => {
+      renderWithProviders(<Harness enabledCapabilities={INVOICING} />);
+      expect(screen.getByText('Seller on invoices:')).toBeInTheDocument();
+      expect(screen.getByLabelText('Tax number (NIP)')).toHaveValue('');
+    });
+
+    it('should still render the seller when every value is already stored, so a wrong NIP can be corrected', () => {
+      renderWithProviders(
+        <Harness enabledCapabilities={INVOICING} defaultValues={COMPLETE_SELLER} />,
+      );
+      expect(screen.getByLabelText('Tax number (NIP)')).toHaveValue('5252556107');
+      expect(screen.getByLabelText('City')).toHaveValue('Warszawa');
+    });
+
+    it('should warn that every invoice is refused when the tax number is missing', () => {
+      renderWithProviders(<Harness enabledCapabilities={INVOICING} />);
+      expect(screen.getByTestId('eparagony-seller-missing-tin')).toHaveTextContent(
+        /every invoice from this connection is refused/i,
+      );
+      expect(screen.queryByTestId('eparagony-seller-readiness')).toBeNull();
+    });
+
+    it('should say corrections still need more once only the tax number is set', () => {
+      renderWithProviders(
+        <Harness
+          enabledCapabilities={INVOICING}
+          defaultValues={{ eparagonyMerchantTIN: '5252556107' }}
+        />,
+      );
+      expect(screen.queryByTestId('eparagony-seller-missing-tin')).toBeNull();
+      expect(screen.getByTestId('eparagony-seller-readiness')).toHaveTextContent(
+        /invoices can be issued\. a correction also needs/i,
+      );
+    });
+
+    it('should say invoices and corrections are covered once the seller is complete', () => {
+      renderWithProviders(
+        <Harness enabledCapabilities={INVOICING} defaultValues={COMPLETE_SELLER} />,
+      );
+      expect(screen.getByTestId('eparagony-seller-readiness')).toHaveTextContent(
+        /invoices and corrections have everything they need/i,
+      );
+    });
+
+    it('should sync each seller field to its own form key', () => {
+      const sync = vi.fn();
+      renderWithProviders(<Harness enabledCapabilities={INVOICING} syncStructuredToJson={sync} />);
+      fireEvent.change(screen.getByLabelText('Tax number (NIP)'), {
+        target: { value: '5252556107' },
+      });
+      fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Warszawa' } });
+      expect(sync).toHaveBeenCalledWith('eparagonyMerchantTIN', '5252556107');
+      expect(sync).toHaveBeenCalledWith('eparagonyMerchantCity', 'Warszawa');
+    });
+
+    it('should lock every seller field while the raw JSON is unparseable', () => {
+      renderWithProviders(<Harness enabledCapabilities={INVOICING} configIsParseable={false} />);
+      const address = screen.getByRole('group', { name: 'Seller address' });
+      for (const input of within(address).getAllByRole('textbox')) {
+        expect(input).toBeDisabled();
+      }
+      expect(screen.getByLabelText('Tax number (NIP)')).toBeDisabled();
+    });
+
+    it('should start open when the tax number is missing, so the field that blocks every invoice is in view', () => {
+      const { container } = renderWithProviders(<Harness enabledCapabilities={INVOICING} />);
+      expect(container.querySelector('details.eparagony-seller')).toHaveAttribute('open');
+      expect(screen.getByText('No tax number, every invoice is refused')).toBeInTheDocument();
+    });
+
+    it('should start closed and state the outcome in the summary once the seller is complete', () => {
+      const { container } = renderWithProviders(
+        <Harness enabledCapabilities={INVOICING} defaultValues={COMPLETE_SELLER} />,
+      );
+      expect(container.querySelector('details.eparagony-seller')).not.toHaveAttribute('open');
+      expect(
+        screen.getByText('NIP 5252556107, complete'),
+      ).toBeInTheDocument();
+    });
+
+    it('should name the missing correction details in the summary when only the NIP is set', () => {
+      renderWithProviders(
+        <Harness
+          enabledCapabilities={INVOICING}
+          defaultValues={{ eparagonyMerchantTIN: '5252556107' }}
+        />,
+      );
+      expect(
+        screen.getByText('NIP 5252556107, incomplete for corrections'),
+      ).toBeInTheDocument();
+    });
+
+    it('should count problems in the summary, so a closed group does not hide them', async () => {
+      renderWithProviders(
+        <Harness
+          enabledCapabilities={INVOICING}
+          defaultValues={COMPLETE_SELLER}
+          errors={{ eparagonyMerchantCity: { type: 'custom', message: 'Required.' } }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByText(/NIP 5252556107, complete \(1 problem to fix\)/)).toBeInTheDocument(),
+      );
+    });
+  });
 });
