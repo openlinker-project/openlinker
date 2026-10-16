@@ -55,6 +55,7 @@ import {
   TAX_FALLBACK_FIELD_DESCRIPTION,
   TAX_FALLBACK_INFOTIP_LABEL,
 } from './eparagony-tax-fallback-copy';
+import { EparagonySellerSection } from './eparagony-seller-section';
 
 const PRINT_OPTIONS: readonly { value: EparagonyPrintState; label: string }[] = [
   { value: '', label: 'Not set' },
@@ -285,6 +286,21 @@ export function EparagonyStructuredSection({
           invalid={Boolean(errors.eparagonyPaymentName)}
         />
       </FormField>
+
+      {/*
+        The seller is gated on the CAPABILITY, not on stored values: once the
+        invoicing lane is on, every invoice needs a seller tax number, and an
+        operator must be able to correct one that is wrong, not only fill one
+        that is missing. First of the collapsed groups, because it is the only
+        one whose absence stops a document from being issued at all.
+      */}
+      {invoicingEnabled ? (
+        <EparagonySellerSection
+          form={form}
+          configIsParseable={configIsParseable}
+          syncStructuredToJson={syncStructuredToJson}
+        />
+      ) : null}
 
       <InlineDisclosure
         label="Fallback tax rate:"
