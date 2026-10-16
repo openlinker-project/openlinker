@@ -394,6 +394,83 @@ describe('SalesDocumentPanel — manual actions when nothing is blocked', () => 
   });
 });
 
+describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
+  const SETUP_REASON =
+    'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.';
+  const setupRefusal = (): ApiError =>
+    new ApiError(SETUP_REASON, 422, {
+      message: SETUP_REASON,
+      error: 'InvoiceIssueRejected',
+      failureCode: 'connection-setup-incomplete',
+      failureReason: SETUP_REASON,
+    });
+  const failedRecord = makeInvoice({
+    status: 'failed',
+    failureMode: 'rejected',
+    failureCode: 'connection-setup-incomplete',
+    failureReason: SETUP_REASON,
+    providerInvoiceNumber: null,
+  });
+
+  it('answers in place, without a toast, by re-reading the failed attempt', async () => {
+    const getForOrder = vi.fn().mockRejectedValueOnce(notFound()).mockResolvedValue(failedRecord);
+    const issue = vi.fn().mockRejectedValue(setupRefusal());
+    const user = userEvent.setup();
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder, issue },
+      }),
+      ...adminSession,
+    });
+    await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
+
+    const alert = await screen.findByTestId('invoice-setup-incomplete');
+    expect(alert).toHaveTextContent('Subiekt GT is not set up to issue invoices');
+    expect(alert).toHaveTextContent(SETUP_REASON);
+    expect(screen.getByRole('link', { name: 'Open connection settings' })).toHaveAttribute(
+      'href',
+      `/connections/${INVOICE_CONN_ID}/edit`,
+    );
+    expect(document.querySelector('.document-headline__word')?.textContent).toContain('Not issued');
+    expect(document.querySelector('.toast__title')).toBeNull();
+  });
+
+  it('still names the setting after a reload, from the stored record alone', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(failedRecord) },
+      }),
+      ...adminSession,
+    });
+    expect(await screen.findByTestId('invoice-setup-incomplete')).toHaveTextContent(SETUP_REASON);
+    expect(screen.getByText(/Retry once the connection is saved/)).toBeInTheDocument();
+  });
+
+  it('keeps the toast for any other failure, and re-reads the record as well', async () => {
+    const getForOrder = vi.fn().mockRejectedValue(notFound());
+    const issue = vi.fn().mockRejectedValue(
+      new ApiError('The invoicing provider rejected the request.', 422, {
+        message: 'The invoicing provider rejected the request.',
+        error: 'InvoiceIssueRejected',
+        failureCode: 'provider-rejected',
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder, issue },
+      }),
+      ...adminSession,
+    });
+    await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
+    expect(await findToastTitle('Could not issue invoice')).toBeInTheDocument();
+    await waitFor(() => expect(getForOrder.mock.calls.length).toBeGreaterThan(1));
+  });
+});
+
 describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
   const rejected = makeInvoice({ regulatoryStatus: 'rejected' });
 

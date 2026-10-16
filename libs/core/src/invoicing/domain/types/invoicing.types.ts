@@ -99,6 +99,17 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *     matches. The operator-fixable remedy is a one-field connection config
  *     change, which is why this must not collapse into `provider-rejected` —
  *     that copy gives no clue there is a config knob to set at all.
+ *   - `connection-setup-incomplete`: a TERMINAL `rejected` failure the
+ *     ADAPTER raised before contacting the provider, because the connection
+ *     is missing a setting it needs (#3772) - e.g. an invoicing connection
+ *     with no seller tax number. Reached only when the adapter DECLARES it,
+ *     via `failureCause: 'connection-setup'` on its throwable, never by
+ *     matching words; and only for this code is `failureReason` the
+ *     adapter's own sentence, because declaring the cause is the adapter's
+ *     promise that the sentence comes from connection config, not buyer data.
+ *     Must not collapse into `provider-rejected`, whose copy asserts the
+ *     provider rejected a request it never received and sends the operator
+ *     to the order's data when the fix is on the connection.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -110,6 +121,7 @@ export const InvoiceFailureCodeValues = [
   'buyer-tax-id-invalid',
   'invalid-currency',
   'sale-classification-required',
+  'connection-setup-incomplete',
   'provider-rejected',
   'transport-timeout',
   'provider-error',

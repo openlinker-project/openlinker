@@ -105,6 +105,7 @@ import {
   useIssueInvoiceMutation,
   resolveIssueErrorMessage,
   isMissingNumberingSeriesError,
+  isConnectionSetupIncompleteError,
   deriveInvoiceDisplayStatus,
   canRetryInvoice,
   resolveFailureCopy,
@@ -470,6 +471,19 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             setMissingNumbering(true);
             return;
           }
+          // A failed attempt is a stored record (#3772): re-read it on EVERY
+          // error, so the panel shows what happened in place. Without this
+          // the panel kept offering "Issue invoice" until a page reload.
+          void invoiceQuery.refetch();
+          if (isConnectionSetupIncompleteError(error)) {
+            // Answered in place, like missing numbering: the refetched record
+            // renders an alert that names the missing setting and links to
+            // the connection. A toast on top would say it twice.
+            announce(
+              t('invoice.announce.connectionSetupIncomplete', 'The connection is missing a setting.'),
+            );
+            return;
+          }
           announce(t('invoice.announce.issueFailed', 'The invoice could not be issued.'));
           showToast({
             tone: 'error',
@@ -478,12 +492,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           });
           // A 409 means the server refused: the order is already
           // issuing/issued here, or already invoiced/registered ELSEWHERE
-          // (#2047 / #2157). Re-read both queries so the panel shows the real
-          // record instead of the stale empty state — the proactive gate
+          // (#2047 / #2157). Re-read the receipt too, so the panel shows the
+          // real record instead of the stale empty state - the proactive gate
           // above should already prevent this attempt, but a concurrent write
           // from elsewhere can still race it.
           if (error instanceof ApiError && error.status === 409) {
-            void invoiceQuery.refetch();
             void fiscalQuery.refetch();
           }
         },
@@ -979,16 +992,47 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {invoiceSettled && invoiceDisplayStatus === 'failed' && invoice ? (
             <>
-              <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
-                <span className="invoice-panel__inline-alert-bar" />
-                <span>
-                  <strong>{resolveFailureCopy(invoice, t)}</strong>
-                </span>
-              </div>
+              {/* #3772 - a refusal about the connection's own settings is
+                  not the provider's verdict on the order: name the setting
+                  and take the operator to the connection that holds it. The
+                  link sits under the text rather than in the Alert's action
+                  slot, which squeezes the sentence in a panel this narrow. */}
+              {invoice.failureCode === 'connection-setup-incomplete' ? (
+                <Alert
+                  tone="warning"
+                  title={t(
+                    'invoice.setupIncomplete.title',
+                    '{connection} is not set up to issue invoices',
+                  ).replace('{connection}', invoicingConnection?.name ?? t('invoice.setupIncomplete.thisConnection', 'This connection'))}
+                  data-testid="invoice-setup-incomplete"
+                >
+                  <p className="panel-copy">{resolveFailureCopy(invoice, t)}</p>
+                  <p className="panel-copy">
+                    <Link
+                      className="button button--primary button--sm"
+                      to={`/connections/${invoice.connectionId}/edit`}
+                    >
+                      {t('invoice.setupIncomplete.openSettings', 'Open connection settings')}
+                    </Link>
+                  </p>
+                </Alert>
+              ) : (
+                <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
+                  <span className="invoice-panel__inline-alert-bar" />
+                  <span>
+                    <strong>{resolveFailureCopy(invoice, t)}</strong>
+                  </span>
+                </div>
+              )}
               {canRetryInvoice(invoice) && invoiceWrite.visible ? (
                 <div className="sales-document-panel__actions">
                   <span className="text-muted" style={{ fontSize: '11.5px' }}>
-                    {t('invoice.failed.retryHint', 'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.')}
+                    {invoice.failureCode === 'connection-setup-incomplete'
+                      ? t(
+                          'invoice.setupIncomplete.retryHint',
+                          'Nothing was sent to the provider, so nothing was issued. Retry once the connection is saved.',
+                        )
+                      : t('invoice.failed.retryHint', 'Rejected — nothing was issued, so it is safe to retry once the cause is fixed.')}
                   </span>
                   {switchCandidates.length > 0 && switchTargetId === null ? (
                     <Button tone="secondary" className="button--sm" onClick={() => setSwitchTargetId(switchCandidates[0].id)}>
