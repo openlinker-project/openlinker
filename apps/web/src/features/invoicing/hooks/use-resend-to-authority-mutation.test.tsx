@@ -1,5 +1,5 @@
 /**
- * useResendToKsefMutation tests (#1356)
+ * useResendToAuthorityMutation tests (#1356)
  *
  * @module apps/web/src/features/invoicing/hooks
  */
@@ -7,7 +7,7 @@ import { waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type { InvoiceRecord } from '../api/invoicing.types';
-import { useResendToKsefMutation } from './use-resend-to-ksef-mutation';
+import { useResendToAuthorityMutation } from './use-resend-to-authority-mutation';
 
 function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
   return {
@@ -33,20 +33,20 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
   };
 }
 
-describe('useResendToKsefMutation', () => {
-  it('calls resendToKsef and resolves to the refreshed InvoiceRecord', async () => {
+describe('useResendToAuthorityMutation', () => {
+  it('calls resendToAuthority and resolves to the refreshed InvoiceRecord', async () => {
     const refreshed = makeInvoiceRecord({ regulatoryStatus: 'submitted' });
-    const resendToKsef = vi.fn().mockResolvedValue(refreshed);
+    const resendToAuthority = vi.fn().mockResolvedValue(refreshed);
 
-    let capturedMutation: ReturnType<typeof useResendToKsefMutation> | undefined;
+    let capturedMutation: ReturnType<typeof useResendToAuthorityMutation> | undefined;
 
     function Harness(): null {
-      capturedMutation = useResendToKsefMutation();
+      capturedMutation = useResendToAuthorityMutation();
       return null;
     }
 
     renderWithProviders(<Harness />, {
-      apiClient: createMockApiClient({ invoicing: { resendToKsef } }),
+      apiClient: createMockApiClient({ invoicing: { resendToAuthority } }),
     });
 
     capturedMutation!.mutate('ol_invoice_1');
@@ -54,21 +54,21 @@ describe('useResendToKsefMutation', () => {
     await waitFor(() => expect(capturedMutation!.isSuccess).toBe(true));
 
     expect(capturedMutation!.data).toEqual(refreshed);
-    expect(resendToKsef).toHaveBeenCalledWith('ol_invoice_1');
+    expect(resendToAuthority).toHaveBeenCalledWith('ol_invoice_1');
   });
 
-  it('surfaces the error when resendToKsef rejects', async () => {
-    const resendToKsef = vi.fn().mockRejectedValue(new Error('KSeF unavailable'));
+  it('surfaces the error when resendToAuthority rejects', async () => {
+    const resendToAuthority = vi.fn().mockRejectedValue(new Error('KSeF unavailable'));
 
-    let capturedMutation: ReturnType<typeof useResendToKsefMutation> | undefined;
+    let capturedMutation: ReturnType<typeof useResendToAuthorityMutation> | undefined;
 
     function Harness(): null {
-      capturedMutation = useResendToKsefMutation();
+      capturedMutation = useResendToAuthorityMutation();
       return null;
     }
 
     renderWithProviders(<Harness />, {
-      apiClient: createMockApiClient({ invoicing: { resendToKsef } }),
+      apiClient: createMockApiClient({ invoicing: { resendToAuthority } }),
     });
 
     capturedMutation!.mutate('ol_invoice_1');

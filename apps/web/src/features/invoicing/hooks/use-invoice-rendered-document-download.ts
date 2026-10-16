@@ -4,8 +4,8 @@
  * One-shot action (NOT a TanStack mutation) that fetches the provider's
  * server-rendered document (`kind=rendered` — e.g. Infakt's PDF, #1321) via
  * `apiClient.invoicing.downloadDocument(id, 'rendered')` and triggers a
- * browser download. Mirrors `useKsefUpoDownload`'s shape exactly; kept as a
- * separate hook (rather than generalizing `useKsefUpoDownload`) because that
+ * browser download. Mirrors `useRegulatoryConfirmationDownload`'s shape exactly; kept as a
+ * separate hook (rather than generalizing `useRegulatoryConfirmationDownload`) because that
  * hook is scoped to the dedicated `/upo` route, while this one goes through
  * the neutral `/document?kind=rendered` route any provider can serve.
  *

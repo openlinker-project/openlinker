@@ -14,7 +14,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { InfaktSetupForm } from './infakt-setup-form';
-import type { BankAccount } from '../api/connections.types';
+import type { BankAccount } from '../../../features/connections';
 
 describe('InfaktSetupForm', () => {
   afterEach(cleanup);

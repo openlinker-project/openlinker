@@ -123,7 +123,7 @@ import {
   splitShippingAcrossRates,
   minorUnitExponentFor,
   resolveInvoiceLifecycleSteps,
-  useResendToKsefMutation,
+  useResendToAuthorityMutation,
   type InvoiceRecord,
   type SalesDocumentBlockCopyKind,
   type RateLessLine,
@@ -273,7 +273,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const invoiceWrite = useWriteAccess('invoices:write', demoMode);
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId);
   const issueMutation = useIssueInvoiceMutation();
-  const resendMutation = useResendToKsefMutation();
+  const resendMutation = useResendToAuthorityMutation();
 
   // ── Fiscalization data + actions ──────────────────────────────────────
   const [pickedFiscalConnectionId, setPickedFiscalConnectionId] = useState<string | null>(null);
