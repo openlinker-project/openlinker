@@ -1022,6 +1022,11 @@ select {
   background-repeat: no-repeat;
 }
 
+/* `input.control--invalid` (0,1,1) matches the specificity of the base
+   `input[type='text']` group above; a bare `.control--invalid` (0,1,0) lost to
+   it, so a standalone `<Input invalid />` never painted its error border (#2415).
+   The bare arm still covers textarea/select/other `.control` elements. */
+input.control--invalid,
 .control--invalid,
 input[aria-invalid='true'],
 textarea[aria-invalid='true'],
@@ -1029,6 +1034,7 @@ select[aria-invalid='true'] {
   border-color: var(--status-error);
 }
 
+input.control--invalid:focus-visible,
 .control--invalid:focus-visible,
 input[aria-invalid='true']:focus-visible,
 textarea[aria-invalid='true']:focus-visible,

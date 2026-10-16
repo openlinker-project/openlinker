@@ -128,6 +128,12 @@ export function PrimitivesSection(): ReactElement {
           >
             <Input defaultValue="not-an-email" invalid />
           </FormField>
+          <div>
+            {/* Standalone: no FormField, so `aria-invalid` is NOT injected and the
+                error border must come from `invalid` alone (#2415). */}
+            <label htmlFor="ds-standalone-invalid">Standalone invalid input</label>
+            <Input id="ds-standalone-invalid" defaultValue="not-an-email" invalid />
+          </div>
           <FormField
             label="Webhook endpoint"
             name="ds-webhook"
