@@ -251,11 +251,11 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       // what makes the assertion able to fail.
       renderPanel([task({ status: 'open', supportedActions: [] })]);
 
-      // Exactly two by design — the badge and the State row (see the card's
-      // docblock: the underlying state is never hidden). A count, not a
-      // `not.toHaveLength(0)`: `findAllByText` already throws on zero, so that
-      // matcher could never fail and would be decoration.
-      expect(await screen.findAllByText('Open')).toHaveLength(2);
+      // Exactly one by design — the status badge; there is no State row since
+      // #3763 (see the card's docblock). A count, not a `not.toHaveLength(0)`:
+      // `findAllByText` already throws on zero, so that matcher could never
+      // fail and would be decoration.
+      expect(await screen.findAllByText('Open')).toHaveLength(1);
       expect(screen.queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Put on hold' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
