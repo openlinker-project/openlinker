@@ -20,7 +20,7 @@ restored it to green (9/9 suites, 23/23 tests). With the suite passing, #786 is 
 ## 2. Research (findings)
 
 `.github/workflows/ci.yml` `test-integration` job (lines 69–101):
-- `runs-on: self-hosted`, `needs: [test]`, `timeout-minutes: 30`, job-level
+- `runs-on: integration-tests-runner`, `needs: [test]`, `timeout-minutes: 30`, job-level
   `env.OL_PII_HASH_SALT`.
 - Steps: checkout → pnpm/action-setup@v2 (v9) → setup-node@20 (pnpm cache) →
   `pnpm install --frozen-lockfile` → `pnpm -r --filter "./libs/**" build` → verify core dist →
