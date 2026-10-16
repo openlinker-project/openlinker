@@ -40,7 +40,7 @@ describe('deriveAllegroPaymentStatus', () => {
   });
 
   it('should return paid for any other prepaid type once finishedAt is present', () => {
-    const payment: Payment = { type: 'BANK_TRANSFER', finishedAt: '2026-05-31T10:00:00Z' };
+    const payment: Payment = { type: 'WIRE_TRANSFER', finishedAt: '2026-05-31T10:00:00Z' };
     expect(deriveAllegroPaymentStatus(payment)).toBe('paid');
   });
 });
