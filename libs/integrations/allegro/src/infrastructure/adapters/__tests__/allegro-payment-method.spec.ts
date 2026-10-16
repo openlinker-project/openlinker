@@ -7,8 +7,8 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  */
 import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
-import { deriveAllegroPaymentMethod } from './allegro-payment-method';
-import { deriveAllegroPaymentStatus } from './allegro-payment-status';
+import { deriveAllegroPaymentMethod } from '../allegro-payment-method';
+import { deriveAllegroPaymentStatus } from '../allegro-payment-status';
 
 describe('deriveAllegroPaymentMethod', () => {
   it.each([
