@@ -117,7 +117,7 @@ describe('resolveAutoDispatchParcel', () => {
 
     expect(resolveAutoDispatchParcel(lines, weights, { defaultWeightGrams: 0 })).toBeNull();
     expect(
-      resolveAutoDispatchParcel(lines, weights, { defaultWeightGrams: Number.NaN }),
+      resolveAutoDispatchParcel(lines, weights, { defaultWeightGrams: Number.NaN })
     ).toBeNull();
   });
 
@@ -165,7 +165,9 @@ describe('mergeAutoDispatchParcelOptions (#3651)', () => {
   };
 
   it('should yield exactly the connection options when there is no profile', () => {
-    expect(mergeAutoDispatchParcelOptions(null, { parcelTemplate: 'small', defaultWeightGrams: 90 })).toEqual({
+    expect(
+      mergeAutoDispatchParcelOptions(null, { parcelTemplate: 'small', defaultWeightGrams: 90 })
+    ).toEqual({
       parcelTemplate: 'small',
       defaultWeightGrams: 90,
     });
@@ -176,26 +178,58 @@ describe('mergeAutoDispatchParcelOptions (#3651)', () => {
     expect(
       mergeAutoDispatchParcelOptions(
         { ...emptyProfile, parcelTemplate: 'large' },
-        { parcelTemplate: 'small', defaultWeightGrams: 90 },
-      ),
+        { parcelTemplate: 'small', defaultWeightGrams: 90 }
+      )
     ).toEqual({ parcelTemplate: 'large', defaultWeightGrams: 90 });
   });
 
   it('should emit dimensions only for a complete box', () => {
     expect(
-      mergeAutoDispatchParcelOptions({ ...emptyProfile, lengthMm: 300, widthMm: 200, heightMm: 100 }, {})
-        .dimensions,
+      mergeAutoDispatchParcelOptions(
+        { ...emptyProfile, lengthMm: 300, widthMm: 200, heightMm: 100 },
+        {}
+      ).dimensions
     ).toEqual({ length: 300, width: 200, height: 100 });
-    expect(mergeAutoDispatchParcelOptions({ ...emptyProfile, lengthMm: 300 }, {}).dimensions).toBeUndefined();
+    expect(
+      mergeAutoDispatchParcelOptions({ ...emptyProfile, lengthMm: 300 }, {}).dimensions
+    ).toBeUndefined();
+  });
+
+  it('should fall back to the connection default box when the profile has none (#3571)', () => {
+    const connection = { lengthMm: 400, widthMm: 300, heightMm: 200 };
+    expect(mergeAutoDispatchParcelOptions(null, connection).dimensions).toEqual({
+      length: 400,
+      width: 300,
+      height: 200,
+    });
+    expect(
+      mergeAutoDispatchParcelOptions(
+        { ...emptyProfile, lengthMm: 300, widthMm: 200, heightMm: 100 },
+        connection
+      ).dimensions
+    ).toEqual({ length: 300, width: 200, height: 100 });
+    expect(
+      mergeAutoDispatchParcelOptions({ ...emptyProfile, lengthMm: 300 }, connection).dimensions
+    ).toEqual({ length: 400, width: 300, height: 200 });
+  });
+
+  it('should put connection default dimensions on the resolved parcel (#3571)', () => {
+    const lines = [{ productVariantId: 'v1', totalQuantity: 1, cancelledQuantity: 0 }];
+    const parcel = resolveAutoDispatchParcel(
+      lines,
+      new Map([['v1', 200]]),
+      mergeAutoDispatchParcelOptions(null, { lengthMm: 400, widthMm: 300, heightMm: 200 })
+    );
+    expect(parcel?.dimensions).toEqual({ length: 400, width: 300, height: 200 });
   });
 
   it('should produce a byte-identical parcel to today when the rule has no profile', () => {
     const lines = [{ productVariantId: 'v1', totalQuantity: 2, cancelledQuantity: 0 }];
     const weights = new Map([['v1', 200]]);
     const connection = { parcelTemplate: 'small' };
-    expect(resolveAutoDispatchParcel(lines, weights, mergeAutoDispatchParcelOptions(null, connection))).toEqual(
-      resolveAutoDispatchParcel(lines, weights, connection),
-    );
+    expect(
+      resolveAutoDispatchParcel(lines, weights, mergeAutoDispatchParcelOptions(null, connection))
+    ).toEqual(resolveAutoDispatchParcel(lines, weights, connection));
   });
 
   it('should attach dimensions to the resolved parcel', () => {
@@ -203,24 +237,28 @@ describe('mergeAutoDispatchParcelOptions (#3651)', () => {
     expect(
       resolveAutoDispatchParcel(lines, new Map([['v1', 500]]), {
         dimensions: { length: 300, width: 200, height: 100 },
-      }),
+      })
     ).toEqual({ weightGrams: 500, dimensions: { length: 300, width: 200, height: 100 } });
   });
 });
 
 describe('findMissingParcelRequirement (#3651)', () => {
   it('should report dimensions when required and absent', () => {
-    expect(findMissingParcelRequirement({ weightGrams: 1 }, { requiresDimensions: true })).toBe('dimensions');
+    expect(findMissingParcelRequirement({ weightGrams: 1 }, { requiresDimensions: true })).toBe(
+      'dimensions'
+    );
   });
 
   it('should report nothing when dimensions are present or not required', () => {
     expect(
       findMissingParcelRequirement(
         { weightGrams: 1, dimensions: { length: 1, width: 1, height: 1 } },
-        { requiresDimensions: true },
-      ),
+        { requiresDimensions: true }
+      )
     ).toBeNull();
-    expect(findMissingParcelRequirement({ weightGrams: 1 }, { requiresDimensions: false })).toBeNull();
+    expect(
+      findMissingParcelRequirement({ weightGrams: 1 }, { requiresDimensions: false })
+    ).toBeNull();
   });
 });
 
@@ -265,14 +303,14 @@ describe('resolveAutoDispatchRecipient', () => {
         address: makeAddress(),
         customerEmail: undefined,
         deliveryIntent: 'pickup_point',
-      }),
+      })
     ).toBeNull();
     expect(
       resolveAutoDispatchRecipient({
         address: makeAddress(),
         customerEmail: '   ',
         deliveryIntent: 'pickup_point',
-      }),
+      })
     ).toBeNull();
   });
 
@@ -282,7 +320,7 @@ describe('resolveAutoDispatchRecipient', () => {
         address: makeAddress({ phone: undefined }),
         customerEmail: 'buyer@example.com',
         deliveryIntent: 'pickup_point',
-      }),
+      })
     ).toBeNull();
   });
 
@@ -294,7 +332,7 @@ describe('resolveAutoDispatchRecipient', () => {
           address,
           customerEmail: 'buyer@example.com',
           deliveryIntent: 'address',
-        }),
+        })
       ).toBeNull();
     }
   });
@@ -305,7 +343,7 @@ describe('resolveAutoDispatchRecipient', () => {
         address: makeAddress({ country: 'Poland' }),
         customerEmail: 'buyer@example.com',
         deliveryIntent: 'address',
-      }),
+      })
     ).toBeNull();
   });
 
@@ -315,14 +353,14 @@ describe('resolveAutoDispatchRecipient', () => {
         address: makeAddress({ address1: REDACTED_PLACEHOLDER }),
         customerEmail: 'buyer@example.com',
         deliveryIntent: 'address',
-      }),
+      })
     ).toBeNull();
     expect(
       resolveAutoDispatchRecipient({
         address: makeAddress({ city: REDACTED_PLACEHOLDER }),
         customerEmail: 'buyer@example.com',
         deliveryIntent: 'pickup_point',
-      }),
+      })
     ).toBeNull();
   });
 
@@ -332,7 +370,7 @@ describe('resolveAutoDispatchRecipient', () => {
         address: undefined,
         customerEmail: 'buyer@example.com',
         deliveryIntent: 'pickup_point',
-      }),
+      })
     ).toBeNull();
   });
 });
