@@ -26501,6 +26501,13 @@ legend.analytics-settings-dialog__label {
 }
 
 /* ── #3096 Payment card + rail states ── */
+.fulfilment-work-detail__payment-method {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  font-size: 0.8125rem;
+}
 .fulfilment-work-detail__payment-source {
   display: flex;
   flex-wrap: wrap;

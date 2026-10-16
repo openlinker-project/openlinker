@@ -161,6 +161,52 @@ describe('PrestashopOrderProcessorManagerAdapter - payment mapping (#3474)', () 
     expect(sentPaymentMethod()).toBe(DEFAULT_PAYMENT_METHOD_LABEL);
   });
 
+  describe('neutral payment method (#3294)', () => {
+    it.each([
+      ['cash_on_delivery', 'Cash on delivery'],
+      ['bank_transfer', 'Bank transfer'],
+      ['online', 'Online payment'],
+    ] as const)('labels a %s order "%s" when no mapping applies', async (paymentMethod, label) => {
+      const { adapter } = adapterWith(undefined);
+
+      await adapter.createOrder(orderFrom({ paymentMethod, sourcePaymentMethod: undefined }));
+
+      expect(sentPaymentMethod()).toBe(label);
+    });
+
+    it('keeps the default label for an unknown or unreported method', async () => {
+      const { adapter } = adapterWith(undefined);
+
+      await adapter.createOrder(orderFrom({ paymentMethod: 'unknown', sourcePaymentMethod: undefined }));
+      expect(sentPaymentMethod()).toBe(DEFAULT_PAYMENT_METHOD_LABEL);
+
+      await adapter.createOrder(orderFrom({ paymentMethod: undefined, sourcePaymentMethod: undefined }));
+      expect(sentPaymentMethod()).toBe(DEFAULT_PAYMENT_METHOD_LABEL);
+    });
+
+    it('lets an operator mapping win over the neutral label', async () => {
+      const { adapter } = adapterWith({
+        resolvePaymentMapping: jest.fn().mockResolvedValue('ps_wirepayment'),
+      });
+
+      await adapter.createOrder(orderFrom({ paymentMethod: 'cash_on_delivery' }));
+
+      expect(sentPaymentMethod()).toBe('ps_wirepayment');
+    });
+
+    it('falls back to the neutral label when the mapping has no row or fails', async () => {
+      const none = adapterWith({ resolvePaymentMapping: jest.fn().mockResolvedValue(null) });
+      await none.adapter.createOrder(orderFrom({ paymentMethod: 'bank_transfer' }));
+      expect(sentPaymentMethod()).toBe('Bank transfer');
+
+      const failing = adapterWith({
+        resolvePaymentMapping: jest.fn().mockRejectedValue(new Error('db unavailable')),
+      });
+      await failing.adapter.createOrder(orderFrom({ paymentMethod: 'bank_transfer' }));
+      expect(sentPaymentMethod()).toBe('Bank transfer');
+    });
+  });
+
   it('still creates the order, with a warning, when the mapping lookup fails', async () => {
     const { adapter } = adapterWith({
       resolvePaymentMapping: jest.fn().mockRejectedValue(new Error('db unavailable')),
