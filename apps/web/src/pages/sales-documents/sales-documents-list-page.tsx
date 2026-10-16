@@ -300,7 +300,7 @@ export function SalesDocumentsListPage(): ReactElement {
           onChange={(e) => setKindFilter(e.target.value)}
         >
           <option value="">All kinds</option>
-          {SALES_DOCUMENT_KIND_VALUES.map((k) => (
+          {CONCRETE_DOCUMENT_KIND_VALUES.map((k) => (
             <option key={k} value={k}>
               {KIND_LABEL[k] ?? k}
             </option>
