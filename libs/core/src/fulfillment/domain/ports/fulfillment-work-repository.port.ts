@@ -331,6 +331,37 @@ export interface ListTimedOutDispatchesInput {
 }
 
 /**
+ * One work routed to a holder and never offered to it (#3476).
+ *
+ * The row sits in `requestStatus = 'unsubmitted'` because the dispatch job
+ * died before the handshake could claim it — typically because the holder's
+ * connection does not have `FulfillmentExecutor` enabled, so
+ * `getCapabilityAdapter` throws on every attempt.
+ */
+export interface StalledUnsubmittedFulfillmentWork {
+  readonly workId: string;
+  readonly orderId: string;
+  /** Never `null`: holder-less work is not this state (see the read). */
+  readonly assignedConnectionId: string;
+  readonly idleSince: Date;
+}
+
+export interface ListStalledUnsubmittedWorksInput {
+  /** Only works whose `updatedAt` is strictly older than this. */
+  readonly idleBefore: Date;
+  /**
+   * Keyset cursor: only works whose id sorts after this one. `null` starts
+   * from the beginning.
+   *
+   * **Keyset, not frontier-as-query.** Reporting a stalled work does not write
+   * its row, so it never leaves the predicate; a frontier read would return the
+   * same head page every tick and starve every work behind it.
+   */
+  readonly afterWorkId: string | null;
+  readonly limit: number;
+}
+
+/**
  * One work that a holder reported SHIPPED and whose dispatch relay never landed
  * (#2728).
  *
@@ -680,6 +711,15 @@ export interface FulfillmentWorkRepositoryPort {
   listTimedOutDispatches(
     input: ListTimedOutDispatchesInput
   ): Promise<TimedOutFulfillmentDispatch[]>;
+
+  /**
+   * Live works that were routed to a holder and never offered to it (#3476):
+   * not terminal, `requestStatus = 'unsubmitted'`, a holder assigned, idle since
+   * before the cutoff. Ordered by id for the keyset.
+   */
+  listStalledUnsubmittedWorks(
+    input: ListStalledUnsubmittedWorksInput
+  ): Promise<StalledUnsubmittedFulfillmentWork[]>;
 
   /**
    * The holders excluded from re-sourcing this work, most recent first.

@@ -89,6 +89,7 @@ import type {
   LatestActiveParcelVerification,
   ListUnrelayedShippedDispatchesInput,
   UnrelayedShippedDispatch,
+  ListStalledUnsubmittedWorksInput,
   ListTimedOutDispatchesInput,
   ParcelVerifiedCount,
   PlaceFulfillmentHoldInput,
@@ -99,6 +100,7 @@ import type {
   ReleaseFulfillmentHoldInput,
   ReopenParcelWriteInput,
   SetFulfillmentWorkExpeditedInput,
+  StalledUnsubmittedFulfillmentWork,
   TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
@@ -676,6 +678,46 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       }));
     } catch (error) {
       throw new FulfillmentPersistenceError('listTimedOutDispatches', error);
+    }
+  }
+
+  async listStalledUnsubmittedWorks(
+    input: ListStalledUnsubmittedWorksInput
+  ): Promise<StalledUnsubmittedFulfillmentWork[]> {
+    try {
+      const qb = this.works
+        .createQueryBuilder('work')
+        .select(['work.id', 'work.orderId', 'work.assignedConnectionId', 'work.updatedAt'])
+        .where('work.requestStatus = :unsubmitted', {
+          unsubmitted: 'unsubmitted' satisfies FulfillmentRequestStatus,
+        })
+        .andWhere('work.status NOT IN (:...terminal)', {
+          terminal: [...TERMINAL_FULFILLMENT_WORK_STATUSES],
+        })
+        .andWhere('work.assignedConnectionId IS NOT NULL')
+        .andWhere('work.updatedAt < :idleBefore', { idleBefore: input.idleBefore });
+
+      if (input.afterWorkId !== null) {
+        qb.andWhere('work.id > :afterWorkId', { afterWorkId: input.afterWorkId });
+      }
+
+      const rows = await qb.orderBy('work.id', 'ASC').take(input.limit).getMany();
+
+      // The predicate already excludes NULL; the narrowing is for the type.
+      return rows.flatMap((row) =>
+        row.assignedConnectionId === null
+          ? []
+          : [
+              {
+                workId: row.id,
+                orderId: row.orderId,
+                assignedConnectionId: row.assignedConnectionId,
+                idleSince: row.updatedAt,
+              },
+            ]
+      );
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listStalledUnsubmittedWorks', error);
     }
   }
 
