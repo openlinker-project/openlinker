@@ -860,7 +860,11 @@ export class OrdersController {
     description:
       'Records the plain operator fact that this order is packed, stamping the instant (server-side) and the acting user. ' +
       'It is a fact, not a state: recordStatus, fulfillmentState, slaState and the order-health buckets are untouched, and nothing is gated on it. ' +
-      'Idempotent — a repeat call returns the EXISTING stamp and actor rather than re-stamping, which is why it answers 200 and not 201.',
+      'Idempotent — a repeat call returns the EXISTING stamp and actor rather than re-stamping, which is why it answers 200 and not 201. ' +
+      'Callable by a WMS or any other system, not just the UI: this is the same endpoint a person uses, so a warehouse system that does its own picking and packing can assert the fact here. ' +
+      'Authenticate as a service-account USER — an ordinary user with the `operator` role (or `admin`) — using the usual JWT login; there is no separate machine principal, ' +
+      'so the token inherits that user’s role and `packedByUserId` records that account. ' +
+      'Packing is independent of fulfilment routing: it applies identically to every order, including one the destination shop ships itself (`omp_fulfilled`, the default).',
   })
   @ApiResponse({ status: 200, description: 'Order is packed', type: OrderRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -885,7 +889,8 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Clear an order’s packed mark',
     description:
-      'Clears both packed fields together. Clearing an order that is not packed is a no-op that returns the record unchanged.',
+      'Clears both packed fields together. Clearing an order that is not packed is a no-op that returns the record unchanged. ' +
+      'Like marking packed, it is callable by a WMS authenticating as a service-account user with the `operator` or `admin` role.',
   })
   @ApiResponse({ status: 200, description: 'Order is not packed', type: OrderRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
