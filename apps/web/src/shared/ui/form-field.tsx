@@ -5,7 +5,10 @@ import {
   Fragment,
   isValidElement,
   useContext,
+  useEffect,
   useId,
+  useRef,
+  type MutableRefObject,
   type ReactElement,
   type ReactNode,
 } from 'react';
@@ -28,7 +31,14 @@ export interface FormFieldControlProps {
   'aria-invalid'?: boolean;
 }
 
-const FormFieldContext = createContext<FormFieldControlProps | null>(null);
+interface FormFieldContextValue {
+  controlProps: FormFieldControlProps;
+  // Set by `useFormFieldControl()` so a multi-child field can notice, in dev, that nothing
+  // took its wiring. Kept out of `controlProps`, which callers spread onto a DOM element.
+  consumed: MutableRefObject<boolean>;
+}
+
+const FormFieldContext = createContext<FormFieldContextValue | null>(null);
 
 /**
  * Returns the props a control inside a `FormField` must carry, for the shapes where the
@@ -46,7 +56,12 @@ const FormFieldContext = createContext<FormFieldControlProps | null>(null);
  * Outside a `FormField` it returns an empty object, so a control can use it unconditionally.
  */
 export function useFormFieldControl(): FormFieldControlProps {
-  return useContext(FormFieldContext) ?? {};
+  const context = useContext(FormFieldContext);
+  if (context === null) {
+    return {};
+  }
+  context.consumed.current = true;
+  return context.controlProps;
 }
 
 interface FormFieldProps {
@@ -88,8 +103,21 @@ export function FormField({ children, description, error, label, name }: FormFie
     'aria-invalid': ariaInvalid,
   };
 
+  const consumed = useRef(false);
+  useEffect(() => {
+    // The wiring is opt-in on the multi-child path, so a control that forgets the hook
+    // renders fine yet carries no aria-invalid / aria-describedby. Only an error makes the
+    // gap matter, and only a field that never consumed the context can be flagged.
+    if (import.meta.env.DEV && control === null && error && !consumed.current) {
+      console.warn(
+        `FormField "${name}" has an error but no child called useFormFieldControl(); ` +
+          'its control carries no aria-invalid / aria-describedby wiring.'
+      );
+    }
+  }, [control, error, name]);
+
   return (
-    <FormFieldContext.Provider value={controlProps}>
+    <FormFieldContext.Provider value={{ controlProps, consumed }}>
       <div className="form-field">
         <label htmlFor={inputId} className="form-field__label">
           {label}

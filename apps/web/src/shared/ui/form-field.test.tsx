@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FormField, useFormFieldControl } from './form-field';
 import { Input } from './input';
 import { Select } from './select';
@@ -174,5 +174,53 @@ describe('FormField', () => {
     expect(describedBy).toMatch(/connectionName-.*-description/);
     expect(describedBy).toMatch(/connectionName-.*-error/);
     expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  describe('dev warning on a multi-child field that wired nothing', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should warn when a fragment field has an error and no child called useFormFieldControl', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      render(
+        <FormField name="amount" label="Amount" error="Required">
+          <>
+            <Input aria-label="Amount" />
+            <span>PLN</span>
+          </>
+        </FormField>,
+      );
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('FormField "amount"'));
+    });
+
+    it('should not warn when a child consumed the field wiring', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      render(
+        <FormField name="amount" label="Amount" error="Required">
+          <>
+            <WiredInput label="Amount" />
+            <span>PLN</span>
+          </>
+        </FormField>,
+      );
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('should not warn when the multi-child field has no error', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      render(
+        <FormField name="amount" label="Amount">
+          <>
+            <Input aria-label="Amount" />
+            <span>PLN</span>
+          </>
+        </FormField>,
+      );
+
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });
