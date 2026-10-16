@@ -86,9 +86,20 @@ import type {
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Cap on remembered contradictory-payment-facts warnings per process (#3294). */
+const PAYMENT_FACTS_WARNED_ORDERS_MAX = 5000;
+
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
   private readonly logger = new Logger(OrderRecordService.name);
+
+  /**
+   * Orders already warned about for contradictory payment facts (#3294), so a
+   * repeat ingestion logs at debug instead of warn. Bounded so a long-running
+   * process cannot grow it without limit; evicting the oldest entry only costs
+   * one more warn for that order.
+   */
+  private readonly paymentFactsWarnedOrderIds = new Set<string>();
 
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
@@ -104,6 +115,17 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN)
     private readonly cancellationSignalRepository: OrderCancellationSignalRepositoryPort
   ) {}
+
+  private rememberPaymentFactsWarning(orderId: string): void {
+    if (this.paymentFactsWarnedOrderIds.size >= PAYMENT_FACTS_WARNED_ORDERS_MAX) {
+      // A Set iterates in insertion order, so the first key is the oldest.
+      for (const oldest of this.paymentFactsWarnedOrderIds) {
+        this.paymentFactsWarnedOrderIds.delete(oldest);
+        break;
+      }
+    }
+    this.paymentFactsWarnedOrderIds.add(orderId);
+  }
 
   /**
    * Persist order record with PII-aware snapshot
@@ -243,15 +265,25 @@ export class OrderRecordService implements IOrderRecordService {
     // thrown or corrected - the order is the fact, the contradiction is a
     // defect in an adapter, and refusing the order would lose a paid sale to
     // surface it. The log is what lets an operator or a maintainer find it.
+    //
+    // `persistOrder` runs on every poll and webhook, so a persistent adapter
+    // defect would repeat the same warning for the same order on every tick and
+    // bury it. The first sighting per order (per process) warns; repeats go to
+    // debug.
     const paymentFactsViolations = checkPaymentFactsConsistency(order);
     if (paymentFactsViolations.length > 0) {
-      this.logger.warn(
+      const message =
         `order_payment_facts_contradictory: ingested order ${order.id} ` +
-          `(source connection ${sourceConnectionId}): ${paymentFactsViolations.join(', ')} - ` +
-          `paymentMethod=${order.paymentMethod ?? 'absent'} ` +
-          `paymentStatus=${order.paymentStatus ?? 'absent'} ` +
-          `codToCollect=${order.codToCollect === undefined ? 'absent' : 'present'}`
-      );
+        `(source connection ${sourceConnectionId}): ${paymentFactsViolations.join(', ')} - ` +
+        `paymentMethod=${order.paymentMethod ?? 'absent'} ` +
+        `paymentStatus=${order.paymentStatus ?? 'absent'} ` +
+        `codToCollect=${order.codToCollect === undefined ? 'absent' : 'present'}`;
+      if (this.paymentFactsWarnedOrderIds.has(order.id)) {
+        this.logger.debug(message);
+      } else {
+        this.rememberPaymentFactsWarning(order.id);
+        this.logger.warn(message);
+      }
     }
 
     // Buyer tax id (#2599) - denormalized so routing and gating never expand
