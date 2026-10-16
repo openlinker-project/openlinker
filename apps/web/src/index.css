@@ -376,13 +376,17 @@
   --radius-xl: 14px;
   --radius-pill: 9999px;
 
-  /* ── Motion ───────────────────────────────────────────────────────── */
-  --duration-fast: 120ms;
-  --duration-normal: 180ms;
-  --duration-slow: 280ms;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* ── Motion ─────────────────────────────────────────────────────────
+     Public tokens (they are in the catalog). They fit none of the kinds the
+     design-system exporter partitions custom properties by (colour, space,
+     radius, type, …), so each declares `@kind other` rather than leaving the
+     classification to be guessed (#2436). */
+  --duration-fast: 120ms; /* @kind other */
+  --duration-normal: 180ms; /* @kind other */
+  --duration-slow: 280ms; /* @kind other */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
 
   /* ── Tracking (letter-spacing) ────────────────────────────────────── */
   --tracking-tight: -0.012em;
@@ -3531,7 +3535,7 @@ textarea,
  * Mobile-first: a single-column stack by default (three side-by-side
  * inputs are unreadable < 768px); the shared-subgrid multi-column
  * layout layers in at the tablet breakpoint. Column count comes from
- * `--cols` (default 2) or the `--cols-3` modifier. The row-gap MUST
+ * `--form-field-row-cols` (default 2), set to 3 by the `--cols-3` modifier. The row-gap MUST
  * stay var(--space-2): subgrid children inherit the parent's row-gap,
  * and that value reproduces FormField's own internal 8px stack.
  *
@@ -3548,13 +3552,16 @@ textarea,
   gap: var(--space-3);
 }
 
+/* #2436 — a component-private parameter, not a design token: it is read only by
+   `.form-field-row` below, so its name says so. It was `--cols`, which reads as
+   a global token while only resolving inside this subtree. */
 .form-field-row--cols-3 {
-  --cols: 3;
+  --form-field-row-cols: 3;
 }
 
 @media (min-width: 768px) {
   .form-field-row {
-    grid-template-columns: repeat(var(--cols, 2), 1fr);
+    grid-template-columns: repeat(var(--form-field-row-cols, 2), 1fr);
     grid-template-rows: auto auto auto auto; /* label · input · description · error */
     gap: var(--space-2) var(--space-3);
   }
