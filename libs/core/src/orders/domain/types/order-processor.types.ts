@@ -130,6 +130,14 @@ export interface OrderCreate {
   paymentStatus?: PaymentStatus;
 
   /**
+   * The source's own payment-method id (#3474), e.g. Allegro `payment.type`.
+   * Opaque - never interpreted by core. A destination that lets the operator
+   * map source payment types to its own payment methods uses it as the lookup
+   * key, scoped by `source.connectionId`; one that does not ignores it.
+   */
+  sourcePaymentMethod?: string;
+
+  /**
    * Optional metadata for the order
    */
   metadata?: Record<string, unknown>;

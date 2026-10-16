@@ -989,6 +989,11 @@ export class AllegroOrderSourceAdapter
         // provider leave the fact unset rather than claiming the seller ships.
         ...(checkoutForm.fulfillment?.provider?.id === 'ALLEGRO' && { fulfilledBySource: true as const }),
         paymentStatus,
+        // Allegro's own payment type (#3474) - the key of the operator's
+        // payment mapping. Opaque to core; omitted when Allegro sent none.
+        ...(checkoutForm.payment.type
+          ? { sourcePaymentMethod: checkoutForm.payment.type }
+          : {}),
         codToCollect,
         dispatchTime: this.resolveDispatchTime(checkoutForm),
         placedAt,
