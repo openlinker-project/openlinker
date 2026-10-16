@@ -25,6 +25,13 @@ export interface WooCommerceOrder {
   date_paid_gmt?: string | null;
   /** Site-local twin of `date_paid_gmt`. Read only as a presence signal. */
   date_paid?: string | null;
+  /**
+   * The payment gateway id the buyer chose, e.g. `cod`, `bacs`, `paypal`.
+   * WooCommerce core ships a handful of ids; every other value is a slug a
+   * store's own plugin picked, so only the core ids are evidence of a method
+   * (see `deriveWooCommercePaymentMethod`). Absent on a payload that omits it.
+   */
+  payment_method?: string;
   customer_id: number; // 0 = guest
   billing: WooCommerceBillingAddress;
   shipping: WooCommerceShippingAddress;

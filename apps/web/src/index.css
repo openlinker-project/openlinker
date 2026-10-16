@@ -15872,7 +15872,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 /* ── COD payment panel (#1435) ──────────────────────────────────────────────
  * Payment-status-driven COD surface. Neutral recap container shared by the
- * read-only "from Allegro" amount and the fallback manual input, so both read
+ * read-only "from the order" amount and the fallback manual input, so both read
  * as siblings; the status is carried by a StatusBadge pill (reused, not a new
  * hue). No heavy tone-filled panel. */
 .generate-label-form__cod-panel {

@@ -283,6 +283,9 @@ export class OrderSyncService implements IOrderSyncService {
       // Threaded so a destination can record what the buyer has paid apart from
       // what the order is worth (#2600). Passed through, never derived.
       paymentStatus: order.paymentStatus,
+      // How the buyer pays (#3294): passed through, never derived, and omitted
+      // when the source reported none so the payload keeps its prior shape.
+      ...(order.paymentMethod !== undefined ? { paymentMethod: order.paymentMethod } : {}),
       // Opaque source payment-method id (#3474): the lookup key for a
       // destination's operator-configured payment mapping. Present only when
       // the source reported one, so a payload without it stays byte-identical
