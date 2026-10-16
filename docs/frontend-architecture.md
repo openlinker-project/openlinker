@@ -389,6 +389,17 @@ Rules:
 - server-side validation remains the source of truth
 - server validation errors should be mapped back to fields where practical
 
+`FormField` has two modes, chosen by its children:
+
+- **One control element** - cloned with `id`, `aria-describedby` and `aria-invalid`
+  automatically; the control must forward them to its native element.
+- **Anything else** (a fragment, an array, several controls on one row, a conditional that
+  can be `null`) - rendered as-is and nothing is cloned. The one control that owns the
+  label and error must spread `useFormFieldControl()` itself. Call the hook in a **child**
+  component: called in the parent that renders `<FormField>`, it reads the context above
+  itself and silently returns `{}`. In dev, a multi-child field with an `error` whose
+  children never called the hook logs a `console.warn`.
+
 ### Local UI State
 
 Use local component state for short-lived interaction state:
