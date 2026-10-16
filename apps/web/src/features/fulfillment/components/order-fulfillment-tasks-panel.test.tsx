@@ -166,15 +166,30 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       ]);
 
       expect(await screen.findByText('On hold — Held by operator')).toBeInTheDocument();
-      // The State row still says Scheduled — "held" and "scheduled" are both true.
+      // The status badge still says Scheduled — "held" and "scheduled" are both true.
       expect(screen.getByText('Scheduled')).toBeInTheDocument();
     });
 
-    it('should show the plain status when nothing is holding the task', async () => {
+    it('should lead with the hold badge, then the status badge', async () => {
+      renderPanel([
+        task({
+          status: 'scheduled',
+          activeHolds: [
+            { id: 'hold_1', reason: 'operator', note: null, placedAt: '2026-08-20T10:00:00.000Z' },
+          ],
+        }),
+      ]);
+
+      const held = await screen.findByText('On hold — Held by operator');
+      const status = screen.getByText('Scheduled');
+      expect(held.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('should show the status once, in the badge, with no State row (#3763)', async () => {
       renderPanel([task({ status: 'in_progress' })]);
 
-      // Badge + State row again. Drop the badge and this reads 1.
-      expect(await screen.findAllByText('In progress')).toHaveLength(2);
+      expect(await screen.findAllByText('In progress')).toHaveLength(1);
+      expect(screen.queryByText('State')).not.toBeInTheDocument();
       expect(screen.queryByText(/On hold/)).not.toBeInTheDocument();
     });
   });
@@ -182,35 +197,50 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
   describe('acceptance is shown only when it is news (#3763)', () => {
     const minutesAgo = (minutes: number): string =>
       new Date(Date.now() - minutes * 60_000).toISOString();
+    const routed = (overrides: Partial<FulfillmentTask>): FulfillmentTask =>
+      task({ assignedConnectionId: 'conn_oms', ...overrides });
 
     it('should say nothing about acceptance when the task is accepted', async () => {
-      renderPanel([task({ requestStatus: 'accepted' })]);
+      const { container } = renderPanel([routed({ requestStatus: 'accepted' })]);
 
-      expect(await screen.findAllByText('Open')).toHaveLength(2);
+      expect(await screen.findByText('Open')).toBeInTheDocument();
       expect(screen.queryByText(/Handshake/)).not.toBeInTheDocument();
       expect(screen.queryByText(/pack bench/)).not.toBeInTheDocument();
+      expect(container.querySelector('.fulfilment-task')).toHaveAttribute('data-attention', 'false');
     });
 
-    it('should say the task is not on the pack bench yet when it was just routed', async () => {
-      renderPanel([task({ requestStatus: 'submitted', createdAt: minutesAgo(2) })]);
+    it('should add a quiet note, not a warning, while the task is on its way', async () => {
+      const { container } = renderPanel([
+        routed({ requestStatus: 'submitted', createdAt: minutesAgo(2) }),
+      ]);
 
-      expect(await screen.findByText('Open · not on the pack bench yet')).toBeInTheDocument();
-      expect(screen.queryByText(/Packers cannot see it/)).not.toBeInTheDocument();
+      expect(await screen.findByText('Open')).toBeInTheDocument();
+      expect(screen.getByText('On its way to the pack bench')).toBeInTheDocument();
+      expect(container.querySelector('.fulfilment-task')).toHaveAttribute('data-attention', 'false');
     });
 
-    it('should warn that packers cannot see a parcel stuck before acceptance', async () => {
-      renderPanel([task({ requestStatus: 'unsubmitted', createdAt: minutesAgo(120) })]);
+    it('should name the problem in the status badge when the task is stuck before acceptance', async () => {
+      const { container } = renderPanel([
+        routed({ requestStatus: 'unsubmitted', createdAt: minutesAgo(120) }),
+      ]);
 
-      expect(await screen.findByText('Not on the pack bench yet')).toBeInTheDocument();
-      expect(screen.getByText(/has waited 2h and is still not on the pack bench/)).toBeInTheDocument();
-      expect(screen.getByText('Open · not on the pack bench yet')).toBeInTheDocument();
+      expect(await screen.findByText('Open · Not on the pack bench')).toBeInTheDocument();
+      expect(screen.getByText(/Not accepted yet · sent/)).toBeInTheDocument();
+      expect(container.querySelector('.fulfilment-task')).toHaveAttribute('data-attention', 'true');
     });
 
-    it('should warn when the task was refused, without a qualifier in the state line', async () => {
-      renderPanel([task({ requestStatus: 'rejected' })]);
+    it('should name the problem in the status badge when the task was not accepted', async () => {
+      renderPanel([routed({ requestStatus: 'rejected' })]);
 
-      expect(await screen.findByText('Did not reach the pack bench')).toBeInTheDocument();
-      expect(screen.getAllByText('Open')).toHaveLength(2);
+      expect(await screen.findByText('Open · Not on the pack bench')).toBeInTheDocument();
+      expect(screen.getByText(/Turned down or not answered in time · sent/)).toBeInTheDocument();
+    });
+
+    it('should say nothing about acceptance for a task routed to no executor', async () => {
+      renderPanel([task({ assignedConnectionId: null, requestStatus: 'unsubmitted', createdAt: minutesAgo(120) })]);
+
+      expect(await screen.findByText('Open')).toBeInTheDocument();
+      expect(screen.queryByText(/pack bench/)).not.toBeInTheDocument();
     });
   });
 

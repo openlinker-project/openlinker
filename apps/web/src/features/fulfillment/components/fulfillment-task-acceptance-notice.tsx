@@ -1,10 +1,10 @@
 /**
- * The "packers cannot see this parcel" warning (#3763)
+ * The "not accepted" reason under "Why it's stuck" (#3763)
  *
- * Rendered by the task card and the task detail page for a task that is stuck
- * before acceptance or was refused. It is a warning, not an error: the task is
- * intact, it just has not reached the pack bench, which lists accepted work
- * only. Renders nothing for every other state.
+ * Rendered by the task detail page, beside the hold banners, for a task that
+ * is stuck before acceptance or was not accepted: the pack bench lists
+ * accepted work only, so packers cannot see it. A warning, not an error - the
+ * task is intact. Renders nothing for every other state.
  *
  * @module apps/web/src/features/fulfillment/components
  */
@@ -26,15 +26,15 @@ export function FulfillmentTaskAcceptanceNotice({
 }: FulfillmentTaskAcceptanceNoticeProps): ReactElement | null {
   if (acceptance.kind === 'stuck') {
     return (
-      <Alert tone="warning" density="compact" title={TASK_ACCEPTANCE_COPY.stuckTitle(where)}>
-        {TASK_ACCEPTANCE_COPY.stuck(where, formatAcceptanceWait(acceptance.waitedMs))}
+      <Alert tone="warning" density="compact" title={TASK_ACCEPTANCE_COPY.stuckTitle}>
+        {TASK_ACCEPTANCE_COPY.stuckBody(formatAcceptanceWait(acceptance.waitedMs), where)}
       </Alert>
     );
   }
   if (acceptance.kind === 'refused') {
     return (
-      <Alert tone="warning" density="compact" title={TASK_ACCEPTANCE_COPY.refusedTitle(where)}>
-        {TASK_ACCEPTANCE_COPY.refused(where)}
+      <Alert tone="warning" density="compact" title={TASK_ACCEPTANCE_COPY.refusedTitle}>
+        {TASK_ACCEPTANCE_COPY.refusedBody(where)}
       </Alert>
     );
   }

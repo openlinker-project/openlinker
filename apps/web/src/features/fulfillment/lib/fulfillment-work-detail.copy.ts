@@ -167,7 +167,6 @@ export const FULFILLMENT_WORK_DETAIL_COPY = {
   },
 
   facts: {
-    state: 'State',
     location: 'Location',
     delivery: 'Delivery',
     externalReference: 'External reference',

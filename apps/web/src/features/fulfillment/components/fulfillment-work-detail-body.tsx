@@ -88,8 +88,14 @@ import {
   FULFILLMENT_EXPEDITED_BADGE,
   fulfillmentStatusLabel,
   OWN_PACK_BENCH_NAME,
+  TASK_ACCEPTANCE_COPY,
 } from '../lib/fulfillment-task.copy';
-import { describeTaskAcceptance, taskStateLine } from '../lib/fulfillment-task-acceptance';
+import {
+  describeTaskAcceptance,
+  needsAttention,
+  taskStatusText,
+  type TaskAcceptance,
+} from '../lib/fulfillment-task-acceptance';
 import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
 import { summariseFulfillmentWork } from '../lib/fulfillment-work-summary';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
@@ -151,16 +157,29 @@ function useExecutorFacts(task: FulfillmentTask): ExecutorFacts {
   return { name: null, label: isNotFound ? shortenId(connectionId) : COPY.executor.unavailable };
 }
 
+/** One reading of acceptance for the hero and "Why it's stuck" alike. */
+function taskAcceptanceOf(task: FulfillmentTask): TaskAcceptance {
+  return describeTaskAcceptance(
+    {
+      requestStatus: task.requestStatus,
+      createdAt: task.createdAt,
+      assigned: task.assignedConnectionId !== null,
+    },
+    new Date()
+  );
+}
+
 /**
  * The hero: the sub-line (task id · executor · location), the headline (22 px
  * / 700, as the mockup draws it), the expedited pill beside it, the derived
  * sentence, and the "not on the pack bench" warning when there is one.
  *
- * The headline is the orchestration label plus the acceptance qualifier only
- * when acceptance is news (#3763). It used to join both axes verbatim, which
- * printed "Accepted" on almost every task: with OpenLinker's own OMS as the
- * only executor, acceptance is automatic, and the state worth showing is the
- * one where it did NOT happen - a parcel the pack bench cannot list.
+ * The headline is the orchestration label (#3763). It used to join both axes
+ * verbatim, which printed "Accepted" on almost every task: with OpenLinker's
+ * own OMS as the only executor, acceptance is automatic. Acceptance is told
+ * only when it is news, by the sentence under the headline - while it is in
+ * flight, or when packers cannot see the task, in which case the reason sits
+ * under "Why it's stuck" exactly as a hold's does.
  */
 function WorkDetailHero({
   task,
@@ -180,10 +199,13 @@ function WorkDetailHero({
     cancellationReason: task.cancellationReason,
     executorName: executor.name,
   });
-  const acceptance = describeTaskAcceptance(
-    { requestStatus: task.requestStatus, createdAt: task.createdAt },
-    new Date()
-  );
+  const acceptance = taskAcceptanceOf(task);
+  const sentence =
+    acceptance.kind === 'pending'
+      ? TASK_ACCEPTANCE_COPY.heroPending(executor.name, OWN_PACK_BENCH_NAME)
+      : needsAttention(acceptance)
+        ? TASK_ACCEPTANCE_COPY.heroAttention(OWN_PACK_BENCH_NAME)
+        : summary;
   const location = showLocation ? (task.locationName ?? task.locationId ?? COPY.facts.noLocation) : null;
   const subParts = [executor.label, location].filter((part): part is string => part !== null);
   const expeditedAt = task.expeditedAt ?? null;
@@ -200,7 +222,13 @@ function WorkDetailHero({
       </p>
       <div className="fulfilment-work-detail__hero-row">
         <p className="fulfilment-work-detail__headline">
-          {taskStateLine(fulfillmentStatusLabel(task.status), acceptance, OWN_PACK_BENCH_NAME)}
+          {taskStatusText(
+            fulfillmentStatusLabel(task.status),
+            task.status,
+            acceptance,
+            OWN_PACK_BENCH_NAME,
+            false
+          )}
         </p>
         {/* Display only (#3247): which expedite verb is offered comes from
             `supportedActions`. The wording is the card's own, one fact one
@@ -214,15 +242,18 @@ function WorkDetailHero({
       </div>
       {/* `null` when this build cannot say — the headline above still carries
           the state, so the hero is never blank. */}
-      {summary !== null ? <p className="fulfilment-work-detail__summary">{summary}</p> : null}
-      <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={OWN_PACK_BENCH_NAME} />
+      {sentence !== null ? <p className="fulfilment-work-detail__summary">{sentence}</p> : null}
     </DetailSection>
   );
 }
 
-/** "Why it's stuck" — one compact banner per active hold, or no card at all. */
+/**
+ * "Why it's stuck" — one compact banner per active hold, plus the "not
+ * accepted" reason when packers cannot see the task (#3763), or no card at all.
+ */
 function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | null {
-  if (task.activeHolds.length === 0) return null;
+  const acceptance = taskAcceptanceOf(task);
+  if (task.activeHolds.length === 0 && !needsAttention(acceptance)) return null;
 
   return (
     <DetailSection
@@ -242,6 +273,7 @@ function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | n
             </div>
           </Alert>
         ))}
+        <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={OWN_PACK_BENCH_NAME} />
       </div>
     </DetailSection>
   );
@@ -338,7 +370,6 @@ function WorkFactsSection({
       className="fulfilment-work-detail__slot--facts"
     >
       <dl className="fulfilment-work-detail__facts">
-        <Fact label={COPY.facts.state}>{fulfillmentStatusLabel(task.status)}</Fact>
         {showLocation ? (
           <Fact label={COPY.facts.location}>
             {task.locationName ?? task.locationId ?? COPY.facts.noLocation}

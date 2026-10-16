@@ -47,9 +47,10 @@
  *
  * Two reachable states produce no sentence, both confirmed rather than
  * papered over: `open` + `unsubmitted` with a location and no holds, and
- * `requestStatus: 'rejected'`. Neither is silent on the page since #3763: the
- * headline says "not on the pack bench yet" for the first, and a warning
- * covers a stuck or refused task. `open` + `accepted` used to be a third; #3096
+ * `requestStatus: 'rejected'`. Neither is silent on the page since #3763: for a
+ * task with an executor, the detail page replaces this sentence with one
+ * about the pack bench, and a stuck or refused task adds a reason under
+ * "Why it's stuck". `open` + `accepted` used to be a third; #3096
  * gave it `acceptedWaiting`, because it is the state most live tasks sit in
  * and a hero with nothing under its headline read as a broken page.
  *

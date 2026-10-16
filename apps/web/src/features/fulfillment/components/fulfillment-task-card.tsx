@@ -8,8 +8,16 @@
  * alone would print **Open** across a task that is suspended — which is the
  * single most misleading thing this panel could say, since explaining why work
  * is stopped is the reason it exists. So the held badge leads, and the raw
- * orchestration status is demoted to a secondary label rather than dropped
+ * orchestration status follows it as its own badge rather than being dropped
  * (an operator still needs to see `scheduled` vs `in_progress` under a hold).
+ *
+ * ## The status lives in ONE badge (#3763)
+ *
+ * There is no State row: a badge plus a row repeated the same word. A task
+ * packers cannot see (stuck before acceptance, or not accepted) turns that
+ * badge amber and names why, the amber edge marks the card the way a hold
+ * does, and the explanation sits underneath as a quieter note. Acceptance
+ * says nothing when it is not news.
  *
  * ## The hold's actor is not rendered, because it is not projected
  *
@@ -67,13 +75,17 @@ import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
-import { FulfillmentTaskAcceptanceNotice } from './fulfillment-task-acceptance-notice';
 import {
   FULFILLMENT_EXPEDITED_BADGE,
   fulfillmentStatusLabel,
   OWN_PACK_BENCH_NAME,
+  TASK_ACCEPTANCE_COPY,
 } from '../lib/fulfillment-task.copy';
-import { describeTaskAcceptance, taskStateLine } from '../lib/fulfillment-task-acceptance';
+import {
+  describeTaskAcceptance,
+  needsAttention,
+  taskStatusText,
+} from '../lib/fulfillment-task-acceptance';
 import { fulfillmentWorkDetailPath } from '../lib/fulfillment-filters';
 
 export interface FulfillmentTaskCardProps {
@@ -96,29 +108,39 @@ export function FulfillmentTaskCard({
     task.lines.map((line) => ({ attributes: line.attributes ?? null }))
   );
   const acceptance = describeTaskAcceptance(
-    { requestStatus: task.requestStatus, createdAt: task.createdAt },
+    {
+      requestStatus: task.requestStatus,
+      createdAt: task.createdAt,
+      assigned: task.assignedConnectionId !== null,
+    },
     new Date()
   );
+  const attention = needsAttention(acceptance);
+  const pending = acceptance.kind === 'pending';
 
   return (
     <li
       {...rootProps}
       className={['fulfilment-task', rootProps?.className].filter(Boolean).join(' ')}
       data-held={held ? 'true' : 'false'}
+      data-attention={attention ? 'true' : 'false'}
     >
       <div className="fulfilment-task__head">
         <div className="fulfilment-task__badges">
-          {held ? (
-            task.activeHolds.map((hold) => (
-              <StatusBadge key={hold.id} tone="warning" withDot compact>
-                {`On hold — ${holdReasonLabel(hold.reason)}`}
-              </StatusBadge>
-            ))
-          ) : (
-            <StatusBadge tone="info" compact>
-              {fulfillmentStatusLabel(task.status)}
+          {task.activeHolds.map((hold) => (
+            <StatusBadge key={hold.id} tone="warning" withDot compact>
+              {`On hold — ${holdReasonLabel(hold.reason)}`}
             </StatusBadge>
-          )}
+          ))}
+          <StatusBadge tone={attention ? 'warning' : 'info'} withDot={attention} compact>
+            {taskStatusText(
+              fulfillmentStatusLabel(task.status),
+              task.status,
+              acceptance,
+              OWN_PACK_BENCH_NAME,
+              true
+            )}
+          </StatusBadge>
           {/* After the hold/state badge, never before it — the badge above
               leads. Display only; see the module docblock. */}
           {(task.expeditedAt ?? null) !== null ? (
@@ -145,10 +167,19 @@ export function FulfillmentTaskCard({
         )}
       </div>
 
-      {held ? (
-        <ul className="fulfilment-task__holds">
+      {held || attention || pending ? (
+        <ul className="fulfilment-task__holds fulfilment-task__notes">
+          {pending ? <li>{TASK_ACCEPTANCE_COPY.pendingNote(OWN_PACK_BENCH_NAME)}</li> : null}
+          {attention ? (
+            <li>
+              {acceptance.kind === 'refused'
+                ? TASK_ACCEPTANCE_COPY.refusedNote
+                : TASK_ACCEPTANCE_COPY.stuckNote}{' '}
+              <TimeDisplay iso={task.createdAt} format="relative" />
+            </li>
+          ) : null}
           {task.activeHolds.map((hold) => (
-            <li key={hold.id} className="text-muted">
+            <li key={hold.id}>
               {holdReasonLabel(hold.reason)} · since{' '}
               <TimeDisplay iso={hold.placedAt} format="relative" />
               {hold.note ? ` — ${hold.note}` : ''}
@@ -157,16 +188,7 @@ export function FulfillmentTaskCard({
         </ul>
       ) : null}
 
-      <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={OWN_PACK_BENCH_NAME} />
-
       <dl className="fulfilment-task__facts">
-        {/* Rendered even when a hold leads, so the underlying state is never
-            hidden by the hold badge — "held" and "scheduled" are both true.
-            Acceptance is folded in only when it is news (#3763). */}
-        <div>
-          <dt>State</dt>
-          <dd>{taskStateLine(fulfillmentStatusLabel(task.status), acceptance, OWN_PACK_BENCH_NAME)}</dd>
-        </div>
         {/* Named, never an internal id (#3096): the location only where there
             is more than one to tell apart, the delivery as its carrier name. */}
         {showLocation && task.locationName ? (

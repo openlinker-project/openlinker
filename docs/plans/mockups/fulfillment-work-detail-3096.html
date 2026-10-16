@@ -369,11 +369,11 @@ function actionHint(action) { return FULFILLMENT_ACTION_COPY[action]?.hint ?? nu
 // `undefined`, for the identical reason the action lookups do.
 function statusLabel(status) { return STATUS_COPY[status] ?? humanise(status); }
 function requestStatusLabel(requestStatus) { return REQUEST_STATUS_COPY[requestStatus] ?? humanise(requestStatus); }
-// #3763: the raw request status is no longer rendered. Acceptance is news only when it did not
-// happen, so the state line gains a qualifier for an unaccepted task and nothing for an accepted one.
-// The shipped page also warns once a task has waited 15 minutes; this mockup does not model the clock.
+// #3763: the raw request status is no longer rendered. The headline is the status alone (plus a
+// cancellation, when one is negotiated); acceptance is told by the sentence under it, and a task
+// packers cannot see gets a reason under "Why it's stuck" like a hold. This mockup does not model
+// that clock-driven state; the shipped page and the PR #3768 preview artifact do.
 function stateLine(task) {
-  if (task.requestStatus === 'unsubmitted' || task.requestStatus === 'submitted') return `${statusLabel(task.status)} · not on the pack bench yet`;
   if (task.requestStatus.startsWith('cancellation_')) return `${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus).toLowerCase()}`;
   return statusLabel(task.status);
 }
@@ -614,7 +614,8 @@ function renderHoldList(task) {
   return `<ul class="task-card__holds">${task.activeHolds.map((h) => `<li>${HOLD_REASON_LABEL[h.reason] || h.reason} · since ${fmtRelative(h.placedAt)}${h.note ? ' — ' + escapeHtml(h.note) : ''}</li>`).join('')}</ul>`;
 }
 function renderFactsRows(task) {
-  const rows = [['State', statusLabel(task.status)]];
+  // #3763: no State row - the hero headline already states it.
+  const rows = [];
   if (task.locationId) rows.push(['Location', LOCATION_LABEL[task.locationId] || task.locationId]);
   if (task.deliveryMethod) rows.push(['Delivery', task.deliveryMethod]);
   if (task.externalWorkId) rows.push(['External reference', task.externalWorkId]);

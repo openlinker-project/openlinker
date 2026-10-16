@@ -6,23 +6,32 @@
  * OpenLinker's own OMS as the only executor it read "Accepted" on almost every
  * task - a word that tells an operator nothing. The one state that matters is
  * the opposite one: the pack bench lists only ACCEPTED work, so a task that
- * never got accepted is a parcel no packer can see. This derivation turns the
- * axis into that fact, and into nothing at all when there is no news.
+ * never got accepted is one no packer can see. This derivation turns the axis
+ * into that fact, and into nothing at all when there is no news.
  *
  * ## The input is a narrow struct, never the task
  *
  * The same rule `fulfillment-work-summary.ts` states (ADR-076): this module
- * branches on `requestStatus` for DISPLAY only, and taking two scalars keeps
- * the task's `supportedActions` out of reach, so it cannot grow into a
- * client-side state machine.
+ * branches on `requestStatus` for DISPLAY only, and taking scalars keeps the
+ * task's `supportedActions` out of reach, so it cannot grow into a client-side
+ * state machine.
+ *
+ * ## Only a task with an executor can be waiting for one
+ *
+ * An unassigned task was routed to nobody, so it was never offered and cannot
+ * be "on its way" anywhere. The detail sentence already says it is not
+ * assigned; reporting it as stuck acceptance would give it a second, wrong
+ * reason.
  *
  * ## Why 15 minutes
  *
  * Dispatch runs on the realtime lane and normally accepts a routed task within
  * seconds, so a task still unaccepted after a quarter of an hour is not
- * "slow", it is stuck (a failed enqueue, no holder, a crashed claim). The
- * server's own timeout sweep only reaps after two hours - waiting for it would
- * leave the parcel invisible to packers for that long with nothing on screen.
+ * "slow", it is stuck (a failed enqueue, a crashed claim). The server's own
+ * timeout sweep only reaps after two hours - waiting for it would leave the
+ * task invisible to packers for that long with nothing on screen. The state is
+ * computed at render time, so an open page moves from pending to stuck on its
+ * next re-render, not on the minute.
  *
  * @module apps/web/src/features/fulfillment/lib
  */
@@ -36,16 +45,18 @@ export interface TaskAcceptanceInput {
   requestStatus: string;
   /** When the task was created, i.e. routed. The clock a stuck task is measured on. */
   createdAt: string;
+  /** Whether the task has an executor at all (`assignedConnectionId !== null`). */
+  assigned: boolean;
 }
 
 export type TaskAcceptance =
-  /** Accepted, or a state this build does not recognise: nothing to say. */
+  /** Accepted, unassigned, or a state this build does not recognise: nothing to say. */
   | { readonly kind: 'none' }
   /** Not accepted yet, but young enough to be in flight. */
   | { readonly kind: 'pending' }
-  /** Not accepted, and old enough that it will not fix itself soon. */
+  /** Not accepted, and old enough that it will not fix itself. */
   | { readonly kind: 'stuck'; readonly waitedMs: number }
-  /** Reaped by the timeout sweep (or refused by an executor). */
+  /** Reaped by the timeout sweep, or turned down by the executor. */
   | { readonly kind: 'refused' }
   /** A cancellation is being negotiated; carries the copy fragment. */
   | { readonly kind: 'cancellation'; readonly label: string };
@@ -58,11 +69,11 @@ const NOT_YET_ACCEPTED = new Set(['unsubmitted', 'submitted']);
  * back is a false alarm.
  */
 export function describeTaskAcceptance(input: TaskAcceptanceInput, now: Date): TaskAcceptance {
-  if (input.requestStatus === 'rejected') return { kind: 'refused' };
-
   const cancellation = TASK_ACCEPTANCE_COPY.cancellation[input.requestStatus];
   if (cancellation !== undefined) return { kind: 'cancellation', label: cancellation };
 
+  if (!input.assigned) return { kind: 'none' };
+  if (input.requestStatus === 'rejected') return { kind: 'refused' };
   if (!NOT_YET_ACCEPTED.has(input.requestStatus)) return { kind: 'none' };
 
   const createdMs = new Date(input.createdAt).getTime();
@@ -74,29 +85,34 @@ export function describeTaskAcceptance(input: TaskAcceptanceInput, now: Date): T
     : { kind: 'pending' };
 }
 
-/**
- * The state line both surfaces render: the orchestration label, plus a short
- * qualifier only when acceptance is news. A stuck or refused task also gets a
- * warning (`FulfillmentTaskAcceptanceNotice`), so the qualifier stays short.
- */
-export function taskStateLine(
-  statusLabel: string,
-  acceptance: TaskAcceptance,
-  where: string,
-): string {
-  switch (acceptance.kind) {
-    case 'pending':
-    case 'stuck':
-      return `${statusLabel} · ${TASK_ACCEPTANCE_COPY.pending(where)}`;
-    case 'cancellation':
-      return `${statusLabel} · ${acceptance.label}`;
-    case 'refused':
-    case 'none':
-      return statusLabel;
-  }
+/** Stuck and refused tasks are the ones packers cannot see: shown like a hold. */
+export function needsAttention(acceptance: TaskAcceptance): boolean {
+  return acceptance.kind === 'stuck' || acceptance.kind === 'refused';
 }
 
-/** The waited time as the notice prints it, e.g. "2h". */
+/**
+ * The status as one line: the card badge and the detail headline both read it.
+ * Attention joins its reason to the status (card only: `withAttention`); a
+ * cancellation joins its wording, except where the status already says it.
+ */
+export function taskStatusText(
+  statusLabel: string,
+  status: string,
+  acceptance: TaskAcceptance,
+  where: string,
+  withAttention: boolean,
+): string {
+  if (withAttention && needsAttention(acceptance)) {
+    return `${statusLabel} · ${TASK_ACCEPTANCE_COPY.badge(where)}`;
+  }
+  if (acceptance.kind === 'cancellation') {
+    const repeatsStatus = status === 'cancelled' && acceptance.label === 'cancellation accepted';
+    return repeatsStatus ? statusLabel : `${statusLabel} · ${acceptance.label}`;
+  }
+  return statusLabel;
+}
+
+/** The waited time as the warning prints it, e.g. "2h". */
 export function formatAcceptanceWait(waitedMs: number): string {
   return formatCompactDuration(waitedMs);
 }

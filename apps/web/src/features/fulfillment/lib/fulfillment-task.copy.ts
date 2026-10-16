@@ -203,19 +203,35 @@ export const OWN_PACK_BENCH_NAME = 'the pack bench';
  *
  * Replaces the old "Handshake" field, whose name meant nothing outside the
  * code and whose usual value ("Accepted") carried no news. Only the states an
- * operator must notice get words; `accepted` deliberately has none.
+ * operator must notice get words; `accepted` deliberately has none. Each fact
+ * is said once per level: the badge or headline names it, the note or
+ * sentence explains it, and the warning under "Why it's stuck" gives the
+ * detail and what OpenLinker will not do about it.
  */
 export const TASK_ACCEPTANCE_COPY = {
-  /** Appended to the state label, e.g. "Open · not on the pack bench yet". */
-  pending: (where: string): string => `not on ${where} yet`,
-  stuckTitle: (where: string): string => `Not on ${where} yet`,
+  /** Joined to the status in the card badge, e.g. "Open · Not on the pack bench". */
+  badge: (where: string): string => `Not on ${where}`,
+  /** Card note while acceptance is in flight (normal, usually seconds). */
+  pendingNote: (where: string): string => `On its way to ${where}`,
+  /** Card notes for a task packers cannot see, each followed by a relative time. */
+  stuckNote: 'Not accepted yet · sent',
+  refusedNote: 'Turned down or not answered in time · sent',
+  /** Detail hero sentence while acceptance is in flight. */
+  heroPending: (executor: string | null, where: string): string =>
+    executor
+      ? `Sent to ${executor}. It appears on ${where} once accepted, usually within seconds.`
+      : `Sent for packing. It appears on ${where} once accepted, usually within seconds.`,
+  /** Detail hero sentence for a stuck or refused task. */
+  heroAttention: (where: string): string =>
+    `Packers cannot see this task, because it is not on ${where}.`,
+  stuckTitle: 'Not accepted yet',
   /** `age` is pre-formatted by `formatCompactDuration`, e.g. "2h". */
-  stuck: (where: string, age: string): string =>
-    `This parcel has waited ${age} and is still not on ${where}. Packers cannot see it until it gets there.`,
-  refusedTitle: (where: string): string => `Did not reach ${where}`,
-  refused: (where: string): string =>
-    `This parcel was offered for packing but never reached ${where}, so packers cannot see it.`,
-  /** Appended to the state label while a cancellation is being negotiated. */
+  stuckBody: (age: string, where: string): string =>
+    `This task was sent ${age} ago and has not been accepted, so it is not on ${where}. OpenLinker does not retry this on its own. A failed dispatch job in Jobs & Logs usually explains why.`,
+  refusedTitle: 'Not accepted',
+  refusedBody: (where: string): string =>
+    `This task was turned down, or not answered in time, so it never reached ${where}. OpenLinker does not retry this on its own.`,
+  /** Joined to the status while a cancellation is being negotiated. */
   cancellation: {
     cancellation_requested: 'cancellation requested',
     cancellation_accepted: 'cancellation accepted',
