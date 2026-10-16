@@ -249,7 +249,11 @@ describe('Fulfilment dispatch timeout sweep (#2712)', () => {
     await makeIdle(work.id, 6);
     await reap();
 
-    await expect(sweep().recomputeAcceptanceAttention('ol_order_1')).resolves.toMatchObject({
+    await expect(
+      sweep().recomputeAcceptanceAttention('ol_order_1', {
+        stalledUnsubmittedBefore: new Date(Date.now() - 60 * 60 * 1000),
+      })
+    ).resolves.toMatchObject({
       kind: 'blocked',
     });
 
@@ -260,7 +264,11 @@ describe('Fulfilment dispatch timeout sweep (#2712)', () => {
       externalWorkId: null,
     });
 
-    await expect(sweep().recomputeAcceptanceAttention('ol_order_1')).resolves.toEqual({
+    await expect(
+      sweep().recomputeAcceptanceAttention('ol_order_1', {
+        stalledUnsubmittedBefore: new Date(Date.now() - 60 * 60 * 1000),
+      })
+    ).resolves.toEqual({
       kind: 'none',
     });
   });
