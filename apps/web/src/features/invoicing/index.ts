@@ -33,6 +33,7 @@ export {
 export { regCardToneFor, type RegCardTone } from './lib/derive-invoice-display';
 export { InvoicePdfLink } from './components/invoice-pdf-link';
 export { InvoiceConnectionLock } from './components/invoice-connection-lock';
+export { InvoiceUnconfirmedNotice } from './components/invoice-unconfirmed-notice';
 export {
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
