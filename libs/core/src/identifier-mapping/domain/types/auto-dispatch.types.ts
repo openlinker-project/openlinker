@@ -46,6 +46,15 @@ export interface AutoDispatchConfig {
    * decides what the carrier charges.
    */
   readonly defaultWeightGrams?: number;
+  /**
+   * Default parcel box (mm) for a courier that needs dimensions (#3571). Set
+   * only as a whole: a partial or non-positive set reads as unset, because a
+   * guessed box is a mispriced label. Applies to the parcel as a whole, never
+   * summed across lines; a routing rule's own box (#3651) wins over it.
+   */
+  readonly lengthMm?: number;
+  readonly widthMm?: number;
+  readonly heightMm?: number;
 }
 
 const DISABLED: AutoDispatchConfig = { enabled: false };
@@ -61,7 +70,9 @@ const DISABLED: AutoDispatchConfig = { enabled: false };
  * is a positive finite number (a fractional value is floored, matching the
  * stock-safety-buffer precedent's whole-unit rule).
  */
-export function readAutoDispatchConfig(config: ConnectionConfig | null | undefined): AutoDispatchConfig {
+export function readAutoDispatchConfig(
+  config: ConnectionConfig | null | undefined
+): AutoDispatchConfig {
   if (!config) {
     return DISABLED;
   }
@@ -74,9 +85,9 @@ export function readAutoDispatchConfig(config: ConnectionConfig | null | undefin
     return DISABLED;
   }
 
-  const result: { enabled: true; parcelTemplate?: string; defaultWeightGrams?: number } = {
-    enabled: true,
-  };
+  const result: {
+    -readonly [K in keyof AutoDispatchConfig]: AutoDispatchConfig[K];
+  } = { enabled: true };
   if (typeof candidate.parcelTemplate === 'string' && candidate.parcelTemplate.trim().length > 0) {
     result.parcelTemplate = candidate.parcelTemplate;
   }
@@ -87,6 +98,16 @@ export function readAutoDispatchConfig(config: ConnectionConfig | null | undefin
     defaultWeightGrams > 0
   ) {
     result.defaultWeightGrams = Math.floor(defaultWeightGrams);
+  }
+  const toMm = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+  const lengthMm = toMm(candidate.lengthMm);
+  const widthMm = toMm(candidate.widthMm);
+  const heightMm = toMm(candidate.heightMm);
+  if (lengthMm !== undefined && widthMm !== undefined && heightMm !== undefined) {
+    result.lengthMm = lengthMm;
+    result.widthMm = widthMm;
+    result.heightMm = heightMm;
   }
   return result;
 }

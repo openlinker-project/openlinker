@@ -120,7 +120,7 @@ export function InvoiceConnectionLock({
       </span>
       <span className="invoice-connection-lock__eyebrow">{resolveEyebrow(status, t)}</span>
       <span className="invoice-connection-lock__value">
-        {connectionName}
+        <span className="invoice-connection-lock__name">{connectionName}</span>
         <span className="invoice-connection-lock__tag mono-text">{tag}</span>
       </span>
       {isSettled ? (
