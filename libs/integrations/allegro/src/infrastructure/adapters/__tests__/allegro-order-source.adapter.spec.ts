@@ -1605,10 +1605,10 @@ describe('AllegroOrderSourceAdapter', () => {
           expect.arrayContaining([
             { value: 'ONLINE', label: 'Online payment (Allegro Pay / card / instant transfer)' },
             { value: 'CASH_ON_DELIVERY', label: 'Cash on delivery' },
-            { value: 'BANK_TRANSFER', label: 'Bank transfer' },
+            { value: 'WIRE_TRANSFER', label: 'Bank transfer outside Allegro Finance' },
           ])
         );
-        expect(result.length).toBeGreaterThanOrEqual(6);
+        expect(result).toHaveLength(5);
       });
 
       it('does not call the Allegro HTTP client', async () => {
