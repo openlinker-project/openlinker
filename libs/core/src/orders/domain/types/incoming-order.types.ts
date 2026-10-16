@@ -89,6 +89,15 @@ export interface IncomingOrder {
    * the Smart! program.
    */
   deliverySmart?: boolean;
+  /**
+   * The source asserts that IT (the marketplace) ships this order itself, e.g.
+   * Allegro One Fulfillment (#3636). Three-state like `buyerTaxId` (#2599):
+   * `true` is a positive statement; ABSENT means "not asserted" and must never
+   * be read as "the seller ships" - a source that cannot tell leaves it unset.
+   * Typed `true` on purpose: there is no `false` a source needs to send, so a
+   * source that cannot tell leaves the field unset.
+   */
+  fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
 
