@@ -135,8 +135,9 @@ export type RoutingEligibilityResolution = Pick<
  * routing when the read failed, because routing on an unknown could ship a parcel
  * twice (#3496 review).
  *
- * A marketplace fulfilling its own order is covered by the source's own
- * assertion ({@link isOrderFulfilledBySource}, #3636), not by this rule.
+ * A marketplace that asserts it fulfils its own order is covered by the source's
+ * own assertion ({@link isOrderFulfilledBySource}, #3636), so this rule is no
+ * longer the only coverage; for a marketplace that asserts nothing it still is.
  *
  * `processorAvailable` is deliberately not consulted. It reports whether OL can
  * drive the named processor, which says nothing about who ships the parcel; a
