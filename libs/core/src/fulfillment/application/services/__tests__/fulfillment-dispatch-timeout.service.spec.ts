@@ -127,9 +127,7 @@ describe('FulfillmentDispatchTimeoutService (#2712)', () => {
       candidate({ workId: 'w1' }),
       candidate({ workId: 'w2', orderId: 'ol_order_2' }),
     ] as never);
-    repository.recordRejection
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce(true);
+    repository.recordRejection.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(true);
 
     const result = await reap();
 
@@ -187,7 +185,11 @@ describe('FulfillmentDispatchTimeoutService.recomputeAcceptanceAttention (#2712)
       repository as unknown as FulfillmentWorkRepositoryPort
     );
 
-    await expect(service.recomputeAcceptanceAttention('ol_order_1')).resolves.toMatchObject({
+    await expect(
+      service.recomputeAcceptanceAttention('ol_order_1', {
+        stalledUnsubmittedBefore: new Date(),
+      })
+    ).resolves.toMatchObject({
       kind: 'blocked',
       reason: 'fulfillment-unaccepted',
     });
@@ -204,7 +206,11 @@ describe('FulfillmentDispatchTimeoutService.recomputeAcceptanceAttention (#2712)
       repository as unknown as FulfillmentWorkRepositoryPort
     );
 
-    await expect(service.recomputeAcceptanceAttention('ol_order_1')).rejects.toThrow('db down');
+    await expect(
+      service.recomputeAcceptanceAttention('ol_order_1', {
+        stalledUnsubmittedBefore: new Date(),
+      })
+    ).rejects.toThrow('db down');
   });
 });
 

@@ -115,7 +115,7 @@ export class FulfillmentDispatchTimeoutService implements IFulfillmentDispatchTi
 
   async recomputeAcceptanceAttention(
     orderId: string,
-    options: DeriveAcceptanceAttentionOptions = {}
+    options: Required<DeriveAcceptanceAttentionOptions>
   ): Promise<AuthorityAttentionOutcome<'acceptance'>> {
     // Throws on an infrastructure fault rather than reporting `none`: a failed
     // read must never be written as a CLEAR, which would erase a true reason
@@ -237,7 +237,7 @@ export class FulfillmentDispatchTimeoutService implements IFulfillmentDispatchTi
    */
   private async buildAttentionIntents(
     orderIds: ReadonlySet<string>,
-    options: DeriveAcceptanceAttentionOptions
+    options: Required<DeriveAcceptanceAttentionOptions>
   ): Promise<FulfillmentAcceptanceAttentionIntent[]> {
     const intents: FulfillmentAcceptanceAttentionIntent[] = [];
 

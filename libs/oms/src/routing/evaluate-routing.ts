@@ -59,9 +59,12 @@ function applyHolderGuard(
     return { survivors: candidates, step: null };
   }
 
+  // Eliminate the candidate the decision was made for, not its location: two
+  // holders may serve one location, and only the non-executing one must go.
+  const eliminatedSet = new Set(eliminated);
   const eliminatedIds = new Set(eliminated.map((candidate) => candidate.locationId));
   return {
-    survivors: candidates.filter((candidate) => !eliminatedIds.has(candidate.locationId)),
+    survivors: candidates.filter((candidate) => !eliminatedSet.has(candidate)),
     step: {
       rule: HOLDER_GUARD_RULE,
       eliminated: [...eliminatedIds],

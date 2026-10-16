@@ -91,7 +91,7 @@ export interface IFulfillmentDispatchTimeoutService {
    */
   recomputeAcceptanceAttention(
     orderId: string,
-    options?: DeriveAcceptanceAttentionOptions
+    options: Required<DeriveAcceptanceAttentionOptions>
   ): Promise<AuthorityAttentionOutcome<'acceptance'>>;
 
   /**
