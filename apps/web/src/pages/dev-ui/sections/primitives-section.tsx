@@ -32,6 +32,7 @@ import {
   DocumentLifecycle,
   StatusBadge,
   Textarea,
+  useFormFieldControl,
 } from '../../../shared/ui';
 import { FilterPrimitivesDemo } from './filter-primitives-demo';
 
@@ -39,6 +40,21 @@ interface GroupProps {
   title: string;
   description?: ReactNode;
   children: ReactNode;
+}
+
+/**
+ * A control plus an inline action on one row (#2435). `FormField` cannot clone onto a
+ * row of two elements, so the Input takes its id and aria-* from `useFormFieldControl()`
+ * — which must be called from a child of the field, hence a component of its own.
+ */
+function ComposedControlRow(): ReactElement {
+  const control = useFormFieldControl();
+  return (
+    <div className="ds-row">
+      <Input defaultValue="5" {...control} />
+      <Button tone="ghost">Remove</Button>
+    </div>
+  );
 }
 
 function Group({ title, description, children }: GroupProps): ReactElement {
@@ -127,6 +143,17 @@ export function PrimitivesSection(): ReactElement {
           </FormField>
           <FormField label="Notes" name="ds-notes">
             <Textarea placeholder="Operational notes for the team…" rows={3} />
+          </FormField>
+          {/* #2435 — a composed row: the control takes the wiring from the hook. */}
+          <FormField
+            label="Reserve"
+            name="ds-reserve"
+            description="A control plus an inline action. The Input takes its id and aria-* from useFormFieldControl()."
+          >
+            {/* A fragment, so nothing is cloned: the hook inside the row does the wiring. */}
+            <>
+              <ComposedControlRow />
+            </>
           </FormField>
         </div>
       </Group>
