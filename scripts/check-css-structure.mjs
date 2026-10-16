@@ -584,6 +584,17 @@ async function main() {
     ]);
   }
 
+  // The counters are floored for the same reason `files.length` is: REQUIRED_STYLESHEETS
+  // guarantees index.css is in the corpus, and it carries thousands of blocks and
+  // var(...) groups, so a zero here means a detector matched nothing (e.g. an
+  // over-eager url() token swallowing every `(`), not a healthy tree.
+  if (blocks === 0 || parens === 0) {
+    fail([
+      `scanned ${blocks} blocks and ${parens} parenthesised groups - a detector matched nothing.`,
+      '  A healthy tree has both in the thousands. Fix the scanner, do not lower this floor.',
+    ]);
+  }
+
   if (violations.length > 0) {
     console.error('✗ check-css-structure: structurally damaged stylesheet(s).\n');
     for (const { file, defects } of violations.sort((a, b) => a.file.localeCompare(b.file))) {
