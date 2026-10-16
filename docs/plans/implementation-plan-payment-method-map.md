@@ -115,18 +115,27 @@ snapshot, present-only, in both PII modes (a technical gateway id, not buyer dat
 - `IOrderRecordService.listObservedSourcePaymentMethods(...)` pass-through.
 - API: `ConnectionPaymentMethodsService` (app layer, `apps/api/src/orders/application/`) composes
   that read + `IIntegrationsService.getCapabilityAdapter(connectionId, 'OrderSource')` (probe
-  classifier; resolution failure degrades to `classifierAvailable: false`, never 500) +
-  `readPaymentMethodMap(connection.config)` + `resolveSourcePaymentMethod`.
+  classifier) + `readPaymentMethodMap(connection.config)` + `resolveSourcePaymentMethod`.
+- **`mapSupport`, three states, never a boolean** (amended for #3775). The UI must tell apart
+  "this integration ignores the map" (hide the controls) from "it honours the map but cannot be
+  reached right now" (keep them editable). A boolean conflated the two.
+  - `supported` - the adapter was built and implements `PlatformPaymentMethodClassifier`.
+  - `unsupported` - the adapter was built and does not implement it (e.g. Allegro, Erli, Shoper):
+    a map on this connection is read by nothing.
+  - `unknown` - the adapter could not be built (disabled, `needs_reauth`, credential failure).
+    Because the classifier is guard-only and absent from every manifest, support cannot be
+    answered without the adapter, so the honest answer is "unknown", never a guess either way.
 - Cost and degradation, stated: `getCapabilityAdapter` resolves credentials and constructs the
-  adapter only to call a pure classifier. A disabled connection, one in `needs_reauth`, or one
-  whose adapter does not implement the classifier still returns its observed ids, with
-  `classifierAvailable: false` and `platformMethod: null`, so #3775 can tell "classification
-  unavailable" apart from "no gateways seen". The orders read failing is a 5xx; the adapter
-  failing never is.
+  adapter only to call a pure classifier. Observed ids are returned in all three states, so
+  #3775 can tell "classification unavailable" apart from "no gateways seen". When `mapSupport`
+  is not `supported`, `platformMethod`, `resolvedMethod` and `resolvedBy` are `null`: without the
+  classifier the endpoint cannot say what ingestion would decide, and a computed answer that
+  ignored the platform's own modules would contradict what ingestion writes (#2229). The orders
+  read failing is a 5xx; the adapter failing never is.
 - Controller: `GET /connections/:connectionId/payment-methods/observed`,
   `@Roles('admin','operator','viewer')`, window 90 days. Response:
-  `{ classifierAvailable, windowDays, items: [{ sourcePaymentMethod, orderCount, lastSeenAt,
-  platformMethod | null, operatorMethod | null, resolvedMethod, resolvedBy }] }`.
+  `{ mapSupport, windowDays, items: [{ sourcePaymentMethod, orderCount, lastSeenAt,
+  platformMethod | null, operatorMethod | null, resolvedMethod | null, resolvedBy | null }] }`.
 
 ### 3.6 Save validation
 
@@ -164,7 +173,10 @@ only through the raw JSON editor.
    outside the window excluded; `PayU` / ` payu ` grouped into one id with the summed count;
    another connection's rows excluded; orders with no `sourcePaymentMethod` excluded; ordering by
    count and the cap.
-7. API service + controller + DTOs + module wiring + specs.
+7. API service + controller + DTOs + module wiring + specs: `mapSupport` is `supported` /
+   `unsupported` / `unknown` for a classifier adapter / a non-classifier adapter / an adapter
+   that throws on resolution; observed ids returned in all three; resolved fields `null` unless
+   `supported`; an orders-read failure surfaces as 5xx.
 8. `ConnectionService` validation + specs (create and update): non-object, invalid value, blank
    key, and case-folded duplicate keys (both differing and equal values) refused; absent / `null`
    accepted; a platform-defined id accepted.
@@ -197,3 +209,7 @@ refusal of case-folded duplicate map keys (§3.6); committed int-spec for the JS
 query (step 6, §5). Also recorded: the accepted no-op for a mapped platform-defined id (§3.6),
 the discovery read's adapter cost and degradation (§3.5), and the Payments-tab follow-up (risk 4).
 Still to run: `/pre-implement`.
+
+Amended for #3775 (2026-10-16): `classifierAvailable: boolean` replaced by
+`mapSupport: 'supported' | 'unsupported' | 'unknown'`, with `platformMethod` / `resolvedMethod` /
+`resolvedBy` null whenever support is not confirmed (§3.5). Step 7's specs cover all three states.
