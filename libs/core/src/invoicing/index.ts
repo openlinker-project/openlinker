@@ -9,6 +9,7 @@
  * @module libs/core/src/invoicing
  */
 export * from './domain/types/invoicing.types';
+export * from './domain/domain-services/invoice-failure-classification.domain-service';
 export * from './domain/types/invoice-numbering.types';
 export * from './domain/types/numbering-audit.types';
 export {

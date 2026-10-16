@@ -43,6 +43,7 @@ describe('invoicing.types', () => {
       'buyer-tax-id-invalid',
       'invalid-currency',
       'sale-classification-required',
+      'connection-setup-incomplete',
       'provider-rejected',
       'transport-timeout',
       'provider-error',
