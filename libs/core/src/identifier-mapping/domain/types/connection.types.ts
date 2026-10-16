@@ -84,7 +84,7 @@ export interface ConnectionConfig {
      * (#2047). One sale is one invoice, so when several connections have
      * `Invoicing` enabled the auto-issue trigger honours exactly the primary and
      * issues NOTHING when the primary is ambiguous (unset, or set on more than
-     * one). Read via `parseIsPrimaryInvoicing`; a missing value is `false`, which
+     * one). Read via `readSalesDocumentRouting`; a missing value is `false`, which
      * keeps a single-connection install behaving exactly as before.
      */
     isPrimary?: boolean;
