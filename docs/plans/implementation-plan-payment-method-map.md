@@ -136,6 +136,8 @@ snapshot, present-only, in both PII modes (a technical gateway id, not buyer dat
   `@Roles('admin','operator','viewer')`, window 90 days. Response:
   `{ mapSupport, windowDays, items: [{ sourcePaymentMethod, orderCount, lastSeenAt,
   platformMethod | null, operatorMethod | null, resolvedMethod | null, resolvedBy | null }] }`.
+  `windowDays` is present in every `mapSupport` state, so the UI never falls back to a hardcoded
+  window.
 
 ### 3.6 Save validation
 
