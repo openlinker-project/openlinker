@@ -1402,6 +1402,48 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
 
+    describe('fulfilledBySource (#3636)', () => {
+      const form = (fulfillment?: AllegroCheckoutForm['fulfillment']): AllegroCheckoutForm => ({
+        id: 'cf',
+        updatedAt: '2024-01-01T00:00:00Z',
+        buyer: { id: 'b', email: 'b@e.com', login: 'b' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'ONLINE' },
+        ...(fulfillment && { fulfillment }),
+      });
+
+      const read = async (
+        fulfillment?: AllegroCheckoutForm['fulfillment']
+      ): Promise<Awaited<ReturnType<typeof adapter.getOrder>>> => {
+        httpClient.get.mockResolvedValueOnce({ data: form(fulfillment), status: 200, headers: {} });
+        return adapter.getOrder({ externalOrderId: 'cf' });
+      };
+
+      it('should assert fulfilledBySource for a One Fulfillment (ALLEGRO) order', async () => {
+        const incoming = await read({ status: 'NEW', provider: { id: 'ALLEGRO' } });
+        expect(incoming.fulfilledBySource).toBe(true);
+      });
+
+      it('should leave fulfilledBySource unset when the seller manages the order', async () => {
+        const incoming = await read({ status: 'NEW', provider: { id: 'SELLER' } });
+        expect(incoming.fulfilledBySource).toBeUndefined();
+        expect('fulfilledBySource' in incoming).toBe(false);
+      });
+
+      it('should leave fulfilledBySource unset when no provider is reported', async () => {
+        expect((await read({ status: 'NEW' })).fulfilledBySource).toBeUndefined();
+        expect((await read()).fulfilledBySource).toBeUndefined();
+      });
+    });
+
     describe('deliverySmart (#738)', () => {
       const baseForm = (): AllegroCheckoutForm => ({
         id: 'cf',

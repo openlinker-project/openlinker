@@ -407,6 +407,22 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot['deliverySmart']).toBe(true);
     });
 
+    it('should serialise Order.fulfilledBySource into the snapshot only when asserted (#3636)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistOrder(asserted, 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(
+        true
+      );
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
+    });
+
     it('should omit deliverySmart from the snapshot when the Order does not carry it (#738)', async () => {
       const order = createMockOrder();
       // createMockOrder() leaves deliverySmart unset — assert conditional
@@ -1040,6 +1056,26 @@ describe('OrderRecordService', () => {
 
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot['deliverySmart']).toBe(false);
+    });
+
+    it('should serialise IncomingOrder.fulfilledBySource into the awaiting-mapping snapshot only when asserted (#3636)', async () => {
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockIncomingOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistIncomingSnapshot(asserted, 'ol_order_abc', null, 'conn-123', null);
+      expect(repository.upsert.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(true);
+
+      await service.persistIncomingSnapshot(
+        createMockIncomingOrder(),
+        'ol_order_abc',
+        null,
+        'conn-123',
+        null
+      );
+      expect(repository.upsert.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
     });
 
     it('should omit deliverySmart from the snapshot when IncomingOrder does not carry it (#738)', async () => {

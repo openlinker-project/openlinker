@@ -123,6 +123,11 @@ export interface Order {
    * predating the Smart! program.
    */
   deliverySmart?: boolean;
+  /**
+   * The source says it ships this order itself (#3636), carried through from
+   * `IncomingOrder`. Absent means "not asserted", never "the seller ships".
+   */
+  fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
   /**

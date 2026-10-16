@@ -40,7 +40,14 @@ export interface AllegroCheckoutForm {
    * order-ingestion transition-gate (`priorStatus !== 'cancelled'`) already
    * suppresses a re-fire once OL's own record is cancelled.
    */
-  fulfillment?: { status?: string };
+  fulfillment?: {
+    status?: string;
+    /**
+     * Who manages the order (`CheckoutFormFulfillmentProvider.id` in the
+     * Allegro swagger): `SELLER` or `ALLEGRO` (One Fulfillment).
+     */
+    provider?: { id?: string };
+  };
   messageToSeller?: string;
   buyer: {
     id: string;

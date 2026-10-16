@@ -185,6 +185,9 @@ export class OrderRecordService implements IOrderRecordService {
       // did not supply the flag, so consumers can distinguish "Smart not
       // reported" from "Smart explicitly false".
       ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
+      ...(order.fulfilledBySource !== undefined && {
+        fulfilledBySource: order.fulfilledBySource,
+      }),
       ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
       // Marketplace-sourced COD collect amount (#1435) — present-only, like
       // paymentStatus. Read back by `OrderRecord.codToCollect` for the dispatch
@@ -417,6 +420,9 @@ export class OrderRecordService implements IOrderRecordService {
       metadata: incoming.metadata,
       // See `persistOrder` above for the absent-vs-false rationale.
       ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
+      ...(incoming.fulfilledBySource !== undefined && {
+        fulfilledBySource: incoming.fulfilledBySource,
+      }),
       ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
       // Marketplace-sourced COD collect amount (#1435) — see persistOrder.
       ...(incoming.codToCollect !== undefined && { codToCollect: incoming.codToCollect }),
