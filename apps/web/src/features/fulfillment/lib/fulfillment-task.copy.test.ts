@@ -15,7 +15,6 @@ import {
   fulfillmentActionHint,
   fulfillmentActionLabel,
   fulfillmentActionTone,
-  fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
 } from './fulfillment-task.copy';
 
@@ -43,11 +42,9 @@ describe('fulfillment task copy (#2411)', () => {
     expect(fulfillmentActionHint('hold')).not.toBeNull();
   });
 
-  it('should humanise an unknown status and request status', () => {
+  it('should humanise an unknown status', () => {
     expect(fulfillmentStatusLabel('open')).toBe('Open');
     expect(fulfillmentStatusLabel('partially_picked')).toBe('Partially picked');
-    expect(fulfillmentRequestStatusLabel('accepted')).toBe('Accepted');
-    expect(fulfillmentRequestStatusLabel('some_new_state')).toBe('Some new state');
   });
 
   it('should mark force_cancel as the destructive action', () => {

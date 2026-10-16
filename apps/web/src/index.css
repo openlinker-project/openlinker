@@ -25482,7 +25482,8 @@ legend.analytics-settings-dialog__label {
   min-width: 0;
 }
 
-.fulfilment-task[data-held='true'] {
+.fulfilment-task[data-held='true'],
+.fulfilment-task[data-attention='true'] {
   border-color: var(--status-warning-border);
 }
 
@@ -25524,6 +25525,11 @@ legend.analytics-settings-dialog__label {
 .fulfilment-task__holds > li,
 .fulfilment-task__lines > li {
   overflow-wrap: anywhere;
+}
+
+/* #3763 - the explanation under the status badge reads as secondary. */
+.fulfilment-task__notes {
+  color: var(--text-muted);
 }
 
 .fulfilment-task__lines > li {

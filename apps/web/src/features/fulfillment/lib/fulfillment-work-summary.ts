@@ -1,9 +1,10 @@
 /**
  * Plain-language summary for one fulfilment task (#3099)
  *
- * The sentence rendered beneath the hero's two raw axis labels. The headline
- * stays those labels joined (`In progress · Accepted`); this derives the line
- * under it, because neither axis alone answers what an operator is asking.
+ * The sentence rendered beneath the hero's state headline. The headline is
+ * the orchestration label, qualified only when acceptance is news (#3763,
+ * `fulfillment-task-acceptance.ts`); this derives the line under it, because
+ * neither axis alone answers what an operator is asking.
  *
  * ## The input is a narrow struct, never the task, and that is the point
  *
@@ -41,12 +42,15 @@
  * Not a guessed one, and not a fallback that hedges. A sentence is a claim
  * about what is happening to somebody's parcel, and this build may not know —
  * the same fail-safe direction `fulfillmentActionHint` already takes by
- * returning `null` rather than a fabricated tooltip. The hero's two axis
- * labels still render, so the page is never blank.
+ * returning `null` rather than a fabricated tooltip. The hero's state
+ * headline still renders, so the page is never blank.
  *
  * Two reachable states produce no sentence, both confirmed rather than
  * papered over: `open` + `unsubmitted` with a location and no holds, and
- * `requestStatus: 'rejected'`. `open` + `accepted` used to be a third; #3096
+ * `requestStatus: 'rejected'`. Neither is silent on the page since #3763: for a
+ * task with an executor, the detail page replaces this sentence with one
+ * about the pack bench, and a stuck or refused task adds a reason under
+ * "Why it's stuck". `open` + `accepted` used to be a third; #3096
  * gave it `acceptedWaiting`, because it is the state most live tasks sit in
  * and a hero with nothing under its headline read as a broken page.
  *
