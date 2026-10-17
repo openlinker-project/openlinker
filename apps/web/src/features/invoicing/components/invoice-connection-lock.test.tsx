@@ -70,12 +70,36 @@ describe('InvoiceConnectionLock', () => {
       expect(hint.closest('details')).toBeNull();
     });
 
-    it('should keep a settled document hint behind the "Why this document?" disclosure', () => {
-      renderWithProviders(
+    // #3766 — a settled document renders no box: the headline already names
+    // the connection, so only the "Why this document?" disclosure remains.
+    it('should render only the "Why this document?" disclosure when the document is settled', () => {
+      const { container } = renderWithProviders(
         <InvoiceConnectionLock status="issued" connectionName="Main" tag="ksef" isStale={false} />,
       );
 
       expect(screen.getByText('Why this document?').closest('details')).not.toBeNull();
+      expect(container.querySelector('.invoice-connection-lock')).toBeNull();
+      expect(screen.queryByText('Issued by')).not.toBeInTheDocument();
+    });
+
+    it('should name the connection and the one-document rule inside the settled disclosure', () => {
+      renderWithProviders(
+        <InvoiceConnectionLock status="issued" connectionName="Main" tag="ksef" isStale={false} />,
+      );
+
+      const hint = screen.getByText(/Issued by Main\./);
+      expect(hint).toHaveTextContent(/One sale gets one document/);
+      expect(hint.closest('details')).not.toBeNull();
+    });
+
+    it('should keep the box for a settled document whose connection is no longer active', () => {
+      const { container } = renderWithProviders(
+        <InvoiceConnectionLock status="issued" connectionName="Main" tag="disconnected" isStale />,
+      );
+
+      expect(container.querySelector('.invoice-connection-lock')).not.toBeNull();
+      expect(screen.getByText('Issued by')).toBeInTheDocument();
+      expect(screen.queryByText('Why this document?')).not.toBeInTheDocument();
     });
   });
 
@@ -92,10 +116,9 @@ describe('InvoiceConnectionLock', () => {
       expect(ruleBody('.invoice-connection-lock__hint')).toMatch(/grid-column:\s*2/);
     });
 
-    it('should place the eyebrow, the value row and the disclosure in column 2', () => {
+    it('should place the eyebrow and the value row in column 2', () => {
       expect(ruleBody('.invoice-connection-lock__eyebrow')).toMatch(/grid-column:\s*2/);
       expect(ruleBody('.invoice-connection-lock__value')).toMatch(/grid-column:\s*2/);
-      expect(ruleBody('.invoice-connection-lock__why')).toMatch(/grid-column:\s*2/);
     });
 
     it('should let the name shrink and break anywhere instead of being truncated', () => {
