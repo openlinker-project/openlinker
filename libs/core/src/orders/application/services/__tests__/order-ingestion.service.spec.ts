@@ -2202,6 +2202,30 @@ describe('OrderIngestionService', () => {
       expect(request.destinationConnectionIds).toBeUndefined();
     });
 
+    it("hands the source's payment method to the sync as the payment-mapping key (#3474)", async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...charIncoming,
+        sourcePaymentMethod: 'CASH_ON_DELIVERY',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.sourcePaymentMethod).toBe('CASH_ON_DELIVERY');
+    });
+
+    it('hands the neutral payment method to the sync, as reported (#3294)', async () => {
+      orderSource.getOrder.mockResolvedValue({
+        ...charIncoming,
+        paymentMethod: 'bank_transfer',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
+
+      const request = orderSyncService.syncOrder.mock.calls[0][0];
+      expect(request.order.paymentMethod).toBe('bank_transfer');
+    });
+
     it('never writes a fulfilment block reason on a router-less install', async () => {
       await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1');
 

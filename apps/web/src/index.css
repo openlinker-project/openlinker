@@ -15872,7 +15872,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 /* ── COD payment panel (#1435) ──────────────────────────────────────────────
  * Payment-status-driven COD surface. Neutral recap container shared by the
- * read-only "from Allegro" amount and the fallback manual input, so both read
+ * read-only "from the order" amount and the fallback manual input, so both read
  * as siblings; the status is carried by a StatusBadge pill (reused, not a new
  * hue). No heavy tone-filled panel. */
 .generate-label-form__cod-panel {
@@ -25488,7 +25488,8 @@ legend.analytics-settings-dialog__label {
   min-width: 0;
 }
 
-.fulfilment-task[data-held='true'] {
+.fulfilment-task[data-held='true'],
+.fulfilment-task[data-attention='true'] {
   border-color: var(--status-warning-border);
 }
 
@@ -25530,6 +25531,11 @@ legend.analytics-settings-dialog__label {
 .fulfilment-task__holds > li,
 .fulfilment-task__lines > li {
   overflow-wrap: anywhere;
+}
+
+/* #3763 - the explanation under the status badge reads as secondary. */
+.fulfilment-task__notes {
+  color: var(--text-muted);
 }
 
 .fulfilment-task__lines > li {
@@ -26501,6 +26507,13 @@ legend.analytics-settings-dialog__label {
 }
 
 /* ── #3096 Payment card + rail states ── */
+.fulfilment-work-detail__payment-method {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  font-size: 0.8125rem;
+}
 .fulfilment-work-detail__payment-source {
   display: flex;
   flex-wrap: wrap;

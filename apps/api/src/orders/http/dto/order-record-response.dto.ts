@@ -12,6 +12,7 @@ import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
   SlaStateValues,
   FulfillmentRollupStateValues,
+  PaymentMethodValues,
 } from '@openlinker/core/orders';
 import {
   OrderRecordStatus,
@@ -20,6 +21,7 @@ import {
   BuyerTaxId,
   FulfillmentRoutingSkipReasonValues,
   type FulfillmentRoutingSkipReason,
+  type PaymentMethod,
 } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
@@ -401,6 +403,17 @@ export class OrderRecordResponseDto {
       'null when there is no block or nothing to add.',
   })
   fulfillmentBlockDetail!: string | null;
+
+  @ApiProperty({
+    enum: PaymentMethodValues,
+    description:
+      'How the buyer pays (#3294): `online`, `bank_transfer`, `cash_on_delivery` or `unknown`. ' +
+      '`unknown` means the source did not report it or it could not be mapped with confidence - ' +
+      'it is never a guess, and it never pre-fills a cash-on-delivery amount or selects an invoice ' +
+      'payment form. Orders ingested before this field existed read `unknown`. Independent of the ' +
+      'payment status carried in the order snapshot.',
+  })
+  paymentMethod!: PaymentMethod;
 
   @ApiPropertyOptional({
     type: OrderHoldDto,

@@ -16,6 +16,7 @@ import type {
   AllegroOrderEventsResponse,
 } from '../../../domain/types/allegro-api.types';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import type { OrderLifecycleEvent } from '@openlinker/core/orders';
 
 describe('AllegroOrderSourceAdapter', () => {
@@ -605,6 +606,59 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.paymentStatus).toBe('paid');
       // #1435 — a prepaid (non-COD) order carries no sourced COD amount.
       expect(incoming.codToCollect).toBeUndefined();
+      // #3474 — Allegro's own payment type rides along as the payment-mapping key.
+      expect(incoming.sourcePaymentMethod).toBe('ONLINE');
+      // #3294 - the neutral method beside it, consistent with the status.
+      expect(incoming.paymentMethod).toBe('online');
+    });
+
+    it('should report an unmapped payment type as unknown, never a guess (#3294)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-wallet',
+        status: 'READY_FOR_PROCESSING',
+        updatedAt: '2024-01-02T00:00:00Z',
+        buyer: { id: 'b8', email: 'b8@example.com', login: 'b8' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: 'WALLET', finishedAt: '2024-01-02T00:00:00Z' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-wallet' });
+
+      expect(incoming.paymentMethod).toBe('unknown');
+      expect(incoming.codToCollect).toBeUndefined();
+    });
+
+    it('should omit sourcePaymentMethod when the checkout carries no payment type (#3474)', async () => {
+      const checkoutForm: AllegroCheckoutForm = {
+        id: 'checkout-no-payment-type',
+        status: 'READY_FOR_PROCESSING',
+        updatedAt: '2024-01-02T00:00:00Z',
+        buyer: { id: 'b9', email: 'b9@example.com', login: 'b9' },
+        lineItems: [
+          {
+            id: 'l1',
+            offer: { id: 'o1', name: 'O1' },
+            quantity: 1,
+            price: { amount: '10.00', currency: 'PLN' },
+          },
+        ],
+        summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+        payment: { type: '' },
+      };
+      httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+      const incoming = await adapter.getOrder({ externalOrderId: 'checkout-no-payment-type' });
+
+      expect('sourcePaymentMethod' in incoming).toBe(false);
     });
 
     it('should leave billingAddress undefined when the checkout carries no VAT invoice block (#2822)', async () => {
@@ -766,6 +820,12 @@ describe('AllegroOrderSourceAdapter', () => {
       // #1435 — a COD order carries the sourced collect amount (the full
       // order total the buyer pays on delivery) from summary.totalToPay.
       expect(incoming.codToCollect).toEqual({ amount: '10.00', currency: 'PLN' });
+      // #3474 — the native type, verbatim, so an operator's mapping row for
+      // CASH_ON_DELIVERY matches.
+      expect(incoming.sourcePaymentMethod).toBe('CASH_ON_DELIVERY');
+      // #3294 - cash on delivery is reported as such, with the sourced amount.
+      expect(incoming.paymentMethod).toBe('cash_on_delivery');
+      expect(checkPaymentFactsConsistency(incoming)).toEqual([]);
     });
 
     it('should report cancelled status when the checkout-form transaction was voided on Allegro (#1322 manual E2E)', async () => {
@@ -1545,10 +1605,10 @@ describe('AllegroOrderSourceAdapter', () => {
           expect.arrayContaining([
             { value: 'ONLINE', label: 'Online payment (Allegro Pay / card / instant transfer)' },
             { value: 'CASH_ON_DELIVERY', label: 'Cash on delivery' },
-            { value: 'BANK_TRANSFER', label: 'Bank transfer' },
+            { value: 'WIRE_TRANSFER', label: 'Bank transfer outside Allegro Finance' },
           ])
         );
-        expect(result.length).toBeGreaterThanOrEqual(6);
+        expect(result).toHaveLength(5);
       });
 
       it('does not call the Allegro HTTP client', async () => {

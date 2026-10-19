@@ -16,6 +16,7 @@ import type {
   OrderDispatchWindow,
   PriceTaxTreatment,
 } from './order.types';
+import type { PaymentMethod } from './payment-method.types';
 import type { PaymentStatus } from './payment-status.types';
 import type { CodToCollect } from './cod-to-collect.types';
 
@@ -100,6 +101,20 @@ export interface IncomingOrder {
   fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * How the buyer pays (#3294), mapped onto the closed neutral vocabulary by the
+   * source adapter. Absent when the source did not report it; an adapter that
+   * cannot map its native value with evidence reports `'unknown'` - never a
+   * guess. Orthogonal to `paymentStatus`.
+   */
+  paymentMethod?: PaymentMethod;
+  /**
+   * The source's own payment-method id (#3474), e.g. Allegro `payment.type`.
+   * Opaque: the same vocabulary `SourceOptionsReader.listPaymentMethods`
+   * returns, used only as the key of an operator-configured payment mapping.
+   * Absent when the source did not report one.
+   */
+  sourcePaymentMethod?: string;
 
   /**
    * Marketplace-sourced cash-on-delivery collect amount (#1435). Set by the

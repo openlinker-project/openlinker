@@ -11,6 +11,7 @@
 import type { PickupPointType } from '@openlinker/core/shipping';
 import type { TaxRateSource } from '@openlinker/core/products';
 
+import type { PaymentMethod } from './payment-method.types';
 import type { PaymentStatus } from './payment-status.types';
 import type { CodToCollect } from './cod-to-collect.types';
 
@@ -130,6 +131,10 @@ export interface Order {
   fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /** How the buyer pays (#3294); see `IncomingOrder.paymentMethod`. Absent = not reported. */
+  paymentMethod?: PaymentMethod;
+  /** Source's own opaque payment-method id (#3474); see `IncomingOrder.sourcePaymentMethod`. */
+  sourcePaymentMethod?: string;
   /**
    * Marketplace-sourced cash-on-delivery collect amount (#1435). Present only
    * for a cash-on-delivery order whose source exposes the collectable amount
