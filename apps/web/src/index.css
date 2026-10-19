@@ -17509,26 +17509,150 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding: 1px 7px;
 }
 .invoice-connection-lock__hint {
-  /* #3484 — restores the placement #2047 shipped and #2809 dropped. A bare hint
-     (every non-settled status) has no `__why` wrapper to carry it. */
+  /* #3484 — restores the placement #2047 shipped and #2809 dropped. Since #3766
+     the hint is always a bare grid item: a settled document renders no box at
+     all, only the "Why this document?" disclosure. */
   grid-column: 2;
   overflow-wrap: break-word;
   font-size: 0.75rem;
   color: var(--text-muted);
 }
-/* #2807 review — a settled document's hint is wrapped in a "Why this
-   document?" disclosure instead of rendered as a bare grid item (the mockup
-   keeps routing rationale secondary/collapsed); the wrapper needs the grid
-   placement its bare `__hint` sibling used to carry. */
-.invoice-connection-lock__why {
-  grid-column: 2;
-}
-.invoice-connection-lock__why > summary {
-  font-size: 0.75rem;
-}
-.invoice-connection-lock__why .invoice-connection-lock__hint {
+
+/* ── Invoice unconfirmed notice (#3766) ── */
+/* Quiet surface: the warning lives in the stripe, glyph and numbers only. */
+.alert.invoice-unconfirmed {
   display: block;
-  margin-top: var(--space-1);
+  padding: var(--space-4) var(--space-4) var(--space-3) calc(var(--space-4) + 3px);
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+}
+.invoice-unconfirmed__body {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.invoice-unconfirmed__head {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__head {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__time {
+    grid-column: 2;
+  }
+}
+.invoice-unconfirmed__glyph {
+  margin-top: 0.1875rem;
+  color: var(--status-warning-fg);
+}
+.invoice-unconfirmed__title {
+  min-width: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__time {
+  padding-top: 0.1875rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__cause {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.invoice-unconfirmed__step {
+  display: grid;
+  grid-template-columns: 1.375rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__step + .invoice-unconfirmed__step {
+  border-top: 1px solid var(--border-subtle);
+}
+.invoice-unconfirmed__n {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-pill);
+  color: var(--status-warning-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__text {
+  min-width: 0;
+}
+.invoice-unconfirmed__action {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__step {
+    grid-template-columns: 1.375rem minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__action {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+.invoice-unconfirmed__foot {
+  display: grid;
+  gap: var(--space-1);
+}
+.invoice-unconfirmed__paused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__lock {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+.invoice-unconfirmed__details > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__details > summary:hover {
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__response {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 /* ── Regulatory section card (#1282) ──────────────────────────────────
