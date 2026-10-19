@@ -20,9 +20,10 @@
  * refused", never as "invoices will be refused". Saying more than the adapter
  * enforces would be the stricter-than-the-gate mistake #2240 names.
  *
- * Pure, and the rule for the types beside it, which is the
- * `engineering-standards.md` exception for runtime code in a types-adjacent
- * module.
+ * The two required-field sets below are that mirror, and
+ * `scripts/check-eparagony-config-mirror.mjs` compares them against the
+ * refusals in both mapper functions, so a rule tightened or relaxed in the
+ * adapter fails the build instead of leaving this summary making a false claim.
  *
  * @module plugins/eparagony
  */
@@ -101,10 +102,33 @@ export function isSellerAddressComplete(parts: SellerAddressParts): boolean {
   );
 }
 
+export type SellerConfigField = 'merchantTIN' | 'merchantName' | 'merchantAddress';
+
+/** The seller fields `composeInvoiceDocument` refuses an invoice without. */
+export const INVOICE_REQUIRED_SELLER_FIELDS = [
+  'merchantTIN',
+] as const satisfies readonly SellerConfigField[];
+
+/** The seller fields `composeCorrectiveInvoiceDocument` refuses a correction without. */
+export const CORRECTION_REQUIRED_SELLER_FIELDS = [
+  'merchantTIN',
+  'merchantName',
+  'merchantAddress',
+] as const satisfies readonly SellerConfigField[];
+
+function isSellerFieldPresent(values: Record<string, unknown>, field: SellerConfigField): boolean {
+  switch (field) {
+    case 'merchantTIN':
+      return readTrimmed(values, 'eparagonyMerchantTIN') !== '';
+    case 'merchantName':
+      return readTrimmed(values, 'eparagonyMerchantName') !== '';
+    case 'merchantAddress':
+      return isSellerAddressComplete(readSellerAddressParts(values));
+  }
+}
+
 export function readSellerReadiness(values: Record<string, unknown>): SellerReadiness {
-  if (readTrimmed(values, 'eparagonyMerchantTIN') === '') return 'missing-tin';
-  const hasName = readTrimmed(values, 'eparagonyMerchantName') !== '';
-  return hasName && isSellerAddressComplete(readSellerAddressParts(values))
-    ? 'complete'
-    : 'invoices-only';
+  const present = (field: SellerConfigField): boolean => isSellerFieldPresent(values, field);
+  if (!INVOICE_REQUIRED_SELLER_FIELDS.every(present)) return 'missing-tin';
+  return CORRECTION_REQUIRED_SELLER_FIELDS.every(present) ? 'complete' : 'invoices-only';
 }
