@@ -268,11 +268,12 @@ describe('FulfillmentWorkDetailPage', () => {
   });
 
   describe('the hero', () => {
-    it('should join BOTH axis labels in the headline, because neither carries the other', async () => {
+    it('should show the bare state in the headline for an accepted task (#3763)', async () => {
       renderPage();
 
       const hero = await findHero();
-      expect(within(hero).getByText('In progress · Accepted')).toBeInTheDocument();
+      expect(within(hero).getByText('In progress')).toBeInTheDocument();
+      expect(within(hero).queryByText(/Accepted/)).not.toBeInTheDocument();
     });
 
     it('should render the derived sentence when the build can say one', async () => {
