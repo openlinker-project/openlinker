@@ -100,6 +100,13 @@ export interface IncomingOrder {
   fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * The source's own payment-method id (#3474), e.g. Allegro `payment.type`.
+   * Opaque: the same vocabulary `SourceOptionsReader.listPaymentMethods`
+   * returns, used only as the key of an operator-configured payment mapping.
+   * Absent when the source did not report one.
+   */
+  sourcePaymentMethod?: string;
 
   /**
    * Marketplace-sourced cash-on-delivery collect amount (#1435). Set by the
