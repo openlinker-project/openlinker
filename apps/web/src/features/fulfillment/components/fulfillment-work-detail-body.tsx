@@ -78,6 +78,7 @@ import {
   OrderShipmentPanel,
   OrderTotalsPanel,
   parseOrderSnapshot,
+  paymentMethodLabel,
   SalesDocumentPanel,
   useOrderQuery,
   type OrderRecord,
@@ -86,12 +87,20 @@ import type { FulfillmentTask } from '../api/fulfillment.types';
 import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
 import {
   FULFILLMENT_EXPEDITED_BADGE,
-  fulfillmentRequestStatusLabel,
   fulfillmentStatusLabel,
+  OWN_PACK_BENCH_NAME,
+  TASK_ACCEPTANCE_COPY,
 } from '../lib/fulfillment-task.copy';
+import {
+  describeTaskAcceptance,
+  needsAttention,
+  taskStatusText,
+  type TaskAcceptance,
+} from '../lib/fulfillment-task-acceptance';
 import { FULFILLMENT_WORK_DETAIL_COPY } from '../lib/fulfillment-work-detail.copy';
 import { summariseFulfillmentWork } from '../lib/fulfillment-work-summary';
 import { FulfillmentLineIdentity } from './fulfillment-line-identity';
+import { FulfillmentTaskAcceptanceNotice } from './fulfillment-task-acceptance-notice';
 import { FulfillmentWorkPackerSection } from './fulfillment-work-packer-section';
 
 const COPY = FULFILLMENT_WORK_DETAIL_COPY;
@@ -149,14 +158,29 @@ function useExecutorFacts(task: FulfillmentTask): ExecutorFacts {
   return { name: null, label: isNotFound ? shortenId(connectionId) : COPY.executor.unavailable };
 }
 
+/** One reading of acceptance for the hero and "Why it's stuck" alike. */
+function taskAcceptanceOf(task: FulfillmentTask): TaskAcceptance {
+  return describeTaskAcceptance(
+    {
+      requestStatus: task.requestStatus,
+      createdAt: task.createdAt,
+      assigned: task.assignedConnectionId !== null,
+    },
+    new Date()
+  );
+}
+
 /**
- * The hero: the sub-line (task id · executor · location), the headline (both
- * axes joined, 22 px / 700, as the mockup draws it), the expedited pill beside
- * it, and the derived sentence.
+ * The hero: the sub-line (task id · executor · location), the headline (22 px
+ * / 700, as the mockup draws it), the expedited pill beside it, the derived
+ * sentence, and the "not on the pack bench" warning when there is one.
  *
- * Both axis labels always render. Heldness lives in `activeHolds` and nothing
- * writes `status: 'on_hold'`, so neither axis can be dropped without the page
- * losing a fact the other one cannot carry.
+ * The headline is the orchestration label (#3763). It used to join both axes
+ * verbatim, which printed "Accepted" on almost every task: with OpenLinker's
+ * own OMS as the only executor, acceptance is automatic. Acceptance is told
+ * only when it is news, by the sentence under the headline - while it is in
+ * flight, or when packers cannot see the task, in which case the reason sits
+ * under "Why it's stuck" exactly as a hold's does.
  */
 function WorkDetailHero({
   task,
@@ -176,6 +200,13 @@ function WorkDetailHero({
     cancellationReason: task.cancellationReason,
     executorName: executor.name,
   });
+  const acceptance = taskAcceptanceOf(task);
+  const sentence =
+    acceptance.kind === 'pending'
+      ? TASK_ACCEPTANCE_COPY.heroPending(executor.name, OWN_PACK_BENCH_NAME)
+      : needsAttention(acceptance)
+        ? TASK_ACCEPTANCE_COPY.heroAttention(OWN_PACK_BENCH_NAME)
+        : summary;
   const location = showLocation ? (task.locationName ?? task.locationId ?? COPY.facts.noLocation) : null;
   const subParts = [executor.label, location].filter((part): part is string => part !== null);
   const expeditedAt = task.expeditedAt ?? null;
@@ -192,7 +223,13 @@ function WorkDetailHero({
       </p>
       <div className="fulfilment-work-detail__hero-row">
         <p className="fulfilment-work-detail__headline">
-          {fulfillmentStatusLabel(task.status)} · {fulfillmentRequestStatusLabel(task.requestStatus)}
+          {taskStatusText(
+            fulfillmentStatusLabel(task.status),
+            task.status,
+            acceptance,
+            OWN_PACK_BENCH_NAME,
+            false
+          )}
         </p>
         {/* Display only (#3247): which expedite verb is offered comes from
             `supportedActions`. The wording is the card's own, one fact one
@@ -205,15 +242,19 @@ function WorkDetailHero({
         ) : null}
       </div>
       {/* `null` when this build cannot say — the headline above still carries
-          both axes, so the hero is never blank. */}
-      {summary !== null ? <p className="fulfilment-work-detail__summary">{summary}</p> : null}
+          the state, so the hero is never blank. */}
+      {sentence !== null ? <p className="fulfilment-work-detail__summary">{sentence}</p> : null}
     </DetailSection>
   );
 }
 
-/** "Why it's stuck" — one compact banner per active hold, or no card at all. */
+/**
+ * "Why it's stuck" — one compact banner per active hold, plus the "not
+ * accepted" reason when packers cannot see the task (#3763), or no card at all.
+ */
 function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | null {
-  if (task.activeHolds.length === 0) return null;
+  const acceptance = taskAcceptanceOf(task);
+  if (task.activeHolds.length === 0 && !needsAttention(acceptance)) return null;
 
   return (
     <DetailSection
@@ -233,6 +274,7 @@ function WorkHoldsSection({ task }: { task: FulfillmentTask }): ReactElement | n
             </div>
           </Alert>
         ))}
+        <FulfillmentTaskAcceptanceNotice acceptance={acceptance} where={OWN_PACK_BENCH_NAME} />
       </div>
     </DetailSection>
   );
@@ -329,8 +371,6 @@ function WorkFactsSection({
       className="fulfilment-work-detail__slot--facts"
     >
       <dl className="fulfilment-work-detail__facts">
-        <Fact label={COPY.facts.state}>{fulfillmentStatusLabel(task.status)}</Fact>
-        <Fact label={COPY.facts.handshake}>{fulfillmentRequestStatusLabel(task.requestStatus)}</Fact>
         {showLocation ? (
           <Fact label={COPY.facts.location}>
             {task.locationName ?? task.locationId ?? COPY.facts.noLocation}
@@ -423,7 +463,8 @@ function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
   }
 
   const order = orderQuery.data;
-  const { totals } = parseOrderSnapshot(order.orderSnapshot);
+  const { totals, paymentMethod } = parseOrderSnapshot(order.orderSnapshot);
+  const methodLabel = paymentMethodLabel(paymentMethod);
 
   return (
     <>
@@ -446,6 +487,11 @@ function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
         ) : (
           <OrderTotalsPanel totals={totals} />
         )}
+        {methodLabel ? (
+          <p className="fulfilment-work-detail__payment-method">
+            <span className="text-muted">{COPY.payment.method}</span> {methodLabel}
+          </p>
+        ) : null}
         <p className="fulfilment-work-detail__payment-source">
           <span className="text-muted">{COPY.payment.placedOn}</span>{' '}
           <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />

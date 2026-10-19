@@ -154,6 +154,26 @@ describe('SalesDocumentsListPage', () => {
     });
   });
 
+  // #3761 - 'both' is a connection-config value, never a document's kind, so
+  // offering it as a filter showed the same list as "All kinds".
+  it('offers only the concrete document kinds in the kind filter', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+    await screen.findByText('order_1');
+    const options = within(screen.getByLabelText('Filter by kind')).getAllByRole('option');
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(['', 'invoice', 'fiscal-receipt']);
+  });
+
+  it('treats a stale ?kind=both URL as no kind filter', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents?kind=both' });
+
+    await screen.findByText('order_1');
+    expect(screen.getByLabelText('Filter by kind')).toHaveValue('');
+    expect(list.mock.lastCall?.[0]?.kind).toBeUndefined();
+  });
+
   it('renders rows with order id, kind, and the currency-formatted amount', async () => {
     const item = makeItem({ amount: { value: 1000, currency: 'JPY' } });
     const list = vi.fn().mockResolvedValue({ items: [item], nextCursor: null });

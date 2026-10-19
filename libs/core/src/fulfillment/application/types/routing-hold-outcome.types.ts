@@ -118,15 +118,30 @@ export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): Routing
         lineAttention: LINE_ATTENTION_UNTOUCHED,
       };
 
-    case 'refused':
+    case 'refused': {
+      if (outcome.reason !== 'plan-carries-unfulfillable') {
+        return {
+          held: true,
+          block: { reason: 'routing-refused', detail: outcome.reason },
+          lineAttention: LINE_ATTENTION_CLEARED,
+        };
+      }
+      // #3476 — the router's own reasons, so the operator can tell "out of
+      // stock" from "the holder cannot execute". Fixed sentences, already
+      // distinct and sorted, so the detail is stable across re-routes.
+      const reasons = outcome.unfulfillableReasons.join('; ');
       return {
         held: true,
-        block: { reason: 'routing-refused', detail: outcome.reason },
+        block: {
+          reason: 'routing-refused',
+          detail: reasons.length > 0 ? `${outcome.reason}: ${reasons}` : outcome.reason,
+        },
         lineAttention:
-          outcome.reason === 'plan-carries-unfulfillable'
-            ? { kind: 'blocked', reason: 'line-unfulfillable' }
-            : LINE_ATTENTION_CLEARED,
+          reasons.length > 0
+            ? { kind: 'blocked', reason: 'line-unfulfillable', detail: reasons }
+            : { kind: 'blocked', reason: 'line-unfulfillable' },
       };
+    }
 
     default: {
       const unreachable: never = outcome;

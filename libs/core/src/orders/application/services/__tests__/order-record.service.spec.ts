@@ -407,6 +407,22 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot['deliverySmart']).toBe(true);
     });
 
+    it('should serialise Order.fulfilledBySource into the snapshot only when asserted (#3636)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistOrder(asserted, 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(
+        true
+      );
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
+    });
+
     it('should omit deliverySmart from the snapshot when the Order does not carry it (#738)', async () => {
       const order = createMockOrder();
       // createMockOrder() leaves deliverySmart unset — assert conditional
@@ -420,6 +436,121 @@ describe('OrderRecordService', () => {
 
       const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
+    });
+
+    it('should keep the payment method in the snapshot and on the record (#3294)', async () => {
+      const order = createMockOrder();
+      order.paymentMethod = 'cash_on_delivery';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot['paymentMethod']).toBe('cash_on_delivery');
+      expect(callArg.paymentMethod).toBe('cash_on_delivery');
+      expect(callArg.paymentMethodOrUnknown).toBe('cash_on_delivery');
+    });
+
+    it('should land the payment method in its own constructor slot, leaving the placeholders before it null (#3294)', async () => {
+      // persistOrder reaches the positional constructor's last argument through
+      // three null placeholders owned by other writers; a shifted slot would
+      // still type-check, so this pins where each value lands.
+      const order = createMockOrder();
+      order.paymentMethod = 'bank_transfer';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.paymentMethod).toBe('bank_transfer');
+      expect(callArg.salesDocumentMatchedRuleId).toBeNull();
+      expect(callArg.fulfillmentRoutingSkipReason).toBeNull();
+      expect(callArg.fulfillmentBlock).toBeNull();
+    });
+
+    it('should leave the payment method absent when the source reported none (#3294)', async () => {
+      const order = createMockOrder();
+      expect(order.paymentMethod).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      // Absent from the snapshot (not `undefined`, not `'unknown'`) and null on
+      // the record, which reads back as `unknown` without inventing a value.
+      expect(callArg.orderSnapshot).not.toHaveProperty('paymentMethod');
+      expect(callArg.paymentMethod).toBeNull();
+      expect(callArg.paymentMethodOrUnknown).toBe('unknown');
+    });
+
+    it('should warn, and still persist, when the payment facts contradict each other (#3294)', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      const order = createMockOrder();
+      order.paymentMethod = 'online';
+      order.codToCollect = { amount: '10.00', currency: 'PLN' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      // Reported, never thrown: the order is the fact, the contradiction a defect.
+      expect(repository.upsertWithLineItems).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('cod-amount-without-cod-method')
+      );
+    });
+
+    it('should warn once per order and log repeats of the same contradiction at debug (#3294)', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      const debugSpy = jest.spyOn(service['logger'], 'debug').mockImplementation(() => undefined);
+      const order = createMockOrder();
+      order.paymentMethod = 'online';
+      order.codToCollect = { amount: '10.00', currency: 'PLN' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+      await service.persistOrder(order, 'source-connection-123', 'event-2');
+
+      const contradictionWarns = warnSpy.mock.calls.filter(([msg]) =>
+        String(msg).includes('order_payment_facts_contradictory')
+      );
+      expect(contradictionWarns).toHaveLength(1);
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.stringContaining('order_payment_facts_contradictory')
+      );
+    });
+
+    it('should stay quiet when the payment facts agree (#3294)', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      const order = createMockOrder();
+      order.paymentMethod = 'cash_on_delivery';
+      order.paymentStatus = 'cod';
+      order.codToCollect = { amount: '10.00', currency: 'PLN' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('order_payment_facts_contradictory')
+      );
+    });
+
+    it('should keep an explicit unknown payment method as reported (#3294)', async () => {
+      const order = createMockOrder();
+      order.paymentMethod = 'unknown';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot['paymentMethod']).toBe('unknown');
+      expect(callArg.paymentMethodOrUnknown).toBe('unknown');
     });
 
     it('should denormalize the buyer tax id from the billing address (#2599)', async () => {
@@ -1040,6 +1171,26 @@ describe('OrderRecordService', () => {
 
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot['deliverySmart']).toBe(false);
+    });
+
+    it('should serialise IncomingOrder.fulfilledBySource into the awaiting-mapping snapshot only when asserted (#3636)', async () => {
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockIncomingOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistIncomingSnapshot(asserted, 'ol_order_abc', null, 'conn-123', null);
+      expect(repository.upsert.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(true);
+
+      await service.persistIncomingSnapshot(
+        createMockIncomingOrder(),
+        'ol_order_abc',
+        null,
+        'conn-123',
+        null
+      );
+      expect(repository.upsert.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
     });
 
     it('should omit deliverySmart from the snapshot when IncomingOrder does not carry it (#738)', async () => {
