@@ -78,6 +78,7 @@ import {
   OrderShipmentPanel,
   OrderTotalsPanel,
   parseOrderSnapshot,
+  paymentMethodLabel,
   SalesDocumentPanel,
   useOrderQuery,
   type OrderRecord,
@@ -462,7 +463,8 @@ function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
   }
 
   const order = orderQuery.data;
-  const { totals } = parseOrderSnapshot(order.orderSnapshot);
+  const { totals, paymentMethod } = parseOrderSnapshot(order.orderSnapshot);
+  const methodLabel = paymentMethodLabel(paymentMethod);
 
   return (
     <>
@@ -485,6 +487,11 @@ function WorkOrderModules({ task }: { task: FulfillmentTask }): ReactElement {
         ) : (
           <OrderTotalsPanel totals={totals} />
         )}
+        {methodLabel ? (
+          <p className="fulfilment-work-detail__payment-method">
+            <span className="text-muted">{COPY.payment.method}</span> {methodLabel}
+          </p>
+        ) : null}
         <p className="fulfilment-work-detail__payment-source">
           <span className="text-muted">{COPY.payment.placedOn}</span>{' '}
           <ConnectionEntityLabel connectionId={order.sourceConnectionId} showId={false} />
