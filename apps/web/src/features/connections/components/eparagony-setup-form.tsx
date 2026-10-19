@@ -484,7 +484,7 @@ export function EparagonySetupForm({
             label="Tax number (NIP)"
             name="merchantTIN"
             error={errors.merchantTIN?.message ?? serverError('merchantTIN')}
-            description="The NIP your eparagony.pl account is registered with. eparagony.pl refuses an invoice under any other number."
+            description="Must be the same NIP as on your eparagony.pl account. eparagony.pl refuses every invoice under a different number."
           >
             <Input
               {...form.register('merchantTIN')}

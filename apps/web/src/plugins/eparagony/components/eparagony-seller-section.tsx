@@ -151,7 +151,7 @@ export function EparagonySellerSection({
 
         {field('eparagonyMerchantTIN', 'Tax number (NIP)', {
           description:
-            'The NIP your eparagony.pl account is registered with. eparagony.pl refuses an invoice under any other number.',
+            'Must be the same NIP as on your eparagony.pl account. eparagony.pl refuses every invoice under a different number.',
           inputMode: 'numeric',
         })}
 

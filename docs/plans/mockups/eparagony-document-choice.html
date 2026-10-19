@@ -1550,7 +1550,7 @@ function EparagonySetupForm({ values, setValues, submitted, setSubmitted, create
         <div className="setup-lane">
           <h3 className="setup-lane__title">Seller on invoices</h3>
           <p className="setup-lane__help">eparagony.pl prints these on every invoice this connection issues, as the seller.</p>
-          {text('merchantTIN', 'Tax number (NIP)', 'The NIP your eparagony.pl account is registered with. eparagony.pl refuses an invoice under any other number.', { inputMode: 'numeric', placeholder: '1234567890' })}
+          {text('merchantTIN', 'Tax number (NIP)', 'Must be the same NIP as on your eparagony.pl account. eparagony.pl refuses every invoice under a different number.', { inputMode: 'numeric', placeholder: '1234567890' })}
           {text('merchantName', 'Seller name (optional)', 'The name as registered. Invoices work without it; a correction needs it.', { autoComplete: 'organization' })}
           <fieldset className="eparagony-seller__address" aria-labelledby="seller-address-legend">
             <legend className="form-field__label" id="seller-address-legend">Seller address (optional)</legend>
