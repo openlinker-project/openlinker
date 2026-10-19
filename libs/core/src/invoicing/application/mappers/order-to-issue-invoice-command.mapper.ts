@@ -171,6 +171,10 @@ export function toIssueInvoiceCommand(
   }
   // #2245 review: pass-through only. The write-path guard reads it; nothing
   // else does, and it never reaches a provider or a document.
+  if (order.paymentMethod !== undefined && order.paymentMethod !== 'unknown') {
+    command.paymentMethod = order.paymentMethod;
+  }
+
   if (taxRateEra !== undefined && taxRateEra !== null) {
     command.taxRateEra = taxRateEra;
   }

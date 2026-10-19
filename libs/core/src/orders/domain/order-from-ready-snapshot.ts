@@ -32,6 +32,7 @@ import { OrderPickupPointTypeValues } from './types/order.types';
 import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unavailable.error';
 import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 import { isTaxRateSource } from '@openlinker/core/products';
+import { isPaymentMethod } from './types/payment-method.types';
 
 /**
  * The placeholder `redactAddress` writes for a PII-redacted field. Imported
@@ -124,6 +125,16 @@ export function orderFromReadySnapshot(
   // the mapper fix.
   if (typeof snapshot.customerEmail === 'string') {
     order.customerEmail = snapshot.customerEmail;
+  }
+  // #3294: without this every invoice path that rehydrates an order (auto-issue,
+  // manual, bulk, correction) composed its command with no payment method, so
+  // the form of payment never reached the provider. Present-only, and an
+  // unrecognised stored value reads as absent rather than being passed on.
+  const paymentMethod = isPaymentMethod(snapshot.paymentMethod)
+    ? snapshot.paymentMethod
+    : record.paymentMethod;
+  if (paymentMethod !== null && paymentMethod !== undefined) {
+    order.paymentMethod = paymentMethod;
   }
   if (billingAddress) {
     order.billingAddress = billingAddress;

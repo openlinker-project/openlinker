@@ -122,6 +122,17 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_PAYMENT_METHOD_LABEL = 'Check payment';
 
 /**
+ * Labels for the neutral payment methods (#3294). Only the three methods the
+ * source positively identified have one; `unknown` deliberately has none so it
+ * falls through to {@link DEFAULT_PAYMENT_METHOD_LABEL} unchanged.
+ */
+export const PAYMENT_METHOD_LABELS: Readonly<Record<string, string>> = {
+  cash_on_delivery: 'Cash on delivery',
+  bank_transfer: 'Bank transfer',
+  online: 'Online payment',
+};
+
+/**
  * PrestaShop Order Processor Manager Adapter
  *
  * Handles order creation in PrestaShop via WebService API.
@@ -1450,7 +1461,8 @@ export class PrestashopOrderProcessorManagerAdapter
    *
    * Resolution chain:
    *   1. `MappingConfigService.resolvePaymentMapping(sourceConnectionId, sourcePaymentMethod)`
-   *   2. {@link DEFAULT_PAYMENT_METHOD_LABEL}
+   *   2. the label of the neutral `order.paymentMethod` (#3294), when the source identified one
+   *   3. {@link DEFAULT_PAYMENT_METHOD_LABEL}
    *
    * The mapping is source-scoped (the Payments tab stores its rows under the
    * source connection), so both the source connection and the source's own
@@ -1465,9 +1477,12 @@ export class PrestashopOrderProcessorManagerAdapter
   private async resolvePaymentMethodLabel(order: OrderCreate): Promise<string> {
     const sourceConnectionId = order.source?.connectionId;
     const sourcePaymentMethod = order.sourcePaymentMethod;
+    const neutralLabel =
+      (order.paymentMethod && PAYMENT_METHOD_LABELS[order.paymentMethod]) ||
+      DEFAULT_PAYMENT_METHOD_LABEL;
 
     if (!this.mappingConfigService || !sourceConnectionId || !sourcePaymentMethod) {
-      return DEFAULT_PAYMENT_METHOD_LABEL;
+      return neutralLabel;
     }
 
     let mapped: string | null;
@@ -1480,14 +1495,14 @@ export class PrestashopOrderProcessorManagerAdapter
       this.logger.warn(
         `Payment mapping lookup failed for sourcePaymentMethod=${sourcePaymentMethod} ` +
           `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id}); ` +
-          `using "${DEFAULT_PAYMENT_METHOD_LABEL}": ${err instanceof Error ? err.message : String(err)}`
+          `using "${neutralLabel}": ${err instanceof Error ? err.message : String(err)}`
       );
-      return DEFAULT_PAYMENT_METHOD_LABEL;
+      return neutralLabel;
     }
 
     const label = mapped?.trim();
     if (!label) {
-      return DEFAULT_PAYMENT_METHOD_LABEL;
+      return neutralLabel;
     }
     this.logger.debug(
       `Resolved payment mapping: sourcePaymentMethod=${sourcePaymentMethod} → "${label}" ` +
