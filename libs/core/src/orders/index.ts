@@ -110,7 +110,22 @@ export {
 } from './domain/types/buyer-tax-id.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
+export {
+  PaymentMethodValues,
+  PAYMENT_METHOD,
+  isPaymentMethod,
+} from './domain/types/payment-method.types';
+export type { PaymentMethod } from './domain/types/payment-method.types';
+export {
+  PaymentFactsViolationValues,
+  checkPaymentFactsConsistency,
+} from './domain/types/payment-facts-consistency.types';
+export type {
+  PaymentFacts,
+  PaymentFactsViolation,
+} from './domain/types/payment-facts-consistency.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';
+export { toCodToCollect } from './domain/types/cod-to-collect.types';
 export { OrderCreate, OrderRef, OrderSourceRef } from './domain/types/order-processor.types';
 export {
   IncomingOrder,

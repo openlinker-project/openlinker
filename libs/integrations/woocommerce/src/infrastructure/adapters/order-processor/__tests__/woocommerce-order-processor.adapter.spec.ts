@@ -574,6 +574,95 @@ describe('WooCommerceOrderProcessorAdapter — createOrder', () => {
     expect((payload as Record<string, unknown>).shipping_lines).toBeUndefined();
   });
 
+  // ── payment gateway on the order (#3294) ──
+
+  async function sentGateway(
+    order: OrderCreate,
+    resolvePaymentMapping?: jest.Mock,
+  ): Promise<{ id: unknown; title: unknown }> {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const syncLock = makeSyncLock();
+    const adapter = new WooCommerceOrderProcessorAdapter(
+      httpClient,
+      identifierMapping,
+      mockConnection,
+      new WooCommerceCustomerProvisioner(syncLock),
+      new WooCommerceAddressProvisioner(syncLock),
+      makeProjectionRepo(),
+      resolvePaymentMapping
+        ? ({
+            resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+            resolvePaymentMapping,
+          } as unknown as IMappingConfigService)
+        : undefined,
+    );
+    await adapter.createOrder(order);
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    const body = payload as Record<string, unknown>;
+    return { id: body.payment_method, title: body.payment_method_title };
+  }
+
+  it.each([
+    ['cash_on_delivery', 'cod', 'Cash on delivery'],
+    ['bank_transfer', 'bacs', 'Direct bank transfer'],
+  ] as const)('should record the core gateway for a %s order', async (paymentMethod, id, title) => {
+    expect(await sentGateway(makeOrder({ paymentMethod }))).toEqual({ id, title });
+  });
+
+  it.each([['online'], ['unknown'], [undefined]] as const)(
+    'should keep "other" / "External" for the method %s',
+    async (paymentMethod) => {
+      expect(await sentGateway(makeOrder({ paymentMethod }))).toEqual({
+        id: 'other',
+        title: 'External',
+      });
+    },
+  );
+
+  it('should let the operator payment mapping win over the neutral method', async () => {
+    const resolve = jest.fn().mockResolvedValue('stripe');
+    const gateway = await sentGateway(
+      makeOrder({
+        paymentMethod: 'cash_on_delivery',
+        sourcePaymentMethod: 'ONLINE',
+        source: { connectionId: 'src-1' },
+      }),
+      resolve,
+    );
+    expect(gateway).toEqual({ id: 'stripe', title: 'stripe' });
+    expect(resolve).toHaveBeenCalledWith('src-1', 'ONLINE');
+  });
+
+  it('should fall back to the neutral gateway when the mapping has no row or throws', async () => {
+    const order = makeOrder({
+      paymentMethod: 'bank_transfer',
+      sourcePaymentMethod: 'X',
+      source: { connectionId: 'src-1' },
+    });
+    expect(await sentGateway(order, jest.fn().mockResolvedValue(null))).toEqual({
+      id: 'bacs',
+      title: 'Direct bank transfer',
+    });
+    expect(await sentGateway(order, jest.fn().mockRejectedValue(new Error('db')))).toEqual({
+      id: 'bacs',
+      title: 'Direct bank transfer',
+    });
+  });
+
+  it('should not mark a COD order paid because of its gateway', async () => {
+    const httpClient = makeHttpClient();
+    const identifierMapping = makeIdentifierMapping();
+    mockMinimalMappings(identifierMapping);
+    httpClient.post.mockResolvedValue({ id: 1 });
+    const adapter = makeAdapter(httpClient, identifierMapping);
+    await adapter.createOrder(makeOrder({ paymentMethod: 'cash_on_delivery', paymentStatus: 'cod' }));
+    const [, payload] = httpClient.post.mock.calls.find(([p]) => p === '/wp-json/wc/v3/orders') ?? [];
+    expect((payload as Record<string, unknown>).set_paid).toBeUndefined();
+  });
+
   // ── set_paid gating (#2600 / #3471 — keyed on paymentStatus, never status alone) ──
 
   it('should set set_paid: true when paymentStatus is "paid"', async () => {

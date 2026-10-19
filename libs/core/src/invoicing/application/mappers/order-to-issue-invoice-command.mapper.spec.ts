@@ -471,6 +471,28 @@ describe('toIssueInvoiceCommand', () => {
     );
   });
 
+  it.each(['cash_on_delivery', 'bank_transfer', 'online'] as const)(
+    'carries the order payment method %s onto the command (#3294)',
+    (paymentMethod) => {
+      const cmd = toIssueInvoiceCommand({
+        order: makeOrder({ paymentMethod }),
+        connectionId: 'conn-1',
+      });
+      expect(cmd.paymentMethod).toBe(paymentMethod);
+    },
+  );
+
+  it.each(['unknown', undefined] as const)(
+    'leaves paymentMethod off the command for %s (#3294)',
+    (paymentMethod) => {
+      const cmd = toIssueInvoiceCommand({
+        order: makeOrder({ paymentMethod }),
+        connectionId: 'conn-1',
+      });
+      expect('paymentMethod' in cmd).toBe(false);
+    },
+  );
+
   it('name derivation: only firstName -> name is just that token (no trailing undefined)', () => {
     const order = makeOrder({
       billingAddress: makeAddress({ firstName: 'Solo', lastName: undefined }),
