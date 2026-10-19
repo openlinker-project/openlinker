@@ -1339,6 +1339,9 @@ export class OrdersController {
       // #3485 — free for the same reason; the entity coerced the reason already.
       fulfillmentBlockReason: order.fulfillmentBlock?.reason ?? null,
       fulfillmentBlockDetail: order.fulfillmentBlock?.detail ?? null,
+      // #3294 - free: the column is already loaded and the entity folds an
+      // unreported value into `unknown`, so a consumer never sees null here.
+      paymentMethod: order.paymentMethodOrUnknown,
     };
   }
 

@@ -2128,6 +2128,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       deliverySmart: incoming.deliverySmart,
       fulfilledBySource: incoming.fulfilledBySource,
       paymentStatus: incoming.paymentStatus,
+      paymentMethod: incoming.paymentMethod,
       sourcePaymentMethod: incoming.sourcePaymentMethod,
       codToCollect: incoming.codToCollect,
       dispatchTime: incoming.dispatchTime,
