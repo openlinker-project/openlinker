@@ -3183,11 +3183,11 @@ describe('OrderIngestionService', () => {
         // #3485 — a refused plan is held too: with the OMS as the router the
         // order stays in OpenLinker instead of being created in every master.
         [
-          { status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' },
+          { status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving', unfulfillableReasons: [] },
           'routing-refused',
         ],
         [
-          { status: 'refused', decisionId: 'dec-1', reason: 'plan-carries-unfulfillable' },
+          { status: 'refused', decisionId: 'dec-1', reason: 'plan-carries-unfulfillable', unfulfillableReasons: [] },
           'routing-refused',
         ],
       ];
@@ -3305,6 +3305,7 @@ describe('OrderIngestionService', () => {
             status: 'refused',
             decisionId: 'dec-1',
             reason: 'plan-carries-unfulfillable',
+            unfulfillableReasons: [],
           });
 
           await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -3355,6 +3356,7 @@ describe('OrderIngestionService', () => {
             status: 'refused',
             decisionId: 'dec-1',
             reason: 'plan-carries-unfulfillable',
+            unfulfillableReasons: [],
           });
           markAttention().mockRejectedValue(new Error('order_records unreachable'));
 
