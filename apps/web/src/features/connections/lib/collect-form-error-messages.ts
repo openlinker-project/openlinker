@@ -11,7 +11,9 @@
  */
 
 // `ref` holds the DOM element a field is registered to; walking into it would
-// traverse the whole document. `types` duplicates `message` under
+// traverse the whole document - and, because DOM nodes hold parent/child
+// back-references, would never terminate. Skipping it is therefore also the
+// cycle guard, so no visited-set is needed. `types` duplicates `message` under
 // `criteriaMode: 'all'`.
 const SKIPPED_KEYS = new Set(['ref', 'types', 'message', 'type']);
 
