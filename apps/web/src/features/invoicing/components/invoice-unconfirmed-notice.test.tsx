@@ -45,6 +45,14 @@ describe('InvoiceUnconfirmedNotice', () => {
       expect(steps[1]).toHaveTextContent('Mark it resolved once you know.');
     });
 
+    it('should not offer Mark resolved when no handler is supplied', () => {
+      renderNotice({ onMarkResolved: undefined });
+
+      const notice = screen.getByTestId('invoice-unconfirmed');
+      expect(within(notice).getAllByRole('listitem')).toHaveLength(1);
+      expect(screen.queryByRole('button', { name: 'Mark resolved' })).not.toBeInTheDocument();
+    });
+
     it('should say the provider did not answer in time when the failure is a timeout', () => {
       renderNotice({ failureCode: 'transport-timeout' });
 

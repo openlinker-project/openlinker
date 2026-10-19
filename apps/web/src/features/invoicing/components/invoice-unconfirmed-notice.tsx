@@ -33,7 +33,8 @@ export interface InvoiceUnconfirmedNoticeProps {
   /** PII-free sanitized provider text, shown verbatim behind a disclosure. */
   providerResponse: string | null;
   onCheckProvider: () => void;
-  onMarkResolved: () => void;
+  /** Absent until a backend endpoint exists: step 2 and its confirm are then not rendered. */
+  onMarkResolved?: () => void;
 }
 
 export function InvoiceUnconfirmedNotice({
@@ -85,6 +86,7 @@ export function InvoiceUnconfirmedNotice({
               {t('invoice.inDoubt.check', 'Check provider')}
             </Button>
           </li>
+          {onMarkResolved ? (
           <li className="invoice-unconfirmed__step">
             <span className="invoice-unconfirmed__n" aria-hidden="true">2</span>
             <span className="invoice-unconfirmed__text">
@@ -94,6 +96,7 @@ export function InvoiceUnconfirmedNotice({
               {t('invoice.inDoubt.resolve', 'Mark resolved')}
             </Button>
           </li>
+          ) : null}
         </ol>
 
         <div className="invoice-unconfirmed__foot">
@@ -117,7 +120,8 @@ export function InvoiceUnconfirmedNotice({
           ) : null}
         </div>
       </div>
-      <ConfirmDialog
+      {onMarkResolved ? (
+        <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         initialFocus="cancel"
@@ -132,7 +136,8 @@ export function InvoiceUnconfirmedNotice({
           setConfirmOpen(false);
           onMarkResolved();
         }}
-      />
+        />
+      ) : null}
     </div>
   );
 }

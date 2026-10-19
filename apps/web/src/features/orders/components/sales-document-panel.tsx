@@ -1036,13 +1036,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   ),
                 })
               }
-              onMarkResolved={() =>
-                showToast({
-                  tone: 'info',
-                  title: t('invoice.inDoubt.resolvedTitle', 'Marked resolved'),
-                  description: t('invoice.inDoubt.resolvedBody', 'Mark-resolved is a Wave B feature — no backend endpoint yet.'),
-                })
-              }
             />
           ) : null}
 
