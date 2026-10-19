@@ -780,6 +780,8 @@ A plugin author writes one file per plugin (`plugins/<name>/index.ts`) containin
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlatform()`, `usePlatforms()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this. The same rule bans re-introduction of the old `WebPlugin` / `PlatformPlugin` / `IN_TREE_PLUGINS` identifiers (#702).
 
+Provider **names** are held to the same boundary (#3272): `scripts/check-provider-name-boundary.mjs` (under `pnpm check:invariants`) fails the build when `eparagony`, `ksef`, `paragon` or `kasa` appears in operator-facing copy (JSX text, user-facing JSX attribute values and `*-copy.ts` / `*.copy.ts` strings) anywhere in `apps/web/src` outside `plugins/`. Identifiers, comments and imports are deliberately unscanned, so a shared component may still explain in a docblock why it is neutral. Its exemption table is empty and must stay empty: an unavoidable hit means the surface is in the wrong folder (or the copy should be provider-neutral). Provider setup screens therefore live under `plugins/<name>/components/`. Hooks that call the API client stay in the feature that owns the neutral endpoint (e.g. `features/invoicing`) with a provider-neutral name, because plugins may not import `useApiClient` (see the plugin `no-restricted-imports` rule).
+
 ### `BuildContribution` slot reference
 
 Every slot is optional.

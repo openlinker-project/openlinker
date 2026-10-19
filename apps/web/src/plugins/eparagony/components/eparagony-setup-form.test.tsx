@@ -86,7 +86,7 @@ describe('EparagonySetupForm', () => {
   it('never implies a legal receipt obligation', () => {
     // "Connecting does not issue anything by itself" moved to the page
     // description (#3769), where it covers both document kinds; see
-    // pages/connections/eparagony-setup-page.test.tsx.
+    // plugins/eparagony/components/eparagony-setup-page.test.tsx.
     renderWithProviders(<EparagonySetupForm />);
     expect(screen.queryByText(/required to issue/i)).toBeNull();
     expect(screen.queryByText(/you must issue/i)).toBeNull();

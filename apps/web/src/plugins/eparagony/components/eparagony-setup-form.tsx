@@ -34,10 +34,12 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import {
+  useCreateConnectionMutation,
+  useTestConnectionMutation,
+  type ConnectionTestResult,
+} from '../../../features/connections';
 import { Link, useNavigate } from 'react-router-dom';
-import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
-import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
-import type { ConnectionTestResult } from '../api/connections.types';
 import { ApiError } from '../../../shared/api/api-error';
 import {
   EPARAGONY_ADDRESS_PART_REQUIRED_MESSAGE,

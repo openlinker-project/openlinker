@@ -1,11 +1,11 @@
 /**
- * useKsefUpoPreview
+ * useRegulatoryConfirmationPreview
  *
  * One-shot action (NOT a TanStack mutation) that fetches a cleared/accepted
  * e-invoice's official UPO confirmation document via
  * `apiClient.invoicing.downloadUpo(id)` and exposes it as an in-memory object
  * URL for inline preview (#1234) — the readable counterpart to
- * `useKsefUpoDownload`, which forces a browser download. The official UPO is
+ * `useRegulatoryConfirmationDownload`, which forces a browser download. The official UPO is
  * the legible confirmation operators/accountants need; previewing it in a
  * sandboxed `<iframe>` avoids a round-trip to the downloads folder for a quick
  * look.
@@ -24,9 +24,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
-import type { UpoPreviewKind, UpoPreviewState } from './ksef-upo-preview.types';
+import type { ConfirmationPreviewKind, ConfirmationPreviewState } from './regulatory-confirmation-preview.types';
 
-export type { UpoPreviewKind } from './ksef-upo-preview.types';
+export type { ConfirmationPreviewKind } from './regulatory-confirmation-preview.types';
 
 /** Previewable MIME types and the neutral preview kind each maps to. */
 const PREVIEW_KIND_BY_MIME: Readonly<Record<string, 'pdf' | 'xml'>> = {
@@ -35,12 +35,12 @@ const PREVIEW_KIND_BY_MIME: Readonly<Record<string, 'pdf' | 'xml'>> = {
   'text/xml': 'xml',
 };
 
-function previewKindForBlob(blob: Blob): UpoPreviewKind {
+function previewKindForBlob(blob: Blob): ConfirmationPreviewKind {
   const mime = blob.type.toLowerCase().split(';', 1)[0]?.trim() ?? '';
   return PREVIEW_KIND_BY_MIME[mime] ?? 'unsupported';
 }
 
-interface UseKsefUpoPreview {
+interface UseRegulatoryConfirmationPreview {
   /** Fetch the UPO + open the inline preview. Resolves `true` on success,
    *  `false` when the fetch failed (the error is also exposed via `error`). */
   open: (invoiceId: string) => Promise<boolean>;
@@ -48,14 +48,14 @@ interface UseKsefUpoPreview {
   close: () => void;
   /** The active preview, or `null` when closed. `kind === 'unsupported'` carries
    *  no `objectUrl` — the caller offers download instead of an inline render. */
-  preview: UpoPreviewState | null;
+  preview: ConfirmationPreviewState | null;
   isLoading: boolean;
   error: Error | null;
 }
 
-export function useKsefUpoPreview(): UseKsefUpoPreview {
+export function useRegulatoryConfirmationPreview(): UseRegulatoryConfirmationPreview {
   const apiClient = useApiClient();
-  const [preview, setPreview] = useState<UpoPreviewState | null>(null);
+  const [preview, setPreview] = useState<ConfirmationPreviewState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 

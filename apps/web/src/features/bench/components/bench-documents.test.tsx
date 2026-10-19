@@ -651,7 +651,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
     it('should offer the invoice number and an open-in-KSeF link, and not say ready to print', async () => {
       mount(withDocument(linkDoc()));
 
-      const link = await screen.findByRole('link', { name: 'Open invoice in KSeF' });
+      const link = await screen.findByRole('link', { name: 'Open invoice online' });
       expect(link).toHaveAttribute('href', KSEF_URL);
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -665,7 +665,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
     it('should read the link from the legacy invoice slot of an API older than #3646', async () => {
       mount({ invoice: invoice({ state: 'link', verificationUrl: KSEF_URL }), document: undefined });
 
-      expect(await screen.findByRole('link', { name: 'Open invoice in KSeF' })).toHaveAttribute(
+      expect(await screen.findByRole('link', { name: 'Open invoice online' })).toHaveAttribute(
         'href',
         KSEF_URL
       );
@@ -675,7 +675,7 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
       mount(withDocument(invoiceDoc({ printable: true, verificationUrl: null })));
 
       expect(await screen.findByRole('button', { name: /print invoice/i })).toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: 'Open invoice in KSeF' })).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Open invoice online' })).toBeNull();
     });
 
     it('should say there is no printable version on a 409, not a generic failure', async () => {

@@ -577,9 +577,9 @@ export const benchParcelCopy = {
      * can be printed from. Never "Ready to print": nothing here prints by itself.
      */
     link: {
-      badge: 'Print from KSeF',
+      badge: 'Print from the online page',
       body: 'This invoice cannot be printed from here. Open it, then print it from that page.',
-      openAction: 'Open invoice in KSeF',
+      openAction: 'Open invoice online',
     },
     /** A 409 from the print route: the provider has nothing printable (#3648). */
     printNotAvailable: 'This invoice has no printable version. Send the box without it.',
