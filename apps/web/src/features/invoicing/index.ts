@@ -134,6 +134,7 @@ export {
 } from './lib/numbering-pattern';
 export {
   isMissingNumberingSeriesError,
+  isConnectionSetupIncompleteError,
   isCapabilityDisabledError,
   resolveIssueErrorMessage,
 } from './lib/issue-error-message';
