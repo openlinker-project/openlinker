@@ -1,5 +1,5 @@
 /**
- * useResendToKsefMutation (#1356)
+ * useResendToAuthorityMutation (#1356)
  *
  * Mutation hook for `POST /invoices/:invoiceId/resend-to-ksef`. Re-sends a
  * rejected invoice to KSeF and, on success, invalidates the invoicing query
@@ -14,12 +14,12 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { invoicingQueryKeys } from '../api/invoicing.query-keys';
 import type { InvoiceRecord } from '../api/invoicing.types';
 
-export function useResendToKsefMutation(): UseMutationResult<InvoiceRecord, Error, string> {
+export function useResendToAuthorityMutation(): UseMutationResult<InvoiceRecord, Error, string> {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (invoiceId: string) => apiClient.invoicing.resendToKsef(invoiceId),
+    mutationFn: (invoiceId: string) => apiClient.invoicing.resendToAuthority(invoiceId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
     },

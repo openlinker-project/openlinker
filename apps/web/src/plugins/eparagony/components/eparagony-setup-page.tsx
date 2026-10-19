@@ -6,12 +6,12 @@
  * labels itself "Fiscalization" while the operator is setting up invoices.
  */
 import { useState, type ReactElement } from 'react';
-import { EparagonySetupForm } from '../../features/connections/components/eparagony-setup-form';
+import { EparagonySetupForm } from './eparagony-setup-form';
 import {
   EPARAGONY_SETUP_DEFAULT_VALUES,
   type EparagonyDocumentCapability,
-} from '../../features/connections/components/eparagony-setup.schema';
-import { PageLayout } from '../../shared/ui/page-layout';
+} from './eparagony-setup.schema';
+import { PageLayout } from '../../../shared/ui/page-layout';
 
 export function EparagonySetupPage(): ReactElement {
   const [capabilities, setCapabilities] = useState<EparagonyDocumentCapability[]>(

@@ -552,7 +552,7 @@ export function createMockApiClient(
         ),
       // #2558 — default so a rejected-clearance resend affordance doesn't hit
       // `undefined` in a test that doesn't override it.
-      resendToKsef: vi.fn().mockResolvedValue(null),
+      resendToAuthority: vi.fn().mockResolvedValue(null),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {

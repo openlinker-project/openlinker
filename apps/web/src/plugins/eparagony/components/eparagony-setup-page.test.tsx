@@ -6,7 +6,7 @@
  */
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { renderWithProviders } from '../../test/test-utils';
+import { renderWithProviders } from '../../../test/test-utils';
 import { EparagonySetupPage } from './eparagony-setup-page';
 
 function chips(): string[] {

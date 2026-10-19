@@ -22,9 +22,12 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { useSetWebhookSecretMutation } from '../hooks/use-set-webhook-secret-mutation';
-import { useWebhookStatusQuery } from '../hooks/use-webhook-status-query';
-import type { Connection, WebhookStatus } from '../api/connections.types';
+import {
+  useSetWebhookSecretMutation,
+  useWebhookStatusQuery,
+  type Connection,
+  type WebhookStatus,
+} from '../../../features/connections';
 import {
   INFAKT_WEBHOOK_SECRET_DEFAULT_VALUES,
   infaktWebhookSecretSchema,

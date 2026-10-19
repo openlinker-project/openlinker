@@ -50,7 +50,7 @@ export const omsOnboardingCopy = {
     why: 'Decide which document each order gets: an invoice or a receipt. Connect a provider that issues them, then say what each one issues, which goes first, and whether it issues by itself once an order is paid.',
     noConnectionTitle: 'No invoicing or fiscal receipt connection yet',
     noConnectionBody:
-      'Connect a provider that issues invoices (for example inFakt, KSeF or Subiekt) or fiscal receipts (for example eparagony) first. Then come back here to choose what it issues.',
+      'Connect a provider that issues invoices (for example inFakt or Subiekt) or fiscal receipts first. Then come back here to choose what it issues.',
     addConnection: 'Add a connection',
     automaticRequiredTitle: 'Documents must be issued automatically',
     automaticRequiredBody:

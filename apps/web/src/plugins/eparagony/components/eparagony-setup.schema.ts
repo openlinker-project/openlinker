@@ -34,7 +34,7 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
-import type { CreateConnectionInput } from '../api/connections.types';
+import type { CreateConnectionInput } from '../../../features/connections';
 
 export const EPARAGONY_ADAPTER_KEY = 'eparagony.documents.v3';
 
