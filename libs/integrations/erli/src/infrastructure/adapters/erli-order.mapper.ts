@@ -45,9 +45,10 @@ import type {
   OrderPickupPointType,
   OrderShipping,
   OrderStatus,
+  PaymentMethod,
   PaymentStatus,
 } from '@openlinker/core/orders';
-import { readSourceBuyerTaxId } from '@openlinker/core/orders';
+import { PAYMENT_METHOD, readSourceBuyerTaxId, toCodToCollect } from '@openlinker/core/orders';
 
 import type {
   ErliOrder,
@@ -72,6 +73,15 @@ function toMajorUnits(minor: number | undefined): number {
 export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
   const items = order.items.map(mapItem);
   const nowIso = new Date().toISOString();
+  const totals = mapTotals(order);
+  const paymentStatus = derivePaymentStatus(order.status, order.delivery.cod);
+  // The courier collects the whole order on delivery (#3294): nothing is paid
+  // in advance on a COD order, and Erli states no separate "amount to collect".
+  // Only for an order that is actually COD-committed (`paymentStatus === 'cod'`,
+  // i.e. `purchased`), so a pending, cancelled or returned COD order never
+  // carries an amount a label could pre-fill.
+  const codToCollect =
+    paymentStatus === 'cod' ? toCodToCollect(totals.total, totals.currency) : undefined;
 
   return {
     externalOrderId: order.id,
@@ -80,12 +90,14 @@ export function mapErliOrderToIncomingOrder(order: ErliOrder): IncomingOrder {
     // (#995, email_fallback). The email rides the typed field, never metadata.
     customerEmail: order.user.email,
     items,
-    totals: mapTotals(order),
+    totals,
     shippingAddress: mapAddress(order.user.deliveryAddress),
     billingAddress: mapAddress(order.user.invoiceAddress, { isInvoiceAddress: true }),
     shipping: mapShipping(order.delivery),
     pickupPoint: mapPickupPoint(order.delivery.pickupPlace),
-    paymentStatus: derivePaymentStatus(order.status, order.delivery.cod),
+    paymentStatus,
+    paymentMethod: derivePaymentMethod(order.delivery.cod),
+    ...(codToCollect === undefined ? {} : { codToCollect }),
     placedAt: order.purchasedAt,
     // Derived ship-by (#1776) is attached by ErliOrderSourceAdapter.getOrder
     // (needs per-offer GETs → I/O), never in this pure mapper.
@@ -123,6 +135,20 @@ function mapStatus(status: ErliOrderStatus): OrderStatus {
     default:
       return 'pending';
   }
+}
+
+/**
+ * Derives the neutral payment method from `delivery.cod` (#3294).
+ *
+ * Erli carries no payment-method string - only the cash-on-delivery boolean
+ * (see `erli-order.types.ts`). `cod: true` is evidence of cash on delivery.
+ * `cod: false` is evidence of "not COD" and nothing more: Erli does not say
+ * whether a prepaid order was settled by card or by transfer, so it is `unknown`
+ * rather than `online`. `unknown` never selects an invoice payment form, which
+ * is exactly what a wrong `online` on a transfer order would have done.
+ */
+function derivePaymentMethod(cod: boolean): PaymentMethod {
+  return cod ? PAYMENT_METHOD.CashOnDelivery : PAYMENT_METHOD.Unknown;
 }
 
 /**

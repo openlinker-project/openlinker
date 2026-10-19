@@ -316,6 +316,22 @@ export class OrderRecordOrmEntity {
   shippingAddressHash!: string | null;
 
   /**
+   * How the buyer pays (#3294) - one of `PaymentMethodValues`, or `NULL` when
+   * the source reported nothing. Existing rows are `NULL` and are not
+   * back-filled (ADR-039). A plain `varchar` with no CHECK, like every other
+   * vocabulary column here: the integration harness builds schema by
+   * `synchronize`, which would not emit one, so a constraint present only in
+   * the migration would hold in production and silently not in tests; the read
+   * path coerces instead.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the
+   * analytics scalars and `shippingAddressHash` above, so an
+   * `awaiting_mapping` re-ingestion cannot null a settled value.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  paymentMethod!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert
@@ -385,6 +401,22 @@ export class OrderRecordOrmEntity {
    * A fact, not a state — independent of `recordStatus` / `fulfillmentState` /
    * `slaState`. Indexed because "is it packed" is an operator-facing scan axis,
    * mirroring `cancelledAt`.
+   *
+   * **This is THE single order-level packed fact (#2072).** A person (the
+   * toggle) or a WMS (`POST /orders/:id/packed`) asserts it directly. When
+   * line-grain packing exists (#2080) it is DERIVED from the lines — completing
+   * the last line sets it — so line data stays an optional detail ledger
+   * underneath this one answer and never a rival to it. Keeping one answer is
+   * what avoids an order that is "packed" and "3 of 5 packed" at once.
+   *
+   * **Authority precondition.** Nothing reads this to make a decision today, so
+   * two writers (OpenLinker's own workbench and an external WMS) cannot corrupt
+   * anything — the worst case is a stale timestamp a human can see and correct,
+   * and no OL-vs-external exclusivity mechanism is built. The moment a feature
+   * makes `packed` GATE something (a dispatch block, an automatic status
+   * transition, an SLA calculation), authority becomes load-bearing and
+   * exclusivity must be designed BEFORE that feature ships, at configuration
+   * time rather than by runtime arbitration.
    */
   @Column({ type: 'timestamptz', nullable: true })
   @Index()
