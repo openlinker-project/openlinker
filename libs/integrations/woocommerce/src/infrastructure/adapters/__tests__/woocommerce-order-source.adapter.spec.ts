@@ -6,6 +6,7 @@ import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-re
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import type { WooCommerceOrder } from '../order-source/woocommerce-order.types';
 
 const makeConnection = (overrides: Partial<Connection> = {}): Connection =>
@@ -394,6 +395,34 @@ describe('WooCommerceOrderSourceAdapter', () => {
 
       expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: '55' });
     });
+
+    it.each([
+      ['cod', 'processing', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
+      ['cod', 'on-hold', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
+      ['bacs', 'on-hold', 'bank_transfer', undefined, undefined],
+      ['przelewy24', 'processing', 'unknown', 'paid', undefined],
+      [undefined, 'processing', 'unknown', 'paid', undefined],
+      ['cod', 'cancelled', 'cash_on_delivery', undefined, undefined],
+    ])(
+      'should report method, status and COD amount together for gateway %s in status %s (#3294)',
+      async (payment_method, status, expectedMethod, expectedStatus, expectedCod) => {
+        const order = makeOrder({ status, payment_method });
+        const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+        const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+        const result = await adapter.getOrder({ externalOrderId: '1' });
+
+        expect(result.paymentMethod).toBe(expectedMethod);
+        expect(result.paymentStatus).toBe(expectedStatus);
+        // The collect amount is the gross `total` (tax and fees included), and
+        // exists only while the order is reported cod. Everything else - paid,
+        // unreported, dead - must carry none, or a label would pre-fill it.
+        expect(result.codToCollect).toEqual(expectedCod);
+        // The core-COD order is the one that used to read as paid and lose its
+        // COD amount on the label; the facts must never disagree again.
+        expect(checkPaymentFactsConsistency(result)).toEqual([]);
+      },
+    );
 
     it('should map shipping.methodName from the shipping line method_title so the delivery-method label populates (#1776)', async () => {
       const order = makeOrder({

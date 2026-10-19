@@ -10,6 +10,7 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
+import { checkPaymentFactsConsistency } from '../../domain/types/payment-facts-consistency.types';
 import {
   encodeBuyerTaxIdColumn,
   readBuyerTaxId,
@@ -85,9 +86,20 @@ import type {
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Cap on remembered contradictory-payment-facts warnings per process (#3294). */
+const PAYMENT_FACTS_WARNED_ORDERS_MAX = 5000;
+
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
   private readonly logger = new Logger(OrderRecordService.name);
+
+  /**
+   * Orders already warned about for contradictory payment facts (#3294), so a
+   * repeat ingestion logs at debug instead of warn. Bounded so a long-running
+   * process cannot grow it without limit; evicting the oldest entry only costs
+   * one more warn for that order.
+   */
+  private readonly paymentFactsWarnedOrderIds = new Set<string>();
 
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
@@ -103,6 +115,17 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN)
     private readonly cancellationSignalRepository: OrderCancellationSignalRepositoryPort
   ) {}
+
+  private rememberPaymentFactsWarning(orderId: string): void {
+    if (this.paymentFactsWarnedOrderIds.size >= PAYMENT_FACTS_WARNED_ORDERS_MAX) {
+      // A Set iterates in insertion order, so the first key is the oldest.
+      for (const oldest of this.paymentFactsWarnedOrderIds) {
+        this.paymentFactsWarnedOrderIds.delete(oldest);
+        break;
+      }
+    }
+    this.paymentFactsWarnedOrderIds.add(orderId);
+  }
 
   /**
    * Persist order record with PII-aware snapshot
@@ -185,7 +208,13 @@ export class OrderRecordService implements IOrderRecordService {
       // did not supply the flag, so consumers can distinguish "Smart not
       // reported" from "Smart explicitly false".
       ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
+      ...(order.fulfilledBySource !== undefined && {
+        fulfilledBySource: order.fulfilledBySource,
+      }),
       ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
+      // How the buyer pays (#3294) - present-only like paymentStatus, and NOT
+      // PII (a closed four-value vocabulary), so it is kept in both PII modes.
+      ...(order.paymentMethod !== undefined && { paymentMethod: order.paymentMethod }),
       // Marketplace-sourced COD collect amount (#1435) — present-only, like
       // paymentStatus. Read back by `OrderRecord.codToCollect` for the dispatch
       // COD gate; absent for prepaid orders and sources that don't expose it.
@@ -230,6 +259,32 @@ export class OrderRecordService implements IOrderRecordService {
     // Order analytics read-model scalars (#1985) — denormalized alongside
     // dispatchByAt above, from the same already-resolved Order. See ADR-039.
     const analyticsScalars = deriveOrderAnalyticsScalars(order);
+
+    // Contradictory payment facts (#3294): a source adapter reported a method,
+    // a status and a collect amount that cannot all be true. Reported, never
+    // thrown or corrected - the order is the fact, the contradiction is a
+    // defect in an adapter, and refusing the order would lose a paid sale to
+    // surface it. The log is what lets an operator or a maintainer find it.
+    //
+    // `persistOrder` runs on every poll and webhook, so a persistent adapter
+    // defect would repeat the same warning for the same order on every tick and
+    // bury it. The first sighting per order (per process) warns; repeats go to
+    // debug.
+    const paymentFactsViolations = checkPaymentFactsConsistency(order);
+    if (paymentFactsViolations.length > 0) {
+      const message =
+        `order_payment_facts_contradictory: ingested order ${order.id} ` +
+        `(source connection ${sourceConnectionId}): ${paymentFactsViolations.join(', ')} - ` +
+        `paymentMethod=${order.paymentMethod ?? 'absent'} ` +
+        `paymentStatus=${order.paymentStatus ?? 'absent'} ` +
+        `codToCollect=${order.codToCollect === undefined ? 'absent' : 'present'}`;
+      if (this.paymentFactsWarnedOrderIds.has(order.id)) {
+        this.logger.debug(message);
+      } else {
+        this.rememberPaymentFactsWarning(order.id);
+        this.logger.warn(message);
+      }
+    }
 
     // Buyer tax id (#2599) - denormalized so routing and gating never expand
     // JSONB, and so the value outlives the snapshot's PII redaction.
@@ -313,7 +368,20 @@ export class OrderRecordService implements IOrderRecordService {
       [],
       buyerTaxId,
       shippingAddressHash,
-      analyticsScalars.totalTaxTreatment
+      analyticsScalars.totalTaxTreatment,
+      // salesDocumentMatchedRuleId, fulfillmentRoutingSkipReason and
+      // fulfillmentBlock: each owned by its own narrow writer, restated only
+      // because the new argument sits past them.
+      null,
+      null,
+      null,
+      // How the buyer pays (#3294). The `'ready'` path only, like the analytics
+      // scalars: an `awaiting_mapping` re-ingestion must not null a value a
+      // previous ready-path write settled. Stored as reported - `null` when the
+      // source said nothing - and read back as `'unknown'` in that case. The
+      // source is authoritative, so a later ready re-ingestion from a source
+      // that omits the field also writes `null` over an earlier value.
+      order.paymentMethod ?? null
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
@@ -417,7 +485,12 @@ export class OrderRecordService implements IOrderRecordService {
       metadata: incoming.metadata,
       // See `persistOrder` above for the absent-vs-false rationale.
       ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
+      ...(incoming.fulfilledBySource !== undefined && {
+        fulfilledBySource: incoming.fulfilledBySource,
+      }),
       ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
+      // How the buyer pays (#3294) - see persistOrder.
+      ...(incoming.paymentMethod !== undefined && { paymentMethod: incoming.paymentMethod }),
       // Marketplace-sourced COD collect amount (#1435) — see persistOrder.
       ...(incoming.codToCollect !== undefined && { codToCollect: incoming.codToCollect }),
       ...(incoming.dispatchTime !== undefined && { dispatchTime: incoming.dispatchTime }),

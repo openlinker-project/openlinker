@@ -70,3 +70,35 @@ export interface ReapTimedOutDispatchesResult {
   readonly timeoutMs: number;
   readonly attentionIntents: readonly FulfillmentAcceptanceAttentionIntent[];
 }
+
+export interface FindStalledUnsubmittedInput {
+  /** Works examined per run. The caller clamps. */
+  readonly limit: number;
+  /** The same resolved deadline the reap uses — one number, one meaning. */
+  readonly timeoutMs: number;
+  readonly now: Date;
+  /** Keyset cursor; `null` starts from the beginning. */
+  readonly afterWorkId: string | null;
+}
+
+/** One work routed to a holder and never offered to it (#3476). */
+export interface StalledUnsubmittedWorkRef {
+  readonly workId: string;
+  readonly orderId: string;
+  readonly assignedConnectionId: string;
+}
+
+export interface FindStalledUnsubmittedResult {
+  readonly works: readonly StalledUnsubmittedWorkRef[];
+  /**
+   * The next keyset cursor: the last work id read, or `null` when the page was
+   * short and the pass wrapped to the beginning.
+   */
+  readonly nextAfterWorkId: string | null;
+  /**
+   * The A3-X verdict for every order on this page, recomputed from ALL its
+   * works with the stalled arm on. A failed re-read yields no intent, so the
+   * stored entry is left alone (#2100).
+   */
+  readonly attentionIntents: readonly FulfillmentAcceptanceAttentionIntent[];
+}

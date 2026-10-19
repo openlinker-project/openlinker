@@ -12,7 +12,7 @@
  * page that was their only consumer; `groupTasksIntoLanes` survives because
  * the merged screen still offers that grouping as its second axis, now behind
  * `?groupBy=` rather than behind a second URL. #3096 re-widened the surface:
- * the status/handshake labels and `FULFILLMENT_EXPEDITED_BADGE` left the
+ * the status label and `FULFILLMENT_EXPEDITED_BADGE` left the
  * folder because the detail hero is now a second consumer of both.
  *
  * Deliberately NOT exported, per the start-narrow rule: the api module and
@@ -107,20 +107,16 @@ export {
   readFulfillmentConflict,
 } from './lib/fulfillment-conflict';
 export { fulfillmentActionLabel, FULFILLMENT_ACTION_COPY } from './lib/fulfillment-task.copy';
-// #3098 — the detail hero renders BOTH axes verbatim, exactly as the card
-// does: heldness lives in `activeHolds`, not in `status`, so neither label
-// may be dropped or merged. Previously private because only the lane
-// sections read them; the page is the second consumer.
-export {
-  fulfillmentRequestStatusLabel,
-  fulfillmentStatusLabel,
-  FULFILLMENT_EXPEDITED_BADGE,
-} from './lib/fulfillment-task.copy';
+// #3098 — the detail hero renders the state label exactly as the card does:
+// heldness lives in `activeHolds`, not in `status`, so the label is never
+// dropped. Previously private because only the lane sections read them; the
+// page is the second consumer. #3763 retired the raw request-status label.
+export { fulfillmentStatusLabel, FULFILLMENT_EXPEDITED_BADGE } from './lib/fulfillment-task.copy';
 export { FULFILLMENT_WORKLIST_COPY } from './lib/fulfillment-worklist.copy';
 // #3096 — the detail page lives in `pages/`, which `check-ui-vocabulary.mjs`
 // does not scan, so every sentence it renders is read from here.
 export { FULFILLMENT_WORK_DETAIL_COPY } from './lib/fulfillment-work-detail.copy';
-// #3099 — the plain-language sentence under the hero's two raw axis labels.
+// #3099 — the plain-language sentence under the hero's state headline.
 // Pure, and takes a narrow struct rather than the task: a function handed
 // the task could reach `supportedActions`, which is the client-side state
 // machine `check-no-supported-actions-mirror.mjs` cannot catch.

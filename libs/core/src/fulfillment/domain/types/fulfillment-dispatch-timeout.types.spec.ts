@@ -142,6 +142,85 @@ describe('deriveAcceptanceAttention (#2712, A3-X)', () => {
     expect(outcome.subjectRef).toBe('w1');
   });
 
+  // #3476 — work routed to a holder and never offered to it.
+  describe('the stalled-unsubmitted arm', () => {
+    const NOW = new Date('2026-10-14T12:00:00.000Z');
+    const CUTOFF = new Date(NOW.getTime() - 2 * HOUR_MS);
+
+    const unsubmitted = (
+      id: string,
+      updatedAt: Date,
+      assignedConnectionId: string | null = 'conn-oms',
+      status: FulfillmentWorkStatus = 'open'
+    ): FulfillmentWork =>
+      ({
+        id,
+        orderId: 'ol_order_1',
+        status,
+        requestStatus: 'unsubmitted',
+        assignedConnectionId,
+        updatedAt,
+      }) as unknown as FulfillmentWork;
+
+    const stale = new Date(CUTOFF.getTime() - 1);
+    const fresh = new Date(CUTOFF.getTime() + 1);
+
+    it('should report A3-X for unsubmitted work idle past the cutoff', () => {
+      const outcome = deriveAcceptanceAttention([unsubmitted('w1', stale)], {
+        stalledUnsubmittedBefore: CUTOFF,
+      });
+
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        reason: 'fulfillment-unaccepted',
+        detail: '1 fulfilment work object(s) were never offered to their holder',
+        subjectRef: 'w1',
+      });
+    });
+
+    it('should report nothing for unsubmitted work still inside the cutoff', () => {
+      // Normal for the seconds between routing and the dispatch job.
+      expect(
+        deriveAcceptanceAttention([unsubmitted('w1', fresh)], { stalledUnsubmittedBefore: CUTOFF })
+      ).toEqual({ kind: 'none' });
+    });
+
+    it('should keep the pre-#3476 verdict when no cutoff is passed', () => {
+      expect(deriveAcceptanceAttention([unsubmitted('w1', stale)])).toEqual({ kind: 'none' });
+    });
+
+    it('should ignore holder-less and terminal unsubmitted work', () => {
+      expect(
+        deriveAcceptanceAttention(
+          [unsubmitted('w1', stale, null), unsubmitted('w2', stale, 'conn-oms', 'cancelled')],
+          { stalledUnsubmittedBefore: CUTOFF }
+        )
+      ).toEqual({ kind: 'none' });
+    });
+
+    it('should stay blocked when a sibling is accepted and another is stuck unsubmitted', () => {
+      const outcome = deriveAcceptanceAttention(
+        [work('w1', 'open', 'accepted'), unsubmitted('w2', stale)],
+        { stalledUnsubmittedBefore: CUTOFF }
+      );
+      expect(outcome).toMatchObject({ kind: 'blocked', subjectRef: 'w2' });
+    });
+
+    it('should name both causes and point at the rejection first', () => {
+      const outcome = deriveAcceptanceAttention(
+        [unsubmitted('w1', stale), work('w2', 'open', 'rejected')],
+        { stalledUnsubmittedBefore: CUTOFF }
+      );
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        reason: 'fulfillment-unaccepted',
+        detail:
+          '1 fulfilment work object(s) have no holder; 1 fulfilment work object(s) were never offered to their holder',
+        subjectRef: 'w2',
+      });
+    });
+  });
+
   it('should never return indeterminate — it is total over its input', () => {
     // Only a caller that FAILED to read the works may report `indeterminate`.
     expect(deriveAcceptanceAttention([]).kind).not.toBe('indeterminate');

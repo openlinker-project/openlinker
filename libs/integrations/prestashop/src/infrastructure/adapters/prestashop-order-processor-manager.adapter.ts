@@ -114,6 +114,25 @@ interface PrestashopCarrierRow {
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * The `payment_method` label sent when no payment mapping applies (#3474). It
+ * matches the payment module the OL endpoint actually delegates to
+ * (`ps_checkpayment`) and is what OpenLinker has always recorded, so an
+ * unmapped order is byte-identical to before.
+ */
+export const DEFAULT_PAYMENT_METHOD_LABEL = 'Check payment';
+
+/**
+ * Labels for the neutral payment methods (#3294). Only the three methods the
+ * source positively identified have one; `unknown` deliberately has none so it
+ * falls through to {@link DEFAULT_PAYMENT_METHOD_LABEL} unchanged.
+ */
+export const PAYMENT_METHOD_LABELS: Readonly<Record<string, string>> = {
+  cash_on_delivery: 'Cash on delivery',
+  bank_transfer: 'Bank transfer',
+  online: 'Online payment',
+};
+
+/**
  * PrestaShop Order Processor Manager Adapter
  *
  * Handles order creation in PrestaShop via WebService API.
@@ -621,15 +640,21 @@ export class PrestashopOrderProcessorManagerAdapter
           );
         }
 
+        // Resolved BEFORE the try: it never throws, and a lookup failure must
+        // not be mistaken for an import failure by the ambiguous-write handling.
+        const paymentMethodLabel = await this.resolvePaymentMethodLabel(order);
+
         this.logger.debug(`Submitting order import (validateOrder) request to PrestaShop`);
         try {
           const imported = await this.openlinkerModuleClient.importOrder({
             idCart: Number.parseInt(String(externalCartId), 10),
             idOrderState: stateId,
             amountPaid: order.totals.total,
-            // Matches the payment provenance the WS path recorded — the module
-            // delegates to ps_checkpayment::validateOrder.
-            paymentMethod: 'Check payment',
+            // The module delegates to ps_checkpayment::validateOrder, so this is
+            // the order's display label (`orders.payment`) - it does not switch
+            // the payment module. The operator's payment mapping (#3474) decides
+            // it; `DEFAULT_PAYMENT_METHOD_LABEL` is what the WS path recorded.
+            paymentMethod: paymentMethodLabel,
             orderReference: referenceKey ?? '',
             ...(moduleWritesLinePins ? { linePrices: linePins } : {}),
           });
@@ -1429,6 +1454,61 @@ export class PrestashopOrderProcessorManagerAdapter
       );
       return null;
     }
+  }
+
+  /**
+   * The `payment_method` label to send with the order import (#3474).
+   *
+   * Resolution chain:
+   *   1. `MappingConfigService.resolvePaymentMapping(sourceConnectionId, sourcePaymentMethod)`
+   *   2. the label of the neutral `order.paymentMethod` (#3294), when the source identified one
+   *   3. {@link DEFAULT_PAYMENT_METHOD_LABEL}
+   *
+   * The mapping is source-scoped (the Payments tab stores its rows under the
+   * source connection), so both the source connection and the source's own
+   * payment type must be present; either missing is the ordinary "nothing to
+   * map" case, not a fault.
+   *
+   * Never throws. A payment label is not worth an order: a failed or unusable
+   * lookup logs and falls back, so the order is still created exactly as it was
+   * before the mapping was honoured. Logs carry ids and the source payment type
+   * only - no buyer data.
+   */
+  private async resolvePaymentMethodLabel(order: OrderCreate): Promise<string> {
+    const sourceConnectionId = order.source?.connectionId;
+    const sourcePaymentMethod = order.sourcePaymentMethod;
+    const neutralLabel =
+      (order.paymentMethod && PAYMENT_METHOD_LABELS[order.paymentMethod]) ||
+      DEFAULT_PAYMENT_METHOD_LABEL;
+
+    if (!this.mappingConfigService || !sourceConnectionId || !sourcePaymentMethod) {
+      return neutralLabel;
+    }
+
+    let mapped: string | null;
+    try {
+      mapped = await this.mappingConfigService.resolvePaymentMapping(
+        sourceConnectionId,
+        sourcePaymentMethod
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Payment mapping lookup failed for sourcePaymentMethod=${sourcePaymentMethod} ` +
+          `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id}); ` +
+          `using "${neutralLabel}": ${err instanceof Error ? err.message : String(err)}`
+      );
+      return neutralLabel;
+    }
+
+    const label = mapped?.trim();
+    if (!label) {
+      return neutralLabel;
+    }
+    this.logger.debug(
+      `Resolved payment mapping: sourcePaymentMethod=${sourcePaymentMethod} → "${label}" ` +
+        `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id})`
+    );
+    return label;
   }
 
   /**

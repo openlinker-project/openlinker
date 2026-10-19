@@ -37,26 +37,16 @@
  *      (`resolveSalesDocumentBlockCopy` — see that module for the kind-aware
  *      copy rules: the persisted reason is document-kind-agnostic, so this
  *      panel derives `kind` locally from its own candidate pool).
- *   3 / 4. Blocked-by-other-kind — the primary action for the OTHER document
- *      kind is disabled with an explanatory `alert--warning`, distinct in tone
- *      from state 2: this is a WRITE-PATH refusal (ADR-041 §3b — the document
- *      already exists on another connection), never a routing decision. It is
- *      derived PROACTIVELY from the two queries this panel already runs
- *      (`invoice.blocksIssuanceElsewhere` / `fiscalRecord.blocksFurtherRegistration`,
- *      mirrored client-side as `!canRetryInvoice` / `!canRetryFiscalReceipt` —
- *      see the inline comment at their computation), NOT by parsing a 409 from
- *      `OrderAlreadyHasFiscalReceiptException` / `OrderAlreadyHasInvoiceException`
- *      (#2157). Proactive prevention beats reactive error-parsing here: it also
- *      matches the existing `InvoiceConnectionLock` philosophy ("no Select, so
- *      the panel can no longer be talked into issuing a SECOND document") and
- *      sidesteps a real asymmetry — `invoicing.controller.ts` maps its 409 to a
- *      structured `{ error: 'OrderAlreadyHasFiscalReceiptException', ... }`
- *      body, but `fiscalization.controller.ts` maps its mirror-image 409 to a
- *      PLAIN `ConflictException(message)` (Nest's generic `error: 'Conflict'`
- *      shape), so message-text sniffing would be the only way to reach the
- *      same discriminator from that side. Both mutations still handle a
- *      defensive 409 (below) in case the proactive read races a concurrent
- *      write from elsewhere.
+ *   3 / 4. Blocked-by-other-kind — no longer rendered as a state of its own
+ *      (#3766). A filled slot offers no action for the OTHER document kind, so
+ *      the "This order already has a document" warning explained a refusal of
+ *      a control the operator could not reach, on every issued document whose
+ *      connection also carried the other kind. The one-document rule is still
+ *      enforced server-side (ADR-041 §3b, #2047 / #2157); the filled slots are
+ *      mutually exclusive, so neither ever renders an action for the other
+ *      kind, and the settled invoice's "Why this document?" disclosure states
+ *      the rule. Both mutations still handle a defensive 409 (below) in case
+ *      a concurrent write from elsewhere races the read.
  *
  * KNOWN GAP — corrections are not rendered as a linked follow-up row: a
  * correction is stored as its own separate `InvoiceRecord` row (verified:
@@ -114,6 +104,7 @@ import {
   selectInvoicingCandidates,
   selectReauthInvoicingConnections,
   InvoiceConnectionLock,
+  InvoiceUnconfirmedNotice,
   RegulatoryStatusBadge,
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
@@ -390,15 +381,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     return null;
   }
 
-  // ── Derived: does the existing record on the OTHER kind's behalf forbid
-  // starting a NEW originating document here? Mirrors the backend's pure
-  // getters (`InvoiceRecord.blocksIssuanceElsewhere` /
-  // `FiscalRegistrationRecord.blocksFurtherRegistration`, #2157): both reduce
-  // to "a record exists and is not a safely-retryable rejected failure" —
-  // exactly `record !== null && !canRetry*(record)`. ──
-  const invoiceBlocks = invoice !== null && !canRetryInvoice(invoice);
-  const fiscalBlocks = fiscalRecord !== null && !canRetryFiscalReceipt(fiscalRecord);
-
   const showInvoiceSlot = invoice !== null;
   // Outstanding work opens the slot even with no record. Without that, an order
   // reopened in the window right after the operator asked would fall through to
@@ -608,11 +590,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     );
   };
 
-  // ── Cross-kind block copy (states 3 / 4 — a WRITE-PATH refusal, distinct
-  // from the routing/gate-block reason below) ──
-  const registerBlockedByInvoice = showInvoiceSlot && invoiceBlocks && fiscalCandidates.length > 0;
-  const issueBlockedByReceipt = showFiscalSlot && fiscalBlocks && invoicingConnections.length > 0;
-
   // ── Empty-state routing/gate-block reason (state 2) ──
   //
   // The persisted block reason is document-kind-AGNOSTIC (#2156 resolves across
@@ -804,15 +781,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </Alert>
           ) : null}
 
-          {invoiceSettled && invoice && lock ? (
-            <InvoiceConnectionLock
-              status={invoiceDisplayStatus}
-              connectionName={lock.connection?.name ?? lock.connectionId}
-              tag={lock.isStale ? t('invoice.lock.tagDisconnected', 'disconnected') : (lock.connection?.platformType ?? '')}
-              isStale={lock.isStale}
-            />
-          ) : null}
-
           {invoiceSettled && invoiceDisplayStatus === 'issuing' ? (
             <p className="sales-document-panel__notice">
               {t(
@@ -835,11 +803,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__body">
               <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice, t)} />
               <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
-              {/* #3186 — "Why this kind?", beside the shipped "Why this
-                  document?" (InvoiceConnectionLock, above). Absent when no
-                  rule engine match decided this order's kind (including a
-                  manually issued document). */}
-              {whyKindDisclosure}
               {InvoiceDetailSection && invoicingConnection ? (
                 <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
               ) : null}
@@ -1054,66 +1017,46 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
+          {/* #3766 — the whole in-doubt state is ONE notice: it carries what the
+              lock box, the inline alert and the loose action row each said, so
+              the lock box below is not rendered for this status. */}
           {invoiceSettled && invoiceDisplayStatus === 'in-doubt' && invoice ? (
-            <>
-              <div className="invoice-panel__inline-alert invoice-panel__inline-alert--warning">
-                <span className="invoice-panel__inline-alert-bar" />
-                <div>
-                  <strong>{t('invoice.inDoubt.title', 'We could not confirm whether this invoice was issued.')}</strong>{' '}
-                  {resolveFailureCopy(invoice, t)}{' '}
-                  {t(
-                    'invoice.inDoubt.noSwitch',
-                    'Do not move it to another provider until you know - that is how one sale ends up with two invoices.',
-                  )}
-                </div>
-              </div>
-              <div className="sales-document-panel__actions">
-                <span className="spacer" />
-                <Button
-                  tone="secondary"
-                  onClick={() =>
-                    showToast({
-                      tone: 'info',
-                      title: t('invoice.inDoubt.checkTitle', 'Check provider'),
-                      description: t(
-                        'invoice.inDoubt.checkBody',
-                        'Open the provider portal and verify whether an invoice exists for this order.',
-                      ),
-                    })
-                  }
-                >
-                  {t('invoice.inDoubt.check', 'Check provider')}
-                </Button>
-                <Button
-                  tone="secondary"
-                  onClick={() =>
-                    showToast({
-                      tone: 'info',
-                      title: t('invoice.inDoubt.resolvedTitle', 'Marked resolved'),
-                      description: t('invoice.inDoubt.resolvedBody', 'Mark-resolved is a Wave B feature — no backend endpoint yet.'),
-                    })
-                  }
-                >
-                  {t('invoice.inDoubt.resolve', 'Mark resolved')}
-                </Button>
-              </div>
-            </>
+            <InvoiceUnconfirmedNotice
+              connectionName={lock?.connection?.name ?? lock?.connectionId ?? ''}
+              failureCode={invoice.failureCode}
+              attemptedAt={invoice.updatedAt}
+              providerResponse={invoice.failureReason}
+              onCheckProvider={() =>
+                showToast({
+                  tone: 'info',
+                  title: t('invoice.inDoubt.checkTitle', 'Check provider'),
+                  description: t(
+                    'invoice.inDoubt.checkBody',
+                    'Open the provider portal and verify whether an invoice exists for this order.',
+                  ),
+                })
+              }
+            />
           ) : null}
 
-          {/* #2561 — this order already has a document; the override does not
-              reach here, so this is a plain fact with no dead action beside
-              it, never a disabled control. */}
-          {registerBlockedByInvoice ? (
-            <Alert
-              tone="warning"
-              data-testid="one-document-guard"
-              title={t('salesDocument.blocked.receiptTitle', 'This order already has a document')}
-            >
-              {t(
-                'salesDocument.blocked.receiptBody',
-                'This order already has an invoice from {{connection}}. Invoice or receipt — never both for one sale. Void the invoice first if a receipt is what this order actually needs.',
-              ).replace('{{connection}}', lock?.connection?.name ?? lock?.connectionId ?? '')}
-            </Alert>
+          {/* #3186 — "Why this kind?", kept beside "Why this document?" so both
+              routing rationales sit together at the bottom of the slot. Absent
+              when no rule engine match decided this order's kind (including a
+              manually issued document). */}
+          {invoiceSettled && invoiceDisplayStatus === 'issued' && invoice ? whyKindDisclosure : null}
+
+          {/* #3766 — the connection lock is always the LAST element of the
+              slot: for a settled document it is only the "Why this document?"
+              disclosure (the headline already names the connection), and in
+              every other state it is operational context that follows the
+              status it explains. */}
+          {invoiceSettled && invoice && lock && invoiceDisplayStatus !== 'in-doubt' ? (
+            <InvoiceConnectionLock
+              status={invoiceDisplayStatus}
+              connectionName={lock.connection?.name ?? lock.connectionId}
+              tag={lock.isStale ? t('invoice.lock.tagDisconnected', 'disconnected') : (lock.connection?.platformType ?? '')}
+              isStale={lock.isStale}
+            />
           ) : null}
         </div>
       ) : null}
@@ -1288,20 +1231,6 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </>
           ) : null}
 
-          {/* #2561 — same rule as the invoice slot above: a plain fact, no
-              dead action beside it. */}
-          {issueBlockedByReceipt ? (
-            <Alert
-              tone="warning"
-              data-testid="one-document-guard"
-              title={t('salesDocument.blocked.invoiceTitle', 'This order already has a document')}
-            >
-              {t(
-                'salesDocument.blocked.invoiceBody',
-                'This order already has a fiscal receipt. Invoice or receipt — never both for one sale.',
-              )}
-            </Alert>
-          ) : null}
         </div>
       ) : null}
 

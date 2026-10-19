@@ -71,7 +71,7 @@ import {
  * One connection, reduced to what resolution depends on.
  *
  * Structural by necessity (the empty allow-set) and by design — the same reason
- * `AuthorityHolderCandidate` and `InvoicingConnectionCandidate` are.
+ * `AuthorityHolderCandidate` and `SalesDocumentRoutingCandidate` are.
  *
  * **The caller passes EVERY connection, whatever its status.** `analytics-trust`
  * had to opt into `includeAllStatuses` because an active-only filter silently
