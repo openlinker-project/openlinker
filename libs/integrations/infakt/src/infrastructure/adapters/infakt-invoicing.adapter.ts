@@ -564,6 +564,26 @@ export class InfaktInvoicingAdapter
     return [...SUPPORTED_DOCUMENT_TYPES];
   }
 
+  /**
+   * The inFakt payment method for one document (#3294): the order's own method
+   * when the source positively identified one, else the connection default.
+   * A transfer needs a bank account on the connection - without one inFakt
+   * rejects the invoice (#1303) - so a transfer order on an account-less
+   * connection keeps the default rather than failing a document the operator
+   * never asked to be stricter.
+   */
+  private resolvePaymentMethod(
+    method: IssueInvoiceCommand['paymentMethod'],
+  ): NonNullable<InfaktConnectionConfig['defaultPaymentMethod']> {
+    if (method === 'cash_on_delivery') {
+      return 'cash';
+    }
+    if (method === 'bank_transfer' && this.bankAccount !== undefined) {
+      return 'transfer';
+    }
+    return this.paymentMethod;
+  }
+
   async upsertCustomer(cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
     const { buyer } = cmd;
     // Infakt uses NIP (pl-nip scheme) for B2B client dedup. Persisted in the
@@ -661,7 +681,7 @@ export class InfaktInvoicingAdapter
         // KSeF-cleared) as PLN. See `toInfaktCurrency` / `InfaktInvoice.currency`.
         currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
-        payment_method: this.paymentMethod,
+        payment_method: this.resolvePaymentMethod(cmd.paymentMethod),
         // Infakt's invoices.json wants the NUMERIC client id, not the client
         // uuid — verified live (2026-07-01): `client_uuid` is silently
         // ignored and the request 422s with "client_id required".
@@ -1069,6 +1089,10 @@ export class InfaktInvoicingAdapter
         // different currency than the document it corrects.
         currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        // Deliberately NOT the order's method (#3294): a correction carries no
+        // order context, so it keeps the connection default even when the
+        // original was issued as cash on delivery. Known gap, tracked with the
+        // returns correction flow rather than guessed here.
         payment_method: this.paymentMethod,
         // Required by Infakt on every invoice, corrective included — verified
         // live (2026-07-01): omitting it 422s with "client_id required". The

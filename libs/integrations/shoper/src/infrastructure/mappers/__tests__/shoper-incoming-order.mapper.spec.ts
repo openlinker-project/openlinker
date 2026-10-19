@@ -1,6 +1,8 @@
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import {
   mapShoperOrderStatus,
   mapShoperOrderToIncoming,
+  mapShoperPaymentMethod,
   mapShoperPaymentStatus,
   mapShoperPickupPoint,
   shopLocalToIso,
@@ -81,6 +83,29 @@ describe('mapShoperOrderStatus', () => {
 
   it('should read every language label of a terminal status', () => {
     expect(mapShoperOrderStatus(status(4, 'canceled order', 'zwrócone'))).toBe('refunded');
+  });
+});
+
+describe('mapShoperPaymentMethod (#3294)', () => {
+  it('should map the COD flag to cash on delivery', () => {
+    expect(mapShoperPaymentMethod(buildOrderRow({ is_cash_on_delivery: true }))).toBe(
+      'cash_on_delivery',
+    );
+  });
+
+  it.each([[false], [undefined]])('should report unknown when the COD flag is %p', (flag) => {
+    expect(mapShoperPaymentMethod(buildOrderRow({ is_cash_on_delivery: flag }))).toBe('unknown');
+  });
+
+  it('should still name the method when a terminal status hides the payment status', () => {
+    const incoming = mapShoperOrderToIncoming(
+      buildOrderRow({ is_cash_on_delivery: true }),
+      LINES,
+      { ...CTX, status: status(4, 'anulowane') },
+    );
+
+    expect(incoming).not.toHaveProperty('paymentStatus');
+    expect(incoming.paymentMethod).toBe('cash_on_delivery');
   });
 });
 
@@ -256,6 +281,22 @@ describe('mapShoperOrderToIncoming', () => {
     expect(cod.codToCollect).toEqual({ amount: '133.84', currency: 'PLN' });
     expect(cod.paymentStatus).toBe('cod');
     expect(prepaid).not.toHaveProperty('codToCollect');
+  });
+
+  it('should report cash on delivery as the method and nothing else as evidence (#3294)', () => {
+    const cod = mapShoperOrderToIncoming(
+      buildOrderRow({ is_cash_on_delivery: true, is_paid: false, paid: '0.00' }),
+      LINES,
+      CTX,
+    );
+    const prepaid = mapShoperOrderToIncoming(buildOrderRow(), LINES, CTX);
+
+    expect(cod.paymentMethod).toBe('cash_on_delivery');
+    // `false` is not evidence of "prepaid": Shoper also leaves it false for a
+    // bank transfer or cash at pickup, so the honest answer is unknown.
+    expect(prepaid.paymentMethod).toBe('unknown');
+    expect(checkPaymentFactsConsistency(cod)).toEqual([]);
+    expect(checkPaymentFactsConsistency(prepaid)).toEqual([]);
   });
 
   it('should drop a guest/blank customer id and an address with no street and no city', () => {

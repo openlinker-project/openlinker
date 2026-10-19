@@ -181,10 +181,56 @@ describe('FulfillmentWorkDetailBody', () => {
   });
 
   describe('the hero', () => {
-    it('should join both axis labels into the headline when rendered', () => {
+    it('should show the bare state in the headline when the task is accepted (#3763)', () => {
       renderBody(task({ status: 'open', requestStatus: 'accepted' }));
 
-      expect(screen.getByText('Open · Accepted')).toHaveClass('fulfilment-work-detail__headline');
+      // The facts card also says "Open", so read the headline by its class.
+      expect(document.querySelector('.fulfilment-work-detail__headline')).toHaveTextContent(/^Open$/);
+      expect(screen.queryByText(/pack bench/)).not.toBeInTheDocument();
+    });
+
+    it('should keep the headline bare and put the reason under "Why it\'s stuck" when packers cannot see the task (#3763)', () => {
+      const apiClient = api({
+        connections: { getById: vi.fn().mockResolvedValue(connection()) } as never,
+      });
+      renderBody(
+        task({
+          status: 'open',
+          assignedConnectionId: 'conn_oms',
+          requestStatus: 'unsubmitted',
+          createdAt: '2020-01-01T00:00:00.000Z',
+        }),
+        apiClient
+      );
+
+      expect(document.querySelector('.fulfilment-work-detail__headline')).toHaveTextContent(/^Open$/);
+      expect(
+        within(screen.getByTestId('work-detail-hero')).getByText(
+          'Packers cannot see this task, because it is not on the pack bench.'
+        )
+      ).toBeInTheDocument();
+      expect(within(card(COPY.sections.holds)).getByText('Not accepted yet')).toBeInTheDocument();
+    });
+
+    it('should say where the task is headed while it waits for acceptance (#3763)', async () => {
+      const apiClient = api({
+        connections: { getById: vi.fn().mockResolvedValue(connection()) } as never,
+      });
+      renderBody(
+        task({
+          assignedConnectionId: 'conn_oms',
+          requestStatus: 'submitted',
+          createdAt: new Date().toISOString(),
+        }),
+        apiClient
+      );
+
+      expect(
+        await within(screen.getByTestId('work-detail-hero')).findByText(
+          'Sent to OpenLinker OMS. It appears on the pack bench once accepted, usually within seconds.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: COPY.sections.holds })).not.toBeInTheDocument();
     });
 
     it('should name the in-house executor in the sub-line and the sentence when it resolves', async () => {
@@ -421,8 +467,6 @@ describe('FulfillmentWorkDetailBody', () => {
       renderBody(task({ carrierName: 'InPost Paczkomat', externalWorkId: 'wh-88231' }));
 
       expect(factLabels()).toEqual([
-        COPY.facts.state,
-        COPY.facts.handshake,
         COPY.facts.delivery,
         COPY.facts.externalReference,
         COPY.facts.started,
@@ -538,6 +582,24 @@ describe('FulfillmentWorkDetailBody', () => {
       expect(await within(payment).findByText('My PrestaShop Store')).toBeInTheDocument();
       // The bespoke "is it paid?" disclaimer is gone with the bespoke section.
       expect(screen.queryByText(/collected on delivery/i)).not.toBeInTheDocument();
+    });
+
+    it('should name how the buyer pays in the Payment card when the source said so (#3294)', async () => {
+      const snapshot = { ...(order().orderSnapshot as Record<string, unknown>), paymentMethod: 'cash_on_delivery' };
+      const apiClient = api({
+        orders: { getById: vi.fn().mockResolvedValue(order({ orderSnapshot: snapshot })) } as never,
+      });
+      renderBody(task(), apiClient);
+
+      const payment = await screen.findByRole('region', { name: COPY.sections.payment });
+      expect(within(payment).getByText('Cash on delivery')).toBeInTheDocument();
+    });
+
+    it('should say nothing about the method when the source could not tell (#3294)', async () => {
+      renderBody(task(), api({ orders: { getById: vi.fn().mockResolvedValue(order()) } as never }));
+
+      const payment = await screen.findByRole('region', { name: COPY.sections.payment });
+      expect(within(payment).queryByText(COPY.payment.method)).not.toBeInTheDocument();
     });
 
     it('should keep the order page anchors so a #shipment deep link lands here too', async () => {

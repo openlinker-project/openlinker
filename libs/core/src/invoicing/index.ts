@@ -24,15 +24,6 @@ export {
   parseTriggerModel,
 } from './domain/types/invoice-trigger.types';
 export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
-// One-invoice-per-order primary selection (#2047).
-export {
-  parseIsPrimaryInvoicing,
-  selectPrimaryInvoicingConnection,
-} from './domain/types/invoicing-primary.types';
-export type {
-  InvoicingConnectionCandidate,
-  InvoicingConnectionSelection,
-} from './domain/types/invoicing-primary.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
 // A missing per-line tax rate holds the document (#2248, ADR-063 § 6).
 export {

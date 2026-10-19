@@ -315,27 +315,26 @@ including the unresolved one in the previous section — it is not exclusive to 
 manual connection.
 
 Only one of the two can be exercised per order. Once either has been used, the
-other is replaced by a blocking notice — *This order already has a document* —
-because an order gets **one** originating sales document, never both. The two
-notices differ: an existing invoice tells you to void it first if a receipt is
-what the order actually needed.
+other simply disappears from the panel, because an order gets **one**
+originating sales document, never both. For an issued invoice the rule is
+spelled out under **Why this document?** at the bottom of the panel.
 
 ### In progress
 
 Once you (or auto-issue) trigger a registration, the panel's heading switches to
 **Registering** and the page keeps polling for the result. Registering continues
-even if you navigate away, and the panel says so — except where the order already
-carries a document, as in the capture below, and the blocking notice takes that
-space instead:
+even if you navigate away, and the panel says so:
 
 ![Sales document panel headed "Fiscal receipt · Registering". Because this order already carries a receipt, the body renders the "This order already has a document" notice](./images/04b-order-panel-registering.png)
 
 ### Issued — the lifecycle stepper
 
 Once a document is issued, the panel's heading names the **document type and the
-stage it has reached**, and the body shows an *Issued by* card, a **lifecycle
-stepper**, and every provider-reported field. Two lifecycle states, from two
-different invoices:
+stage it has reached**, and the body shows a **lifecycle stepper** and every
+provider-reported field. The connection that issued it is already in the
+heading, so it is not repeated in the body; **Why this document?** at the
+bottom of the panel explains where every further action goes. Two lifecycle
+states, from two different invoices:
 
 **An invoice submitted, awaiting the tax authority's clearance** —
 *Invoice · Awaiting clearance*:

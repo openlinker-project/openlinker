@@ -11,6 +11,7 @@
  *
  * @module libs/core/src/invoicing/domain/types
  */
+import type { PaymentMethod } from '@openlinker/core/orders/types';
 import type { BuyerProfile } from '../entities/buyer-profile.entity';
 import type { InvoiceRecord } from '../entities/invoice-record.entity';
 
@@ -682,6 +683,14 @@ export interface IssueInvoiceCommand {
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
+  /**
+   * How the buyer pays, when the order's source positively said so (#3294).
+   * Absent means unknown: an adapter keeps its connection-level default rather
+   * than guessing, since a wrong payment form on a fiscal document is a legal
+   * statement. `online` is carried but names no form a provider can express
+   * without more detail, so adapters may keep their default for it.
+   */
+  paymentMethod?: PaymentMethod;
   /**
    * Optional neutral register / entity-scope label (#10). Routes numbering to
    * the connection's series for `(documentType, register)`; when absent the

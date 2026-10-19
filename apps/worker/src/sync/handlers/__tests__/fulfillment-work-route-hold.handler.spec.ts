@@ -90,7 +90,12 @@ describe('FulfillmentWorkRouteHandler — persisting the hold state (#3485)', ()
   });
 
   it('should keep the order held when it is refused again, still out of stock', async () => {
-    routeTo({ status: 'refused', decisionId: 'dec-3', reason: 'plan-carries-unfulfillable' });
+    routeTo({
+      status: 'refused',
+      decisionId: 'dec-3',
+      reason: 'plan-carries-unfulfillable',
+      unfulfillableReasons: [],
+    });
 
     await expect(handler.execute(job)).resolves.toEqual({ outcome: 'business_failure' });
 

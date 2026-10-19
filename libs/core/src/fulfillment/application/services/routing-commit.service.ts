@@ -78,6 +78,7 @@ import {
   checkRoutingPlanConservesQuantities,
   type ResolvedRoutingPlan,
   type RoutingInput,
+  type RoutingUnfulfillableLine,
 } from '../../domain/types/routing.types';
 import {
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
@@ -185,7 +186,12 @@ export class RoutingCommitService implements IRoutingCommitService {
 
     const refusal = this.refusalFor(resolved, routingInput);
     if (refusal !== null) {
-      return await this.refuse(decision, refusal, resolved.decisionId);
+      return await this.refuse(
+        decision,
+        refusal,
+        resolved.decisionId,
+        refusal === 'plan-carries-unfulfillable' ? distinctReasons(resolved.unfulfillable) : []
+      );
     }
 
     // `RoutingAssignment` names an `orderLineId` but no variant, while a work
@@ -332,7 +338,8 @@ export class RoutingCommitService implements IRoutingCommitService {
   private async refuse(
     decision: RoutingDecision,
     reason: RoutingDecisionAbandonReason,
-    routerDecisionRef: string | null
+    routerDecisionRef: string | null,
+    unfulfillableReasons: readonly string[] = []
   ): Promise<RoutingCommitOutcome> {
     // Safe to terminalise: the router DEFINITELY answered, so there is no
     // in-flight call a re-route could race. Contrast {@link leaveInDoubt}.
@@ -367,7 +374,7 @@ export class RoutingCommitService implements IRoutingCommitService {
           : '')
     );
 
-    return { status: 'refused', decisionId: decision.id, reason };
+    return { status: 'refused', decisionId: decision.id, reason, unfulfillableReasons };
   }
 
   /**
@@ -543,4 +550,15 @@ function groupAssignmentsIntoWork(
     deliveryMethod: bucket.deliveryMethod,
     lines: [...bucket.lines.values()],
   }));
+}
+
+/**
+ * The router's per-line reasons, de-duplicated and sorted (#3476).
+ *
+ * Sorted so the same plan always yields the same list: the hold outcome writes
+ * it into the order's block detail, and a value that reordered on every
+ * re-route would defeat the `IS DISTINCT FROM` guards on that column.
+ */
+function distinctReasons(lines: readonly RoutingUnfulfillableLine[]): readonly string[] {
+  return [...new Set(lines.map((line) => line.reason))].sort();
 }

@@ -305,7 +305,7 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
 });
 
 describe('SalesDocumentPanel — state 3: register-receipt blocked by an existing invoice', () => {
-  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
+  it('offers no receipt action and no separate warning box (#2561, #3766)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -314,11 +314,32 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
       ...adminSession,
     });
     expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
-    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
-    expect(screen.getByText(/already has an invoice from Subiekt GT/i)).toBeInTheDocument();
+    // #3766 — the "This order already has a document" warning is gone: the
+    // filled slot offers no receipt action, so it described a refusal of a
+    // control the operator could not reach.
+    expect(screen.queryByTestId('one-document-guard')).toBeNull();
+    expect(screen.queryByText(/This order already has a document/i)).toBeNull();
     // #2561 — the override is unreachable from a state that already carries a
     // document, so there is no disabled "Register receipt" button here at all.
     expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
+
+  it('keeps the issuing connection and the one-document rule in the bottom disclosure, with no box (#3766)', async () => {
+    const { container } = renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice()) },
+      }),
+      ...adminSession,
+    });
+    expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
+
+    expect(container.querySelector('.invoice-connection-lock')).toBeNull();
+    const disclosure = screen.getByTestId('invoice-why-this-document');
+    expect(disclosure).toHaveTextContent(/Issued by Subiekt GT\./);
+    expect(disclosure).toHaveTextContent(/One sale gets one document/);
+    const slot = disclosure.closest('.doc-slot');
+    expect(slot?.lastElementChild).toBe(disclosure);
   });
 
   it('does NOT block when the existing invoice is a retryable rejected failure', async () => {
@@ -340,7 +361,7 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
 });
 
 describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing receipt', () => {
-  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
+  it('offers no invoice action and no separate warning box (#2561, #3766)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -350,7 +371,8 @@ describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing r
       ...adminSession,
     });
     expect(await screen.findByText('1/2026/08/14')).toBeInTheDocument();
-    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
+    // #3766 — no separate warning box; the slot simply offers no invoice action.
+    expect(screen.queryByTestId('one-document-guard')).toBeNull();
     // #2561 — no disabled "Issue invoice" button when a document already exists.
     expect(screen.queryByRole('button', { name: 'Issue invoice' })).toBeNull();
   });
@@ -1121,5 +1143,34 @@ describe('SalesDocumentPanel — the gates that decide whether a write control r
     );
 
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
+  });
+});
+
+describe('SalesDocumentPanel — invoice in-doubt (#3766)', () => {
+  it('renders one notice and no connection lock box', async () => {
+    const { container } = renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: {
+          getForOrder: vi.fn().mockResolvedValue(
+            makeInvoice({
+              status: 'failed',
+              failureMode: 'in-doubt',
+              failureCode: 'transport-timeout',
+              providerInvoiceNumber: null,
+              issuedAt: null,
+            }),
+          ),
+        },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+      }),
+      ...adminSession,
+    });
+
+    const notice = await screen.findByTestId('invoice-unconfirmed');
+    expect(notice).toHaveTextContent(/Subiekt GT did not answer in time\./);
+    expect(screen.getAllByTestId('invoice-unconfirmed')).toHaveLength(1);
+    expect(container.querySelector('.invoice-connection-lock')).toBeNull();
+    expect(screen.queryByText('Still assigned to')).toBeNull();
   });
 });
