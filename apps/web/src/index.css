@@ -6323,6 +6323,150 @@ a.delivery-rider-banner__button:focus-visible {
   font-size: 0.875rem;
 }
 
+/* ── Guided setup: capability choice + lanes (#3769) ────────────────
+ * A setup wizard that lets the operator pick what a connection does, then
+ * groups the fields each choice needs. A lane opens with a rule, so the
+ * groups read as separate jobs without a card around each one.
+ */
+.capability-fieldset--invalid {
+  border-color: var(--status-error);
+}
+
+.capability-list__code {
+  margin-left: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.setup-lane {
+  display: grid;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.setup-lane__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.setup-lane__help {
+  margin: calc(var(--space-2) * -1) 0 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.setup-lane__toggle {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.setup-lane__toggle-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.setup-lane__toggle-label input {
+  margin-top: 0.2rem;
+}
+
+.next-steps {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.next-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* ── eparagony.pl seller on invoices ────────────────────────────────
+ * Lives inside an InlineDisclosure like the other eparagony.pl groups; these
+ * rules lay out its panel only. The address is two rows sized to their
+ * content: a street is long and a building number is short, a city is long
+ * and a country code is two letters. Below 640px the street takes a whole row
+ * and the country code wraps under the postal code.
+ */
+.eparagony-seller__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.eparagony-seller__address {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.eparagony-seller__address > legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+
+.eparagony-seller__address-row {
+  display: grid;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+/* The parts are subordinate to the "Seller address" legend, so they step down
+   a tone rather than repeating its weight and colour. */
+.eparagony-seller__address-row .form-field__label {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.eparagony-seller__address-row--street {
+  grid-template-columns: minmax(0, 4fr) minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+.eparagony-seller__address-row--city {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 3fr) minmax(0, 1fr);
+}
+
+.eparagony-seller__readiness {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.eparagony-seller__readiness--complete {
+  color: var(--status-success-fg);
+}
+
+@media (max-width: 640px) {
+  .eparagony-seller__address-row--street {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .eparagony-seller__address-row--street > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  /* Postal code and city stay side by side, as they are written on an
+     envelope; the country code drops to its own row at half width. */
+  .eparagony-seller__address-row--city {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  }
+}
+
 .capability-list__name {
   font-weight: 500;
   color: var(--text-primary);

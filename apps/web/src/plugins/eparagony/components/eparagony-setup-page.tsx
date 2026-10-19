@@ -1,26 +1,40 @@
 /**
- * eparagony.pl Setup Page (#1911)
+ * eparagony.pl Setup Page (#1911, document choice #3769)
  *
- * Page wrapper for the guided eparagony.pl (Fiscalization) connection wizard.
+ * Page wrapper for the guided eparagony.pl connection wizard. The header chips
+ * follow the operator's document choice in the form below, so the page never
+ * labels itself "Fiscalization" while the operator is setting up invoices.
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { EparagonySetupForm } from './eparagony-setup-form';
+import {
+  EPARAGONY_SETUP_DEFAULT_VALUES,
+  type EparagonyDocumentCapability,
+} from './eparagony-setup.schema';
 import { PageLayout } from '../../../shared/ui/page-layout';
 
 export function EparagonySetupPage(): ReactElement {
+  const [capabilities, setCapabilities] = useState<EparagonyDocumentCapability[]>(
+    () => EPARAGONY_SETUP_DEFAULT_VALUES.enabledCapabilities ?? []
+  );
+
   return (
     <PageLayout
       eyebrow="Integrations"
       title="Connect eparagony.pl"
-      description="OpenLinker hands a sale to eparagony.pl, which registers a fiscal e-receipt with your own printer. It does not issue receipts itself, and connecting does not obligate you to issue one for every sale."
+      description="OpenLinker hands a sale to eparagony.pl, which issues a fiscal e-receipt on your own printer, an invoice, or both. Connecting does not issue anything by itself."
       summary={
         <div className="toolbar__group">
-          <span className="toolbar-chip">Fiscalization</span>
+          {capabilities.map((capability) => (
+            <span key={capability} className="toolbar-chip">
+              {capability}
+            </span>
+          ))}
           <span className="toolbar-chip">Guided setup</span>
         </div>
       }
     >
-      <EparagonySetupForm />
+      <EparagonySetupForm onDocumentCapabilitiesChange={setCapabilities} />
     </PageLayout>
   );
 }

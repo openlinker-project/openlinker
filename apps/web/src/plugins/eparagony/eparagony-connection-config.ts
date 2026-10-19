@@ -44,7 +44,7 @@
  *
  * @module plugins/eparagony
  */
-import { z } from 'zod';
+import { z, type RefinementCtx } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readConfigString, readOptionalConfigString } from '../../shared/plugins';
 import {
@@ -52,6 +52,20 @@ import {
   EPARAGONY_PRINT_STATES,
   EPARAGONY_TAX_RATE_CODE_VALUES,
 } from './eparagony-config.types';
+import {
+  SELLER_ADDRESS_FORM_FIELDS,
+  SELLER_ADDRESS_REQUIRED_PARTS,
+  hasAnySellerAddressPart,
+  readSellerAddressParts,
+  type SellerAddressPart,
+} from './eparagony-seller';
+
+/**
+ * One word, on purpose: it renders under a field four characters wide, and the
+ * section's own description already says which parts an address needs. The
+ * red outline plus "Required." is the whole message there.
+ */
+const SELLER_ADDRESS_MISSING_MESSAGE = 'Required.';
 
 declare module '../../shared/plugins/plugin.types' {
   interface PluginEditConnectionFields {
@@ -76,6 +90,22 @@ declare module '../../shared/plugins/plugin.types' {
     eparagonyApiBaseUrl?: string;
     /** `config.authBaseUrl` - testing override. */
     eparagonyAuthBaseUrl?: string;
+    /** `config.merchantTIN` - the seller's tax number (NIP), required on every invoice. */
+    eparagonyMerchantTIN?: string;
+    /** `config.merchantName` - the issuing seller's name. */
+    eparagonyMerchantName?: string;
+    /** `config.merchantAddress.street`. */
+    eparagonyMerchantStreet?: string;
+    /** `config.merchantAddress.number` - the building number. */
+    eparagonyMerchantNumber?: string;
+    /** `config.merchantAddress.apartment` - the only optional address part. */
+    eparagonyMerchantApartment?: string;
+    /** `config.merchantAddress.postalCode`. */
+    eparagonyMerchantPostalCode?: string;
+    /** `config.merchantAddress.city`. */
+    eparagonyMerchantCity?: string;
+    /** `config.merchantAddress.country` - ISO 3166-1 alpha-2. */
+    eparagonyMerchantCountry?: string;
   }
 }
 
@@ -140,7 +170,52 @@ const eparagonySchemaShape: ConnectionConfigContribution['schemaShape'] = {
   eparagonyFiscalDeviceUniqueNumber: unboundedText,
   eparagonyApiBaseUrl: httpsUrlField(),
   eparagonyAuthBaseUrl: httpsUrlField(),
+  // No NIP format check, and that is the backend's own position: the vendor
+  // validates `merchantTIN` against the account's registration rather than a
+  // checksum, so a format rule here could only ever be stricter than the gate
+  // (#2240).
+  eparagonyMerchantTIN: unboundedText,
+  eparagonyMerchantName: unboundedText,
+  eparagonyMerchantStreet: unboundedText,
+  eparagonyMerchantNumber: unboundedText,
+  eparagonyMerchantApartment: unboundedText,
+  eparagonyMerchantPostalCode: unboundedText,
+  eparagonyMerchantCity: unboundedText,
+  // Mirrors the validator's `ISO_ALPHA2_PATTERN` (`/^[A-Za-z]{2}$/`), which is
+  // a shape check only. The value is upper-cased on assembly, so `pl` is
+  // accepted here exactly as the backend accepts it.
+  eparagonyMerchantCountry: z
+    .string()
+    .trim()
+    .refine((value) => value === '' || /^[A-Za-z]{2}$/.test(value), {
+      message: 'Use the two-letter country code, for example PL.',
+    })
+    .optional(),
 };
+
+/**
+ * The address is one config object, so it is valid only as a whole.
+ *
+ * The backend validator refuses a `merchantAddress` with any required part
+ * missing, and the adapter reads a partial address as absent. So the rule is the
+ * validator's own, applied where the operator can see it: an address that is
+ * started must be finished, and an address left entirely empty is fine (it is
+ * optional on a plain invoice). Reported per missing part, so the inline error
+ * sits on the field that needs filling rather than on the section.
+ */
+function refineSellerAddress(values: Record<string, unknown>, ctx: RefinementCtx): void {
+  const parts = readSellerAddressParts(values);
+  if (!hasAnySellerAddressPart(parts)) return;
+  for (const part of SELLER_ADDRESS_REQUIRED_PARTS) {
+    if (parts[part] === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [SELLER_ADDRESS_FORM_FIELDS[part]],
+        message: SELLER_ADDRESS_MISSING_MESSAGE,
+      });
+    }
+  }
+}
 
 /**
  * An https-only URL, or empty.
@@ -335,8 +410,53 @@ function applyEparagonyConfig(
   applyTextLeaf(next, patch, 'eparagonyFiscalDeviceUniqueNumber', 'fiscalDeviceUniqueNumber');
   applyTextLeaf(next, patch, 'eparagonyApiBaseUrl', 'apiBaseUrl');
   applyTextLeaf(next, patch, 'eparagonyAuthBaseUrl', 'authBaseUrl');
+  applyTextLeaf(next, patch, 'eparagonyMerchantTIN', 'merchantTIN');
+  applyTextLeaf(next, patch, 'eparagonyMerchantName', 'merchantName');
+  applySellerAddress(next, patch);
 
   return next;
+}
+
+/**
+ * Overlay the address parts present on the patch onto the stored address.
+ *
+ * A patch carries ONE field per keystroke, so the other parts can only come
+ * from the config being patched. Empty parts are left out rather than written
+ * as `''`, which the validator would refuse as "must be a non-empty string" -
+ * a half-typed address is reported inline by `refineSellerAddress` instead, on
+ * the part that is missing. Every part cleared writes an explicit `null`, for
+ * the same pre-submit-merge reason as every other cleared field in this file.
+ */
+function applySellerAddress(
+  target: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): void {
+  const changed = (Object.keys(SELLER_ADDRESS_FORM_FIELDS) as SellerAddressPart[]).filter(
+    (part) => readOptionalConfigString(patch, SELLER_ADDRESS_FORM_FIELDS[part]) !== undefined,
+  );
+  if (changed.length === 0) return;
+
+  const stored = target.merchantAddress;
+  const address: Record<string, unknown> =
+    typeof stored === 'object' && stored !== null && !Array.isArray(stored)
+      ? { ...(stored as Record<string, unknown>) }
+      : {};
+
+  for (const part of changed) {
+    const raw = (readOptionalConfigString(patch, SELLER_ADDRESS_FORM_FIELDS[part]) ?? '').trim();
+    const value = part === 'country' ? raw.toUpperCase() : raw;
+    if (value === '') delete address[part];
+    else address[part] = value;
+  }
+
+  target.merchantAddress = Object.keys(address).length === 0 ? null : address;
+}
+
+function readStoredSellerAddress(config: Record<string, unknown>): Record<string, unknown> {
+  const stored = config.merchantAddress;
+  return typeof stored === 'object' && stored !== null && !Array.isArray(stored)
+    ? (stored as Record<string, unknown>)
+    : {};
 }
 
 export const eparagonyConnectionConfig: ConnectionConfigContribution = {
@@ -354,6 +474,15 @@ export const eparagonyConnectionConfig: ConnectionConfigContribution = {
     eparagonyFiscalDeviceUniqueNumber: readConfigString(config, 'fiscalDeviceUniqueNumber'),
     eparagonyApiBaseUrl: readConfigString(config, 'apiBaseUrl'),
     eparagonyAuthBaseUrl: readConfigString(config, 'authBaseUrl'),
+    eparagonyMerchantTIN: readConfigString(config, 'merchantTIN'),
+    eparagonyMerchantName: readConfigString(config, 'merchantName'),
+    eparagonyMerchantStreet: readConfigString(readStoredSellerAddress(config), 'street'),
+    eparagonyMerchantNumber: readConfigString(readStoredSellerAddress(config), 'number'),
+    eparagonyMerchantApartment: readConfigString(readStoredSellerAddress(config), 'apartment'),
+    eparagonyMerchantPostalCode: readConfigString(readStoredSellerAddress(config), 'postalCode'),
+    eparagonyMerchantCity: readConfigString(readStoredSellerAddress(config), 'city'),
+    eparagonyMerchantCountry: readConfigString(readStoredSellerAddress(config), 'country'),
   }),
+  superRefine: refineSellerAddress,
   applyToConfig: applyEparagonyConfig,
 };

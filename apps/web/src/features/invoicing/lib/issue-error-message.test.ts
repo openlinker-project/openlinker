@@ -8,7 +8,11 @@
  * surface the server message verbatim.
  */
 import { describe, it, expect } from 'vitest';
-import { resolveIssueErrorMessage, isCapabilityDisabledError } from './issue-error-message';
+import {
+  resolveIssueErrorMessage,
+  isCapabilityDisabledError,
+  isConnectionSetupIncompleteError,
+} from './issue-error-message';
 import { ApiError } from '../../../shared/api/api-error';
 
 /** Identity `t` — returns the EN fallback so assertions read against real copy. */
@@ -88,3 +92,31 @@ describe('isCapabilityDisabledError', () => {
     expect(isCapabilityDisabledError(new Error('x'))).toBe(false);
   });
 });
+
+describe('isConnectionSetupIncompleteError (#3772)', () => {
+  it('should recognise the 422 that names connection-setup-incomplete', () => {
+    expect(
+      isConnectionSetupIncompleteError(
+        new ApiError('No seller tax number', 422, {
+          error: 'InvoiceIssueRejected',
+          failureCode: 'connection-setup-incomplete',
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('should not match another rejection code, another status, or a non-API error', () => {
+    expect(
+      isConnectionSetupIncompleteError(
+        new ApiError('x', 422, { error: 'InvoiceIssueRejected', failureCode: 'provider-rejected' }),
+      ),
+    ).toBe(false);
+    expect(
+      isConnectionSetupIncompleteError(
+        new ApiError('x', 400, { error: 'InvoiceIssueRejected', failureCode: 'connection-setup-incomplete' }),
+      ),
+    ).toBe(false);
+    expect(isConnectionSetupIncompleteError(new Error('x'))).toBe(false);
+  });
+});
+
