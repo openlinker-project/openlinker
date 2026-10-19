@@ -376,13 +376,17 @@
   --radius-xl: 14px;
   --radius-pill: 9999px;
 
-  /* ── Motion ───────────────────────────────────────────────────────── */
-  --duration-fast: 120ms;
-  --duration-normal: 180ms;
-  --duration-slow: 280ms;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* ── Motion ─────────────────────────────────────────────────────────
+     Public tokens (they are in the catalog). They fit none of the kinds the
+     design-system exporter partitions custom properties by (colour, space,
+     radius, type, …), so each declares `@kind other` rather than leaving the
+     classification to be guessed (#2436). */
+  --duration-fast: 120ms; /* @kind other */
+  --duration-normal: 180ms; /* @kind other */
+  --duration-slow: 280ms; /* @kind other */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
 
   /* ── Tracking (letter-spacing) ────────────────────────────────────── */
   --tracking-tight: -0.012em;
@@ -1018,6 +1022,11 @@ select {
   background-repeat: no-repeat;
 }
 
+/* `input.control--invalid` (0,1,1) matches the specificity of the base
+   `input[type='text']` group above; a bare `.control--invalid` (0,1,0) lost to
+   it, so a standalone `<Input invalid />` never painted its error border (#2415).
+   The bare arm still covers textarea/select/other `.control` elements. */
+input.control--invalid,
 .control--invalid,
 input[aria-invalid='true'],
 textarea[aria-invalid='true'],
@@ -1025,6 +1034,7 @@ select[aria-invalid='true'] {
   border-color: var(--status-error);
 }
 
+input.control--invalid:focus-visible,
 .control--invalid:focus-visible,
 input[aria-invalid='true']:focus-visible,
 textarea[aria-invalid='true']:focus-visible,
@@ -3531,7 +3541,7 @@ textarea,
  * Mobile-first: a single-column stack by default (three side-by-side
  * inputs are unreadable < 768px); the shared-subgrid multi-column
  * layout layers in at the tablet breakpoint. Column count comes from
- * `--cols` (default 2) or the `--cols-3` modifier. The row-gap MUST
+ * `--form-field-row-cols` (default 2), set to 3 by the `--cols-3` modifier. The row-gap MUST
  * stay var(--space-2): subgrid children inherit the parent's row-gap,
  * and that value reproduces FormField's own internal 8px stack.
  *
@@ -3548,13 +3558,16 @@ textarea,
   gap: var(--space-3);
 }
 
+/* #2436 — a component-private parameter, not a design token: it is read only by
+   `.form-field-row` below, so its name says so. It was `--cols`, which reads as
+   a global token while only resolving inside this subtree. */
 .form-field-row--cols-3 {
-  --cols: 3;
+  --form-field-row-cols: 3;
 }
 
 @media (min-width: 768px) {
   .form-field-row {
-    grid-template-columns: repeat(var(--cols, 2), 1fr);
+    grid-template-columns: repeat(var(--form-field-row-cols, 2), 1fr);
     grid-template-rows: auto auto auto auto; /* label · input · description · error */
     gap: var(--space-2) var(--space-3);
   }
@@ -16003,7 +16016,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 /* ── COD payment panel (#1435) ──────────────────────────────────────────────
  * Payment-status-driven COD surface. Neutral recap container shared by the
- * read-only "from Allegro" amount and the fallback manual input, so both read
+ * read-only "from the order" amount and the fallback manual input, so both read
  * as siblings; the status is carried by a StatusBadge pill (reused, not a new
  * hue). No heavy tone-filled panel. */
 .generate-label-form__cod-panel {
@@ -17640,26 +17653,150 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding: 1px 7px;
 }
 .invoice-connection-lock__hint {
-  /* #3484 — restores the placement #2047 shipped and #2809 dropped. A bare hint
-     (every non-settled status) has no `__why` wrapper to carry it. */
+  /* #3484 — restores the placement #2047 shipped and #2809 dropped. Since #3766
+     the hint is always a bare grid item: a settled document renders no box at
+     all, only the "Why this document?" disclosure. */
   grid-column: 2;
   overflow-wrap: break-word;
   font-size: 0.75rem;
   color: var(--text-muted);
 }
-/* #2807 review — a settled document's hint is wrapped in a "Why this
-   document?" disclosure instead of rendered as a bare grid item (the mockup
-   keeps routing rationale secondary/collapsed); the wrapper needs the grid
-   placement its bare `__hint` sibling used to carry. */
-.invoice-connection-lock__why {
-  grid-column: 2;
-}
-.invoice-connection-lock__why > summary {
-  font-size: 0.75rem;
-}
-.invoice-connection-lock__why .invoice-connection-lock__hint {
+
+/* ── Invoice unconfirmed notice (#3766) ── */
+/* Quiet surface: the warning lives in the stripe, glyph and numbers only. */
+.alert.invoice-unconfirmed {
   display: block;
-  margin-top: var(--space-1);
+  padding: var(--space-4) var(--space-4) var(--space-3) calc(var(--space-4) + 3px);
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+}
+.invoice-unconfirmed__body {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.invoice-unconfirmed__head {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__head {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__time {
+    grid-column: 2;
+  }
+}
+.invoice-unconfirmed__glyph {
+  margin-top: 0.1875rem;
+  color: var(--status-warning-fg);
+}
+.invoice-unconfirmed__title {
+  min-width: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__time {
+  padding-top: 0.1875rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__cause {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.invoice-unconfirmed__step {
+  display: grid;
+  grid-template-columns: 1.375rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.invoice-unconfirmed__step + .invoice-unconfirmed__step {
+  border-top: 1px solid var(--border-subtle);
+}
+.invoice-unconfirmed__n {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-pill);
+  color: var(--status-warning-fg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.invoice-unconfirmed__text {
+  min-width: 0;
+}
+.invoice-unconfirmed__action {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .invoice-unconfirmed__step {
+    grid-template-columns: 1.375rem minmax(0, 1fr);
+  }
+  .invoice-unconfirmed__action {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+.invoice-unconfirmed__foot {
+  display: grid;
+  gap: var(--space-1);
+}
+.invoice-unconfirmed__paused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__lock {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+.invoice-unconfirmed__details > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.invoice-unconfirmed__details > summary:hover {
+  color: var(--text-secondary);
+}
+.invoice-unconfirmed__response {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 /* ── Regulatory section card (#1282) ──────────────────────────────────
@@ -25619,7 +25756,8 @@ legend.analytics-settings-dialog__label {
   min-width: 0;
 }
 
-.fulfilment-task[data-held='true'] {
+.fulfilment-task[data-held='true'],
+.fulfilment-task[data-attention='true'] {
   border-color: var(--status-warning-border);
 }
 
@@ -25661,6 +25799,11 @@ legend.analytics-settings-dialog__label {
 .fulfilment-task__holds > li,
 .fulfilment-task__lines > li {
   overflow-wrap: anywhere;
+}
+
+/* #3763 - the explanation under the status badge reads as secondary. */
+.fulfilment-task__notes {
+  color: var(--text-muted);
 }
 
 .fulfilment-task__lines > li {
@@ -26632,6 +26775,13 @@ legend.analytics-settings-dialog__label {
 }
 
 /* ── #3096 Payment card + rail states ── */
+.fulfilment-work-detail__payment-method {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  font-size: 0.8125rem;
+}
 .fulfilment-work-detail__payment-source {
   display: flex;
   flex-wrap: wrap;

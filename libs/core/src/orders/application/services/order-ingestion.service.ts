@@ -102,6 +102,7 @@ import { withheldOnHoldError } from '../../domain/types/order-hold.types';
 import {
   isOrderFromOwnProductMaster,
   isOrderMirroredBeforeRouting,
+  isOrderFulfilledBySource,
   isOrderShippedElsewhere,
   type FulfillmentRoutingSkipReason,
 } from '../../domain/types/fulfillment-routing-eligibility.types';
@@ -640,7 +641,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       fulfillmentRouting,
       // #3455 — read from the PRE-persist `existing`: `persistOrder` never
       // writes `syncStatus` (#2140), so it is current, and no extra read is spent.
-      isOrderMirroredBeforeRouting(existing?.syncStatus)
+      isOrderMirroredBeforeRouting(existing?.syncStatus),
+      // #3636 - the source's own statement that it ships the order.
+      isOrderFulfilledBySource(order)
     );
     await this.reserveOrderInventory(
       order,
@@ -649,7 +652,8 @@ export class OrderIngestionService implements IOrderIngestionService {
       cancelledFromEarlySignal,
       // #3485: every OMS-routed order now stays in OpenLinker — including one
       // still waiting for an address — so its units are OpenLinker's to promise.
-      routingTarget.kind === 'route'
+      routingTarget.kind === 'route',
+      routingTarget.kind === 'skip' && routingTarget.reason === 'source-fulfilled'
     );
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
@@ -948,7 +952,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     orderId: string,
     orderSourceConnectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
-    alreadyMirrored: boolean
+    alreadyMirrored: boolean,
+    fulfilledBySource: boolean
   ): Promise<RoutingTarget> {
     try {
       const connections = await this.connections.list();
@@ -963,6 +968,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         orderSourceConnectionId,
         connections,
         alreadyMirrored,
+        fulfilledBySource,
         fulfillmentRouting
       );
       if (skipReason === 'routing-unknown') {
@@ -1173,12 +1179,18 @@ export class OrderIngestionService implements IOrderIngestionService {
   /**
    * Why this order should deliberately NOT be routed, or `null` (#3455).
    *
+   * Level-triggered per ingestion: an order that was already routed before its
+   * source started asserting `fulfilledBySource` stays routed - nothing here
+   * un-routes existing work.
+   *
    * First match wins, cheapest first:
    *  1. `own-shop-order` (#3487) — the source connection is a product master;
    *     reads the connections already loaded.
    *  2. `mirrored-before-routing` (#3455) — the product master already has the
    *     order; a pre-read boolean.
-   *  3. `shipped-by-other-system` (#3488) — an ADR-012 rule routes the delivery
+   *  3. `source-fulfilled` (#3636) — the source asserts it ships the order
+   *     itself; a fact on the order, so it needs no read and outranks a rule.
+   *  4. `shipped-by-other-system` (#3488) — an ADR-012 rule routes the delivery
    *     method to `omp_fulfilled`; the one arm needing the (memoized, shared)
    *     routing resolve, so it runs last.
    *
@@ -1192,10 +1204,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     connections: readonly Connection[],
     alreadyMirrored: boolean,
+    fulfilledBySource: boolean,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>
   ): Promise<FulfillmentRoutingSkipReason | 'routing-unknown' | null> {
     if (isOrderFromOwnProductMaster(connections, connectionId)) return 'own-shop-order';
     if (alreadyMirrored) return 'mirrored-before-routing';
+    if (fulfilledBySource) return 'source-fulfilled';
     const routing = await fulfillmentRouting();
     // A failed read is not an answer; the caller must not route on it.
     if (routing === null) return 'routing-unknown';
@@ -1936,7 +1950,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     connectionId: string,
     fulfillmentRouting: () => Promise<FulfillmentRoutingResolution | null>,
     alreadyCancelled = false,
-    routedByOms = false
+    routedByOms = false,
+    sourceFulfilled = false
   ): Promise<void> {
     try {
       // A kill switch, default ON (#2344 review). The ledger is additive and
@@ -1968,9 +1983,17 @@ export class OrderIngestionService implements IOrderIngestionService {
       // (its default `omp_fulfilled` would stamp `diagnostic` and open an
       // oversell window until the sale decrement lands). The decrement then
       // consumes the hold, so the units are counted once.
-      const atpEffect: ReservationAtpEffect = routedByOms
-        ? 'published'
-        : this.toReservationAtpEffect(order, await fulfillmentRouting());
+      //
+      // #3636: an order the SOURCE ships itself is never executed by OpenLinker,
+      // whatever an ADR-012 rule says (a rule is only configuration, the source's
+      // statement is a fact), so its hold is always `diagnostic` - subtracting
+      // stock for a parcel OpenLinker will not pick is the over-subtraction
+      // ADR-061 calls worse than shipping nothing.
+      const atpEffect: ReservationAtpEffect = sourceFulfilled
+        ? 'diagnostic'
+        : routedByOms
+          ? 'published'
+          : this.toReservationAtpEffect(order, await fulfillmentRouting());
 
       let result;
       try {
@@ -2103,7 +2126,10 @@ export class OrderIngestionService implements IOrderIngestionService {
       shipping: incoming.shipping,
       pickupPoint: incoming.pickupPoint,
       deliverySmart: incoming.deliverySmart,
+      fulfilledBySource: incoming.fulfilledBySource,
       paymentStatus: incoming.paymentStatus,
+      paymentMethod: incoming.paymentMethod,
+      sourcePaymentMethod: incoming.sourcePaymentMethod,
       codToCollect: incoming.codToCollect,
       dispatchTime: incoming.dispatchTime,
       placedAt: incoming.placedAt ? new Date(incoming.placedAt) : undefined,

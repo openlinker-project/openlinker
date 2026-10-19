@@ -7,6 +7,7 @@ import {
   createMockApiClient,
   renderWithProviders,
   sampleConnection,
+  findToastTitle,
 } from '../../../test/test-utils';
 
 const captureDemoEvent = vi.fn();
@@ -98,7 +99,7 @@ describe('PrestashopSetupForm', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
-    expect(await screen.findByText('Connection created')).toBeInTheDocument();
+    expect(await findToastTitle('Connection created')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
     });
@@ -136,7 +137,7 @@ describe('PrestashopSetupForm', () => {
     await advanceOneStep(view.container);
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
-    await screen.findByText('Connection created');
+    await findToastTitle('Connection created');
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderProcessorManager'],
@@ -160,7 +161,7 @@ describe('PrestashopSetupForm', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
-    await screen.findByText('Connection created');
+    await findToastTitle('Connection created');
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         config: { baseUrl: 'https://shop.example.com', shopId: '2' },
@@ -186,7 +187,7 @@ describe('PrestashopSetupForm', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
-    await screen.findByText('Connection created');
+    await findToastTitle('Connection created');
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         config: {
@@ -212,7 +213,7 @@ describe('PrestashopSetupForm', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
-    await screen.findByText('Connection created');
+    await findToastTitle('Connection created');
     // Blank input must not persist `""` — backend falls back to baseUrl when the key is absent.
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -284,7 +285,7 @@ describe('PrestashopSetupForm', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
-    await screen.findByText('Connection created');
+    await findToastTitle('Connection created');
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         config: { baseUrl: 'https://shop.example.com', currency: 'PLN' },
@@ -307,7 +308,7 @@ describe('PrestashopSetupForm', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
-    await screen.findByText('Connection created');
+    await findToastTitle('Connection created');
     const payload = create.mock.calls[0]?.[0] as { config: Record<string, unknown> };
     expect('currency' in payload.config).toBe(false);
   });

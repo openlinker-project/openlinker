@@ -20,6 +20,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { OrderRecord } from '../api/orders.types';
+import { paymentMethodChipLabel } from '../lib/payment-method-copy';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
 import { deriveHealthLevel, healthLabel, rollupSyncStatus, totalUnits, type OrderHealthLevel } from '../lib/order-health';
 import { ORDER_LIFECYCLE_PHASE_WAITING_ON, isOrderLifecyclePhase } from '../lib/order-lifecycle-phase';
@@ -61,6 +62,7 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderProps): ReactElement {
   const rollup = rollupSyncStatus(order.syncStatus);
   const healthLevel = deriveHealthLevel(rollup);
+  const methodLabel = paymentMethodChipLabel(snapshot.paymentMethod, snapshot.paymentStatus);
 
   const title = snapshot.orderNumber ? `Order ${snapshot.orderNumber}` : `Order ${order.internalOrderId}`;
 
@@ -89,6 +91,7 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
             {PAYMENT_LABEL[snapshot.paymentStatus]}
           </StatusBadge>
         ) : null}
+        {methodLabel ? <StatusBadge tone="neutral">{methodLabel}</StatusBadge> : null}
       </div>
 
       {/* One line answering the operator's actual question — what is this order

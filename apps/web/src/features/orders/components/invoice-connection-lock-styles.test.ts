@@ -38,7 +38,7 @@ function declaredValues(css: string, selector: string, property: string): string
 describe('invoice connection lock stylesheet contract (#3484)', () => {
   const css = readFileSync(CSS_PATH, 'utf8');
 
-  it('should place a bare hint in the text column when no __why wrapper carries it', () => {
+  it('should place the hint in the text column', () => {
     expect(declaredValues(css, '.invoice-connection-lock__hint', 'grid-column')).toContain('2');
   });
 });

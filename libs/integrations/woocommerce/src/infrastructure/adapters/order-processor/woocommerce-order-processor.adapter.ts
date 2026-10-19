@@ -143,6 +143,16 @@ export function isValidEmail(value: unknown): value is string {
  */
 const DEFAULT_SHIPPING_METHOD_ID = 'flat_rate';
 
+/**
+ * The core WooCommerce gateways the neutral payment methods name (#3294). Only
+ * a positively identified method has one; `online` and `unknown` stay on
+ * `other`, since no core gateway stands for "paid somewhere else".
+ */
+const NEUTRAL_GATEWAYS: Readonly<Record<string, { id: string; title: string }>> = {
+  cash_on_delivery: { id: 'cod', title: 'Cash on delivery' },
+  bank_transfer: { id: 'bacs', title: 'Direct bank transfer' },
+};
+
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class WooCommerceOrderProcessorAdapter
@@ -262,6 +272,7 @@ export class WooCommerceOrderProcessorAdapter
     const markPaid = order.paymentStatus === PAYMENT_STATUS.Paid;
 
     const metaData = this.buildOrderMetaData(order, internalOrderId);
+    const gateway = await this.resolvePaymentGateway(order);
 
     const payload: WooCommerceOrderCreateRequest = {
       status: WC_ORDER_STATUS_MAP[order.status],
@@ -274,8 +285,8 @@ export class WooCommerceOrderProcessorAdapter
       line_items: lineItems,
       ...(shippingLines.length > 0 ? { shipping_lines: shippingLines } : {}),
       ...(feeLines.length > 0 ? { fee_lines: feeLines } : {}),
-      payment_method: 'other',
-      payment_method_title: 'External',
+      payment_method: gateway.id,
+      payment_method_title: gateway.title,
       currency: currencyCode,
       ...(markPaid ? { set_paid: true } : {}),
       ...(metaData.length > 0 ? { meta_data: metaData } : {}),
@@ -591,6 +602,48 @@ export class WooCommerceOrderProcessorAdapter
       value: String(row.id),
       label: row.title ?? String(row.id),
     }));
+  }
+
+  /**
+   * The WooCommerce gateway to record on the order (#3294).
+   *
+   * Chain: the operator's payment mapping (its value is a gateway id, as
+   * `listPaymentMethods` offers them) -> the core gateway of the neutral
+   * `order.paymentMethod` (`cod`, `bacs`) -> `other` / `External`, exactly what
+   * was always sent. Never throws: a payment label is not worth an order.
+   * `set_paid` is untouched - it still follows the source's own payment status.
+   */
+  private async resolvePaymentGateway(
+    order: OrderCreate,
+  ): Promise<{ id: string; title: string }> {
+    const neutral = order.paymentMethod ? NEUTRAL_GATEWAYS[order.paymentMethod] : undefined;
+    const fallback = neutral ?? { id: 'other', title: 'External' };
+
+    const sourceConnectionId = order.source?.connectionId;
+    const sourcePaymentMethod = order.sourcePaymentMethod;
+    if (!this.mappingConfigService || !sourceConnectionId || !sourcePaymentMethod) {
+      return fallback;
+    }
+    try {
+      const mapped = (
+        await this.mappingConfigService.resolvePaymentMapping(
+          sourceConnectionId,
+          sourcePaymentMethod,
+        )
+      )?.trim();
+      if (!mapped) {
+        return fallback;
+      }
+      const known = Object.values(NEUTRAL_GATEWAYS).find((g) => g.id === mapped);
+      return known ?? { id: mapped, title: mapped };
+    } catch (err) {
+      this.logger.warn(
+        `Payment mapping lookup failed for sourcePaymentMethod=${sourcePaymentMethod} ` +
+          `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id}); ` +
+          `using "${fallback.id}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return fallback;
+    }
   }
 
   // ─── FulfillmentStatusReader ──────────────────────────────────────────────

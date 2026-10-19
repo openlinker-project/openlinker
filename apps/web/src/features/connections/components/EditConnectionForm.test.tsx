@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
+  findToastTitle,
+  getToastDescription,
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
@@ -11,6 +13,13 @@ import type * as SystemModule from '../../system';
 import { EditConnectionForm } from './EditConnectionForm';
 import { ApiError } from '../../../shared/api/api-error';
 import type { PaginatedInventoryLocations } from '../../inventory';
+import type * as ReactRouterDom from 'react-router-dom';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
+  return { ...actual, useNavigate: (): typeof mockNavigate => mockNavigate };
+});
 
 // Drive demo mode directly rather than through the async system-config query.
 // The query->demoMode plumbing is covered by use-demo-mode's own tests; these
@@ -78,6 +87,7 @@ describe('EditConnectionForm', () => {
   afterEach(() => {
     cleanup();
     mockDemoMode = false;
+    mockNavigate.mockReset();
     vi.unstubAllEnvs();
   });
 
@@ -139,7 +149,74 @@ describe('EditConnectionForm', () => {
     renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(await screen.findByText('Server error')).toBeInTheDocument();
+    expect(await screen.findByText('Unable to update connection')).toBeInTheDocument();
+    expect(screen.getByText('Server error', { selector: '.alert__description' })).toBeInTheDocument();
+    // #3765 - the Alert sits at the top of a long form, so the failure is
+    // also reported where the operator is looking.
+    expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
+    expect(getToastDescription('Server error')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows an error toast and stays on the page when the pre-submit refetch fails (#3765)', async () => {
+    const updateFn = vi.fn();
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        getById: vi.fn().mockRejectedValue(new Error('Network unreachable')),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
+    expect(
+      getToastDescription('Network unreachable'),
+    ).toBeInTheDocument();
+    expect(updateFn).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows an error toast and lists a nested field error in the summary when validation fails (#3765)', async () => {
+    const updateFn = vi.fn();
+    const connectionWithRateLimit: Connection = {
+      ...sampleConnection,
+      config: { ...sampleConnection.config, rateLimit: { requestsPerMinute: 10, maxConcurrent: 11 } },
+    };
+    const apiClient = createMockApiClient({
+      connections: { update: updateFn, getById: vi.fn().mockResolvedValue(connectionWithRateLimit) },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithRateLimit} />, { apiClient });
+    fireEvent.change(screen.getByLabelText('Max concurrent requests'), { target: { value: '65' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
+    expect(
+      getToastDescription('1 field needs attention. See the list at the top of the form.'),
+    ).toBeInTheDocument();
+    // Before #3765 the summary read only top-level messages, so a nested
+    // `rateLimit.maxConcurrent` error never reached it.
+    expect(
+      screen.getByText('Must be at most 64', { selector: '.form-error-summary__list li' }),
+    ).toBeInTheDocument();
+    expect(updateFn).not.toHaveBeenCalled();
+  });
+
+  it('shows a success toast and navigates back when the save succeeds', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        update: vi.fn().mockResolvedValue(sampleConnection),
+        getById: vi.fn().mockResolvedValue(sampleConnection),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await findToastTitle('Connection updated')).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(`/connections/${sampleConnection.id}`);
   });
 
   it('shows the stockLocationOverride API error only as a field-level error, not also as the generic banner (#3207 review)', async () => {
