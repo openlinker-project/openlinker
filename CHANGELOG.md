@@ -12,6 +12,33 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.16.0](https://github.com/openlinker-project/openlinker/compare/v0.15.0...v0.16.0) (2026-10-19)
+
+
+### Features
+
+* **fulfillment:** replace the "Handshake" field with a pack-bench warning ([#3768](https://github.com/openlinker-project/openlinker/issues/3768)) ([9d05663](https://github.com/openlinker-project/openlinker/commit/9d05663e81cda5acf730431c665a32c1930bd607))
+* **lint:** check parenthesis balance in the stylesheet structure guard ([#2677](https://github.com/openlinker-project/openlinker/issues/2677)) ([#3745](https://github.com/openlinker-project/openlinker/issues/3745)) ([6999154](https://github.com/openlinker-project/openlinker/commit/6999154450d7ea55f90437b7ad253050852f182b))
+* **orders:** neutral payment method on orders, and the COD amount from every source ([#3294](https://github.com/openlinker-project/openlinker/issues/3294)) ([#3756](https://github.com/openlinker-project/openlinker/issues/3756)) ([897421b](https://github.com/openlinker-project/openlinker/commit/897421b5e5815406e694d73cd6ef8826072a4196))
+* **orders:** write the payment method to destinations and invoices, and show it in the UI ([#3294](https://github.com/openlinker-project/openlinker/issues/3294)) ([#3758](https://github.com/openlinker-project/openlinker/issues/3758)) ([a96fb58](https://github.com/openlinker-project/openlinker/commit/a96fb58805aa33ecd2f227d36905ec476d47c4ee))
+* **shipping:** default parcel dimensions for auto-dispatch labels ([#3571](https://github.com/openlinker-project/openlinker/issues/3571)) ([#3742](https://github.com/openlinker-project/openlinker/issues/3742)) ([7122ed0](https://github.com/openlinker-project/openlinker/commit/7122ed0ee31c6dd4dfa7a1b11fdbe2c6f623e476))
+* **web:** calmer sales document panel - one notice for an unconfirmed invoice ([#3770](https://github.com/openlinker-project/openlinker/issues/3770)) ([ea4f75a](https://github.com/openlinker-project/openlinker/commit/ea4f75a952c007eda60ed4954f34a1f50aa18822))
+
+
+### Bug Fixes
+
+* **fulfillment:** never route to a holder that cannot execute, and re-drive stranded work ([#3476](https://github.com/openlinker-project/openlinker/issues/3476)) ([#3744](https://github.com/openlinker-project/openlinker/issues/3744)) ([a4d8434](https://github.com/openlinker-project/openlinker/commit/a4d8434f09ecf920e5995fa11bc24d98f46c6d66))
+* **invoicing:** show a refusal for a missing connection setting where it can be fixed ([#3773](https://github.com/openlinker-project/openlinker/issues/3773)) ([9790137](https://github.com/openlinker-project/openlinker/commit/979013719d3269adb0f046308e2329f8c48099bc))
+* **orders:** do not route an order the source ships itself ([#3636](https://github.com/openlinker-project/openlinker/issues/3636)) ([#3743](https://github.com/openlinker-project/openlinker/issues/3743)) ([2f83029](https://github.com/openlinker-project/openlinker/commit/2f83029c5284d27f12e3b321f15b04814d43affa))
+* **prestashop:** honour the configured payment mapping when creating an order ([#3474](https://github.com/openlinker-project/openlinker/issues/3474)) ([#3754](https://github.com/openlinker-project/openlinker/issues/3754)) ([fe48990](https://github.com/openlinker-project/openlinker/commit/fe48990d5617ca80551cd8e2e3a46a5c80d2e3eb))
+* **web:** classify the motion tokens and make the form-field-row column count private ([#2436](https://github.com/openlinker-project/openlinker/issues/2436)) ([#3753](https://github.com/openlinker-project/openlinker/issues/3753)) ([42d3b73](https://github.com/openlinker-project/openlinker/commit/42d3b73d9fe9df5c0eef6305c4d80327b70947cf))
+* **web:** drop the duplicate "both" option from the sales-documents kind filter ([#3762](https://github.com/openlinker-project/openlinker/issues/3762)) ([0151c5a](https://github.com/openlinker-project/openlinker/commit/0151c5a7d03adb9287d860b6cdcf0d3b11f0ef9d)), closes [#3761](https://github.com/openlinker-project/openlinker/issues/3761)
+* **web:** let FormField compose with fragments, arrays and multi-control rows ([#2435](https://github.com/openlinker-project/openlinker/issues/2435)) ([#3748](https://github.com/openlinker-project/openlinker/issues/3748)) ([bae2bbb](https://github.com/openlinker-project/openlinker/commit/bae2bbb7a54b2984e9117c90c544f7b6480e0ade))
+* **web:** let the eparagony.pl setup choose its documents and ask for the seller an invoice needs ([#3771](https://github.com/openlinker-project/openlinker/issues/3771)) ([d5e923a](https://github.com/openlinker-project/openlinker/commit/d5e923a2a0dbb4998ff85b8c8b19d35af4d63459))
+* **web:** paint the error border for a standalone Input invalid ([#2415](https://github.com/openlinker-project/openlinker/issues/2415)) ([#3747](https://github.com/openlinker-project/openlinker/issues/3747)) ([e6b2589](https://github.com/openlinker-project/openlinker/commit/e6b25894b6ba298c49e875750cc41a1a41481edd))
+* **web:** report every failed Edit connection save with a toast ([#3767](https://github.com/openlinker-project/openlinker/issues/3767)) ([e00b843](https://github.com/openlinker-project/openlinker/commit/e00b843ac6c55e0bb3c1f4b15153c2861a7992ee))
+* **web:** stop InvoiceConnectionLock breaking one word per line in a narrow container ([#3484](https://github.com/openlinker-project/openlinker/issues/3484)) ([#3751](https://github.com/openlinker-project/openlinker/issues/3751)) ([d6b910f](https://github.com/openlinker-project/openlinker/commit/d6b910fb23c75f195332be8c058a61d9eeb5905e))
+
 ## [0.15.0](https://github.com/openlinker-project/openlinker/compare/v0.14.0...v0.15.0) (2026-10-12)
 
 
