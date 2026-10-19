@@ -543,8 +543,8 @@ describe('GenerateLabelForm — happy path', () => {
 
     // The success toast ("Label generated") still fires - the label WAS
     // bought - and the download failure is a SECOND, separate toast.
-    expect(await screen.findByText('Label generated')).toBeInTheDocument();
-    expect(await screen.findByText("Couldn't fetch the label file")).toBeInTheDocument();
+    expect(await findToastTitle('Label generated')).toBeInTheDocument();
+    expect(await findToastTitle("Couldn't fetch the label file")).toBeInTheDocument();
     expect(screen.queryByText(/Could not download the label\. Try again\./i)).not.toBeInTheDocument();
   });
 
