@@ -44,10 +44,19 @@ import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.typ
 import { isPricingDestination } from '../lib/pricing-destination';
 import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
 import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 
 interface EditConnectionFormProps {
   connection: Connection;
+}
+
+const NEEDS_ATTENTION_ONE = '1 field needs attention. See the list at the top of the form.';
+
+function describeInvalidFields(count: number): string {
+  if (count === 1) return NEEDS_ATTENTION_ONE;
+  if (count > 1) return `${count} fields need attention. See the list at the top of the form.`;
+  return 'Some fields need attention. See the list at the top of the form.';
 }
 
 /**
@@ -499,9 +508,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     resolver: zodResolver(resolverSchema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
-  );
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   // Structured-config dispatch (#578/#579):
   //   - A platform plugin may contribute its own structured inputs (today: PS).
@@ -740,6 +747,13 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     hasStoredMaster,
   ]);
 
+  // #3765 - every click on Save must end in a visible signal. The inline
+  // `Alert` / `FormErrorSummary` sit at the top of a long form while the
+  // button is at the bottom, so a failure is also reported as a toast.
+  const showSaveFailedToast = (description: string): void => {
+    showToast({ tone: 'error', title: 'Changes not saved', description });
+  };
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const input = toUpdateConnectionInput(values);
@@ -794,10 +808,20 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       if (error instanceof ApiError && isStockLocationOverrideValidationError(error)) {
         form.setError('stockLocationOverride', { message: error.message });
         updateConnection.reset();
+        // The field and the summary already carry the message; the toast
+        // points at them rather than repeating it a third time.
+        showSaveFailedToast(NEEDS_ATTENTION_ONE);
         return;
       }
-      return;
+      // Covers the PATCH rejecting (also shown in the top-of-form `Alert`) and
+      // anything thrown before it - the pre-submit refetch or the input
+      // mapping - which `updateConnection.error` never sees.
+      showSaveFailedToast(
+        error instanceof Error && error.message ? error.message : 'An unexpected error occurred.',
+      );
     }
+  }, (errors) => {
+    showSaveFailedToast(describeInvalidFields(collectFormErrorMessages(errors).length));
   });
 
   return (
