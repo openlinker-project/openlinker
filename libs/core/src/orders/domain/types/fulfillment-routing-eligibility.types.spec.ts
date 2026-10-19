@@ -5,6 +5,7 @@ import {
   isFulfillmentRoutingSkipReason,
   isOrderFromOwnProductMaster,
   isOrderMirroredBeforeRouting,
+  isOrderFulfilledBySource,
   isOrderShippedElsewhere,
 } from './fulfillment-routing-eligibility.types';
 
@@ -48,9 +49,9 @@ describe('isOrderShippedElsewhere', () => {
   });
 
   it('should report false when a rule routes the delivery method to an OL-managed carrier', () => {
-    expect(
-      isOrderShippedElsewhere({ source: 'rule', processorKind: 'ol_managed_carrier' })
-    ).toBe(false);
+    expect(isOrderShippedElsewhere({ source: 'rule', processorKind: 'ol_managed_carrier' })).toBe(
+      false
+    );
   });
 
   it('should report false when a rule routes the delivery method to the source broker', () => {
@@ -65,19 +66,26 @@ describe('isOrderShippedElsewhere', () => {
   });
 });
 
+describe('isOrderFulfilledBySource', () => {
+  it('should be true only for a positive assertion', () => {
+    expect(isOrderFulfilledBySource({ fulfilledBySource: true })).toBe(true);
+  });
+
+  it('should be false when the source did not assert it', () => {
+    expect(isOrderFulfilledBySource({})).toBe(false);
+    expect(isOrderFulfilledBySource({ fulfilledBySource: false })).toBe(false);
+  });
+});
+
 describe('isOrderMirroredBeforeRouting', () => {
   it('should report true when any destination row is synced', () => {
-    expect(
-      isOrderMirroredBeforeRouting([{ status: 'failed' }, { status: 'synced' }])
-    ).toBe(true);
+    expect(isOrderMirroredBeforeRouting([{ status: 'failed' }, { status: 'synced' }])).toBe(true);
   });
 
   // `pending` (a hold withheld provisioning) and `failed` mean the destination
   // does NOT have the order, so it may still be routed.
   it('should report false when no destination row is synced', () => {
-    expect(isOrderMirroredBeforeRouting([{ status: 'failed' }, { status: 'pending' }])).toBe(
-      false
-    );
+    expect(isOrderMirroredBeforeRouting([{ status: 'failed' }, { status: 'pending' }])).toBe(false);
   });
 
   it('should report false for a first ingestion with no record yet', () => {
@@ -89,7 +97,12 @@ describe('isOrderMirroredBeforeRouting', () => {
 
 describe('isFulfillmentRoutingSkipReason', () => {
   it('should accept every declared reason', () => {
-    for (const reason of ['own-shop-order', 'shipped-by-other-system', 'mirrored-before-routing']) {
+    for (const reason of [
+      'own-shop-order',
+      'shipped-by-other-system',
+      'mirrored-before-routing',
+      'source-fulfilled',
+    ]) {
       expect(isFulfillmentRoutingSkipReason(reason)).toBe(true);
     }
   });

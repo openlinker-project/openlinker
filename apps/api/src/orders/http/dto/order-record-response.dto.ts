@@ -12,6 +12,7 @@ import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
   SlaStateValues,
   FulfillmentRollupStateValues,
+  PaymentMethodValues,
 } from '@openlinker/core/orders';
 import {
   OrderRecordStatus,
@@ -20,6 +21,7 @@ import {
   BuyerTaxId,
   FulfillmentRoutingSkipReasonValues,
   type FulfillmentRoutingSkipReason,
+  type PaymentMethod,
 } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
@@ -373,7 +375,8 @@ export class OrderRecordResponseDto {
       'Why OpenLinker deliberately did NOT route this order to the pack bench while the OMS is on ' +
       '(#3455): `own-shop-order` (placed in the operator\'s own shop), `shipped-by-other-system` (a ' +
       'fulfilment routing rule sends its delivery method to another system), `mirrored-before-routing` ' +
-      '(the product master already had it before routing was switched on). null when the order was ' +
+      '(the product master already had it before routing was switched on), `source-fulfilled` (the ' +
+      'marketplace asserts it ships the order itself). null when the order was ' +
       'routed, has not been decided yet, or no connection claims sourcing (the OMS is off). NOT a hold: ' +
       'a skipped order follows today\'s path and is mirrored to its destinations as usual.',
   })
@@ -400,6 +403,17 @@ export class OrderRecordResponseDto {
       'null when there is no block or nothing to add.',
   })
   fulfillmentBlockDetail!: string | null;
+
+  @ApiProperty({
+    enum: PaymentMethodValues,
+    description:
+      'How the buyer pays (#3294): `online`, `bank_transfer`, `cash_on_delivery` or `unknown`. ' +
+      '`unknown` means the source did not report it or it could not be mapped with confidence - ' +
+      'it is never a guess, and it never pre-fills a cash-on-delivery amount or selects an invoice ' +
+      'payment form. Orders ingested before this field existed read `unknown`. Independent of the ' +
+      'payment status carried in the order snapshot.',
+  })
+  paymentMethod!: PaymentMethod;
 
   @ApiPropertyOptional({
     type: OrderHoldDto,
