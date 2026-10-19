@@ -65,6 +65,14 @@ export interface InvoiceFailureCarrier {
    * lets this one code expose the adapter's own sentence as `failureReason`;
    * every other code keeps a fixed constant.
    *
+   * REVIEW BAR: this is the single place where a PII guarantee rests on adapter
+   * discipline rather than on construction - core cannot verify that a sentence
+   * came from connection config and not from an order. So every new throw that
+   * sets `failureCause: 'connection-setup'` is a reviewable event: check that
+   * its `reason` interpolates `Connection.config` values only (never buyer,
+   * order or provider-response data). `MAX_FAILURE_REASON_LENGTH` bounds the
+   * damage of a mistake, not the mistake.
+   *
    * A field rather than another marker list, deliberately: the marker lists
    * classify by what a message happens to say, which is right for a provider's
    * words OpenLinker does not author, and wrong for a refusal the adapter
