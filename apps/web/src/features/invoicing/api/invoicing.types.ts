@@ -272,6 +272,8 @@ export interface BulkIssueInvoicesResult {
   issued: number;
   skipped: number;
   failed: number;
+  /** How many orders the request named (#1594, DEF-21); absent on an older API. */
+  total?: number;
   results: BulkIssueInvoiceResult[];
 }
 

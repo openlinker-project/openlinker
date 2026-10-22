@@ -36,3 +36,13 @@ export function isValidNipChecksum(value: string): boolean {
   if (checkDigit === 10) return false;
   return checkDigit === digits[9];
 }
+
+/**
+ * The shape MF's `TNrNIP` type describes (DEF-28): no leading zero, and the
+ * second and third digits not both zero. A checksum-valid `0000000000` fails it.
+ * OpenLinker's reading of a schema it does not bundle, so the form WARNS and
+ * never refuses - KSeF answers authoritatively at submission.
+ */
+export function isStructurallyPlausibleNip(value: string): boolean {
+  return /^[1-9]((\d[1-9])|([1-9]\d))\d{7}$/.test(value);
+}

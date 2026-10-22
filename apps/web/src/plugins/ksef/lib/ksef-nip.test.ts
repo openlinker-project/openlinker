@@ -5,7 +5,7 @@
  * an invalid-format NIP, and a valid-format-but-invalid-checksum NIP.
  */
 import { describe, expect, it } from 'vitest';
-import { isValidNipChecksum, normalizeNip } from './ksef-nip';
+import { isValidNipChecksum, normalizeNip, isStructurallyPlausibleNip } from './ksef-nip';
 import { ksefSetupSchema, KSEF_SETUP_DEFAULT_VALUES } from '../components/ksef-setup.schema';
 
 // 1189981779 has a correct mod-11 check digit (9); 1189981770 mutates it.
@@ -60,5 +60,16 @@ describe('ksefSetupSchema sellerNip checksum gate', () => {
 describe('normalizeNip', () => {
   it('strips dashes and spaces', () => {
     expect(normalizeNip('11-8998 177-9')).toBe(VALID_NIP);
+  });
+});
+
+describe('isStructurallyPlausibleNip (DEF-28)', () => {
+  it('accepts an ordinary NIP', () => {
+    expect(isStructurallyPlausibleNip('1189981779')).toBe(true);
+  });
+
+  it('flags the checksum-valid all-zero NIP', () => {
+    expect(isValidNipChecksum('0000000000')).toBe(true);
+    expect(isStructurallyPlausibleNip('0000000000')).toBe(false);
   });
 });

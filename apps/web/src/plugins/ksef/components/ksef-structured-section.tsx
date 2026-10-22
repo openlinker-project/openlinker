@@ -22,6 +22,7 @@
  * @module plugins/ksef/components
  */
 import type { ReactElement } from 'react';
+import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
@@ -31,6 +32,25 @@ import {
   KSEF_FORMA_PLATNOSCI_VALUES,
   KSEF_LINE_UNIT_SUGGESTIONS,
 } from './ksef-setup.schema';
+import {
+  KSEF_EXEMPTION_KIND_VALUES,
+  KSEF_MARGIN_KIND_VALUES,
+  KSEF_PLACEHOLDER_EXEMPTION_TEXT,
+} from '../lib/ksef-annotations-config';
+import { isStructurallyPlausibleNip, isValidNipChecksum, normalizeNip } from '../lib/ksef-nip';
+
+const MARGIN_KIND_LABELS: Record<(typeof KSEF_MARGIN_KIND_VALUES)[number], string> = {
+  'travel-services': 'Travel services (biura podróży)',
+  'used-goods': 'Used goods (towary używane)',
+  'works-of-art': 'Works of art (dzieła sztuki)',
+  'collectors-items': "Collectors' items and antiques",
+};
+
+const EXEMPTION_KIND_LABELS: Record<(typeof KSEF_EXEMPTION_KIND_VALUES)[number], string> = {
+  statute: 'Polish VAT act (P_19A)',
+  directive: 'EU VAT directive (P_19B)',
+  other: 'Other legal basis (P_19C)',
+};
 
 const ENVIRONMENT_LABELS: Record<(typeof KSEF_ENVIRONMENT_VALUES)[number], string> = {
   test: 'Test (sandbox)',
@@ -53,6 +73,17 @@ export function KsefStructuredSection({
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const nip = normalizeNip(form.watch('sellerNip') ?? '');
+  // DEF-28: a valid checksum on an odd shape is worth a word, not a refusal.
+  const nipLooksOdd = isValidNipChecksum(nip) && !isStructurallyPlausibleNip(nip);
+  const marginScheme = form.watch('annMarginScheme') === 'true';
+  const exemptionText = (form.watch('annExemptionText') ?? '').trim();
+  const checkbox = (field: 'ksefAllowCrossBorder' | 'annCashAccounting' | 'annSelfBilling' | 'annMarginScheme') => ({
+    checked: form.watch(field) === 'true',
+    disabled: !configIsParseable,
+    onChange: (event: { target: { checked: boolean } }) =>
+      syncStructuredToJson(field, event.target.checked ? 'true' : ''),
+  });
   return (
     <>
       <FormField
@@ -92,6 +123,12 @@ export function KsefStructuredSection({
           invalid={Boolean(form.formState.errors.sellerNip)}
         />
       </FormField>
+      {nipLooksOdd ? (
+        <Alert tone="warning" density="compact">
+          This NIP passes the checksum but does not look like a typical NIP. Check it; KSeF decides
+          when the first invoice is sent.
+        </Alert>
+      ) : null}
       <FormField
         label="Seller legal name"
         name="sellerName"
@@ -330,6 +367,98 @@ export function KsefStructuredSection({
           <option key={unit} value={unit} />
         ))}
       </datalist>
+
+      {/* DEF-18 / DEF-20 / DEF-22: the seller's tax treatment. OpenLinker
+          suggests; each of these is the seller's own decision. */}
+      <fieldset className="ksef-tax-treatment">
+        <legend>Tax treatment</legend>
+        <p className="text-muted">
+          These describe your business, not a single sale. Every invoice from this connection starts
+          from them; you can change any of them when issuing one by hand. OpenLinker does not decide
+          what applies to you.
+        </p>
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('annCashAccounting')} />
+          <span>Cash accounting (metoda kasowa, P_16)</span>
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('annSelfBilling')} />
+          <span>Self-billing (samofakturowanie, P_17)</span>
+        </label>
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('annMarginScheme')} />
+          <span>Margin scheme (procedura marży)</span>
+        </label>
+        {marginScheme ? (
+          <FormField label="Margin scheme kind" name="annMarginKind">
+            <Select
+              value={form.watch('annMarginKind') ?? ''}
+              onChange={(event) => syncStructuredToJson('annMarginKind', event.target.value)}
+              disabled={!configIsParseable}
+            >
+              <option value="">Used goods (default)</option>
+              {KSEF_MARGIN_KIND_VALUES.map((kind) => (
+                <option key={kind} value={kind}>
+                  {MARGIN_KIND_LABELS[kind]}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+        ) : null}
+        <FormField
+          label="Exemption grounds cite"
+          name="annExemptionKind"
+          error={form.formState.errors.annExemptionKind?.message}
+          description="Used on invoices with VAT-exempt (zw) lines."
+        >
+          <Select
+            value={form.watch('annExemptionKind') ?? ''}
+            onChange={(event) => syncStructuredToJson('annExemptionKind', event.target.value)}
+            disabled={!configIsParseable}
+            invalid={Boolean(form.formState.errors.annExemptionKind)}
+          >
+            <option value="">(not set)</option>
+            {KSEF_EXEMPTION_KIND_VALUES.map((kind) => (
+              <option key={kind} value={kind}>
+                {EXEMPTION_KIND_LABELS[kind]}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField
+          label="Exemption grounds"
+          name="annExemptionText"
+          error={form.formState.errors.annExemptionText?.message}
+          description="The provision you rely on, e.g. art. 113 ust. 1 ustawy o VAT. Up to 256 characters."
+        >
+          <Input
+            value={form.watch('annExemptionText') ?? ''}
+            onChange={(event) => syncStructuredToJson('annExemptionText', event.target.value)}
+            placeholder="art. 43 ust. 1 pkt …"
+            maxLength={256}
+            autoComplete="off"
+            disabled={!configIsParseable}
+            invalid={Boolean(form.formState.errors.annExemptionText)}
+          />
+        </FormField>
+        {exemptionText.length === 0 ? (
+          <Alert tone="warning" density="compact">
+            No exemption grounds are set. Invoices with exempt lines will cite the generic text "
+            {KSEF_PLACEHOLDER_EXEMPTION_TEXT}", which names no provision.
+          </Alert>
+        ) : null}
+        <label className="checkbox-row">
+          <input type="checkbox" {...checkbox('ksefAllowCrossBorder')} />
+          <span>
+            Allow cross-border invoices
+            <small className="text-muted" style={{ display: 'block' }}>
+              OpenLinker cannot choose the WDT / export / OSS band for a foreign buyer by itself.
+              Turn this on only if your catalogue already carries the right rate for those sales;
+              without it such invoices are refused before sending.
+            </small>
+          </span>
+        </label>
+      </fieldset>
     </>
   );
 }
