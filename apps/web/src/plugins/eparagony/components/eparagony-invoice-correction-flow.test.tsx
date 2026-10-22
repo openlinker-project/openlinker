@@ -192,6 +192,9 @@ describe('EparagonyInvoiceCorrectionFlow', () => {
     const qtyInputs = await screen.findAllByLabelText(/New qty, line/i);
     fireEvent.change(qtyInputs[0], { target: { value: '3' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {

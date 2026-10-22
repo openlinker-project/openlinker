@@ -199,6 +199,9 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     // Edit the SECOND row (the 80.00 one) rather than typing a number.
     fireEvent.change(qtyInputs[1], { target: { value: '0' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {
@@ -234,6 +237,9 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     const lineInputs = await screen.findAllByLabelText(/Line number/i);
     fireEvent.change(lineInputs[0], { target: { value: '2' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {

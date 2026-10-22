@@ -176,6 +176,9 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     await screen.findByRole('option', { name: /2\. Widget/ });
     fireEvent.change(screen.getByLabelText(/Line number 1/i), { target: { value: '2' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
     await waitFor(() => {
