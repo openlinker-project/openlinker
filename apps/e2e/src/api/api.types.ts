@@ -305,6 +305,8 @@ export interface OrderSyncStatus {
 
 export interface OrderRecord {
   internalOrderId: string;
+  /** The durable cancellation marker; `null` while the order stands. */
+  cancelledAt?: string | null;
   customerId: string | null;
   sourceConnectionId: string;
   sourceEventId: string | null;
@@ -342,6 +344,8 @@ export interface OrderRecord {
     documentKind: string | null;
     document: { kind: string; regulatoryStatus?: string | null } | null;
     otherRecords?: unknown[];
+    /** DEF-26: the sale changed after its document was made. */
+    afterIssueAttention?: string | null;
   };
 }
 
@@ -379,6 +383,20 @@ export interface IssueInvoiceInput {
   buyerIsVatGroupMember?: boolean;
   /** Warning codes accepted after a 422 `acknowledgement-required` / 409 `warningCode`. */
   acknowledgeWarnings?: string[];
+  /** DEF-20: per-issue fiscal annotations (KSeF Adnotacje). */
+  annotations?: {
+    cashAccounting?: boolean;
+    selfBilling?: boolean;
+    splitPayment?: boolean;
+    triangulation?: boolean;
+    marginScheme?: boolean;
+    marginKind?: 'travel-services' | 'used-goods' | 'works-of-art' | 'collectors-items';
+    exemptionBasis?: { kind: 'statute' | 'directive' | 'other'; text: string };
+  };
+  /** DEF-30: extra parties (KSeF Podmiot3). */
+  additionalParties?: Array<{ role: string; name: string; taxId?: BuyerTaxIdInput }>;
+  /** DEF-20: per-line GTU / Procedura markers, keyed by order line id. */
+  lineClassifications?: Array<{ orderLineId: string; gtuCode?: string; procedureCode?: string }>;
 }
 
 export interface InvoiceRecord {
@@ -400,6 +418,9 @@ export interface InvoiceRecord {
   issuedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  failureMode?: 'rejected' | 'in-doubt' | null;
+  failureCode?: string | null;
+  failureReason?: string | null;
 }
 
 export interface MarketplaceOfferPrice {

@@ -20,7 +20,10 @@
     "@playwright/test": "^1.61.1",
     "@types/node": "20.11.30",
     "@types/pg": "^8.11.10",
+    "@types/pngjs": "6.0.5",
+    "jsqr": "1.4.0",
     "pg": "8.11.3",
+    "pngjs": "7.0.0",
     "typescript": "5.4.3"
   }
 }
