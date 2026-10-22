@@ -89,6 +89,7 @@ import { DocumentLifecycle } from '../../../shared/ui/document-lifecycle';
 import { resolveSalesDocumentReasonCopy } from '../../sales-documents';
 import { resolveInvoiceHeadline, resolveFiscalHeadline } from '../lib/sales-document-headline';
 import { describeMatchedSalesDocumentRule } from '../lib/describe-matched-sales-document-rule';
+import { resolveAfterIssueAttentionCopy } from '../lib/after-issue-attention-copy';
 
 import {
   useOrderInvoiceQuery,
@@ -294,6 +295,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // document) AND "one did, but has since been deleted" — the disclosure is
   // simply absent either way, never rendered with a stale/guessed explanation.
   const matchedRule = order.salesDocument?.matchedRule ?? null;
+  const afterIssueAttention = resolveAfterIssueAttentionCopy(
+    order.salesDocument?.afterIssueAttention,
+    t,
+  );
   const matchedRuleConnectionName =
     matchedRule !== null
       ? (allConnections.find((c) => c.id === matchedRule.connectionId)?.name ?? matchedRule.connectionId)
@@ -774,6 +779,14 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             )
             .join('; ')}
           .
+        </Alert>
+      ) : null}
+
+      {/* DEF-26 - the sale changed after its document was made. A pointer,
+          not a verdict: whether a correction is due is the operator's call. */}
+      {afterIssueAttention ? (
+        <Alert tone="warning" data-testid="sales-document-after-issue-attention">
+          <strong>{afterIssueAttention.short}.</strong> {afterIssueAttention.detail}
         </Alert>
       ) : null}
 

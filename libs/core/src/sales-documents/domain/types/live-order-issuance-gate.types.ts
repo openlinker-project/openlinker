@@ -63,3 +63,39 @@ export function decideLiveOrderIssuance(facts: LiveOrderIssuanceFacts): LiveOrde
   }
   return { kind: 'allow' };
 }
+
+/**
+ * Why an order that already HAS a sales document may need the operator's eye
+ * (DEF-26): the sale changed after the document was made. Derived on every
+ * read from the same gate, never stored, so it clears itself the moment the
+ * facts no longer support it.
+ */
+export const SalesDocumentAfterIssueAttentionValues = [
+  'order-cancelled-after-issue',
+  'order-fully-refunded-after-issue',
+  'order-partially-refunded-after-issue',
+] as const;
+export type SalesDocumentAfterIssueAttention = (typeof SalesDocumentAfterIssueAttentionValues)[number];
+
+/**
+ * The attention a live decision implies for an order with a document.
+ * `null` when there is no document to correct, or nothing changed.
+ */
+export function deriveAfterIssueAttention(
+  decision: LiveOrderIssuanceDecision,
+  hasDocument: boolean,
+): SalesDocumentAfterIssueAttention | null {
+  if (!hasDocument) {
+    return null;
+  }
+  switch (decision.kind) {
+    case 'allow':
+      return null;
+    case 'allow-with-attention':
+      return 'order-partially-refunded-after-issue';
+    case 'block':
+      return decision.reason === 'order-cancelled'
+        ? 'order-cancelled-after-issue'
+        : 'order-fully-refunded-after-issue';
+  }
+}
