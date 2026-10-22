@@ -101,6 +101,7 @@ function createMockInventoryQuery(): jest.Mocked<IInventoryQueryService> {
     getDuplicatePositionReport: jest.fn(),
     getProvenanceBackfillStatus: jest.fn(),
     resolveStockOwner: jest.fn(),
+    listPublishedReservedByLocation: jest.fn(),
   };
 }
 
