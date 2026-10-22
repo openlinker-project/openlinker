@@ -14,16 +14,41 @@
  *
  * @module apps/api/src/fulfillment/application/services/__tests__
  */
-import type { IFulfillmentProgressService } from '@openlinker/core/fulfillment';
+import type {
+  IFulfillmentProgressService,
+  IFulfillmentWorklistService,
+} from '@openlinker/core/fulfillment';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IFulfillmentWorkDispatchRouterService } from '@openlinker/core/shipping';
+import type { JobEnqueuePort } from '@openlinker/core/sync';
 
 import { FulfillmentParcelClosureNotifierService } from '../fulfillment-parcel-closure-notifier.service';
 
 const WORK_ID = 'ol_fulfillmentwork_1';
+const ORDER_ID = 'ol_order_1';
 const CONNECTION_ID = '11111111-1111-1111-1111-111111111111';
 const CLOSED_AT = new Date('2026-09-04T10:00:00Z');
 
-function harness(options: { progress?: jest.Mock; routeDispatch?: jest.Mock }) {
+function harness(options: {
+  progress?: jest.Mock;
+  routeDispatch?: jest.Mock;
+  /** The holder's `Connection.config`; defaults to one with no auto-dispatch at all. */
+  holderConfig?: Record<string, unknown>;
+  getAdapter?: jest.Mock;
+  enqueueJob?: jest.Mock;
+}) {
+  const integrations = {
+    getAdapter:
+      options.getAdapter ??
+      jest.fn().mockResolvedValue({ connection: { config: options.holderConfig ?? {} } }),
+  } as unknown as jest.Mocked<IIntegrationsService>;
+  const worklist = {
+    get: jest.fn().mockResolvedValue({ id: WORK_ID, orderId: ORDER_ID }),
+  } as unknown as jest.Mocked<IFulfillmentWorklistService>;
+  const jobEnqueue = {
+    enqueueJob: options.enqueueJob ?? jest.fn().mockResolvedValue({ isExisting: false }),
+  } as unknown as jest.Mocked<JobEnqueuePort>;
+
   const progress = {
     record:
       options.progress ??
@@ -37,7 +62,13 @@ function harness(options: { progress?: jest.Mock; routeDispatch?: jest.Mock }) {
     routeDispatch: options.routeDispatch ?? jest.fn().mockResolvedValue({ status: 'relayed' }),
   } as unknown as jest.Mocked<IFulfillmentWorkDispatchRouterService>;
 
-  const service = new FulfillmentParcelClosureNotifierService(progress, router);
+  const service = new FulfillmentParcelClosureNotifierService(
+    progress,
+    router,
+    integrations,
+    worklist,
+    jobEnqueue
+  );
   const warn = jest
     .spyOn((service as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
     .mockImplementation(() => undefined);
@@ -45,7 +76,7 @@ function harness(options: { progress?: jest.Mock; routeDispatch?: jest.Mock }) {
     .spyOn((service as unknown as { logger: { error: jest.Mock } }).logger, 'error')
     .mockImplementation(() => undefined);
 
-  return { service, progress, router, warn };
+  return { service, progress, router, warn, integrations, jobEnqueue };
 }
 
 const close = (service: FulfillmentParcelClosureNotifierService, closedAt = CLOSED_AT) =>
@@ -166,5 +197,80 @@ describe('FulfillmentParcelClosureNotifierService (#3525)', () => {
     await close(service);
 
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  describe('auto-dispatch on close (#2729, D1)', () => {
+    const onClose = { autoDispatch: { enabled: true, trigger: 'on-parcel-closed' } };
+
+    it('should enqueue the label job when the holder chose on-parcel-closed', async () => {
+      const { service, jobEnqueue } = harness({ holderConfig: onClose });
+
+      await close(service);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith({
+        jobType: 'fulfillment.work.autoDispatch',
+        connectionId: CONNECTION_ID,
+        payload: { schemaVersion: 1, workId: WORK_ID, orderId: ORDER_ID },
+        // The accept producer's key: the two producers can never both land a job.
+        idempotencyKey: `fulfillment:autoDispatch:${WORK_ID}`,
+      });
+    });
+
+    it.each([
+      ['no autoDispatch configured', {}],
+      ['auto-dispatch off', { autoDispatch: { enabled: false, trigger: 'on-parcel-closed' } }],
+      ['the default trigger', { autoDispatch: { enabled: true } }],
+      ['on-accept', { autoDispatch: { enabled: true, trigger: 'on-accept' } }],
+    ])('should NOT enqueue on close when the holder has %s', async (_label, holderConfig) => {
+      const { service, jobEnqueue } = harness({ holderConfig });
+
+      await close(service);
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should still try on a duplicate close, so a replay can heal a failed enqueue', async () => {
+      const { service, jobEnqueue } = harness({
+        holderConfig: onClose,
+        progress: jest.fn().mockResolvedValue({ status: 'duplicate' }),
+      });
+
+      await close(service);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not enqueue for work the progress record does not know', async () => {
+      const { service, jobEnqueue } = harness({
+        holderConfig: onClose,
+        progress: jest.fn().mockResolvedValue({ status: 'unknown-work', workId: WORK_ID }),
+      });
+
+      await close(service);
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should never throw, and still route the dispatch, when the enqueue fails', async () => {
+      const { service, router } = harness({
+        holderConfig: onClose,
+        enqueueJob: jest.fn().mockRejectedValue(new Error('queue down')),
+      });
+
+      await expect(close(service)).resolves.toBeUndefined();
+
+      expect(router.routeDispatch).toHaveBeenCalledWith(WORK_ID);
+    });
+
+    it('should never throw when the holder connection cannot be resolved', async () => {
+      const { service, jobEnqueue, router } = harness({
+        getAdapter: jest.fn().mockRejectedValue(new Error('connection disabled')),
+      });
+
+      await expect(close(service)).resolves.toBeUndefined();
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      expect(router.routeDispatch).toHaveBeenCalledWith(WORK_ID);
+    });
   });
 });

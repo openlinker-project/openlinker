@@ -695,6 +695,48 @@ put a parcel in front of a named packer before they reach for it. Both read `Ful
 - **Live coverage is `apps/e2e/sweep-fulfillment-states.mjs`**, 34 states across both surfaces,
   driven against a real stack. It is not wired to CI (`e2e.yml` is deliberately manual), so it is a
   gate somebody runs rather than one that runs itself.
+- **Automatic labels have an operator surface, and the refusal decision exists once (#2729).**
+  `fulfillment.work.autoDispatch` (#3340) bought labels, but an operator could not see why one
+  failed, try settings before saving them, choose *when* it is bought, or get a label for a box
+  when the feature is off. Five properties are load-bearing. (1) **One decision, three callers.**
+  `planAutoDispatch` (`@openlinker/core/shipping`, pure) takes the work's lines, the variant
+  weights, the order, the routing rule's parcel profile, the connection's defaults and the
+  carrier's declared requirements as ARGUMENTS and answers `ready` or `refused`
+  (`no-weight` / `no-address` / `no-dimensions`). The worker handler, the bench label route and the
+  settings preview are thin loaders around it, so a preview cannot show a parcel the worker would
+  refuse. The data enters as arguments because a `shipping -> products` edge would close
+  `products -> listings -> shipping`. The handler uses the individual steps rather than the
+  composition, to keep its historical evaluation ORDER: a step that throws a retryable error must
+  not be reached before a refusal that precedes it. (2) **`autoDispatch.trigger`** (`on-accept`
+  default | `on-parcel-closed`, D1): reading is lenient (an unrecognised value reads as
+  `on-accept` and is logged by the caller through `isPresentButInvalidAutoDispatchTrigger`),
+  writing is strict (`ConnectionService` refuses it with a 400). Exactly one producer fires per
+  connection - the accept path (`FulfillmentWorkDispatchHandler`) or the bench's close event
+  (`FulfillmentParcelClosureNotifierService`) - and both use the SAME idempotency key
+  `fulfillment:autoDispatch:{workId}`, so a misread config still cannot buy twice. The close is
+  system-driven, so reacting to it is not a bench "close" operation (ADR-071 amendment). (3) **The
+  refusal read comes from `sync_jobs`** (`GET connections/:id/auto-dispatch/refusals`), through the
+  new neutral `ISyncJobsService.findJobs`. A TERMINAL refusal is a succeeded job with
+  `outcome = 'business_failure'` and an `outcomeReason`; a carrier outage or a timing race THROWS,
+  so it is a queued job with attempts and an error behind it. Reading only `business_failure`
+  would show the refusals an operator can fix and hide the ones still being retried, so the read
+  merges both, classifies through `classifyAutoDispatchJob` (one table, `AUTO_DISPATCH_OUTCOME_REASONS`,
+  shared with the handler's strings) and puts a `dead` job under "needs your input", because its
+  retries are spent. `lastError` is never returned: a carrier's message can carry recipient detail.
+  (4) **The preview is a read** (`POST .../auto-dispatch/preview`, a POST only because the draft
+  settings travel in a body). It is coerced by the same rules as a saved config
+  (`readAutoDispatchParcelDefaults`), takes the connection's most recent works from the worklist
+  and buys and writes nothing. (5) **The bench may buy the label for a box that has none** (D46,
+  `POST /bench/work/:workId/label`, empty body): the parcel comes from the connection's defaults,
+  READ REGARDLESS OF `enabled` (`readAutoDispatchParcelDefaults` - `readAutoDispatchConfig` answers
+  "disabled" with no extras, which is right for the automatic trigger and wrong here), the recipient
+  from the order. It refuses while automatic labels are on and when a label already exists, and
+  answers synchronously with the real reason. All three reads and the route are keyed on the
+  connection that HOLDS the work (`assignedConnectionId`), often the OMS or a 3PL rather than a
+  carrier, and the responses say so (`holder`, `holdsWork`). **Not built here**: the settings
+  screen, refusal list and preview panel (#3572), and a bench-recorded parcel weight - the bench
+  records none today, so "use a weight recorded at the bench" is a documented no-op until a field
+  exists.
 
 ### 29. Paginated reads: the total is a second stage
 

@@ -913,6 +913,47 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('config.autoDispatch.trigger validation (#2729, D1)', () => {
+      it.each(['on-accept', 'on-parcel-closed'])('should accept the trigger %s', async (trigger) => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, autoDispatch: { enabled: true, trigger } },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should accept a create with no trigger at all, so an existing config is unchanged', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, autoDispatch: { enabled: true } },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it.each(['on-close', '', 'ON-ACCEPT', 1, true])(
+        'should reject the unrecognised trigger %p, because reading is lenient but writing is strict',
+        async (trigger) => {
+          await expect(
+            service.create({
+              ...payload,
+              config: {
+                ...payload.config,
+                autoDispatch: { enabled: true, trigger: trigger as unknown as string },
+              },
+            })
+          ).rejects.toThrow(BadRequestException);
+          expect(connectionPort.create).not.toHaveBeenCalled();
+        }
+      );
+    });
+
     describe('config.rateLimit validation (#1810)', () => {
       it('should accept a create with both knobs within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);

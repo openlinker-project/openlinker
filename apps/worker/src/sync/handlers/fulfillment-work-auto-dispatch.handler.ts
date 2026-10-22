@@ -70,12 +70,11 @@ import {
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
   SHIPMENT_QUERY_SERVICE_TOKEN,
   UndispatchableResolutionException,
-  findMissingParcelRequirement,
+  checkAutoDispatchDimensions,
   isParcelRequirementsReader,
-  mergeAutoDispatchParcelOptions,
-  resolveAutoDispatchParcel,
+  planAutoDispatchParcel,
+  planAutoDispatchTarget,
   resolveCarrierMethod,
-  resolveOrderDispatchTarget,
   type IShipmentDispatchService,
   type AutoDispatchParcelProfile,
   type DeliveryIntent,
@@ -193,16 +192,19 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
     // `resolveAutoDispatchRecipient` (reported as `no-address` — a missing
     // street/city/postcode/country is a recipient defect, not a routing
     // one). This resolves only WHICH shape (locker vs courier) to attempt.
-    const { deliveryIntent, recipient, paczkomatId } = resolveOrderDispatchTarget(order);
+    // The decision itself is `planAutoDispatchTarget` (#2729), shared with the
+    // bench label route and the settings preview.
+    const target = planAutoDispatchTarget(order);
 
     // `no-address`
-    if (recipient === null) {
+    if (target.kind === 'refused') {
       this.logger.warn(
         `fulfillment.work.autoDispatch refused (no-address): workId=${payload.workId} ` +
           `orderId=${payload.orderId}`
       );
       return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_address' };
     }
+    const { deliveryIntent, recipient, paczkomatId } = target;
 
     // `no-dimensions` (#3651) - the routed carrier declares it needs an explicit
     // box and the rule supplied none. Refused before the carrier is called
@@ -385,7 +387,9 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
     if (method === null) {
       return false;
     }
-    return findMissingParcelRequirement(parcel, adapter.getParcelRequirements(method)) !== null;
+    return (
+      checkAutoDispatchDimensions(parcel, adapter.getParcelRequirements(method)) === 'no-dimensions'
+    );
   }
 
   private async resolveParcel(
@@ -397,11 +401,12 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
     const variants = variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
     const weightByVariantId = new Map(variants.map((variant) => [variant.id, variant.weightGrams]));
 
-    return resolveAutoDispatchParcel(
-      work.lines,
-      weightByVariantId,
-      mergeAutoDispatchParcelOptions(parcelProfile, autoDispatch)
-    );
+    return planAutoDispatchParcel({
+      lines: work.lines,
+      variantWeightGrams: weightByVariantId,
+      parcelProfile,
+      config: autoDispatch,
+    });
   }
 
   private retryable(job: SyncJob, message: string, cause?: Error): SyncJobExecutionError {

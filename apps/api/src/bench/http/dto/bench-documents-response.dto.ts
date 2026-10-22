@@ -259,6 +259,18 @@ export class BenchUnlabelledParcelListResponseDto {
  * have changed - which is still a result the bench must render, never an error
  * the client could read as "nothing happened".
  */
+/**
+ * What `POST /bench/work/:workId/label` answers on success (#2729, D46).
+ *
+ * Only the shipment id: the bench reads the label itself through
+ * `GET work/:workId/documents/label`, which is scoped to the same work. A
+ * refusal is a 409 with a `reason`, never a body of this shape.
+ */
+export class BenchGenerateLabelResponseDto {
+  @ApiProperty({ description: 'The shipment the new label belongs to.' })
+  shipmentId!: string;
+}
+
 export class BenchReplaceLabelResponseDto {
   @ApiProperty({ enum: ['replaced', 'cancelled-not-replaced'] })
   outcome!: 'replaced' | 'cancelled-not-replaced';

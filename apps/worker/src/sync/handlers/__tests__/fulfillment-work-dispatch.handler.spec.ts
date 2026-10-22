@@ -270,6 +270,41 @@ describe('FulfillmentWorkDispatchHandler', () => {
       });
     });
 
+    it('should enqueue at acceptance when the trigger is explicitly on-accept', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true, trigger: 'on-accept' } } },
+        metadata: {},
+      });
+
+      await handler.execute(job(validPayload));
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT enqueue at acceptance when the trigger is on-parcel-closed (#2729, D1)', async () => {
+      // The bench close buys the label instead; enqueueing here too would be a
+      // second producer for the same work.
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true, trigger: 'on-parcel-closed' } } },
+        metadata: {},
+      });
+
+      await handler.execute(job(validPayload));
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('should read an unrecognised trigger as on-accept and still enqueue', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        connection: { config: { autoDispatch: { enabled: true, trigger: 'on-close' } } },
+        metadata: {},
+      });
+
+      await handler.execute(job(validPayload));
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+    });
+
     it('should NOT enqueue on a rejected outcome', async () => {
       integrations.getAdapter.mockResolvedValue({
         connection: { config: { autoDispatch: { enabled: true } } },

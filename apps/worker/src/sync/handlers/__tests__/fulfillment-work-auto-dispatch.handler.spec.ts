@@ -9,10 +9,14 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { FulfillmentWorkNotFoundError } from '@openlinker/core/fulfillment';
 import {
+  AUTO_DISPATCH_OUTCOME_REASONS,
   OrderNotDispatchableHeldException,
   OrderNotDispatchablePaymentStatusException,
   ShippingProviderRejectionException,
@@ -388,6 +392,24 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       await handler.execute(job(validPayload));
 
       expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the refusal strings an operator reads back (#2729)', () => {
+    it('should write exactly the outcomeReason strings the refusal read classifies', () => {
+      // `GET connections/:id/auto-dispatch/refusals` maps these strings to a
+      // reason code through `AUTO_DISPATCH_OUTCOME_REASONS`. A string the
+      // handler writes that the table does not know would surface as `unknown`,
+      // and a table entry the handler never writes is a promise nothing keeps.
+      const source = readFileSync(
+        join(__dirname, '..', 'fulfillment-work-auto-dispatch.handler.ts'),
+        'utf8'
+      );
+      const written = new Set(
+        Array.from(source.matchAll(/outcomeReason: '(auto_dispatch_[a-z_]+)'/g), (m) => m[1])
+      );
+
+      expect([...written].sort()).toEqual(Object.keys(AUTO_DISPATCH_OUTCOME_REASONS).sort());
     });
   });
 });
