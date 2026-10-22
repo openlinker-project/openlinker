@@ -48,7 +48,9 @@ import { Repository } from 'typeorm';
 import { InventoryItemOrmEntity } from '../persistence/entities/inventory-item.orm-entity';
 import { ReservationOrmEntity } from '../persistence/entities/reservation.orm-entity';
 import type {
+  LocatedReservedSum,
   ReservationLedgerReaderPort,
+  SumReservedByLocationInput,
   SumReservedInput,
 } from '../../domain/ports/reservation-ledger-reader.port';
 import type { AvailabilityScope } from '../../domain/types/availability.types';
@@ -66,6 +68,11 @@ const HELD: ReservationStatus = 'held';
 interface ReservedSumRow {
   productVariantId: string;
   reserved: string | number;
+}
+
+/** One `(location, variant)` `GROUP BY` row (#3475). */
+interface LocatedReservedSumRow extends ReservedSumRow {
+  locationId: string;
 }
 
 @Injectable()
@@ -105,6 +112,43 @@ export class ReservationLedgerReader implements ReservationLedgerReaderPort {
     // once. Every `quantity` is `> 0` by CHECK constraint, so a returned group
     // can never sum to zero.
     return new Map(rows.map((row) => [row.productVariantId, Number(row.reserved)]));
+  }
+
+  async sumReservedByLocation(
+    input: SumReservedByLocationInput
+  ): Promise<readonly LocatedReservedSum[]> {
+    if (input.variantIds.length === 0) return [];
+
+    // Same predicates as `sumReservedByVariantIds` - held, bound stamp, live
+    // position - so the two cannot drift; only the grouping differs. A pooled
+    // position (`locationId IS NULL`) is excluded: it names no location, and the
+    // router skips such rows on the stock side too.
+    const rows = await this.repository
+      .createQueryBuilder('r')
+      .innerJoin(InventoryItemOrmEntity, 'inv', 'inv."id" = r."inventoryItemId"')
+      .select('inv."locationId"', 'locationId')
+      .addSelect('inv."productVariantId"', 'productVariantId')
+      .addSelect('SUM(r."quantity")', 'reserved')
+      .where('r."status" = :status', { status: HELD })
+      .andWhere('r."atpEffect" = :atpEffect', { atpEffect: input.atpEffect })
+      .andWhere('inv."productVariantId" IN (:...variantIds)', {
+        variantIds: [...input.variantIds],
+      })
+      .andWhere('inv."locationId" IS NOT NULL')
+      .andWhere('inv."isStale" = false')
+      .andWhere(
+        input.excludeOrderRecordId === undefined ? '1 = 1' : 'r."orderRecordId" <> :excludedOrder',
+        { excludedOrder: input.excludeOrderRecordId }
+      )
+      .groupBy('inv."locationId"')
+      .addGroupBy('inv."productVariantId"')
+      .getRawMany<LocatedReservedSumRow>();
+
+    return rows.map((row) => ({
+      locationId: row.locationId,
+      productVariantId: row.productVariantId,
+      reserved: Number(row.reserved),
+    }));
   }
 
   /**

@@ -74,6 +74,24 @@ on ATP, never on-hand stock. The decrement is a durable, at-most-once write (Pos
 before the boundary), and is the thing that finally lets a routed order's hold be consumed
 (`#3480`) rather than double-subtracting ATP for the life of the order.
 
+## Amendment (#3475): a second reader of the same ledger, partitioned by location
+
+`AvailabilityScope`'s `location` arm still throws, and that is unchanged: a variant-keyed sum
+dressed up as one location's answer is the oversell this ADR exists to prevent. The fulfilment
+router, however, chooses between locations, so it needs the question answered per
+`(location, variant)`. `ReservationLedgerReaderPort.sumReservedByLocation` answers exactly that and
+nothing else - same predicate as `sumReservedByVariantIds` (`held`, bound `atpEffect`, live
+position), grouped by position instead of collapsed to the variant, located positions only. It is
+exposed to the router as `IInventoryQueryService.listPublishedReservedByLocation`, which fixes the
+stamp to `published`. Two rules follow from the routed order's own lifecycle. The router subtracts
+**published holds only, never unshipped `FulfillmentWork` lines**: the hold stands in for the
+units until the sale decrement settles (#3453), after which the master's own quantity is already
+lower, so a work line - which outlives the hold until the parcel ships - would count them twice.
+And the order being placed is **left out of its own sum** (`excludeOrderRecordId`), because its
+hold is written before routing runs (#3480) and would otherwise make the last unit look promised
+to the very order claiming it. A ledger read that fails fails the routing - it is never read as
+zero.
+
 ## References
 
 - Related ADRs: [ADR-058](./058-multi-location-positions-reservations-availability-authority.md), [ADR-028](./028-order-cancellation-stock-restore.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md), [ADR-062](./062-trust-posture-authority-holding-capabilities.md)

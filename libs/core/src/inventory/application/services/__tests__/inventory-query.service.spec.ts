@@ -16,6 +16,7 @@ import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { IAvailabilityService } from '../availability.service.interface';
 import type { ILocationService } from '../location.service.interface';
+import type { ReservationLedgerReaderPort } from '../../../domain/ports/reservation-ledger-reader.port';
 import type { ISyncCursorsService } from '@openlinker/core/sync';
 
 // Only the products-service method the SUT actually calls — keeps the
@@ -33,6 +34,7 @@ describe('InventoryQueryService', () => {
   let locationService: jest.Mocked<LocationServiceMock>;
   let connectionPort: jest.Mocked<ConnectionPortMock>;
   let cursors: jest.Mocked<SyncCursorsServiceMock>;
+  let reservationLedger: { sumReservedByLocation: jest.Mock };
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -127,6 +129,7 @@ describe('InventoryQueryService', () => {
     locationService = { getLocation: jest.fn().mockResolvedValue(null) };
     connectionPort = { get: jest.fn().mockRejectedValue(new ConnectionNotFoundException('n/a')) };
     cursors = { getCursor: jest.fn().mockResolvedValue(null) };
+    reservationLedger = { sumReservedByLocation: jest.fn().mockResolvedValue([]) };
 
     service = new InventoryQueryService(
       inventoryRepository,
@@ -135,6 +138,7 @@ describe('InventoryQueryService', () => {
       locationService as unknown as ILocationService,
       connectionPort as unknown as ConnectionPort,
       cursors as unknown as ISyncCursorsService,
+      reservationLedger as unknown as ReservationLedgerReaderPort,
     );
   });
 
@@ -599,6 +603,38 @@ describe('InventoryQueryService', () => {
       const result = await service.getProvenanceBackfillStatus();
 
       expect(result).toEqual({ remainingNull: 5, completed: false, latchedAt: null });
+    });
+  });
+
+  describe('listPublishedReservedByLocation (#3475)', () => {
+    it('should ask the ledger for published holds only, once per distinct variant', async () => {
+      reservationLedger.sumReservedByLocation.mockResolvedValue([
+        { locationId: 'loc-a', productVariantId: 'v1', reserved: 2 },
+      ]);
+
+      const result = await service.listPublishedReservedByLocation(['v1', 'v1', 'v2']);
+
+      expect(reservationLedger.sumReservedByLocation).toHaveBeenCalledWith({
+        variantIds: ['v1', 'v2'],
+        atpEffect: 'published',
+      });
+      expect(result).toEqual([{ locationId: 'loc-a', productVariantId: 'v1', reserved: 2 }]);
+    });
+
+    it('should pass the excluded order through to the ledger', async () => {
+      await service.listPublishedReservedByLocation(['v1'], { excludeOrderRecordId: 'ol_order_1' });
+
+      expect(reservationLedger.sumReservedByLocation).toHaveBeenCalledWith({
+        variantIds: ['v1'],
+        atpEffect: 'published',
+        excludeOrderRecordId: 'ol_order_1',
+      });
+    });
+
+    it('should let a ledger failure reach the caller instead of answering zero', async () => {
+      reservationLedger.sumReservedByLocation.mockRejectedValue(new Error('db down'));
+
+      await expect(service.listPublishedReservedByLocation(['v1'])).rejects.toThrow('db down');
     });
   });
 });

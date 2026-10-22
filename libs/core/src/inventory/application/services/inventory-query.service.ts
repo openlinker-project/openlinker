@@ -34,11 +34,14 @@ import {
   AVAILABILITY_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
+  RESERVATION_LEDGER_READER_TOKEN,
 } from '../../inventory.tokens';
 import { IAvailabilityService } from './availability.service.interface';
 import { ILocationService } from './location.service.interface';
 import { SYSTEM_CONNECTION_ID } from './inventory.service';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
+import { ReservationLedgerReaderPort } from '../../domain/ports/reservation-ledger-reader.port';
+import type { LocatedReservedSum } from '../../domain/ports/reservation-ledger-reader.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
 import {
   LEGACY_SOURCE_CONNECTION_ID,
@@ -131,7 +134,9 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
     @Inject(SYNC_CURSORS_SERVICE_TOKEN)
-    private readonly cursors: ISyncCursorsService
+    private readonly cursors: ISyncCursorsService,
+    @Inject(RESERVATION_LEDGER_READER_TOKEN)
+    private readonly reservationLedger: ReservationLedgerReaderPort
   ) {}
 
   async listInventoryItems(
@@ -374,6 +379,23 @@ export class InventoryQueryService implements IInventoryQueryService {
         }
       : null;
     return { item, product: viewProduct };
+  }
+
+  async listPublishedReservedByLocation(
+    variantIds: readonly string[],
+    options?: { readonly excludeOrderRecordId?: string }
+  ): Promise<readonly LocatedReservedSum[]> {
+    // Deliberately no try/catch: a ledger failure must reach the caller as a
+    // failure. Swallowing it into an empty list would be a zero ledger term -
+    // the router would then allocate promised stock, which is the defect this
+    // read exists to close.
+    return this.reservationLedger.sumReservedByLocation({
+      variantIds: [...new Set(variantIds)],
+      atpEffect: 'published',
+      ...(options?.excludeOrderRecordId !== undefined && {
+        excludeOrderRecordId: options.excludeOrderRecordId,
+      }),
+    });
   }
 
   async resolveStockOwner(query: InventoryOwnerQuery): Promise<InventoryOwnerResolution> {
