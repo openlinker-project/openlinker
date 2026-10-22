@@ -47,11 +47,17 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
 import type {
+  ShoperCategory,
+  ShoperCategoryTreeNode,
   ShoperProduct,
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
-import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import {
+  buildShoperCategoryBreadcrumb,
+  joinShoperCategories,
+  shoperCategoryPathIds,
+} from '../../mappers/shoper-category.mapper';
 import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
 import type { ShoperOptionEntry, ShoperOptionTableProvider } from '../../shop-context/shoper-option-table.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
@@ -133,8 +139,14 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     const ctx = await ctxRead;
     const product = mapShoperProduct(data, ctx);
     const gallery = await this.readGallery(externalId, ctx.host);
-    // An empty or unreadable gallery keeps the main image the product row carries.
-    return { ...product, images: gallery.length > 0 ? gallery : product.images, id: productId };
+    const categoryBreadcrumb = await this.readCategoryBreadcrumb(data, ctx.language);
+    return {
+      ...product,
+      // An empty or unreadable gallery keeps the main image the product row carries.
+      images: gallery.length > 0 ? gallery : product.images,
+      ...(categoryBreadcrumb === null ? {} : { categoryBreadcrumb }),
+      id: productId,
+    };
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -505,6 +517,67 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
           `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
       );
       return [];
+    }
+  }
+
+  /**
+   * The path of the product's main category (`category_id`, else its first
+   * category), root to leaf, or `null` when it has none or it cannot be read.
+   *
+   * Two requests, whatever the size of the shop: the tree (structure, ids only)
+   * and ONE filtered page of `/categories` for the names of the path's nodes -
+   * not the whole directory, which this per-product read would otherwise rebuild
+   * for every product a sweep syncs. Best-effort like the gallery: a failure is
+   * logged and the product syncs without a path.
+   */
+  private async readCategoryBreadcrumb(
+    data: ShoperProduct,
+    language: string,
+  ): Promise<{ id: string; name: string }[] | null> {
+    const main = data.category_id === null || data.category_id === undefined ? '' : String(data.category_id).trim();
+    const leafId =
+      main.length > 0 && main !== '0'
+        ? main
+        : Array.isArray(data.categories) && data.categories.length > 0
+          ? String(data.categories[0])
+          : null;
+    if (leafId === null) {
+      return null;
+    }
+    try {
+      const tree = await this.client.get<ShoperCategoryTreeNode[]>('/categories-tree');
+      const pathIds = Array.isArray(tree.data) ? shoperCategoryPathIds(tree.data, leafId) : null;
+      if (pathIds === null) {
+        this.logger.warn(
+          `Shoper category ${leafId} of product ${data.product_id} is not in the category tree; ` +
+            `syncing without a category path (connection: ${this.connection.id})`,
+        );
+        return null;
+      }
+      const page = await fetchShoperPage<ShoperCategory>(this.client, '/categories', {
+        page: 1,
+        limit: SHOPER_MAX_PAGE_SIZE,
+        query: { filters: JSON.stringify({ category_id: { in: pathIds.map(Number) } }) },
+      });
+      const wanted = new Set(pathIds);
+      const breadcrumb = buildShoperCategoryBreadcrumb(
+        pathIds,
+        page.items.filter((raw) => wanted.has(String(raw.category_id))),
+        language,
+      );
+      if (breadcrumb === null) {
+        this.logger.warn(
+          `Shoper category path of product ${data.product_id} has a node with no name; ` +
+            `syncing without a category path (connection: ${this.connection.id})`,
+        );
+      }
+      return breadcrumb;
+    } catch (error) {
+      this.logger.warn(
+        `Shoper category path of product ${data.product_id} could not be read; syncing without it ` +
+          `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
+      );
+      return null;
     }
   }
 
