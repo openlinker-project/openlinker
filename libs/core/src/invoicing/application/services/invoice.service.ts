@@ -54,6 +54,7 @@ import {
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { isCorrectionIssuer } from '../../domain/ports/capabilities/correction-issuer.capability';
+import { isBuyerIdentityCorrector } from '../../domain/ports/capabilities/buyer-identity-corrector.capability';
 import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/document-number-consumer.capability';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
@@ -1092,6 +1093,23 @@ export class InvoiceService implements IInvoiceService {
         leaseExpiresAt: null,
       });
       throw new CapabilityNotSupportedException(cmd.connectionId, 'CorrectionIssuer');
+    }
+
+    // DEF-09: a buyer override only means something if the provider puts it on
+    // the document. One that does not would issue a correction for the ORIGINAL
+    // buyer while this record's snapshot claimed the new one, so it is refused
+    // here, before anything is sent - nothing exists at the provider yet.
+    if (cmd.buyerOverride && !isBuyerIdentityCorrector(adapter)) {
+      await this.repo.updateOutcome(recordId, {
+        status: 'failed',
+        errorMessage: 'Provider cannot change the buyer on a correction.',
+        failureMode: 'rejected',
+        failureCode: 'provider-rejected',
+        failureReason:
+          'This invoicing provider cannot change the buyer on a correction. Correct the buyer in the provider directly.',
+        leaseExpiresAt: null,
+      });
+      throw new CapabilityNotSupportedException(cmd.connectionId, 'BuyerIdentityCorrector');
     }
 
     // Single issuance instant for the correction (#1692): threaded into BOTH the

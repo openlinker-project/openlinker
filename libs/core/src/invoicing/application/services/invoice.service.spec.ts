@@ -1595,6 +1595,41 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('DEF-09: refuses a buyer override before calling a provider that cannot carry it', async () => {
+      const override = makeBuyer();
+
+      await expect(
+        service.issueCorrection(makeCorrectionCmd({ buyerOverride: override })),
+      ).rejects.toThrow('BuyerIdentityCorrector');
+
+      expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ status: 'failed', failureMode: 'rejected' }),
+      );
+    });
+
+    it('DEF-09: lets a buyer override through to a provider that declares it', async () => {
+      Object.assign(correctionAdapter, { honoursBuyerOverride: true });
+
+      await service.issueCorrection(makeCorrectionCmd({ buyerOverride: makeBuyer() }));
+
+      expect(correctionAdapter.issueCorrection).toHaveBeenCalled();
+    });
+
+    it('DEF-07: keeps the original sale date on the correction snapshot', async () => {
+      await service.issueCorrection(
+        makeCorrectionCmd({ originalDocument: { ...makeOriginalDocument(), saleDate: '2026-06-20' } }),
+      );
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ saleDate: '2026-06-20' }),
+        }),
+      );
+    });
+
     it('applies a quantity delta and leaves price untouched', async () => {
       await service.issueCorrection(
         makeCorrectionCmd({ lines: [{ originalLineNumber: 2, newQuantity: 5 }] }),

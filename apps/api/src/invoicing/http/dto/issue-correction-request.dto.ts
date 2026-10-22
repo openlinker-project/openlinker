@@ -18,7 +18,6 @@ import {
   ValidateNested,
   IsNumber,
   Min,
-  ArrayMinSize,
   Validate,
   ValidatorConstraint,
   IsNotEmpty,
@@ -30,6 +29,7 @@ import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BuyerTypeValues } from '@openlinker/core/invoicing';
 import { BuyerTaxIdDto } from './buyer-tax-id.dto';
+import { AcknowledgeWarningsProperty } from './acknowledge-warnings.dto';
 
 /**
  * Rejects a correction line that changes neither quantity nor price — a no-op
@@ -169,21 +169,72 @@ export class CorrectionBuyerOverrideDto {
   isVatGroupMember?: boolean;
 }
 
-export class IssueCorrectionRequestDto {
-  @ApiProperty({
-    description:
-      'Free-text reason for the correction (REQUIRED, non-empty; e.g. wrong NIP, ' +
-      'partial return). Legally mandated (art. 106j ust. 2 pkt 5) and required by ' +
-      'the FA(3) XSD (PrzyczynaKorekty minLength=1 when present).',
-  })
-  @IsString()
-  @Transform(({ value }): unknown => (typeof value === 'string' ? value.trim() : value))
-  @IsNotEmpty()
-  reason!: string;
+/** FA(3) `PrzyczynaKorekty` is a `TZnakowy` (1..256 characters). */
+export const MAX_CORRECTION_REASON_LENGTH = 256;
 
-  @ApiProperty({ type: [CorrectionLineDto], description: 'Per-line corrections — at least one line must be present.' })
+/** Trim and collapse whitespace runs, as the XSD `token` type would read them. */
+export function normalizeCorrectionReason(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Length in characters as the XSD counts them (code points), so a reason with
+ * Polish diacritics or emoji is measured the way KSeF will measure it (DEF-25).
+ */
+@ValidatorConstraint({ name: 'maxCodePoints', async: false })
+class MaxCodePointsConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown, args: ValidationArguments): boolean {
+    const [max] = args.constraints as [number];
+    return typeof value !== 'string' || [...value].length <= max;
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const [max] = args.constraints as [number];
+    return `${args.property} must be at most ${max} characters`;
+  }
+}
+
+/**
+ * At least one corrected line, unless the correction changes the buyer alone
+ * (DEF-24) - a wrong address on an otherwise correct invoice has no line to
+ * change, and requiring a fake one made that correction impossible.
+ */
+@ValidatorConstraint({ name: 'linesOrBuyerOverride', async: false })
+class LinesOrBuyerOverrideConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown, args: ValidationArguments): boolean {
+    const dto = args.object as IssueCorrectionRequestDto;
+    return (Array.isArray(value) && value.length > 0) || dto.buyerOverride !== undefined;
+  }
+
+  defaultMessage(): string {
+    return 'lines must contain at least one correction unless buyerOverride is present';
+  }
+}
+
+export class IssueCorrectionRequestDto {
+  @ApiPropertyOptional({
+    description:
+      'Free-text reason for the correction (e.g. wrong NIP, partial return). Strongly ' +
+      'recommended - most regimes expect a correcting document to say why - but ' +
+      'optional: OpenLinker suggests, the operator decides (DEF-32). Whitespace runs ' +
+      'are collapsed; at most 256 characters, the FA(3) PrzyczynaKorekty limit (DEF-25). ' +
+      'An empty reason is omitted from the document, never sent empty.',
+    maxLength: MAX_CORRECTION_REASON_LENGTH,
+  })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }): unknown => (typeof value === 'string' ? normalizeCorrectionReason(value) : value))
+  @Validate(MaxCodePointsConstraint, [MAX_CORRECTION_REASON_LENGTH])
+  reason?: string;
+
+  @ApiProperty({
+    type: [CorrectionLineDto],
+    description:
+      'Per-line corrections. May be empty only for a correction of the buyer alone, ' +
+      'i.e. when `buyerOverride` is present (DEF-24).',
+  })
   @IsArray()
-  @ArrayMinSize(1)
+  @Validate(LinesOrBuyerOverrideConstraint)
   @Validate(UniqueOriginalLineNumbersConstraint)
   @ValidateNested({ each: true })
   @Type(() => CorrectionLineDto)
@@ -205,4 +256,7 @@ export class IssueCorrectionRequestDto {
   @IsString()
   @IsOptional()
   idempotencyKey?: string;
+
+  @AcknowledgeWarningsProperty()
+  acknowledgeWarnings?: string[];
 }

@@ -159,6 +159,21 @@ export interface Fa3CorrectionContext {
   originalKsefNumber: string | null;
   /** Post-correction ("after") line state. */
   correctedLines: Fa3Line[];
+  /**
+   * The buyer as on the corrected original, when the correction changes the
+   * buyer's data (DEF-23). Emitted as `Podmiot2K`, which the XSD requires for
+   * exactly that case.
+   */
+  buyerBeforeCorrection?: {
+    identity: BuyerIdentity;
+    name: string;
+    address: BuyerAddress;
+  };
+  /**
+   * `true` when no line changes (a buyer-only correction, DEF-24): the KOR then
+   * carries no `FaWiersz` rows and zero totals.
+   */
+  buyerOnly?: boolean;
 }
 
 /**
@@ -257,6 +272,7 @@ export const FA3_FA_CHILD_ORDER = [
   'PrzyczynaKorekty',
   'TypKorekty',
   'DaneFaKorygowanej',
+  'Podmiot2K',
   'FaWiersz',
   'Platnosc',
 ] as const;

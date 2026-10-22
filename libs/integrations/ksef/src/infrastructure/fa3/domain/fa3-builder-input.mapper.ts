@@ -256,12 +256,25 @@ function mapCorrection(
   correction: CorrectionReference,
   context: Fa3MappingContext,
 ): Fa3CorrectionContext {
+  const buyerOnly = correction.changesLines === false;
   return {
-    typKorekty: '2',
+    // A buyer-only correction moves no amount, so it takes effect in the
+    // original's settlement period (`1`); a line correction keeps `2` (DEF-24).
+    typKorekty: buyerOnly ? '1' : '2',
     reason: correction.reason,
     originalIssueDate: correction.originalIssueDate,
     originalInvoiceNumber: correction.originalDocumentNumber,
     originalKsefNumber: correction.originalClearanceReference,
     correctedLines: correction.correctedLines.map((line) => mapLine(line, context)),
+    ...(buyerOnly ? { buyerOnly: true } : {}),
+    ...(correction.originalBuyer
+      ? {
+          buyerBeforeCorrection: {
+            identity: resolveBuyerIdentity(correction.originalBuyer.taxId),
+            name: correction.originalBuyer.name,
+            address: normalizeAddressCountry(correction.originalBuyer.address),
+          },
+        }
+      : {}),
   };
 }

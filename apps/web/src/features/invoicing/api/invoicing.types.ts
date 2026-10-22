@@ -48,6 +48,9 @@ export const FailureCodeValues = [
   // connection is missing a setting (#3772). The only code whose
   // `failureReason` is the adapter's own sentence naming that setting.
   'connection-setup-incomplete',
+  // The document rests on a reading of the law OpenLinker is not sure of; the
+  // operator decides by re-issuing with the returned `warningCode` acknowledged.
+  'acknowledgement-required',
   'provider-rejected',
   'transport-timeout',
   'provider-error',

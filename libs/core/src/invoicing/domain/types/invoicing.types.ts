@@ -111,6 +111,12 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *     Must not collapse into `provider-rejected`, whose copy asserts the
  *     provider rejected a request it never received and sends the operator
  *     to the order's data when the fix is on the connection.
+ *   - `acknowledgement-required`: a TERMINAL `rejected` failure the ADAPTER
+ *     raised before contacting the provider because the document rests on a
+ *     reading of the law OpenLinker cannot be sure of (OpenLinker suggests,
+ *     the operator decides). Declared via `failureCause: 'needs-acknowledgement'`
+ *     with a `warningCode`; `failureReason` is the adapter's own PII-free
+ *     sentence. Re-issuing with that code in `acknowledgedWarnings` proceeds.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -123,6 +129,7 @@ export const InvoiceFailureCodeValues = [
   'invalid-currency',
   'sale-classification-required',
   'connection-setup-incomplete',
+  'acknowledgement-required',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
@@ -573,6 +580,17 @@ export interface CorrectionReference {
   originalIssueDate: string;
   /** Sale date of the corrected original, when it carried one (DEF-07). */
   originalSaleDate?: string;
+  /**
+   * The buyer as printed on the corrected original, present only when this
+   * correction CHANGES the buyer's data (DEF-23). A regime that must restate
+   * the corrected party (KSeF's `Podmiot2K`) reads it; others ignore it.
+   */
+  originalBuyer?: BuyerProfile;
+  /**
+   * `false` for a correction that changes no line, only the buyer (DEF-24).
+   * Absent means it changes lines, which is every correction before this field.
+   */
+  changesLines?: boolean;
   /** Free-text reason for the correction (return, refund, price adjustment, …). */
   reason: string;
   /** Post-correction ("after") line state; the top-level `lines` carry the original. */
@@ -766,6 +784,14 @@ export interface IssueInvoiceCommand {
   correction?: CorrectionReference;
   idempotencyKey?: string;
   /**
+   * Warning codes the operator explicitly accepted for THIS issuance. Where a
+   * guard rests on OpenLinker's reading of the law rather than on what the
+   * provider would technically accept, the adapter refuses once with a
+   * `warningCode` and the operator decides; re-issuing with the code here
+   * proceeds. Opaque to core - each adapter owns its codes.
+   */
+  acknowledgedWarnings?: readonly string[];
+  /**
    * How the buyer pays, when the order's source positively said so (#3294).
    * Absent means unknown: an adapter keeps its connection-level default rather
    * than guessing, since a wrong payment form on a fiscal document is a legal
@@ -929,6 +955,14 @@ export interface IssueCorrectionCommand {
    */
   issuedAt?: Date;
   idempotencyKey?: string;
+  /**
+   * Warning codes the operator explicitly accepted for THIS issuance. Where a
+   * guard rests on OpenLinker's reading of the law rather than on what the
+   * provider would technically accept, the adapter refuses once with a
+   * `warningCode` and the operator decides; re-issuing with the code here
+   * proceeds. Opaque to core - each adapter owns its codes.
+   */
+  acknowledgedWarnings?: readonly string[];
   /**
    * Optional neutral register / entity-scope label (#10). Routes the correction's
    * numbering to the connection's series for `(documentType, register)`; when

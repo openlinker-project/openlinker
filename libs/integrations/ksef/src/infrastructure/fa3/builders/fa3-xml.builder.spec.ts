@@ -904,3 +904,49 @@ describe('unit-price precision (#2251)', () => {
     expect(amounts.map((a) => a.lineNumber)).toEqual([1, 2]);
   });
 });
+
+describe('buyer corrections (DEF-23 / DEF-24)', () => {
+  function korInput(extra: Partial<NonNullable<Fa3BuilderInput['correction']>>): Fa3BuilderInput {
+    return {
+      ...b2bInput(),
+      invoiceNumber: 'KOR/2026/06/0009',
+      correction: {
+        typKorekty: '1',
+        reason: 'Wrong buyer address',
+        originalIssueDate: '2026-05-01',
+        originalInvoiceNumber: 'FV/2026/05/0043',
+        originalKsefNumber: '1234567890-20260501-0123456789AB-01',
+        correctedLines: b2bInput().lines,
+        ...extra,
+      },
+    };
+  }
+
+  it('should restate the original buyer in Podmiot2K after DaneFaKorygowanej', () => {
+    const xml = buildFa3Xml(
+      korInput({
+        buyerBeforeCorrection: {
+          identity: { kind: 'nip', nip: '9876543210' },
+          name: 'Buyer GmbH',
+          address: { line1: 'Old St 1', line2: null, city: 'Berlin', postalCode: '10115', countryIso2: 'DE' },
+        },
+      }),
+    );
+
+    expect(xml).toMatch(/<\/DaneFaKorygowanej>\s*<Podmiot2K>/);
+    expect(xml).toContain('Old St 1');
+    expect(() => validateFa3Xml(xml)).not.toThrow();
+  });
+
+  it('should emit no FaWiersz for a buyer-only correction and still validate', () => {
+    const xml = buildFa3Xml(korInput({ buyerOnly: true }));
+
+    expect(xml).not.toContain('<FaWiersz>');
+    expect(xml).toContain('<P_15>0.00</P_15>');
+    expect(() => validateFa3Xml(xml)).not.toThrow();
+  });
+
+  it('should emit no Podmiot2K when the buyer did not change', () => {
+    expect(buildFa3Xml(korInput({}))).not.toContain('Podmiot2K');
+  });
+});

@@ -621,8 +621,21 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
     }
     node.TypKorekty = correction.typKorekty;
     node.DaneFaKorygowanej = correctedInvoiceNode(correction);
+    // DEF-23: a correction of the buyer's data restates the buyer AS ON THE
+    // ORIGINAL in `Podmiot2K` (XSD: required in exactly that case), while
+    // `Podmiot2` carries the corrected buyer.
+    if (correction.buyerBeforeCorrection !== undefined) {
+      const before = correction.buyerBeforeCorrection;
+      node.Podmiot2K = {
+        DaneIdentyfikacyjne: { ...buyerIdentificationNode(before.identity), Nazwa: before.name },
+        Adres: addressNode(before.address),
+      };
+    }
   }
-  node.FaWiersz = wiersze;
+  // A buyer-only correction changes no line, so it carries none (DEF-24).
+  if (correction?.buyerOnly !== true) {
+    node.FaWiersz = wiersze;
+  }
   // `Platnosc` is a sibling of `FaWiersz` (XSD line 3281), emitted immediately
   // after it — before the (currently unemitted) `WarunkiTransakcji`, #1311.
   const platnosc = platnoscNode(input.payment);
@@ -643,14 +656,10 @@ export function buildFa3Xml(input: Fa3BuilderInput): RawFa3Xml {
     Podmiot1: sellerNode(input.seller),
     Podmiot2: buyerNode(input),
   };
-  // `Podmiot1K`/`Podmiot2K` (corrected-party snapshots) are NOT emitted. The
-  // FA(3) v1-0E XSD places them inside the KOR sequence under `Fa` (siblings of
-  // `DaneFaKorygowanej`), both `minOccurs="0"`, and they are required only when
-  // the *seller/buyer identity itself* changed across the correction. OL never
-  // tracks party changes — a return/refund corrects line items, not parties —
-  // so the optional snapshots are correctly omitted. (The previous root-level
-  // emission was doubly wrong: wrong position — `Faktura` root, not under `Fa` —
-  // and emitted for every KOR regardless of whether parties changed.)
+  // `Podmiot2K` (the buyer as on the corrected original) is emitted under `Fa`,
+  // after `DaneFaKorygowanej`, only by a correction that changes the buyer's
+  // data (DEF-23) - see `faNode`. `Podmiot1K` is never emitted: OpenLinker does
+  // not correct the seller.
   faktura.Fa = faNode(input);
   const tree: XmlNodeObject = { Faktura: faktura };
   return serializeXml(tree) as RawFa3Xml;

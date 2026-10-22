@@ -63,7 +63,13 @@ import {
 } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
 import { isTaxRateEra } from '@openlinker/core/sales-documents';
-import { IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
+import { readLiveOrderIssuanceDecision } from './live-order-issuance';
+import {
+  IOrderRecordService,
+  IOrderRefundService,
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -85,6 +91,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -110,19 +118,22 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       // falls through to normal issuance — graceful degradation for sources that
       // don't report status — this gate only BLOCKS on a positively-confirmed
       // cancelled/refunded status (a terminal business_failure, not a retry).
-      const orderRecord = await this.orderRecords.getOrderRecord(payload.orderId);
-      // `isCancelled` reads the durable `cancelledAt` column (#1984), which a
-      // source can stamp without the snapshot status ever saying `cancelled`.
-      if (
-        orderRecord &&
-        (orderRecord.isCancelled ||
-          orderRecord.status === 'cancelled' ||
-          orderRecord.status === 'refunded')
-      ) {
+      // DEF-26: one gate for every issuing path (`decideLiveOrderIssuance`).
+      // `cancelledAt` (#1984) and the recorded refund amounts decide; a partial
+      // refund is still a sale to document.
+      const decision = await readLiveOrderIssuanceDecision(
+        this.orderRecords,
+        this.orderRefunds,
+        payload.orderId,
+      );
+      if (decision.kind === 'block') {
         this.logger.warn(
-          `invoicing.issue skipped: ${orderRecord.isCancelled ? 'order is cancelled (cancelledAt set)' : `order status is '${String(orderRecord.status)}'`} orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+          `invoicing.issue skipped: ${decision.reason} orderId=${payload.orderId} connectionId=${payload.connectionId}`,
         );
         return { outcome: 'business_failure' };
+      }
+      if (decision.kind === 'allow-with-attention') {
+        this.logger.log(`invoicing.issue proceeds with attention: ${decision.attention} orderId=${payload.orderId}`);
       }
 
       // F4: command idempotencyKey === payload.idempotencyKey === job row key.

@@ -375,6 +375,10 @@ export interface IssueInvoiceInput {
   buyerTaxId?: BuyerTaxIdInput;
   documentType?: string;
   idempotencyKey?: string;
+  buyerIsPublicSectorEntity?: boolean;
+  buyerIsVatGroupMember?: boolean;
+  /** Warning codes accepted after a 422 `acknowledgement-required` / 409 `warningCode`. */
+  acknowledgeWarnings?: string[];
 }
 
 export interface InvoiceRecord {
@@ -819,6 +823,8 @@ export interface BulkIssueInvoicesResult {
   issued: number;
   skipped: number;
   failed: number;
+  /** How many orders the request named (#1594, H-14). */
+  total?: number;
   results: BulkIssueInvoiceResult[];
 }
 
@@ -831,9 +837,30 @@ export interface IssueCorrectionLineInput {
 
 /** POST /invoices/:invoiceId/correct request body (#1241). */
 export interface IssueCorrectionInput {
+  /** Recommended, not required (DEF-32); at most 256 characters (DEF-25). */
   reason?: string;
+  /** May be empty only together with `buyerOverride` (DEF-24). */
   lines: IssueCorrectionLineInput[];
   idempotencyKey?: string;
+  buyerOverride?: IssueCorrectionBuyerOverrideInput;
+  /** Warning codes accepted after a 422 `acknowledgement-required` / 409 `warningCode`. */
+  acknowledgeWarnings?: string[];
+}
+
+/** Buyer-identity override on a correction (#1582). */
+export interface IssueCorrectionBuyerOverrideInput {
+  name: string;
+  taxId?: { scheme: string; value: string };
+  address: {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    countryIso2: string;
+  };
+  type: 'company' | 'private';
+  isPublicSectorEntity?: boolean;
+  isVatGroupMember?: boolean;
 }
 
 /** POST /invoices/:invoiceId/send-email request body (#1353). */

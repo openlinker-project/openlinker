@@ -39,6 +39,7 @@ import type {
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
   OrderRecord,
   OrderSnapshotUnavailableError,
 } from '@openlinker/core/orders';
@@ -330,6 +331,10 @@ describe('InvoicingController', () => {
       providers: [
         { provide: INVOICE_SERVICE_TOKEN, useValue: invoiceService },
         { provide: ORDER_RECORD_SERVICE_TOKEN, useValue: orders },
+        {
+          provide: ORDER_REFUND_SERVICE_TOKEN,
+          useValue: { getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
+        },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrations },
         { provide: PAYMENT_STATUS_REFRESH_SERVICE_TOKEN, useValue: paymentStatusRefreshService },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
@@ -351,6 +356,40 @@ describe('InvoicingController', () => {
       orders.getOrderRecord.mockResolvedValue(null);
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(NotFoundException);
       expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('DEF-26: 409 naming the code to acknowledge when the order is cancelled', async () => {
+      const cancelled = makeOrderRecord({
+        ...(makeOrderRecord().orderSnapshot),
+        status: 'cancelled',
+      });
+      orders.getOrderRecord.mockResolvedValue(cancelled);
+      invoiceService.getInvoice.mockResolvedValue(null);
+
+      const error = await controller.issueInvoice(dto).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'ORDER_CANCELLED',
+        warningCode: 'order-cancelled',
+      });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('DEF-26: issues a cancelled order once the operator acknowledged it', async () => {
+      const cancelled = makeOrderRecord({
+        ...(makeOrderRecord().orderSnapshot),
+        status: 'cancelled',
+      });
+      orders.getOrderRecord.mockResolvedValue(cancelled);
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+
+      await controller.issueInvoice({ ...dto, acknowledgeWarnings: ['order-cancelled'] });
+
+      expect(invoiceService.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgedWarnings: ['order-cancelled'] }),
+      );
     });
 
     it('409 Conflict when an issued invoice already exists', async () => {

@@ -72,8 +72,10 @@
 import { createHash } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
 import type {
+  BuyerProfile,
   CorrectionIssuer,
   CorrectionLine,
+  BuyerIdentityCorrector,
   DocumentNumberConsumer,
   RegulatoryClearanceResult,
   DocumentType,
@@ -145,6 +147,8 @@ import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { resolveBuyerIdSchemeTag } from '../fa3/domain/fa3-buyer-id.mapper';
 import { stampPreSubmitRefusal, type KsefSubmitProgress } from './ksef-pre-submit-refusal';
 import { toCalendarDate } from '@openlinker/shared/date';
+import { normalizePlNip } from './nip-checksum';
+import { requireAcknowledgement } from '../../domain/exceptions/ksef-acknowledgement-required.exception';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
@@ -154,6 +158,33 @@ const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
  * up front by `reserveSessionRound` (DEF-04).
  */
 const PREPAID_ROUND = { rateLimitPrepaid: true } as const;
+
+/** Warning code a buyer-NIP change on a correction asks the operator to accept (DEF-23). */
+export const KSEF_BUYER_TAX_ID_CHANGE_WARNING = 'ksef-buyer-tax-id-change';
+
+/** A tax id compared without separators or scheme case, `''` when absent. */
+function normalisedTaxId(taxId: { scheme?: string; value: string } | null): string {
+  if (!taxId) {
+    return '';
+  }
+  return `${(taxId.scheme ?? '').trim().toLowerCase()}|${normalizePlNip(taxId.value).toUpperCase()}`;
+}
+
+/** Whether a correction's buyer override actually changes any printed buyer field. */
+function buyerDataDiffers(before: BuyerProfile, after: BuyerProfile): boolean {
+  const address = (b: BuyerProfile): string =>
+    [b.address.line1, b.address.line2 ?? '', b.address.city, b.address.postalCode, b.address.countryIso2]
+      .map((part) => part.trim())
+      .join('|');
+  return (
+    before.name.trim() !== after.name.trim() ||
+    normalisedTaxId(before.taxId) !== normalisedTaxId(after.taxId) ||
+    address(before) !== address(after) ||
+    before.type !== after.type ||
+    (before.isPublicSectorEntity ?? false) !== (after.isPublicSectorEntity ?? false) ||
+    (before.isVatGroupMember ?? false) !== (after.isVatGroupMember ?? false)
+  );
+}
 
 /** A line's rate code, or `''` when a legacy payload carries none (DEF-37). */
 function readTaxRate(line: InvoiceLine): string {
@@ -199,6 +230,7 @@ export class KsefInvoicingAdapter
     RegulatoryTransmitter,
     RegulatoryDocumentReader,
     CorrectionIssuer,
+    BuyerIdentityCorrector,
     DocumentNumberConsumer,
     OfflineResubmitter,
     RegulatoryRecordLocator,
@@ -213,6 +245,13 @@ export class KsefInvoicingAdapter
    * `isDocumentNumberConsumer`.
    */
   readonly consumesDocumentNumber = true as const;
+
+  /**
+   * KSeF puts a correction's buyer override on the KOR itself (DEF-09), so the
+   * core lets an override through to this adapter and refuses it for providers
+   * that would ignore it. Read by `isBuyerIdentityCorrector`.
+   */
+  readonly honoursBuyerOverride = true as const;
 
   /**
    * IANA timezone (#7) the core numbering allocation resolves the FA(3) date
@@ -937,7 +976,9 @@ export class KsefInvoicingAdapter
     // #1582: a buyer-identity correction (e.g. a wrong NIP on the original) sends
     // the OVERRIDE buyer on the KOR instead of the original snapshot's buyer.
     // Neutral - the adapter just prefers the override when present (ADR-026).
-    const correctionBuyer = cmd.buyerOverride ?? cmd.originalDocument.buyer;
+    const original = cmd.originalDocument;
+    const buyerChange = this.resolveBuyerChange(cmd);
+    const correctionBuyer = buyerChange?.after ?? original.buyer;
     const issueCmd: IssueInvoiceCommand = {
       connectionId: cmd.connectionId,
       orderId: cmd.orderId,
@@ -960,10 +1001,13 @@ export class KsefInvoicingAdapter
         ...(cmd.originalDocument.saleDate !== undefined
           ? { originalSaleDate: cmd.originalDocument.saleDate }
           : {}),
+        ...(buyerChange ? { originalBuyer: buyerChange.before } : {}),
+        ...(cmd.lines.length === 0 ? { changesLines: false } : {}),
         reason: cmd.reason ?? '',
         correctedLines,
       },
       idempotencyKey: cmd.idempotencyKey,
+      ...(cmd.acknowledgedWarnings ? { acknowledgedWarnings: cmd.acknowledgedWarnings } : {}),
     };
     // `CorrectionIssuer.issueCorrection` now returns the full `IssueInvoiceResult`
     // (record + seller + sourceDocument), same as `issueInvoice` — a KOR's FA(3)
@@ -971,6 +1015,35 @@ export class KsefInvoicingAdapter
     // (#1229 follow-up: the source document was previously discarded here,
     // leaving every correction's "View"/"Preview" with nothing to render).
     return this.issueInvoice(issueCmd);
+  }
+
+  /**
+   * The buyer change a correction carries, or `null` when the override is
+   * absent or identical to the original buyer (then nothing is restated).
+   *
+   * MF's XSD guidance says a wrong buyer NIP is not corrected by a KOR: the
+   * invoice is corrected to zero and a new one issued. That is a reading of the
+   * law, not a schema fact, so a NIP change asks for the operator's
+   * acknowledgement instead of being refused (DEF-23) - OpenLinker suggests,
+   * the operator decides.
+   */
+  private resolveBuyerChange(
+    cmd: IssueCorrectionCommand,
+  ): { before: BuyerProfile; after: BuyerProfile } | null {
+    const override = cmd.buyerOverride;
+    const before = cmd.originalDocument?.buyer;
+    if (!override || !before || !buyerDataDiffers(before, override)) {
+      return null;
+    }
+    if (normalisedTaxId(before.taxId) !== normalisedTaxId(override.taxId)) {
+      requireAcknowledgement(
+        cmd.acknowledgedWarnings,
+        KSEF_BUYER_TAX_ID_CHANGE_WARNING,
+        'This correction changes the buyer tax number. MF guidance is to correct the invoice to zero and ' +
+          'issue a new one instead. Confirm to issue this correction with the new number anyway.',
+      );
+    }
+    return { before, after: override };
   }
 
   /**

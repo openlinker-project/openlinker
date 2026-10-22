@@ -36,6 +36,8 @@ import { KsefMissingDocumentNumberException } from '../../../domain/exceptions/k
 import { KsefPermissionDeniedException } from '../../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefCrossBorderUnsupportedException } from '../../../domain/exceptions/ksef-cross-border-unsupported.exception';
 import { classifyInvoiceFailure } from '@openlinker/core/invoicing';
+import { KsefAcknowledgementRequiredException } from '../../../domain/exceptions/ksef-acknowledgement-required.exception';
+import { KSEF_BUYER_TAX_ID_CHANGE_WARNING } from '../ksef-invoicing.adapter';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
@@ -1649,6 +1651,81 @@ describe('KsefInvoicingAdapter', () => {
       await adapterAt(http, builder).issueInvoice(command({ saleDate: '2026-01-20' }));
 
       expect(lastInput()?.saleDate).toBe('2026-01-20');
+    });
+  });
+  describe('buyer corrections (DEF-23 / DEF-24)', () => {
+    const movedBuyer = (nip: string, line1: string): BuyerProfileType =>
+      new BuyerProfile(
+        'Klient Sp. z o.o.',
+        { scheme: 'pl-nip', value: nip },
+        { line1, line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+      );
+
+    it('should restate the original buyer when only the address changes', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({ buyerOverride: movedBuyer('9876543210', 'ul. Nowa 9') }),
+      );
+
+      expect(lastInput()?.correction?.buyerBeforeCorrection?.address.line1).toBe('ul. Kupiecka 2');
+      expect(lastInput()?.buyerAddress.line1).toBe('ul. Nowa 9');
+    });
+
+    it('should ask for acknowledgement before changing the buyer tax number', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const error = await adapter(http)
+        .issueCorrection(correctionCommand({ buyerOverride: movedBuyer('1189981779', 'ul. Kupiecka 2') }))
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(KsefAcknowledgementRequiredException);
+      expect(classifyInvoiceFailure(error)).toMatchObject({
+        failureMode: 'rejected',
+        failureCode: 'acknowledgement-required',
+      });
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should issue the tax-number change once the operator acknowledged it', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const { record } = await adapter(http).issueCorrection(
+        correctionCommand({
+          buyerOverride: movedBuyer('1189981779', 'ul. Kupiecka 2'),
+          acknowledgedWarnings: [KSEF_BUYER_TAX_ID_CHANGE_WARNING],
+        }),
+      );
+
+      expect(record.status).toBe('issued');
+    });
+
+    it('should ignore an override identical to the original buyer', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(correctionCommand({ buyerOverride: buyer() }));
+
+      expect(lastInput()?.correction?.buyerBeforeCorrection).toBeUndefined();
+    });
+
+    it('should build a buyer-only correction with no line changes', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({ lines: [], buyerOverride: movedBuyer('9876543210', 'ul. Nowa 9') }),
+      );
+
+      expect(lastInput()?.correction?.buyerOnly).toBe(true);
+      expect(lastInput()?.correction?.typKorekty).toBe('1');
     });
   });
 });

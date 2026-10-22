@@ -149,6 +149,34 @@ describe('validateFa3Xml', () => {
     expect(() => validateFa3Xml(good)).not.toThrow();
   });
 
+  it('should reject an empty PrzyczynaKorekty under a namespace prefix (DEF-38)', () => {
+    for (const fragment of ['<ns:PrzyczynaKorekty/>', '<ns:PrzyczynaKorekty>  </ns:PrzyczynaKorekty>']) {
+      const bad = builtDoc().replace('</RodzajFaktury>', `</RodzajFaktury>${fragment}`) as RawFa3Xml;
+      expect(() => validateFa3Xml(bad)).toThrow(Fa3XsdValidationException);
+    }
+  });
+
+  it('should reject a PrzyczynaKorekty longer than 256 characters (DEF-25)', () => {
+    const bad = builtDoc().replace(
+      '</RodzajFaktury>',
+      `</RodzajFaktury><PrzyczynaKorekty>${'ż'.repeat(257)}</PrzyczynaKorekty>`,
+    ) as RawFa3Xml;
+    expect(() => validateFa3Xml(bad)).toThrow(Fa3XsdValidationException);
+  });
+
+  it('should accept a 256-character reason counted in characters, not bytes', () => {
+    const good = builtDoc().replace(
+      '</RodzajFaktury>',
+      `</RodzajFaktury><PrzyczynaKorekty>${'ż'.repeat(256)}</PrzyczynaKorekty>`,
+    ) as RawFa3Xml;
+    expect(() => validateFa3Xml(good)).not.toThrow();
+  });
+
+  it('should reject an empty exemption ground P_19C (DEF-34)', () => {
+    const bad = builtDoc().replace('</RodzajFaktury>', '</RodzajFaktury><P_19C></P_19C>') as RawFa3Xml;
+    expect(() => validateFa3Xml(bad)).toThrow(Fa3XsdValidationException);
+  });
+
   it('should accept the np II token (a valid TStawkaPodatku value)', () => {
     // Swapping the P_12 value for a valid token keeps the document otherwise
     // valid; the token guard must NOT reject `np II`.

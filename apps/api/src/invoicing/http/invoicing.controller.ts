@@ -103,6 +103,7 @@ import {
   normalizeShippingLineName,
   classifyInvoiceFailure,
   classifyInvoiceFailureMode,
+  readAcknowledgementWarningCode,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -119,12 +120,16 @@ import type {
 import {
   decodeBuyerTaxIdColumn,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
   IOrderRecordService,
+  IOrderRefundService,
+  toLiveOrderIssuanceFacts,
   orderFromReadySnapshot,
   OrderSnapshotUnavailableError,
   buildOrderSummary,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord, OrderSummary } from '@openlinker/core/orders';
+import { decideLiveOrderIssuance, type LiveOrderIssuanceDecision } from '@openlinker/core/sales-documents';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
@@ -207,6 +212,8 @@ export class InvoicingController {
     private readonly paymentStatusRefreshService: IPaymentStatusRefreshService,
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly refunds: IOrderRefundService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -415,6 +422,25 @@ export class InvoicingController {
       }
     }
 
+    // DEF-26: a cancelled or fully refunded order is not invoiced by default -
+    // but a person issuing by hand may know better (OpenLinker suggests, the
+    // operator decides), so the refusal names the code to acknowledge.
+    const liveDecision = await this.decideLiveIssuance(record);
+    if (
+      liveDecision.kind === 'block' &&
+      !(dto.acknowledgeWarnings ?? []).includes(liveDecision.reason)
+    ) {
+      throw new ConflictException({
+        message:
+          liveDecision.reason === 'order-cancelled'
+            ? 'This order is cancelled. Confirm to issue an invoice for it anyway.'
+            : 'This order is fully refunded. Confirm to issue an invoice for it anyway.',
+        error: 'OrderNotIssuable',
+        code: liveDecision.reason === 'order-cancelled' ? 'ORDER_CANCELLED' : 'ORDER_FULLY_REFUNDED',
+        warningCode: liveDecision.reason,
+      });
+    }
+
     // Rehydrate the typed Order and compose the command server-side. The client
     // never supplies buyer/lines — they are derived from the order snapshot.
     const order = this.rehydrateOrder(record.internalOrderId, record);
@@ -467,6 +493,9 @@ export class InvoicingController {
       });
     } catch (error) {
       throw this.toHttpException(error);
+    }
+    if (dto.acknowledgeWarnings?.length) {
+      command = { ...command, acknowledgedWarnings: dto.acknowledgeWarnings };
     }
 
     let issued: InvoiceRecord;
@@ -729,6 +758,20 @@ export class InvoicingController {
         }
       }
 
+      // DEF-26: a batch never asks, so a cancelled or fully refunded order is
+      // skipped and named; the operator can still issue it one by one.
+      const liveDecision = await this.decideLiveIssuance(record);
+      if (liveDecision.kind === 'block') {
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason:
+            liveDecision.reason === 'order-cancelled'
+              ? 'The order is cancelled.'
+              : 'The order is fully refunded.',
+        };
+      }
+
       const order = this.rehydrateOrder(record.internalOrderId, record);
       // Deterministic per-(connection, order) key — the same key the auto-issue
       // trigger uses. Threading it into the service's exactly-once dedup gate is
@@ -946,13 +989,15 @@ export class InvoicingController {
         orderId: original.orderId,
         originalProviderInvoiceId: original.providerInvoiceId,
         documentType: dto.lines.length > 0 ? 'corrected' : undefined,
-        reason: dto.reason,
+        // DEF-32: an empty or absent reason is simply not sent.
+        reason: dto.reason ? dto.reason : undefined,
         lines: dto.lines.map((l) => ({
           originalLineNumber: l.originalLineNumber,
           newQuantity: l.newQuantity,
           newUnitPriceGross: l.newUnitPriceGross,
         })),
         idempotencyKey: dto.idempotencyKey,
+        ...(dto.acknowledgeWarnings?.length ? { acknowledgedWarnings: dto.acknowledgeWarnings } : {}),
         originalDocument,
         source,
         // #1582: optional buyer-identity override (e.g. a wrong NIP on the
@@ -1503,6 +1548,14 @@ export class InvoicingController {
    *   - capability/connection-resolution errors propagate UNCAUGHT (handled by
    *     the global filter — they are not invoice-issuance rejections).
    */
+  /** The shared live-order gate (DEF-26) for one order record. */
+  private async decideLiveIssuance(record: OrderRecord): Promise<LiveOrderIssuanceDecision> {
+    const summary = (await this.refunds.getRefundSummariesForOrders([record.internalOrderId])).get(
+      record.internalOrderId,
+    );
+    return decideLiveOrderIssuance(toLiveOrderIssuanceFacts(record, summary));
+  }
+
   private toHttpException(error: unknown): Error {
     if (error instanceof DuplicateInvoiceRecordException) {
       return new ConflictException('An invoice record with this idempotency key already exists');
@@ -1616,7 +1669,13 @@ export class InvoicingController {
         message: failureReason,
         error: 'InvoiceIssueRejected',
         failureCode,
-        ...(failureCode === 'connection-setup-incomplete' ? { failureReason } : {}),
+        ...(failureCode === 'connection-setup-incomplete' || failureCode === 'acknowledgement-required'
+          ? { failureReason }
+          : {}),
+        // The code the operator sends back in `acknowledgeWarnings` to proceed.
+        ...(failureCode === 'acknowledgement-required'
+          ? { warningCode: readAcknowledgementWarningCode(error) }
+          : {}),
       });
     }
     // Any other throw from the issuance path is an adapter failure the service

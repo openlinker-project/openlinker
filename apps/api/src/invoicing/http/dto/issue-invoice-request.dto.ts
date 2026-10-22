@@ -21,6 +21,7 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BuyerTaxIdDto } from './buyer-tax-id.dto';
+import { AcknowledgeWarningsProperty } from './acknowledge-warnings.dto';
 
 export class IssueInvoiceRequestDto {
   @ApiProperty({ description: 'Invoicing connection id' })
@@ -50,6 +51,9 @@ export class IssueInvoiceRequestDto {
   @IsOptional()
   @IsString()
   idempotencyKey?: string;
+
+  @AcknowledgeWarningsProperty()
+  acknowledgeWarnings?: string[];
 
   @ApiPropertyOptional({
     description:
