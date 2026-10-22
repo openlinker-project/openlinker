@@ -509,14 +509,15 @@ OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
   checking is not performed today - the check is a tested seam with a no-network
   default. Combined with the enforced short validity window and TLS transport, this
   is an accepted MVP posture; a follow-up will add a networked OCSP/CRL checker.
-- **Token least-privilege (operator responsibility).** KSeF exposes **no
-  token-scope introspection endpoint**, so OpenLinker cannot machine-verify a
-  token's granted permissions at connection-test time. Generate the ksef-token with
-  **only** the "wystawianie faktur" (invoice-issuance) permission (see the
-  tutorial). If a token lacks that permission, issuance fails with a **distinct**
-  permission-denied error (`KsefPermissionDeniedException`, KSeF 403) surfaced
-  separately from other auth failures - both at connection-test time and during
-  issuance - rather than a generic authentication error.
+- **Token least-privilege (operator responsibility).** Generate the ksef-token
+  with **only** the "wystawianie faktur" (invoice-issuance, `InvoiceWrite`)
+  permission (see the tutorial). **Test connection** asks KSeF which grants the
+  token holds (`POST /permissions/query/personal/grants`) and tells you whether
+  `InvoiceWrite` is among them. The answer is advice, not a gate: a token is never
+  refused by the test, and when KSeF does not answer the query the result says the
+  permission was not verified. If issuance is then refused, the failure is a
+  distinct permission-denied error (`KsefPermissionDeniedException`, KSeF 403)
+  telling you to replace the token, not a timeout.
 
 ---
 

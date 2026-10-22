@@ -48,7 +48,7 @@ import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import { KsefPermissionDeniedException } from '../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
-import type { KsefRateLimiter } from './ksef-rate-limiter';
+import { KSEF_SESSION_ROUND, type KsefRateLimiter } from './ksef-rate-limiter';
 import type { KsefRateLimitCategory } from './ksef-rate-limiter.types';
 
 /** Refresh proactively within this window of the access-token expiry. */
@@ -206,7 +206,9 @@ export class KsefHttpClient implements IKsefHttpClient {
     // ceilings rather than firing all requests and relying on reactive 429s.
     // Acquired once per logical request (not per retry attempt); reactive 429
     // backoff below remains the backstop for anything the pacer under-estimates.
-    await this.acquireRateLimitPermit(method, path);
+    if (!options?.rateLimitPrepaid) {
+      await this.acquireRateLimitPermit(method, path);
+    }
 
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
@@ -255,6 +257,13 @@ export class KsefHttpClient implements IKsefHttpClient {
       }
     }
     throw lastError ?? new Error('KSeF request failed after retries');
+  }
+
+  async reserveSessionRound(): Promise<void> {
+    if (!this.rateLimiter) {
+      return;
+    }
+    await this.rateLimiter.reserve(this.rateLimitBucketKey, KSEF_SESSION_ROUND);
   }
 
   /**

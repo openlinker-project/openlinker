@@ -47,3 +47,29 @@ export interface KsefRateLimiterClock {
   now(): number;
   sleep(ms: number): Promise<void>;
 }
+
+/** One category to reserve, with the ceiling the reservation must stay under. */
+export interface KsefRateLimitDemand {
+  category: KsefRateLimitCategory;
+  perHour: number;
+}
+
+/** Outcome of an all-or-nothing reservation attempt. */
+export type KsefRateLimitReservation =
+  | { admitted: true }
+  | { admitted: false; retryAfterMs: number };
+
+/**
+ * Where the rolling-hour log lives (DEF-05 / DEF-06). The in-memory store is
+ * exact inside one process; the Redis store is shared by every api and worker
+ * replica, which is what KSeF's own accounting is keyed on. Both admit ALL the
+ * demanded categories or none of them, so a session round never takes an open
+ * token it cannot finish with a close.
+ */
+export interface KsefRateLimitStore {
+  tryReserve(
+    bucketKey: string,
+    demands: readonly KsefRateLimitDemand[],
+    windowMs: number,
+  ): Promise<KsefRateLimitReservation>;
+}

@@ -1,55 +1,58 @@
 /**
- * KSeF Rate Limiter (#1594)
+ * KSeF Rate Limiter (#1594, DEF-04 / DEF-05 / DEF-06)
  *
- * Proactive, client-side token-bucket pacer for the three rate-limited KSeF
- * online-session write endpoints. KSeF 2.0 enforces per-context
- * `(seller NIP, source IP)` per-hour ceilings:
- *   - `POST /sessions/online`            (session-open)   = 120/hour
+ * Proactive, client-side pacer for the three rate-limited KSeF online-session
+ * write endpoints. KSeF 2.0 enforces per-context `(seller NIP, source IP)`
+ * per-hour ceilings:
+ *   - `POST /sessions/online`                (session-open)   = 120/hour
  *   - `POST /sessions/online/{ref}/invoices` (invoice-submit) = 180/hour
  *   - `POST /sessions/online/{ref}/close`    (session-close)  = 120/hour
  *
  * A 100-order bulk-issue run fans out to ~100 opens + 100 submits + 100 closes
- * on ONE connection, landing within a few points of the open/close ceiling and
- * leaving no headroom for auto-issue / retries / a second bulk call in the same
- * rolling hour. This limiter self-throttles that run against the documented
- * ceilings so the reactive 429/Retry-After path (which only fires AFTER KSeF
- * rejects) becomes a backstop rather than the primary control.
+ * on ONE connection. This limiter self-throttles such a run against the
+ * documented ceilings so the reactive 429/Retry-After path becomes a backstop
+ * rather than the primary control.
  *
- * Design:
- *  - One token bucket per `(bucketKey, category)`. `bucketKey` is the seller NIP
- *    (KSeF buckets by NIP), so multiple OL connections on the same NIP + the
- *    same egress IP share one bucket — matching KSeF's own edge accounting.
- *    A single OL deployment egresses from one IP, so keying on NIP alone is a
- *    faithful proxy for KSeF's `(NIP, IP)` context here.
- *  - Bucket capacity == `perHour`; refill accrues continuously at
- *    `perHour / 3_600_000` tokens per ms. A burst up to `perHour` is admitted
- *    immediately; steady-state then paces at the sustained rate.
- *  - `acquire` consumes one token, awaiting (via the injected clock) until a
- *    token is available. The injected clock keeps the pacer testable with a fake
- *    time source — no real sleeps in specs.
+ * Three properties are load-bearing:
+ *  - **A rolling-hour log, not a token bucket (DEF-05).** A request is admitted
+ *    only while fewer than `perHour` were admitted in the last hour. The bucket
+ *    it replaces started full and kept refilling, so it admitted ~2x the ceiling
+ *    in its first hour. See `ksef-rate-limit-stores.ts`.
+ *  - **One budget for every process (DEF-06).** The store is swappable: the
+ *    module wires the Redis store when Redis is available, so the api and every
+ *    worker replica count against the same log KSeF counts against. When Redis
+ *    cannot answer, the limiter falls back to its in-process log and says so in
+ *    the log, rather than failing an issuance over its own bookkeeping.
+ *  - **A bounded wait, decided before the session opens (DEF-04).** `reserve`
+ *    takes every token a round needs (open + submit + close) at once and waits
+ *    at most `maxWaitMs` for them. If the budget will not free up in time it
+ *    throws {@link KsefRateLimitDeferredException} instead of sleeping past the
+ *    fiscal issuing lease; nothing has been sent at that point, so the job can
+ *    be requeued without spending an attempt.
  *
- * This is a process-local pacer (a shared singleton via
- * `getSharedKsefRateLimiter`), NOT a cross-process/distributed limiter: it
- * bounds THIS deployment's own outbound rate. Cross-instance coordination (if OL
- * ever runs multiple issuing replicas against one NIP) is a documented follow-up.
+ * `bucketKey` is `{env}:{seller NIP}`: KSeF buckets by NIP, per environment.
  *
  * @module libs/integrations/ksef/src/infrastructure/http
  */
 import { Logger } from '@openlinker/shared/logging';
+import { KsefRateLimitDeferredException } from '../../domain/exceptions/ksef-rate-limit-deferred.exception';
+import { InMemoryKsefRateLimitStore } from './ksef-rate-limit-stores';
 import type {
   KsefRateLimitCategory,
+  KsefRateLimitDemand,
   KsefRateLimiterClock,
   KsefRateLimiterConfig,
+  KsefRateLimitStore,
 } from './ksef-rate-limiter.types';
 
-const MS_PER_HOUR = 3_600_000;
+export const KSEF_RATE_LIMIT_WINDOW_MS = 3_600_000;
 
 /**
- * Absorbs IEEE-754 drift when a refill computes a token count a hair below a
- * whole token (e.g. 0.9999999 instead of 1). Without it a bucket that has
- * mathematically accrued exactly one token would spin one extra 1ms wait.
+ * Longest a single issuance waits for budget before deferring (DEF-04). Kept
+ * well inside the core's supported provider round-trip so that pacing, the NBP
+ * read and the KSeF calls together stay under the issuing lease.
  */
-const TOKEN_EPSILON = 1e-6;
+export const KSEF_MAX_PACING_WAIT_MS = 20_000;
 
 /**
  * Documented KSeF per-hour ceilings (per `(NIP, IP)` context). Re-confirm
@@ -63,12 +66,17 @@ export const KSEF_DOCUMENTED_CEILINGS: Record<KsefRateLimitCategory, number> = {
 
 /**
  * Fraction of each documented ceiling the pacer will actually spend, reserving
- * the remainder as headroom for concurrent activity (auto-issue trigger, manual
- * retries, a second bulk call) on the same context. 0.9 keeps a 100-order bulk
- * run well under the burst capacity (0.9 * 120 = 108 > 100) while still leaving
- * ~10% for everything else.
+ * the remainder as headroom for activity OpenLinker does not see on the same
+ * context (another tool using the same token, for one).
  */
 export const DEFAULT_KSEF_UTILIZATION_FACTOR = 0.9;
+
+/** The three calls one online-session issuance makes, in order. */
+export const KSEF_SESSION_ROUND: readonly KsefRateLimitCategory[] = [
+  'session-open',
+  'invoice-submit',
+  'session-close',
+];
 
 /** Build the default limiter config from the documented ceilings + headroom factor. */
 export function buildDefaultKsefRateLimiterConfig(
@@ -82,78 +90,101 @@ export function buildDefaultKsefRateLimiterConfig(
   };
 }
 
-/** Default clock: real wall-clock time + real (cancellable-free) sleep. */
+/** Default clock: real wall-clock time + real sleep. */
 const REAL_CLOCK: KsefRateLimiterClock = {
   now: () => Date.now(),
   sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
-interface TokenBucket {
-  tokens: number;
-  lastRefillMs: number;
+export interface KsefReserveOptions {
+  /** Longest to wait for budget; defaults to {@link KSEF_MAX_PACING_WAIT_MS}. */
+  maxWaitMs?: number;
 }
 
 export class KsefRateLimiter {
   private readonly logger = new Logger(KsefRateLimiter.name);
   private readonly config: KsefRateLimiterConfig;
   private readonly clock: KsefRateLimiterClock;
-  private readonly buckets = new Map<string, TokenBucket>();
+  private readonly fallback: InMemoryKsefRateLimitStore;
+  private store: KsefRateLimitStore;
 
-  constructor(config?: Partial<KsefRateLimiterConfig>, clock: KsefRateLimiterClock = REAL_CLOCK) {
+  constructor(
+    config?: Partial<KsefRateLimiterConfig>,
+    clock: KsefRateLimiterClock = REAL_CLOCK,
+    store?: KsefRateLimitStore,
+  ) {
     this.config = { ...buildDefaultKsefRateLimiterConfig(), ...config };
     this.clock = clock;
+    this.fallback = new InMemoryKsefRateLimitStore(() => this.clock.now());
+    this.store = store ?? this.fallback;
+  }
+
+  /** Swap the store (the module wires Redis once the host provides it). */
+  useStore(store: KsefRateLimitStore): void {
+    this.store = store;
   }
 
   /**
-   * Consume one token for `(bucketKey, category)`, awaiting until one is
-   * available. Serialises acquisitions per bucket so concurrent callers can't
-   * both read the same pre-refill token count and over-draw the bucket.
+   * Reserve every category in `categories` for `bucketKey`, all or none,
+   * waiting at most `maxWaitMs`. Throws {@link KsefRateLimitDeferredException}
+   * when the budget would not free up in time.
    */
-  async acquire(bucketKey: string, category: KsefRateLimitCategory): Promise<void> {
-    const perHour = this.config[category]?.perHour;
-    if (!perHour || perHour <= 0) {
-      return; // Unconfigured / disabled category — no pacing.
-    }
-    const refillPerMs = perHour / MS_PER_HOUR;
-    const key = `${bucketKey}:${category}`;
-
-    for (;;) {
-      const bucket = this.getBucket(key, perHour);
-      this.refill(bucket, perHour, refillPerMs);
-      if (bucket.tokens + TOKEN_EPSILON >= 1) {
-        bucket.tokens = Math.max(0, bucket.tokens - 1);
-        return;
-      }
-      // Not enough credit yet — wait for exactly one token to accrue, then loop
-      // and re-check (another waiter may have consumed it first).
-      // Compute via `perHour` (not `refillPerMs`) so the tiny divisor doesn't
-      // amplify float error into a spurious extra millisecond of wait.
-      const waitMs = Math.ceil(((1 - bucket.tokens) * MS_PER_HOUR) / perHour);
-      this.logger.debug(
-        `Pacing KSeF ${category} on bucket ${bucketKey}: waiting ${waitMs}ms for a rate-limit token`,
-      );
-      await this.clock.sleep(waitMs);
-    }
-  }
-
-  private getBucket(key: string, capacity: number): TokenBucket {
-    let bucket = this.buckets.get(key);
-    if (!bucket) {
-      // Start full: the first burst up to the ceiling is admitted immediately.
-      bucket = { tokens: capacity, lastRefillMs: this.clock.now() };
-      this.buckets.set(key, bucket);
-    }
-    return bucket;
-  }
-
-  private refill(bucket: TokenBucket, capacity: number, refillPerMs: number): void {
-    const now = this.clock.now();
-    const elapsed = now - bucket.lastRefillMs;
-    if (elapsed <= 0) {
+  async reserve(
+    bucketKey: string,
+    categories: readonly KsefRateLimitCategory[],
+    options: KsefReserveOptions = {},
+  ): Promise<void> {
+    const demands = this.demandsFor(categories);
+    if (demands.length === 0) {
       return;
     }
-    bucket.tokens = Math.min(capacity, bucket.tokens + elapsed * refillPerMs);
-    bucket.lastRefillMs = now;
+    const maxWaitMs = options.maxWaitMs ?? KSEF_MAX_PACING_WAIT_MS;
+    const started = this.clock.now();
+
+    for (;;) {
+      const outcome = await this.tryReserve(bucketKey, demands);
+      if (outcome.admitted) {
+        return;
+      }
+      const waited = this.clock.now() - started;
+      if (waited + outcome.retryAfterMs > maxWaitMs) {
+        throw new KsefRateLimitDeferredException(bucketKey, outcome.retryAfterMs);
+      }
+      this.logger.debug(
+        `Pacing KSeF ${categories.join('+')} on bucket ${bucketKey}: waiting ${outcome.retryAfterMs}ms`,
+      );
+      await this.clock.sleep(outcome.retryAfterMs);
+    }
+  }
+
+  /** Reserve one category; the path for a call that was not reserved as a round. */
+  acquire(bucketKey: string, category: KsefRateLimitCategory): Promise<void> {
+    return this.reserve(bucketKey, [category]);
+  }
+
+  private demandsFor(categories: readonly KsefRateLimitCategory[]): KsefRateLimitDemand[] {
+    return categories
+      .map((category) => ({ category, perHour: this.config[category]?.perHour ?? 0 }))
+      .filter((demand) => demand.perHour > 0);
+  }
+
+  private async tryReserve(
+    bucketKey: string,
+    demands: readonly KsefRateLimitDemand[],
+  ): ReturnType<KsefRateLimitStore['tryReserve']> {
+    if (this.store === this.fallback) {
+      return this.fallback.tryReserve(bucketKey, demands, KSEF_RATE_LIMIT_WINDOW_MS);
+    }
+    try {
+      return await this.store.tryReserve(bucketKey, demands, KSEF_RATE_LIMIT_WINDOW_MS);
+    } catch (error) {
+      this.logger.warn(
+        `Shared KSeF rate-limit store unavailable, pacing this process only: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return this.fallback.tryReserve(bucketKey, demands, KSEF_RATE_LIMIT_WINDOW_MS);
+    }
   }
 }
 
@@ -161,10 +192,8 @@ let sharedInstance: KsefRateLimiter | null = null;
 
 /**
  * Process-wide shared limiter so every per-connection KSeF HTTP client paces
- * against the SAME buckets — the point of keying on NIP is defeated if each
- * short-lived adapter instance got its own limiter. Constructed lazily with the
- * default (documented-ceiling) config; tests construct their own instance
- * directly rather than touching this singleton.
+ * against the SAME log — keying on NIP is pointless if each short-lived
+ * adapter instance got its own limiter. Tests construct their own instance.
  */
 export function getSharedKsefRateLimiter(): KsefRateLimiter {
   if (!sharedInstance) {

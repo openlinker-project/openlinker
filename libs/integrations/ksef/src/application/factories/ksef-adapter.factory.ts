@@ -90,7 +90,9 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
       // NIP), shared process-wide so sibling connections on the same NIP throttle
       // against one bucket rather than each other.
       rateLimiter: getSharedKsefRateLimiter(),
-      rateLimitBucketKey: seller.nip,
+      // KSeF counts per seller NIP within one environment (test, demo and prod
+      // are separate systems), so the bucket is keyed on both.
+      rateLimitBucketKey: `${env}:${seller.nip}`,
     });
 
     // C5 issuance dependencies: the session-crypto service (shares the same

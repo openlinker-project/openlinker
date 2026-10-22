@@ -149,6 +149,61 @@ describe('KsefConnectionTesterAdapter', () => {
     });
   });
 
+  describe('issuance-permission probe (DEF-17)', () => {
+    function withGrants(post: jest.Mock): KsefConnectionTesterAdapter {
+      createKsefHttpClientMock.mockReturnValue({
+        httpClient: { post } as never,
+        publicKeyCache: {} as never,
+        handshake: { authenticate: jest.fn().mockResolvedValue({}) } as never,
+      });
+      return new KsefConnectionTesterAdapter(http);
+    }
+    const creds = resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 't' } });
+
+    it('should say the token may issue when KSeF lists InvoiceWrite', async () => {
+      const post = jest.fn().mockResolvedValue({
+        data: { permissions: [{ permissionScope: 'InvoiceWrite' }], hasMore: false },
+      });
+
+      const result = await withGrants(post).test(connection(), creds);
+
+      expect(result).toMatchObject({ success: true, message: expect.stringContaining('may issue') });
+      expect(post).toHaveBeenCalledWith(
+        '/permissions/query/personal/grants',
+        expect.objectContaining({ permissionTypes: ['InvoiceWrite'] }),
+        expect.objectContaining({ idempotent: true }),
+      );
+    });
+
+    it('should count an owner grant as permission to issue', async () => {
+      const post = jest.fn().mockResolvedValue({
+        data: { permissions: [], ownerPermissions: ['InvoiceWrite'], hasMore: false },
+      });
+
+      const result = await withGrants(post).test(connection(), creds);
+
+      expect(result.message).toContain('may issue');
+    });
+
+    it('should warn, not fail, when the permission is not listed', async () => {
+      const post = jest.fn().mockResolvedValue({ data: { permissions: [], hasMore: false } });
+
+      const result = await withGrants(post).test(connection(), creds);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('InvoiceWrite');
+    });
+
+    it('should say the check was not verified when the query fails', async () => {
+      const post = jest.fn().mockRejectedValue(new Error('403'));
+
+      const result = await withGrants(post).test(connection(), creds);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('not verified');
+    });
+  });
+
   it('should probe through the connection-bound transport, not a bare fetch (#1810)', async () => {
     // Once the client stops calling `globalThis.fetch` directly its `?? globalThis.fetch`
     // default IS the bypass, so lint can no longer detect a dropped transport — only

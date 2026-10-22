@@ -437,5 +437,26 @@ describe('KsefHttpClient', () => {
 
       expect(acquire).toHaveBeenCalledWith('conn-99', 'session-open');
     });
+
+    it('takes no second token for a call whose round was reserved up front (DEF-04)', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { referenceNumber: 'r' }));
+      const acquire = jest.fn().mockResolvedValue(undefined);
+      const reserve = jest.fn().mockResolvedValue(undefined);
+      const limiter = { acquire, reserve } as unknown as KsefRateLimiter;
+      const client = new KsefHttpClient('conn-1', baseUrl, lifecycle, fetchMock, undefined, {
+        rateLimiter: limiter,
+        bucketKey: 'test:1189981779',
+      });
+
+      await client.reserveSessionRound();
+      await client.post('/sessions/online', { x: 1 }, { rateLimitPrepaid: true });
+
+      expect(reserve).toHaveBeenCalledWith('test:1189981779', [
+        'session-open',
+        'invoice-submit',
+        'session-close',
+      ]);
+      expect(acquire).not.toHaveBeenCalled();
+    });
   });
 });

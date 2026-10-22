@@ -149,6 +149,12 @@ import { toCalendarDate } from '@openlinker/shared/date';
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
 
+/**
+ * Options for the three calls of a round whose rate-limit budget was reserved
+ * up front by `reserveSessionRound` (DEF-04).
+ */
+const PREPAID_ROUND = { rateLimitPrepaid: true } as const;
+
 /** A line's rate code, or `''` when a legacy payload carries none (DEF-37). */
 function readTaxRate(line: InvoiceLine): string {
   return typeof line.taxRate === 'string' ? line.taxRate.trim() : '';
@@ -387,6 +393,11 @@ export class KsefInvoicingAdapter
     //    issued locally, so an OUTAGE here (#1701) does not fail issuance: it
     //    falls into the neutral offline (`pending-submission`) window for a later
     //    resubmit. A content/validation rejection still throws terminally.
+    // DEF-04: take the whole round's rate-limit budget now, while nothing is
+    // open at KSeF. A budget that will not free up in time defers the job here
+    // instead of sleeping between open and close past the issuing lease.
+    await this.httpClient.reserveSessionRound?.();
+
     let cryptoContext: SessionCryptoContext;
     let sessionRef: string;
     try {
@@ -797,6 +808,7 @@ export class KsefInvoicingAdapter
     // The session is established NOW — its crypto init anchors the session-key
     // TTL on the current instant, never the document's (possibly days-old) legal
     // issue date (#1585 I4). The FA(3) `P_1` already lives in `xml`.
+    await this.httpClient.reserveSessionRound?.();
     const cryptoContext = await this.sessionCrypto.initializeSession(this.now());
     const sessionRef = await this.openOnlineSession(cryptoContext);
     let invoiceReference: string;
@@ -1302,6 +1314,7 @@ export class KsefInvoicingAdapter
     const response = await this.httpClient.post<OpenOnlineSessionResponse>(
       '/sessions/online',
       body as unknown as Record<string, unknown>,
+      PREPAID_ROUND,
     );
     if (!response.data.referenceNumber) {
       throw new KsefSessionException('KSeF /sessions/online returned no referenceNumber');
@@ -1326,6 +1339,7 @@ export class KsefInvoicingAdapter
     const response = await this.httpClient.post<SendInvoiceResponse>(
       `/sessions/online/${encodeURIComponent(sessionRef)}/invoices`,
       body as unknown as Record<string, unknown>,
+      PREPAID_ROUND,
     );
     if (!response.data.referenceNumber) {
       throw new KsefSessionException(
@@ -1342,7 +1356,7 @@ export class KsefInvoicingAdapter
     await this.httpClient.post(
       `/sessions/online/${encodeURIComponent(sessionRef)}/close`,
       undefined,
-      { idempotent: true },
+      { ...PREPAID_ROUND, idempotent: true },
     );
   }
 

@@ -35,6 +35,8 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { createKsefHttpClient } from '../http/ksef-http-client.factory';
+import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
+import { normalizePlNip } from './nip-checksum';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import { KsefPermissionDeniedException } from '../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
@@ -87,7 +89,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
         };
       }
 
-      const contextNip = config?.seller?.nip?.trim();
+      const contextNip = typeof config?.seller?.nip === 'string' ? normalizePlNip(config.seller.nip) : '';
       if (!contextNip) {
         return {
           success: false,
@@ -105,21 +107,63 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       // here would import the plugin module the plugin already imports this
       // adapter from — a cycle PrestaShop avoids by injecting the value.
       const fetchImpl = this.http.forConnection(connection);
-      const { handshake } = createKsefHttpClient({
+      const { handshake, httpClient } = createKsefHttpClient({
         connectionId: connection.id,
         env,
         authMaterial,
         fetchImpl,
       });
       await handshake.authenticate(authMaterial);
+      const issuance = await this.probeIssuancePermission(httpClient, contextNip);
 
       return {
         success: true,
-        message: 'KSeF token authenticated successfully',
+        message: ISSUANCE_PROBE_MESSAGES[issuance],
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
       return this.toFailure(error, Date.now() - startedAt);
+    }
+  }
+
+  /**
+   * DEF-17: a token without the issuance grant authenticates perfectly well, so
+   * the handshake alone told an operator "OK" and the first invoice then failed.
+   * KSeF 2.0 lists the session's own grants at
+   * `POST /permissions/query/personal/grants`; this asks for `InvoiceWrite`.
+   *
+   * The answer is a SUGGESTION, never a refusal: a test reports what KSeF said,
+   * and an inconclusive read (the query itself refused, an unexpected shape)
+   * says so instead of failing a token that may be fine. Not one of the three
+   * rate-limited session writes, so the check spends no issuance budget.
+   */
+  private async probeIssuancePermission(
+    httpClient: IKsefHttpClient,
+    contextNip: string,
+  ): Promise<IssuanceProbe> {
+    try {
+      const response = await httpClient.post<PersonalGrantsResponse>(
+        '/permissions/query/personal/grants',
+        {
+          contextIdentifier: { type: 'Nip', value: contextNip },
+          permissionTypes: ['InvoiceWrite'],
+          permissionState: 'Active',
+        },
+        { idempotent: true, queryParams: { pageSize: 10 } },
+      );
+      const data = response.data;
+      if (!data || !Array.isArray(data.permissions)) {
+        return 'unknown';
+      }
+      const granted =
+        data.permissions.some((p) => p?.permissionScope === 'InvoiceWrite') ||
+        (Array.isArray(data.ownerPermissions) && data.ownerPermissions.includes('InvoiceWrite'));
+      return granted ? 'granted' : 'missing';
+    } catch (error) {
+      this.logger.debug(
+        `KSeF permission probe inconclusive: ${error instanceof Error ? error.name : String(error)}`,
+      );
+      return 'unknown';
     }
   }
 
@@ -154,3 +198,21 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
     return { success: false, message: 'KSeF connection test failed', latencyMs };
   }
 }
+
+type IssuanceProbe = 'granted' | 'missing' | 'unknown';
+
+/** Subset of KSeF's `QueryPersonalPermissionsResponse` the probe reads. */
+interface PersonalGrantsResponse {
+  permissions?: { permissionScope?: string }[];
+  ownerPermissions?: string[] | null;
+}
+
+const ISSUANCE_PROBE_MESSAGES: Record<IssuanceProbe, string> = {
+  granted: 'KSeF token authenticated successfully and may issue invoices',
+  missing:
+    'KSeF token authenticated, but KSeF does not list the "wystawianie faktur" (InvoiceWrite) permission ' +
+    'for it - issuing may be refused. Generate a token with that permission if invoices fail with 403.',
+  unknown:
+    'KSeF token authenticated successfully; KSeF did not answer the permission check, so whether it may ' +
+    'issue invoices was not verified',
+};

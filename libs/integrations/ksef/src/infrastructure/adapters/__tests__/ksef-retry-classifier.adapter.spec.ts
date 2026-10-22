@@ -19,6 +19,7 @@ import { KsefCrossBorderUnsupportedException } from '../../../domain/exceptions/
 import { KsefMissingDocumentNumberException } from '../../../domain/exceptions/ksef-missing-document-number.exception';
 import { KsefConfigException } from '../../../domain/exceptions/ksef-config.exception';
 import { KsefExchangeRateException } from '../../../domain/exceptions/ksef-exchange-rate.exception';
+import { KsefRateLimitDeferredException } from '../../../domain/exceptions/ksef-rate-limit-deferred.exception';
 
 describe('KsefRetryClassifierAdapter', () => {
   const classifier = new KsefRetryClassifierAdapter();
@@ -81,5 +82,23 @@ describe('KsefRetryClassifierAdapter', () => {
       expect(classifier.isNonRetryable(new Error('unknown'))).toBe(false);
       expect(classifier.isNonRetryable('not even an error')).toBe(false);
     });
+  });
+});
+
+describe('KsefRetryClassifierAdapter.getRetryDeferral (DEF-04)', () => {
+  const classifier = new KsefRetryClassifierAdapter();
+
+  it('should defer a round refused for lack of rate-limit budget, without a penalty', () => {
+    const cause = new KsefRateLimitDeferredException('test:1189981779', 90_500);
+
+    expect(classifier.getRetryDeferral(cause)).toEqual({
+      delaySeconds: 91,
+      reason: 'ksef-rate-limit-budget',
+    });
+    expect(classifier.isNonRetryable(cause)).toBe(false);
+  });
+
+  it('should not defer anything else', () => {
+    expect(classifier.getRetryDeferral(new Error('boom'))).toBeNull();
   });
 });

@@ -32,7 +32,7 @@
  * @module libs/integrations/ksef/src/infrastructure/adapters
  * @implements {RetryClassifierPort}
  */
-import type { RetryClassifierPort } from '@openlinker/core/sync';
+import type { RetryClassifierPort, RetryDeferral } from '@openlinker/core/sync';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
 import { KsefUnsupportedDocumentTypeException } from '../../domain/exceptions/ksef-unsupported-document-type.exception';
@@ -43,6 +43,7 @@ import { KsefCrossBorderUnsupportedException } from '../../domain/exceptions/kse
 import { KsefMissingDocumentNumberException } from '../../domain/exceptions/ksef-missing-document-number.exception';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
 import { KsefExchangeRateException } from '../../domain/exceptions/ksef-exchange-rate.exception';
+import { KsefRateLimitDeferredException } from '../../domain/exceptions/ksef-rate-limit-deferred.exception';
 // The content-rejection status set is factored into the shared availability
 // module (#1701) so the retry classifier and `isKsefUnavailable` can never
 // drift on which 4xx are terminal versus which failures are a transient outage.
@@ -80,5 +81,17 @@ export class KsefRetryClassifierAdapter implements RetryClassifierPort {
 
     // KsefNetworkException, 429, 5xx, and anything unrecognized → retryable.
     return false;
+  }
+
+  /**
+   * DEF-04: a round deferred for lack of rate-limit budget did nothing wrong,
+   * so the job is requeued for when the budget frees up without spending an
+   * attempt (#2613).
+   */
+  getRetryDeferral(cause: unknown): RetryDeferral | null {
+    if (cause instanceof KsefRateLimitDeferredException) {
+      return { delaySeconds: Math.max(1, Math.ceil(cause.retryAfterMs / 1000)), reason: 'ksef-rate-limit-budget' };
+    }
+    return null;
   }
 }
