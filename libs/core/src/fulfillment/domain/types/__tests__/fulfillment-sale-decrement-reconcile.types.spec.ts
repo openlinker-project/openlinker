@@ -62,3 +62,15 @@ describe('resolveSaleDecrementReconcileLookbackMs', () => {
     expect(clamped).toBeLessThan(30 * DAY_MS);
   });
 });
+
+describe('sale-decrement reconcile lookback ceiling', () => {
+  // The smallest `syncJobRetentionDays` an operator can set (OPERATIONAL_SETTING_BOUNDS,
+  // #2946). Restated here because `fulfillment` may not import `operational-settings`.
+  const MIN_SYNC_JOB_RETENTION_MS = 30 * DAY_MS;
+
+  it('should never let the lookback reach the shortest sync_jobs retention', () => {
+    expect(resolveSaleDecrementReconcileLookbackMs(String(365 * DAY_MS))).toBeLessThan(
+      MIN_SYNC_JOB_RETENTION_MS
+    );
+  });
+});

@@ -116,7 +116,7 @@ import {
   isFulfillmentRequestStatus,
   type FulfillmentRequestStatus,
 } from '../../../domain/types/fulfillment-request-status.types';
-import { buildSaleDecrementJobDedupeKey } from '../../../domain/types/fulfillment-sale-decrement-enqueue.types';
+import { SALE_DECREMENT_JOB_DEDUPE_PREFIX } from '../../../domain/types/fulfillment-sale-decrement-enqueue.types';
 import { TERMINAL_FULFILLMENT_WORK_STATUSES } from '../../../domain/types/fulfillment-supported-actions.types';
 import {
   isFulfillmentWorkStatus,
@@ -794,8 +794,9 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       // Read-model reporting join (ADR-036): `order_records` and `sync_jobs` are
       // other contexts' tables, joined by name, read-only, every value bound. It
       // depends on `sync_jobs."idempotencyKey"` being globally unique and on the
-      // producers' key prefix, taken from `buildSaleDecrementJobDedupeKey` so the
-      // two cannot drift.
+      // producers' key prefix, taken from `SALE_DECREMENT_JOB_DEDUPE_PREFIX` so the
+      // two cannot drift. It is a PREDICATE
+      // (a frontier), not display enrichment, which is what ADR-036 admits.
       const rows = (await this.works.query(
         `SELECT w."id" AS "workId", w."orderId" AS "orderId", o."sourceConnectionId" AS "sourceConnectionId"
            FROM "fulfillment_works" w
@@ -811,7 +812,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
             )
           ORDER BY w."createdAt" ASC, w."id" ASC
           LIMIT $3`,
-        [input.createdBefore, buildSaleDecrementJobDedupeKey(''), input.limit, input.createdAfter]
+        [input.createdBefore, SALE_DECREMENT_JOB_DEDUPE_PREFIX, input.limit, input.createdAfter]
       )) as { workId: string; orderId: string; sourceConnectionId: string }[];
       return rows.map((row) => ({
         workId: row.workId,

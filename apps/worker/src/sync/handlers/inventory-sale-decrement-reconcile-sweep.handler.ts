@@ -117,7 +117,7 @@ export class InventorySaleDecrementReconcileSweepHandler implements SyncJobHandl
     );
     const lockKey = inventorySaleDecrementReconcileLockKey(scopeId);
     const lockTtlMs = resolveSweepLockTtlMs(
-      this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
+      this.configService.get<string>('OL_SALE_DECREMENT_RECONCILE_LOCK_TTL_MS')
     );
 
     const lockToken = await this.syncLock.acquire(lockKey, lockTtlMs);
