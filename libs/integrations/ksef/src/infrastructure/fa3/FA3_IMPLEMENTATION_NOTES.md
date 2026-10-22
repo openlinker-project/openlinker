@@ -66,27 +66,20 @@ RawFa3Xml (validated)
 
 Unknown codes throw `UnmappedTaxRateException` (no silent default).
 
-> **ACCEPTED LIMITATION (#1290):** core never supplies a real per-line tax
-> rate today — `OrderItem` has none (core is country-agnostic, ADR-026), so
-> `toIssueInvoiceCommand` always emits `taxRate: ''` on every line.
-> `fa3-builder-input.mapper.ts`'s `mapLine` substitutes the connection's
-> `SellerProfile.defaultTaxRate` (PL standard `23`% unless the connection
-> configures otherwise via `KsefSellerConfig.defaultTaxRate`) for an empty
-> `taxRate` *before* calling `resolveP12` — `resolveP12` itself is unchanged
-> and still throws on a genuinely unmapped non-empty code. This is a flat
-> per-connection default, not a real per-line VAT rate: an order mixing
-> goods at different rates (23%/8%/0%) mis-taxes every line at the connection
-> default *only when the source adapter did not report per-line rates*.
+> **Where the rate comes from (ADR-063, DEF-16).** OpenLinker never computes,
+> infers or defaults a VAT rate. Each line's `taxRate` arrives from the
+> ProductMaster with the product (shop first, then the channel), as a
+> percent-as-string code from the neutral vocabulary (`23`, `8`, `5`, `0`,
+> `zw`, `np`, `oo`, ...). PrestaShop and WooCommerce masters supply it today.
 >
-> **UPDATE (#1586 Phase 2):** `OrderItem` / `InvoiceLine` now carry an optional
-> neutral per-line `taxRate` (ADR-063), and an order-source adapter that reports
-> a genuine per-line rate populates it end-to-end. **PrestaShop** does so today —
-> `PrestashopOrderSourceAdapter` derives the whole-percent rate from each
-> `order_details` row's tax-inclusive/exclusive unit prices and maps it to the
-> neutral vocabulary. A populated mixed-rate order now produces a correctly-split
-> FA(3) band breakdown. ⏸ Deferred (documented follow-ups): **WooCommerce**
-> (line_items expose only a `taxes`/`tax_class` delta, not a clean per-line rate —
-> left on the flat-default fallback), plus Allegro/Erli.
+> The only fallback is a rollout switch, not a rule: while
+> `OL_TAX_RATE_STRICT_ENABLED` is off (the default), `mapLine` fills an EMPTY
+> `taxRate` from the connection's `seller.defaultTaxRate` (PL `23` when unset)
+> before `resolveP12`. With the switch on, a line with no rate holds the
+> document instead (the auto-issue gate and the invoice write path both refuse,
+> naming the line), and pre-rollout orders (`taxRateEra = 'pre-rollout'`) stay
+> exempt. `resolveP12` itself never defaults: a non-empty code it cannot map
+> throws `UnmappedTaxRateException`.
 
 > **OPEN:** the canonical neutral tax-rate code set (UNCL 5305 vs OpenLinker
 > custom) is being settled upstream; the keys above are provisional and must be
@@ -223,8 +216,9 @@ encodes the URL:
 https://{host}/invoice/{NIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawXmlBytes))}
 ```
 
-- `host` - `ksef.mf.gov.pl` on `prod`; `qr-test.ksef.mf.gov.pl` on every
-  non-prod tier (`test` / `demo`). Threaded from the connection's `config.env`.
+- `host` - `qr.ksef.mf.gov.pl` on `prod`, `qr-test.ksef.mf.gov.pl` on `test`,
+  `qr-demo.ksef.mf.gov.pl` on `demo` (CIRFMF `kody-qr.md`). An unknown
+  environment produces no code rather than a wrong one.
 - `NIP` - seller NIP (digits only).
 - `DD-MM-RRRR` - the invoice issue date (FA(3) `P_1`, stored ISO `YYYY-MM-DD`,
   reformatted day-month-year).
@@ -233,14 +227,13 @@ https://{host}/invoice/{NIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawXmlBytes))}
   pretty-printed), **Base64URL**-encoded (URL-safe alphabet, padding stripped -
   not standard Base64).
 
-**Where:** generated entirely in the frontend from the already-loaded source XML
-(`apps/web/src/plugins/ksef/lib/ksef-verification.ts` + `shared/ui/qr-code.tsx`,
-rendered by `ksef-fa3-view.tsx`). No backend/adapter change is required because
-the byte-exact submitted document is the persisted `sourceDocument`
-(`KsefInvoicingAdapter.toSourceDocument` base64-encodes the same `xml` string it
-submits), served verbatim via `GET /invoices/:id/document?kind=source`. Encoding
-that text back to UTF-8 bytes round-trips the submitted bytes exactly, so the
-hash matches what KSeF computed. The KSeF number is shown as the QR caption.
+**Where:** built on the server (`KsefInvoicingAdapter.getVerificationLink`,
+from the persisted byte-exact `sourceDocument`) and served at
+`GET /invoices/:id/verification-link`; the frontend only renders the returned
+URL as a QR (`shared/ui/qr-code.tsx`, in `ksef-invoice-detail-section.tsx`).
+Building it server-side means the browser never hashes the document and never
+needs to know which environment the connection is on (DEF-02/03/15). The KSeF
+number - only once the authority assigned one - is the QR caption (DEF-14).
 
 **KOD II (offline certificate-signed code) is NOT implemented.** KOD II is
 required for documents issued in KSeF *offline* mode and is signed with the
@@ -257,24 +250,25 @@ the code it needs. Tracked in #3620.
 - ⏸ Authoritative XSD from crd.gov.pl + MF example-pack compliance (C3+).
 - ⏸ KSeF submission + clearance status (C3+).
 - ⏸ `KOR_ZAL` / `KOR_ROZ` advance/settlement-correction document types (#1151 follow-up).
-- ⏸ `TypKorekty` selection — currently hard-coded to `2` (line-item correction, the
-  return/refund case) in `mapCorrection`. The 1/2/3 period-shift variants
-  (`1` = effects in the period of the original, `3` = on terms set by separate
-  regulations) are not yet caller-selectable; the neutral `CorrectionReference`
-  carries no `typKorekty` field. Deferred until a caller needs a non-default variant.
+- ⏸ `TypKorekty` selection — `mapCorrection` emits `1` for a buyer-only KOR
+  (no line delta: the correction concerns the buyer's data, DEF-24) and `2`
+  (line-item correction, the return/refund case) otherwise. Variant `3` (on
+  terms set by separate regulations) is not caller-selectable; the neutral
+  `CorrectionReference` carries no `typKorekty` field.
 - ✅ Per-line GTU / Procedura codes (#1586 Phase 2): the neutral `InvoiceLine`
   now carries optional opaque `gtuCode` / `procedureCode`, threaded through
   `Fa3Line` and emitted as `FaWiersz/GTU` (`TGTU` enum) + `FaWiersz/Procedura`
   (`TOznaczenieProcedury`), positioned after `P_12` and before `KursWaluty`
   per the XSD, omitted when absent. ⏸ Deferred: a category→GTU
   operator-configurable mapping UI (codes must be supplied on the command today).
-- ⏸ `Podmiot2` `JST` / `GV` flags are hard-coded to `2` ("no") in `buyerNode`.
-  Both elements are required by the XSD, and `2` is correct for the common
-  buyer — but a buyer that actually *is* a local-government (JST) subsidiary
-  unit or a VAT-group member would get a false declaration on a fiscal
-  document. The neutral `InvoiceParty` carries no field to express either
-  status; supporting such buyers needs a neutral-contract extension plus a
-  data source for the flag (PR #1317 review).
+- ✅ `Podmiot2` `JST` / `GV` flags (DEF-30): both are REQUIRED by the XSD and
+  default to `2` ("no"). The neutral `InvoiceParty` now carries optional
+  `isPublicSectorEntity` / `isVatGroupMember`, which set them to `1`. The XSD
+  then expects the matching unit or member as a `Podmiot3` (`Rola` 8 / 10);
+  the operator supplies it per invoice through the issue form's KSeF options
+  (neutral `additionalParties`). A flag with no matching party is not refused:
+  the adapter raises an `acknowledgement-required` warning the operator may
+  confirm, because whether the party must be named is a reading of the law.
 - ⚠ AES-256-CBC session-IV reuse (PR #1317): `encryptDocument` reuses the
   single session-declared IV for every document sent within one KSeF session.
   Protocol-mandated - the wire carries exactly one IV, declared at session
@@ -287,12 +281,14 @@ the code it needs. Tracked in #3620.
   public structure) and cannot be fixed client-side without breaking
   server-side decryption (the observed status-430 rejection of per-document IVs).
 - ⏸ Cross-border tax-band SELECTION (#1586): an interim guard
-  (`fa3-cross-border-guard.ts`) now REFUSES a sale whose buyer country differs
-  from the seller's own country (throwing `KsefCrossBorderUnsupportedException`
-  before build/send) unless the connection sets `allowCrossBorder`. The full
-  per-order band-selection function (choose WDT / export / `np I`/`np II` / OSS
-  from the buyer country + EU membership) is the deferred follow-up that
-  promotes this guard into real banding.
+  (`fa3-cross-border-guard.ts`) REFUSES an original invoice whose buyer country
+  differs from the seller's own country (`KsefCrossBorderUnsupportedException`,
+  `failureMode: 'rejected'`, so a retry is safe) unless the connection sets
+  `allowCrossBorder`. That switch is the operator's decision and is a checkbox
+  on the connection form (DEF-18); a non-boolean value is refused at save.
+  Corrections are not guarded: they follow the original's treatment. The full
+  per-order band selection (WDT / export / `np I`/`np II` / OSS from the buyer
+  country + EU membership) remains the deferred follow-up.
 - ⏸ Money rounding rule + decimal-place contract (to finalise with the builder).
 - ⏸ Emitting OL variant attributes as explicit distinguishing parameters.
 - ⏸ MF-announced `offline` (planned-outage) and `awaria` (declared-failure) regimes

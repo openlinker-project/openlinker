@@ -102,6 +102,19 @@ Non-secret config persisted on the connection row (`KsefConnectionConfig`):
 | `seller` | ✅ for issuance | ✅ | Seller identity (`Podmiot1`) stamped on every FA(3): `seller.nip`, `seller.name`, `seller.address { line1, line2?, city, postalCode, countryIso2 }`. Optional at connection-create time, but required before the connection can issue. |
 | `payment` | optional | ✅ (edit form) | Default payment details (#1311) emitted as the FA(3) `Platnosc` block on every issued invoice: `payment.formaPlatnosci` (payment-method code → `FormaPlatnosci`), `payment.paymentTermDays` (due date computed from the issue date → `TerminPlatnosci`), `payment.bankAccount { nrRb, bankName?, swift? }` (→ `RachunekBankowy`), and `payment.skonto { amount, conditions }` (early-payment discount → `Skonto`; both sub-fields required together). Omitting `formaPlatnosci` leaves payment info off issued invoices entirely. |
 
+| `allowCrossBorder` | optional | ✅ (edit form) | Lets the connection issue an original invoice to a buyer in another country (DEF-18). Off by default, because OpenLinker cannot choose the WDT / export / OSS band by itself: turn it on only if your catalogue already carries the right rate for those sales. Must be a boolean; the string `"true"` is refused at save. Corrections are never blocked by it. |
+| `annotationsDefault` | optional | ✅ (edit form, "Tax treatment") | Defaults stamped on every invoice from this connection (DEF-20/22): `cashAccounting` (P_16), `selfBilling` (P_17), `marginScheme` + `marginKind` (P_PMarzy_*), and `exemptionBasis { kind: statute \| directive \| other, text }` (P_19A/B/C) for `zw` lines. An invoice can override each one when issued by hand. If a `zw` line has no basis configured, a placeholder text is written: the connection form warns while the basis is empty, and each issue that uses the placeholder logs a warning. |
+
+**Your decision, not ours.** These switches state how YOUR sales are taxed.
+OpenLinker does not interpret the law for you: where a choice is a reading of
+the rules (a cross-border sale, a margin scheme, an exemption, a buyer tax
+number changed in a correction, a cancelled order issued by hand) it warns and
+asks you to confirm, and only refuses what KSeF itself would reject.
+
+**Upgrading from a build before DEF-18:** a connection that already had
+`allowCrossBorder` stored as a string must be saved again with the checkbox,
+or the next save is refused.
+
 > **Note:** the seller's tax identifier lives on the connection's `seller.nip`
 > field, not as a bare top-level `sellerNip` — it travels as part of the
 > structured seller-profile object so the adapter can hand it straight to the
@@ -209,6 +222,16 @@ corrects, and a correction-of-correction diffs against the prior correction's
 own lines. Only records issued before the snapshot column existed fall back to
 rebuilding `originalDocument` from the order's *current* state (the pre-#1297
 path, with its `buyerTaxId: null` and line-fidelity caveats).
+
+**Reason.** The correction form marks the reason as recommended; submitting
+without one asks once, then goes ahead (DEF-32). A reason is at most 256
+characters, the FA(3) text limit.
+
+**Correcting the buyer.** A buyer-only correction (no line changes) is issued
+with `TypKorekty = 1` and the buyer as it was in `Podmiot2K` (DEF-23/24). If the
+buyer's NIP itself changes, the form warns that the Ministry's guidance is
+usually to correct the invoice to zero and issue a new one; you may confirm and
+go ahead.
 
 ---
 
@@ -426,15 +449,15 @@ certificate**. The FA(3) invoice preview renders it as a QR encoding:
 https://{host}/invoice/{sellerNIP}/{DD-MM-RRRR}/{Base64URL(SHA256(rawInvoiceXml))}
 ```
 
-- `host` - `ksef.mf.gov.pl` for `prod` connections, `qr-test.ksef.mf.gov.pl`
-  for `test` / `demo` connections (taken from the connection's environment).
+- `host` - `qr.ksef.mf.gov.pl` for `prod`, `qr-test.ksef.mf.gov.pl` for `test`,
+  `qr-demo.ksef.mf.gov.pl` for `demo` (taken from the connection's environment).
 - `DD-MM-RRRR` - the invoice issue date.
 - the hash - SHA-256 of the **exact submitted FA(3) XML bytes** (the persisted
   source document), Base64URL-encoded.
 
-The KSeF number is shown as a caption beneath the QR. The code is generated
-client-side in the invoice preview (`ksef-fa3-view`), so no additional
-configuration is needed - it appears automatically once an invoice is cleared.
+The link is built on the server and shown as a QR on the invoice; the KSeF
+number is its caption, and appears only once KSeF assigned one. No extra
+configuration is needed.
 
 > **KOD II (the offline, certificate-signed verification code) is not implemented.**
 > KOD II is required for invoices issued in KSeF *offline* mode. OpenLinker does
