@@ -125,15 +125,109 @@ function weightInKilograms(raw: string | null, unit: string): number | undefined
   return unit === KILOGRAM ? parseShoperNumber(raw) : undefined;
 }
 
+/**
+ * A product's stock rows split into what is sold and the row it is derived from.
+ *
+ * Every Shoper product has a base row (`options: []`). A product WITH variants
+ * also has one row per option combination, and its base row is then not
+ * something a buyer can pick: counting it as a variant added a phantom variant
+ * and doubled the product's stock (live: S 5 + M 5 + L 5 reported as 30). So when
+ * any row carries options, only those rows are variants, and the base row is
+ * kept aside because variant prices and weights are stated relative to it.
+ *
+ * A row whose options are malformed still counts as an option row: it is not
+ * the base row, and dropping it would hide a real variant.
+ */
+export interface ShoperStockPartition {
+  readonly variants: readonly ShoperStock[];
+  /** The base row of a product that has option rows; `null` for a simple product. */
+  readonly base: ShoperStock | null;
+}
+
+export function partitionShoperStocks(stocks: readonly ShoperStock[]): ShoperStockPartition {
+  const isBase = (stock: ShoperStock): boolean => {
+    const pairs = shoperStockOptionPairs(stock.options);
+    return pairs !== 'malformed' && pairs.length === 0;
+  };
+  const optionRows = stocks.filter((stock) => !isBase(stock));
+  if (optionRows.length === 0) {
+    return { variants: stocks, base: null };
+  }
+  const baseRows = stocks.filter(isBase);
+  const base = baseRows.find((stock) => String(stock.default) === '1') ?? baseRows[0] ?? null;
+  return { variants: optionRows, base };
+}
+
+/** Shoper's `PRICE_TYPE_*` / `WEIGHT_TYPE_*` codes (identical for both fields). */
+const RELATIVE_KEEP = '0';
+const RELATIVE_OWN = '1';
+const RELATIVE_INCREASE = '2';
+const RELATIVE_DECREASE = '3';
+
+function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+/**
+ * The value a variant row states once its relation to the base row is applied.
+ * Without a type, or without a base row (a simple product), the row's own value
+ * is read as before. An unknown type, a base the row depends on but that states
+ * nothing, or a decrease below zero gives `undefined` - absent, never a guess.
+ */
+function resolveRelativeValue(
+  own: number | undefined,
+  type: string | null | undefined,
+  base: number | undefined,
+  hasBase: boolean,
+  decimals: number,
+): number | undefined {
+  const code = type === null || type === undefined ? '' : String(type).trim();
+  if (code === '' || !hasBase) {
+    return own;
+  }
+  switch (code) {
+    case RELATIVE_KEEP:
+      return base;
+    case RELATIVE_OWN:
+      return own;
+    case RELATIVE_INCREASE:
+      return base === undefined || own === undefined ? undefined : roundTo(base + own, decimals);
+    case RELATIVE_DECREASE: {
+      if (base === undefined || own === undefined) {
+        return undefined;
+      }
+      const value = roundTo(base - own, decimals);
+      return value < 0 ? undefined : value;
+    }
+    default:
+      return undefined;
+  }
+}
+
 export function mapShoperStockToVariant(
   stock: ShoperStock,
   productId: string,
   ctx: ShoperMapContext,
   attributes: Record<string, string> | null = null,
+  base: ShoperStock | null = null,
 ): Omit<ProductVariant, 'id'> {
   const ean = nonEmpty(stock.ean);
-  const weight = weightInKilograms(stock.weight, ctx.weightUnit);
-  const price = parseShoperNumber(stock.price);
+  const hasBase = base !== null && base.stock_id !== stock.stock_id;
+  const weight = resolveRelativeValue(
+    weightInKilograms(stock.weight, ctx.weightUnit),
+    stock.weight_type,
+    base === null ? undefined : weightInKilograms(base.weight, ctx.weightUnit),
+    hasBase,
+    3,
+  );
+  const price = resolveRelativeValue(
+    parseShoperNumber(stock.price),
+    stock.price_type,
+    base === null ? undefined : parseShoperNumber(base.price),
+    hasBase,
+    2,
+  );
 
   return {
     productId,

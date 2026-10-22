@@ -98,7 +98,10 @@ A passing test does **not** prove every area above was granted; each capability 
   read as `getProduct`, so a product Shoper reports gone is the neutral `MasterProductNotFoundError` there too.
 
 - **Variants:** one `product-stocks` row = one `ProductVariant`, keyed by its real `stock_id`. No synthetic
-  variant is minted for a simple product - Shoper already gives it a stock row.
+  variant is minted for a simple product - Shoper already gives it a stock row. A product WITH variants also has a
+  base row (`options: []`) no buyer can pick: it is not a variant and its stock is not counted, but variant prices
+  and weights are read relative to it (`price_type` / `weight_type`: `0` keep base, `1` own, `2` base plus, `3` base
+  minus; an unknown code leaves the value unset).
 - **Variant attributes (#3706):** a stock's `options` is `{ "<option_id>": "<ovalue_id>" }` - ids only (live:
   product 127; a stock with none carries `[]`, not `{}`). The names come from `GET /options/:id`
   (`translations[lang].name`) and `GET /option-values?filters[option_id]=:id` (`translations[lang].value`), read once

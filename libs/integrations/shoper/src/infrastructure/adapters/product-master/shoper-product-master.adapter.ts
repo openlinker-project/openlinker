@@ -65,6 +65,7 @@ import { fetchShoperStocks } from '../../http/shoper-stocks';
 import {
   mapShoperProduct,
   mapShoperStockToVariant,
+  partitionShoperStocks,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
 } from '../../mappers/shoper-product.mapper';
@@ -148,7 +149,9 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
     const externalId = await this.resolveExternalProductId(productId);
     const ctx = await this.shopContext.get();
-    const stocks = await this.fetchAllStocks(externalId);
+    // A product with variants also has a base row nobody can buy; it is left
+    // out, and kept only to resolve prices and weights stated relative to it.
+    const { variants: stocks, base } = partitionShoperStocks(await this.fetchAllStocks(externalId));
     if (stocks.length === 0) {
       return [];
     }
@@ -174,7 +177,10 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         continue;
       }
       const attributes = await this.resolveVariantAttributes(stock, ctx.language);
-      variants.push({ ...mapShoperStockToVariant(stock, productId, ctx, attributes), id: internalId });
+      variants.push({
+        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base),
+        id: internalId,
+      });
     }
     return variants;
   }

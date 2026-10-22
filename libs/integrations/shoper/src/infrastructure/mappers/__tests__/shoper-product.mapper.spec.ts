@@ -13,6 +13,7 @@ import {
   mapShoperProduct,
   mapShoperStockToVariant,
   parseShoperNumber,
+  partitionShoperStocks,
   pickShoperTranslation,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
@@ -128,6 +129,57 @@ describe('mapShoperStockToVariant', () => {
     expect(variant).not.toHaveProperty('price');
     expect(variant).not.toHaveProperty('weight');
     expect(variant).not.toHaveProperty('weightGrams');
+  });
+
+  describe('price and weight relative to the base row', () => {
+    const base = buildStock({ stock_id: '215', price: '79.00', weight: '0.2', options: [] });
+    const variant = (
+      overrides: Parameters<typeof buildStock>[0],
+    ): ReturnType<typeof mapShoperStockToVariant> =>
+      mapShoperStockToVariant(
+        buildStock({ stock_id: '217', default: '0', options: { '10': '68' }, ...overrides }),
+        'p',
+        MAP_CONTEXT,
+        null,
+        base,
+      );
+
+    it('should take the base price when the row keeps it, not its own "0.00"', () => {
+      expect(variant({ price: '0.00', price_type: '0' }).price).toBe(79);
+    });
+
+    it.each([
+      ['1', '85.50', 85.5],
+      ['2', '10.10', 89.1],
+      ['3', '9.99', 69.01],
+    ])('should apply price_type %p to %p as %p', (priceType, price, expected) => {
+      expect(variant({ price, price_type: priceType }).price).toBe(expected);
+    });
+
+    it('should leave the price unset for a decrease below zero or an unknown type', () => {
+      expect(variant({ price: '80.00', price_type: '3' })).not.toHaveProperty('price');
+      expect(variant({ price: '10.00', price_type: '9' })).not.toHaveProperty('price');
+    });
+
+    it('should apply weight_type with the same codes', () => {
+      expect(variant({ weight: '0.000', weight_type: '0' }).weight).toBe(0.2);
+      expect(variant({ weight: '0.05', weight_type: '2' }).weight).toBe(0.25);
+    });
+
+    it('should read the row as its own value when the type is absent', () => {
+      expect(variant({ price: '12.00' }).price).toBe(12);
+    });
+
+    it('should not apply a relation to the base row itself', () => {
+      const own = mapShoperStockToVariant(
+        { ...base, price_type: '0' },
+        'p',
+        MAP_CONTEXT,
+        null,
+        base,
+      );
+      expect(own.price).toBe(79);
+    });
   });
 
   it('should leave weight unset for a unit it cannot convert with confidence', () => {
@@ -288,5 +340,25 @@ describe('mapShoperStockToVariant attributes', () => {
 
   it('should default to null attributes', () => {
     expect(mapShoperStockToVariant(LIVE_VARIANT_STOCKS[0], 'p', MAP_CONTEXT).attributes).toBeNull();
+  });
+});
+
+describe('partitionShoperStocks', () => {
+  it('should keep every row of a simple product and report no base row', () => {
+    const stocks = [buildStock({ stock_id: '181', options: [] })];
+    expect(partitionShoperStocks(stocks)).toEqual({ variants: stocks, base: null });
+  });
+
+  it('should drop the live base row of a product with options and keep it as the base', () => {
+    const { variants, base } = partitionShoperStocks(LIVE_VARIANT_STOCKS);
+    expect(variants.map((s) => s.stock_id)).toEqual(['217', '218']);
+    expect(base?.stock_id).toBe('215');
+  });
+
+  it('should keep a row with malformed options as a variant, never as the base', () => {
+    const malformed = buildStock({ stock_id: '300', default: '0', options: ['x'] as unknown as [] });
+    const { variants, base } = partitionShoperStocks([buildStock({ stock_id: '299' }), malformed]);
+    expect(variants.map((s) => s.stock_id)).toEqual(['300']);
+    expect(base?.stock_id).toBe('299');
   });
 });

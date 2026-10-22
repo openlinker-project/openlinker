@@ -555,7 +555,7 @@ describe('ShoperProductMasterAdapter', () => {
       expect(variants.every((v) => v.productId === 'ol_product_1')).toBe(true);
     });
 
-    it('should map the live multi-variant product options to attributes, and a simple stock to null', async () => {
+    it('should map the live multi-variant product options to attributes and leave out its base row', async () => {
       const { adapter, get } = setup();
       respond(get, {
         '/product-stocks': envelope(LIVE_STOCKS_OF_PRODUCT_93),
@@ -565,13 +565,34 @@ describe('ShoperProductMasterAdapter', () => {
 
       const variants = await adapter.getProductVariants('ol_product_1');
 
+      // Stock 215 is the base row (`options: []`): no buyer can pick it, so it
+      // is not a variant (it used to add a phantom variant and double the stock).
       expect(variants.map((v) => [v.id, v.attributes])).toEqual([
-        ['ol_215', null],
         ['ol_217', { Kolor: 'biszkoptowy' }],
         ['ol_218', { Kolor: 'Shoper blue' }],
       ]);
       // One option is read once for both siblings that use it.
       expect(get.mock.calls.filter(([path]) => path === '/options/10')).toHaveLength(1);
+    });
+
+    it('should price a variant that keeps the base price at the base price, not at "0.00"', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([
+          { ...LIVE_STOCKS_OF_PRODUCT_93[0], price: '79.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[1], price: '0.00', price_type: '0' },
+          { ...LIVE_STOCKS_OF_PRODUCT_93[2], price: '5.00', price_type: '2' },
+        ]),
+        '/options/10': LIVE_OPTION_COLOUR,
+        '/option-values': envelope(LIVE_OPTION_VALUES),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.price])).toEqual([
+        ['ol_217', 79],
+        ['ol_218', 84],
+      ]);
     });
 
     it('should sync a variant with null attributes, not fail, when its option cannot be read', async () => {

@@ -60,6 +60,16 @@ export interface ShoperStock {
   readonly default: string | null;
   readonly code: string | null;
   readonly ean: string | null;
+  /**
+   * How this row's `price` relates to the base row's price (Shoper's own
+   * `ProductStock::PRICE_TYPE_*`): `0` keep the base price (`price` is then
+   * meaningless, `"0.00"` on a live shop), `1` own price, `2` base plus `price`,
+   * `3` base minus `price`. Optional: rows captured before the field was read
+   * lack it, and those keep reading `price` as the row's own price.
+   */
+  readonly price_type?: string | null;
+  /** Same codes as `price_type`, applied to `weight` (`ProductStock::WEIGHT_TYPE_*`). */
+  readonly weight_type?: string | null;
   /** Variant option values; see {@link ShoperStockOptions}. */
   readonly options: ShoperStockOptions;
 }
