@@ -12,7 +12,13 @@
  * @see {@link SyncJobsService} for the implementation
  */
 import type { SyncJob } from '../../domain/entities/sync-job.entity';
-import type { JobType, SyncJobRetentionStatus } from '../../domain/types/sync-job.types';
+import type {
+  JobType,
+  PaginatedSyncJobs,
+  SyncJobFilters,
+  SyncJobPagination,
+  SyncJobRetentionStatus,
+} from '../../domain/types/sync-job.types';
 import type { SchedulerTaskConfig } from '../../domain/types/scheduler-task.types';
 import type { ScheduleJobInput } from './sync-jobs.types';
 
@@ -55,6 +61,15 @@ export interface ISyncJobsService {
    * there is nothing else to read.
    */
   findJobByIdempotencyKey(idempotencyKey: string): Promise<SyncJob | null>;
+
+  /**
+   * A filtered, paged read of jobs, newest first (#2729).
+   *
+   * The seam a sibling context uses for "what happened to my jobs of type X on
+   * connection Y" (the auto-dispatch refusal read) without reaching the
+   * repository port. A pure read: it requeues and re-drives nothing.
+   */
+  findJobs(filters: SyncJobFilters, pagination: SyncJobPagination): Promise<PaginatedSyncJobs>;
 
   /**
    * Requeue every job left `running` past the lock timeout — the fleet-level

@@ -64,7 +64,10 @@ import {
   orderFromReadySnapshot,
   type IOrderRecordService,
 } from '@openlinker/core/orders';
-import { readAutoDispatchConfig } from '@openlinker/core/identifier-mapping';
+import {
+  isPresentButInvalidAutoDispatchTrigger,
+  readAutoDispatchConfig,
+} from '@openlinker/core/identifier-mapping';
 import type {
   FulfillmentWorkDispatchPayloadV1,
   SyncJob,
@@ -177,6 +180,20 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
       const { connection } = await this.integrations.getAdapter(job.connectionId);
       const autoDispatch = readAutoDispatchConfig(connection.config);
       if (!autoDispatch.enabled) {
+        return;
+      }
+      if (isPresentButInvalidAutoDispatchTrigger(connection.config)) {
+        this.logger.warn(
+          `autoDispatch.trigger on connection ${job.connectionId} is not a recognised value; ` +
+            `reading it as '${autoDispatch.trigger}'`
+        );
+      }
+      // #2729 (D1): the label is bought at acceptance only for `on-accept`. An
+      // `on-parcel-closed` connection buys it from the bench's own close event
+      // instead (`FulfillmentParcelClosureNotifierService`), so enqueueing here
+      // as well would be the second producer for the same work. Both producers
+      // use the same idempotency key, which is the second line of defence.
+      if (autoDispatch.trigger !== 'on-accept') {
         return;
       }
 

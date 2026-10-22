@@ -23,6 +23,25 @@ import type { ConnectionConfig } from './connection.types';
 export const AUTO_DISPATCH_CONFIG_KEY = 'autoDispatch';
 
 /**
+ * WHEN the label is bought (#2729, decision D1).
+ *
+ * - `on-accept` — the moment the routed `FulfillmentWork` is accepted by its
+ *   holder. The behaviour that shipped first, so it is also the default: a
+ *   connection with no `trigger` key reads exactly as it did before.
+ * - `on-parcel-closed` — when the pack bench's own auto-close fires (the last
+ *   verification closes the parcel). The close is system-driven, so reacting to
+ *   it is not a bench "close" operation (ADR-071 amendment).
+ */
+export const AutoDispatchTriggerValues = ['on-accept', 'on-parcel-closed'] as const;
+export type AutoDispatchTrigger = (typeof AutoDispatchTriggerValues)[number];
+
+/** What an absent or unrecognised `trigger` reads as. */
+export const AUTO_DISPATCH_DEFAULT_TRIGGER: AutoDispatchTrigger = 'on-accept';
+
+export const isAutoDispatchTrigger = (value: unknown): value is AutoDispatchTrigger =>
+  typeof value === 'string' && (AutoDispatchTriggerValues as readonly string[]).includes(value);
+
+/**
  * Resolved per-connection auto-dispatch settings.
  *
  * `enabled` is the whole gate; the other two fields are meaningless (and never
@@ -31,6 +50,12 @@ export const AUTO_DISPATCH_CONFIG_KEY = 'autoDispatch';
 export interface AutoDispatchConfig {
   /** Whether this connection's accepted work should buy a label automatically. */
   readonly enabled: boolean;
+  /**
+   * When the label is bought (#2729, D1). Always resolved: an absent or
+   * unrecognised value reads as `on-accept` — see
+   * {@link isPresentButInvalidAutoDispatchTrigger} for the caller that logs it.
+   */
+  readonly trigger: AutoDispatchTrigger;
   /**
    * Carrier size-template code (e.g. InPost `'small' | 'medium' | 'large'`) to
    * pass on the parcel when set. Dimensions are deliberately never summed
@@ -57,7 +82,7 @@ export interface AutoDispatchConfig {
   readonly heightMm?: number;
 }
 
-const DISABLED: AutoDispatchConfig = { enabled: false };
+const DISABLED: AutoDispatchConfig = { enabled: false, trigger: AUTO_DISPATCH_DEFAULT_TRIGGER };
 
 /**
  * Read the per-connection auto-dispatch config from a connection config.
@@ -85,9 +110,43 @@ export function readAutoDispatchConfig(
     return DISABLED;
   }
 
-  const result: {
-    -readonly [K in keyof AutoDispatchConfig]: AutoDispatchConfig[K];
-  } = { enabled: true };
+  return {
+    enabled: true,
+    trigger: isAutoDispatchTrigger(candidate.trigger)
+      ? candidate.trigger
+      : AUTO_DISPATCH_DEFAULT_TRIGGER,
+    ...readParcelDefaults(candidate),
+  };
+}
+
+/** The parcel settings of {@link AutoDispatchConfig}, with no gate and no trigger. */
+export type AutoDispatchParcelDefaults = Pick<
+  AutoDispatchConfig,
+  'parcelTemplate' | 'defaultWeightGrams' | 'lengthMm' | 'widthMm' | 'heightMm'
+>;
+
+/**
+ * Read only the parcel defaults, REGARDLESS of `enabled` (#2729, D46).
+ *
+ * `readAutoDispatchConfig` answers "disabled" with no extras, which is right
+ * for the automatic trigger and wrong for a person asking for a label by hand:
+ * the pack bench's own label route is offered precisely when auto-dispatch is
+ * off, and it resolves the parcel from the SAME defaults. Coerced by the same
+ * rules, so a value the automatic path would drop is dropped here too.
+ */
+export function readAutoDispatchParcelDefaults(
+  config: ConnectionConfig | null | undefined
+): AutoDispatchParcelDefaults {
+  const raw = config?.[AUTO_DISPATCH_CONFIG_KEY];
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return {};
+  }
+  return readParcelDefaults(raw as Record<string, unknown>);
+}
+
+function readParcelDefaults(candidate: Record<string, unknown>): AutoDispatchParcelDefaults {
+  const result: { -readonly [K in keyof AutoDispatchParcelDefaults]: AutoDispatchParcelDefaults[K] } =
+    {};
   if (typeof candidate.parcelTemplate === 'string' && candidate.parcelTemplate.trim().length > 0) {
     result.parcelTemplate = candidate.parcelTemplate;
   }
@@ -110,4 +169,23 @@ export function readAutoDispatchConfig(
     result.heightMm = heightMm;
   }
   return result;
+}
+
+/**
+ * Is a `trigger` PRESENT but not one this build recognises?
+ *
+ * `readAutoDispatchConfig` is pure and coerces such a value to `on-accept`, so
+ * the caller that wants to tell an operator their setting was ignored asks this
+ * separately (the `isPresentButInvalidStockSafetyBuffer` precedent). Absent is
+ * not invalid.
+ */
+export function isPresentButInvalidAutoDispatchTrigger(
+  config: ConnectionConfig | null | undefined
+): boolean {
+  const raw = config?.[AUTO_DISPATCH_CONFIG_KEY];
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return false;
+  }
+  const trigger = (raw as Record<string, unknown>).trigger;
+  return trigger !== undefined && trigger !== null && !isAutoDispatchTrigger(trigger);
 }

@@ -43,7 +43,10 @@ import {
 } from '../application/interfaces/bench-label.service.interface';
 import { BenchLabelShipmentNotFoundError } from '../application/services/bench-label.service';
 import { BenchParcelNotAtThisBenchError } from '../application/services/bench-parcel.service';
-import { BenchReplaceLabelResponseDto } from './dto/bench-documents-response.dto';
+import {
+  BenchGenerateLabelResponseDto,
+  BenchReplaceLabelResponseDto,
+} from './dto/bench-documents-response.dto';
 import { ReplaceLabelDto, toReplaceLabelParcel } from './dto/replace-label.dto';
 
 @ApiBearerAuth()
@@ -53,6 +56,51 @@ export class BenchLabelController {
   constructor(
     @Inject(BENCH_LABEL_SERVICE_TOKEN) private readonly labels: IBenchLabelService
   ) {}
+
+  @Post('work/:workId/label')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Generate the label for this box',
+    description:
+      'Buys the label for a parcel that has none, for a work whose holder has automatic labels ' +
+      'OFF (#2729, D46). The body is empty: the parcel comes from the connection’s configured ' +
+      'defaults and the recipient from the order, through the same decision automatic dispatch ' +
+      'makes. Refused 409 (reason in body, nothing bought): auto-dispatch-on, already-has-label ' +
+      '(use `label/replace`), no-weight, no-address, no-dimensions, order-unreadable, ' +
+      'holder-unresolved, no-label-processor, no-delivery-method, work-not-eligible, ' +
+      'shipment-claimed-by-sibling-work, carrier-refused, generate-in-progress. Not a close ' +
+      'verb: the box is shut by the last verification, never by this route.',
+  })
+  @ApiResponse({ status: 201, type: BenchGenerateLabelResponseDto })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  @ApiResponse({ status: 409, description: 'Refused; body carries `reason`' })
+  async generateLabel(
+    @Param('workId') workId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchGenerateLabelResponseDto> {
+    // Records who bought a paid label; unreachable without a principal (#2890 F1).
+    if (!user?.id) {
+      throw new UnauthorizedException('A label purchase must name the packer');
+    }
+
+    let result;
+    try {
+      result = await this.labels.generateLabel({ workId, actorUserId: user.id });
+    } catch (error) {
+      if (
+        error instanceof FulfillmentWorkNotFoundError ||
+        error instanceof BenchParcelNotAtThisBenchError
+      ) {
+        throw new NotFoundException('No such parcel at this bench');
+      }
+      throw error;
+    }
+
+    if (result.outcome === 'refused') {
+      throw new ConflictException({ reason: result.reason, message: result.reason });
+    }
+    return { shipmentId: result.shipmentId };
+  }
 
   @Post('work/:workId/label/replace')
   @Roles('admin', 'operator', 'packer')
