@@ -5,7 +5,7 @@
  * via the `invoiceDetailSection` slot:
  *   - renders the clearance badge + KSeF number when regulatory data exists
  *   - returns null when there is no KSeF data (not-applicable + no number)
- *   - prefers `clearanceReference` (the KSeF number) over `providerInvoiceNumber`
+ *   - shows the KSeF number only from `clearanceReference` (DEF-14)
  *   - UPO actions: shown only when `regulatoryStatus === 'accepted'`
  *   - FA(3) actions (View + Download XML): shown only when `regulatoryStatus === 'accepted'`
  *   - Preview UPO: calls `invoicing.downloadUpo` + opens dialog
@@ -62,6 +62,39 @@ describe('KsefInvoiceDetailSection', () => {
     expect(screen.getByText('KSeF: accepted')).toBeInTheDocument();
   });
 
+  it('surfaces the rejection detail when a document was rejected (#1582)', () => {
+    renderWithProviders(
+      <KsefInvoiceDetailSection
+        invoice={makeInvoice({
+          regulatoryStatus: 'rejected',
+          clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+        })}
+        connection={sampleConnection}
+      />,
+    );
+    expect(screen.getByText('Rejection detail')).toBeInTheDocument();
+    expect(screen.getByText('KSeF status 440: buyer NIP invalid')).toBeInTheDocument();
+  });
+
+  it('does not render a rejection detail row when the document is not rejected (#1582)', () => {
+    renderWithProviders(
+      <KsefInvoiceDetailSection invoice={makeInvoice()} connection={sampleConnection} />,
+    );
+    expect(screen.queryByText('Rejection detail')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the KSeF number as a copyable value with the Art. 108g payment-title hint', () => {
+    renderWithProviders(
+      <KsefInvoiceDetailSection invoice={makeInvoice()} connection={sampleConnection} />,
+    );
+    // Copyable affordance (CopyableId renders a Copy button labelled with the id).
+    expect(
+      screen.getByRole('button', { name: 'Copy 1234567890-20260625-ABCDEF123456-7F' }),
+    ).toBeInTheDocument();
+    // Art. 108g hint present so the operator knows to paste it into the transfer title.
+    expect(screen.getByText(/Art\. 108g/)).toBeInTheDocument();
+  });
+
   it('returns null when there is no KSeF data', () => {
     renderWithProviders(
       <KsefInvoiceDetailSection
@@ -77,21 +110,22 @@ describe('KsefInvoiceDetailSection', () => {
     expect(screen.queryByText('Clearance status')).not.toBeInTheDocument();
   });
 
-  it('prefers clearanceReference over providerInvoiceNumber', () => {
+  it('shows the KSeF number and OpenLinker\'s own invoice number as separate rows', () => {
     renderWithProviders(
       <KsefInvoiceDetailSection
         invoice={makeInvoice({
           clearanceReference: 'KSEF-CLEARANCE-REF',
-          providerInvoiceNumber: 'FALLBACK-NUM',
+          providerInvoiceNumber: 'FV/2026/06/0142',
         })}
         connection={sampleConnection}
       />,
     );
     expect(screen.getByText('KSEF-CLEARANCE-REF')).toBeInTheDocument();
-    expect(screen.queryByText('FALLBACK-NUM')).not.toBeInTheDocument();
+    expect(screen.getByText('Invoice number')).toBeInTheDocument();
+    expect(screen.getByText('FV/2026/06/0142')).toBeInTheDocument();
   });
 
-  it('falls back to providerInvoiceNumber when clearanceReference is null', () => {
+  it('never offers OpenLinker\'s number as the KSeF number before clearance (DEF-14)', () => {
     renderWithProviders(
       <KsefInvoiceDetailSection
         invoice={makeInvoice({
@@ -102,6 +136,8 @@ describe('KsefInvoiceDetailSection', () => {
         connection={sampleConnection}
       />,
     );
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.queryByText(/Art\. 108g/)).not.toBeInTheDocument();
     expect(screen.getByText('FV/2026/06/0142')).toBeInTheDocument();
   });
 

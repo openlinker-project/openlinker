@@ -19,9 +19,11 @@
  * `skonto.conditions`/`skonto.amount` must both be non-empty when `skonto` is
  * set (a partial skonto is otherwise silently dropped at issuance by the
  * factory's `resolvePayment`, so rejecting it at save time gives the operator
- * a clear error instead). The seller's tax identifier itself (`nip`/`name`/`address`) is intentionally
- * NOT validated here yet — a future pass tightens KSeF connection-shape
- * validation across all seller fields. Registered against
+ * a clear error instead). The seller's `nip`, when present, is checksum-validated
+ * (mod-11, #1595) so a mistyped-but-well-formed NIP is caught at connection-save
+ * time instead of surfacing as a generic KSeF submission-time rejection; the
+ * remaining seller fields (`name`/`address`) are still not validated here - a
+ * future pass tightens KSeF connection-shape validation across them. Registered against
  * `ConnectionConfigShapeValidatorRegistryService` at `ksef.publicapi.v2`;
  * `ConnectionService` maps the thrown exception to a 400 at the API boundary.
  *
@@ -34,17 +36,22 @@
  */
 import {
   type ConnectionConfigShapeValidatorPort,
+  type ConnectionConfigValidationContext,
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
 import { KsefEnvironmentValues, KsefFormaPlatnosciValues } from '../../domain/types/ksef-connection.types';
+import { isValidNipChecksum, normalizePlNip } from './nip-checksum';
 
 export class KsefConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
 {
   constructor(private readonly pluginName: string = 'KSeF') {}
 
-  validate(config: Record<string, unknown>): Promise<void> {
+  validate(
+    config: Record<string, unknown>,
+    context?: ConnectionConfigValidationContext,
+  ): Promise<void> {
     const issues: FlatValidationIssue[] = [];
     const env = config.env;
 
@@ -63,6 +70,40 @@ export class KsefConnectionConfigShapeValidatorAdapter
     // left behind in an existing config is inert and is deliberately not
     // rejected either - failing a connection save over a dead key would be a
     // gratuitous break for something that does nothing.
+    const seller = config.seller;
+    if (seller !== undefined && seller !== null && typeof seller === 'object') {
+      // Seller NIP: 10-digit mod-11-valid Polish NIP when present (#1595). The
+      // FE submits digits-only, but a direct API write may include separators,
+      // so normalise before the length/checksum gate.
+      //
+      // DEF-19: an empty string means "not set yet" (issuance refuses it on its
+      // own), and an UNCHANGED stored NIP is not re-judged - otherwise a value
+      // saved before the checksum rule existed would block every unrelated
+      // save of this connection, preset applies included.
+      const nip = (seller as Record<string, unknown>).nip;
+      if (nip !== undefined && nip !== '') {
+        if (typeof nip !== 'string' || nip.trim().length === 0) {
+          issues.push({ path: 'seller.nip', message: 'must be a non-empty string' });
+        } else if (normalizePlNip(nip) === previousSellerNip(context)) {
+          // Unchanged since the last save: left as the operator stored it.
+        } else {
+          const normalized = normalizePlNip(nip);
+          if (!/^\d{10}$/.test(normalized)) {
+            issues.push({ path: 'seller.nip', message: 'must be a 10-digit Polish NIP' });
+          } else if (!isValidNipChecksum(normalized)) {
+            issues.push({ path: 'seller.nip', message: 'has an invalid checksum' });
+          }
+        }
+      }
+    }
+
+    // DEF-18: only a literal boolean switches cross-border issuance on, so a
+    // string "true" must not save as though it had.
+    if (config.allowCrossBorder !== undefined && typeof config.allowCrossBorder !== 'boolean') {
+      issues.push({ path: 'allowCrossBorder', message: 'must be true or false' });
+    }
+
+    issues.push(...annotationsDefaultIssues(config.annotationsDefault));
 
     const payment = config.payment;
     // A wrong-typed `payment` (or sub-object below) is rejected here rather
@@ -168,4 +209,58 @@ export class KsefConnectionConfigShapeValidatorAdapter
     }
     return Promise.resolve();
   }
+}
+
+/** The normalised seller NIP of the persisted config, or `null` on a create. */
+function previousSellerNip(context: ConnectionConfigValidationContext | undefined): string | null {
+  const seller = context?.previous?.seller;
+  if (!seller || typeof seller !== 'object') {
+    return null;
+  }
+  const nip = (seller as Record<string, unknown>).nip;
+  return typeof nip === 'string' ? normalizePlNip(nip) : null;
+}
+
+const MARGIN_KINDS = ['travel-services', 'used-goods', 'works-of-art', 'collectors-items'];
+const EXEMPTION_KINDS = ['statute', 'directive', 'other'];
+
+/**
+ * `annotationsDefault` (DEF-20 / DEF-22): booleans for the seller-level flags,
+ * a known margin kind, and exemption grounds that fit `TZnakowy` (1..256).
+ * A value of the wrong type would otherwise be dropped silently at issuance.
+ */
+function annotationsDefaultIssues(value: unknown): FlatValidationIssue[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (typeof value !== 'object') {
+    return [{ path: 'annotationsDefault', message: 'must be an object' }];
+  }
+  const a = value as Record<string, unknown>;
+  const issues: FlatValidationIssue[] = [];
+  for (const key of ['cashAccounting', 'selfBilling', 'marginScheme'] as const) {
+    if (a[key] !== undefined && typeof a[key] !== 'boolean') {
+      issues.push({ path: `annotationsDefault.${key}`, message: 'must be true or false' });
+    }
+  }
+  if (a.marginKind !== undefined && (typeof a.marginKind !== 'string' || !MARGIN_KINDS.includes(a.marginKind))) {
+    issues.push({ path: 'annotationsDefault.marginKind', message: `must be one of: ${MARGIN_KINDS.join(', ')}` });
+  }
+  if (a.exemptionBasis !== undefined && a.exemptionBasis !== null) {
+    const basis = a.exemptionBasis as Record<string, unknown>;
+    if (typeof basis !== 'object' || typeof basis.kind !== 'string' || !EXEMPTION_KINDS.includes(basis.kind)) {
+      issues.push({
+        path: 'annotationsDefault.exemptionBasis.kind',
+        message: `must be one of: ${EXEMPTION_KINDS.join(', ')}`,
+      });
+    }
+    const text = typeof basis?.text === 'string' ? basis.text.trim() : '';
+    if (text.length === 0 || [...text].length > 256) {
+      issues.push({
+        path: 'annotationsDefault.exemptionBasis.text',
+        message: 'must be 1 to 256 characters',
+      });
+    }
+  }
+  return issues;
 }

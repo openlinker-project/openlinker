@@ -44,3 +44,32 @@ describe('BuyerProfile', () => {
     });
   });
 });
+
+describe('BuyerProfile.fromSnapshot (DEF-08)', () => {
+  it('should carry every snapshot field, including e-mail and the fiscal flags', () => {
+    const buyer = BuyerProfile.fromSnapshot({
+      name: 'Gmina Testowa',
+      taxId: { scheme: 'pl-nip', value: '1189981779' },
+      address: { line1: 'Rynek 1', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+      type: 'company',
+      email: 'faktury@gmina.example',
+      isPublicSectorEntity: true,
+      isVatGroupMember: false,
+    });
+
+    expect(buyer.email).toBe('faktury@gmina.example');
+    expect(buyer.isPublicSectorEntity).toBe(true);
+    expect(buyer.isVatGroupMember).toBe(false);
+  });
+
+  it('should read a snapshot written before e-mail existed as no e-mail', () => {
+    const legacy = {
+      name: 'Old',
+      taxId: null,
+      address: { line1: 'a', line2: null, city: 'b', postalCode: 'c', countryIso2: 'PL' },
+      type: 'private',
+    } as unknown as Parameters<typeof BuyerProfile.fromSnapshot>[0];
+
+    expect(BuyerProfile.fromSnapshot(legacy).email).toBeNull();
+  });
+});

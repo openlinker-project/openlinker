@@ -237,6 +237,17 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // KSeF legal completeness (#1578, DEF-01..39). Runs against KSeF TEST on
+      // a cloned stack. `retries: 0`: every scenario issues or corrects a real
+      // document, and a silent retry would issue a second one. `screenshot:
+      // 'on'` plus the named `shot()` captures give a reviewer every state.
+      name: 'ksef-legal',
+      testMatch: /ksef-legal\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE, screenshot: 'on' },
+    },
+    {
       // Invoicing suite (#1573) — inFakt provider run, payment marking (both
       // directions), bulk issue/resend/e-mail, KOR corrections, FA(3) field
       // parity + rebuilt preview, and Transfer bank accounts. Fully unattended:

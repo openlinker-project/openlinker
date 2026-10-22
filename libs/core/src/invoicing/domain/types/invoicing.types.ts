@@ -111,6 +111,12 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *     Must not collapse into `provider-rejected`, whose copy asserts the
  *     provider rejected a request it never received and sends the operator
  *     to the order's data when the fix is on the connection.
+ *   - `acknowledgement-required`: a TERMINAL `rejected` failure the ADAPTER
+ *     raised before contacting the provider because the document rests on a
+ *     reading of the law OpenLinker cannot be sure of (OpenLinker suggests,
+ *     the operator decides). Declared via `failureCause: 'needs-acknowledgement'`
+ *     with a `warningCode`; `failureReason` is the adapter's own PII-free
+ *     sentence. Re-issuing with that code in `acknowledgedWarnings` proceeds.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -123,6 +129,7 @@ export const InvoiceFailureCodeValues = [
   'invalid-currency',
   'sale-classification-required',
   'connection-setup-incomplete',
+  'acknowledgement-required',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
@@ -226,6 +233,15 @@ export interface RegulatoryClearanceResult {
    * a reference a prior submit could not. `null`/absent until assigned.
    */
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing diagnostic the authority returned for the clearance
+   * verdict (#1582) - typically the provider's `description`/`details` on a
+   * `rejected` read, so an operator can see WHY the authority refused the
+   * document rather than only that it was rejected. Country/provider-agnostic
+   * (ADR-026): a free-text blob the adapter fills from its regime's rejection
+   * fields, never interpreted in core. Absent on non-rejection reads.
+   */
+  clearanceDetail?: string | null;
 }
 
 /**
@@ -463,6 +479,24 @@ export interface InvoiceLine {
    * never as a guess.
    */
   orderLineId?: string;
+  /**
+   * Opaque per-line goods/services classification code (#1586 Phase 2). Neutral
+   * seam carrying an operator-asserted classification the provider maps onto its
+   * regime's line-level marker (a PL adapter maps it onto the FA(3) `GTU_xx`
+   * enumeration for flagged goods categories - fuel, alcohol, tobacco, certain
+   * electronics, scrap, etc.). Country-agnostic: core never interprets the code,
+   * it forwards it verbatim (ADR-026). Optional - absent means "no line-level
+   * classification", the common case; a provider with no such concept ignores it.
+   */
+  gtuCode?: string;
+  /**
+   * Opaque per-line transaction-procedure marker (#1586 Phase 2). Neutral seam
+   * carrying an operator-asserted procedure code the provider maps onto its
+   * regime's line-level procedure marker (a PL adapter maps it onto the FA(3)
+   * `Procedura` enumeration). Country-agnostic: forwarded verbatim, never
+   * interpreted in core (ADR-026). Optional and omitted when absent.
+   */
+  procedureCode?: string;
 }
 
 /**
@@ -488,6 +522,9 @@ export interface IssuedSnapshotBuyer {
    * never calls `sendByEmail`.
    */
   email: string | null;
+  /** Operator-supplied fiscal classification as issued (#1580); see {@link BuyerProfile}. */
+  isPublicSectorEntity?: boolean;
+  isVatGroupMember?: boolean;
 }
 
 /**
@@ -510,6 +547,18 @@ export interface IssuedLineSnapshot {
   currency: string;
   /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate/unit). */
   lines: InvoiceLine[];
+  /**
+   * Issue date as printed, ISO `YYYY-MM-DD` (DEF-33). Absent on snapshots taken
+   * before the field existed and for adapters that report no dates; readers
+   * then fall back to the record's `issuedAt`.
+   */
+  issueDate?: string;
+  /** Sale date as printed, ISO `YYYY-MM-DD` (DEF-07); absent when not recorded. */
+  saleDate?: string;
+  /** Annotations the operator stated for this document (DEF-20), so a correction repeats them. */
+  annotations?: InvoiceAnnotations;
+  /** Parties besides seller and buyer this document named (DEF-30). */
+  additionalParties?: AdditionalParty[];
 }
 
 /**
@@ -533,6 +582,19 @@ export interface CorrectionReference {
   originalDocumentNumber: string;
   /** Issue date of the corrected original, ISO 8601 calendar `YYYY-MM-DD`. */
   originalIssueDate: string;
+  /** Sale date of the corrected original, when it carried one (DEF-07). */
+  originalSaleDate?: string;
+  /**
+   * The buyer as printed on the corrected original, present only when this
+   * correction CHANGES the buyer's data (DEF-23). A regime that must restate
+   * the corrected party (KSeF's `Podmiot2K`) reads it; others ignore it.
+   */
+  originalBuyer?: BuyerProfile;
+  /**
+   * `false` for a correction that changes no line, only the buyer (DEF-24).
+   * Absent means it changes lines, which is every correction before this field.
+   */
+  changesLines?: boolean;
   /** Free-text reason for the correction (return, refund, price adjustment, …). */
   reason: string;
   /** Post-correction ("after") line state; the top-level `lines` carry the original. */
@@ -648,6 +710,81 @@ export interface StoredDocument {
 }
 
 /**
+ * Neutral, operator-supplied fiscal annotation flags on an invoice (#1580,
+ * ADR-078). Country-agnostic (ADR-026): each flag is a generic commercial /
+ * fiscal concept a provider maps to its own regime — a KSeF adapter maps them
+ * to the FA(3) `Adnotacje` block. Every field is optional; an absent flag ⇒ the
+ * provider emits its own "does not apply" default. Core never interprets them.
+ *
+ * Note what is *deliberately absent*: reverse-charge and VAT-exemption are NOT
+ * boolean flags here. A provider derives both from the per-line tax codes it
+ * already receives ({@link InvoiceLine.taxRate}), so re-declaring them at the
+ * header level would risk contradicting the lines. `exemptionLegalBasis` is the
+ * sole exemption-adjacent field — it carries the free-text legal grounds a
+ * provider that annotates exemptions must cite.
+ */
+export interface InvoiceAnnotations {
+  /** Supply settled on a cash basis (KSeF: `P_16`). */
+  cashAccounting?: boolean;
+  /** Buyer issues the invoice on the seller's behalf (KSeF: `P_17`). */
+  selfBilling?: boolean;
+  /** The split-payment mechanism applies (KSeF: `P_18A`). */
+  splitPayment?: boolean;
+  /** Simplified intra-EU triangular transaction (KSeF: `P_23`). */
+  triangulation?: boolean;
+  /** The VAT margin scheme applies (KSeF: `PMarzy` / `P_PMarzy`). */
+  marginScheme?: boolean;
+  /**
+   * Which margin scheme applies, when `marginScheme` is set (DEF-31). A
+   * provider maps it to its own element; absent leaves the provider's default.
+   */
+  marginKind?: MarginSchemeKind;
+  /**
+   * Free-text legal grounds for a VAT-exempt sale (KSeF: `Zwolnienie` / `P_19`).
+   * When a provider annotates an exemption (e.g. because a line is exempt), it
+   * cites this text; supplying it also asserts the exemption annotation applies.
+   * Kept for callers that predate {@link exemptionBasis}; read as kind `other`.
+   */
+  exemptionLegalBasis?: string;
+  /**
+   * The exemption grounds with the kind of source they cite (DEF-22): a
+   * national statute, an EU directive, or another legal basis. Wins over
+   * `exemptionLegalBasis` when both are present.
+   */
+  exemptionBasis?: ExemptionBasis;
+}
+
+/** Neutral margin-scheme kinds (art. 119 / 120 of the PL VAT act; EU directive Title XII). */
+export const MarginSchemeKindValues = [
+  'travel-services',
+  'used-goods',
+  'works-of-art',
+  'collectors-items',
+] as const;
+export type MarginSchemeKind = (typeof MarginSchemeKindValues)[number];
+
+/** Which kind of source an exemption's grounds cite. */
+export const ExemptionBasisKindValues = ['statute', 'directive', 'other'] as const;
+export type ExemptionBasisKind = (typeof ExemptionBasisKindValues)[number];
+
+export interface ExemptionBasis {
+  kind: ExemptionBasisKind;
+  text: string;
+}
+
+/**
+ * A party on the document besides seller and buyer (DEF-30) - a subordinate
+ * unit of a public-sector buyer, a VAT-group member, a payer. `role` is opaque
+ * to core: the provider adapter that offered the choice owns its codes.
+ */
+export interface AdditionalParty {
+  role: string;
+  name: string;
+  taxId: TaxIdentifier | null;
+  address?: BuyerAddress;
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
@@ -664,6 +801,10 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /** Operator-supplied fiscal annotation flags (#1580); see {@link InvoiceAnnotations}. */
+  annotations?: InvoiceAnnotations;
+  /** Parties besides seller and buyer the document names (DEF-30). */
+  additionalParties?: AdditionalParty[];
   /**
    * Date of supply / sale, ISO 8601 calendar `YYYY-MM-DD` (#1525). Filled from
    * the order's marketplace placement timestamp (`Order.placedAt`) - NEVER from
@@ -671,6 +812,13 @@ export interface IssueInvoiceCommand {
    * not carry a placement date; adapters omit the corresponding wire field.
    */
   saleDate?: string;
+  /**
+   * The placement INSTANT behind `saleDate` (DEF-33). `saleDate` is the UTC
+   * calendar day, which is the wrong day for an order placed just after local
+   * midnight; an adapter that prints dates in its own zone derives the day from
+   * this instead. Absent wherever `saleDate` is.
+   */
+  saleInstant?: Date;
   /**
    * Single issuance instant (#1692). Set by the core `InvoiceService` so BOTH
    * the allocated document number's date variables/period AND the provider's
@@ -683,6 +831,14 @@ export interface IssueInvoiceCommand {
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
+  /**
+   * Warning codes the operator explicitly accepted for THIS issuance. Where a
+   * guard rests on OpenLinker's reading of the law rather than on what the
+   * provider would technically accept, the adapter refuses once with a
+   * `warningCode` and the operator decides; re-issuing with the code here
+   * proceeds. Opaque to core - each adapter owns its codes.
+   */
+  acknowledgedWarnings?: readonly string[];
   /**
    * How the buyer pays, when the order's source positively said so (#3294).
    * Absent means unknown: an adapter keeps its connection-level default rather
@@ -814,6 +970,16 @@ export interface OriginalDocumentSnapshot {
   documentNumber: string;
   /** Issue date of the original, ISO 8601 calendar `YYYY-MM-DD`. */
   issueDate: string;
+  /**
+   * Sale date of the original as printed, ISO `YYYY-MM-DD` (DEF-07). A regime
+   * that keys anything on the tax point - an exchange rate, for one - must key
+   * a correction on the ORIGINAL's tax point, which is this date when present.
+   */
+  saleDate?: string;
+  /** The original's own annotations, repeated on its correction (DEF-20). */
+  annotations?: InvoiceAnnotations;
+  /** The original's additional parties, repeated on its correction (DEF-30). */
+  additionalParties?: AdditionalParty[];
 }
 
 /**
@@ -842,6 +1008,14 @@ export interface IssueCorrectionCommand {
   issuedAt?: Date;
   idempotencyKey?: string;
   /**
+   * Warning codes the operator explicitly accepted for THIS issuance. Where a
+   * guard rests on OpenLinker's reading of the law rather than on what the
+   * provider would technically accept, the adapter refuses once with a
+   * `warningCode` and the operator decides; re-issuing with the code here
+   * proceeds. Opaque to core - each adapter owns its codes.
+   */
+  acknowledgedWarnings?: readonly string[];
+  /**
    * Optional neutral register / entity-scope label (#10). Routes the correction's
    * numbering to the connection's series for `(documentType, register)`; when
    * absent the register-less default correction series is used.
@@ -866,6 +1040,17 @@ export interface IssueCorrectionCommand {
    * original's number. Absent for a self-numbering provider.
    */
   documentNumber?: string;
+  /**
+   * OPTIONAL buyer-identity override (#1582). When present, the adapter uses THIS
+   * buyer for the correcting document instead of the buyer captured on
+   * {@link OriginalDocumentSnapshot} - the fix path for a "wrong buyer identity
+   * (e.g. NIP) on the original" correction (a document already cleared by the
+   * authority cannot be deleted, only corrected). Mirrors how `originalDocument`
+   * is a caller-assembled reconstruction; reuses the neutral {@link BuyerProfile}
+   * shape (ADR-026 - no regime/provider vocabulary). Absent ⇒ the original
+   * snapshot's buyer is used unchanged.
+   */
+  buyerOverride?: BuyerProfile;
 }
 
 /**
@@ -909,6 +1094,13 @@ export interface IssuedDocumentLineAmounts {
   gross: number;
 }
 
+/** Calendar dates printed on an issued document, ISO `YYYY-MM-DD`. */
+export interface IssuedDocumentDates {
+  issueDate: string;
+  /** `null` when the document carries no separate sale date. */
+  saleDate: string | null;
+}
+
 export interface IssueInvoiceResult {
   record: InvoiceRecord;
   seller?: IssuedDocumentSeller;
@@ -918,6 +1110,14 @@ export interface IssueInvoiceResult {
    * recomputation; absent keeps the pre-#2251 behaviour.
    */
   documentLines?: IssuedDocumentLineAmounts[];
+  /**
+   * The calendar dates the adapter actually printed on the document (DEF-07,
+   * DEF-33). An adapter that computes a date in its own time zone reports it
+   * here so core snapshots what the document says rather than re-deriving it
+   * from an instant in UTC; a later correction then references the original
+   * by the same dates. Absent keeps the pre-existing derivation.
+   */
+  documentDates?: IssuedDocumentDates;
   /**
    * OPTIONAL machine-readable source document the adapter built and submitted to
    * the authority (PL/KSeF: the FA(3) XML). Core persists it as an opaque
@@ -1145,6 +1345,14 @@ export interface InvoiceOutcomePatch {
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing clearance diagnostic (#1582). Set from a
+   * `RegulatoryClearanceResult.clearanceDetail` (typically the authority's
+   * rejection description/details) so the projection can surface WHY a document
+   * was rejected. Country/provider-agnostic (ADR-026); omitted when a patch does
+   * not carry a fresh diagnostic so an unrelated outcome patch never resets it.
+   */
+  clearanceDetail?: string | null;
   /**
    * Neutral payment lifecycle (#1354). Set by the payment-status refresh
    * service from an authoritative `PaymentStatusReader` read; omitted otherwise
