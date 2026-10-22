@@ -145,7 +145,13 @@ export {
   isConnectionSetupIncompleteError,
   isCapabilityDisabledError,
   resolveIssueErrorMessage,
+  readAcknowledgementRequest,
+  type AcknowledgementRequest,
 } from './lib/issue-error-message';
+export {
+  useWarningAcknowledgement,
+  type WarningAcknowledgement,
+} from './components/acknowledge-warning-dialog';
 export {
   deriveInvoiceDisplayStatus,
   canRetryInvoice,

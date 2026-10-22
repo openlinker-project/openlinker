@@ -31,6 +31,7 @@ import {
   type CorrectionLineInput,
   CorrectionReasonField,
   useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -78,6 +79,7 @@ export function InfaktInvoiceCorrectionFlow({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   // Per-mount stable idempotency key — prevents duplicate KOR issuance on timeout/retry.
@@ -142,37 +144,46 @@ export function InfaktInvoiceCorrectionFlow({
     if (!reasonState.confirmBeforeSubmit()) {
       return;
     }
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reasonState.submittedReason,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('infakt.correction.issued', 'KOR issued'),
-            description: t(
-              'infakt.correction.issuedBody',
-              'The correcting document was submitted to KSeF via inFakt.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: t('infakt.correction.issued', 'KOR issued'),
+              description: t(
+                'infakt.correction.issuedBody',
+                'The correcting document was submitted to KSeF via inFakt.',
+              ),
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: t('infakt.correction.failed', 'KOR failed'),
+              description: error.message,
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('infakt.correction.failed', 'KOR failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -330,6 +341,7 @@ export function InfaktInvoiceCorrectionFlow({
             : t('infakt.correction.submit', 'Issue KOR')}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

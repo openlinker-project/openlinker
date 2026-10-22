@@ -153,11 +153,57 @@ export interface InvoiceRecord {
 /** `POST /invoices` request body. No `idempotencyKey` in v1 (the controller
  *  owns failed-row dedup — plan §1.1/§7). `buyerTaxId` typed but not surfaced
  *  in the v1 UI. */
-export interface IssueInvoiceInput {
+/**
+ * What an operator may state about ONE sale when issuing by hand (DEF-20).
+ * Neutral vocabulary mirroring the API's `InvoiceAnnotationsDto`; the
+ * provider maps each field to its regime. Every field overrides the
+ * connection's default for this sale only.
+ */
+export interface IssueInvoiceAnnotationsInput {
+  cashAccounting?: boolean;
+  selfBilling?: boolean;
+  /** Split payment applies. OpenLinker never sets this on its own. */
+  splitPayment?: boolean;
+  triangulation?: boolean;
+  marginScheme?: boolean;
+  marginKind?: 'travel-services' | 'used-goods' | 'works-of-art' | 'collectors-items';
+  exemptionBasis?: { kind: 'statute' | 'directive' | 'other'; text: string };
+}
+
+export interface IssueInvoiceAdditionalPartyInput {
+  /** The provider's role code (KSeF: TRolaPodmiotu3, e.g. 8 or 10). */
+  role: string;
+  name: string;
+  taxId?: { scheme: string; value: string };
+  address?: {
+    line1: string;
+    line2?: string;
+    city: string;
+    postalCode: string;
+    countryIso2: string;
+  };
+}
+
+export interface IssueInvoiceLineClassificationInput {
+  orderLineId: string;
+  gtuCode?: string;
+  procedureCode?: string;
+}
+
+/** The per-issue options a provider plugin collects (DEF-20). */
+export interface IssueInvoiceOptions {
+  annotations?: IssueInvoiceAnnotationsInput;
+  additionalParties?: IssueInvoiceAdditionalPartyInput[];
+  lineClassifications?: IssueInvoiceLineClassificationInput[];
+}
+
+export interface IssueInvoiceInput extends IssueInvoiceOptions {
   connectionId: string;
   orderId: string;
   documentType?: string;
   buyerTaxId?: { scheme: string; value: string };
+  /** Warning codes the operator has read and chosen to proceed past. */
+  acknowledgeWarnings?: string[];
 }
 
 /**

@@ -30676,3 +30676,8 @@ legend.analytics-settings-dialog__label {
   margin: var(--space-1) 0 0;
   color: var(--status-warning-strong);
 }
+
+.acknowledge-warning__note {
+  margin: 0;
+  color: var(--text-muted);
+}

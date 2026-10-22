@@ -30,6 +30,7 @@ import {
   type CorrectionLineInput,
   CorrectionReasonField,
   useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -67,6 +68,7 @@ export function SubiektInvoiceCorrectionFlow({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   const reasonState = useCorrectionReason();
@@ -124,37 +126,46 @@ export function SubiektInvoiceCorrectionFlow({
     if (!reasonState.confirmBeforeSubmit()) {
       return;
     }
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reasonState.submittedReason,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('subiekt.correction.issued', 'Correction issued'),
-            description: t(
-              'subiekt.correction.issuedBody',
-              'The correcting document was sent to Subiekt.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: t('subiekt.correction.issued', 'Correction issued'),
+              description: t(
+                'subiekt.correction.issuedBody',
+                'The correcting document was sent to Subiekt.',
+              ),
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: t('subiekt.correction.failed', 'Correction failed'),
+              description: error.message,
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('subiekt.correction.failed', 'Correction failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -310,6 +321,7 @@ export function SubiektInvoiceCorrectionFlow({
             : t('subiekt.correction.submit', 'Issue correction')}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

@@ -32,6 +32,7 @@ import {
   type CorrectionLineInput,
   CorrectionReasonField,
   useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -79,6 +80,7 @@ export function KsefInvoiceCorrectionFlow({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   // Same read `CorrectionLineGrid` uses internally — resolved here too so this
   // component can decide WHICH table to render (react-query dedupes the
   // fetch by query key, so this costs no extra request).
@@ -149,37 +151,46 @@ export function KsefInvoiceCorrectionFlow({
     if (!reasonState.confirmBeforeSubmit()) {
       return;
     }
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reasonState.submittedReason,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('ksef.correction.issued', 'KOR issued'),
-            description: t(
-              'ksef.correction.issuedBody',
-              'The correcting document was submitted to KSeF.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: t('ksef.correction.issued', 'KOR issued'),
+              description: t(
+                'ksef.correction.issuedBody',
+                'The correcting document was submitted to KSeF.',
+              ),
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: t('ksef.correction.failed', 'KOR failed'),
+              description: error.message,
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('ksef.correction.failed', 'KOR failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -337,6 +348,7 @@ export function KsefInvoiceCorrectionFlow({
             : t('ksef.correction.submit', 'Issue KOR')}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

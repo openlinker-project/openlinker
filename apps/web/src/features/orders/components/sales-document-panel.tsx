@@ -93,6 +93,7 @@ import { describeMatchedSalesDocumentRule } from '../lib/describe-matched-sales-
 import {
   useOrderInvoiceQuery,
   useIssueInvoiceMutation,
+  useWarningAcknowledgement,
   resolveIssueErrorMessage,
   isMissingNumberingSeriesError,
   isConnectionSetupIncompleteError,
@@ -265,6 +266,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const invoiceWrite = useWriteAccess('invoices:write', demoMode);
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId);
   const issueMutation = useIssueInvoiceMutation();
+  const issueAcknowledgement = useWarningAcknowledgement(issueMutation.isPending);
   const resendMutation = useResendToAuthorityMutation();
 
   // ── Fiscalization data + actions ──────────────────────────────────────
@@ -431,10 +433,20 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const invoiceSettled = !invoiceQuery.isError && !invoiceQuery.isLoading;
 
   const issueOn = (connection: { id: string }): void => {
+    issueAcknowledgement.reset();
+    submitIssue(connection, []);
+  };
+
+  const submitIssue = (connection: { id: string }, acknowledgeWarnings: string[]): void => {
     setMissingNumbering(false);
     announce(t('invoice.announce.issuing', 'Issuing the invoice.'));
     issueMutation.mutate(
-      { connectionId: connection.id, orderId: order.internalOrderId, documentType },
+      {
+        connectionId: connection.id,
+        orderId: order.internalOrderId,
+        documentType,
+        ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+      },
       {
         onSuccess: () => {
           setSwitchTargetId(null);
@@ -446,6 +458,12 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           });
         },
         onError: (error) => {
+          // DEF-26 and friends: a refusal the operator may overrule opens a
+          // confirm dialog instead of a toast.
+          if (issueAcknowledgement.offer(error, (codes) => submitIssue(connection, codes))) {
+            announce(t('invoice.announce.needsConfirmation', 'The invoice needs your confirmation.'));
+            return;
+          }
           if (isMissingNumberingSeriesError(error)) {
             announce(
               t('invoice.announce.numberingMissing', 'Numbering is not configured.'),
@@ -1563,6 +1581,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           ) : null}
         </div>
       ) : null}
+      {issueAcknowledgement.dialog}
     </section>
   );
 }
