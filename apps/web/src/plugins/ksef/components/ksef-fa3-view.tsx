@@ -20,6 +20,11 @@
  *     payment term (date or descriptive TerminOpis), bank account, skonto
  *   - KOR: correction reason + corrected-invoice number; `StanPrzed=1`
  *     "before" rows stay in a separate collapsed section (#1364 follow-up)
+ *   - KOD I verification QR code (#1579): the legally-required verification
+ *     code (kod weryfikacyjny) for invoices handed to buyers outside KSeF,
+ *     with the KSeF number as caption. Computed client-side from the seller
+ *     NIP + issue date + SHA-256 of the exact submitted XML (see
+ *     `../lib/ksef-verification`).
  *
  * Skipped by design: Adnotacje (P_16-P_23), WZ, amount-in-words, footer.
  *
@@ -33,12 +38,14 @@
  *
  * @module plugins/ksef/components
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 import type { KsefFormaPlatnosci } from './ksef-setup.schema';
 import type { FaData, FaLine, FaParty, FaPayment, FaVatBand } from './ksef-fa3-view.types';
+import { buildKsefVerificationUrl } from '../lib/ksef-verification';
+import { QrCode } from '../../../shared/ui';
 
 interface KsefFa3ViewProps {
   xmlText: string;
@@ -48,6 +55,13 @@ interface KsefFa3ViewProps {
    * authority AFTER the document is built - so the parent passes it in.
    */
   ksefNumber?: string | null;
+  /**
+   * KSeF target environment of the connection ('test' | 'demo' | 'prod'),
+   * threaded from `connection.config.env` by the parent section. Selects the
+   * verification-code (QR) host: prod -> ksef.mf.gov.pl, otherwise the test
+   * portal. Absent/unknown falls back to the test host (never prod).
+   */
+  environment?: string | null;
   /**
    * Notifies the parent when `xmlText` cannot be parsed (or is missing
    * required fields), so it can fall through to its placeholder/error copy
@@ -391,6 +405,7 @@ function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
 export function KsefFa3View({
   xmlText,
   ksefNumber,
+  environment,
   onParseError,
 }: KsefFa3ViewProps): ReactElement | null {
   const { t } = useTranslation();
@@ -400,6 +415,27 @@ export function KsefFa3View({
   useEffect(() => {
     if (!data) onParseError?.();
   }, [data, onParseError]);
+
+  // KOD I verification code (legally required on invoices handed to buyers
+  // outside KSeF, since 1 Feb 2026). Deterministic from public data - seller
+  // NIP + issue date + SHA-256 of the exact submitted XML - so it is computed
+  // fully client-side; no signing key or server round-trip. SHA-256 is async
+  // (Web Crypto), so it lands via state rather than useMemo. Hooks stay
+  // unconditional (before the early return); the effect no-ops when `data` is
+  // null or a required field is missing.
+  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
+  const sellerNip = data?.seller.nip ?? null;
+  const issueDateIso = data?.issueDate ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    void buildKsefVerificationUrl({ environment, sellerNip, issueDateIso, xmlText }).then((url) => {
+      if (!cancelled) setVerificationUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [environment, sellerNip, issueDateIso, xmlText]);
+
   if (!data) return null;
 
   const isCorrection = data.invoiceType === 'KOR';
@@ -624,6 +660,34 @@ export function KsefFa3View({
                 .join(' - ')}
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {/* KOD I verification code (kod weryfikacyjny) - legally required on any
+          copy of a KSeF-cleared invoice handed to the buyer outside KSeF. The
+          KSeF number is shown as the caption below the QR. */}
+      {verificationUrl !== null ? (
+        <section className="ksef-fa3-view__verification">
+          <QrCode
+            value={verificationUrl}
+            size={148}
+            ariaLabel={t('invoice.ksef.fa3VerificationQrAlt', 'KSeF invoice verification QR code')}
+            className="ksef-fa3-view__verification-qr"
+          />
+          <div className="ksef-fa3-view__verification-meta">
+            <div className="ksef-fa3-view__field-label">
+              {t('invoice.ksef.fa3VerificationLabel', 'Verification code')}
+            </div>
+            {displayKsefNumber !== null && displayKsefNumber !== undefined ? (
+              <div className="mono-text text-sm">{displayKsefNumber}</div>
+            ) : null}
+            <div className="ksef-fa3-view__verification-hint">
+              {t(
+                'invoice.ksef.fa3VerificationHint',
+                'Scan to verify this invoice against the KSeF system.',
+              )}
+            </div>
+          </div>
         </section>
       ) : null}
     </div>
