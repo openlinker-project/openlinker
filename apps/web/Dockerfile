@@ -21,6 +21,10 @@
 #
 # VITE_OL_OMS_ROUTING_UI_ENABLED=true exposes the OMS routing configuration
 # screens (inventory locations, sourcing rules); unset keeps them hidden (#3634).
+#
+# VITE_OL_SEO_INDEXABLE=true (together with VITE_OG_SITE_URL) makes the build
+# indexable by search engines, with a canonical and demo title. Unset — the
+# default for every self-hosted instance — emits `noindex` (#3709).
 FROM node:22.23.4-alpine3.24 AS build
 
 # Pinned to match the repo's packageManager field (package.json).
@@ -54,6 +58,8 @@ ARG VITE_OG_SITE_URL=
 ENV VITE_OG_SITE_URL=$VITE_OG_SITE_URL
 ARG VITE_OL_OMS_ROUTING_UI_ENABLED=
 ENV VITE_OL_OMS_ROUTING_UI_ENABLED=$VITE_OL_OMS_ROUTING_UI_ENABLED
+ARG VITE_OL_SEO_INDEXABLE=
+ENV VITE_OL_SEO_INDEXABLE=$VITE_OL_SEO_INDEXABLE
 
 RUN pnpm --filter @openlinker/web build
 

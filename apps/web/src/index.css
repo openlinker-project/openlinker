@@ -18656,6 +18656,21 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   opacity: 0.85;
 }
 
+.guest-form__demo-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.guest-form__demo-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .guest-form__demo-register {
   justify-content: center;
 }

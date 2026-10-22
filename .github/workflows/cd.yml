@@ -41,6 +41,9 @@ jobs:
       # passed as build args: Vite bakes them into index.html at build time, and
       # root .dockerignore excludes `.env.*` so no env file can carry them in.
       # Unset repo vars expand to empty, which is the plain production card.
+      # VITE_OL_SEO_INDEXABLE (#3709): the demo environment sets it to `true`
+      # (plus VITE_OG_SITE_URL) so app.demo.openlinker.io stays in search
+      # results; unset expands to empty, which builds `noindex`.
       - name: Build web
         run: |
           docker build \
@@ -48,6 +51,7 @@ jobs:
             --build-arg VITE_OG_TITLE_PREFIX="${{ vars.VITE_OG_TITLE_PREFIX }}" \
             --build-arg VITE_OG_BADGE_TEXT="${{ vars.VITE_OG_BADGE_TEXT }}" \
             --build-arg VITE_OG_SITE_URL="${{ vars.VITE_OG_SITE_URL }}" \
+            --build-arg VITE_OL_SEO_INDEXABLE="${{ vars.VITE_OL_SEO_INDEXABLE }}" \
             -f apps/web/Dockerfile . --tag openlinker-web
 
       - name: Export openlinker-web as tar
