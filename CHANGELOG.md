@@ -12,6 +12,13 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.16.1](https://github.com/openlinker-project/openlinker/compare/v0.16.0...v0.16.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **infra:** patch the Node.js 2026-10-21 security release ([#3782](https://github.com/openlinker-project/openlinker/issues/3782)) ([7eefd32](https://github.com/openlinker-project/openlinker/commit/7eefd3284dafa18f65c313427aa9b3e9fefb5149))
+
 ## [0.16.0](https://github.com/openlinker-project/openlinker/compare/v0.15.0...v0.16.0) (2026-10-19)
 
 
