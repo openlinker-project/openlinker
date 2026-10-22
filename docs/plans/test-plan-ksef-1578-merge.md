@@ -808,3 +808,93 @@ Matrix rows, not prioritised test cases. "Dead seam" = no producer anywhere in t
 | E-05 | Confirm whether staging / demo is served over plain HTTP from a non-localhost origin | Web Crypto unavailable -> QR missing (DEF-15) | 1 (QR-20); 2 (QR-17) |
 | E-06 | Decide and set `OL_KSEF_MF_ROOT_CA_PATH` per environment, restart api + worker | Chain-of-trust is skipped (fail-open) by default | 1 (MF-19); 3 (SEC-01) |
 | E-07 | Count api + worker replicas issuing to KSeF on the same seller NIP | Each process has its own bucket (DEF-06) | 1 (RL-18); 2 (F7); 3 (F3) |
+
+## Resolution (2026-10-22, branch `1578-ksef-legal-completeness-ready`)
+
+Principle applied throughout: **OpenLinker suggests, the operator decides.** A guard
+that is a reading of the law became a warning the operator confirms
+(`acknowledgeWarnings`) or a connection setting; only what KSeF or the XSD would
+reject anyway blocks before the call.
+
+Live e2e = `apps/e2e/tests/ksef-legal/*.spec.ts` (project `ksef-legal`), run one
+worker at a time against **KSeF TEST** on a clone of the ol-demo-fresh database
+(seller NIP 9151704181). All 19 tests pass. Screenshots are under
+`apps/e2e/screenshots/ksef-legal/<area>/` (gitignored). "unit" = covered by unit
+specs only, with the reason given.
+
+| DEF | Fix (commit) | Live e2e | Screenshot | Note |
+|---|---|---|---|---|
+| 01 | 89859f39b | cross-border | cross-border/02 | Refusals carry `failureMode: 'rejected'`; the live rejection path itself is unit (no rate-less product on the stack) |
+| 02 | 2e30ddf66, 60fb55603 | qr, roles | qr/01 | `publicConfig.env` for every role; link built server-side |
+| 03 | 60fb55603 (server link from main #3648) | qr | qr/01 | Host `qr-test`, NIP, date, Base64URL(SHA-256) checked; QR decoded from pixels |
+| 04 | 6ed92115b | unit | - | Whole round reserved; wait capped at 20 s, then penalty-free deferral |
+| 05 | 6ed92115b | unit | - | Sliding-window log (fake clock) |
+| 06 | 6ed92115b | unit | - | Redis ZSET + Lua, in-process fallback |
+| 07 | 89859f39b | fx | - | KOR repeats the original's NBP rate |
+| 08 | 51387054c | corrections | - | `BuyerProfile.fromSnapshot`; e-mail and JST/GV kept |
+| 09 | 51387054c | unit | - | inFakt / eparagony not live on this stack |
+| 10 | 51387054c | corrections | - | Same key returns the same correction |
+| 11 | 89859f39b | nip | - | Dashed buyer NIP reaches FA(3) as 10 digits |
+| 12 | 89859f39b | nip | - | Dashed seller NIP, Podmiot1 digits only |
+| 13 | 51387054c | - | - | `routing-full-path.spec.ts` F2 fills the reason |
+| 14 | 60fb55603 | ksef-number | ksef-number/01, 02 | "Pending" and no Art. 108g hint before clearance |
+| 15 | 60fb55603 | - | - | The browser no longer hashes, so there is no insecure-context path |
+| 16 | 2f63ca116 | - | - | FA3 notes + setup guide |
+| 17 | 6ed92115b, 9ce0a8a52 | - | - | Probe reads the token's own permissions (`GET /tokens/{ref}`); the grants query wrongly reported a working owner token as lacking InvoiceWrite |
+| 18 | 2e30ddf66, 35b4c4c8b | cross-border | cross-border/01 | Boolean-only, form checkbox, corrections exempt |
+| 19 | 89859f39b | nip | - | Unchanged legacy NIP no longer blocks an unrelated save |
+| 20 | 2e30ddf66, 35b4c4c8b, 391061270 | fa3-content | fa3-content/01, 02 | Connection defaults + per-invoice KSeF options (split payment, triangulation, Podmiot3, GTU / Procedura per line) |
+| 21 | 35b4c4c8b | bulk-pacing | bulk-pacing/01, 02 | "Issued X of N"; save warnings stay on screen |
+| 22 | 2e30ddf66, 35b4c4c8b | unit | - | Exemption basis configurable; a placeholder warns. No `zw` product on the stack |
+| 23 | 51387054c, 5da1a3960 | corrections | - | Same NIP: Podmiot2K; NIP change asks first, then issues |
+| 24 | 51387054c | corrections | - | Buyer-only KOR: TypKorekty 1, no FaWiersz, cleared by KSeF |
+| 25 | 51387054c, 21ae710a7 | corrections | corrections/02 | 256 code points, in the form and at the API |
+| 26 | 51387054c, 5da1a3960, 02d341311 | gate | gate/01-04 | Manual issue asks (409) then issues; partial refund after issue is flagged |
+| 27 | 89859f39b | unit | - | Table A then B over a date range |
+| 28 | 2e30ddf66, 35b4c4c8b | nip | nip/01 | Warns, never blocks |
+| 29 | 60fb55603 | fa3-content | fa3-content/02 | Preview shows annotations and other parties |
+| 30 | 2e30ddf66, 5da1a3960 | fa3-content | - | JST=1 with no Podmiot3 asks first; **KSeF TEST accepted it** once confirmed |
+| 31 | 2e30ddf66 | fa3-content | - | Margin: P_PMarzy + P_13_11, no per-line P_12; KSeF TEST accepted |
+| 32 | 51387054c, 21ae710a7 | corrections | corrections/01 | Recommended, warns once; a KOR with no reason was cleared |
+| 33 | 89859f39b | unit | - | Issuer's calendar day (Europe/Warsaw) |
+| 34 | 2e30ddf66 | unit | - | Empty basis trimmed to absent |
+| 35 | 2e30ddf66 | unit | - | - |
+| 36 | 89859f39b | unit | - | Non-JSON 200 wrapped |
+| 37 | 89859f39b | unit | - | - |
+| 38 | 51387054c | unit | - | Prefix-tolerant check |
+| 39 | 89859f39b | unit | - | - |
+
+### Found during the live run (not fixed here; for a decision)
+
+1. **A foreign buyer charged no VAT is invoiced at 23%.** A German buyer paid the
+   net price (PrestaShop applied no Polish VAT), but the order line carries the
+   CATALOGUE rate `23`, so the cross-border guard steps aside (by design since
+   ADR-063: a shop-stated rate means the band was chosen in the catalogue) and
+   KSeF accepted an invoice stating 23% VAT on that sale. The catalogue rate is
+   the product's Polish rate, not what this order was charged. Needs an ADR-063
+   decision: should a line use the rate the shop actually charged on the order?
+2. **A source with no destination clogs the realtime lane.** With KSeF invoicing
+   and a shop master but no destination shop (a legitimate invoicing-only
+   setup), every `marketplace.order.sync` stores the order and then throws "No
+   OrderProcessorManager destinations available", spending its whole retry
+   ladder in the realtime lane. 118 such retries delayed new orders by minutes.
+3. **Re-syncing a cancelled PrestaShop order drops the line's VAT rate** and
+   briefly returns the record to "awaiting product mapping"; an issue landing in
+   that window answers 422 "buyer details are unavailable".
+4. **The Sales document column overflows a 1280 px window** when the FA(3)
+   preview is open: `.detail-section` is a grid with no `minmax(0, 1fr)` column,
+   so the preview's table sets the panel width. The same CSS is on `main`.
+5. The order header shows the "CANCELLED" badge twice.
+6. After a successful bulk issue the failed rows stay listed as FAILED until the
+   page is reloaded.
+
+### Stack facts worth knowing before a re-run
+
+- The cloned KSeF token was dead (status 450); a fresh TEST token was supplied
+  for NIP 9151704181 and stored only in the clone.
+- The shop had Germany switched off; it was switched on for the run (restore:
+  `UPDATE ps_country SET active=0 WHERE id_country=1`).
+- PrestaShop stores PLN's conversion rate as 4.3 (relative to EUR) while PLN is
+  the default currency; `ksefOrder` only converts for a non-default currency.
+- "E2E Pricing" products carry price rules the cart does not apply; `ksefOrder`
+  skips any product whose computed price disagrees with its base price.
