@@ -31,6 +31,7 @@ import { KsefStructuredSection } from './components/ksef-structured-section';
 import { ksefConnectionConfig } from './ksef-connection-config';
 import { ksefNumberingRoute } from './ksef-numbering.route';
 import { ksefSetupRoute } from './ksef-setup.route';
+import { KsefInvoiceIssueOptions } from './components/ksef-invoice-issue-options';
 
 // Invoice numbering (#1577) is core-invoicing, but numbering is only reachable
 // today from a KSeF connection's Actions — so the typed namespace rides the
@@ -64,5 +65,6 @@ export const ksefPlugin: OpenLinkerPlugin = definePlugin({
     ConnectionActions: KsefConnectionActions,
     invoiceDetailSection: KsefInvoiceDetailSection,
     invoiceCorrectionFlow: KsefInvoiceCorrectionFlow,
+    invoiceIssueOptions: KsefInvoiceIssueOptions,
   },
 });

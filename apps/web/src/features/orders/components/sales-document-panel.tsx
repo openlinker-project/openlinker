@@ -135,6 +135,7 @@ import {
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
 
+import type { IssueInvoiceOptions } from '../../invoicing';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot } from '../api/order-snapshot.schema';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
@@ -262,6 +263,8 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const [switchTargetId, setSwitchTargetId] = useState<string | null>(null);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [missingNumbering, setMissingNumbering] = useState(false);
+  // DEF-20: what the operator states about this sale when issuing by hand.
+  const [issueOptions, setIssueOptions] = useState<IssueInvoiceOptions>({});
 
   const invoiceWrite = useWriteAccess('invoices:write', demoMode);
   const invoiceQuery = useOrderInvoiceQuery(order.internalOrderId);
@@ -412,6 +415,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const platform = usePlatform(invoicingConnection?.platformType);
   const InvoiceDetailSection = platform?.invoiceDetailSection ?? null;
   const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
+  const InvoiceIssueOptions = platform?.invoiceIssueOptions ?? null;
 
   const showConnectionPicker = !invoice && invoicingConnections.length > 1;
   const requiresConnectionPick = showConnectionPicker && issuableConnection === null;
@@ -445,6 +449,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
         connectionId: connection.id,
         orderId: order.internalOrderId,
         documentType,
+        ...issueOptions,
         ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
       },
       {
@@ -1493,6 +1498,19 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
                     className="sales-document-panel__doc-type"
                   />
+                  {InvoiceIssueOptions && invoicingConnection ? (
+                    <InvoiceIssueOptions
+                      connection={invoicingConnection}
+                      lines={snapshotItems.map((item) => ({
+                        id: item.id,
+                        name: item.name ?? null,
+                        quantity: item.quantity,
+                      }))}
+                      value={issueOptions}
+                      onChange={setIssueOptions}
+                      disabled={issueMutation.isPending || invoiceWrite.demoReadOnly}
+                    />
+                  ) : null}
                   <ReadOnlyLock
                     active={invoiceWrite.demoReadOnly}
                     message={DEMO_READ_ONLY_ACTION_MESSAGE}
