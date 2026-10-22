@@ -105,8 +105,8 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('blocks submit and shows an error when the reason is empty (art. 106j)', async () => {
-    const issueCorrection = vi.fn();
+  it('warns once when the reason is empty, then lets the operator submit without one (DEF-32)', async () => {
+    const issueCorrection = vi.fn().mockResolvedValue(makeInvoice({ id: 'ol_invoice_noreason' }));
     renderWithProviders(
       <SubiektInvoiceCorrectionFlow
         invoice={makeInvoice()}
@@ -123,8 +123,12 @@ describe('SubiektInvoiceCorrectionFlow', () => {
     fireEvent.change(qtyInput, { target: { value: '0' } });
     fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
 
-    expect(await screen.findByText(/A reason for the correction is required/i)).toBeTruthy();
+    expect(await screen.findByText(/submit again to issue the correction without one/i)).toBeTruthy();
     expect(issueCorrection).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Issue correction/i }));
+    await waitFor(() => expect(issueCorrection).toHaveBeenCalledOnce());
+    expect(issueCorrection.mock.calls[0][1].reason).toBeUndefined();
   });
 
   it('submits issueCorrection with reason and line data on form submit', async () => {

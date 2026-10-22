@@ -30,6 +30,8 @@ import {
   useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -87,11 +89,10 @@ export function KsefInvoiceCorrectionFlow({
     `ksef-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   );
 
-  const [reason, setReason] = useState('');
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
-  const [reasonError, setReasonError] = useState<string | null>(null);
 
   function updateLine(index: number, field: keyof LineRow, value: string): void {
     setLines((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
@@ -144,22 +145,15 @@ export function KsefInvoiceCorrectionFlow({
       parsedLines = parsed;
     }
     setLinesError(null);
-    // #1582: the correction reason is legally required and must be non-empty
-    // (art. 106j ust. 2 pkt 5 / FA(3) XSD PrzyczynaKorekty minLength=1). Checked
-    // after line validation so a line problem surfaces its own error first.
-    const trimmedReason = reason.trim();
-    if (trimmedReason === '') {
-      setReasonError(
-        t('ksef.correction.reasonRequired', 'A reason for the correction is required.'),
-      );
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
       return;
     }
-    setReasonError(null);
     mutation.mutate(
       {
         invoiceId: invoice.id,
         input: {
-          reason: trimmedReason,
+          reason: reasonState.submittedReason,
           lines: parsedLines,
           idempotencyKey: idempotencyKeyRef.current,
         },
@@ -225,29 +219,12 @@ export function KsefInvoiceCorrectionFlow({
       </div>
 
       {/* Reason */}
-      <div className="field ksef-correction__reason">
-        <label htmlFor="ksef-reason">
-          {t('ksef.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="ksef-reason"
-          className="textarea"
-          placeholder={t(
-            'ksef.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-          aria-invalid={reasonError !== null}
-        />
-        {reasonError ? (
-          <p className="error-text" role="alert">
-            {reasonError}
-          </p>
-        ) : null}
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="ksef"
+        disabled={isSubmitting}
+        className="ksef-correction__reason"
+      />
 
       {/* Line items */}
       {linesError ? (

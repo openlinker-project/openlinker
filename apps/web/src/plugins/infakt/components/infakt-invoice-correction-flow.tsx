@@ -29,6 +29,8 @@ import {
   useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -83,8 +85,7 @@ export function InfaktInvoiceCorrectionFlow({
     `infakt-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   );
 
-  const [reason, setReason] = useState('');
-  const [reasonError, setReasonError] = useState<string | null>(null);
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
@@ -137,22 +138,15 @@ export function InfaktInvoiceCorrectionFlow({
       parsedLines = parsed;
     }
     setLinesError(null);
-    // #1582: the correction reason is legally required and must be non-empty
-    // (art. 106j ust. 2 pkt 5 / FA(3) XSD PrzyczynaKorekty minLength=1). Checked
-    // after line validation so a line problem surfaces its own error first.
-    const trimmedReason = reason.trim();
-    if (trimmedReason === '') {
-      setReasonError(
-        t('infakt.correction.reasonRequired', 'A reason for the correction is required.'),
-      );
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
       return;
     }
-    setReasonError(null);
     mutation.mutate(
       {
         invoiceId: invoice.id,
         input: {
-          reason: trimmedReason,
+          reason: reasonState.submittedReason,
           lines: parsedLines,
           idempotencyKey: idempotencyKeyRef.current,
         },
@@ -218,29 +212,12 @@ export function InfaktInvoiceCorrectionFlow({
       </div>
 
       {/* Reason */}
-      <div className="field infakt-correction__reason">
-        <label htmlFor="infakt-reason">
-          {t('infakt.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="infakt-reason"
-          className="textarea"
-          placeholder={t(
-            'infakt.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-          aria-invalid={reasonError !== null}
-        />
-        {reasonError ? (
-          <p className="error-text" role="alert">
-            {reasonError}
-          </p>
-        ) : null}
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="infakt"
+        disabled={isSubmitting}
+        className="infakt-correction__reason"
+      />
 
       {/* Line items */}
       {linesError ? (

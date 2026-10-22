@@ -306,10 +306,13 @@ export interface CorrectionBuyerOverrideInput {
  *  `IssueCorrectionCommand` minus the server-resolved fields. `reason` is
  *  REQUIRED and non-empty (art. 106j ust. 2 pkt 5 / FA(3) XSD minLength=1). */
 export interface IssueCorrectionInput {
-  reason: string;
+  /** Recommended, never forced (DEF-32): absent means the operator chose to give none. */
+  reason?: string;
   lines: CorrectionLineInput[];
   idempotencyKey?: string;
   buyerOverride?: CorrectionBuyerOverrideInput;
+  /** Warning codes the operator has read and chosen to proceed past. */
+  acknowledgeWarnings?: string[];
 }
 
 /**

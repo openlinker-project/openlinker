@@ -25,6 +25,8 @@ import {
   CorrectionLinePicker,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
 } from '../../../features/invoicing';
 
 interface LineRow {
@@ -62,8 +64,7 @@ export function SubiektInvoiceCorrectionFlow({
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
 
-  const [reason, setReason] = useState('');
-  const [reasonError, setReasonError] = useState<string | null>(null);
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [linesError, setLinesError] = useState<string | null>(null);
 
@@ -98,22 +99,15 @@ export function SubiektInvoiceCorrectionFlow({
       return;
     }
     setLinesError(null);
-    // #1582: the correction reason is legally required and must be non-empty
-    // (art. 106j ust. 2 pkt 5 / FA(3) XSD PrzyczynaKorekty minLength=1). Checked
-    // after line validation so a line problem surfaces its own error first.
-    const trimmedReason = reason.trim();
-    if (trimmedReason === '') {
-      setReasonError(
-        t('subiekt.correction.reasonRequired', 'A reason for the correction is required.'),
-      );
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
       return;
     }
-    setReasonError(null);
     mutation.mutate(
       {
         invoiceId: invoice.id,
         input: {
-          reason: trimmedReason,
+          reason: reasonState.submittedReason,
           lines: parsedLines,
           idempotencyKey: idempotencyKeyRef.current,
         },
@@ -179,29 +173,12 @@ export function SubiektInvoiceCorrectionFlow({
       </div>
 
       {/* Reason */}
-      <div className="field subiekt-correction__reason">
-        <label htmlFor="sk-reason">
-          {t('subiekt.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="sk-reason"
-          className="textarea"
-          placeholder={t(
-            'subiekt.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-          aria-invalid={reasonError !== null}
-        />
-        {reasonError ? (
-          <p className="error-text" role="alert">
-            {reasonError}
-          </p>
-        ) : null}
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="sk-nexo"
+        disabled={isSubmitting}
+        className="subiekt-correction__reason"
+      />
 
       {/* Line items */}
       <div className="table-wrap subiekt-correction__table-scroll">

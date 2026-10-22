@@ -30665,3 +30665,14 @@ legend.analytics-settings-dialog__label {
   .setup-stepper--vertical .setup-stepper__label { white-space: normal; font-size: 0.9375rem; padding-top: 2px; line-height: 1.3; }
   .setup-stepper--vertical .setup-stepper__connector { display: none; }
 }
+
+/* DEF-32: shared correction-reason field */
+.correction-reason__hint {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.correction-reason__warning {
+  margin: var(--space-1) 0 0;
+  color: var(--status-warning-strong);
+}

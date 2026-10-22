@@ -47,6 +47,13 @@ export {
   type CorrectionLinePickerProps,
 } from './components/correction-line-picker';
 export {
+  CorrectionReasonField,
+  useCorrectionReason,
+  CORRECTION_REASON_MAX_LENGTH,
+  type CorrectionReasonState,
+  type CorrectionReasonFieldProps,
+} from './components/correction-reason-field';
+export {
   CorrectionLineGrid,
   type CorrectionLineGridProps,
   type CorrectionSuggestedLine,
