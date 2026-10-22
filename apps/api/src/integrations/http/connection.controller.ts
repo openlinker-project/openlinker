@@ -116,6 +116,7 @@ export class ConnectionController {
     // resolveRequiresCredentials itself.
     let requiresCredentials = true;
     let archivable = true;
+    let publicConfigKeys: readonly string[] = [];
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
@@ -126,6 +127,7 @@ export class ConnectionController {
       defaultRateLimit = metadata.defaultRateLimit ?? null;
       requiresCredentials = resolveRequiresCredentials(metadata);
       archivable = resolveArchivable(metadata);
+      publicConfigKeys = metadata.publicConfigKeys ?? [];
     } catch (error) {
       // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
       // supportedCapabilities empty (and variantGrouping/defaultRateLimit at
@@ -146,7 +148,8 @@ export class ConnectionController {
       this.demoModeService.isDemoModeEnabled(),
       requiresCredentials,
       archivable,
-      warnings
+      warnings,
+      publicConfigKeys
     );
   }
 

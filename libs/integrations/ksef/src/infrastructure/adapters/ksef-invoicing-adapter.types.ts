@@ -10,6 +10,7 @@
  * @module libs/integrations/ksef/src/infrastructure/adapters
  * @see {@link KsefInvoicingAdapter}
  */
+import type { InvoiceAnnotations } from '@openlinker/core/invoicing';
 import type { KsefEnvironment } from '../../domain/types/ksef-connection.types';
 import type { Fa3PaymentInput } from '../fa3/domain/fa3-xml.types';
 import type { NbpExchangeRateResolverPort } from '../fx/nbp-exchange-rate.types';
@@ -70,4 +71,9 @@ export interface KsefInvoicingAdapterOptions {
    * `KsefConnectionConfig.allowCrossBorder`.
    */
   allowCrossBorder?: boolean;
+  /**
+   * The connection's seller-level annotation defaults (DEF-20), already
+   * validated. Merged UNDER a command's own `annotations`: the command wins.
+   */
+  annotationsDefault?: InvoiceAnnotations;
 }

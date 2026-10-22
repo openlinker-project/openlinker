@@ -21,9 +21,11 @@ import type {
   InvoiceAnnotations,
   InvoiceLine,
   IssueInvoiceCommand,
+  MarginSchemeKind,
 } from '@openlinker/core/invoicing';
 import type {
   Fa3BuilderInput,
+  Fa3MarginKind,
   Fa3CorrectionContext,
   Fa3ExchangeRate,
   Fa3Line,
@@ -118,6 +120,16 @@ export function mapToFa3BuilderInput(
     // (#1580). Forwarded only when set; the builder derives reverse-charge /
     // exemption from the lines' own p12 codes independently of these.
     ...mapAnnotations(cmd.annotations),
+    ...(cmd.additionalParties !== undefined && cmd.additionalParties.length > 0
+      ? {
+          additionalParties: cmd.additionalParties.map((party) => ({
+            identity: resolveBuyerIdentity(party.taxId),
+            name: party.name,
+            ...(party.address ? { address: normalizeAddressCountry(party.address) } : {}),
+            role: party.role,
+          })),
+        }
+      : {}),
     currency: resolveKodWaluty(cmd.currency),
     issueDate: context.issueDate,
     invoiceNumber: context.invoiceNumber,
@@ -141,6 +153,14 @@ export function mapToFa3BuilderInput(
  * a conditional copy — mirroring the JST/GV forwarding above — so an undefined
  * flag never lands as an explicit `undefined` on the builder input.
  */
+/** Neutral margin kinds → the FA(3) `P_PMarzy_*` sub-element (DEF-31). */
+const FA3_MARGIN_KIND: Readonly<Record<MarginSchemeKind, Fa3MarginKind>> = {
+  'travel-services': '2',
+  'used-goods': '3_1',
+  'works-of-art': '3_2',
+  'collectors-items': '3_3',
+};
+
 function mapAnnotations(
   annotations: InvoiceAnnotations | undefined,
 ): Partial<Fa3BuilderInput> {
@@ -163,8 +183,18 @@ function mapAnnotations(
   if (annotations.marginScheme !== undefined) {
     out.marginScheme = annotations.marginScheme;
   }
-  if (annotations.exemptionLegalBasis !== undefined) {
-    out.exemptionLegalBasis = annotations.exemptionLegalBasis;
+  if (annotations.marginKind !== undefined) {
+    out.marginKind = FA3_MARGIN_KIND[annotations.marginKind];
+  }
+  // DEF-34: an empty or whitespace text is no grounds at all, so it is dropped
+  // rather than emitted as an empty `P_19C` the schema rejects.
+  const basisText = annotations.exemptionBasis?.text.trim();
+  if (annotations.exemptionBasis !== undefined && basisText) {
+    out.exemptionBasis = { kind: annotations.exemptionBasis.kind, text: basisText };
+  }
+  const legacyText = annotations.exemptionLegalBasis?.trim();
+  if (legacyText) {
+    out.exemptionLegalBasis = legacyText;
   }
   return out;
 }

@@ -196,7 +196,9 @@ function quantity(value: number): string {
  */
 function addressNode(address: BuyerAddress): XmlNodeObject {
   const streetLine = [address.line1, address.line2]
-    .filter((part): part is string => part !== null && part.trim() !== '')
+    // `typeof` rather than `!== null`: a legacy jsonb snapshot can omit
+    // `line2` entirely, and `undefined.trim()` would throw (DEF-35).
+    .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
     .join(', ');
   const postalCity = [address.postalCode, address.city]
     .filter((part) => typeof part === 'string' && part.trim() !== '')
@@ -236,7 +238,11 @@ function lineNode(
   ordinal: number,
   stanPrzed = false,
   exchangeRate?: Fa3ExchangeRate,
+  margin = false,
 ): XmlNodeObject {
+  if (margin) {
+    return marginLineNode(line, ordinal, stanPrzed, exchangeRate);
+  }
   const node: XmlNodeObject = {
     NrWierszaFa: ordinal,
     P_7: line.name,
@@ -285,6 +291,46 @@ function lineNode(
     node.StanPrzed = 1;
   }
   return node;
+}
+
+/**
+ * A line of a margin-scheme invoice (DEF-31). Art. 106e ust. 3 leaves the rate
+ * and the tax amount off such an invoice, so the line carries its GROSS unit
+ * price and value (`P_9B`, `P_11A`) and no `P_12`; the header then totals the
+ * margin sale in `P_13_11` instead of VAT bands.
+ */
+function marginLineNode(
+  line: Fa3Line,
+  ordinal: number,
+  stanPrzed: boolean,
+  exchangeRate?: Fa3ExchangeRate,
+): XmlNodeObject {
+  const node: XmlNodeObject = {
+    NrWierszaFa: ordinal,
+    P_7: line.name,
+    ...(line.unit !== undefined ? { P_8A: line.unit } : {}),
+    P_8B: quantity(line.quantity),
+    ...(line.quantity > 0 ? { P_9B: unitMoney(line.unitPriceGross) } : {}),
+    P_11A: money(line.quantity * line.unitPriceGross),
+  };
+  if (line.gtuCode !== undefined) {
+    node.GTU = line.gtuCode;
+  }
+  if (line.procedureCode !== undefined) {
+    node.Procedura = line.procedureCode;
+  }
+  if (exchangeRate !== undefined) {
+    node.KursWaluty = rate(exchangeRate.rate);
+  }
+  if (stanPrzed) {
+    node.StanPrzed = 1;
+  }
+  return node;
+}
+
+/** Gross total of a set of lines, for the margin header `P_13_11`. */
+function grossOf(lines: Fa3Line[]): number {
+  return lines.reduce((sum, line) => sum + line.quantity * line.unitPriceGross, 0);
 }
 
 /**
@@ -352,6 +398,20 @@ function formatTotals(
     }
   }
   return { bands, grandTotal: money(agg.grandTotal) };
+}
+
+/**
+ * Header totals of a margin-scheme invoice (DEF-31): the margin sale's gross in
+ * `P_13_11` and the same figure as `P_15`, with no VAT bands. A correction
+ * carries the difference, as every other KOR total does.
+ */
+function marginTotals(
+  input: Fa3BuilderInput,
+  correction: Fa3CorrectionContext | undefined,
+): { bands: XmlNodeObject; grandTotal: string } {
+  const total =
+    correction !== undefined ? grossOf(correction.correctedLines) - grossOf(input.lines) : grossOf(input.lines);
+  return { bands: { P_13_11: money(total) }, grandTotal: money(total) };
 }
 
 /**
@@ -446,9 +506,12 @@ function correctedInvoiceNode(correction: Fa3CorrectionContext): XmlNodeObject {
  * continuously across both blocks.
  */
 function correctionLineNodes(input: Fa3BuilderInput, correction: Fa3CorrectionContext): XmlNode {
-  const before = input.lines.map((line, idx) => lineNode(line, idx + 1, true, input.exchangeRate));
+  const margin = input.marginScheme === true;
+  const before = input.lines.map((line, idx) =>
+    lineNode(line, idx + 1, true, input.exchangeRate, margin),
+  );
   const after = correction.correctedLines.map((line, idx) =>
-    lineNode(line, input.lines.length + idx + 1, false, input.exchangeRate),
+    lineNode(line, input.lines.length + idx + 1, false, input.exchangeRate, margin),
   );
   return [...before, ...after];
 }
@@ -487,11 +550,13 @@ function adnotacjeNode(input: Fa3BuilderInput, lines: Fa3Line[]): XmlNodeObject 
     lines.some((line) => line.p12 === 'zw') || input.exemptionLegalBasis !== undefined;
 
   const zwolnienie: XmlNodeObject = exemptionApplies
-    ? { P_19: FA3_WYBOR_TAK, P_19C: input.exemptionLegalBasis ?? FA3_DEFAULT_EXEMPTION_BASIS }
+    ? { P_19: FA3_WYBOR_TAK, ...exemptionGroundsNode(input) }
     : { P_19N: FA3_WYBOR_TAK };
 
+  // DEF-31: the sub-element names WHICH margin scheme applies; used goods
+  // (`3_1`) stays the default for a flag set without a kind.
   const pMarzy: XmlNodeObject = input.marginScheme
-    ? { P_PMarzy: FA3_WYBOR_TAK, P_PMarzy_3_1: FA3_WYBOR_TAK }
+    ? { P_PMarzy: FA3_WYBOR_TAK, [`P_PMarzy_${input.marginKind ?? '3_1'}`]: FA3_WYBOR_TAK }
     : { P_PMarzyN: FA3_WYBOR_TAK };
 
   return {
@@ -503,6 +568,37 @@ function adnotacjeNode(input: Fa3BuilderInput, lines: Fa3Line[]): XmlNodeObject 
     NoweSrodkiTransportu: { P_22N: FA3_WYBOR_TAK },
     P_23: input.triangulation ? FA3_WYBOR_TAK : FA3_WYBOR_NIE,
     PMarzy: pMarzy,
+  };
+}
+
+/**
+ * The exemption grounds element (DEF-22): `P_19A` for a national statute,
+ * `P_19B` for an EU directive, `P_19C` for any other basis. Without configured
+ * grounds the placeholder text keeps the document schema-valid; the adapter
+ * warns that it is a placeholder, and the operator decides what to cite.
+ */
+function exemptionGroundsNode(input: Fa3BuilderInput): XmlNodeObject {
+  if (input.exemptionBasis !== undefined) {
+    const element =
+      input.exemptionBasis.kind === 'statute'
+        ? 'P_19A'
+        : input.exemptionBasis.kind === 'directive'
+          ? 'P_19B'
+          : 'P_19C';
+    return { [element]: input.exemptionBasis.text };
+  }
+  return { P_19C: input.exemptionLegalBasis ?? FA3_DEFAULT_EXEMPTION_BASIS };
+}
+
+/**
+ * One `Podmiot3` entry (DEF-30): identification, the optional address, then the
+ * `Rola` code (XSD sequence `DaneIdentyfikacyjne`, `Adres`, ..., `Rola`).
+ */
+function additionalPartyNode(party: NonNullable<Fa3BuilderInput['additionalParties']>[number]): XmlNodeObject {
+  return {
+    DaneIdentyfikacyjne: { ...buyerIdentificationNode(party.identity), Nazwa: party.name },
+    ...(party.address ? { Adres: addressNode(party.address) } : {}),
+    Rola: party.role,
   };
 }
 
@@ -575,8 +671,10 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
   // invoice the tax-base / tax / total-due aggregates (P_13_x, P_14_x, P_15) be
   // the DIFFERENCE (after − before), not the after-absolute. A plain invoice
   // aggregates its own lines directly.
-  const { bands, grandTotal } =
-    correction !== undefined
+  const margin = input.marginScheme === true;
+  const { bands, grandTotal } = margin
+    ? marginTotals(input, correction)
+    : correction !== undefined
       ? formatTotals(
           diffAggregate(
             aggregateBands(correction.correctedLines),
@@ -588,7 +686,7 @@ function faNode(input: Fa3BuilderInput): XmlNodeObject {
   const wiersze: XmlNode =
     correction !== undefined
       ? correctionLineNodes(input, correction)
-      : input.lines.map((line, idx) => lineNode(line, idx + 1, false, input.exchangeRate));
+      : input.lines.map((line, idx) => lineNode(line, idx + 1, false, input.exchangeRate, margin));
 
   const node: XmlNodeObject = {
     KodWaluty: input.currency,
@@ -656,6 +754,10 @@ export function buildFa3Xml(input: Fa3BuilderInput): RawFa3Xml {
     Podmiot1: sellerNode(input.seller),
     Podmiot2: buyerNode(input),
   };
+  // `Podmiot3` follows `Podmiot2` at the root (XSD `Faktura` sequence).
+  if (input.additionalParties !== undefined && input.additionalParties.length > 0) {
+    faktura.Podmiot3 = input.additionalParties.map(additionalPartyNode);
+  }
   // `Podmiot2K` (the buyer as on the corrected original) is emitted under `Fa`,
   // after `DaneFaKorygowanej`, only by a correction that changes the buyer's
   // data (DEF-23) - see `faNode`. `Podmiot1K` is never emitted: OpenLinker does

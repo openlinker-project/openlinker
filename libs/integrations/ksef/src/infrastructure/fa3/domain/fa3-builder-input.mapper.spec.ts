@@ -333,3 +333,43 @@ describe('mixed-rate order -> correctly-split FA(3) band breakdown (#1586 accept
     expect(() => validateFa3Xml(xml)).not.toThrow();
   });
 });
+
+describe('mapToFa3BuilderInput — annotations and parties (DEF-20 / DEF-30 / DEF-34)', () => {
+  it('should drop empty exemption grounds instead of emitting an empty element', () => {
+    const input = mapToFa3BuilderInput(
+      {
+        ...baseCommand('zw'),
+        annotations: { exemptionLegalBasis: '   ', exemptionBasis: { kind: 'statute', text: ' ' } },
+      },
+      CONTEXT,
+    );
+
+    expect(input.exemptionLegalBasis).toBeUndefined();
+    expect(input.exemptionBasis).toBeUndefined();
+  });
+
+  it('should map the neutral margin kind to its FA(3) sub-element', () => {
+    const input = mapToFa3BuilderInput(
+      { ...baseCommand('23'), annotations: { marginScheme: true, marginKind: 'works-of-art' } },
+      CONTEXT,
+    );
+
+    expect(input.marginKind).toBe('3_2');
+  });
+
+  it('should map additional parties with their identity and role', () => {
+    const input = mapToFa3BuilderInput(
+      {
+        ...baseCommand('23'),
+        additionalParties: [
+          { role: '10', name: 'Członek grupy', taxId: { scheme: 'pl-nip', value: '1189981779' } },
+        ],
+      },
+      CONTEXT,
+    );
+
+    expect(input.additionalParties).toEqual([
+      { identity: { kind: 'nip', nip: '1189981779' }, name: 'Członek grupy', role: '10' },
+    ]);
+  });
+});

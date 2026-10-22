@@ -102,6 +102,15 @@ export class ConnectionResponseDto {
   @ApiProperty({ description: 'Last update timestamp' })
   updatedAt!: Date;
 
+  @ApiProperty({
+    description:
+      'The config values the adapter declared safe for every role (DEF-02), e.g. the KSeF ' +
+      'environment. Scalars only; empty when the adapter declares none.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  publicConfig!: Record<string, string | number | boolean>;
+
   @ApiPropertyOptional({
     description:
       'Non-blocking advisory warnings about this connection (#1594), e.g. it shares a ' +
@@ -120,7 +129,8 @@ export class ConnectionResponseDto {
     isDemoModeEnabled = false,
     requiresCredentials = true,
     archivable = true,
-    warnings?: string[]
+    warnings?: string[],
+    publicConfigKeys: readonly string[] = []
   ): ConnectionResponseDto {
     const dto = new ConnectionResponseDto();
     dto.id = connection.id;
@@ -136,6 +146,7 @@ export class ConnectionResponseDto {
     // real non-admin response (#1124's protection is unchanged).
     const canViewConfig = role === 'admin' || (isDemoModeEnabled && role === 'viewer');
     dto.config = canViewConfig ? connection.config : {};
+    dto.publicConfig = pickPublicConfig(connection.config, publicConfigKeys);
     // #3657 — an empty ref on an adapter that needs credentials is a
     // credential-less restored connection: PUT /credentials stores a fresh one,
     // so it is editable. An empty ref on a credential-less adapter (ADR-055) is
@@ -156,4 +167,19 @@ export class ConnectionResponseDto {
     }
     return dto;
   }
+}
+
+/** The declared keys whose values are scalars; anything structured is left out. */
+function pickPublicConfig(
+  config: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  for (const key of keys) {
+    const value = config?.[key];
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      out[key] = value;
+    }
+  }
+  return out;
 }

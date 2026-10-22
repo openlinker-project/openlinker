@@ -497,6 +497,7 @@ export class InvoicingController {
     if (dto.acknowledgeWarnings?.length) {
       command = { ...command, acknowledgedWarnings: dto.acknowledgeWarnings };
     }
+    command = this.withOperatorClassification(command, dto);
 
     let issued: InvoiceRecord;
     try {
@@ -1486,6 +1487,8 @@ export class InvoicingController {
       // local midnight, and the correction must reference the original exactly.
       issueDate: snapshot.issueDate ?? this.toIsoDateOnly(record.issuedAt!),
       ...(snapshot.saleDate !== undefined ? { saleDate: snapshot.saleDate } : {}),
+      ...(snapshot.annotations ? { annotations: snapshot.annotations } : {}),
+      ...(snapshot.additionalParties?.length ? { additionalParties: snapshot.additionalParties } : {}),
     };
   }
 
@@ -1548,6 +1551,59 @@ export class InvoicingController {
    *   - capability/connection-resolution errors propagate UNCAUGHT (handled by
    *     the global filter — they are not invoice-issuance rejections).
    */
+  /**
+   * Thread what the operator stated about this sale onto the command (DEF-20 /
+   * DEF-30): annotation flags, parties besides seller and buyer, and per-line
+   * markers matched to the order's lines by `orderLineId`. A marker naming a
+   * line the order does not have is a request error, not a silent drop.
+   */
+  private withOperatorClassification(
+    command: IssueInvoiceCommand,
+    dto: IssueInvoiceRequestDto,
+  ): IssueInvoiceCommand {
+    let next = command;
+    if (dto.annotations) {
+      next = { ...next, annotations: { ...next.annotations, ...dto.annotations } };
+    }
+    if (dto.additionalParties?.length) {
+      next = {
+        ...next,
+        additionalParties: dto.additionalParties.map((party) => ({
+          role: party.role,
+          name: party.name,
+          taxId: party.taxId ? normalizeBuyerTaxId(party.taxId) : null,
+          ...(party.address
+            ? { address: { ...party.address, line2: party.address.line2 ?? null } }
+            : {}),
+        })),
+      };
+    }
+    if (dto.lineClassifications?.length) {
+      const byLine = new Map(dto.lineClassifications.map((c) => [c.orderLineId, c]));
+      const known = new Set(next.lines.map((line) => line.orderLineId).filter(Boolean));
+      const unknown = [...byLine.keys()].filter((id) => !known.has(id));
+      if (unknown.length > 0) {
+        throw new BadRequestException(
+          `lineClassifications name order lines this invoice does not carry: ${unknown.join(', ')}`,
+        );
+      }
+      next = {
+        ...next,
+        lines: next.lines.map((line) => {
+          const marker = line.orderLineId ? byLine.get(line.orderLineId) : undefined;
+          return marker
+            ? {
+                ...line,
+                ...(marker.gtuCode ? { gtuCode: marker.gtuCode } : {}),
+                ...(marker.procedureCode ? { procedureCode: marker.procedureCode } : {}),
+              }
+            : line;
+        }),
+      };
+    }
+    return next;
+  }
+
   /** The shared live-order gate (DEF-26) for one order record. */
   private async decideLiveIssuance(record: OrderRecord): Promise<LiveOrderIssuanceDecision> {
     const summary = (await this.refunds.getRefundSummariesForOrders([record.internalOrderId])).get(

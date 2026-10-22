@@ -950,3 +950,62 @@ describe('buyer corrections (DEF-23 / DEF-24)', () => {
     expect(buildFa3Xml(korInput({}))).not.toContain('Podmiot2K');
   });
 });
+
+describe('annotations and parties (DEF-22 / DEF-30 / DEF-31 / DEF-35)', () => {
+  const zwLine = { name: 'Kurs', quantity: 1, unitPriceGross: 100, p12: 'zw' as const };
+
+  it('should cite a statute in P_19A and a directive in P_19B', () => {
+    const statute = buildFa3Xml({
+      ...b2bInput(),
+      lines: [zwLine],
+      exemptionBasis: { kind: 'statute', text: 'art. 43 ust. 1 pkt 29 ustawy o VAT' },
+    });
+    const directive = buildFa3Xml({
+      ...b2bInput(),
+      lines: [zwLine],
+      exemptionBasis: { kind: 'directive', text: 'art. 132 dyrektywy 2006/112/WE' },
+    });
+
+    expect(statute).toContain('<P_19A>art. 43 ust. 1 pkt 29 ustawy o VAT</P_19A>');
+    expect(directive).toContain('<P_19B>art. 132 dyrektywy 2006/112/WE</P_19B>');
+    expect(() => validateFa3Xml(statute)).not.toThrow();
+  });
+
+  it('should keep the placeholder in P_19C when no grounds are configured', () => {
+    expect(buildFa3Xml({ ...b2bInput(), lines: [zwLine] })).toContain('<P_19C>');
+  });
+
+  it('should emit a margin invoice without rates or VAT bands, naming the scheme', () => {
+    const xml = buildFa3Xml({ ...b2bInput(), marginScheme: true, marginKind: '2' });
+
+    expect(xml).toContain('<P_PMarzy_2>1</P_PMarzy_2>');
+    expect(xml).not.toContain('<P_12>');
+    expect(xml).not.toMatch(/<P_14_\d/);
+    expect(xml).toContain('<P_13_11>246.90</P_13_11>');
+    expect(xml).toContain('<P_11A>246.90</P_11A>');
+    expect(() => validateFa3Xml(xml)).not.toThrow();
+  });
+
+  it('should emit Podmiot3 with its role after Podmiot2', () => {
+    const xml = buildFa3Xml({
+      ...b2bInput(),
+      additionalParties: [
+        { identity: { kind: 'nip', nip: '1189981779' }, name: 'Szkoła Podstawowa nr 1', role: '8' },
+      ],
+    });
+
+    expect(xml).toMatch(/<\/Podmiot2>\s*<Podmiot3>/);
+    expect(xml).toContain('<Rola>8</Rola>');
+    expect(() => validateFa3Xml(xml)).not.toThrow();
+  });
+
+  it('should fold an address whose line2 is missing altogether (legacy snapshot)', () => {
+    const input = b2bInput();
+    const address = { ...input.buyerAddress } as Record<string, unknown>;
+    delete address.line2;
+
+    expect(() =>
+      buildFa3Xml({ ...input, buyerAddress: address as unknown as Fa3BuilderInput['buyerAddress'] }),
+    ).not.toThrow();
+  });
+});

@@ -266,6 +266,7 @@ export const FA3_FA_CHILD_ORDER = [
   'P_13_8',
   'P_13_9',
   'P_13_10',
+  'P_13_11',
   'P_15',
   'Adnotacje',
   'RodzajFaktury',
@@ -293,7 +294,9 @@ export const FA3_FA_WIERSZ_CHILD_ORDER = [
   'P_8A',
   'P_8B',
   'P_9A',
+  'P_9B',
   'P_11',
+  'P_11A',
   'P_12',
   'GTU',
   'Procedura',
@@ -322,6 +325,17 @@ export interface Fa3ExchangeRate {
  * so the pure builder never re-runs country-specific mapping — it only lays out
  * structure and escapes values.
  */
+/** The four `P_PMarzy_*` sub-elements of the margin yes-branch. */
+export type Fa3MarginKind = '2' | '3_1' | '3_2' | '3_3';
+
+/** One `Podmiot3` entry, already mapped. */
+export interface Fa3AdditionalParty {
+  identity: BuyerIdentity;
+  name: string;
+  address?: BuyerAddress;
+  role: string;
+}
+
 export interface Fa3BuilderInput {
   seller: SellerProfile;
   buyer: BuyerIdentity;
@@ -355,7 +369,20 @@ export interface Fa3BuilderInput {
   splitPayment?: boolean;
   triangulation?: boolean;
   marginScheme?: boolean;
+  /** `P_PMarzy_*` sub-element for the margin yes-branch (DEF-31); absent = used goods. */
+  marginKind?: Fa3MarginKind;
   exemptionLegalBasis?: string;
+  /**
+   * Exemption grounds with their kind (DEF-22): `statute` → `P_19A`,
+   * `directive` → `P_19B`, `other` → `P_19C`. Wins over `exemptionLegalBasis`.
+   */
+  exemptionBasis?: { kind: 'statute' | 'directive' | 'other'; text: string };
+  /**
+   * `Podmiot3` parties (DEF-30): a JST subordinate unit (role `8`), a VAT-group
+   * member (role `10`), a payer, and so on. `role` is the FA(3) `TRolaPodmiotu3`
+   * code.
+   */
+  additionalParties?: Fa3AdditionalParty[];
   currency: Fa3KodWaluty;
   /**
    * Invoice issue date (`P_1`), ISO-8601 calendar date `YYYY-MM-DD`. Supplied by

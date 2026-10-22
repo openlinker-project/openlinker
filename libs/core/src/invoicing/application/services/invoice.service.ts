@@ -778,6 +778,8 @@ export class InvoiceService implements IInvoiceService {
       // DEF-07 / DEF-33: the dates as printed, so a correction keys its own
       // date-dependent values (the exchange rate) on the same day the original did.
       ...snapshotDates(documentDates, cmd.saleDate),
+      ...(cmd.annotations ? { annotations: cmd.annotations } : {}),
+      ...(cmd.additionalParties?.length ? { additionalParties: cmd.additionalParties } : {}),
     };
 
     const patch: InvoiceOutcomePatch = {
@@ -1185,6 +1187,10 @@ export class InvoiceService implements IInvoiceService {
             lines: correctedLines,
             // A correction does not move the sale date: it stays the original's.
             ...snapshotDates(documentDates, cmd.originalDocument.saleDate),
+            ...(cmd.originalDocument.annotations ? { annotations: cmd.originalDocument.annotations } : {}),
+            ...(cmd.originalDocument.additionalParties?.length
+              ? { additionalParties: cmd.originalDocument.additionalParties }
+              : {}),
           }
         : null;
     // W2/W3 (#1229 follow-up): a correction's displayed content and source

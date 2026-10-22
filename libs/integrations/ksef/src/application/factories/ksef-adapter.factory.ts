@@ -29,6 +29,13 @@ import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import {
+  ExemptionBasisKindValues,
+  MarginSchemeKindValues,
+  type ExemptionBasisKind,
+  type InvoiceAnnotations,
+  type MarginSchemeKind,
+} from '@openlinker/core/invoicing';
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
 import {
   isStructurallyPlausiblePlNip,
@@ -79,6 +86,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const defaultLineUnit = this.resolveDefaultLineUnit(connection);
     const numberingTimeZone = this.resolveNumberingTimeZone(connection);
     const allowCrossBorder = this.resolveAllowCrossBorder(connection);
+    const annotationsDefault = resolveAnnotationsDefault(connection);
 
     const { httpClient, publicKeyCache } = createKsefHttpClient({
       connectionId: connection.id,
@@ -121,6 +129,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
           environment: env,
           exchangeRateResolver,
           allowCrossBorder,
+          ...(annotationsDefault ? { annotationsDefault } : {}),
         },
       ),
     };
@@ -351,4 +360,37 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     // into the handshake.
     return nip;
   }
+}
+
+/**
+ * Read `config.annotationsDefault` into neutral annotations (DEF-20). Anything
+ * that is not one of the known shapes is dropped rather than guessed - the
+ * config validator refuses such values at save, so this only meets a row
+ * edited around it.
+ */
+function resolveAnnotationsDefault(connection: Connection): InvoiceAnnotations | undefined {
+  const raw = (connection.config as Partial<KsefConnectionConfig> | undefined)?.annotationsDefault;
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const out: InvoiceAnnotations = {};
+  if (typeof raw.cashAccounting === 'boolean') out.cashAccounting = raw.cashAccounting;
+  if (typeof raw.selfBilling === 'boolean') out.selfBilling = raw.selfBilling;
+  if (typeof raw.marginScheme === 'boolean') out.marginScheme = raw.marginScheme;
+  if (
+    typeof raw.marginKind === 'string' &&
+    (MarginSchemeKindValues as readonly string[]).includes(raw.marginKind)
+  ) {
+    out.marginKind = raw.marginKind as MarginSchemeKind;
+  }
+  const basis = raw.exemptionBasis;
+  if (
+    basis &&
+    typeof basis.text === 'string' &&
+    basis.text.trim().length > 0 &&
+    (ExemptionBasisKindValues as readonly string[]).includes(basis.kind)
+  ) {
+    out.exemptionBasis = { kind: basis.kind as ExemptionBasisKind, text: basis.text.trim() };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }

@@ -396,4 +396,34 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
     });
   });
 
+
+  describe('annotationsDefault (DEF-20 / DEF-22)', () => {
+    it('should accept seller defaults with statutory exemption grounds', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          annotationsDefault: {
+            cashAccounting: true,
+            marginScheme: true,
+            marginKind: 'used-goods',
+            exemptionBasis: { kind: 'statute', text: 'art. 113 ust. 1 ustawy o VAT' },
+          },
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject an unknown margin kind and empty grounds', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          annotationsDefault: { marginKind: 'cars', exemptionBasis: { kind: 'statute', text: '' } },
+        }),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({ path: 'annotationsDefault.marginKind' }),
+          expect.objectContaining({ path: 'annotationsDefault.exemptionBasis.text' }),
+        ]),
+      });
+    });
+  });
 });

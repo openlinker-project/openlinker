@@ -80,6 +80,7 @@ import type {
   RegulatoryClearanceResult,
   DocumentType,
   GetInvoiceQuery,
+  InvoiceAnnotations,
   InvoiceLine,
   InvoiceRecord as InvoiceRecordType,
   InvoicingPort,
@@ -158,6 +159,21 @@ const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
  * up front by `reserveSessionRound` (DEF-04).
  */
 const PREPAID_ROUND = { rateLimitPrepaid: true } as const;
+
+/** FA(3) `TRolaPodmiotu3` codes the JST / GV flags are documented to need (DEF-30). */
+const KSEF_ROLE_JST_RECIPIENT = '8';
+const KSEF_ROLE_VAT_GROUP_MEMBER = '10';
+
+/** Warning codes for JST / GV flags without the documented Podmiot3 (DEF-30). */
+export const KSEF_JST_WITHOUT_UNIT_WARNING = 'ksef-jst-without-subordinate-unit';
+export const KSEF_GV_WITHOUT_MEMBER_WARNING = 'ksef-vat-group-without-member';
+
+/** The keys of `annotations` that are actually set, so an `undefined` never overrides a default. */
+function definedOnly(annotations: InvoiceAnnotations | undefined): InvoiceAnnotations {
+  return Object.fromEntries(
+    Object.entries(annotations ?? {}).filter(([, value]) => value !== undefined),
+  ) as InvoiceAnnotations;
+}
 
 /** Warning code a buyer-NIP change on a correction asks the operator to accept (DEF-23). */
 export const KSEF_BUYER_TAX_ID_CHANGE_WARNING = 'ksef-buyer-tax-id-change';
@@ -293,6 +309,7 @@ export class KsefInvoicingAdapter
    * `assertCrossBorderHandled` guard; defaults to `false` (refuse cross-border).
    */
   private readonly allowCrossBorder: boolean;
+  private readonly annotationsDefault: InvoiceAnnotations | undefined;
 
   /**
    * NBP exchange-rate resolver (#1581) for the art. 106e ust. 11 PLN/VAT
@@ -322,6 +339,7 @@ export class KsefInvoicingAdapter
     this.numberingTimeZone = options.numberingTimeZone ?? DEFAULT_NUMBERING_TIME_ZONE;
     this.exchangeRateResolver = options.exchangeRateResolver;
     this.allowCrossBorder = options.allowCrossBorder ?? false;
+    this.annotationsDefault = options.annotationsDefault;
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
@@ -346,7 +364,9 @@ export class KsefInvoicingAdapter
     // DEF-33: the sale date as a calendar day in the connection's zone, taken
     // from the placement instant when core supplied it. One value feeds P_6,
     // the exchange-rate tax point and the reported document dates.
-    const cmd = this.withLocalSaleDate(received);
+    const cmd = this.withLocalSaleDate(this.withDefaultAnnotations(received));
+    this.assertAdditionalPartiesForBuyerFlags(cmd);
+    this.warnOnPlaceholderExemption(cmd);
     // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
     // the subset getSupportedDocumentTypes advertises. Reject anything else up
     // front with a terminal exception so the service marks the record failed
@@ -521,6 +541,61 @@ export class KsefInvoicingAdapter
   /** The dates this adapter printed on the document (DEF-07 / DEF-33). */
   private documentDates(cmd: IssueInvoiceCommand, issuedAt: Date): IssuedDocumentDates {
     return { issueDate: this.toIsoDate(issuedAt), saleDate: cmd.saleDate ?? null };
+  }
+
+  /**
+   * The connection's seller-level annotations under the command's own (DEF-20):
+   * a manual issue that sets a flag wins, an unset flag falls back to the
+   * seller's standing answer.
+   */
+  private withDefaultAnnotations(cmd: IssueInvoiceCommand): IssueInvoiceCommand {
+    if (!this.annotationsDefault) {
+      return cmd;
+    }
+    return { ...cmd, annotations: { ...this.annotationsDefault, ...definedOnly(cmd.annotations) } };
+  }
+
+  /**
+   * DEF-30: the FA(3) schema text says JST=1 and GV=1 come with a `Podmiot3` of
+   * role 8 (the JST subordinate unit) and 10 (the VAT-group member). That is
+   * MF's documentation, read by OpenLinker, so a missing party asks the
+   * operator rather than refusing outright.
+   */
+  private assertAdditionalPartiesForBuyerFlags(cmd: IssueInvoiceCommand): void {
+    const roles = new Set((cmd.additionalParties ?? []).map((party) => party.role));
+    if (cmd.buyer.isPublicSectorEntity && !roles.has(KSEF_ROLE_JST_RECIPIENT)) {
+      requireAcknowledgement(
+        cmd.acknowledgedWarnings,
+        KSEF_JST_WITHOUT_UNIT_WARNING,
+        'The buyer is marked as a local-government unit, but no subordinate unit (Podmiot3, role 8) is named. ' +
+          'MF documentation expects one. Add the unit, or confirm to issue without it.',
+      );
+    }
+    if (cmd.buyer.isVatGroupMember && !roles.has(KSEF_ROLE_VAT_GROUP_MEMBER)) {
+      requireAcknowledgement(
+        cmd.acknowledgedWarnings,
+        KSEF_GV_WITHOUT_MEMBER_WARNING,
+        'The buyer is marked as a VAT group, but no group member (Podmiot3, role 10) is named. ' +
+          'MF documentation expects one. Add the member, or confirm to issue without it.',
+      );
+    }
+  }
+
+  /**
+   * DEF-22: an exempt line with no configured grounds is issued with the
+   * generic placeholder (the operator's call), and that is logged so it is not
+   * silent. The connection settings page shows the same warning.
+   */
+  private warnOnPlaceholderExemption(cmd: IssueInvoiceCommand): void {
+    const exempt = cmd.lines.some((line) => readTaxRate(line) === 'zw');
+    const grounds = cmd.annotations?.exemptionBasis?.text.trim() || cmd.annotations?.exemptionLegalBasis?.trim();
+    if (exempt && !grounds) {
+      this.logger.warn(
+        `KSeF document (connection ${this.connectionId}, order ${cmd.orderId}) has an exempt line but no ` +
+          'exemption grounds are configured; the generic placeholder text is cited. Set the grounds in the ' +
+          'connection settings.',
+      );
+    }
   }
 
   /**
@@ -1008,6 +1083,9 @@ export class KsefInvoicingAdapter
       },
       idempotencyKey: cmd.idempotencyKey,
       ...(cmd.acknowledgedWarnings ? { acknowledgedWarnings: cmd.acknowledgedWarnings } : {}),
+      // The KOR repeats what the original declared (DEF-20 / DEF-30).
+      ...(original.annotations ? { annotations: original.annotations } : {}),
+      ...(original.additionalParties?.length ? { additionalParties: original.additionalParties } : {}),
     };
     // `CorrectionIssuer.issueCorrection` now returns the full `IssueInvoiceResult`
     // (record + seller + sourceDocument), same as `issueInvoice` — a KOR's FA(3)

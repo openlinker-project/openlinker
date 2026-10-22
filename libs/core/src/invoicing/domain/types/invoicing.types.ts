@@ -555,6 +555,10 @@ export interface IssuedLineSnapshot {
   issueDate?: string;
   /** Sale date as printed, ISO `YYYY-MM-DD` (DEF-07); absent when not recorded. */
   saleDate?: string;
+  /** Annotations the operator stated for this document (DEF-20), so a correction repeats them. */
+  annotations?: InvoiceAnnotations;
+  /** Parties besides seller and buyer this document named (DEF-30). */
+  additionalParties?: AdditionalParty[];
 }
 
 /**
@@ -731,11 +735,53 @@ export interface InvoiceAnnotations {
   /** The VAT margin scheme applies (KSeF: `PMarzy` / `P_PMarzy`). */
   marginScheme?: boolean;
   /**
+   * Which margin scheme applies, when `marginScheme` is set (DEF-31). A
+   * provider maps it to its own element; absent leaves the provider's default.
+   */
+  marginKind?: MarginSchemeKind;
+  /**
    * Free-text legal grounds for a VAT-exempt sale (KSeF: `Zwolnienie` / `P_19`).
    * When a provider annotates an exemption (e.g. because a line is exempt), it
    * cites this text; supplying it also asserts the exemption annotation applies.
+   * Kept for callers that predate {@link exemptionBasis}; read as kind `other`.
    */
   exemptionLegalBasis?: string;
+  /**
+   * The exemption grounds with the kind of source they cite (DEF-22): a
+   * national statute, an EU directive, or another legal basis. Wins over
+   * `exemptionLegalBasis` when both are present.
+   */
+  exemptionBasis?: ExemptionBasis;
+}
+
+/** Neutral margin-scheme kinds (art. 119 / 120 of the PL VAT act; EU directive Title XII). */
+export const MarginSchemeKindValues = [
+  'travel-services',
+  'used-goods',
+  'works-of-art',
+  'collectors-items',
+] as const;
+export type MarginSchemeKind = (typeof MarginSchemeKindValues)[number];
+
+/** Which kind of source an exemption's grounds cite. */
+export const ExemptionBasisKindValues = ['statute', 'directive', 'other'] as const;
+export type ExemptionBasisKind = (typeof ExemptionBasisKindValues)[number];
+
+export interface ExemptionBasis {
+  kind: ExemptionBasisKind;
+  text: string;
+}
+
+/**
+ * A party on the document besides seller and buyer (DEF-30) - a subordinate
+ * unit of a public-sector buyer, a VAT-group member, a payer. `role` is opaque
+ * to core: the provider adapter that offered the choice owns its codes.
+ */
+export interface AdditionalParty {
+  role: string;
+  name: string;
+  taxId: TaxIdentifier | null;
+  address?: BuyerAddress;
 }
 
 /**
@@ -757,6 +803,8 @@ export interface IssueInvoiceCommand {
   documentType?: string;
   /** Operator-supplied fiscal annotation flags (#1580); see {@link InvoiceAnnotations}. */
   annotations?: InvoiceAnnotations;
+  /** Parties besides seller and buyer the document names (DEF-30). */
+  additionalParties?: AdditionalParty[];
   /**
    * Date of supply / sale, ISO 8601 calendar `YYYY-MM-DD` (#1525). Filled from
    * the order's marketplace placement timestamp (`Order.placedAt`) - NEVER from
@@ -928,6 +976,10 @@ export interface OriginalDocumentSnapshot {
    * a correction on the ORIGINAL's tax point, which is this date when present.
    */
   saleDate?: string;
+  /** The original's own annotations, repeated on its correction (DEF-20). */
+  annotations?: InvoiceAnnotations;
+  /** The original's additional parties, repeated on its correction (DEF-30). */
+  additionalParties?: AdditionalParty[];
 }
 
 /**

@@ -11,6 +11,8 @@
  * @module apps/api/src/invoicing/http/dto
  */
 import {
+  ArrayMaxSize,
+  IsArray,
   IsString,
   IsNotEmpty,
   IsUUID,
@@ -22,6 +24,12 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BuyerTaxIdDto } from './buyer-tax-id.dto';
 import { AcknowledgeWarningsProperty } from './acknowledge-warnings.dto';
+import {
+  ANNOTATION_LIST_LIMIT,
+  AdditionalPartyDto,
+  InvoiceAnnotationsDto,
+  LineClassificationDto,
+} from './issue-invoice-annotations.dto';
 
 export class IssueInvoiceRequestDto {
   @ApiProperty({ description: 'Invoicing connection id' })
@@ -72,4 +80,29 @@ export class IssueInvoiceRequestDto {
   @IsOptional()
   @IsBoolean()
   buyerIsVatGroupMember?: boolean;
+
+  @ApiPropertyOptional({
+    type: InvoiceAnnotationsDto,
+    description: "Fiscal annotations for this sale (DEF-20); override the connection's defaults.",
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InvoiceAnnotationsDto)
+  annotations?: InvoiceAnnotationsDto;
+
+  @ApiPropertyOptional({ type: [AdditionalPartyDto], description: 'Parties besides seller and buyer (DEF-30)' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(ANNOTATION_LIST_LIMIT)
+  @ValidateNested({ each: true })
+  @Type(() => AdditionalPartyDto)
+  additionalParties?: AdditionalPartyDto[];
+
+  @ApiPropertyOptional({ type: [LineClassificationDto], description: 'Per-line GTU / procedure markers (DEF-20)' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(ANNOTATION_LIST_LIMIT)
+  @ValidateNested({ each: true })
+  @Type(() => LineClassificationDto)
+  lineClassifications?: LineClassificationDto[];
 }

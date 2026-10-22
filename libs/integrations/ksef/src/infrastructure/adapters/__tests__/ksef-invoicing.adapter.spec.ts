@@ -37,7 +37,7 @@ import { KsefPermissionDeniedException } from '../../../domain/exceptions/ksef-p
 import { KsefCrossBorderUnsupportedException } from '../../../domain/exceptions/ksef-cross-border-unsupported.exception';
 import { classifyInvoiceFailure } from '@openlinker/core/invoicing';
 import { KsefAcknowledgementRequiredException } from '../../../domain/exceptions/ksef-acknowledgement-required.exception';
-import { KSEF_BUYER_TAX_ID_CHANGE_WARNING } from '../ksef-invoicing.adapter';
+import { KSEF_BUYER_TAX_ID_CHANGE_WARNING, KSEF_JST_WITHOUT_UNIT_WARNING } from '../ksef-invoicing.adapter';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
@@ -1726,6 +1726,81 @@ describe('KsefInvoicingAdapter', () => {
 
       expect(lastInput()?.correction?.buyerOnly).toBe(true);
       expect(lastInput()?.correction?.typKorekty).toBe('1');
+    });
+  });
+
+  describe('seller defaults and documented parties (DEF-20 / DEF-30)', () => {
+    function adapterWithDefaults(http: FakeKsefHttpClient, builder: IFa3XmlBuilder): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', http, fakeCrypto(), builder, SELLER, {
+        now: () => new Date('2026-06-23T10:00:00.000Z'),
+        annotationsDefault: { cashAccounting: true, marginScheme: false },
+      });
+    }
+
+    it('should start every invoice from the connection defaults', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapterWithDefaults(http, builder).issueInvoice(command());
+
+      expect(lastInput()?.cashAccounting).toBe(true);
+    });
+
+    it('should let the issue override a default', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapterWithDefaults(http, builder).issueInvoice(
+        command({ annotations: { cashAccounting: false, splitPayment: true } }),
+      );
+
+      expect(lastInput()?.cashAccounting).toBe(false);
+      expect(lastInput()?.splitPayment).toBe(true);
+    });
+
+    it('should ask before issuing a JST buyer without the documented subordinate unit', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const jst = new BuyerProfile(
+        'Gmina',
+        { scheme: 'pl-nip', value: '9876543210' },
+        { line1: 'Rynek 1', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+        null,
+        true,
+      );
+
+      const error = await adapter(http).issueInvoice(command({ buyer: jst })).catch((e: unknown) => e);
+      expect((error as { warningCode?: string }).warningCode).toBe(KSEF_JST_WITHOUT_UNIT_WARNING);
+
+      const { record } = await adapter(http).issueInvoice(
+        command({ buyer: jst, acknowledgedWarnings: [KSEF_JST_WITHOUT_UNIT_WARNING] }),
+      );
+      expect(record.status).toBe('issued');
+    });
+
+    it('should not ask when the subordinate unit is named', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const jst = new BuyerProfile(
+        'Gmina',
+        { scheme: 'pl-nip', value: '9876543210' },
+        { line1: 'Rynek 1', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+        null,
+        true,
+      );
+
+      const { record } = await adapter(http).issueInvoice(
+        command({
+          buyer: jst,
+          additionalParties: [{ role: '8', name: 'Szkoła', taxId: { scheme: 'pl-nip', value: '1189981779' } }],
+        }),
+      );
+
+      expect(record.status).toBe('issued');
     });
   });
 });

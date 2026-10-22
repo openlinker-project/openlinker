@@ -103,6 +103,8 @@ export class KsefConnectionConfigShapeValidatorAdapter
       issues.push({ path: 'allowCrossBorder', message: 'must be true or false' });
     }
 
+    issues.push(...annotationsDefaultIssues(config.annotationsDefault));
+
     const payment = config.payment;
     // A wrong-typed `payment` (or sub-object below) is rejected here rather
     // than silently dropped at issuance by the factory's `resolvePayment` —
@@ -217,4 +219,48 @@ function previousSellerNip(context: ConnectionConfigValidationContext | undefine
   }
   const nip = (seller as Record<string, unknown>).nip;
   return typeof nip === 'string' ? normalizePlNip(nip) : null;
+}
+
+const MARGIN_KINDS = ['travel-services', 'used-goods', 'works-of-art', 'collectors-items'];
+const EXEMPTION_KINDS = ['statute', 'directive', 'other'];
+
+/**
+ * `annotationsDefault` (DEF-20 / DEF-22): booleans for the seller-level flags,
+ * a known margin kind, and exemption grounds that fit `TZnakowy` (1..256).
+ * A value of the wrong type would otherwise be dropped silently at issuance.
+ */
+function annotationsDefaultIssues(value: unknown): FlatValidationIssue[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (typeof value !== 'object') {
+    return [{ path: 'annotationsDefault', message: 'must be an object' }];
+  }
+  const a = value as Record<string, unknown>;
+  const issues: FlatValidationIssue[] = [];
+  for (const key of ['cashAccounting', 'selfBilling', 'marginScheme'] as const) {
+    if (a[key] !== undefined && typeof a[key] !== 'boolean') {
+      issues.push({ path: `annotationsDefault.${key}`, message: 'must be true or false' });
+    }
+  }
+  if (a.marginKind !== undefined && (typeof a.marginKind !== 'string' || !MARGIN_KINDS.includes(a.marginKind))) {
+    issues.push({ path: 'annotationsDefault.marginKind', message: `must be one of: ${MARGIN_KINDS.join(', ')}` });
+  }
+  if (a.exemptionBasis !== undefined && a.exemptionBasis !== null) {
+    const basis = a.exemptionBasis as Record<string, unknown>;
+    if (typeof basis !== 'object' || typeof basis.kind !== 'string' || !EXEMPTION_KINDS.includes(basis.kind)) {
+      issues.push({
+        path: 'annotationsDefault.exemptionBasis.kind',
+        message: `must be one of: ${EXEMPTION_KINDS.join(', ')}`,
+      });
+    }
+    const text = typeof basis?.text === 'string' ? basis.text.trim() : '';
+    if (text.length === 0 || [...text].length > 256) {
+      issues.push({
+        path: 'annotationsDefault.exemptionBasis.text',
+        message: 'must be 1 to 256 characters',
+      });
+    }
+  }
+  return issues;
 }

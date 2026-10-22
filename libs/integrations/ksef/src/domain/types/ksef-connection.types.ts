@@ -147,6 +147,25 @@ export interface KsefConnectionConfig {
    * Removed once a real per-order band-selection function lands.
    */
   allowCrossBorder?: boolean;
+  /**
+   * The seller's standing fiscal annotations (DEF-20): properties of the
+   * seller rather than of one sale - cash accounting, self-billing, the margin
+   * scheme, the exemption grounds. Every invoice of this connection starts from
+   * them, the automatic ones included; a manual issue may override any of them.
+   * Optional; absent = every annotation "does not apply".
+   */
+  annotationsDefault?: KsefAnnotationsDefaultConfig;
+}
+
+/** Seller-level defaults for the FA(3) `Adnotacje` block (DEF-20 / DEF-22). */
+export interface KsefAnnotationsDefaultConfig {
+  cashAccounting?: boolean;
+  selfBilling?: boolean;
+  marginScheme?: boolean;
+  /** `travel-services` | `used-goods` | `works-of-art` | `collectors-items`. */
+  marginKind?: string;
+  /** Grounds cited on `zw` lines; `kind` = `statute` | `directive` | `other`. */
+  exemptionBasis?: { kind: string; text: string };
 }
 
 /**
