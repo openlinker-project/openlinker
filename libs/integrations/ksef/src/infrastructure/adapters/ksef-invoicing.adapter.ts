@@ -116,7 +116,7 @@ import {
 } from '../fa3/domain/fa3-xml.types';
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
 import { describeFa3LineAmounts } from '../fa3/builders/fa3-xml.builder';
-import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
+import type { IssuedDocumentDates, IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
 import { assertCrossBorderHandled } from '../fa3/domain/fa3-cross-border-guard';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
 import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provider-invoice-id';
@@ -143,9 +143,16 @@ import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
 import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { resolveBuyerIdSchemeTag } from '../fa3/domain/fa3-buyer-id.mapper';
+import { stampPreSubmitRefusal, type KsefSubmitProgress } from './ksef-pre-submit-refusal';
+import { toCalendarDate } from '@openlinker/shared/date';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
+
+/** A line's rate code, or `''` when a legacy payload carries none (DEF-37). */
+function readTaxRate(line: InvoiceLine): string {
+  return typeof line.taxRate === 'string' ? line.taxRate.trim() : '';
+}
 
 /**
  * Max length of the FA(3) `P_2` document number (the KSeF/FA(3) schema caps it
@@ -273,6 +280,28 @@ export class KsefInvoicingAdapter
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
+    // DEF-01: anything thrown before the submit starts provably left no document
+    // at KSeF, so it is stamped `rejected` (re-attemptable) instead of falling to
+    // the core's in-doubt default. Corrections delegate here too.
+    const progress: KsefSubmitProgress = { submitStarted: false };
+    try {
+      return await this.issueInvoiceSteps(cmd, progress);
+    } catch (error) {
+      if (!progress.submitStarted) {
+        stampPreSubmitRefusal(error);
+      }
+      throw error;
+    }
+  }
+
+  private async issueInvoiceSteps(
+    received: IssueInvoiceCommand,
+    progress: KsefSubmitProgress,
+  ): Promise<IssueInvoiceResult> {
+    // DEF-33: the sale date as a calendar day in the connection's zone, taken
+    // from the placement instant when core supplied it. One value feeds P_6,
+    // the exchange-rate tax point and the reported document dates.
+    const cmd = this.withLocalSaleDate(received);
     // `DocumentType` is open-world at the core boundary (#576); KSeF issues only
     // the subset getSupportedDocumentTypes advertises. Reject anything else up
     // front with a terminal exception so the service marks the record failed
@@ -290,12 +319,18 @@ export class KsefInvoicingAdapter
     // domestic-rate document. A terminal fault - the service marks the record
     // failed (no retry). See FA3_IMPLEMENTATION_NOTES.md for the deferred
     // per-order band-selection follow-up.
-    assertCrossBorderHandled(
-      this.seller.address.countryIso2,
-      cmd.buyer.address.countryIso2,
-      this.allowCrossBorder,
-      cmd.lines.every((line) => line.taxRate.trim().length > 0),
-    );
+    // A correction keeps the band its original was issued in, so the guard
+    // only decides plain invoices (DEF-18): refusing a KOR would leave an
+    // already-issued cross-border invoice uncorrectable after an upgrade.
+    if (cmd.correction === undefined) {
+      assertCrossBorderHandled(
+        this.seller.address.countryIso2,
+        cmd.buyer.address.countryIso2,
+        this.allowCrossBorder,
+        // `taxRate` is typed, but a legacy jsonb payload can omit it (DEF-37).
+        cmd.lines.every((line) => readTaxRate(line).length > 0),
+      );
+    }
 
     // Single issuance instant (#1692): the core `InvoiceService` threads ONE
     // `issuedAt` so the FA(3) `P_1` (legal issue date) and the allocated `P_2`
@@ -367,6 +402,7 @@ export class KsefInvoicingAdapter
     let invoiceReference: string;
     let submitError: unknown;
     try {
+      progress.submitStarted = true;
       invoiceReference = await this.submitInvoice(sessionRef, xml, cryptoContext);
     } catch (error) {
       // Track the in-flight submit error so the finally-block close can't mask
@@ -428,7 +464,26 @@ export class KsefInvoicingAdapter
       seller: this.toNeutralSeller(),
       sourceDocument: this.toSourceDocument(xml),
       documentLines,
+      documentDates: this.documentDates(cmd, issuedAt),
     };
+  }
+
+  /** The dates this adapter printed on the document (DEF-07 / DEF-33). */
+  private documentDates(cmd: IssueInvoiceCommand, issuedAt: Date): IssuedDocumentDates {
+    return { issueDate: this.toIsoDate(issuedAt), saleDate: cmd.saleDate ?? null };
+  }
+
+  /**
+   * Re-derive `saleDate` in the connection's zone from `saleInstant` (DEF-33).
+   * Core's `saleDate` is the UTC day; an order placed at 00:30 Warsaw time would
+   * otherwise print the previous day as the date of sale.
+   */
+  private withLocalSaleDate(cmd: IssueInvoiceCommand): IssueInvoiceCommand {
+    if (cmd.saleInstant === undefined || Number.isNaN(cmd.saleInstant.getTime())) {
+      return cmd;
+    }
+    const saleDate = this.toIsoDate(cmd.saleInstant);
+    return saleDate === cmd.saleDate ? cmd : { ...cmd, saleDate };
   }
 
   /**
@@ -438,13 +493,15 @@ export class KsefInvoicingAdapter
    *
    * RATE TIMING (snapshot-vs-fresh decision): the rate is resolved FRESH at issue
    * time, keyed to the document's tax point. For a plain invoice the tax point is
-   * `saleDate ?? issueDate`; for a CORRECTION it is deliberately the ORIGINAL
-   * document's issue date, NOT the KOR's own (later) issue date. Because NBP
-   * publishes immutable historical rates, re-resolving a correction against the
-   * original tax point returns the exact same rate the original was issued at —
-   * giving snapshot-equivalent "as issued" consistency (#1297 philosophy) WITHOUT
-   * persisting the rate on the country-agnostic core snapshot (ADR-026 keeps all
-   * NBP/PLN vocabulary inside this package).
+   * `saleDate ?? issueDate`. A CORRECTION keys on the ORIGINAL's tax point, the
+   * same `saleDate ?? issueDate` rule applied to the original's printed dates
+   * (`originalSaleDate ?? originalIssueDate`), never the KOR's own later date.
+   * NBP's historical rates are immutable, so this returns the rate the original
+   * was issued at - provided the original's sale date is known. Before DEF-07 the
+   * correction used the original's ISSUE date alone, which for an auto-issued
+   * invoice (sale date = placement day) is a different day and a different rate.
+   * The core snapshot carries only neutral dates; all NBP/PLN vocabulary stays in
+   * this package (ADR-026).
    */
   private async resolveExchangeRate(
     cmd: IssueInvoiceCommand,
@@ -463,7 +520,7 @@ export class KsefInvoicingAdapter
       return undefined;
     }
     const taxPoint = cmd.correction
-      ? cmd.correction.originalIssueDate
+      ? cmd.correction.originalSaleDate ?? cmd.correction.originalIssueDate
       : cmd.saleDate ?? this.toIsoDate(issuedAt);
     const resolved = await this.exchangeRateResolver.resolveRate(currency, taxPoint);
     this.logger.log(
@@ -707,6 +764,7 @@ export class KsefInvoicingAdapter
       seller: this.toNeutralSeller(),
       sourceDocument: this.toSourceDocument(xml),
       documentLines,
+      documentDates: this.documentDates(cmd, issuedAt),
     };
   }
 
@@ -887,6 +945,9 @@ export class KsefInvoicingAdapter
         originalClearanceReference: cmd.originalDocument.clearanceReference,
         originalDocumentNumber: cmd.originalDocument.documentNumber,
         originalIssueDate: cmd.originalDocument.issueDate,
+        ...(cmd.originalDocument.saleDate !== undefined
+          ? { originalSaleDate: cmd.originalDocument.saleDate }
+          : {}),
         reason: cmd.reason ?? '',
         correctedLines,
       },
@@ -1389,8 +1450,14 @@ export class KsefInvoicingAdapter
     return raw.slice(0, MAX_LOGGED_ERROR_LENGTH - marker.length) + marker;
   }
 
+  /**
+   * A calendar day in the connection's numbering zone (DEF-33), the same zone
+   * the allocated P_2 number's period uses, so P_1 and the number never fall on
+   * different days. Slicing the UTC string printed the previous day for anything
+   * issued just after local midnight.
+   */
   private toIsoDate(date: Date): string {
-    return date.toISOString().slice(0, 10);
+    return toCalendarDate(date, this.numberingTimeZone);
   }
 
   private toBase64(bytes: Uint8Array): string {

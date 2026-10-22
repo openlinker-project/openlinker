@@ -36,18 +36,22 @@
  */
 import {
   type ConnectionConfigShapeValidatorPort,
+  type ConnectionConfigValidationContext,
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
 import { KsefEnvironmentValues, KsefFormaPlatnosciValues } from '../../domain/types/ksef-connection.types';
-import { isValidNipChecksum } from './nip-checksum';
+import { isValidNipChecksum, normalizePlNip } from './nip-checksum';
 
 export class KsefConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
 {
   constructor(private readonly pluginName: string = 'KSeF') {}
 
-  validate(config: Record<string, unknown>): Promise<void> {
+  validate(
+    config: Record<string, unknown>,
+    context?: ConnectionConfigValidationContext,
+  ): Promise<void> {
     const issues: FlatValidationIssue[] = [];
     const env = config.env;
 
@@ -71,12 +75,19 @@ export class KsefConnectionConfigShapeValidatorAdapter
       // Seller NIP: 10-digit mod-11-valid Polish NIP when present (#1595). The
       // FE submits digits-only, but a direct API write may include separators,
       // so normalise before the length/checksum gate.
+      //
+      // DEF-19: an empty string means "not set yet" (issuance refuses it on its
+      // own), and an UNCHANGED stored NIP is not re-judged - otherwise a value
+      // saved before the checksum rule existed would block every unrelated
+      // save of this connection, preset applies included.
       const nip = (seller as Record<string, unknown>).nip;
-      if (nip !== undefined) {
+      if (nip !== undefined && nip !== '') {
         if (typeof nip !== 'string' || nip.trim().length === 0) {
           issues.push({ path: 'seller.nip', message: 'must be a non-empty string' });
+        } else if (normalizePlNip(nip) === previousSellerNip(context)) {
+          // Unchanged since the last save: left as the operator stored it.
         } else {
-          const normalized = nip.replace(/[\s-]/g, '');
+          const normalized = normalizePlNip(nip);
           if (!/^\d{10}$/.test(normalized)) {
             issues.push({ path: 'seller.nip', message: 'must be a 10-digit Polish NIP' });
           } else if (!isValidNipChecksum(normalized)) {
@@ -84,6 +95,12 @@ export class KsefConnectionConfigShapeValidatorAdapter
           }
         }
       }
+    }
+
+    // DEF-18: only a literal boolean switches cross-border issuance on, so a
+    // string "true" must not save as though it had.
+    if (config.allowCrossBorder !== undefined && typeof config.allowCrossBorder !== 'boolean') {
+      issues.push({ path: 'allowCrossBorder', message: 'must be true or false' });
     }
 
     const payment = config.payment;
@@ -190,4 +207,14 @@ export class KsefConnectionConfigShapeValidatorAdapter
     }
     return Promise.resolve();
   }
+}
+
+/** The normalised seller NIP of the persisted config, or `null` on a create. */
+function previousSellerNip(context: ConnectionConfigValidationContext | undefined): string | null {
+  const seller = context?.previous?.seller;
+  if (!seller || typeof seller !== 'object') {
+    return null;
+  }
+  const nip = (seller as Record<string, unknown>).nip;
+  return typeof nip === 'string' ? normalizePlNip(nip) : null;
 }

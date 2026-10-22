@@ -168,6 +168,7 @@ export function toIssueInvoiceCommand(
   // ingestion clock, not the sale date, and must never substitute (#1525).
   if (order.placedAt !== undefined) {
     command.saleDate = toIsoDate(order.placedAt);
+    command.saleInstant = order.placedAt;
   }
   // documentType is PASS-THROUGH ONLY. Undefined stays undefined; the adapter
   // derives it. No derivation, no faktura/paragon/NIP vocabulary here.

@@ -25,10 +25,15 @@
  * @module libs/integrations/ksef/src/application/factories
  */
 import type { CachePort } from '@openlinker/shared/cache';
+import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
+import {
+  isStructurallyPlausiblePlNip,
+  normalizePlNip,
+} from '../../infrastructure/adapters/nip-checksum';
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
 import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
 import { getSharedKsefRateLimiter } from '../../infrastructure/http/ksef-rate-limiter';
@@ -54,6 +59,8 @@ import type { IKsefAdapterFactory, KsefAdapters } from '../interfaces/ksef-adapt
 export type { KsefAdapters };
 
 export class KsefAdapterFactory implements IKsefAdapterFactory {
+  private readonly logger = new Logger(KsefAdapterFactory.name);
+
   constructor(private readonly cache?: CachePort) {}
 
   async createAdapters(
@@ -153,10 +160,19 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         connection.id,
       );
     }
-    // Trimmed like resolveContextNip — both consumers (the <ContextNip>
-    // handshake and the FA(3) Podmiot1 block) must see one canonical value.
+    // Normalised like resolveContextNip — both consumers (the <ContextNip>
+    // handshake and the FA(3) Podmiot1 block) and the rate-limit bucket key
+    // must see one canonical value. A stored `526-000-12-46` (DEF-12) would
+    // otherwise reach Podmiot1 verbatim and key a bucket of its own.
+    const nip = normalizePlNip(seller.nip);
+    if (!isStructurallyPlausiblePlNip(nip)) {
+      this.logger.warn(
+        `KSeF connection ${connection.id} has a seller NIP outside the shape KSeF documents; ` +
+          'issuance continues and KSeF decides.',
+      );
+    }
     return {
-      nip: seller.nip.trim(),
+      nip,
       name: seller.name.trim(),
       address: {
         line1: address.line1,
@@ -320,15 +336,17 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
 
   private resolveContextNip(connection: Connection): string {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
-    const nip = config?.seller?.nip?.trim();
+    const raw = config?.seller?.nip;
+    const nip = typeof raw === 'string' ? normalizePlNip(raw) : '';
     if (!nip) {
       throw new KsefConfigException(
         'KSeF connection has no seller NIP configured (required as the session context identifier)',
         connection.id,
       );
     }
-    // Trimmed — the value lands verbatim in the <ContextNip> XML element, so a
-    // hand-edited config row with stray whitespace must not leak into the handshake.
+    // Normalised — the value lands verbatim in the <ContextNip> XML element, so a
+    // hand-edited config row with stray whitespace or separators must not leak
+    // into the handshake.
     return nip;
   }
 }

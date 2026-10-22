@@ -129,6 +129,7 @@ import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
+import { normalizeBuyerTaxId } from './dto/buyer-tax-id.dto';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
 import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
@@ -960,7 +961,7 @@ export class InvoicingController {
         buyerOverride: dto.buyerOverride
           ? new BuyerProfile(
               dto.buyerOverride.name,
-              dto.buyerOverride.taxId ?? null,
+              dto.buyerOverride.taxId ? normalizeBuyerTaxId(dto.buyerOverride.taxId) : null,
               {
                 line1: dto.buyerOverride.address.line1,
                 line2: dto.buyerOverride.address.line2 ?? null,
@@ -969,8 +970,9 @@ export class InvoicingController {
                 countryIso2: dto.buyerOverride.address.countryIso2,
               },
               dto.buyerOverride.type,
-              // The original buyer's e-mail is not re-asserted by a correction.
-              null,
+              // DEF-08: an identity correction fixes who the buyer is, not where
+              // their documents go, so the original's e-mail carries over.
+              originalDocument?.buyer.email ?? null,
               dto.buyerOverride.isPublicSectorEntity,
               dto.buyerOverride.isVatGroupMember,
             )
@@ -1391,7 +1393,7 @@ export class InvoicingController {
   private toTaxIdentifier(
     dto: IssueInvoiceRequestDto['buyerTaxId'],
   ): TaxIdentifier | null {
-    return dto ? { scheme: dto.scheme, value: dto.value } : null;
+    return dto ? normalizeBuyerTaxId(dto) : null;
   }
 
   /**
@@ -1422,9 +1424,8 @@ export class InvoicingController {
     record: InvoiceRecord,
     snapshot: IssuedLineSnapshot,
   ): OriginalDocumentSnapshot {
-    const b = snapshot.buyer;
     return {
-      buyer: new BuyerProfile(b.name, b.taxId, b.address, b.type),
+      buyer: BuyerProfile.fromSnapshot(snapshot.buyer),
       currency: snapshot.currency,
       documentType: record.documentType.length > 0 ? record.documentType : 'invoice',
       lines: snapshot.lines,
@@ -1435,7 +1436,11 @@ export class InvoicingController {
       // would silently produce an invalid document number / issue date instead
       // of surfacing the broken invariant.
       documentNumber: record.providerInvoiceNumber!,
-      issueDate: this.toIsoDateOnly(record.issuedAt!),
+      // The date the original PRINTED (DEF-33) when the snapshot has it: the
+      // UTC day of `issuedAt` is a different day for anything issued just after
+      // local midnight, and the correction must reference the original exactly.
+      issueDate: snapshot.issueDate ?? this.toIsoDateOnly(record.issuedAt!),
+      ...(snapshot.saleDate !== undefined ? { saleDate: snapshot.saleDate } : {}),
     };
   }
 

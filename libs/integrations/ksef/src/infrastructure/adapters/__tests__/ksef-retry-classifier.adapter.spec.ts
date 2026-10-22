@@ -15,6 +15,10 @@ import { KsefSessionException } from '../../../domain/exceptions/ksef-session.ex
 import { KsefUnsupportedDocumentTypeException } from '../../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { UnmappedTaxRateException } from '../../../domain/exceptions/fa3-builder.exception';
 import { Fa3XsdValidationException } from '../../../domain/exceptions/fa3-validation.exception';
+import { KsefCrossBorderUnsupportedException } from '../../../domain/exceptions/ksef-cross-border-unsupported.exception';
+import { KsefMissingDocumentNumberException } from '../../../domain/exceptions/ksef-missing-document-number.exception';
+import { KsefConfigException } from '../../../domain/exceptions/ksef-config.exception';
+import { KsefExchangeRateException } from '../../../domain/exceptions/ksef-exchange-rate.exception';
 
 describe('KsefRetryClassifierAdapter', () => {
   const classifier = new KsefRetryClassifierAdapter();
@@ -44,9 +48,23 @@ describe('KsefRetryClassifierAdapter', () => {
         classifier.isNonRetryable(new Fa3XsdValidationException([{ path: '/', message: 'bad' }])),
       ).toBe(true);
     });
+
+    it('should be non-retryable for the DEF-01 pre-call refusals', () => {
+      expect(classifier.isNonRetryable(new KsefCrossBorderUnsupportedException('PL', 'DE'))).toBe(true);
+      expect(classifier.isNonRetryable(new KsefMissingDocumentNumberException('ol_order_1'))).toBe(true);
+      expect(classifier.isNonRetryable(new KsefConfigException('no environment'))).toBe(true);
+    });
+
+    it('should be non-retryable for a currency NBP does not publish', () => {
+      expect(classifier.isNonRetryable(new KsefExchangeRateException('not published', true))).toBe(true);
+    });
   });
 
   describe('retryable (transient) errors', () => {
+    it('should be retryable for an NBP network or HTTP failure', () => {
+      expect(classifier.isNonRetryable(new KsefExchangeRateException('ECONNRESET'))).toBe(false);
+    });
+
     it('should be retryable for a KsefNetworkException', () => {
       expect(classifier.isNonRetryable(new KsefNetworkException('connection refused'))).toBe(false);
     });

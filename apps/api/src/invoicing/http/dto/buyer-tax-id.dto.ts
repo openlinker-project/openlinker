@@ -58,6 +58,22 @@ class PlNipChecksumConstraint implements ValidatorConstraintInterface {
   }
 }
 
+/**
+ * The neutral `TaxIdentifier` a request's buyer tax id becomes (DEF-11/39).
+ * The checksum gate above already accepts `' PL-NIP '` and `526-000-12-46`, so
+ * the value it validated must be the value that travels: the scheme is trimmed
+ * and lowercased for every caller, and only a `pl-nip` value loses its
+ * separators - a foreign identifier is never reinterpreted.
+ */
+export function normalizeBuyerTaxId(dto: { scheme: string; value: string }): {
+  scheme: string;
+  value: string;
+} {
+  const scheme = dto.scheme.trim().toLowerCase();
+  const value = dto.value.trim();
+  return { scheme, value: scheme === PL_NIP_SCHEME ? value.replace(/[\s-]/g, '') : value };
+}
+
 export class BuyerTaxIdDto {
   @ApiProperty({ description: 'Open scheme tag interpreted by the adapter (e.g. pl-nip, eu-vat)' })
   @IsString()

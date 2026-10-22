@@ -10,7 +10,7 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
-import { BuyerTaxIdDto } from './buyer-tax-id.dto';
+import { BuyerTaxIdDto, normalizeBuyerTaxId } from './buyer-tax-id.dto';
 
 function buildDto(payload: Record<string, unknown>): BuyerTaxIdDto {
   return plainToInstance(BuyerTaxIdDto, payload);
@@ -57,5 +57,21 @@ describe('BuyerTaxIdDto', () => {
     const errors = await validate(buildDto({ scheme: '', value: '' }));
 
     expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('normalizeBuyerTaxId (DEF-11 / DEF-39)', () => {
+  it('should trim and lowercase the scheme and strip separators from a pl-nip', () => {
+    expect(normalizeBuyerTaxId({ scheme: ' PL-NIP ', value: '526-000-12-46' })).toEqual({
+      scheme: 'pl-nip',
+      value: '5260001246',
+    });
+  });
+
+  it('should leave a foreign identifier as typed, apart from trimming', () => {
+    expect(normalizeBuyerTaxId({ scheme: 'eu-vat', value: ' DE 123-456 ' })).toEqual({
+      scheme: 'eu-vat',
+      value: 'DE 123-456',
+    });
   });
 });

@@ -273,6 +273,12 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     if (!isNonEmptyString(p.currency)) return fail('currency');
     // Optional additive field (#1525): validated only when present.
     if (p.saleDate !== undefined && !isNonEmptyString(p.saleDate)) return fail('saleDate');
+    if (
+      p.saleInstant !== undefined &&
+      (!isNonEmptyString(p.saleInstant) || Number.isNaN(Date.parse(p.saleInstant)))
+    ) {
+      return fail('saleInstant');
+    }
     // Optional additive field (#1694): validated only when present.
     if (p.source !== undefined && !isNonEmptyString(p.source)) return fail('source');
 
@@ -345,6 +351,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       payload.buyer.address,
       payload.buyer.type,
       payload.buyer.email ?? null,
+      payload.buyer.isPublicSectorEntity,
+      payload.buyer.isVatGroupMember,
     );
 
     const command: IssueInvoiceCommand = {
@@ -363,6 +371,9 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     // #1525: restore the sale date so the auto-issue path emits it (P_6 on KSeF).
     if (payload.saleDate !== undefined) {
       command.saleDate = payload.saleDate;
+    }
+    if (payload.saleInstant !== undefined) {
+      command.saleInstant = new Date(payload.saleInstant);
     }
     // #1694: thread the order-origin onto the command's `source` numbering axis.
     if (payload.source !== undefined) {

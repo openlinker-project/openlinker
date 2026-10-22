@@ -9,7 +9,12 @@
  *
  * @module libs/core/src/invoicing/domain/entities
  */
-import type { BuyerAddress, BuyerType, TaxIdentifier } from '../types/invoicing.types';
+import type {
+  BuyerAddress,
+  BuyerType,
+  IssuedSnapshotBuyer,
+  TaxIdentifier,
+} from '../types/invoicing.types';
 
 export class BuyerProfile {
   constructor(
@@ -39,6 +44,25 @@ export class BuyerProfile {
   ) {}
 
   /** Pure derivation: a business buyer (B2B). No I/O, no mutation. */
+  /**
+   * Rebuild the buyer an issued document carried, from its jsonb snapshot
+   * (DEF-08). Every field travels: positional construction with four arguments
+   * silently dropped the e-mail and the JST / VAT-group flags, so a correction
+   * of a public-sector buyer's invoice declared it was not one. A pure factory
+   * (ADR-011).
+   */
+  static fromSnapshot(buyer: IssuedSnapshotBuyer): BuyerProfile {
+    return new BuyerProfile(
+      buyer.name,
+      buyer.taxId,
+      buyer.address,
+      buyer.type,
+      buyer.email ?? null,
+      buyer.isPublicSectorEntity,
+      buyer.isVatGroupMember,
+    );
+  }
+
   get isCompany(): boolean {
     return this.type === 'company';
   }

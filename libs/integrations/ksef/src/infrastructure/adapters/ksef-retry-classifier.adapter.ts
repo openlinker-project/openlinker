@@ -39,6 +39,10 @@ import { KsefUnsupportedDocumentTypeException } from '../../domain/exceptions/ks
 import { KsefInvalidCorrectionException } from '../../domain/exceptions/ksef-invalid-correction.exception';
 import { Fa3BuildException } from '../../domain/exceptions/fa3-builder.exception';
 import { Fa3XsdValidationException } from '../../domain/exceptions/fa3-validation.exception';
+import { KsefCrossBorderUnsupportedException } from '../../domain/exceptions/ksef-cross-border-unsupported.exception';
+import { KsefMissingDocumentNumberException } from '../../domain/exceptions/ksef-missing-document-number.exception';
+import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
+import { KsefExchangeRateException } from '../../domain/exceptions/ksef-exchange-rate.exception';
 // The content-rejection status set is factored into the shared availability
 // module (#1701) so the retry classifier and `isKsefUnavailable` can never
 // drift on which 4xx are terminal versus which failures are a transient outage.
@@ -51,9 +55,19 @@ export class KsefRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof KsefUnsupportedDocumentTypeException ||
       cause instanceof KsefInvalidCorrectionException ||
       cause instanceof Fa3BuildException ||
-      cause instanceof Fa3XsdValidationException
+      cause instanceof Fa3XsdValidationException ||
+      // DEF-01: these are deterministic too - the same command against the same
+      // connection settings refuses again, so retrying only burns the ladder.
+      cause instanceof KsefCrossBorderUnsupportedException ||
+      cause instanceof KsefMissingDocumentNumberException ||
+      cause instanceof KsefConfigException
     ) {
       return true;
+    }
+    // A currency NBP does not publish stays unpublished; a network or HTTP
+    // failure while asking may clear on its own.
+    if (cause instanceof KsefExchangeRateException) {
+      return cause.deterministic;
     }
 
     if (

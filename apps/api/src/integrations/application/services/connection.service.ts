@@ -281,7 +281,11 @@ export class ConnectionService implements IConnectionService {
       return null;
     }
     const nip = (seller as Record<string, unknown>).nip;
-    return typeof nip === 'string' && nip.trim().length > 0 ? nip.trim() : null;
+    // Separators stripped (DEF-12): `526-000-12-46` and `5260001246` are the
+    // same seller, and the collision check must say so. Generic - any tax id
+    // printed with spaces or dashes compares the same way.
+    const normalized = typeof nip === 'string' ? nip.replace(/[\s-]/g, '') : '';
+    return normalized.length > 0 ? normalized : null;
   }
 
   /**
@@ -293,12 +297,13 @@ export class ConnectionService implements IConnectionService {
    */
   private async validateConfigShape(
     adapterKey: string,
-    config: Record<string, unknown>
+    config: Record<string, unknown>,
+    previous?: Record<string, unknown>
   ): Promise<void> {
     const validator = this.connectionConfigShapeValidatorRegistry.get(adapterKey);
     if (!validator) return;
     try {
-      await validator.validate(config);
+      await validator.validate(config, previous !== undefined ? { previous } : undefined);
     } catch (error) {
       if (error instanceof InvalidConnectionConfigException) {
         throw new BadRequestException({
@@ -1204,7 +1209,7 @@ export class ConnectionService implements IConnectionService {
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
-        await this.validateConfigShape(metadata.adapterKey, patch.config);
+        await this.validateConfigShape(metadata.adapterKey, patch.config, existing.config);
         // #2407 — inside this branch, which is correct ONLY because
         // `ConnectionRepository.update` REPLACES `config` wholesale rather than
         // merging it (connection.repository.ts:109-111): a patch omitting

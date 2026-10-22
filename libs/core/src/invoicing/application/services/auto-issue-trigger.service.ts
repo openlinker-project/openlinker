@@ -1293,6 +1293,12 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         address: command.buyer.address,
         type: command.buyer.type,
         email: command.buyer.email,
+        ...(command.buyer.isPublicSectorEntity !== undefined
+          ? { isPublicSectorEntity: command.buyer.isPublicSectorEntity }
+          : {}),
+        ...(command.buyer.isVatGroupMember !== undefined
+          ? { isVatGroupMember: command.buyer.isVatGroupMember }
+          : {}),
       },
       sourceConnectionId,
       trigger: triggerModel,
@@ -1309,6 +1315,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // date and the auto-issued document loses its P_6 counterpart.
     if (command.saleDate !== undefined) {
       payload.saleDate = command.saleDate;
+    }
+    if (command.saleInstant !== undefined) {
+      payload.saleInstant = command.saleInstant.toISOString();
     }
     if (sourceEventId !== undefined) {
       payload.sourceEventId = sourceEventId;

@@ -13,18 +13,25 @@
  * @module libs/integrations/ksef/src/infrastructure/fx
  */
 
-/** NBP table A public rates base URL (public JSON endpoint, no SDK / npm dep). */
-export const NBP_TABLE_A_BASE = 'https://api.nbp.pl/api/exchangerates/rates/a';
+/** NBP public rates base URL; the table letter follows it (public JSON endpoint, no SDK / npm dep). */
+export const NBP_RATES_BASE = 'https://api.nbp.pl/api/exchangerates/rates';
 
 /**
- * How many days to walk back from (tax point − 1 day) looking for a published
- * rate. NBP returns HTTP 404 on non-publication days (weekends AND public
- * holidays), so the same walk-back that skips weekends also skips holidays —
- * there is no separate holiday calendar (documented MVP mechanism). 10 days
- * comfortably clears the longest Polish holiday cluster (e.g. the Christmas /
- * New-Year window).
+ * Width of the table-A date range read in ONE request, ending the day before
+ * the tax point. NBP returns only publication days inside a range, so the last
+ * row is the last business day preceding the tax point - weekends and holidays
+ * need no calendar. 14 days clears the longest Polish holiday cluster (the
+ * Christmas / New-Year window) with room to spare. One range request replaces
+ * the former day-by-day walk-back, which could take ten requests and stretch
+ * the issuance round-trip past the fiscal lease (DEF-04).
  */
-export const NBP_MAX_LOOKBACK_DAYS = 10;
+export const NBP_MAX_LOOKBACK_DAYS = 14;
+
+/**
+ * Table B is published weekly (Wednesdays), so its window must span more than
+ * one publication gap plus a holiday.
+ */
+export const NBP_TABLE_B_LOOKBACK_DAYS = 21;
 
 /** Default per-request network timeout for the production fetch wrapper. */
 export const NBP_REQUEST_TIMEOUT_MS = 10_000;

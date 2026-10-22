@@ -20,9 +20,26 @@
  *
  * Never carries credential material in its message.
  *
+ * DEF-01: carries `failureMode: 'rejected'` (nothing reached KSeF, so a retry
+ * after switching the flag on is safe) and `failureCause: 'connection-setup'`
+ * with a `reason` built from connection settings only - the remedy IS a
+ * connection setting, and the operator decides whether to use it. The buyer's
+ * country stays in `message`, which is logged, not shown as the reason.
+ *
  * @module libs/integrations/ksef/src/domain/exceptions
  */
+import type { CONNECTION_SETUP_FAILURE_CAUSE } from '@openlinker/core/invoicing';
+
+/** Operator-facing remedy; composed from connection settings only (#3772 review bar). */
+export const KSEF_CROSS_BORDER_REASON =
+  'Cross-border invoices are switched off for this KSeF connection. If you handle the tax band ' +
+  "for foreign buyers yourself, turn on 'Allow cross-border invoices' in the connection settings and re-issue.";
+
 export class KsefCrossBorderUnsupportedException extends Error {
+  readonly failureMode = 'rejected' as const;
+  readonly failureCause: typeof CONNECTION_SETUP_FAILURE_CAUSE = 'connection-setup';
+  readonly reason = KSEF_CROSS_BORDER_REASON;
+
   constructor(
     public readonly sellerCountry: string,
     public readonly buyerCountry: string,

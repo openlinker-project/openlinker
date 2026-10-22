@@ -88,6 +88,7 @@ import type {
   IssuedDocumentLine,
   IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
+  IssuedDocumentDates,
   IssuedLineSnapshot,
   IssueInvoiceCommand,
   IssueInvoiceResult,
@@ -756,13 +757,16 @@ export class InvoiceService implements IInvoiceService {
       seller,
       sourceDocument,
       documentLines,
+      documentDates,
       unlinkedCatalogueLines,
       warehouseRelease,
     } =
       issueResult;
     // #2251: prefer the document's OWN per-line amounts over core's
     // recomputation, so the stored figure matches the paper to the grosz.
-    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
+    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines, {
+      saleDate: documentDates?.saleDate ?? cmd.saleDate ?? null,
+    });
     // #1297: snapshot the exact issue-command inputs (buyer/currency/lines) so a
     // later correction diffs against the lines AS ISSUED, not the order's current
     // state. Verbatim from the command — no recomputation.
@@ -770,6 +774,9 @@ export class InvoiceService implements IInvoiceService {
       buyer: cmd.buyer,
       currency: cmd.currency,
       lines: cmd.lines,
+      // DEF-07 / DEF-33: the dates as printed, so a correction keys its own
+      // date-dependent values (the exchange rate) on the same day the original did.
+      ...snapshotDates(documentDates, cmd.saleDate),
     };
 
     const patch: InvoiceOutcomePatch = {
@@ -1135,7 +1142,7 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines, documentDates } = issueResult;
 
     // #1582: the buyer captured on the correction's own snapshot is the OVERRIDE
     // buyer when one was supplied (a buyer-identity correction), else the original
@@ -1158,6 +1165,8 @@ export class InvoiceService implements IInvoiceService {
             buyer: correctionBuyer,
             currency: cmd.originalDocument.currency,
             lines: correctedLines,
+            // A correction does not move the sale date: it stays the original's.
+            ...snapshotDates(documentDates, cmd.originalDocument.saleDate),
           }
         : null;
     // W2/W3 (#1229 follow-up): a correction's displayed content and source
@@ -1180,6 +1189,7 @@ export class InvoiceService implements IInvoiceService {
             // amounts overwrite the stored ones. Without this the record would
             // keep the pre-correction figures while the paper says otherwise.
             documentLines,
+            { saleDate: documentDates?.saleDate ?? cmd.originalDocument.saleDate ?? null },
           )
         : null;
 
@@ -1406,6 +1416,7 @@ export class InvoiceService implements IInvoiceService {
     record: InvoiceRecord,
     seller: IssuedDocumentSeller | null,
     documentLines?: IssuedDocumentLineAmounts[],
+    dates: { saleDate: string | null } = { saleDate: null },
   ): IssuedDocumentContent {
     const reported = new Map<number, IssuedDocumentLineAmounts>(
       (documentLines ?? []).map((entry) => [entry.lineNumber, entry]),
@@ -1461,7 +1472,7 @@ export class InvoiceService implements IInvoiceService {
       totals,
       currency: cmd.currency,
       issueDate: record.issuedAt ? record.issuedAt.toISOString() : null,
-      saleDate: null,
+      saleDate: dates.saleDate,
       payment: null,
     };
   }
@@ -1510,4 +1521,24 @@ export function freezeBuyerTaxIdAtIssue(cmd: IssueInvoiceCommand): string | null
   // `''` is the asserted-none encoding and the ONLY assertion that survives a
   // document carrying no id; everything else collapses to "not asserted".
   return cmd.buyerTaxIdAssertion === '' ? '' : null;
+}
+
+/**
+ * The printed dates to keep on an {@link IssuedLineSnapshot}: what the adapter
+ * reported, else the command's own sale date. Absent fields stay absent so a
+ * snapshot never claims a date nothing printed.
+ */
+function snapshotDates(
+  documentDates: IssuedDocumentDates | undefined,
+  fallbackSaleDate: string | undefined,
+): Pick<IssuedLineSnapshot, 'issueDate' | 'saleDate'> {
+  const out: Pick<IssuedLineSnapshot, 'issueDate' | 'saleDate'> = {};
+  if (documentDates?.issueDate !== undefined) {
+    out.issueDate = documentDates.issueDate;
+  }
+  const saleDate = documentDates?.saleDate ?? fallbackSaleDate;
+  if (saleDate) {
+    out.saleDate = saleDate;
+  }
+  return out;
 }

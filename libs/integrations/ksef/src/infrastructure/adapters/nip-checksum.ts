@@ -26,3 +26,27 @@ export function isValidNipChecksum(value: string): boolean {
   if (checkDigit === 10) return false;
   return checkDigit === digits[9];
 }
+
+/**
+ * Strip the separators an operator types or a source system prints
+ * (`526-000-12-46`, `526 000 12 46`) so a NIP is compared, keyed and emitted
+ * as the ten digits `TNrNIP` admits (DEF-11, DEF-12). Anything else is kept,
+ * so a malformed value still fails the pattern check rather than being
+ * silently repaired.
+ */
+export function normalizePlNip(value: string): string {
+  return value.trim().replace(/[\s-]/g, '');
+}
+
+/**
+ * The shape the MF `TNrNIP` type describes: no leading zero, and neither the
+ * second nor the third digit pair may both be zero (DEF-28). A checksum-valid
+ * `0000000000` fails it. This is OpenLinker's reading of an external schema we
+ * do not bundle, so callers WARN on it and never refuse - the operator decides,
+ * and KSeF answers authoritatively at submission.
+ */
+const TNR_NIP_SHAPE = /^[1-9]((\d[1-9])|([1-9]\d))\d{7}$/;
+
+export function isStructurallyPlausiblePlNip(value: string): boolean {
+  return TNR_NIP_SHAPE.test(value);
+}

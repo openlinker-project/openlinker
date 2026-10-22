@@ -362,6 +362,40 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('(a3c) DEF-07/33: snapshots the dates the adapter printed and fills documentContent.saleDate', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue({
+        ...makeIssuedFromAdapter(),
+        documentDates: { issueDate: '2026-01-22', saleDate: '2026-01-20' },
+      });
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd({ saleDate: '2026-01-19' }));
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { issueDate?: string; saleDate?: string };
+        documentContent?: { saleDate: string | null } | null;
+      };
+      expect(patch.issuedLineSnapshot).toMatchObject({ issueDate: '2026-01-22', saleDate: '2026-01-20' });
+      expect(patch.documentContent?.saleDate).toBe('2026-01-20');
+    });
+
+    it('(a3d) DEF-07: falls back to the command sale date when the adapter reports no dates', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd({ saleDate: '2026-01-19' }));
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { issueDate?: string; saleDate?: string };
+      };
+      expect(patch.issuedLineSnapshot?.saleDate).toBe('2026-01-19');
+      expect(patch.issuedLineSnapshot?.issueDate).toBeUndefined();
+    });
+
     it('persists a reported unlinked-catalogue-line count on the issued patch', async () => {
       repo.findByIdempotencyKey.mockResolvedValue(null);
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));

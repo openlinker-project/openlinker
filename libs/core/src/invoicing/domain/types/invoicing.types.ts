@@ -540,6 +540,14 @@ export interface IssuedLineSnapshot {
   currency: string;
   /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate/unit). */
   lines: InvoiceLine[];
+  /**
+   * Issue date as printed, ISO `YYYY-MM-DD` (DEF-33). Absent on snapshots taken
+   * before the field existed and for adapters that report no dates; readers
+   * then fall back to the record's `issuedAt`.
+   */
+  issueDate?: string;
+  /** Sale date as printed, ISO `YYYY-MM-DD` (DEF-07); absent when not recorded. */
+  saleDate?: string;
 }
 
 /**
@@ -563,6 +571,8 @@ export interface CorrectionReference {
   originalDocumentNumber: string;
   /** Issue date of the corrected original, ISO 8601 calendar `YYYY-MM-DD`. */
   originalIssueDate: string;
+  /** Sale date of the corrected original, when it carried one (DEF-07). */
+  originalSaleDate?: string;
   /** Free-text reason for the correction (return, refund, price adjustment, …). */
   reason: string;
   /** Post-correction ("after") line state; the top-level `lines` carry the original. */
@@ -737,6 +747,13 @@ export interface IssueInvoiceCommand {
    */
   saleDate?: string;
   /**
+   * The placement INSTANT behind `saleDate` (DEF-33). `saleDate` is the UTC
+   * calendar day, which is the wrong day for an order placed just after local
+   * midnight; an adapter that prints dates in its own zone derives the day from
+   * this instead. Absent wherever `saleDate` is.
+   */
+  saleInstant?: Date;
+  /**
    * Single issuance instant (#1692). Set by the core `InvoiceService` so BOTH
    * the allocated document number's date variables/period AND the provider's
    * legal issue date resolve from ONE instant (no day/period-boundary
@@ -879,6 +896,12 @@ export interface OriginalDocumentSnapshot {
   documentNumber: string;
   /** Issue date of the original, ISO 8601 calendar `YYYY-MM-DD`. */
   issueDate: string;
+  /**
+   * Sale date of the original as printed, ISO `YYYY-MM-DD` (DEF-07). A regime
+   * that keys anything on the tax point - an exchange rate, for one - must key
+   * a correction on the ORIGINAL's tax point, which is this date when present.
+   */
+  saleDate?: string;
 }
 
 /**
@@ -985,6 +1008,13 @@ export interface IssuedDocumentLineAmounts {
   gross: number;
 }
 
+/** Calendar dates printed on an issued document, ISO `YYYY-MM-DD`. */
+export interface IssuedDocumentDates {
+  issueDate: string;
+  /** `null` when the document carries no separate sale date. */
+  saleDate: string | null;
+}
+
 export interface IssueInvoiceResult {
   record: InvoiceRecord;
   seller?: IssuedDocumentSeller;
@@ -994,6 +1024,14 @@ export interface IssueInvoiceResult {
    * recomputation; absent keeps the pre-#2251 behaviour.
    */
   documentLines?: IssuedDocumentLineAmounts[];
+  /**
+   * The calendar dates the adapter actually printed on the document (DEF-07,
+   * DEF-33). An adapter that computes a date in its own time zone reports it
+   * here so core snapshots what the document says rather than re-deriving it
+   * from an instant in UTC; a later correction then references the original
+   * by the same dates. Absent keeps the pre-existing derivation.
+   */
+  documentDates?: IssuedDocumentDates;
   /**
    * OPTIONAL machine-readable source document the adapter built and submitted to
    * the authority (PL/KSeF: the FA(3) XML). Core persists it as an opaque

@@ -351,6 +351,49 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
         validator.validate({ env: 'test', seller: { nip: 1189981779 } }),
       ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
     });
+
+    it('should treat an empty seller.nip as not set yet (DEF-19)', async () => {
+      await expect(validator.validate({ env: 'test', seller: { nip: '' } })).resolves.toBeUndefined();
+    });
+
+    it('should not re-judge a stored NIP the update leaves unchanged (DEF-19)', async () => {
+      const stored = { env: 'test', seller: { nip: '1189981770' } };
+
+      await expect(
+        validator.validate({ env: 'test', seller: { nip: '1189981770' }, payment: {} }, { previous: stored }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should still check a NIP the update changes, even with a previous config', async () => {
+      await expect(
+        validator.validate(
+          { env: 'test', seller: { nip: '1189981770' } },
+          { previous: { env: 'test', seller: { nip: '1189981779' } } },
+        ),
+      ).rejects.toMatchObject({ errors: [{ path: 'seller.nip', message: 'has an invalid checksum' }] });
+    });
+
+    it('should compare the stored NIP without separators', async () => {
+      await expect(
+        validator.validate(
+          { env: 'test', seller: { nip: '118-998-17-70' } },
+          { previous: { env: 'test', seller: { nip: '1189981770' } } },
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('allowCrossBorder (DEF-18)', () => {
+    it('should accept a boolean', async () => {
+      await expect(validator.validate({ env: 'test', allowCrossBorder: true })).resolves.toBeUndefined();
+      await expect(validator.validate({ env: 'test', allowCrossBorder: false })).resolves.toBeUndefined();
+    });
+
+    it('should reject a string, which the issuance path would silently ignore', async () => {
+      await expect(validator.validate({ env: 'test', allowCrossBorder: 'true' })).rejects.toMatchObject({
+        errors: [{ path: 'allowCrossBorder', message: 'must be true or false' }],
+      });
+    });
   });
 
 });
