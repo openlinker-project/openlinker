@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 33 bulk / 5 fiscal / 7 fan-out across 64 job types —
+ * table (19 realtime / 34 bulk / 5 fiscal / 7 fan-out across 65 job types —
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -63,7 +63,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 64 job types 19/33/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 65 job types 19/34/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -147,7 +147,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // enqueues, which stay `realtime`. #3534's `orders.export` is the
     // thirty-third: an operator-requested CSV/XLSX export is a query-then-write
     // job, not a buyer-facing write, the restatement driver's reasoning.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(33);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(34);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
@@ -155,6 +155,14 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
   it('should lane the sale decrement realtime (#3453)', () => {
     // Named for the same reason as the routing commit below: until it runs, the
     // product master and every other channel still sell units already sold.
+    expect(registry.getLane('inventory.saleDecrement')).toBe('realtime');
+  });
+
+  it('should lane the sale-decrement reconcile sweep bulk, its subject realtime (#3629)', () => {
+    // Named rather than left to the count: the decrement job is a sale a buyer is
+    // racing, but every candidate of the backstop has by construction gone at
+    // least the grace window without a job, so it must not hold a realtime slot.
+    expect(registry.getLane('inventory.saleDecrement.reconcileSweep')).toBe('bulk');
     expect(registry.getLane('inventory.saleDecrement')).toBe('realtime');
   });
 

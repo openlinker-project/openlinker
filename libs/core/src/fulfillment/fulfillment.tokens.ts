@@ -91,6 +91,15 @@ export const FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN = Symbol(
 );
 
 /**
+ * The #3629 sale-decrement reconcile read. Its consumer is the WORKER's
+ * `inventory.saleDecrement.reconcileSweep` handler, which performs the enqueue
+ * this context may not.
+ */
+export const FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN = Symbol(
+  'IFulfillmentSaleDecrementReconcileService'
+);
+
+/**
  * The #2728 dispatch-relay reconcile read. Its consumer is the WORKER's
  * `fulfillment.work.relaySweep` handler, which composes it with the `orders`
  * relay this context may not inject.
