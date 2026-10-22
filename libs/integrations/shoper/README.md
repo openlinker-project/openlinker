@@ -412,4 +412,6 @@ method label.
 - The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
-- Only the main image is exposed; the rest need `product-images` (one extra call per product).
+- `getProduct` (what the sync reads) returns the whole gallery from `product-images`: one extra call per product,
+  first 50 images, main image first, hidden images left out. If that read fails or is empty, the main image is kept.
+  `getProducts` (the list read) still returns the main image only.

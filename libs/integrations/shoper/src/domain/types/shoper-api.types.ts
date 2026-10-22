@@ -47,6 +47,21 @@ export interface ShoperMainImage {
 }
 
 /**
+ * A `GET /product-images` row (only what the mapper reads). Listing one
+ * product's images takes the JSON filter form (`filters={"product_id":93}`);
+ * the bracket form answers 500 on this resource (verified live, 7 Oct 2026).
+ * `main` is `"1"` on the product's main image, `order` is its gallery position.
+ */
+export interface ShoperProductImage extends ShoperMainImage {
+  readonly gfx_id: string;
+  readonly product_id: string;
+  readonly main?: string | null;
+  readonly order?: string | null;
+  /** `"1"` for an image the shop does not show in the product gallery. */
+  readonly hidden?: string | null;
+}
+
+/**
  * A `product-stocks` row: the real VARIANT grain (SPIKE-3638 M1). Every Shoper
  * product has at least one, with a real `stock_id`.
  */
