@@ -640,6 +640,12 @@ Two rules apply to the rich-text pair specifically, because both are easy to get
 - **The editor's toolbar is not a design decision.** Which marks, blocks and lists a `RichTextEditor` offers is derived at runtime from the destination's declared `DescriptionFormat` (ADR-046) — a control exists because a destination declared the tag, never because a designer picked it. Until the declaration arrives the editor renders a loading surface with no toolbar rather than a default one. Do not add a control to the mockup and expect it to appear.
 - **Tiptap ships no stylesheet, and `prosemirror-view`'s optional one is deliberately not imported.** Its functional declarations are transcribed into `index.css` and its one cosmetic `outline` uses `var(--accent-primary)`, so the surface stays token-driven like every other primitive.
 
+Adopted (#1579, KOD I invoice verification):
+
+| Library | Role | Wrapped by |
+|---|---|---|
+| `qrcode-generator` | QR module-matrix computation (KOD I invoice verification, #1579) | `QrCode` |
+
 **Adding a library requires:** (1) a written rationale in the PR description explaining why the behavior can't be built from native HTML, (2) a wrapping primitive under `shared/ui/` with its own CSS, (3) an update to this section.
 
 ## Density & Row Heights
