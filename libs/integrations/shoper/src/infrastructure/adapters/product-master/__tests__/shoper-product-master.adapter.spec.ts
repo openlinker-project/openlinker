@@ -263,6 +263,40 @@ describe('ShoperProductMasterAdapter', () => {
       expect(imageCall?.[1]).toEqual(expect.objectContaining({ filters: '{"product_id":93}' }));
     });
 
+    it('should report the main category path, reading only the names of its nodes', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [{ id: 2, children: [{ id: 38, children: [] }] }, { id: 5, children: [] }],
+        '/categories': envelope([
+          { category_id: '2', translations: { pl_PL: { name: 'Dom i kuchnia' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Ceramika' } } },
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.categoryBreadcrumb).toEqual([
+        { id: '2', name: 'Dom i kuchnia' },
+        { id: '38', name: 'Ceramika' },
+      ]);
+      const calls = get.mock.calls as Array<[string, Record<string, unknown>]>;
+      const categoryCall = calls.find(([path]) => path === '/categories');
+      expect(categoryCall?.[1]).toEqual(
+        expect.objectContaining({ filters: '{"category_id":{"in":[2,38]}}' }),
+      );
+    });
+
+    it('should still return the product, without a path, when the categories cannot be read', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.id).toBe('ol_product_1');
+      expect(product).not.toHaveProperty('categoryBreadcrumb');
+    });
+
     it('should keep the main image when the gallery cannot be read', async () => {
       const { adapter, get } = setup();
       respond(get, { '/products/93': buildProduct() });

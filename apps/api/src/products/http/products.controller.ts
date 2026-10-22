@@ -633,6 +633,7 @@ export class ProductsController {
       images: product.images,
       categories: product.categories ?? null,
       ...(product.features ? { features: product.features } : {}),
+      ...(product.categoryBreadcrumb ? { categoryBreadcrumb: product.categoryBreadcrumb } : {}),
       // #2255 — `undefined` and `null` are collapsed to `null` here on purpose:
       // the wire has one absence, and the STATE lives in `taxRateReadAt`.
       taxRate: product.taxRate ?? null,
