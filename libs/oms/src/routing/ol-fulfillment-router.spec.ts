@@ -646,4 +646,70 @@ describe('OlFulfillmentRouter', () => {
       expect(checkRoutingPlanConservesQuantities(request, plan)).toBe(true);
     });
   });
+
+  // #2954 - the dry run's draft ruleset. `route()` has no rule parameter, so
+  // none of these can ever reach a committing call.
+  describe('evaluateAgainstDraft (draft ruleset)', () => {
+    const stockAt = (locationId: string, availableQuantity: number) => ({
+      locationId,
+      productVariantId: 'ol_variant_1',
+      availableQuantity,
+    });
+    const twoLocations: FakeLocation[] = [
+      { id: 'loc-a', countryIso2: 'PL', postcode: '00-001' },
+      { id: 'loc-b', countryIso2: 'PL', postcode: '00-002' },
+    ];
+
+    it('should evaluate the saved rules and the draft side by side', async () => {
+      const router = buildRouter({
+        locations: twoLocations,
+        stock: [stockAt('loc-a', 5), stockAt('loc-b', 5)],
+        rules: [sort('priority', ['loc-a'])],
+      });
+
+      const { saved, draft } = await router.evaluateAgainstDraft(input(), [sort('priority', ['loc-b'])]);
+
+      expect(saved.candidates[0]?.locationId).toBe('loc-a');
+      expect(draft.candidates[0]?.locationId).toBe('loc-b');
+    });
+
+    it('should read the facts ONCE, so a stock change cannot masquerade as a rule change', async () => {
+      const inventoryFilters: Array<Record<string, unknown>> = [];
+      const router = buildRouter({
+        locations: twoLocations,
+        stock: [stockAt('loc-a', 5), stockAt('loc-b', 5)],
+        rules: [sort('priority', ['loc-a'])],
+        inventoryFilters,
+      });
+
+      // The SAME draft as the saved ruleset: any difference could only come from a second read.
+      const { saved, draft } = await router.evaluateAgainstDraft(input(), [sort('priority', ['loc-a'])]);
+
+      expect(inventoryFilters).toHaveLength(1);
+      expect(draft.candidates).toEqual(saved.candidates);
+    });
+
+    it('should leave evaluate() on the saved ruleset unchanged afterwards', async () => {
+      const router = buildRouter({
+        locations: twoLocations,
+        stock: [stockAt('loc-a', 5), stockAt('loc-b', 5)],
+        rules: [sort('priority', ['loc-a'])],
+      });
+
+      await router.evaluateAgainstDraft(input(), [sort('priority', ['loc-b'])]);
+      const saved = await router.evaluate(input());
+
+      expect(saved.candidates[0]?.locationId).toBe('loc-a');
+    });
+
+    it('should carry no committing identifier in either result', async () => {
+      const router = buildRouter({ abundant: true });
+
+      const { saved, draft } = await router.evaluateAgainstDraft(input(), []);
+
+      for (const evaluation of [saved, draft]) {
+        expect(Object.keys(evaluation).sort()).toEqual(['candidates', 'explanation', 'unfulfillable']);
+      }
+    });
+  });
 });

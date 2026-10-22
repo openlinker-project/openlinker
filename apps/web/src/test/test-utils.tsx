@@ -1077,6 +1077,11 @@ export function createMockApiClient(
       remove: vi.fn().mockResolvedValue(undefined),
       ...overrides.sourcingRules,
     } as ApiClient['sourcingRules'],
+    // #2954. A test that never opts in must not reach a real dry run.
+    routingDryRun: {
+      run: vi.fn().mockRejectedValue(new Error('routingDryRun.run was not mocked')),
+      ...overrides.routingDryRun,
+    } as ApiClient['routingDryRun'],
     // The default is the healthy-but-empty deployment: no returns, and returns
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the
