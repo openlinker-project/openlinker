@@ -349,6 +349,8 @@ describe('SchedulerService', () => {
         // it has neither a platform nor a capability, because its subject is a
         // predicate over one OL table (#2317).
         'inventory-provenance-backfill',
+        // #3629 - global scope and platform-free like the relay sweep above.
+        'inventory-sale-decrement-reconcile-sweep',
         'master-inventory-sync',
         'master-product-delta-sync',
         'master-product-reconcile',

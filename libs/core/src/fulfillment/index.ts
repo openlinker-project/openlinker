@@ -224,6 +224,12 @@ export * from './domain/types/fulfillment-relay-reconcile.types';
 export type { IFulfillmentRelayReconcileService } from './application/interfaces/fulfillment-relay-reconcile.service.interface';
 export * from './application/types/fulfillment-relay-reconcile-sweep.types';
 
+// The sale-decrement reconcile read (#3629). The enqueue is the worker's:
+// `fulfillment` may not import `@openlinker/core/sync`.
+export * from './domain/types/fulfillment-sale-decrement-reconcile.types';
+export type { IFulfillmentSaleDecrementReconcileService } from './application/interfaces/fulfillment-sale-decrement-reconcile.service.interface';
+export * from './application/types/fulfillment-sale-decrement-reconcile-sweep.types';
+
 export { FulfillmentModule } from './fulfillment.module';
 
 export * from './fulfillment.tokens';
