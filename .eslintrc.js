@@ -156,6 +156,8 @@ module.exports = {
       //   - `InvoiceRecord` — `invoiceDetailSection` / `invoiceCorrectionFlow` slot props (#1240)
       //   - `CorrectionSuggestedLine` — `InvoiceCorrectionFlowProps.suggestedLines`, the
       //     return page's pre-fill for the shared `CorrectionLineGrid` (#3090)
+      //   - `IssueInvoiceOptions` — `InvoiceIssueOptionsProps.value` (DEF-20), the
+      //     per-issue options a provider plugin collects and the host sends.
       // Each is a deliberate pinhole. Hoisting all of them into `shared/types/`
       // would invert the dependency direction and inflate `shared/` with
       // feature-private surface — keeping the exemption narrow + explicit
@@ -169,9 +171,9 @@ module.exports = {
               {
                 group: ['**/features/**', '**/pages/**', '**/app/**'],
                 importNamePattern:
-                  '^(?!Connection$|EditConnectionFormValues$|GroupRoleGate$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$|CorrectionSuggestedLine$).+',
+                  '^(?!Connection$|EditConnectionFormValues$|GroupRoleGate$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$|CorrectionSuggestedLine$|IssueInvoiceOptions$).+',
                 message:
-                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, GroupRoleGate, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord, CorrectionSuggestedLine) from features/app. All other feature/app imports remain banned.',
+                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, GroupRoleGate, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord, CorrectionSuggestedLine, IssueInvoiceOptions) from features/app. All other feature/app imports remain banned.',
               },
             ],
           },
