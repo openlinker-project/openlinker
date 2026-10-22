@@ -18501,6 +18501,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   flex-direction: column;
   gap: var(--space-1);
 }
+/* DEF-29 / DEF-30: annotations that apply and parties besides seller and buyer. */
+.ksef-fa3-view__annotations {
+  font-size: 0.8125rem;
+}
+.ksef-fa3-view__annotations ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 .ksef-fa3-view__table-wrap { overflow-x: auto; }
 .ksef-fa3-view__table {
   width: 100%;

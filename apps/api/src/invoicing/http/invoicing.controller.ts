@@ -92,6 +92,7 @@ import {
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
+  isRegulatoryVerificationLinkReader,
   isRegulatoryResubmitter,
   BuyerProfile,
   isBankAccountsReader,
@@ -1785,6 +1786,45 @@ export class InvoicingController {
       // the asserted-none state, not an empty id.
       buyerTaxId: decodeBuyerTaxIdColumn(record.buyerTaxId),
     };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('invoices/:invoiceId/verification-link')
+  @ApiOperation({
+    summary: "The tax authority's public verification link for an invoice",
+    description:
+      'The link a QR verification code on a copy handed outside the authority system encodes ' +
+      "(KSeF: KOD I). Built by the provider adapter from the document it submitted, so its host, " +
+      'date and hash are the ones the authority checks (DEF-02 / DEF-03). `url` is null when the ' +
+      'provider offers no such link or the document is not cleared yet.',
+  })
+  @ApiResponse({ status: 200, description: '{ url: string | null }' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  async getVerificationLink(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<{ url: string | null }> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    try {
+      const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+        record.connectionId,
+        'Invoicing',
+      );
+      if (!isRegulatoryVerificationLinkReader(adapter)) {
+        return { url: null };
+      }
+      const link = await adapter.getVerificationLink(record);
+      return { url: link?.url ?? null };
+    } catch (error) {
+      // A connection that cannot be resolved has no link to offer; the panel
+      // then shows none rather than a guessed one.
+      this.logger.warn(
+        `No verification link for invoice ${invoiceId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { url: null };
+    }
   }
 
   @Roles('admin', 'operator', 'viewer')

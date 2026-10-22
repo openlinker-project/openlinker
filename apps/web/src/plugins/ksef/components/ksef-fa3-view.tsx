@@ -22,11 +22,14 @@
  *     "before" rows stay in a separate collapsed section (#1364 follow-up)
  *   - KOD I verification QR code (#1579): the legally-required verification
  *     code (kod weryfikacyjny) for invoices handed to buyers outside KSeF,
- *     with the KSeF number as caption. Computed client-side from the seller
- *     NIP + issue date + SHA-256 of the exact submitted XML (see
- *     `../lib/ksef-verification`).
+ *     with the KSeF number as caption. The URL comes from the server, which
+ *     builds it from the exact submitted document (DEF-02 / DEF-03 / DEF-15).
+ *   - The content the legal-completeness work added (DEF-29): the per-line
+ *     exchange rate and the VAT in PLN of a foreign-currency invoice, the
+ *     annotations that apply, GTU / procedure markers, the margin-scheme
+ *     total, and additional parties.
  *
- * Skipped by design: Adnotacje (P_16-P_23), WZ, amount-in-words, footer.
+ * Skipped by design: WZ, amount-in-words, footer.
  *
  * Returns `null` if the XML cannot be parsed or required fields are missing,
  * and calls `onParseError` (if given) so the parent (`ksef-invoice-detail-section`)
@@ -38,13 +41,20 @@
  *
  * @module plugins/ksef/components
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 import type { KsefFormaPlatnosci } from './ksef-setup.schema';
-import type { FaData, FaLine, FaParty, FaPayment, FaVatBand } from './ksef-fa3-view.types';
-import { buildKsefVerificationUrl } from '../lib/ksef-verification';
+import type {
+  FaAdditionalParty,
+  FaAnnotation,
+  FaData,
+  FaLine,
+  FaParty,
+  FaPayment,
+  FaVatBand,
+} from './ksef-fa3-view.types';
 import { QrCode } from '../../../shared/ui';
 
 interface KsefFa3ViewProps {
@@ -56,12 +66,10 @@ interface KsefFa3ViewProps {
    */
   ksefNumber?: string | null;
   /**
-   * KSeF target environment of the connection ('test' | 'demo' | 'prod'),
-   * threaded from `connection.config.env` by the parent section. Selects the
-   * verification-code (QR) host: prod -> ksef.mf.gov.pl, otherwise the test
-   * portal. Absent/unknown falls back to the test host (never prod).
+   * The KOD I verification URL, as the server built it from the submitted
+   * document. Absent or null renders no QR code - never a guessed one.
    */
-  environment?: string | null;
+  verificationUrl?: string | null;
   /**
    * Notifies the parent when `xmlText` cannot be parsed (or is missing
    * required fields), so it can fall through to its placeholder/error copy
@@ -195,6 +203,20 @@ function parsePayment(fa: Element): FaPayment | null {
   return hasContent ? payment : null;
 }
 
+/** Display copy for each annotation that applies (DEF-29). */
+const ANNOTATION_LABELS: Readonly<Record<FaAnnotation['key'], { key: string; fallback: string }>> = {
+  'cash-accounting': { key: 'invoice.ksef.fa3AnnCash', fallback: 'Cash accounting (metoda kasowa)' },
+  'self-billing': { key: 'invoice.ksef.fa3AnnSelfBilling', fallback: 'Self-billing (samofakturowanie)' },
+  'reverse-charge': { key: 'invoice.ksef.fa3AnnReverseCharge', fallback: 'Reverse charge (odwrotne obciążenie)' },
+  'split-payment': {
+    key: 'invoice.ksef.fa3AnnSplitPayment',
+    fallback: 'Split payment (mechanizm podzielonej płatności)',
+  },
+  exemption: { key: 'invoice.ksef.fa3AnnExemption', fallback: 'VAT exemption' },
+  triangulation: { key: 'invoice.ksef.fa3AnnTriangulation', fallback: 'Triangular transaction (procedura uproszczona)' },
+  margin: { key: 'invoice.ksef.fa3AnnMargin', fallback: 'Margin scheme (procedura marży)' },
+};
+
 function parseFa3Xml(xmlText: string): FaData | null {
   let doc: Document;
   try {
@@ -229,6 +251,11 @@ function parseFa3Xml(xmlText: string): FaData | null {
     netUnitPrice: getText(el, 'P_9A'),
     netTotal: getText(el, 'P_11'),
     vatRate: getText(el, 'P_12'),
+    grossUnitPrice: getText(el, 'P_9B'),
+    grossTotal: getText(el, 'P_11A'),
+    gtu: getText(el, 'GTU'),
+    procedure: getText(el, 'Procedura'),
+    exchangeRate: getText(el, 'KursWaluty'),
     isBeforeCorrection: getText(el, 'StanPrzed') === '1',
   }));
 
@@ -240,6 +267,7 @@ function parseFa3Xml(xmlText: string): FaData | null {
       label: band.label,
       net,
       tax: band.tax !== null ? getText(fa, band.tax) : null,
+      taxPln: band.tax !== null ? getText(fa, `${band.tax}W`) : null,
     });
   }
 
@@ -269,6 +297,42 @@ function parseFa3Xml(xmlText: string): FaData | null {
       ? getText(korygowanaEl, 'NrKSeFFaKorygowanej')
       : null,
     payment: parsePayment(fa),
+    annotations: parseAnnotations(fa),
+    marginTotal: getText(fa, 'P_13_11'),
+    additionalParties: collectByLocalName(faktura, 'Podmiot3').map(parseAdditionalParty),
+  };
+}
+
+/** The `Adnotacje` statements that apply (value `1`), in schema order. */
+function parseAnnotations(fa: Element): FaAnnotation[] {
+  const adnotacje = firstByLocalName(fa, 'Adnotacje');
+  if (!adnotacje) return [];
+  const applies = (localName: string): boolean => getText(adnotacje, localName) === '1';
+  const out: FaAnnotation[] = [];
+  if (applies('P_16')) out.push({ key: 'cash-accounting', detail: null });
+  if (applies('P_17')) out.push({ key: 'self-billing', detail: null });
+  if (applies('P_18')) out.push({ key: 'reverse-charge', detail: null });
+  if (applies('P_18A')) out.push({ key: 'split-payment', detail: null });
+  if (applies('P_19')) {
+    out.push({
+      key: 'exemption',
+      detail: getText(adnotacje, 'P_19A') ?? getText(adnotacje, 'P_19B') ?? getText(adnotacje, 'P_19C'),
+    });
+  }
+  if (applies('P_23')) out.push({ key: 'triangulation', detail: null });
+  if (applies('P_PMarzy')) {
+    const kind = ['P_PMarzy_2', 'P_PMarzy_3_1', 'P_PMarzy_3_2', 'P_PMarzy_3_3'].find(applies) ?? null;
+    out.push({ key: 'margin', detail: kind });
+  }
+  return out;
+}
+
+function parseAdditionalParty(podmiot: Element): FaAdditionalParty {
+  const dane = firstByLocalName(podmiot, 'DaneIdentyfikacyjne');
+  return {
+    name: dane ? getText(dane, 'Nazwa') : null,
+    nip: dane ? getText(dane, 'NIP') : null,
+    role: getText(podmiot, 'Rola'),
   };
 }
 
@@ -319,6 +383,10 @@ function LinesTable({ lines }: LinesTableProps): ReactElement {
   // rows do not, and vice versa).
   const showUnit = lines.some((line) => line.unit !== null);
   const showNetUnitPrice = lines.some((line) => line.netUnitPrice !== null);
+  // DEF-29: markers and margin gross values only when a line carries them.
+  const showGtu = lines.some((line) => line.gtu !== null);
+  const showProcedure = lines.some((line) => line.procedure !== null);
+  const showVat = lines.some((line) => line.vatRate !== null);
   return (
     <div className="ksef-fa3-view__table-wrap">
       <table className="ksef-fa3-view__table">
@@ -337,9 +405,15 @@ function LinesTable({ lines }: LinesTableProps): ReactElement {
               {t('invoice.ksef.fa3LineQty', 'Qty')}
             </th>
             {showUnit ? <th scope="col">{t('invoice.ksef.fa3LineUnit', 'Unit')}</th> : null}
-            <th scope="col" className="ksef-fa3-view__col-num">
-              {t('invoice.ksef.fa3LineVat', 'VAT rate')}
-            </th>
+            {showVat ? (
+              <th scope="col" className="ksef-fa3-view__col-num">
+                {t('invoice.ksef.fa3LineVat', 'VAT rate')}
+              </th>
+            ) : null}
+            {showGtu ? <th scope="col">{t('invoice.ksef.fa3LineGtu', 'GTU')}</th> : null}
+            {showProcedure ? (
+              <th scope="col">{t('invoice.ksef.fa3LineProcedure', 'Procedure')}</th>
+            ) : null}
             <th scope="col" className="ksef-fa3-view__col-num">
               {t('invoice.ksef.fa3LineNetTotal', 'Net total')}
             </th>
@@ -360,10 +434,14 @@ function LinesTable({ lines }: LinesTableProps): ReactElement {
               ) : null}
               <td className="ksef-fa3-view__col-num tabular">{line.quantity ?? '-'}</td>
               {showUnit ? <td>{line.unit ?? '-'}</td> : null}
-              <td className="ksef-fa3-view__col-num tabular">{formatVatRate(line.vatRate)}</td>
+              {showVat ? (
+                <td className="ksef-fa3-view__col-num tabular">{formatVatRate(line.vatRate)}</td>
+              ) : null}
+              {showGtu ? <td>{line.gtu ?? '-'}</td> : null}
+              {showProcedure ? <td>{line.procedure ?? '-'}</td> : null}
               <td className="ksef-fa3-view__col-num tabular">{line.netTotal ?? '-'}</td>
               <td className="ksef-fa3-view__col-num tabular">
-                {deriveGross(line.netTotal, line.vatRate) ?? '-'}
+                {line.grossTotal ?? deriveGross(line.netTotal, line.vatRate) ?? '-'}
               </td>
             </tr>
           ))}
@@ -405,7 +483,7 @@ function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
 export function KsefFa3View({
   xmlText,
   ksefNumber,
-  environment,
+  verificationUrl = null,
   onParseError,
 }: KsefFa3ViewProps): ReactElement | null {
   const { t } = useTranslation();
@@ -415,26 +493,6 @@ export function KsefFa3View({
   useEffect(() => {
     if (!data) onParseError?.();
   }, [data, onParseError]);
-
-  // KOD I verification code (legally required on invoices handed to buyers
-  // outside KSeF, since 1 Feb 2026). Deterministic from public data - seller
-  // NIP + issue date + SHA-256 of the exact submitted XML - so it is computed
-  // fully client-side; no signing key or server round-trip. SHA-256 is async
-  // (Web Crypto), so it lands via state rather than useMemo. Hooks stay
-  // unconditional (before the early return); the effect no-ops when `data` is
-  // null or a required field is missing.
-  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
-  const sellerNip = data?.seller.nip ?? null;
-  const issueDateIso = data?.issueDate ?? null;
-  useEffect(() => {
-    let cancelled = false;
-    void buildKsefVerificationUrl({ environment, sellerNip, issueDateIso, xmlText }).then((url) => {
-      if (!cancelled) setVerificationUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environment, sellerNip, issueDateIso, xmlText]);
 
   if (!data) return null;
 
@@ -453,6 +511,9 @@ export function KsefFa3View({
   // too - otherwise line counts and totals double up (#1364 follow-up). The
   // "before" rows are still shown, but in a separate, clearly labeled set.
   const currentLines = data.lines.filter((line) => !line.isBeforeCorrection);
+  // One invoice-level rate is stamped on every line, so the first one speaks for all.
+  const exchangeRate = data.lines.find((line) => line.exchangeRate !== null)?.exchangeRate ?? null;
+  const showTaxPln = data.vatBands.some((band) => band.taxPln !== null);
   const beforeCorrectionLines = data.lines.filter((line) => line.isBeforeCorrection);
 
   const paymentFormCode = data.payment?.formCode ?? null;
@@ -511,7 +572,35 @@ export function KsefFa3View({
             <div>{data.currency}</div>
           </div>
         ) : null}
+        {exchangeRate !== null ? (
+          <div>
+            <div className="ksef-fa3-view__field-label">
+              {t('invoice.ksef.fa3ExchangeRate', 'Exchange rate (NBP)')}
+            </div>
+            <div className="tabular">{exchangeRate}</div>
+          </div>
+        ) : null}
       </section>
+
+      {/* DEF-30: parties besides seller and buyer. */}
+      {data.additionalParties.length > 0 ? (
+        <section className="ksef-fa3-view__annotations">
+          <div className="ksef-fa3-view__section-title">
+            {t('invoice.ksef.fa3AdditionalParties', 'Other parties')}
+          </div>
+          <ul>
+            {data.additionalParties.map((party, idx) => (
+              <li key={idx}>
+                {party.name ?? '-'}
+                {party.nip !== null ? ` (${t('invoice.ksef.fa3Nip', 'NIP')} ${party.nip})` : ''}
+                {party.role !== null
+                  ? ` · ${t('invoice.ksef.fa3PartyRole', 'role')} ${party.role}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {/* KOR correction metadata */}
       {data.correctionReason !== null || data.correctedInvoiceNumber !== null ? (
@@ -581,6 +670,11 @@ export function KsefFa3View({
                   <th scope="col" className="ksef-fa3-view__col-num">
                     {t('invoice.ksef.fa3VatTax', 'Tax')}
                   </th>
+                  {showTaxPln ? (
+                    <th scope="col" className="ksef-fa3-view__col-num">
+                      {t('invoice.ksef.fa3VatTaxPln', 'Tax (PLN)')}
+                    </th>
+                  ) : null}
                   <th scope="col" className="ksef-fa3-view__col-num">
                     {t('invoice.ksef.fa3VatGross', 'Gross')}
                   </th>
@@ -592,12 +686,44 @@ export function KsefFa3View({
                     <td>{band.label}</td>
                     <td className="ksef-fa3-view__col-num tabular">{band.net}</td>
                     <td className="ksef-fa3-view__col-num tabular">{band.tax ?? '-'}</td>
+                    {showTaxPln ? (
+                      <td className="ksef-fa3-view__col-num tabular">{band.taxPln ?? '-'}</td>
+                    ) : null}
                     <td className="ksef-fa3-view__col-num tabular">{bandGross(band) ?? '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </section>
+      ) : null}
+
+      {/* DEF-31: a margin-scheme invoice totals its sale here instead of VAT bands. */}
+      {data.marginTotal !== null ? (
+        <div className="ksef-fa3-view__total">
+          <span className="ksef-fa3-view__field-label">
+            {t('invoice.ksef.fa3MarginTotal', 'Sale under the margin scheme')}
+          </span>
+          <span className="tabular">{data.marginTotal}</span>
+        </div>
+      ) : null}
+
+      {/* DEF-29: the annotations that apply; none applying shows nothing. */}
+      {data.annotations.length > 0 ? (
+        <section className="ksef-fa3-view__annotations">
+          <div className="ksef-fa3-view__section-title">
+            {t('invoice.ksef.fa3Annotations', 'Annotations')}
+          </div>
+          <ul>
+            {data.annotations.map((annotation) => (
+              <li key={annotation.key}>
+                {t(ANNOTATION_LABELS[annotation.key].key, ANNOTATION_LABELS[annotation.key].fallback)}
+                {annotation.detail !== null && annotation.key === 'exemption'
+                  ? `: ${annotation.detail}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

@@ -68,6 +68,7 @@ export { useRegulatoryConfirmationPreview } from './hooks/use-regulatory-confirm
 export type { ConfirmationPreviewKind } from './hooks/use-regulatory-confirmation-preview';
 export { useRegulatoryConfirmationDownload } from './hooks/use-regulatory-confirmation-download';
 export { useInvoiceSourceDocument } from './hooks/use-invoice-source-document';
+export { useInvoiceVerificationLinkQuery } from './hooks/use-invoice-verification-link-query';
 export { useInvoiceRenderedDocumentDownload } from './hooks/use-invoice-rendered-document-download';
 export {
   useSendInvoiceEmailMutation,
