@@ -14,7 +14,13 @@ jest.mock('@openlinker/core/orders', () => ({
 
 const evaluation = (locationId: string): RoutingEvaluation => ({
   candidates: [
-    { orderLineId: 'basket-line-1', locationId, connectionId: 'conn-oms', deliveryMethod: null, quantity: 1 },
+    {
+      orderLineId: 'basket-line-1',
+      locationId,
+      connectionId: 'conn-oms',
+      deliveryMethod: null,
+      quantity: 1,
+    },
   ],
   unfulfillable: [],
   explanation: [],
@@ -29,10 +35,12 @@ interface Harness {
   resolve: jest.Mock;
 }
 
-function build(options: {
-  platformType?: string;
-  router?: 'plain' | 'draft-capable' | 'none';
-} = {}): Harness {
+function build(
+  options: {
+    platformType?: string;
+    router?: 'plain' | 'draft-capable' | 'none';
+  } = {}
+): Harness {
   const evaluate = jest.fn(async () => await Promise.resolve(evaluation('loc-a')));
   const route = jest.fn();
   const evaluateAgainstDraft = jest.fn(
@@ -43,12 +51,18 @@ function build(options: {
   const router =
     kind === 'none'
       ? null
-      : ({ evaluate, route, ...(kind === 'draft-capable' ? { evaluateAgainstDraft } : {}) } as unknown as FulfillmentRouterPort);
+      : ({
+          evaluate,
+          route,
+          ...(kind === 'draft-capable' ? { evaluateAgainstDraft } : {}),
+        } as unknown as FulfillmentRouterPort);
 
   const resolve = jest.fn(async () => await Promise.resolve(router));
   const getOrderRecord = jest.fn();
   const connections = {
-    get: jest.fn(async () => await Promise.resolve({ platformType: options.platformType ?? 'openlinker' })),
+    get: jest.fn(
+      async () => await Promise.resolve({ platformType: options.platformType ?? 'openlinker' })
+    ),
   };
 
   const service = new RoutingDryRunService(
@@ -95,10 +109,17 @@ describe('RoutingDryRunService', () => {
   it('should tell the router only the allowlisted fields for a basket', async () => {
     const h = build();
 
-    await h.service.dryRun('conn-oms', { subject: { basket: { ...basket, deliveryMethod: 'kurier' } } });
+    await h.service.dryRun('conn-oms', {
+      subject: { basket: { ...basket, deliveryMethod: 'kurier' } },
+    });
 
     const sent = (h.evaluate.mock.calls as unknown[][])[0]?.[0] as Record<string, unknown>;
-    expect(Object.keys(sent).sort()).toEqual(['lines', 'orderId', 'requestedDeliveryMethod', 'shipTo']);
+    expect(Object.keys(sent).sort()).toEqual([
+      'lines',
+      'orderId',
+      'requestedDeliveryMethod',
+      'shipTo',
+    ]);
     expect(sent['requestedDeliveryMethod']).toBe('kurier');
   });
 
@@ -123,7 +144,10 @@ describe('RoutingDryRunService', () => {
     it('should evaluate both and report the lines that moved', async () => {
       const h = build();
 
-      const result = await h.service.dryRun('conn-oms', { subject: { basket }, draftRules: [draft()] });
+      const result = await h.service.dryRun('conn-oms', {
+        subject: { basket },
+        draftRules: [draft()],
+      });
 
       expect(h.evaluateAgainstDraft).toHaveBeenCalledTimes(1);
       // One snapshot: the saved side comes from the same call, not a second evaluate().
@@ -157,7 +181,9 @@ describe('RoutingDryRunService', () => {
         draftRules: [draft({ id: 'late', position: 5 }), draft({ id: 'early', position: 1 })],
       });
 
-      const rules = (h.evaluateAgainstDraft.mock.calls as unknown[][])[0]?.[1] as Array<{ id: string }>;
+      const rules = (h.evaluateAgainstDraft.mock.calls as unknown[][])[0]?.[1] as Array<{
+        id: string;
+      }>;
       expect(rules.map((r) => r.id)).toEqual(['early', 'late']);
     });
 
@@ -187,9 +213,9 @@ describe('RoutingDryRunService', () => {
       const h = build();
       h.getOrderRecord.mockResolvedValue(null);
 
-      await expect(h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_x' } })).rejects.toBeInstanceOf(
-        NotFoundException
-      );
+      await expect(
+        h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_x' } })
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('should reject an order that is not fully ingested', async () => {
@@ -199,9 +225,9 @@ describe('RoutingDryRunService', () => {
         throw new OrderSnapshotUnavailableError('ol_order_1', 'awaiting_mapping');
       });
 
-      await expect(h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_1' } })).rejects.toBeInstanceOf(
-        BadRequestException
-      );
+      await expect(
+        h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_1' } })
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('should reject an order without a shipping address', async () => {
@@ -209,16 +235,21 @@ describe('RoutingDryRunService', () => {
       h.getOrderRecord.mockResolvedValue({ shippingAddressHash: null });
       mockOrderFromReadySnapshot.mockReturnValue({ items: [], shippingAddress: undefined });
 
-      await expect(h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_1' } })).rejects.toBeInstanceOf(
-        BadRequestException
-      );
+      await expect(
+        h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_1' } })
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('should project the order and evaluate it without routing', async () => {
       const h = build();
-      h.getOrderRecord.mockResolvedValue({ shippingAddressHash: 'h'.repeat(64) });
+      h.getOrderRecord.mockResolvedValue({
+        shippingAddressHash: 'h'.repeat(64),
+        fulfillmentRoutingSkipReason: null,
+      });
       mockOrderFromReadySnapshot.mockReturnValue({
-        items: [{ id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 2 }],
+        items: [
+          { id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 2 },
+        ],
         shippingAddress: { country: 'PL', postalCode: '61-000', city: 'Poznań' },
         shipping: { methodId: 'kurier' },
       });
@@ -230,6 +261,38 @@ describe('RoutingDryRunService', () => {
         { orderLineId: 'line-1', productVariantId: 'ol_variant_1', quantity: 2 },
       ]);
       expect(result.input.requestedDeliveryMethod).toBe('kurier');
+      expect(result.routingSkipReason).toBeNull();
+    });
+
+    it('should report why live routing would skip the order, still evaluating it', async () => {
+      const h = build();
+      h.getOrderRecord.mockResolvedValue({
+        shippingAddressHash: null,
+        fulfillmentRoutingSkipReason: 'own-shop-order',
+      });
+      mockOrderFromReadySnapshot.mockReturnValue({
+        items: [
+          { id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 1 },
+        ],
+        shippingAddress: { country: 'PL', postalCode: '61-000', city: 'Poznań' },
+        shipping: { methodId: null },
+      });
+
+      const result = await h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_1' } });
+
+      expect(result.routingSkipReason).toBe('own-shop-order');
+      expect(h.evaluate).toHaveBeenCalledTimes(1);
+      expect(h.route).not.toHaveBeenCalled();
+    });
+
+    it('should report no skip reason for a basket', async () => {
+      const h = build();
+      const result = await h.service.dryRun('conn-oms', {
+        subject: {
+          basket: { lines: [{ productVariantId: 'v1', quantity: 1 }], countryIso2: 'PL' },
+        },
+      });
+      expect(result.routingSkipReason).toBeNull();
     });
   });
 });

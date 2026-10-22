@@ -9,6 +9,7 @@
  * @see {@link RoutingDryRunService} for the implementation
  */
 import type { RoutingEvaluation, RoutingInput } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '@openlinker/core/orders';
 import type { RoutingLineChange } from '@openlinker/oms';
 
 export const ROUTING_DRY_RUN_SERVICE_TOKEN = Symbol('IRoutingDryRunService');
@@ -45,6 +46,13 @@ export interface DryRunResult {
   /** Exactly what the router was told - the ADR-062 allowlist, shown to the operator. */
   readonly input: Pick<RoutingInput, 'lines' | 'shipTo' | 'requestedDeliveryMethod'>;
   readonly saved: RoutingEvaluation;
+  /**
+   * Why live routing would NOT route this order (#3487/#3455/#3488), read from the
+   * persisted `fulfillmentRoutingSkipReason`. The router itself knows nothing of these
+   * rules, so an evaluation alone would read "routable" for an order that never is.
+   * `null` for a basket and for an order live routing would route.
+   */
+  readonly routingSkipReason: FulfillmentRoutingSkipReason | null;
   /** Present only when `draftRules` was supplied. */
   readonly draft?: RoutingEvaluation;
   /** Present only when `draftRules` was supplied: the lines the draft places differently. */

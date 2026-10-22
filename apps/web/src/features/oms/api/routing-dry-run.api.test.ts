@@ -45,7 +45,9 @@ describe('routing dry-run api', () => {
       ...payload,
       saved: {
         ...evaluation,
-        unfulfillable: [{ orderLineId: 'l1', quantity: 3, resolution: 'refund', reason: 'no-stock-in-network' }],
+        unfulfillable: [
+          { orderLineId: 'l1', quantity: 3, resolution: 'refund', reason: 'no-stock-in-network' },
+        ],
       },
     });
 
@@ -59,7 +61,9 @@ describe('routing dry-run api', () => {
       ...payload,
       saved: {
         ...evaluation,
-        unfulfillable: [{ orderLineId: 'l1', quantity: 1, resolution: 'partial-cancel', reason: 'x' }],
+        unfulfillable: [
+          { orderLineId: 'l1', quantity: 1, resolution: 'partial-cancel', reason: 'x' },
+        ],
       },
     });
 

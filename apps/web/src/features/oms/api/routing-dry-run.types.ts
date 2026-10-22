@@ -88,4 +88,6 @@ export interface RoutingDryRunResult {
   saved: RoutingEvaluation;
   draft?: RoutingEvaluation;
   changedLines?: RoutingLineChange[];
+  /** Why live routing would not route this order; `null` when it would. */
+  routingSkipReason: string | null;
 }

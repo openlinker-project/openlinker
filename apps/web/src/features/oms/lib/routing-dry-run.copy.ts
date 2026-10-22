@@ -37,7 +37,8 @@ export const ROUTING_DRY_RUN_COPY = {
   resultUnfulfillableNote:
     'Unsourced units can only be resolved as a refund or a return, never as a partial cancellation.',
   resultInputHeading: 'What the rules saw',
-  resultInputNote: 'Country, postcode, lines and delivery method only. No buyer details reach the rules.',
+  resultInputNote:
+    'Country, postcode, lines and delivery method only. No buyer details reach the rules.',
   resultLinesHeading: 'Where each line would ship from',
   explanationHeading: 'Why',
   explanationEmpty: 'No rules ran, so nothing was filtered or ranked.',
@@ -49,6 +50,15 @@ export const ROUTING_DRY_RUN_COPY = {
   compareSaved: 'Saved',
   compareDraft: 'Draft',
   unplaced: 'unassigned',
+  skippedTitle: 'Live routing would not route this order',
+  skippedUnknown: 'OpenLinker records a reason for this that this screen does not describe.',
+  skippedNote: 'The result below only shows where the rules would send it if they ran.',
+  skipReasons: {
+    'own-shop-order': 'It came from your own shop, which already handles it.',
+    'mirrored-before-routing':
+      'It was already created in your product master before routing was on.',
+    'shipped-by-other-system': 'Another system has been told to ship it.',
+  } as Readonly<Record<string, string>>,
   errorTitle: "Couldn't finish this test",
   errorNothingChanged: 'Nothing was changed.',
   errorRetry: 'Try again',

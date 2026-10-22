@@ -7,7 +7,10 @@ describe('isDraftRuleEvaluator', () => {
 
   it('should be false when the router has only evaluate and route', () => {
     expect(
-      isDraftRuleEvaluator({ evaluate: () => Promise.resolve({}), route: () => Promise.resolve({}) })
+      isDraftRuleEvaluator({
+        evaluate: () => Promise.resolve({}),
+        route: () => Promise.resolve({}),
+      })
     ).toBe(false);
   });
 

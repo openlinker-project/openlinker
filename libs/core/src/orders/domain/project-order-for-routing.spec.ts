@@ -23,7 +23,9 @@ function orderWith(overrides: Partial<Order> = {}): Order {
 
 describe('projectOrderForRouting', () => {
   it('should return null when the order has no shipping address', () => {
-    expect(projectOrderForRouting(orderWith({ shippingAddress: undefined }), null, true)).toBeNull();
+    expect(
+      projectOrderForRouting(orderWith({ shippingAddress: undefined }), null, true)
+    ).toBeNull();
   });
 
   it('should fall back to the product id when a line has no variant', () => {
@@ -38,7 +40,8 @@ describe('projectOrderForRouting', () => {
   it('should carry the source delivery method id verbatim, or null', () => {
     expect(projectOrderForRouting(orderWith(), null, true)?.requestedDeliveryMethod).toBe('kurier');
     expect(
-      projectOrderForRouting(orderWith({ shipping: undefined }), null, true)?.requestedDeliveryMethod
+      projectOrderForRouting(orderWith({ shipping: undefined }), null, true)
+        ?.requestedDeliveryMethod
     ).toBeNull();
   });
 

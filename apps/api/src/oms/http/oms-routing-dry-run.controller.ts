@@ -15,7 +15,16 @@
  *
  * @module apps/api/src/oms/http
  */
-import { BadRequestException, Body, Controller, HttpCode, HttpStatus, Inject, Param, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -58,15 +67,13 @@ export class OmsRoutingDryRunController {
     @Param('connectionId') connectionId: string,
     @Body() dto: RoutingDryRunRequestDto
   ): Promise<RoutingDryRunResponseDto> {
-    const hasOrder = dto.orderId !== undefined;
-    const hasBasket = dto.basket !== undefined;
-    if (hasOrder === hasBasket) {
+    const { orderId, basket } = dto;
+    if ((orderId === undefined) === (basket === undefined)) {
       throw new BadRequestException('Provide exactly one of `orderId` and `basket`.');
     }
 
-    const subject: DryRunSubject = hasBasket
-      ? { basket: dto.basket! }
-      : { orderId: dto.orderId! };
+    const subject: DryRunSubject =
+      basket !== undefined ? { basket } : { orderId: orderId as string };
 
     const result = await this.dryRuns.dryRun(connectionId, {
       subject,

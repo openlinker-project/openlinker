@@ -5,7 +5,11 @@ import { OmsRoutingDryRunController } from './oms-routing-dry-run.controller';
 import type { RoutingDryRunRequestDto } from './dto/routing-dry-run-request.dto';
 
 const result = {
-  input: { lines: [], shipTo: { mode: 'plain', countryIso2: 'PL', postalCode: null, city: null }, requestedDeliveryMethod: null },
+  input: {
+    lines: [],
+    shipTo: { mode: 'plain', countryIso2: 'PL', postalCode: null, city: null },
+    requestedDeliveryMethod: null,
+  },
   saved: { candidates: [], unfulfillable: [], explanation: [] },
 };
 
@@ -38,7 +42,9 @@ describe('OmsRoutingDryRunController', () => {
 
   it('should pass an order subject and the draft through to the service', async () => {
     const { controller, dryRun } = build();
-    const draftRules = [{ id: 'd1', position: 1, kind: 'filter', name: 'in-stock', afterAction: 'quantity-split' }];
+    const draftRules = [
+      { id: 'd1', position: 1, kind: 'filter', name: 'in-stock', afterAction: 'quantity-split' },
+    ];
 
     await controller.dryRun('c1', { orderId: 'o1', draftRules } as RoutingDryRunRequestDto);
 

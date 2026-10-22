@@ -2,7 +2,11 @@ import type { RoutingEvaluation } from '@openlinker/core/fulfillment';
 
 import { diffRoutingEvaluations } from './diff-routing-evaluations';
 
-const assign = (orderLineId: string, locationId: string | null, quantity: number) => ({
+const assign = (
+  orderLineId: string,
+  locationId: string | null,
+  quantity: number
+): RoutingEvaluation['candidates'][number] => ({
   orderLineId,
   locationId,
   connectionId: 'conn-oms',
@@ -40,7 +44,10 @@ describe('diffRoutingEvaluations', () => {
 
   it('should report a line that became unfulfillable', () => {
     const saved = evaluation([assign('l1', 'loc-a', 2)]);
-    const draft = evaluation([], [{ orderLineId: 'l1', quantity: 2, resolution: 'refund', reason: 'x' }]);
+    const draft = evaluation(
+      [],
+      [{ orderLineId: 'l1', quantity: 2, resolution: 'refund', reason: 'x' }]
+    );
 
     expect(diffRoutingEvaluations(saved, draft)).toEqual([
       { orderLineId: 'l1', saved: ['loc-a:2'], draft: ['unfulfillable:2'] },

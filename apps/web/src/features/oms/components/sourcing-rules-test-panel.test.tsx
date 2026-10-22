@@ -28,9 +28,16 @@ const baseInput = {
 
 const routable: RoutingDryRunResult = {
   input: baseInput,
+  routingSkipReason: null,
   saved: {
     candidates: [
-      { orderLineId: 'l1', locationId: 'loc-a', connectionId: 'c', deliveryMethod: null, quantity: 2 },
+      {
+        orderLineId: 'l1',
+        locationId: 'loc-a',
+        connectionId: 'c',
+        deliveryMethod: null,
+        quantity: 2,
+      },
     ],
     unfulfillable: [],
     explanation: [
@@ -79,7 +86,9 @@ describe('SourcingRulesTestPanel (#2954)', () => {
     expect(await screen.findByTestId('routing-test-state-routable')).toBeInTheDocument();
     expect(screen.getByText('Every line can be sourced')).toBeInTheDocument();
     expect(screen.getByTestId('routing-test-lines')).toHaveTextContent('Poznań × 2');
-    expect(screen.getByTestId('routing-test-explanation')).toHaveTextContent('Has stock (removed 1)');
+    expect(screen.getByTestId('routing-test-explanation')).toHaveTextContent(
+      'Has stock (removed 1)'
+    );
   });
 
   it('should send a basket and never an order id', async () => {
@@ -99,7 +108,9 @@ describe('SourcingRulesTestPanel (#2954)', () => {
       ...routable,
       saved: {
         candidates: [],
-        unfulfillable: [{ orderLineId: 'l1', quantity: 2, resolution: 'refund', reason: 'no-stock-in-network' }],
+        unfulfillable: [
+          { orderLineId: 'l1', quantity: 2, resolution: 'refund', reason: 'no-stock-in-network' },
+        ],
         explanation: [],
       },
     });
@@ -109,7 +120,31 @@ describe('SourcingRulesTestPanel (#2954)', () => {
     await runBasket(user);
 
     expect(await screen.findByTestId('routing-test-state-unfulfillable')).toBeInTheDocument();
-    expect(screen.getByTestId('routing-test-unfulfillable')).toHaveTextContent('refund - no-stock-in-network');
+    expect(screen.getByTestId('routing-test-unfulfillable')).toHaveTextContent(
+      'refund - no-stock-in-network'
+    );
+  });
+
+  it('should warn that live routing would skip the order, before the result', async () => {
+    const run = vi.fn().mockResolvedValue({ ...routable, routingSkipReason: 'own-shop-order' });
+    const user = userEvent.setup();
+    renderPanel(run);
+
+    await runBasket(user);
+
+    expect(await screen.findByText('Live routing would not route this order')).toBeInTheDocument();
+    expect(screen.getByText(/came from your own shop/)).toBeInTheDocument();
+  });
+
+  it('should not warn when live routing would route the order', async () => {
+    const run = vi.fn().mockResolvedValue(routable);
+    const user = userEvent.setup();
+    renderPanel(run);
+
+    await runBasket(user);
+
+    await screen.findByText('Every line can be sourced');
+    expect(screen.queryByText('Live routing would not route this order')).not.toBeInTheDocument();
   });
 
   it('should say nothing was changed when the test fails, with a retry', async () => {
@@ -127,7 +162,14 @@ describe('SourcingRulesTestPanel (#2954)', () => {
 
   describe('compare', () => {
     const draft = [
-      { id: 'd1', position: 1, kind: 'sort', name: 'priority', afterAction: 'quantity-split', priorityLocationIds: ['loc-b'] },
+      {
+        id: 'd1',
+        position: 1,
+        kind: 'sort',
+        name: 'priority',
+        afterAction: 'quantity-split',
+        priorityLocationIds: ['loc-b'],
+      },
     ];
 
     it('should offer no compare control when the page supplies no draft', () => {
@@ -167,14 +209,18 @@ describe('SourcingRulesTestPanel (#2954)', () => {
     });
 
     it('should say a draft that changes nothing places every line as before', async () => {
-      const run = vi.fn().mockResolvedValue({ ...routable, draft: routable.saved, changedLines: [] });
+      const run = vi
+        .fn()
+        .mockResolvedValue({ ...routable, draft: routable.saved, changedLines: [] });
       const user = userEvent.setup();
       renderPanel(run, { draftRules: draft });
 
       await user.click(screen.getByLabelText('Compare with my draft'));
       await runBasket(user);
 
-      expect(await screen.findByText(/places every line exactly where the saved rules do/)).toBeInTheDocument();
+      expect(
+        await screen.findByText(/places every line exactly where the saved rules do/)
+      ).toBeInTheDocument();
     });
   });
 

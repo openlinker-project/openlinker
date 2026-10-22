@@ -38,7 +38,10 @@ const evaluationSchema = z.object({
     z.object({
       rule: z.object({ ruleId: z.string(), name: z.string(), displayLabel: z.string() }),
       eliminated: z.array(z.string()),
-      score: z.number().nullish().transform((value) => value ?? null),
+      score: z
+        .number()
+        .nullish()
+        .transform((value) => value ?? null),
       detail: nullableString,
     })
   ),
@@ -60,8 +63,11 @@ const dryRunResultSchema = z.object({
   }),
   saved: evaluationSchema,
   draft: evaluationSchema.nullish().transform((value) => value ?? undefined),
+  routingSkipReason: nullableString,
   changedLines: z
-    .array(z.object({ orderLineId: z.string(), saved: z.array(z.string()), draft: z.array(z.string()) }))
+    .array(
+      z.object({ orderLineId: z.string(), saved: z.array(z.string()), draft: z.array(z.string()) })
+    )
     .nullish()
     .transform((value) => value ?? undefined),
 });

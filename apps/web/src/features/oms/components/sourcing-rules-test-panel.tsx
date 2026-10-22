@@ -102,7 +102,7 @@ export function SourcingRulesTestPanel({
   const trimmedSearch = search.trim();
   const ordersQuery = useOrdersQuery(
     trimmedSearch.length >= 2 ? { search: trimmedSearch } : undefined,
-    { page: 1, limit: 5 },
+    { limit: 5, offset: 0 },
     { staleTime: 30_000 }
   );
   const picking = mode === 'order' && trimmedSearch.length >= 2;
@@ -181,7 +181,11 @@ export function SourcingRulesTestPanel({
 
       {mode === 'order' ? (
         <div data-testid="routing-test-order-picker">
-          <FormField name="routing-test-order" label={COPY.orderSearchLabel} description={COPY.orderSearchHint}>
+          <FormField
+            name="routing-test-order"
+            label={COPY.orderSearchLabel}
+            description={COPY.orderSearchHint}
+          >
             <Input
               value={search}
               placeholder={COPY.orderSearchPlaceholder}
@@ -191,12 +195,14 @@ export function SourcingRulesTestPanel({
               }}
             />
           </FormField>
-          {picking && ordersQuery.isError ? <Alert tone="error">{COPY.orderSearchError}</Alert> : null}
+          {picking && ordersQuery.isError ? (
+            <Alert tone="error">{COPY.orderSearchError}</Alert>
+          ) : null}
           {picking && !ordersQuery.isError && ordersQuery.data?.items.length === 0 ? (
             <p>{COPY.orderSearchEmpty}</p>
           ) : null}
           <ul className="sourcing-test__orders">
-            {(picking ? (ordersQuery.data?.items ?? []) : []).map((order) => (
+            {(picking ? ordersQuery.data?.items ?? [] : []).map((order) => (
               <li key={order.internalOrderId}>
                 <Button
                   tone={order.internalOrderId === orderId ? 'primary' : 'secondary'}
@@ -217,7 +223,11 @@ export function SourcingRulesTestPanel({
                 <Input
                   value={line.productVariantId}
                   onChange={(event) =>
-                    setLines(lines.map((l, i) => (i === index ? { ...l, productVariantId: event.target.value } : l)))
+                    setLines(
+                      lines.map((l, i) =>
+                        i === index ? { ...l, productVariantId: event.target.value } : l
+                      )
+                    )
                   }
                 />
               </FormField>
@@ -227,12 +237,19 @@ export function SourcingRulesTestPanel({
                   min={1}
                   value={line.quantity}
                   onChange={(event) =>
-                    setLines(lines.map((l, i) => (i === index ? { ...l, quantity: event.target.value } : l)))
+                    setLines(
+                      lines.map((l, i) =>
+                        i === index ? { ...l, quantity: event.target.value } : l
+                      )
+                    )
                   }
                 />
               </FormField>
               {lines.length > 1 ? (
-                <Button tone="secondary" onClick={() => setLines(lines.filter((_, i) => i !== index))}>
+                <Button
+                  tone="secondary"
+                  onClick={() => setLines(lines.filter((_, i) => i !== index))}
+                >
                   {COPY.basketRemoveLine}
                 </Button>
               ) : null}
@@ -242,7 +259,11 @@ export function SourcingRulesTestPanel({
             {COPY.basketAddLine}
           </Button>
           <FormField name="routing-test-country" label={COPY.basketCountry}>
-            <Input value={country} maxLength={2} onChange={(event) => setCountry(event.target.value)} />
+            <Input
+              value={country}
+              maxLength={2}
+              onChange={(event) => setCountry(event.target.value)}
+            />
           </FormField>
           <FormField name="routing-test-postcode" label={COPY.basketPostcode}>
             <Input value={postcode} onChange={(event) => setPostcode(event.target.value)} />
@@ -255,7 +276,11 @@ export function SourcingRulesTestPanel({
 
       {draftRules !== undefined ? (
         <label>
-          <input type="checkbox" checked={compare} onChange={(event) => setCompare(event.target.checked)} />{' '}
+          <input
+            type="checkbox"
+            checked={compare}
+            onChange={(event) => setCompare(event.target.checked)}
+          />{' '}
           {COPY.compareToggle}
         </label>
       ) : null}
@@ -299,6 +324,11 @@ function DryRunResult({
 
   return (
     <div>
+      {result.routingSkipReason !== null ? (
+        <Alert tone="warning" title={COPY.skippedTitle}>
+          {COPY.skipReasons[result.routingSkipReason] ?? COPY.skippedUnknown} {COPY.skippedNote}
+        </Alert>
+      ) : null}
       <StatusBadge tone={hasShortfall ? 'warning' : 'success'}>
         {hasShortfall ? COPY.resultUnfulfillable : COPY.resultRoutable}
       </StatusBadge>
@@ -317,12 +347,17 @@ function DryRunResult({
       <ul data-testid="routing-test-lines">
         {result.input.lines.map((line) => {
           const placement = describePlacement(result.saved, line.orderLineId, locationName);
-          const short = result.saved.unfulfillable.filter((u) => u.orderLineId === line.orderLineId);
+          const short = result.saved.unfulfillable.filter(
+            (u) => u.orderLineId === line.orderLineId
+          );
           return (
             <li key={line.orderLineId}>
               <strong>{line.productVariantId}</strong> × {line.quantity}: {placement.join(', ')}
               {short.map((u) => (
-                <span key={`${u.orderLineId}-${u.resolution}`} data-testid="routing-test-unfulfillable">
+                <span
+                  key={`${u.orderLineId}-${u.resolution}`}
+                  data-testid="routing-test-unfulfillable"
+                >
                   {' '}
                   {u.quantity} × {u.resolution} - {u.reason}
                 </span>
@@ -340,7 +375,9 @@ function DryRunResult({
           {result.saved.explanation.map((step, index) => (
             <li key={`${step.rule.ruleId}-${index}`}>
               {step.rule.displayLabel}
-              {step.eliminated.length > 0 ? ` (${COPY.explanationRemoved(step.eliminated.length)})` : ''}
+              {step.eliminated.length > 0
+                ? ` (${COPY.explanationRemoved(step.eliminated.length)})`
+                : ''}
               {step.detail ? ` - ${step.detail}` : ''}
             </li>
           ))}
@@ -358,8 +395,8 @@ function DryRunResult({
               <ul>
                 {(result.changedLines ?? []).map((change) => (
                   <li key={change.orderLineId}>
-                    {change.orderLineId}: {COPY.compareSaved} {change.saved.join(', ')} → {COPY.compareDraft}{' '}
-                    {change.draft.join(', ')}
+                    {change.orderLineId}: {COPY.compareSaved} {change.saved.join(', ')} →{' '}
+                    {COPY.compareDraft} {change.draft.join(', ')}
                   </li>
                 ))}
               </ul>

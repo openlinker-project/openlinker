@@ -35,6 +35,7 @@ import {
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
   projectOrderForRouting,
+  type FulfillmentRoutingSkipReason,
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import { getEnvBoolean } from '@openlinker/shared/config';
@@ -85,11 +86,15 @@ export class RoutingDryRunService implements IRoutingDryRunService {
       );
     }
 
-    const input = await this.buildInput(request);
+    const { input, routingSkipReason } = await this.buildInput(request);
 
     // `evaluate`, never `route`: the contract-level guarantee that nothing is committed.
     if (draftRules === undefined) {
-      return { input: this.describeInput(input), saved: await router.evaluate(input) };
+      return {
+        input: this.describeInput(input),
+        saved: await router.evaluate(input),
+        routingSkipReason,
+      };
     }
 
     if (!isDraftRuleEvaluator(router)) {
@@ -104,6 +109,7 @@ export class RoutingDryRunService implements IRoutingDryRunService {
     return {
       input: this.describeInput(input),
       saved,
+      routingSkipReason,
       draft,
       changedLines: diffRoutingEvaluations(saved, draft),
     };
@@ -156,24 +162,29 @@ export class RoutingDryRunService implements IRoutingDryRunService {
     return [...rules].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
   }
 
-  private async buildInput(request: DryRunRequest): Promise<RoutingInput> {
+  private async buildInput(
+    request: DryRunRequest
+  ): Promise<{ input: RoutingInput; routingSkipReason: FulfillmentRoutingSkipReason | null }> {
     const { subject } = request;
     const storePii = getEnvBoolean('OL_STORE_PII', true);
 
     if (subject.basket !== undefined) {
       const { basket } = subject;
       return {
-        orderId: BASKET_ORDER_ID,
-        lines: basket.lines.map((line, index) => ({
-          orderLineId: `basket-line-${index + 1}`,
-          productVariantId: line.productVariantId,
-          quantity: line.quantity,
-        })),
-        shipTo: buildRoutingShipTo(
-          { countryIso2: basket.countryIso2, postalCode: basket.postalCode ?? null },
-          { storePii }
-        ),
-        requestedDeliveryMethod: basket.deliveryMethod ?? null,
+        routingSkipReason: null,
+        input: {
+          orderId: BASKET_ORDER_ID,
+          lines: basket.lines.map((line, index) => ({
+            orderLineId: `basket-line-${index + 1}`,
+            productVariantId: line.productVariantId,
+            quantity: line.quantity,
+          })),
+          shipTo: buildRoutingShipTo(
+            { countryIso2: basket.countryIso2, postalCode: basket.postalCode ?? null },
+            { storePii }
+          ),
+          requestedDeliveryMethod: basket.deliveryMethod ?? null,
+        },
       };
     }
 
@@ -210,7 +221,10 @@ export class RoutingDryRunService implements IRoutingDryRunService {
       );
     }
 
-    return { orderId, ...projection };
+    return {
+      input: { orderId, ...projection },
+      routingSkipReason: record.fulfillmentRoutingSkipReason,
+    };
   }
 
   private describeInput(input: RoutingInput): DryRunResult['input'] {

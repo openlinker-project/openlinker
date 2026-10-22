@@ -15,16 +15,16 @@
  */
 import { loginAsAdmin, loginAsOperator } from './helpers/test-auth.helper';
 import { createTestConnection } from './helpers/test-connection.helper';
-import {
-  getTestHarness,
-  IntegrationTestHarness,
-  resetTestHarness,
-  teardownTestHarness,
-} from './setup';
+import type { IntegrationTestHarness } from './setup';
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 
 interface DryRunBody {
   input: { lines: unknown[]; shipTo: { mode: string; countryIso2: string } };
-  saved: { candidates: unknown[]; unfulfillable: Array<{ reason: string }>; explanation: unknown[] };
+  saved: {
+    candidates: unknown[];
+    unfulfillable: Array<{ reason: string }>;
+    explanation: unknown[];
+  };
   draft?: unknown;
   changedLines?: unknown[];
 }
@@ -55,9 +55,10 @@ describe('OMS routing dry run (integration)', () => {
   }
 
   async function count(table: string): Promise<number> {
-    const rows = (await harness
+    const raw: unknown = await harness
       .getDataSource()
-      .query(`SELECT COUNT(*)::int AS n FROM "${table}"`)) as Array<{ n: number }>;
+      .query(`SELECT COUNT(*)::int AS n FROM "${table}"`);
+    const rows = raw as Array<{ n: number }>;
     return rows[0]?.n ?? 0;
   }
 
@@ -104,7 +105,13 @@ describe('OMS routing dry run (integration)', () => {
       .send({
         basket,
         draftRules: [
-          { id: 'draft-1', position: 1, kind: 'filter', name: 'in-stock', afterAction: 'quantity-split' },
+          {
+            id: 'draft-1',
+            position: 1,
+            kind: 'filter',
+            name: 'in-stock',
+            afterAction: 'quantity-split',
+          },
         ],
       })
       .expect(200);
@@ -125,7 +132,15 @@ describe('OMS routing dry run (integration)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         basket,
-        draftRules: [{ id: 'bad', position: 1, kind: 'filter', name: 'nearest', afterAction: 'quantity-split' }],
+        draftRules: [
+          {
+            id: 'bad',
+            position: 1,
+            kind: 'filter',
+            name: 'nearest',
+            afterAction: 'quantity-split',
+          },
+        ],
       })
       .expect(400);
   });

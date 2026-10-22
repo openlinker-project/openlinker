@@ -14,7 +14,7 @@ import type { DryRunResult } from '../../application/interfaces/routing-dry-run.
 class RuleRefDto {
   @ApiProperty() ruleId!: string;
   @ApiProperty() name!: string;
-  @ApiProperty({ description: "Operator-facing label supplied by the router; render as-is." })
+  @ApiProperty({ description: 'Operator-facing label supplied by the router; render as-is.' })
   displayLabel!: string;
 }
 
@@ -49,7 +49,10 @@ class EvaluationDto {
 
 class LineChangeDto {
   @ApiProperty() orderLineId!: string;
-  @ApiProperty({ type: [String], description: '`locationId:quantity` pairs under the saved rules.' })
+  @ApiProperty({
+    type: [String],
+    description: '`locationId:quantity` pairs under the saved rules.',
+  })
   saved!: string[];
   @ApiProperty({ type: [String], description: '`locationId:quantity` pairs under the draft.' })
   draft!: string[];
@@ -78,13 +81,25 @@ class DryRunInputDto {
 export class RoutingDryRunResponseDto {
   @ApiProperty({
     type: DryRunInputDto,
-    description: 'Exactly what the router was told (ADR-062): no buyer name, email, phone or street.',
+    description:
+      'Exactly what the router was told (ADR-062): no buyer name, email, phone or street.',
   })
   input!: DryRunInputDto;
 
   @ApiProperty({ type: EvaluationDto }) saved!: EvaluationDto;
 
-  @ApiPropertyOptional({ type: EvaluationDto, description: 'Present only when a draft was supplied.' })
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'Why live routing would not route this order, when it would not (own-shop, already mirrored, shipped by another system). The evaluation above ignores this, so read it first.',
+  })
+  routingSkipReason!: string | null;
+
+  @ApiPropertyOptional({
+    type: EvaluationDto,
+    description: 'Present only when a draft was supplied.',
+  })
   draft?: EvaluationDto;
 
   @ApiPropertyOptional({

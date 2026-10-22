@@ -95,7 +95,9 @@ export class DraftRuleDto {
 }
 
 export class RoutingDryRunRequestDto {
-  @ApiPropertyOptional({ description: 'An ingested order to test. Mutually exclusive with `basket`.' })
+  @ApiPropertyOptional({
+    description: 'An ingested order to test. Mutually exclusive with `basket`.',
+  })
   @IsOptional()
   @IsString()
   @IsNotEmpty()
