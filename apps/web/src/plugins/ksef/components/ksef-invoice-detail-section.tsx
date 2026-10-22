@@ -26,9 +26,9 @@ import type { InvoiceDetailSectionProps } from '../../../shared/plugins';
 import {
   RegulatoryStatusBadge,
   regCardToneFor,
-  useKsefUpoDownload,
-  useKsefUpoPreview,
-  useKsefFa3,
+  useRegulatoryConfirmationDownload,
+  useRegulatoryConfirmationPreview,
+  useInvoiceSourceDocument,
 } from '../../../features/invoicing';
 import { KsefFa3View } from './ksef-fa3-view';
 import { KSEF_REGULATORY_STATUS_LABELS } from '../lib/ksef-regulatory-status-labels';
@@ -62,9 +62,9 @@ export function KsefInvoiceDetailSection({
   connection,
 }: InvoiceDetailSectionProps): ReactElement | null {
   const { t } = useTranslation();
-  const upoDownload = useKsefUpoDownload();
-  const upoPreview = useKsefUpoPreview();
-  const fa3 = useKsefFa3();
+  const upoDownload = useRegulatoryConfirmationDownload();
+  const upoPreview = useRegulatoryConfirmationPreview();
+  const fa3 = useInvoiceSourceDocument();
   const { showToast } = useToast();
   // Tracks a fetched-but-unparseable FA(3) document so the preview area falls
   // through to placeholder/error copy instead of rendering nothing (KsefFa3View

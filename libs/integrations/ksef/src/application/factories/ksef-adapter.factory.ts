@@ -109,6 +109,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
           defaultTaxRate,
           defaultLineUnit,
           numberingTimeZone,
+          environment: env,
           exchangeRateResolver,
           allowCrossBorder,
         },

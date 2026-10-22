@@ -12,6 +12,7 @@ import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
+import type { PaymentMethod } from '../types/payment-method.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
 import type { BuyerTaxId } from '../types/buyer-tax-id.types';
@@ -429,8 +430,33 @@ export class OrderRecord {
      * for the `salesDocumentBlockReason` reason. Appended LAST: positional
      * constructor.
      */
-    public readonly fulfillmentBlock: FulfillmentBlock | null = null
+    public readonly fulfillmentBlock: FulfillmentBlock | null = null,
+    /**
+     * How the buyer pays (#3294), denormalized from the ingested order so a
+     * query never expands JSONB. `null` means the source reported nothing - the
+     * state of every row that predates the column, which is deliberately not
+     * back-filled (ADR-039's precedent for a field that predates its own
+     * migration). Read through {@link paymentMethodOrUnknown}, never bare: a
+     * `null` and an explicit `'unknown'` mean the same thing to every consumer.
+     *
+     * Written only on the `'ready'` path (`upsertWithLineItems`), like the
+     * analytics scalars. Appended LAST: positional constructor.
+     */
+    public readonly paymentMethod: PaymentMethod | null = null
   ) {}
+
+  /**
+   * The payment method with the unreported case folded into `'unknown'`
+   * (#3294). Pure derivation of an already-loaded field (ADR-011).
+   *
+   * The only intended read of {@link paymentMethod}: it keeps "the source did
+   * not say" and "the adapter could not map it" from ever being told apart by a
+   * caller, because no caller may act differently on the difference - and
+   * neither may pre-fill a COD amount or choose an invoice payment form.
+   */
+  get paymentMethodOrUnknown(): PaymentMethod {
+    return this.paymentMethod ?? 'unknown';
+  }
 
   /**
    * The buyer tax id in its three domain states, decoded from the column's

@@ -324,7 +324,7 @@ export interface Fa3BuilderInput {
   buyerIsVatGroupMember?: boolean;
   /**
    * Operator-supplied / line-derived fiscal annotation flags → the FA(3)
-   * `Adnotacje` block (#1580, ADR-077). The operator declarations
+   * `Adnotacje` block (#1580, ADR-078). The operator declarations
    * (`cashAccounting` → `P_16`, `selfBilling` → `P_17`, `splitPayment` →
    * `P_18A`, `triangulation` → `P_23`, `marginScheme` → the `PMarzy` yes-branch)
    * arrive from the neutral `IssueInvoiceCommand.annotations`; each absent flag

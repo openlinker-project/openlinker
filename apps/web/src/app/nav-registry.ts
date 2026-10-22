@@ -64,21 +64,17 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // screen. No `countKey`: the #2406 read exposes no counts endpoint the
       // nav could read, and a badge is worse absent than wrong (the `/returns`
       // precedent below). Permission-gated (#3340, wording corrected at #3368):
-      // neither `GET /users/packers` nor the assignment `PATCH` actually
-      // requires `orders:write` — both are `@Roles('admin', 'operator')`.
-      // `orders:write` is a deliberate PROXY for that role set, correct only
-      // because `ROLE_PERMISSIONS` grants it to exactly admin + operator
-      // today. There is no `fulfillment:*` permission a reader could go
-      // looking for instead. This ALSO excludes `packer` (#3221) as a side
-      // effect — `bench:write` is a packer's only permission, so a `packer`
-      // 403s here exactly like a `viewer` does.
+      // gated on `fulfillment:read` (#3736), held by admin + operator +
+      // viewer: the board and the task detail are readable by a viewer (incl.
+      // the public demo), while every write stays behind `orders:write`.
+      // `packer` does not hold it (#3221), so a packer 403s here as before.
       //
       // `requiresOms` (#3505): with routing switched off no fulfilment task is
       // ever created, so the screen is empty by construction.
       {
         to: '/fulfillment',
         label: 'Fulfilment',
-        requiresPermission: 'orders:write',
+        requiresPermission: 'fulfillment:read',
         requiresOms: true,
       },
       // The bench itself (#2413) had no way in but a typed URL. A packer never
@@ -98,7 +94,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       {
         to: '/bench',
         label: 'Pack bench',
-        requiresPermission: 'bench:write',
+        requiresPermission: 'bench:read',
         requiresOms: true,
       },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint

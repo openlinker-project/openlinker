@@ -205,6 +205,7 @@ describe('ListingsController', () => {
       findManyRows: jest.fn(),
       countMany: jest.fn(),
       markStaleExceptVariants: jest.fn(),
+      clearPriceBasisPending: jest.fn(),
     recordTaxRate: jest.fn(),
     findTaxRate: jest.fn(),
     clearTaxRate: jest.fn(),

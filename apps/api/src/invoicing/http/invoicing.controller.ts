@@ -101,6 +101,8 @@ import {
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   IPaymentStatusRefreshService,
   normalizeShippingLineName,
+  classifyInvoiceFailure,
+  classifyInvoiceFailureMode,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -1589,8 +1591,31 @@ export class InvoicingController {
     if (error instanceof AdapterNotFoundException) {
       return new BadGatewayException('Invoicing provider is unavailable');
     }
-    // Any other throw from the issuance path is an adapter rejection (the service
-    // rethrows the raw provider error). Do NOT return it verbatim — it may carry
+    // A TERMINAL rejection the adapter classified (#3772). The service has
+    // already stored this exact classification on the record - `classifyInvoiceFailure`
+    // is the one function both read - so the response and the record can never
+    // disagree. The body carries only the closed code and PII-free sentences:
+    // `failureReason` is a fixed constant for every code except
+    // `connection-setup-incomplete`, where it is the adapter's own sentence the
+    // adapter vouched for by opting in. The raw message is still logged, never
+    // returned, since it may echo provider or buyer data.
+    if (classifyInvoiceFailureMode(error) === 'rejected') {
+      const { failureCode, failureReason } = classifyInvoiceFailure(error);
+      const correlationId = `inv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      this.logger.warn(
+        `Invoice issuance rejected (${correlationId}, failureCode=${failureCode}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return new UnprocessableEntityException({
+        message: failureReason,
+        error: 'InvoiceIssueRejected',
+        failureCode,
+        ...(failureCode === 'connection-setup-incomplete' ? { failureReason } : {}),
+      });
+    }
+    // Any other throw from the issuance path is an adapter failure the service
+    // could not classify. Do NOT return it verbatim - it may carry
     // provider-echoed buyer PII. Log internally with a correlation id; return a
     // generic 422 referencing only that id.
     if (error instanceof Error) {

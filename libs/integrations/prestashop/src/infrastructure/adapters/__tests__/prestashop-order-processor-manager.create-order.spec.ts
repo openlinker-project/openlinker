@@ -581,6 +581,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
           kind: 'resolved',
           rate: 0.23,
+          matchedBy: 'catch-all',
         });
 
         await adapter.createOrder(
@@ -640,6 +641,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
             kind: 'resolved',
             rate: 0.23,
+            matchedBy: 'catch-all',
           });
           (mockOpenLinkerModuleClient.supportsLinePrices as jest.Mock).mockReturnValue(true);
         });
@@ -684,6 +686,9 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
               subtotal: 109.97,
               tax: 0,
               shipping: 5.0,
+              // A net-priced source states what the buyer paid for shipping
+              // separately; the OL Dynamic carrier's sidecar needs it (ADR-077).
+              shippingGross: 6.15,
               total: 114.97,
               currency: 'EUR',
               taxTreatment: 'exclusive',
@@ -822,7 +827,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
       it('writes no pin at all when a later line has an unknown tax rate', async () => {
         arrange();
         (mockTaxRateResolver.resolveProductTaxRate as jest.Mock)
-          .mockResolvedValueOnce({ kind: 'resolved', rate: 0.23 })
+          .mockResolvedValueOnce({ kind: 'resolved', rate: 0.23, matchedBy: 'catch-all' })
           .mockResolvedValue({
             kind: 'unknown',
             reason: 'configuration',
@@ -850,6 +855,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
           kind: 'resolved',
           rate: 0,
+          matchedBy: 'no-tax-group',
         });
 
         await adapter.createOrder(grossOrder());

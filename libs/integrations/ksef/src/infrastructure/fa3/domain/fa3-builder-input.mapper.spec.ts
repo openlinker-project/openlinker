@@ -162,6 +162,58 @@ describe('mapToFa3BuilderInput — payment (#1311)', () => {
   });
 });
 
+describe('mapToFa3BuilderInput - order payment method (#3294)', () => {
+  it.each([
+    ['cash_on_delivery', '1'],
+    ['bank_transfer', '6'],
+  ] as const)('should set FormaPlatnosci for %s, keeping the rest of the connection payment', (paymentMethod, forma) => {
+    const context: Fa3MappingContext = {
+      ...CONTEXT,
+      payment: { formaPlatnosci: '2', paymentTermDays: 14 },
+    };
+    const result = mapToFa3BuilderInput({ ...baseCommand('23'), paymentMethod }, context);
+    expect(result.payment).toEqual({ formaPlatnosci: forma, paymentTermDays: 14 });
+  });
+
+  it('should not print the connection bank account on a cash invoice', () => {
+    const context: Fa3MappingContext = {
+      ...CONTEXT,
+      payment: {
+        paymentTermDays: 7,
+        bankAccount: { nrRb: '61109010140000071219812874' },
+      },
+    };
+    const cash = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'cash_on_delivery' },
+      context,
+    );
+    expect(cash.payment).toEqual({ paymentTermDays: 7, formaPlatnosci: '1' });
+
+    const transfer = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'bank_transfer' },
+      context,
+    );
+    expect(transfer.payment?.bankAccount).toBeDefined();
+  });
+
+  it('should emit a payment block from the order method even when the connection has none', () => {
+    const result = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'bank_transfer' },
+      CONTEXT,
+    );
+    expect(result.payment).toEqual({ formaPlatnosci: '6' });
+  });
+
+  it.each(['online', undefined] as const)(
+    'should keep the connection default for the method %s',
+    (paymentMethod) => {
+      const context: Fa3MappingContext = { ...CONTEXT, payment: { formaPlatnosci: '2' } };
+      const result = mapToFa3BuilderInput({ ...baseCommand('23'), paymentMethod }, context);
+      expect(result.payment).toEqual({ formaPlatnosci: '2' });
+    },
+  );
+});
+
 describe('mapToFa3BuilderInput - sale date P_6 (#1525)', () => {
   it('should pass the neutral saleDate through to the builder input', () => {
     const result = mapToFa3BuilderInput({ ...baseCommand('23'), saleDate: '2026-06-20' }, CONTEXT);

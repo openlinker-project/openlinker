@@ -163,14 +163,24 @@ than a guessed sentence, and the hero's two raw axis labels render regardless, s
 page is never blank. See ADR-076 for the decision, the rejected alternatives and the
 fail-closed rule in full.
 
-**The board and the detail are admin + operator screens (#3096).** Both pages render
-inside `AccessGate require="orders:write"` with an `AccessDeniedState` fallback, so no
-query mounts for a session that would be refused, and the API matches:
-`GET /fulfillment/works/:workId` and its `/shipments` are `@Roles('admin', 'operator')`.
-`GET /fulfillment/works` stays open to `viewer` — the order-detail panel reads it. The
-board asks for `active=true`, a server-resolved alias for "every status outside the
-domain's terminal set", so closed and cancelled work never reaches its lanes without
-this app mirroring the status vocabulary.
+**The board and the detail are readable by admin, operator and viewer; writes stay admin + operator (#3096, #3736).**
+Both pages render inside `AccessGate require="fulfillment:read"` with an `AccessDeniedState`
+fallback, so no query mounts for a session that would be refused. `fulfillment:read` is held by
+admin, operator and viewer and never by `packer`, and must stay identical to the `@Roles` lists
+on `FulfillmentWorkController`'s GET routes and `GET /users/packers` (the roster the board names
+packers with). `scripts/check-bench-write-roles.mjs` compares the permission against the UNION of
+roles across the controller's routes and against `GET /users/packers` alone; it cannot see a single
+GET narrowed back to admin + operator (the list route would keep `viewer` in the union), so the
+per-route lists are pinned by `fulfillment-work.controller.spec.ts`. The API matches:
+`GET /fulfillment/works`, `GET /fulfillment/works/:workId` and its `/shipments` are
+`@Roles('admin', 'operator', 'viewer')`, while `POST .../actions/:action` and
+`PATCH .../assignment` stay `@Roles('admin', 'operator')`. Every write control (assign/move,
+self-serve toggle, actions, drag-and-drop) stays behind `useWriteAccess('orders:write')`, so a
+regular viewer sees none and the public-demo viewer keeps the locked-but-visible rendering. The
+one disclosure a viewer gains is `GET /users/packers`: each active packer's id and username, so
+assignments render as names. The board asks for `active=true`, a server-resolved alias for "every
+status outside the domain's terminal set", so closed and cancelled work never reaches its lanes
+without this app mirroring the status vocabulary.
 
 **A bench-only session never renders the app shell (#3096, F-9).**
 `resolveSessionSurface` (`shared/auth/session-surface.ts`) derives "bench-only" from
@@ -378,6 +388,17 @@ Rules:
 - submissions go through feature mutations
 - server-side validation remains the source of truth
 - server validation errors should be mapped back to fields where practical
+
+`FormField` has two modes, chosen by its children:
+
+- **One control element** - cloned with `id`, `aria-describedby` and `aria-invalid`
+  automatically; the control must forward them to its native element.
+- **Anything else** (a fragment, an array, several controls on one row, a conditional that
+  can be `null`) - rendered as-is and nothing is cloned. The one control that owns the
+  label and error must spread `useFormFieldControl()` itself. Call the hook in a **child**
+  component: called in the parent that renders `<FormField>`, it reads the context above
+  itself and silently returns `{}`. In dev, a multi-child field with an `error` whose
+  children never called the hook logs a `console.warn`.
 
 ### Local UI State
 
@@ -758,6 +779,8 @@ A plugin author writes one file per plugin (`plugins/<name>/index.ts`) containin
 `build.navItems` accepts an optional `requiresRole` typed `GroupRoleGate` (today: `'admin'` only, a single role) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Item-level gating on the in-tree registry (`LiveNavItem.requiresRole`, `ItemRequiresRole`) is different: it takes a plural `readonly Role[]` (e.g. `['admin', 'operator', 'viewer']`), not a single role. Group-level and contribution-level gates stay the singular admin-only form. Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlatform()`, `usePlatforms()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this. The same rule bans re-introduction of the old `WebPlugin` / `PlatformPlugin` / `IN_TREE_PLUGINS` identifiers (#702).
+
+Provider **names** are held to the same boundary (#3272): `scripts/check-provider-name-boundary.mjs` (under `pnpm check:invariants`) fails the build when `eparagony`, `ksef`, `paragon` or `kasa` appears in operator-facing copy (JSX text, user-facing JSX attribute values and `*-copy.ts` / `*.copy.ts` strings) anywhere in `apps/web/src` outside `plugins/`. Identifiers, comments and imports are deliberately unscanned, so a shared component may still explain in a docblock why it is neutral. Its exemption table is empty and must stay empty: an unavoidable hit means the surface is in the wrong folder (or the copy should be provider-neutral). Provider setup screens therefore live under `plugins/<name>/components/`. Hooks that call the API client stay in the feature that owns the neutral endpoint (e.g. `features/invoicing`) with a provider-neutral name, because plugins may not import `useApiClient` (see the plugin `no-restricted-imports` rule).
 
 ### `BuildContribution` slot reference
 

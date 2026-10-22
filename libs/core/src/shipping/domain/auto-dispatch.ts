@@ -84,7 +84,7 @@ const LOCKER_METHOD_RE = /paczkomat|locker|automat|punkt|pickup|one\s*box|one\s*
  */
 export function resolveAutoDispatchDeliveryIntent(
   shipping: OrderShipping | undefined,
-  pickupPoint: OrderPickupPoint | undefined,
+  pickupPoint: OrderPickupPoint | undefined
 ): DeliveryIntent {
   if (pickupPoint !== undefined) {
     return DELIVERY_INTENT.PickupPoint;
@@ -131,11 +131,18 @@ export interface AutoDispatchParcelOptions {
  * `autoDispatch` config, most specific first, per field (#3651). A `null`
  * profile, or a null field on it, falls through to the connection value, so a
  * rule without a profile yields exactly the connection-only options.
- * Dimensions exist only on the profile and only when the whole box is set.
+ * The box is taken whole from the profile, else whole from the connection
+ * default (#3571) - never mixed field by field.
  */
 export function mergeAutoDispatchParcelOptions(
   profile: AutoDispatchParcelProfile | null,
-  connection: { parcelTemplate?: string; defaultWeightGrams?: number },
+  connection: {
+    parcelTemplate?: string;
+    defaultWeightGrams?: number;
+    lengthMm?: number;
+    widthMm?: number;
+    heightMm?: number;
+  }
 ): AutoDispatchParcelOptions {
   const merged: AutoDispatchParcelOptions = {};
   const template = profile?.parcelTemplate ?? connection.parcelTemplate;
@@ -156,6 +163,16 @@ export function mergeAutoDispatchParcelOptions(
       width: profile.widthMm,
       height: profile.heightMm,
     };
+  } else if (
+    isPositiveFiniteNumber(connection.lengthMm) &&
+    isPositiveFiniteNumber(connection.widthMm) &&
+    isPositiveFiniteNumber(connection.heightMm)
+  ) {
+    merged.dimensions = {
+      length: connection.lengthMm,
+      width: connection.widthMm,
+      height: connection.heightMm,
+    };
   }
   return merged;
 }
@@ -167,7 +184,7 @@ export function mergeAutoDispatchParcelOptions(
  */
 export function findMissingParcelRequirement(
   parcel: ShipmentParcel,
-  requirements: { readonly requiresDimensions: boolean },
+  requirements: { readonly requiresDimensions: boolean }
 ): 'dimensions' | null {
   return requirements.requiresDimensions && parcel.dimensions === undefined ? 'dimensions' : null;
 }
@@ -190,7 +207,7 @@ export function findMissingParcelRequirement(
 export function resolveAutoDispatchParcel(
   lines: readonly AutoDispatchWorkLine[],
   variantWeightGrams: ReadonlyMap<string, number | null | undefined>,
-  options: AutoDispatchParcelOptions,
+  options: AutoDispatchParcelOptions
 ): ShipmentParcel | null {
   let totalWeightGrams = 0;
   for (const line of lines) {
@@ -305,7 +322,7 @@ export interface OrderDispatchTarget {
 }
 
 export function resolveOrderDispatchTarget(
-  order: Pick<Order, 'shipping' | 'pickupPoint' | 'shippingAddress' | 'customerEmail'>,
+  order: Pick<Order, 'shipping' | 'pickupPoint' | 'shippingAddress' | 'customerEmail'>
 ): OrderDispatchTarget {
   const deliveryIntent = resolveAutoDispatchDeliveryIntent(order.shipping, order.pickupPoint);
   const recipient = resolveAutoDispatchRecipient({

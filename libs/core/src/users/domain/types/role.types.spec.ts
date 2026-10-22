@@ -110,8 +110,8 @@ describe('ROLE_PERMISSIONS', () => {
      * `scripts/check-bench-write-roles.mjs` - and each is exact so a fifth
      * permission cannot arrive without somebody deciding it should.
      */
-    it('gives `packer` exactly the one permission its bench controls need', () => {
-      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write']);
+    it('gives `packer` exactly the two permissions its bench controls need (write + read)', () => {
+      expect(ROLE_PERMISSIONS.packer).toEqual(['bench:write', 'bench:read']);
     });
 
     /**
@@ -129,6 +129,20 @@ describe('ROLE_PERMISSIONS', () => {
           !ROLE_PERMISSIONS[role].includes('orders:read')
       );
       expect(benchOnly).toEqual(['packer']);
+    });
+  });
+
+  describe('fulfillment:read (#3736)', () => {
+    it('should be held by admin, operator and viewer, and never by packer', () => {
+      const holders = UserRoleValues.filter((role) =>
+        ROLE_PERMISSIONS[role].includes('fulfillment:read')
+      );
+      expect(holders).toEqual(['admin', 'operator', 'viewer']);
+    });
+
+    it('should not hand viewer any Fulfilment write permission', () => {
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('orders:write');
+      expect(ROLE_PERMISSIONS.viewer).not.toContain('bench:write');
     });
   });
 

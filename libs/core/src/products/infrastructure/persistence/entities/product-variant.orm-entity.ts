@@ -59,6 +59,12 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   staleAt!: Date | null;
 
+  // ADR-077: true while the variant's stored price may still be the NET figure
+  // a pre-ADR-077 master adapter reported. Set only by the migration that
+  // introduced it; cleared by the first upsert that carries a price.
+  @Column({ type: 'boolean', default: false })
+  priceBasisPending!: boolean;
+
   /**
    * Per-variant tax-rate OVERRIDE (#2054, ADR-063). Set only by a master that
    * keys tax per variant (WooCommerce can; PrestaShop keys on the product, so

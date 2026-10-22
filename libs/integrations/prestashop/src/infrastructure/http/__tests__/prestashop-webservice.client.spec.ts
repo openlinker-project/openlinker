@@ -252,6 +252,60 @@ describe('PrestashopWebserviceClient', () => {
 
       expect(result).toEqual({ id: '1', name: 'Test Product' });
     });
+
+    // ADR-077: a single-product read asks PrestaShop for its own gross price
+    // through the WebService virtual price fields.
+    it('should append the virtual price-field parameters when priceFields are given', async () => {
+      const mockResponse = {
+        prestashop: { product: { id: '1', price: '100.000000', ol_gross: '123.000000' } },
+      };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      const result = await client.getResource<{ ol_gross: string }>('products', '1', {
+        priceFields: [{ name: 'ol_gross', countryId: 14, useTax: true, productAttribute: 0 }],
+      });
+
+      const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://shop.example.com/api/products/1' +
+          '?price[ol_gross][use_tax]=1' +
+          '&price[ol_gross][country]=14' +
+          '&price[ol_gross][use_reduction]=0' +
+          '&price[ol_gross][product_attribute]=0'
+      );
+      expect(result.ol_gross).toBe('123.000000');
+    });
+
+    it('should leave the URL unchanged when the options carry no price fields', async () => {
+      const mockResponse = { prestashop: { product: { id: '1' } } };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      await client.getResource('products', '1', { priceFields: [] });
+
+      const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://shop.example.com/api/products/1'
+      );
+    });
+
+    it('should refuse to send a request when a price field name is not a bare identifier', async () => {
+      await expect(
+        client.getResource('products', '1', {
+          priceFields: [{ name: 'ol_gross]&x=[1', countryId: 14, useTax: true }],
+        })
+      ).rejects.toThrow('Invalid PrestaShop filter key');
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('listResources', () => {

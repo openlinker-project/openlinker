@@ -11,6 +11,7 @@
  *
  * @module libs/core/src/invoicing/domain/types
  */
+import type { PaymentMethod } from '@openlinker/core/orders/types';
 import type { BuyerProfile } from '../entities/buyer-profile.entity';
 import type { InvoiceRecord } from '../entities/invoice-record.entity';
 
@@ -99,6 +100,17 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *     matches. The operator-fixable remedy is a one-field connection config
  *     change, which is why this must not collapse into `provider-rejected` —
  *     that copy gives no clue there is a config knob to set at all.
+ *   - `connection-setup-incomplete`: a TERMINAL `rejected` failure the
+ *     ADAPTER raised before contacting the provider, because the connection
+ *     is missing a setting it needs (#3772) - e.g. an invoicing connection
+ *     with no seller tax number. Reached only when the adapter DECLARES it,
+ *     via `failureCause: 'connection-setup'` on its throwable, never by
+ *     matching words; and only for this code is `failureReason` the
+ *     adapter's own sentence, because declaring the cause is the adapter's
+ *     promise that the sentence comes from connection config, not buyer data.
+ *     Must not collapse into `provider-rejected`, whose copy asserts the
+ *     provider rejected a request it never received and sends the operator
+ *     to the order's data when the fix is on the connection.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -110,6 +122,7 @@ export const InvoiceFailureCodeValues = [
   'buyer-tax-id-invalid',
   'invalid-currency',
   'sale-classification-required',
+  'connection-setup-incomplete',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
@@ -666,7 +679,7 @@ export interface StoredDocument {
 
 /**
  * Neutral, operator-supplied fiscal annotation flags on an invoice (#1580,
- * ADR-077). Country-agnostic (ADR-026): each flag is a generic commercial /
+ * ADR-078). Country-agnostic (ADR-026): each flag is a generic commercial /
  * fiscal concept a provider maps to its own regime — a KSeF adapter maps them
  * to the FA(3) `Adnotacje` block. Every field is optional; an absent flag ⇒ the
  * provider emits its own "does not apply" default. Core never interprets them.
@@ -735,6 +748,14 @@ export interface IssueInvoiceCommand {
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
+  /**
+   * How the buyer pays, when the order's source positively said so (#3294).
+   * Absent means unknown: an adapter keeps its connection-level default rather
+   * than guessing, since a wrong payment form on a fiscal document is a legal
+   * statement. `online` is carried but names no form a provider can express
+   * without more detail, so adapters may keep their default for it.
+   */
+  paymentMethod?: PaymentMethod;
   /**
    * Optional neutral register / entity-scope label (#10). Routes numbering to
    * the connection's series for `(documentType, register)`; when absent the

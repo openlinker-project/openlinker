@@ -269,7 +269,7 @@ Reference values: valid `1189981779`, `5261040828`, `5252248481`, `1234563218`, 
 | JSTGV-15 | override sets flag | #1580 / #1582 | Admin | Correct with `buyerOverride{..., isPublicSectorEntity:true}` | KOR `JST=1` | unit + e2e-API | P2 | `invoicing.controller.ts:958-976` | 1 (JG-12); 2 (BO-05); 3 (BOV-08) | - |
 | JSTGV-16 | no FE | #1580 | Any role | Manual issue in the FE | No JST/GV controls - API only | e2e-UI | P2 | web `IssueInvoiceInput` lacks fields | 2 (JST-09) | - |
 
-## 6. ADN - Adnotacje (#1580, PR #1607, ADR-077)
+## 6. ADN - Adnotacje (#1580, PR #1607, ADR-078)
 
 | ID | Area | Ref | Precondition | Steps | Expected | Level | Prio | Source | Found by | Existing coverage |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -278,17 +278,17 @@ Reference values: valid `1189981779`, `5261040828`, `5252248481`, `1234563218`, 
 | ADN-03 | oo line | #1580 AC3 | Line `oo` / `reverse-charge` | Build | `P_18=1` | unit + e2e-API | P1 | `:485-486,505` | 1 (AN-03); 2 (ADN-03); 3 (ADN-03) | `fa3-xml.builder.spec.ts` |
 | ADN-04 | mixed | #1580 | zw line + 23% line | Build | Zwolnienie yes-branch plus the 23% band | unit | P1 | same | 1 (AN-04) | - |
 | ADN-05 | KOR after lines | #1580 | KOR whose AFTER lines have no `zw` while BEFORE did (and vice versa); KOR removing a zw line (qty 0) | Build | Annotations derive from `correctedLines` only; legal check of before/after semantics | unit | P1 | `:600-608` | 1 (AN-05); 2 (ADN-04); 3 (ADN-04) | - |
-| ADN-06 | operator flags | ADR-077 | `cashAccounting/selfBilling/splitPayment/triangulation=true` | Build + `validateFa3Xml` | `P_16=1, P_17=1, P_18A=1, P_23=1`; XSD-valid | unit | P2 | `:500-511` | 1 (AN-06); 2 (ADN-06); 3 (ADN-05) | `fa3-xml.builder.spec.ts` |
-| ADN-07 | margin | ADR-077 | `marginScheme=true` | Build | `<PMarzy><P_PMarzy>1</P_PMarzy><P_PMarzy_3_1>1</P_PMarzy_3_1></PMarzy>` | unit | P2 | `:493-495` | 1 (AN-07); 3 (ADN-06) | `fa3-xml.builder.spec.ts` |
-| ADN-08 | custom basis | ADR-077 | `exemptionLegalBasis:'art. 43 ust. 1 pkt 1'`, no zw line | Build | Exemption yes-branch with that text in `P_19C` | unit | P2 | `:487-490` | 3 (ADN-07) | - |
-| ADN-09 | empty basis | ADR-077 | `exemptionLegalBasis:''` | Build + validate | Forwarded verbatim, yes-branch with empty `P_19C` (minLength violation); local validator misses it (DEF-34). Reachable only by code today | unit | P2 | `fa3-builder-input.mapper.ts:166-168,795-797`; builder `:487-490` | 1 (AN-08); 3 (ADN-08) | - |
-| ADN-10 | mapper | ADR-077 | `cmd.annotations` absent / `{}` / partial / explicit `false` | Map | Only defined keys forwarded; `false` emits 2; all negative for `{}` | unit | P2 | `fa3-builder-input.mapper.ts:147-200` (`mapAnnotations`) | 1 (AN-09); 2 (ADN-07); 3 (ADN-09) | `fa3-builder-input.mapper.spec.ts` |
+| ADN-06 | operator flags | ADR-078 | `cashAccounting/selfBilling/splitPayment/triangulation=true` | Build + `validateFa3Xml` | `P_16=1, P_17=1, P_18A=1, P_23=1`; XSD-valid | unit | P2 | `:500-511` | 1 (AN-06); 2 (ADN-06); 3 (ADN-05) | `fa3-xml.builder.spec.ts` |
+| ADN-07 | margin | ADR-078 | `marginScheme=true` | Build | `<PMarzy><P_PMarzy>1</P_PMarzy><P_PMarzy_3_1>1</P_PMarzy_3_1></PMarzy>` | unit | P2 | `:493-495` | 1 (AN-07); 3 (ADN-06) | `fa3-xml.builder.spec.ts` |
+| ADN-08 | custom basis | ADR-078 | `exemptionLegalBasis:'art. 43 ust. 1 pkt 1'`, no zw line | Build | Exemption yes-branch with that text in `P_19C` | unit | P2 | `:487-490` | 3 (ADN-07) | - |
+| ADN-09 | empty basis | ADR-078 | `exemptionLegalBasis:''` | Build + validate | Forwarded verbatim, yes-branch with empty `P_19C` (minLength violation); local validator misses it (DEF-34). Reachable only by code today | unit | P2 | `fa3-builder-input.mapper.ts:166-168,795-797`; builder `:487-490` | 1 (AN-08); 3 (ADN-08) | - |
+| ADN-10 | mapper | ADR-078 | `cmd.annotations` absent / `{}` / partial / explicit `false` | Map | Only defined keys forwarded; `false` emits 2; all negative for `{}` | unit | P2 | `fa3-builder-input.mapper.ts:147-200` (`mapAnnotations`) | 1 (AN-09); 2 (ADN-07); 3 (ADN-09) | `fa3-builder-input.mapper.spec.ts` |
 | ADN-11 | reachability | #1580 AC3 | - | Grep api/worker/core/web for anything assigning `IssueInvoiceCommand.annotations` | None - operator flags are a dead seam (DEF-20) | not-testable | P1 | grep | 1 (AN-10); 3 (ADN-10) | - |
 | ADN-12 | no API field | #1580 | Admin | Try to send `cashAccounting` / `splitPayment` / `marginScheme` / `triangulation` / `selfBilling` / `exemptionLegalBasis` on `POST /invoices` | No DTO field: stripped / 400 by whitelist | e2e-API | P1 | grep | 2 (ADN-05) | - |
 | ADN-13 | live zw | #1580 | Shop product with exempt rate, KSeF TEST | Auto-issue | Accepted; visualisation shows exemption annotation with the placeholder basis | e2e-API + manual-KSeF-portal | P1 | - | 1 (AN-11); 2 (ADN-02); 3 (ADN-13) | - |
 | ADN-14 | live oo | #1580 | Product rated `oo`, KSeF TEST | Issue | Accepted; `P_18=1` | manual-KSeF-portal | P1 | - | 1 (AN-12); 3 (ADN-13) | - |
 | ADN-15 | placeholder legal | #1580 | - | Compliance review of `P_19C='Zwolnienie z podatku VAT'` (no statutory provision, not operator-editable) | Legal sign-off or a configurable basis (DEF-22) | manual-review | P1 | `fa3-xml.types.ts:63` | 2 (ADN-02, F12); 3 (ADN-11) | - |
-| ADN-16 | margin legal | ADR-077 | - | Review margin yes-branch: lines still carry `P_12` and VAT bands | Compliance review before exposing the seam (DEF-31) | manual-review | P2 | `fa3-xml.builder.ts:494-496` | 3 (ADN-12) | - |
+| ADN-16 | margin legal | ADR-078 | - | Review margin yes-branch: lines still carry `P_12` and VAT bands | Compliance review before exposing the seam (DEF-31) | manual-review | P2 | `fa3-xml.builder.ts:494-496` | 3 (ADN-12) | - |
 | ADN-17 | preview | #1580 | `zw` / `oo` invoice | View FA(3) preview | Annotation wording not rendered on the buyer copy (by design, "Skipped: Adnotacje") - record (DEF-29) | e2e-UI | P2 | `ksef-fa3-view.tsx:29` | 3 (ADN-14) | - |
 
 ## 7. FX - foreign currency / NBP (#1581, PR #1610, merge adjustment: NBP via the connection transport)
@@ -413,12 +413,12 @@ Rows whose "Providers" is `ksef, infakt, subiekt-nexo, subiekt-gt, eparagony` ru
 | CLR-22 | other providers | #1582 | inFakt `RegulatoryStatusReader` rejected read | Reconcile | No detail (adapter unchanged); row absent; no crash | unit | P2 | - | 3 (RJD-17) | - |
 | CLR-23 | FE types | #1582 | - | `clearanceDetail?` optional in the FE type while the API always returns the key; fixtures without the key | Type-check (`tsc -b`) passes | unit | P2 | `invoicing.types.ts:106-110` | 3 (RJD-18) | - |
 
-## 11. MIG - migration `1921000000000-add-invoice-clearance-detail` (renumbered from the branch's `1818000000008`)
+## 11. MIG - migration `1937370002000-add-invoice-clearance-detail` (renumbered from the branch's `1818000000008`)
 
 | ID | Area | Ref | Precondition | Steps | Expected | Level | Prio | Source | Found by | Existing coverage |
 |---|---|---|---|---|---|---|---|---|---|---|
-| MIG-01 | fresh run | merge | Fresh DB | `pnpm --filter @openlinker/api migration:run` | `AddInvoiceClearanceDetail1921000000000` applied; `invoice_records.clearanceDetail text NULL` | integration | P0 | `1921000000000-add-invoice-clearance-detail.ts:23-27` | 1 (CD-12); 2 (MIG-01); 3 (MIG-01) | - |
-| MIG-02 | show | merge | DB at main head | `migration:show` | Only `1921000000000` pending; main's `1818000000008-add-email-confirmation-tokens` unaffected; after run, no pending | integration | P0 | `apps/api/src/migrations/` | 1 (CD-16); 2 (MIG-02); 3 (MIG-02) | - |
+| MIG-01 | fresh run | merge | Fresh DB | `pnpm --filter @openlinker/api migration:run` | `AddInvoiceClearanceDetail1937370002000` applied; `invoice_records.clearanceDetail text NULL` | integration | P0 | `1937370002000-add-invoice-clearance-detail.ts:23-27` | 1 (CD-12); 2 (MIG-01); 3 (MIG-01) | - |
+| MIG-02 | show | merge | DB at main head | `migration:show` | Only `1937370002000` pending; main's `1818000000008-add-email-confirmation-tokens` unaffected; after run, no pending | integration | P0 | `apps/api/src/migrations/` | 1 (CD-16); 2 (MIG-02); 3 (MIG-02) | - |
 | MIG-03 | branch DB | merge | DB that ran the epic branch (row `AddInvoiceClearanceDetail1818000000008` exists, column present) | `migration:run` / `show` | `1921` runs as a no-op (`ADD COLUMN IF NOT EXISTS`) and is recorded; stale migrations-table row does not break run/show | integration | P1 | same `:23-27` | 1 (CD-13); 2 (MIG-03); 3 (MIG-03) | - |
 | MIG-04 | timestamp collision | merge | Same branch DB | Check whether main's `AddEmailConfirmationTokens1818000000008` was applied on that DB | UNCERTAIN: TypeORM may treat the `1818000000008` timestamp as already applied and skip the email-tokens migration - must be verified per environment (see Environment checks) | integration | P1 | `apps/api/src/migrations/1818000000008-add-email-confirmation-tokens.ts` | 1 (CD-15); 2 (MIG-03) | - |
 | MIG-05 | revert | merge | After up | `migration:revert`, then `run` again (twice) | Column dropped (`DROP COLUMN IF EXISTS`) and re-added; idempotent | integration | P1 | `:29-33` | 1 (CD-14); 2 (MIG-04); 3 (MIG-04) | - |
@@ -617,8 +617,8 @@ The per-trigger state rows are XB-09 (cross-border), FX-29 (NBP) and PERM-04 (40
 | MERGE-02 | NBP transport | merge | - | Run FX-14, FX-15, FX-17 | NBP via the connection-bound transport | unit | P1 | factory `:94-98` | 2 (MRG-02) | see FX rows |
 | MERGE-03 | cancelledAt | merge | - | Run GATE-04 | `cancelledAt` honoured in the gate | unit + e2e-API | P0 | handler `:118` | 2 (MRG-03) | see GATE-04 |
 | MERGE-04 | reason in GT / eparagony | merge | - | Run CORR-10..13 for subiekt-gt and eparagony, plus CORR-28 | Reason required in both added forms | unit + e2e-UI | P0 | flows | 2 (MRG-04) | see CORR rows |
-| MERGE-05 | migration renumber | merge | - | Run MIG-01..05 | Migration renumbered to `1921000000000` | integration | P0 | migration file | 2 (MRG-05) | see MIG rows |
-| MERGE-06 | ADR renumber | merge | - | Run DOC-01 | ADR-037 renamed to ADR-077 | manual-review | P2 | ADR README | 2 (MRG-06) | see DOC-01 |
+| MERGE-05 | migration renumber | merge | - | Run MIG-01..05 | Migration renumbered to `1937370002000` | integration | P0 | migration file | 2 (MRG-05) | see MIG rows |
+| MERGE-06 | ADR renumber | merge | - | Run DOC-01 | ADR-037 renamed to ADR-078 | manual-review | P2 | ADR README | 2 (MRG-06) | see DOC-01 |
 | MERGE-07 | rate model dropped | merge | - | Run RATE-01..05 | Per-line rate model, PS inference and branch ADR-035 dropped | e2e-API + unit | P1 | - | 2 (MRG-07) | see RATE rows |
 | MERGE-08 | single-flight | merge | - | Run LEASE-01..05 | Main's #3365 kept | integration | P0 | service | 2 (MRG-08) | see LEASE rows |
 | MERGE-09 | KOD II wording | merge | - | Run DOC-05, DOC-09 | Setup guide KOD II note corrected; FE lib header still stale | manual-review | P2 | setup-guide | 2 (MRG-09) | - |
@@ -692,7 +692,7 @@ Each row: unit (vitest) for the logic plus one e2e-UI smoke per component.
 
 | ID | Area | Ref | Precondition | Steps | Expected | Level | Prio | Source | Found by | Existing coverage |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DOC-01 | ADR-077 | #1580 / merge | - | Check ADR-077 file, README index row, status, links | Number unique (no ADR-037 collision), status Accepted, README row present, links to ADR-026 / ADR-063 resolve | manual-review | P2 | `docs/architecture/adrs/077-*.md`; `adrs/README.md:171` | 1 (DOC-01, RG-32); 2 (ADN-08); 3 (ADN-15, MIG-08) | - |
+| DOC-01 | ADR-078 | #1580 / merge | - | Check ADR-078 file, README index row, status, links | Number unique (no ADR-037 collision), status Accepted, README row present, links to ADR-026 / ADR-063 resolve | manual-review | P2 | `docs/architecture/adrs/077-*.md`; `adrs/README.md:171` | 1 (DOC-01, RG-32); 2 (ADN-08); 3 (ADN-15, MIG-08) | - |
 | DOC-02 | ADR-035 | #1586 / merge | - | Check ADRs and overview | Branch ADR-035 absent; main's ADR-035 (CTC offline) untouched; ADR-063 / overview carry no reference to the dropped phase plan | manual-review | P2 | `docs/architecture/adrs/035-*` | 1 (DOC-04); 2 (RATE-02); 3 (MIG-09) | - |
 | DOC-03 | setup guide | #1578 | - | Read KSeF setup guide | NBP timing / holiday caveat, Art. 108g, MF root CA, revocation, least-privilege, whitelist deferral, QR + KOD II / #3620 wording consistent with code (watch DEF-07, DEF-14, DEF-03, DEF-17) | manual-review | P1 | `libs/integrations/ksef/docs/setup-guide.md` | 1 (DOC-02) | - |
 | DOC-04 | FA3 notes | #1586 / #1580 | - | Read `FA3_IMPLEMENTATION_NOTES.md` | Remove the stale PrestaShop `order_details` rate-inference claim (`:83-89`) and the "JST / GV hard-coded to 2" bullet (`:271`) - DEF-16 | manual-review | P1 | `libs/integrations/ksef/src/infrastructure/fa3/FA3_IMPLEMENTATION_NOTES.md` | 1 (DOC-03); 2 (RATE-03); 3 (GTU-09, MIG-10) | - |
@@ -740,7 +740,7 @@ Matrix rows, not prioritised test cases. "Dead seam" = no producer anywhere in t
 
 | Issue / PR | AC | Status after merge | Tests |
 |---|---|---|---|
-| #1578 epic | Children reviewed; ADRs written | ADR-077 accepted (renumbered from ADR-037); branch ADR-035 dropped, ADR-063 (main) governs rates | DOC-01, DOC-02 |
+| #1578 epic | Children reviewed; ADRs written | ADR-078 accepted (renumbered from ADR-037); branch ADR-035 dropped, ADR-063 (main) governs rates | DOC-01, DOC-02 |
 | #1579 / PR #1602 | QR for every cleared invoice rendered outside KSeF | On-screen FA(3) preview for `accepted` only; host / path doubtful (DEF-03); wrong host for operator (DEF-02) | QR-26..32 |
 | #1579 | FE preview + PDF / print show QR | Preview yes; no PDF / print export exists | QR-46, REACH-13 |
 | #1580 / PR #1605 | Address includes city + postcode | Implemented (`AdresL2 = postal city`) | ADDR-* |
@@ -750,7 +750,7 @@ Matrix rows, not prioritised test cases. "Dead seam" = no producer anywhere in t
 | #1581 | Rate source / timing documented | Documented; correction-timing claim false (DEF-07) | DOC-10 |
 | #1581 | KSeF number copyable for Art. 108g | Implemented; wrong value before clearance (DEF-14) | A108G-* |
 | #1582 / PR #1627 | Empty / whitespace reason rejected or never emitted empty | DTO required + trimmed; FE x5 (eparagony and Subiekt GT added by the merge); builder omits; validator rejects; no 256 cap (DEF-25) | CORR-* |
-| #1582 | Rejection detail persisted + surfaced | Adapter, reconcile, apply, migration `1921000000000`, DTO, KSeF FE | CLR-*, MIG-* |
+| #1582 | Rejection detail persisted + surfaced | Adapter, reconcile, apply, migration `1937370002000`, DTO, KSeF FE | CLR-*, MIG-* |
 | #1582 | Buyer identity correctable | API `buyerOverride`, honoured by KSeF only, needs a line delta, no `Podmiot2K` | BUYOV-* |
 | #1586 / PRs #1604 #1611 | Mixed-rate split; cross-border correct band or clear refusal | Split works via ADR-063 rates; guard narrowed; refusal recorded in-doubt (DEF-01) | RATE-*, XB-* |
 | #1586 | Operator can configure + emit GTU / Procedura | Not met - dead seam | GTU-06 |
@@ -773,8 +773,8 @@ Matrix rows, not prioritised test cases. "Dead seam" = no producer anywhere in t
 | #1586 AC1 / PR #1611 - `OrderItem` / `IncomingOrderItem` carry a per-line tax rate; PrestaShop infers it from `order_details` | main ADR-063 (shop-catalogue rate) | ADR-063 forbids inferring a rate from order prices; the branch fields and the inference code were dropped | RATE-01..06 |
 | #1586 ADR (branch ADR-035 phase plan) | ADR-063 on main; main's own ADR-035 (CTC offline) is unrelated | Number collision and decision superseded; ADR dropped by the merge | DOC-02 |
 | #1586 AC3 - cross-border always refused | merge narrowing | Guard now refuses only when a line relies on the connection default rate; a fully shop-rated foreign order is issued at the shop's rate | XB-02, XB-04, XB-06 |
-| #1580 ADR-037 (annotation ADR) | ADR-077 | Renumbered because main already uses 037 | DOC-01 |
-| #1582 migration `1818000000008-add-invoice-clearance-detail` | `1921000000000-add-invoice-clearance-detail` | Timestamp collided with main's `1818000000008-add-email-confirmation-tokens` | MIG-01..08 |
+| #1580 ADR-037 (annotation ADR) | ADR-078 | Renumbered because main already uses 037 | DOC-01 |
+| #1582 migration `1818000000008-add-invoice-clearance-detail` | `1937370002000-add-invoice-clearance-detail` | Timestamp collided with main's `1818000000008-add-email-confirmation-tokens` | MIG-01..08 |
 | #1581 NBP read through a bare `fetch` | connection-bound transport (`host.http.forConnection`) | Merge routed NBP through the connection limiter and outbound log | FX-14..17 |
 | #1579 docs "OL never issues offline" (KOD II out of scope) | setup-guide KOD II note naming #3620 | Main now issues offline (#1700); the setup guide was corrected, the FE lib header was not | QR-35, DOC-05 |
 
@@ -802,7 +802,7 @@ Matrix rows, not prioritised test cases. "Dead seam" = no producer anywhere in t
 | # | Check | Why | Found by |
 |---|---|---|---|
 | E-01 | On every environment that ever ran the epic branch (demo / staging), look in the migrations table for `AddInvoiceClearanceDetail1818000000008`; then confirm `AddEmailConfirmationTokens1818000000008` (main) was actually applied (its table exists) | Same timestamp `1818000000008`; TypeORM may consider it applied and skip main's email-confirmation-tokens migration | 1 (CD-15); 2 (MIG-03); 3 (MIG-03) |
-| E-02 | On those environments, run `migration:show` / `migration:run` and confirm `1921000000000` runs as a no-op and is recorded | Column already exists from the branch migration | 1 (CD-13); 2 (MIG-03); 3 (MIG-03) |
+| E-02 | On those environments, run `migration:show` / `migration:run` and confirm `1937370002000` runs as a no-op and is recorded | Column already exists from the branch migration | 1 (CD-13); 2 (MIG-03); 3 (MIG-03) |
 | E-03 | List KSeF connections whose stored `seller.nip` fails the mod-11 checksum or contains separators | They can no longer save config (DEF-19) / they emit dashes in `Podmiot1/NIP` (DEF-12) | 1 (NIP-17); 3 (F13) |
 | E-04 | List KSeF connections invoicing foreign buyers with strict mode off and orders whose lines rely on the default rate | Those issuances (and corrections) are refused after deploy (DEF-18) | 1 (CB-12); 3 (XB-13) |
 | E-05 | Confirm whether staging / demo is served over plain HTTP from a non-localhost origin | Web Crypto unavailable -> QR missing (DEF-15) | 1 (QR-20); 2 (QR-17) |

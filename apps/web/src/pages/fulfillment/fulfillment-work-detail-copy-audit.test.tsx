@@ -113,7 +113,7 @@ const OPERATOR: SessionUser = {
   username: 'operator',
   email: 'operator@example.com',
   role: 'operator',
-  permissions: ['orders:read', 'orders:write'],
+  permissions: ['orders:read', 'orders:write', 'fulfillment:read'],
 };
 
 const WORK_ID = 'ol_work_1';

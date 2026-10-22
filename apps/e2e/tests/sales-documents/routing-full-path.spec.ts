@@ -391,8 +391,12 @@ test.describe('sales documents: routing full path (#3196)', () => {
     expect(refusal, 'issuing a second document kind must be refused').toBeInstanceOf(ApiError);
     expect((refusal as ApiError).status).toBe(409);
 
+    // #3766 - the filled receipt slot no longer repeats the refusal as a
+    // "This order already has a document" warning: it simply offers no
+    // invoice action, which is what makes the refusal unreachable from here.
     const panel = await gotoOrder(page, ROUTING_SEED_ORDER_IDS.receiptIssued);
-    await expect(panel.getByTestId('one-document-guard')).toBeVisible();
+    await expect(panel.getByTestId('one-document-guard')).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Issue invoice' })).toHaveCount(0);
     await shot(page, '14-cross-kind-refusal-invoice-blocked');
   });
 

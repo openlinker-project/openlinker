@@ -239,9 +239,16 @@ export class OrderSyncService implements IOrderSyncService {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
-        // Destinations that convert a gross-priced line to net (WooCommerce) need
-        // the per-line rate settled at ingestion; absence must stay absence so
-        // they refuse rather than guess.
+        // #3710 - the source-reported display label. Without it WooCommerce
+        // creates every line unnamed and Shoper falls back to the SKU or the
+        // raw internal line id: a wrong product name on a merchant's sales
+        // order, with no error anywhere. Spread conditionally so absence stays
+        // absence and the adapters' own fallbacks still apply.
+        ...(item.name !== undefined ? { name: item.name } : {}),
+        // Destinations that settle tax per line need the rate from ingestion:
+        // WooCommerce to convert a gross-priced line to net, Shoper because it
+        // writes a per-line tax and refuses the order without one. Absence must
+        // stay absence so they refuse rather than guess.
         ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
         ...(item.taxRateCountry !== undefined ? { taxRateCountry: item.taxRateCountry } : {}),
         // #3365 - the source-reported gross unit price. A destination whose
@@ -276,6 +283,16 @@ export class OrderSyncService implements IOrderSyncService {
       // Threaded so a destination can record what the buyer has paid apart from
       // what the order is worth (#2600). Passed through, never derived.
       paymentStatus: order.paymentStatus,
+      // How the buyer pays (#3294): passed through, never derived, and omitted
+      // when the source reported none so the payload keeps its prior shape.
+      ...(order.paymentMethod !== undefined ? { paymentMethod: order.paymentMethod } : {}),
+      // Opaque source payment-method id (#3474): the lookup key for a
+      // destination's operator-configured payment mapping. Present only when
+      // the source reported one, so a payload without it stays byte-identical
+      // to what destinations received before the field existed.
+      ...(order.sourcePaymentMethod !== undefined
+        ? { sourcePaymentMethod: order.sourcePaymentMethod }
+        : {}),
       metadata: {
         // Required by destination adapters (e.g. WooCommerce) for idempotency checks.
         internalOrderId: order.id,

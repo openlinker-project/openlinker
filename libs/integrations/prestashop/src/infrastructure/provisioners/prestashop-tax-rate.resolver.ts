@@ -39,6 +39,7 @@ import type { PrestashopCountryResolver } from './prestashop-country-resolver';
 import type {
   PrestashopTaxRateResolution,
   PrestashopTaxRateUnknown,
+  PrestashopTaxRuleMatch,
 } from './prestashop-tax-rate.types';
 import { TAX_RATE_EVIDENCE_DETAIL_MAX } from './prestashop-tax-rate.types';
 import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
@@ -78,6 +79,7 @@ const MAX_CACHE_ENTRIES = 20_000;
 
 interface CacheEntry {
   rate: number;
+  matchedBy: PrestashopTaxRuleMatch;
   timestamp: number;
 }
 
@@ -89,13 +91,22 @@ interface CacheEntry {
  */
 type TaxRuleSelection =
   /** `taxId` is carried resolved: only a rule naming a usable tax gets here. */
-  | { kind: 'rule'; taxId: number }
+  | { kind: 'rule'; taxId: number; matchedBy: Exclude<PrestashopTaxRuleMatch, 'no-tax-group'> }
   | { kind: 'none' }
   | { kind: 'ambiguous'; candidateTaxIds: string[] };
 
 export class PrestashopTaxRateResolver {
   private readonly logger = new Logger(PrestashopTaxRateResolver.name);
   private readonly cache = new Map<string, CacheEntry>();
+  /**
+   * Group + country -> rate (ADR-077). Products share a handful of tax-rule
+   * groups, so the per-product cache above still paid `tax_rules` + `taxes`
+   * once per SKU; this collapses a catalogue page to one pair of reads per
+   * distinct group, and serves the publisher's group lookup too.
+   */
+  private readonly groupCache = new Map<string, CacheEntry>();
+  /** Active tax-rule group ids per connection, for the publisher's group lookup. */
+  private readonly groupListCache = new Map<string, { ids: number[]; timestamp: number }>();
 
   constructor(private readonly countryResolver: PrestashopCountryResolver) {}
 
@@ -127,18 +138,25 @@ export class PrestashopTaxRateResolver {
      * Omitting it keeps the previous behaviour exactly: the resolver fetches
      * the product itself.
      */
-    preloadedProduct?: PrestashopProductTaxRow
+    preloadedProduct?: PrestashopProductTaxRow,
+    /**
+     * An already-resolved PrestaShop `id_country` (ADR-077). When set, it is
+     * used as-is and `deliveryCountryIso` is ignored, so a caller that resolved
+     * the country itself - and turned "no such country" into its own answer -
+     * is not silently degraded to the catch-all rule by
+     * `resolveCountryIdSafe`'s fallback.
+     */
+    options?: { countryId?: number }
   ): Promise<PrestashopTaxRateResolution> {
-    const countryId = await this.resolveCountryIdSafe(
-      deliveryCountryIso,
-      connectionId,
-      webserviceClient
-    );
+    const countryId =
+      options?.countryId !== undefined
+        ? options.countryId
+        : await this.resolveCountryIdSafe(deliveryCountryIso, connectionId, webserviceClient);
 
     const cacheKey = `${connectionId}:${externalProductId}:${countryId ?? 'none'}`;
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return { kind: 'resolved', rate: cached.rate };
+      return { kind: 'resolved', rate: cached.rate, matchedBy: cached.matchedBy };
     }
 
     const resolution = await this.computeRate(
@@ -153,22 +171,116 @@ export class PrestashopTaxRateResolver {
     // would answer the retry from memory for up to the TTL and read as "the
     // fix did not work".
     if (resolution.kind === 'resolved') {
-      this.sweepIfAtCapacity();
-      this.cache.set(cacheKey, { rate: resolution.rate, timestamp: Date.now() });
+      this.sweepIfAtCapacity(this.cache);
+      this.cache.set(cacheKey, {
+        rate: resolution.rate,
+        matchedBy: resolution.matchedBy,
+        timestamp: Date.now(),
+      });
     }
     return resolution;
+  }
+
+  /**
+   * The rate a tax-rule GROUP charges in a country (ADR-077), for a caller that
+   * holds a group rather than a product - the product publisher choosing the
+   * group to write. Same rule selection, caching and failure vocabulary as
+   * {@link resolveProductTaxRate}; group `0` is PrestaShop's "No tax".
+   */
+  async resolveTaxRulesGroupRate(
+    groupId: number,
+    countryId: number | undefined,
+    connectionId: string,
+    webserviceClient: IPrestashopWebserviceClient
+  ): Promise<PrestashopTaxRateResolution> {
+    if (groupId === 0) {
+      return { kind: 'resolved', rate: 0, matchedBy: 'no-tax-group' };
+    }
+    return this.resolveGroupRate(
+      groupId,
+      countryId,
+      webserviceClient,
+      connectionId,
+      `tax-rule group ${groupId}`
+    );
+  }
+
+  /**
+   * The tax-rule group that charges exactly `ratePercent` in `countryId`
+   * through a rule for that very country (ADR-077) - what the product
+   * publisher writes onto a product so PrestaShop re-grosses its net price to
+   * the gross OpenLinker holds. Several groups can qualify (a shop's stock
+   * "PL Standard Rate" next to an operator's own "PL VAT 23%"); for the sales
+   * country they are interchangeable, so the lowest id is taken for a stable
+   * answer. `null` when no active group qualifies.
+   *
+   * @returns the group id, `null` when none qualifies, or a transport unknown
+   */
+  async findTaxRulesGroupForRate(
+    ratePercent: number,
+    countryId: number,
+    connectionId: string,
+    webserviceClient: IPrestashopWebserviceClient
+  ): Promise<number | null | PrestashopTaxRateUnknown> {
+    let ids: number[];
+    const cached = this.groupListCache.get(connectionId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      ids = cached.ids;
+    } else {
+      let rows: Array<{ id?: string | number; active?: string | number; deleted?: string | number }>;
+      try {
+        rows = await readAllPrestashopResourcePages(webserviceClient, 'tax_rule_groups', undefined, {
+          connectionId,
+          detail: 'all tax-rule groups',
+        });
+      } catch (error) {
+        return this.transportUnknown('tax_rule_groups', error, `a ${ratePercent}% tax rate`);
+      }
+      ids = rows
+        .filter((r) => String(r.active ?? '1') === '1' && String(r.deleted ?? '0') !== '1')
+        .map((r) => this.toInt(r.id))
+        .filter((id) => id > 0)
+        .sort((a, b) => a - b);
+      this.groupListCache.set(connectionId, { ids, timestamp: Date.now() });
+    }
+    for (const groupId of ids) {
+      const resolution = await this.resolveTaxRulesGroupRate(
+        groupId,
+        countryId,
+        connectionId,
+        webserviceClient
+      );
+      if (resolution.kind === 'unknown') {
+        if (resolution.reason === 'transport') {
+          return resolution;
+        }
+        continue;
+      }
+      if (
+        resolution.matchedBy === 'country' &&
+        Math.abs(resolution.rate * 100 - ratePercent) < 0.0001
+      ) {
+        return groupId;
+      }
+    }
+    return null;
   }
 
   /** Clear the cache for one connection, or all connections when omitted. */
   clearCache(connectionId?: string): void {
     if (connectionId === undefined) {
       this.cache.clear();
+      this.groupCache.clear();
+      this.groupListCache.clear();
       this.countryResolver.clearCache();
       return;
     }
-    for (const key of [...this.cache.keys()]) {
-      if (key.startsWith(`${connectionId}:`)) {
-        this.cache.delete(key);
+    this.groupListCache.delete(connectionId);
+    for (const cache of [this.cache, this.groupCache]) {
+      for (const key of [...cache.keys()]) {
+        if (key.startsWith(`${connectionId}:`)) {
+          cache.delete(key);
+        }
       }
     }
     // The country resolver is private to this resolver, so nothing else can
@@ -176,20 +288,20 @@ export class PrestashopTaxRateResolver {
     this.countryResolver.clearCache(connectionId);
   }
 
-  private sweepIfAtCapacity(): void {
-    if (this.cache.size < MAX_CACHE_ENTRIES) {
+  private sweepIfAtCapacity(cache: Map<string, CacheEntry>): void {
+    if (cache.size < MAX_CACHE_ENTRIES) {
       return;
     }
     const now = Date.now();
-    for (const [key, entry] of [...this.cache.entries()]) {
+    for (const [key, entry] of [...cache.entries()]) {
       if (now - entry.timestamp >= CACHE_TTL_MS) {
-        this.cache.delete(key);
+        cache.delete(key);
       }
     }
     // Everything still live and still at the cap means a burst wider than the
     // cap inside one TTL. Dropping the lot costs re-reads, never a wrong rate.
-    if (this.cache.size >= MAX_CACHE_ENTRIES) {
-      this.cache.clear();
+    if (cache.size >= MAX_CACHE_ENTRIES) {
+      cache.clear();
     }
   }
 
@@ -208,7 +320,11 @@ export class PrestashopTaxRateResolver {
           externalProductId
         );
       } catch (error) {
-        return this.transportUnknown(`products/${externalProductId}`, error, externalProductId);
+        return this.transportUnknown(
+          `products/${externalProductId}`,
+          error,
+          `product ${externalProductId}`
+        );
       }
     }
 
@@ -247,8 +363,60 @@ export class PrestashopTaxRateResolver {
       this.logger.warn(
         `Product ${externalProductId} has no tax-rule group (PrestaShop "No tax"); pricing it as untaxed.`
       );
-      return { kind: 'resolved', rate: 0 };
+      return { kind: 'resolved', rate: 0, matchedBy: 'no-tax-group' };
     }
+
+    return this.resolveGroupRate(
+      groupId,
+      countryId,
+      webserviceClient,
+      connectionId,
+      `product ${externalProductId}`
+    );
+  }
+
+  /**
+   * Rule selection and rate read for one non-zero tax-rule group, cached per
+   * group + country. `subject` names what the caller is pricing, for the
+   * operator-facing log lines and evidence.
+   */
+  private async resolveGroupRate(
+    groupId: number,
+    countryId: number | undefined,
+    webserviceClient: IPrestashopWebserviceClient,
+    connectionId: string,
+    subject: string
+  ): Promise<PrestashopTaxRateResolution> {
+    const groupKey = `${connectionId}:${groupId}:${countryId ?? 'none'}`;
+    const cachedGroup = this.groupCache.get(groupKey);
+    if (cachedGroup && Date.now() - cachedGroup.timestamp < CACHE_TTL_MS) {
+      return { kind: 'resolved', rate: cachedGroup.rate, matchedBy: cachedGroup.matchedBy };
+    }
+    const resolution = await this.readGroupRate(
+      groupId,
+      countryId,
+      webserviceClient,
+      connectionId,
+      subject
+    );
+    if (resolution.kind === 'resolved') {
+      this.sweepIfAtCapacity(this.groupCache);
+      this.groupCache.set(groupKey, {
+        rate: resolution.rate,
+        matchedBy: resolution.matchedBy,
+        timestamp: Date.now(),
+      });
+    }
+    return resolution;
+  }
+
+  private async readGroupRate(
+    groupId: number,
+    countryId: number | undefined,
+    webserviceClient: IPrestashopWebserviceClient,
+    connectionId: string,
+    subject: string
+  ): Promise<PrestashopTaxRateResolution> {
 
     let rules: PrestashopTaxRuleRow[];
     try {
@@ -266,11 +434,7 @@ export class PrestashopTaxRateResolver {
         }
       );
     } catch (error) {
-      return this.transportUnknown(
-        `tax_rules?id_tax_rules_group=${groupId}`,
-        error,
-        externalProductId
-      );
+      return this.transportUnknown(`tax_rules?id_tax_rules_group=${groupId}`, error, subject);
     }
 
     const selection = this.selectRule(rules, countryId);
@@ -282,7 +446,7 @@ export class PrestashopTaxRateResolver {
       // `id_tax_rules_group = 0` above, which is PrestaShop's own "No tax"
       // choice and is handled before this point.
       this.logger.warn(
-        `Tax rate unknown for product ${externalProductId}: tax-rule group ${groupId} has no usable rule.`
+        `Tax rate unknown for ${subject}: tax-rule group ${groupId} has no usable rule.`
       );
       return {
         kind: 'unknown',
@@ -297,7 +461,7 @@ export class PrestashopTaxRateResolver {
       // webservice happened to list first, so a PL shop with per-country rules
       // could project DE 19% onto every line.
       this.logger.warn(
-        `Tax rate unknown for product ${externalProductId}: tax-rule group ${groupId} offers ` +
+        `Tax rate unknown for ${subject}: tax-rule group ${groupId} offers ` +
           `${String(selection.candidateTaxIds.length)} candidate rates with no unambiguous pick.`
       );
       return {
@@ -308,13 +472,13 @@ export class PrestashopTaxRateResolver {
           `rates (taxes ${this.cap(selection.candidateTaxIds.join(', '))}) with no unambiguous pick`,
       };
     }
-    const taxId = selection.taxId;
+    const { taxId, matchedBy } = selection;
 
     let tax: PrestashopTaxRow | undefined;
     try {
       tax = await webserviceClient.getResource<PrestashopTaxRow>('taxes', String(taxId));
     } catch (error) {
-      return this.transportUnknown(`taxes/${taxId}`, error, externalProductId);
+      return this.transportUnknown(`taxes/${taxId}`, error, subject);
     }
 
     const rawRate = tax?.rate;
@@ -323,7 +487,7 @@ export class PrestashopTaxRateResolver {
       // was the worst of the zero paths: `String(undefined ?? '0')` parsed to a
       // finite, non-negative 0 and flowed out as a SUCCESS.
       this.logger.warn(
-        `Tax rate unknown for product ${externalProductId}: tax rule ${taxId} in group ` +
+        `Tax rate unknown for ${subject}: tax rule ${taxId} in group ` +
           `${groupId} carries no rate.`
       );
       return {
@@ -336,7 +500,7 @@ export class PrestashopTaxRateResolver {
     const ratePercent = Number.parseFloat(String(rawRate));
     if (!Number.isFinite(ratePercent) || ratePercent < 0) {
       this.logger.warn(
-        `Tax rate unknown for product ${externalProductId}: tax rule ${taxId} in group ` +
+        `Tax rate unknown for ${subject}: tax rule ${taxId} in group ` +
           `${groupId} reports an unusable rate '${String(rawRate)}'.`
       );
       return {
@@ -345,7 +509,7 @@ export class PrestashopTaxRateResolver {
         evidence: `tax rule ${taxId} in group ${groupId} reports an unusable rate '${this.cap(String(rawRate))}'`,
       };
     }
-    return { kind: 'resolved', rate: ratePercent / 100 };
+    return { kind: 'resolved', rate: ratePercent / 100, matchedBy };
   }
 
   /**
@@ -358,7 +522,7 @@ export class PrestashopTaxRateResolver {
   private transportUnknown(
     read: string,
     error: unknown,
-    externalProductId: string | number
+    subject: string
   ): PrestashopTaxRateUnknown {
     const statusCode = error instanceof PrestashopApiException ? error.statusCode : undefined;
     const detail =
@@ -367,7 +531,7 @@ export class PrestashopTaxRateResolver {
         : `failed (${this.cap(error instanceof Error ? error.message : String(error))})`;
     const evidence = `GET ${read} ${detail}`;
     this.logger.warn(
-      `Could not read the tax rate for product ${externalProductId}; reporting it as unknown. ${evidence}`
+      `Could not read the tax rate for ${subject}; reporting it as unknown. ${evidence}`
     );
     return { kind: 'unknown', reason: 'transport', evidence, statusCode };
   }
@@ -418,17 +582,17 @@ export class PrestashopTaxRateResolver {
       if (countryMatches.length > 0) {
         const countryLevel = countryMatches.find((r) => this.toInt(r.id_state) === 0);
         if (countryLevel) {
-          return { kind: 'rule', taxId: this.toInt(countryLevel.id_tax) };
+          return { kind: 'rule', taxId: this.toInt(countryLevel.id_tax), matchedBy: 'country' };
         }
-        return this.singleTaxOrAmbiguous(countryMatches);
+        return this.singleTaxOrAmbiguous(countryMatches, 'country');
       }
     }
 
     const catchAll = usable.filter((r) => this.toInt(r.id_country) === 0);
     if (catchAll.length > 0) {
-      return this.singleTaxOrAmbiguous(catchAll);
+      return this.singleTaxOrAmbiguous(catchAll, 'catch-all');
     }
-    return this.singleTaxOrAmbiguous(usable);
+    return this.singleTaxOrAmbiguous(usable, 'only-rule');
   }
 
   /**
@@ -436,10 +600,13 @@ export class PrestashopTaxRateResolver {
    * Deduplicated by `id_tax` rather than by rate, so it costs no extra read -
    * two rows naming one tax record cannot disagree about its rate.
    */
-  private singleTaxOrAmbiguous(rules: PrestashopTaxRuleRow[]): TaxRuleSelection {
+  private singleTaxOrAmbiguous(
+    rules: PrestashopTaxRuleRow[],
+    matchedBy: Exclude<PrestashopTaxRuleMatch, 'no-tax-group'>
+  ): TaxRuleSelection {
     const taxIds = [...new Set(rules.map((r) => this.toInt(r.id_tax)))];
     if (taxIds.length === 1) {
-      return { kind: 'rule', taxId: taxIds[0] };
+      return { kind: 'rule', taxId: taxIds[0], matchedBy };
     }
     return { kind: 'ambiguous', candidateTaxIds: taxIds.map((id) => String(id)) };
   }

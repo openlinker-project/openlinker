@@ -60,6 +60,7 @@ import type {
   AllegroShippingRateDetailResponse,
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
+import { deriveAllegroPaymentMethod } from './allegro-payment-method';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
 import type {
   AllegroOrderShipment,
@@ -985,7 +986,18 @@ export class AllegroOrderSourceAdapter
         shipping: this.resolveShipping(checkoutForm),
         pickupPoint: this.resolvePickupPoint(checkoutForm),
         deliverySmart: checkoutForm.delivery?.smart,
+        // #3636: only a positive `ALLEGRO` is asserted; `SELLER` or an absent
+        // provider leave the fact unset rather than claiming the seller ships.
+        ...(checkoutForm.fulfillment?.provider?.id === 'ALLEGRO' && { fulfilledBySource: true as const }),
         paymentStatus,
+        // How the buyer pays (#3294), from the same `payment.type` the status
+        // is derived from - mapped only where unambiguous, otherwise `unknown`.
+        paymentMethod: deriveAllegroPaymentMethod(checkoutForm.payment),
+        // Allegro's own payment type (#3474) - the key of the operator's
+        // payment mapping. Opaque to core; omitted when Allegro sent none.
+        ...(checkoutForm.payment.type
+          ? { sourcePaymentMethod: checkoutForm.payment.type }
+          : {}),
         codToCollect,
         dispatchTime: this.resolveDispatchTime(checkoutForm),
         placedAt,

@@ -87,6 +87,12 @@ describe('deriveWooCommercePaymentStatus', () => {
   // `payment_method` is a free-text slug a plugin chooses, so COD is never
   // inferred; an unpaid cash-on-delivery order is simply awaiting, which is
   // true.
+  it('reports paid for a completed core COD order - the cash was collected', () => {
+    expect(
+      deriveWooCommercePaymentStatus(order({ status: 'completed', payment_method: 'cod' })),
+    ).toBe('paid');
+  });
+
   it('never reports cod', () => {
     const answers = ['pending', 'on-hold', 'processing', 'completed', 'refunded'].map((status) =>
       deriveWooCommercePaymentStatus(order({ status })),
@@ -102,5 +108,59 @@ describe('deriveWooCommercePaymentStatus', () => {
     expect(
       deriveWooCommercePaymentStatus(order({ status: 'pending', date_paid: '   ' })),
     ).toBeUndefined();
+  });
+});
+
+// A core `cod` order is created `processing`, which the status fallback reads as
+// paid; the shipment gate then stripped the COD amount from the courier label
+// (#3294). The core gateway id is the one thing about a payment method this
+// adapter CAN state, so it wins over the status fallback - but never over
+// WooCommerce's own payment stamp, and never for a dead order.
+describe('deriveWooCommercePaymentStatus - core cash on delivery (#3294)', () => {
+  it.each(['processing', 'on-hold', 'pending'])(
+    'reports cod, not paid, for a core COD order in status %s',
+    (status) => {
+      expect(deriveWooCommercePaymentStatus(order({ status, payment_method: 'cod' }))).toBe('cod');
+    },
+  );
+
+  it('lets WooCommerce\'s own payment stamp win: a COD order it records as paid is paid', () => {
+    expect(
+      deriveWooCommercePaymentStatus(
+        order({ status: 'completed', payment_method: 'cod', date_paid_gmt: '2026-09-28T10:00:00' }),
+      ),
+    ).toBe('paid');
+  });
+
+  it.each(['cancelled', 'failed', 'trash'])(
+    'makes no payment claim for a core COD order in the dead status %s',
+    (status) => {
+      expect(
+        deriveWooCommercePaymentStatus(order({ status, payment_method: 'cod' })),
+      ).toBeUndefined();
+    },
+  );
+
+  it('keeps withholding a refunded COD order', () => {
+    expect(
+      deriveWooCommercePaymentStatus(order({ status: 'refunded', payment_method: 'cod' })),
+    ).toBeUndefined();
+  });
+
+  it.each(['bacs', 'paypal', 'cod_custom', undefined])(
+    'reads %s exactly as before: processing is still paid',
+    (payment_method) => {
+      expect(
+        deriveWooCommercePaymentStatus(order({ status: 'processing', payment_method })),
+      ).toBe('paid');
+    },
+  );
+
+  it('never reports awaiting for a core COD order, whatever its status', () => {
+    for (const status of ['pending', 'on-hold', 'processing', 'completed']) {
+      expect(deriveWooCommercePaymentStatus(order({ status, payment_method: 'cod' }))).not.toBe(
+        'awaiting',
+      );
+    }
   });
 });

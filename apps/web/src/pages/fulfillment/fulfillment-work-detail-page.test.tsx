@@ -3,7 +3,7 @@
  *
  * Five states that must not impersonate one another, a title that names the
  * ORDER, a back link that must not throw away the operator's filters, and the
- * admin + operator gate.
+ * `fulfillment:read` gate (admin, operator, viewer; writes stay `orders:write`).
  *
  * ## What is deliberately NOT re-asserted here
  *
@@ -139,13 +139,26 @@ function hold(id: string, reason: string): FulfillmentTask['activeHolds'][number
   return { id, reason, note: null, placedAt: '2026-09-10T08:30:00.000Z' };
 }
 
-/** A session that can read orders and may not open fulfilment tasks. */
-const VIEWER = createAuthenticatedSessionAdapter({
+/**
+ * A session that can read orders but not fulfilment tasks. No built-in role
+ * has this shape since #3736 (viewer holds `fulfillment:read`); it stands for a
+ * session refused the read, e.g. after a mid-session role change.
+ */
+const NO_FULFILLMENT_READ = createAuthenticatedSessionAdapter({
   id: 'user_9',
   username: 'viewer',
   email: 'viewer@example.com',
   role: 'viewer',
   permissions: ['orders:read'],
+});
+
+/** The real viewer (#3736): reads the task, writes nothing. */
+const VIEWER = createAuthenticatedSessionAdapter({
+  id: 'user_8',
+  username: 'viewer',
+  email: 'viewer@example.com',
+  role: 'viewer',
+  permissions: ['orders:read', 'fulfillment:read'],
 });
 
 /** A session whose whole job is the bench. */
@@ -158,13 +171,25 @@ const PACKER = createAuthenticatedSessionAdapter({
 });
 
 describe('FulfillmentWorkDetailPage', () => {
-  describe('who may open it (#3096)', () => {
-    it('should render access denied, and never send the read, when the session lacks orders:write', async () => {
-      const { get } = renderPage({ sessionAdapter: VIEWER });
+  describe('who may open it (#3096, #3736)', () => {
+    it('should render access denied, and never send the read, when the session lacks fulfillment:read', async () => {
+      const { get } = renderPage({ sessionAdapter: NO_FULFILLMENT_READ });
 
       expect(await screen.findByRole('heading', { name: COPY.states.denied.title })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: COPY.states.error.retry })).not.toBeInTheDocument();
       expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should render the task read-only for a viewer, with no action control (#3736)', async () => {
+      const { get } = renderPage({
+        sessionAdapter: VIEWER,
+        get: getMock().mockResolvedValue(task({ supportedActions: ['close', 'hold'] })),
+      });
+
+      await findHero();
+      expect(get).toHaveBeenCalledWith(WORK_ID);
+      expect(screen.queryByRole('heading', { name: COPY.states.denied.title })).not.toBeInTheDocument();
+      expect(actionLabels()).toEqual([]);
     });
 
     it('should point a bench-only session at the bench when it lands here', async () => {
@@ -243,11 +268,12 @@ describe('FulfillmentWorkDetailPage', () => {
   });
 
   describe('the hero', () => {
-    it('should join BOTH axis labels in the headline, because neither carries the other', async () => {
+    it('should show the bare state in the headline for an accepted task (#3763)', async () => {
       renderPage();
 
       const hero = await findHero();
-      expect(within(hero).getByText('In progress · Accepted')).toBeInTheDocument();
+      expect(within(hero).getByText('In progress')).toBeInTheDocument();
+      expect(within(hero).queryByText(/Accepted/)).not.toBeInTheDocument();
     });
 
     it('should render the derived sentence when the build can say one', async () => {

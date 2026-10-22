@@ -587,6 +587,50 @@ describe('InvoicingController', () => {
       expect(message).toContain('correlationId');
     });
 
+    it('classified rejection -> 422 with the closed failureCode and no correlation id (#3772)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockRejectedValue(
+        Object.assign(new Error('NIP 1234 rejected: buyer Jan Kowalski invalid'), {
+          failureMode: 'rejected',
+          reason: 'The buyer tax id is invalid for buyer Jan Kowalski',
+        }),
+      );
+      const error = await controller.issueInvoice(dto).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UnprocessableEntityException);
+      const body = (error as UnprocessableEntityException).getResponse() as Record<string, unknown>;
+      expect(body).toEqual({
+        message: 'The buyer tax identifier was rejected as invalid.',
+        error: 'InvoiceIssueRejected',
+        failureCode: 'buyer-tax-id-invalid',
+      });
+      // A marker-classified code keeps its FIXED sentence: the provider's
+      // words, which may echo buyer data, never reach the body.
+      expect(JSON.stringify(body)).not.toContain('Kowalski');
+    });
+
+    it('connection-setup refusal -> 422 carrying the adapter reason the panel shows (#3772)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      const reason =
+        'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.';
+      invoiceService.issueInvoice.mockRejectedValue(
+        Object.assign(new Error('cannot invoice order ol_order_1'), {
+          failureMode: 'rejected',
+          failureCause: 'connection-setup',
+          reason,
+        }),
+      );
+      const error = await controller.issueInvoice(dto).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UnprocessableEntityException);
+      expect((error as UnprocessableEntityException).getResponse()).toEqual({
+        message: reason,
+        error: 'InvoiceIssueRejected',
+        failureCode: 'connection-setup-incomplete',
+        failureReason: reason,
+      });
+    });
+
     it('OrderSnapshotUnavailableError from the service path -> 422 generic', async () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);

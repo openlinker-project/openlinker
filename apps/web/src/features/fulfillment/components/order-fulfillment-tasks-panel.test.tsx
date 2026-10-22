@@ -14,6 +14,9 @@
  *      across two renders that differ ONLY in the counters.
  *   4. the version that was RENDERED is the version sent.
  *   5. loading / error / empty are three different answers, never one.
+ *   6. acceptance is shown only when it is news (#3763) - an accepted task
+ *      says nothing about it, an unaccepted one says it is not on the pack
+ *      bench, and a stuck or refused one warns that packers cannot see it.
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -37,7 +40,7 @@ const OPERATOR: SessionUser = {
   username: 'operator',
   email: 'operator@example.com',
   role: 'operator',
-  permissions: ['orders:read', 'orders:write'],
+  permissions: ['orders:read', 'orders:write', 'fulfillment:read'],
 };
 
 const VIEWER: SessionUser = {
@@ -58,7 +61,9 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
     assignedToUserId: null,
     selfServeEligible: true,
     status: 'open',
-    requestStatus: 'unsubmitted',
+    // Accepted is the state almost every live task sits in (OpenLinker's own
+    // OMS auto-accepts). The acceptance tests below override it explicitly.
+    requestStatus: 'accepted',
     assignmentAttempt: 0,
     cancellationReason: null,
     externalWorkId: null,
@@ -161,16 +166,81 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       ]);
 
       expect(await screen.findByText('On hold — Held by operator')).toBeInTheDocument();
-      // The State row still says Scheduled — "held" and "scheduled" are both true.
+      // The status badge still says Scheduled — "held" and "scheduled" are both true.
       expect(screen.getByText('Scheduled')).toBeInTheDocument();
     });
 
-    it('should show the plain status when nothing is holding the task', async () => {
+    it('should lead with the hold badge, then the status badge', async () => {
+      renderPanel([
+        task({
+          status: 'scheduled',
+          activeHolds: [
+            { id: 'hold_1', reason: 'operator', note: null, placedAt: '2026-08-20T10:00:00.000Z' },
+          ],
+        }),
+      ]);
+
+      const held = await screen.findByText('On hold — Held by operator');
+      const status = screen.getByText('Scheduled');
+      expect(held.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('should show the status once, in the badge, with no State row (#3763)', async () => {
       renderPanel([task({ status: 'in_progress' })]);
 
-      // Badge + State row again. Drop the badge and this reads 1.
-      expect(await screen.findAllByText('In progress')).toHaveLength(2);
+      expect(await screen.findAllByText('In progress')).toHaveLength(1);
+      expect(screen.queryByText('State')).not.toBeInTheDocument();
       expect(screen.queryByText(/On hold/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('acceptance is shown only when it is news (#3763)', () => {
+    const minutesAgo = (minutes: number): string =>
+      new Date(Date.now() - minutes * 60_000).toISOString();
+    const routed = (overrides: Partial<FulfillmentTask>): FulfillmentTask =>
+      task({ assignedConnectionId: 'conn_oms', ...overrides });
+
+    it('should say nothing about acceptance when the task is accepted', async () => {
+      const { container } = renderPanel([routed({ requestStatus: 'accepted' })]);
+
+      expect(await screen.findByText('Open')).toBeInTheDocument();
+      expect(screen.queryByText(/Handshake/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/pack bench/)).not.toBeInTheDocument();
+      expect(container.querySelector('.fulfilment-task')).toHaveAttribute('data-attention', 'false');
+    });
+
+    it('should add a quiet note, not a warning, while the task is on its way', async () => {
+      const { container } = renderPanel([
+        routed({ requestStatus: 'submitted', createdAt: minutesAgo(2) }),
+      ]);
+
+      expect(await screen.findByText('Open')).toBeInTheDocument();
+      expect(screen.getByText('On its way to the pack bench')).toBeInTheDocument();
+      expect(container.querySelector('.fulfilment-task')).toHaveAttribute('data-attention', 'false');
+    });
+
+    it('should name the problem in the status badge when the task is stuck before acceptance', async () => {
+      const { container } = renderPanel([
+        routed({ requestStatus: 'unsubmitted', createdAt: minutesAgo(120) }),
+      ]);
+
+      expect(await screen.findByText('Open · Not on the pack bench')).toBeInTheDocument();
+      expect(screen.getByText(/Not accepted yet · sent/)).toBeInTheDocument();
+      expect(container.querySelector('.fulfilment-task')).toHaveAttribute('data-attention', 'true');
+    });
+
+    it('should name the problem in the status badge when the task was not accepted', async () => {
+      renderPanel([routed({ requestStatus: 'rejected' })]);
+
+      expect(await screen.findByText('Open · Not on the pack bench')).toBeInTheDocument();
+      expect(screen.getByText(/Turned down or not answered in time · sent/)).toBeInTheDocument();
+    });
+
+    it('should say nothing about acceptance for a task routed to no executor', async () => {
+      renderPanel([task({ assignedConnectionId: null, requestStatus: 'unsubmitted', createdAt: minutesAgo(120) })]);
+
+      expect(await screen.findByText('Open')).toBeInTheDocument();
+      expect(screen.queryByText(/pack bench/)).not.toBeInTheDocument();
     });
   });
 
@@ -181,11 +251,11 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       // what makes the assertion able to fail.
       renderPanel([task({ status: 'open', supportedActions: [] })]);
 
-      // Exactly two by design — the badge and the State row (see the card's
-      // docblock: the underlying state is never hidden). A count, not a
-      // `not.toHaveLength(0)`: `findAllByText` already throws on zero, so that
-      // matcher could never fail and would be decoration.
-      expect(await screen.findAllByText('Open')).toHaveLength(2);
+      // Exactly one by design — the status badge; there is no State row since
+      // #3763 (see the card's docblock). A count, not a `not.toHaveLength(0)`:
+      // `findAllByText` already throws on zero, so that matcher could never
+      // fail and would be decoration.
+      expect(await screen.findAllByText('Open')).toHaveLength(1);
       expect(screen.queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Put on hold' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();

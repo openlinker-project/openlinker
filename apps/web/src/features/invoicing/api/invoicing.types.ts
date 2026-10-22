@@ -44,6 +44,10 @@ export const FailureCodeValues = [
   // A missing per-connection sale classification (goods vs. services) — a
   // one-field config gap, not an order-data problem (#3031).
   'sale-classification-required',
+  // The adapter refused before contacting the provider because the
+  // connection is missing a setting (#3772). The only code whose
+  // `failureReason` is the adapter's own sentence naming that setting.
+  'connection-setup-incomplete',
   'provider-rejected',
   'transport-timeout',
   'provider-error',

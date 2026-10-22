@@ -31,7 +31,7 @@ export class ProductVariantResponseDto {
   @ApiPropertyOptional({
     nullable: true,
     description:
-      'Master variant price. Nullable when not yet synced or unavailable from the master source.',
+      'Master variant price, gross (what a buyer pays, excluding promotions). Nullable when not yet synced or when the master could not state a gross figure.',
   })
   price!: number | null;
   @ApiPropertyOptional({

@@ -59,7 +59,7 @@ export { QuickFilters, QuickFiltersLabel, QuickFiltersSeparator } from './quick-
 export type { QuickFiltersProps } from './quick-filters';
 
 // ── Form composition ───────────────────────────────────────────────
-export { FormField } from './form-field';
+export { FormField, useFormFieldControl, type FormFieldControlProps } from './form-field';
 export { FieldError } from './field-error';
 export { FormErrorSummary } from './form-error-summary';
 

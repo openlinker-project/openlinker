@@ -1,0 +1,2026 @@
+<title>Invoice setup errors</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* ── OpenLinker apps/web/src/index.css, extracted verbatim for the classes used below ── */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); 
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+  --tag-grey: oklch(62% 0.01 270);
+  --tag-blue: oklch(58% 0.15 255);
+  --tag-teal: oklch(60% 0.10 195);
+  --tag-green: oklch(60% 0.14 150);
+  --tag-amber: oklch(74% 0.15 80);
+  --tag-orange: oklch(66% 0.16 50);
+  --tag-pink: oklch(64% 0.17 350);
+  --tag-violet: oklch(58% 0.17 300);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+  --space-1: 0.25rem; 
+  --space-2: 0.5rem; 
+  --space-3: 0.75rem; 
+  --space-4: 1rem; 
+  --space-5: 1.5rem; 
+  --space-6: 2rem; 
+  --space-7: 3rem; 
+  --space-8: 4rem; 
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); 
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+  --tag-grey: oklch(70% 0.01 270);
+  --tag-blue: oklch(70% 0.14 255);
+  --tag-teal: oklch(72% 0.10 195);
+  --tag-green: oklch(72% 0.14 150);
+  --tag-amber: oklch(80% 0.14 80);
+  --tag-orange: oklch(74% 0.15 50);
+  --tag-pink: oklch(74% 0.15 350);
+  --tag-violet: oklch(72% 0.15 300);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+ color-scheme: dark; } }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); 
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+  --tag-grey: oklch(70% 0.01 270);
+  --tag-blue: oklch(70% 0.14 255);
+  --tag-teal: oklch(72% 0.10 195);
+  --tag-green: oklch(72% 0.14 150);
+  --tag-amber: oklch(80% 0.14 80);
+  --tag-orange: oklch(74% 0.15 50);
+  --tag-pink: oklch(74% 0.15 350);
+  --tag-violet: oklch(72% 0.15 300);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+ color-scheme: dark; }
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg-canvas);
+}
+a {
+  color: var(--accent-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+button, input, select, textarea {
+  font: inherit;
+}
+button, .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-4);
+  height: 2rem;
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-normal);
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.button:hover {
+  background: var(--button-primary-bg-hover);
+  border-color: var(--button-primary-bg-hover);
+  color: var(--text-on-primary);
+}
+.button:active {
+  background: var(--accent-primary-active);
+  border-color: var(--accent-primary-active);
+}
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.button:focus-visible, .control:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.button--secondary {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+}
+.button--secondary:hover {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.button--secondary:active {
+  background: var(--bg-surface-hover);
+}
+.button--danger {
+  border-color: color-mix(in oklab, var(--status-error) 80%, black);
+  background: var(--status-error);
+  color: #ffffff;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+}
+.button--danger:hover {
+  background: color-mix(in oklab, var(--status-error) 90%, black);
+  border-color: color-mix(in oklab, var(--status-error) 70%, black);
+  color: #ffffff;
+}
+.button--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+.button--ghost:hover {
+  background: var(--bg-surface-muted);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+.button__spinner {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: var(--space-2);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-pill);
+  opacity: 0.85;
+  animation: button-spinner-rotate var(--duration-slow) linear infinite;
+  vertical-align: -0.125em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .button__spinner {
+    animation: none;
+    border-top-color: currentColor;
+    opacity: 0.4;
+  }
+}
+.button--xs {
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+.button--sm {
+  height: 1.75rem;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+}
+.button--md {
+}
+.button--lg {
+  height: 2.375rem;
+  padding: 0 var(--space-5);
+  font-size: 0.875rem;
+}
+.button--icon {
+  padding: 0;
+  width: 2rem;
+}
+.button--icon.button--xs { width: 1.5rem; }
+.button--icon.button--sm { width: 1.75rem; }
+.button--icon.button--lg { width: 2.375rem; }
+.button--bare.button--bare {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1;
+}
+.button--bare.button--bare-sm { width: 1.125rem; height: 1.125rem; }
+.button--bare.button--bare:hover {
+  background: var(--bg-surface-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+.button--bare.button--bare:active { background: var(--bg-surface-hover); }
+.button--bare.button--bare:focus-visible { box-shadow: var(--shadow-focus); }
+.button--bare.button--bare:disabled { cursor: not-allowed; opacity: 0.5; background: transparent; }
+@media (hover: none) and (pointer: coarse) {
+  .button--bare.button--bare { min-width: 0; min-height: 0; }
+  .button--bare.button--bare::after { content: ''; position: absolute; inset: -14px; }
+}
+.button__shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  padding: 1px 5px;
+  margin-left: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  letter-spacing: var(--tracking-wide);
+  border-radius: var(--radius-xs);
+  background: rgb(255 255 255 / 0.20);
+  color: inherit;
+  opacity: 0.85;
+}
+.button--secondary .button__shortcut, .button--ghost .button__shortcut {
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+}
+.control, select, textarea {
+  width: 100%;
+  height: 2rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.control:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.control:disabled {
+  background: var(--bg-surface-muted);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+.control {
+  appearance: none;
+}
+.control--select, select {
+  padding-right: var(--space-7);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 8px) calc(50% - 2px);
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+.control--invalid {
+  border-color: var(--status-error);
+}
+.control--invalid:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 30%, transparent);
+}
+textarea {
+  height: auto;
+  min-height: 5rem;
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+  line-height: 1.45;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.page-title {
+  margin: 0;
+  color: var(--text-primary);
+}
+.page-title__with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.page-description, .panel-copy, .muted-text {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.alert {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem 0.875rem 1.125rem;
+  background: var(--bg-surface);
+  box-shadow: inset 3px 0 0 var(--border-default);
+}
+.alert--info {
+  border-color: var(--status-info-border);
+  background: var(--status-info-soft);
+  box-shadow: inset 3px 0 0 var(--status-info);
+}
+.alert--success {
+  border-color: var(--status-success-border);
+  background: var(--status-success-soft);
+  box-shadow: inset 3px 0 0 var(--status-success);
+}
+.alert--warning {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+  box-shadow: inset 3px 0 0 var(--status-warning);
+}
+.alert--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  box-shadow: inset 3px 0 0 var(--status-conflict);
+}
+.alert--error {
+  border-color: var(--status-error-border);
+  background: var(--status-error-soft);
+  box-shadow: inset 3px 0 0 var(--status-error);
+}
+.alert__content {
+  display: grid;
+  gap: 0.35rem;
+}
+.alert__title, .toast__title {
+  color: var(--text-primary);
+}
+.alert__description, .toast__description {
+  color: var(--text-secondary);
+}
+.alert__description p, .toast__description {
+  margin: 0;
+}
+.alert__actions {
+  flex-shrink: 0;
+}
+.alert__count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: inherit;
+}
+@media (max-width: 767.98px) {
+  .alert {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .alert__actions {
+    display: flex;
+  }
+}
+.page-section, .page-header {
+  display: grid;
+  gap: 0.75rem;
+}
+.page-section {
+  grid-template-columns: minmax(0, 1fr);
+}
+.page-header {
+  gap: 0.45rem;
+}
+.page-header--split {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  justify-self: start;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  transition: color 120ms ease;
+}
+.back-link:hover {
+  color: var(--text-primary);
+}
+.back-link:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+.back-link__glyph {
+  font-size: 0.9em;
+  line-height: 1;
+}
+.page-header__content, .page-header__actions {
+  display: grid;
+  gap: 0.75rem;
+}
+.page-header__actions {
+  justify-items: end;
+}
+.eyebrow {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-primary-hover);
+}
+.form-field {
+  display: grid;
+  gap: var(--space-2);
+}
+.form-field__label {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+.form-field__description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.form-field__description--match {
+  color: var(--status-success-strong);
+}
+.form-field__error {
+  margin: 0;
+  color: var(--status-error-strong);
+  font-size: 0.75rem;
+}
+.alert--compact {
+  gap: var(--space-3);
+  padding: 0.8125rem 0.9375rem;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.alert--compact .alert__content {
+  gap: 0.1875rem;
+}
+.alert--compact .alert__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.alert--compact .alert__description {
+  font-size: 0.8125rem;
+}
+.alert--compact.alert--warning .alert__title {
+  color: var(--status-warning-fg);
+}
+.alert--compact.alert--error .alert__title {
+  color: var(--status-error-fg);
+}
+.alert--compact.alert--info .alert__title {
+  color: var(--status-info-fg);
+}
+.mono-text {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.toast__content {
+  display: grid;
+  gap: 0.75rem;
+}
+.toast-region {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  width: min(24rem, calc(100vw - 2rem));
+  z-index: 60;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-disabled-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-elevated);
+  box-shadow: var(--shadow-md);
+}
+.toast--success {
+  border-color: var(--status-success-border);
+  border-left-color: var(--status-success);
+}
+.toast--info {
+  border-color: var(--status-info-border);
+  border-left-color: var(--status-info);
+}
+.toast--warning {
+  border-color: var(--status-warning-border);
+  border-left-color: var(--status-warning);
+}
+.toast--error {
+  border-color: var(--status-error-border);
+  border-left-color: var(--status-error);
+}
+.toast__content {
+  flex: 1;
+  min-width: 0;
+}
+.toast__dismiss {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.toast__action {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.toast[data-state='open'] {
+  animation: toast-slide-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toast[data-state='closed'] {
+  animation: toast-fade-out 120ms ease-in;
+}
+.toast[data-swipe='move'] {
+  transform: translateX(var(--radix-toast-swipe-move-x, 0));
+}
+.toast[data-swipe='cancel'] {
+  transform: translateX(0);
+  transition: transform 160ms ease-out;
+}
+.toast[data-swipe='end'] {
+  animation: toast-swipe-out 120ms ease-out forwards;
+}
+@media (max-width: 900px) {
+  .page-header--split {
+    grid-template-columns: 1fr;
+  }
+  .alert, .toast {
+    flex-direction: column;
+  }
+  .page-header__actions {
+    justify-items: start;
+  }
+}
+.eparagony-seller__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.eparagony-seller__address {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.eparagony-seller__address > legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+.eparagony-seller__address-row {
+  display: grid;
+  gap: var(--space-3);
+  align-items: start;
+}
+.eparagony-seller__address-row .form-field__label {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.eparagony-seller__address-row--street {
+  grid-template-columns: minmax(0, 4fr) minmax(0, 1fr) minmax(0, 1.4fr);
+}
+.eparagony-seller__address-row--city {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 3fr) minmax(0, 1fr);
+}
+.eparagony-seller__readiness {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.eparagony-seller__readiness--complete {
+  color: var(--status-success-fg);
+}
+@media (max-width: 640px) {
+  .eparagony-seller__address-row--street {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .eparagony-seller__address-row--street > :first-child {
+    grid-column: 1 / -1;
+  }
+  .eparagony-seller__address-row--city {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  }
+}
+@media (hover: none) and (pointer: coarse) {
+  button, .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .control, input, select, textarea {
+    min-height: 44px;
+  }
+  .toast__action {
+    min-height: 0;
+    min-width: 0;
+  }
+}
+.key-value-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+@media (min-width: 768px) {
+  .key-value-list {
+    grid-template-columns: minmax(160px, max-content) 1fr;
+  }
+}
+.key-value-list__label, .key-value-list__value {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+}
+.key-value-list__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  background: var(--bg-shell);
+}
+.key-value-list__value {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  word-break: break-word;
+}
+.key-value-list__label, .key-value-list__value {
+  min-width: 0;
+}
+.key-value-list__value > * {
+  max-width: 100%;
+}
+.key-value-list__value--mono {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.key-value-list__label:first-of-type, .key-value-list > :nth-child(-n + 2) {
+  border-top: 0;
+}
+.detail-section {
+  display: grid;
+  gap: 0.75rem;
+}
+.detail-section__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.detail-section__muted {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.sales-document-panel__skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    100deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.sales-document-panel__skeleton {
+  height: 14px;
+}
+.sales-document-panel__skeleton--headline {
+  height: 38px;
+  margin-bottom: var(--space-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sales-document-panel__skeleton {
+    animation: none;
+    background: var(--bg-surface-muted);
+  }
+}
+.invoice-panel__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.invoice-panel__kv dt {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-panel__kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.invoice-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.invoice-detail-section__title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.invoice-detail-section__kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.invoice-detail-section__kv dt {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-detail-section__kv dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.invoice-panel__inline-alert {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: var(--bg-surface-muted);
+}
+.invoice-panel__inline-alert--error {
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+.invoice-panel__inline-alert--warning {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+}
+.invoice-panel__inline-alert-bar {
+  flex-shrink: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  align-self: stretch;
+}
+.sales-document-panel {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.sales-document-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.sales-document-panel__header-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sales-document-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+.sales-document-panel__actions .spacer {
+  flex: 1;
+}
+.sales-document-panel__actions--issue {
+  flex-wrap: wrap;
+}
+.sales-document-panel__doc-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sales-document-panel__actions--issue .button {
+  flex: 0 0 auto;
+}
+@media (max-width: 480px) {
+  .sales-document-panel__doc-type {
+    flex-basis: 100%;
+  }
+  .sales-document-panel__actions--issue .button {
+    flex: 1 1 auto;
+  }
+}
+.sales-document-panel__connection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.sales-document-panel__connection-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.sales-document-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.sales-document-panel__notice {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.doc-slot {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
+}
+.doc-slot--filled {
+  border-style: solid;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+.doc-slot__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.doc-slot__kind {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.doc-slot__name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.invoice-connection-lock {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-success);
+  border-radius: var(--radius-md);
+}
+.invoice-connection-lock--pending {
+  border-left-color: var(--status-warning);
+}
+.invoice-connection-lock--stale {
+  border-left-color: var(--border-strong);
+}
+.invoice-connection-lock__glyph {
+  font-size: 0.9375rem;
+  line-height: 1;
+  color: var(--status-success-fg);
+}
+.invoice-connection-lock--pending .invoice-connection-lock__glyph {
+  color: var(--status-warning-fg);
+}
+.invoice-connection-lock--stale .invoice-connection-lock__glyph {
+  color: var(--text-muted);
+}
+.invoice-connection-lock__eyebrow {
+  grid-column: 2;
+  overflow-wrap: break-word;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.invoice-connection-lock__value {
+  grid-column: 2;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.invoice-connection-lock__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.invoice-connection-lock__tag {
+  flex: none;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+}
+.invoice-connection-lock__hint {
+  grid-column: 2;
+  overflow-wrap: break-word;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.invoice-connection-lock__why {
+  grid-column: 2;
+}
+.invoice-connection-lock__why > summary {
+  font-size: 0.75rem;
+}
+.invoice-connection-lock__why .invoice-connection-lock__hint {
+  display: block;
+  margin-top: var(--space-1);
+}
+.reg-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+}
+.reg-card--info {
+  border-left-color: var(--status-info);
+  background: var(--status-info-soft);
+}
+.reg-card--success {
+  border-left-color: var(--status-success);
+  background: var(--status-success-soft);
+}
+.reg-card--error {
+  border-left-color: var(--status-error);
+  background: var(--status-error-soft);
+}
+.reg-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.reg-card__progress {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    100deg,
+    var(--status-info-soft) 0%,
+    var(--status-info) 50%,
+    var(--status-info-soft) 100%
+  );
+  background-size: 200% 100%;
+  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reg-card__progress {
+    animation: none;
+    background: var(--status-info);
+  }
+}
+.reg-card__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.reg-card__note {
+  font-size: 0.75rem;
+  margin: 0;
+}
+.sales-document-panel__correction {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.sales-document-panel__correction summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--text-link);
+  width: fit-content;
+}
+.sales-document-panel__correction .panel-copy {
+  margin: var(--space-2) 0;
+}
+.sales-document-panel__scope-note {
+  width: 100%;
+  font-size: 0.75rem;
+}
+.sales-document-panel__routing-disclosure summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+.sales-document-panel__override-cards {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sales-document-panel__override-card-fields {
+  display: grid;
+  gap: var(--space-3);
+}
+.sales-document-panel__override-card-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sales-document-panel__override-card-hint {
+  font-size: 0.82rem;
+}
+.sales-document-panel__override-card-scope {
+  margin: 0;
+  font-size: 0.78rem;
+}
+.sales-document-panel__routing-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.sales-document-panel__routing-block-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.inline-disclosure {
+  border: 1px dashed var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+.inline-disclosure__summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.inline-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+.inline-disclosure__summary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+.inline-disclosure__label {
+  color: var(--text-secondary);
+}
+.inline-disclosure__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.inline-disclosure__cta {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}
+.inline-disclosure__panel {
+  margin-top: var(--space-3);
+}
+.detail-section__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.detail-section__edit-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-primary-soft-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.detail-section__edit-link:hover {
+  text-decoration: underline;
+}
+.form-field__source {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;  font-weight: 400;
+  color: var(--text-muted);
+}
+.form-field__source[data-source='setting'] {
+  color: var(--status-info-fg);
+}
+.form-field__source[data-above-recommended='true'] {
+  color: var(--status-warning-fg);
+}
+.document-glyph {
+  flex: none;
+  color: inherit;
+}
+.document-headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.document-headline__main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.document-headline__main .document-glyph {
+  width: 20px;
+  height: 20px;
+}
+.document-headline__word {
+  min-width: 0;
+}
+.document-headline__sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.document-headline__main--idle {
+  color: var(--text-muted);
+}
+.document-headline__main--warning {
+  color: var(--status-warning-fg);
+}
+.document-headline__main--error {
+  color: var(--status-error-fg);
+}
+.document-headline__main--done .document-glyph, .document-headline__main--progress .document-glyph {
+  color: var(--text-muted);
+}
+.document-headline__tick {
+  flex: none;
+  color: var(--status-success);
+}
+.document-headline__live {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info);
+  animation: document-headline-pulse 1.6s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-headline__live {
+    animation: none;
+  }
+}
+.document-headline__sub {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.document-lifecycle {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.document-lifecycle__step {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-top: 20px;
+  text-align: center;
+}
+.document-lifecycle__step::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 6px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border-subtle);
+}
+.document-lifecycle__step:first-child::before {
+  content: none;
+}
+.document-lifecycle__step--done::before {
+  background: var(--status-success-border);
+}
+.document-lifecycle__marker {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-inverse);
+}
+.document-lifecycle__step--done .document-lifecycle__marker {
+  border-color: var(--status-success);
+  background: var(--status-success);
+}
+.document-lifecycle__step--error .document-lifecycle__marker {
+  border-color: var(--status-error);
+  background: var(--status-error);
+}
+.document-lifecycle__step--active .document-lifecycle__marker {
+  border-color: var(--status-info);
+  animation: document-lifecycle-pulse 1.6s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-lifecycle__step--active .document-lifecycle__marker {
+    animation: none;
+  }
+}
+.document-lifecycle__label {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.document-lifecycle__step--todo .document-lifecycle__label {
+  color: var(--text-muted);
+}
+.document-lifecycle__time {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+/* ── Proposal frame (not part of the product) ── */
+:root { --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; --font-mono: 'IBM Plex Mono', ui-monospace, monospace; }
+body { font-family: var(--font-sans); color: var(--text-primary); background: var(--bg-canvas); }
+.proposal { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: 1.5rem; max-width: 76rem; margin: 0 auto; padding-block: 1.5rem 3rem; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); align-items: start; }
+.proposal__app { min-width: 0; display: grid; gap: 1rem; }
+.proposal__notes { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 1rem); display: grid; gap: 1rem; min-width: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.proposal__notes h3 { margin: 0; font-size: 0.875rem; color: var(--text-primary); }
+.proposal__notes ol, .proposal__notes ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.4rem; }
+.proposal__notes code { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; }
+.proposal__note { border: 1px dashed var(--border-strong); border-radius: 0.5rem; padding: 0.75rem 0.875rem; display: grid; gap: 0.5rem; background: var(--bg-surface); }
+.proposal__badge { justify-self: start; font-family: var(--font-mono); font-size: 0.6875rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem; background: var(--accent-primary-soft); color: var(--text-primary); }
+.proposal__modes { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.proposal__steps { display: flex; gap: 0.375rem; flex-wrap: wrap; }
+.proposal__steps .button { font-size: 0.75rem; }
+.proposal__stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 28rem); gap: 1.5rem; align-items: start; }
+.proposal__context { display: grid; gap: 0.5rem; font-size: 0.875rem; color: var(--text-secondary); }
+.proposal__context strong { color: var(--text-primary); }
+.proposal__caption { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.proposal__caption strong { color: var(--text-primary); }
+.proposal__toast-host { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); z-index: 50; width: min(360px, calc(100vw - 32px)); }
+.proposal__toast-host .toast { position: static; }
+.settings-card { display: grid; gap: 1rem; padding: 1rem; border: 1px solid var(--border-default); border-radius: 0.5rem; background: var(--bg-surface); }
+.settings-card__actions { display: flex; gap: 0.5rem; }
+@media (max-width: 1023.98px) { .proposal { grid-template-columns: minmax(0, 1fr); } .proposal__notes { position: static; } .proposal__stage { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useId, Children, cloneElement } = React;
+
+/* ════════════════════════════════════════════════════════════════════
+ * shared/ui - ported 1:1 from apps/web/src/shared/ui (types dropped)
+ * ════════════════════════════════════════════════════════════════════ */
+
+function Alert({ action, children, className = '', density = 'default', title, tone = 'info' }) {
+  const classes = ['alert', `alert--${tone}`, density === 'compact' ? 'alert--compact' : '', className].filter(Boolean).join(' ');
+  return (
+    <div className={classes} role={tone === 'error' ? 'alert' : 'status'}>
+      <div className="alert__content">
+        {title ? <strong className="alert__title">{title}</strong> : null}
+        <div className="alert__description">{children}</div>
+      </div>
+      {action ? <div className="alert__actions">{action}</div> : null}
+    </div>
+  );
+}
+
+function Button({ className = '', tone = 'primary', type = 'button', ...props }) {
+  return <button type={type} className={['button', `button--${tone}`, className].filter(Boolean).join(' ')} {...props} />;
+}
+
+function FieldError({ id, message }) {
+  if (!message) return null;
+  return <p id={id} className="form-field__error" role="alert">{message}</p>;
+}
+
+function FormField({ children, description, error, label, name }) {
+  const child = Children.only(children);
+  const generatedId = useId();
+  const inputId = child.props.id ?? `${name}-${generatedId}`;
+  const descriptionId = description ? `${inputId}-description` : undefined;
+  return (
+    <div className="form-field">
+      <label htmlFor={inputId} className="form-field__label">{label}</label>
+      {cloneElement(child, { id: inputId, 'aria-describedby': descriptionId, 'aria-invalid': Boolean(error) })}
+      {description ? <p id={descriptionId} className="form-field__description">{description}</p> : null}
+      <FieldError id={`${inputId}-error`} message={error} />
+    </div>
+  );
+}
+
+function Input({ className = '', invalid = false, ...props }) {
+  return <input className={['control', invalid ? 'control--invalid' : '', className].filter(Boolean).join(' ')} {...props} />;
+}
+
+function InlineDisclosure({ label, value, children, changeLabel = 'Change', defaultOpen = false, className }) {
+  return (
+    <details className={['inline-disclosure', className].filter(Boolean).join(' ')} open={defaultOpen}>
+      <summary className="inline-disclosure__summary">
+        <span className="inline-disclosure__label">{label}</span>{' '}
+        <span className="inline-disclosure__value">{value}</span>{' '}
+        <span className="inline-disclosure__cta">{changeLabel} →</span>
+      </summary>
+      <div className="inline-disclosure__panel">{children}</div>
+    </details>
+  );
+}
+
+/* shared/ui/toast-provider.tsx - the Radix toast's own markup and classes */
+function Toast({ tone, title, description, onDismiss }) {
+  return (
+    <div className="proposal__toast-host" role="region" aria-label="Notifications">
+      <div className={`toast toast--${tone}`} data-state="open">
+        <div className="toast__content">
+          <div className="toast__title">{title}</div>
+          <div className="toast__description">{description}</div>
+        </div>
+        <button type="button" className="toast__dismiss" onClick={onDismiss}>Dismiss</button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * features/orders - SalesDocumentPanel, invoice states (markup copied
+ * from the rendered panel on a running stack)
+ * ════════════════════════════════════════════════════════════════════ */
+
+const CONNECTION = 'e-paragony Sandbox';
+
+const DocGlyph = () => (
+  <svg className="document-glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+    <path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    <path d="M9.5 1.5v3h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    <path d="M5.5 8h5M5.5 10.5h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+);
+
+function Headline({ tone, word, sub, tick }) {
+  return (
+    <div className="document-headline">
+      <span className={`document-headline__main document-headline__main--${tone}`}>
+        {tone === 'idle' ? (
+          <svg className="document-glyph" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M4.4 11.6 11.6 4.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+        ) : <DocGlyph />}
+        <span className="document-headline__word">{word[0]}<span className="document-headline__sep" aria-hidden="true"> · </span>{word[1]}</span>
+        {tick ? (
+          <svg className="document-headline__tick" viewBox="0 0 12 12" width="14" height="14" aria-hidden="true">
+            <path d="M2.5 6.4 4.7 8.6 9.5 3.8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : null}
+      </span>
+      {sub ? <p className="document-headline__sub">{sub}</p> : null}
+    </div>
+  );
+}
+
+function Panel({ headline, children }) {
+  return (
+    <section className="detail-section sales-document-panel">
+      <header className="sales-document-panel__header">
+        <h3 className="detail-section__title">Sales document</h3>
+        <Headline {...headline} />
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function RetryLock() {
+  return (
+    <div className="invoice-connection-lock invoice-connection-lock--stale">
+      <span className="invoice-connection-lock__glyph" aria-hidden="true">↻</span>
+      <span className="invoice-connection-lock__eyebrow">Retry goes to</span>
+      <span className="invoice-connection-lock__value">
+        <span className="invoice-connection-lock__name">{CONNECTION}</span>
+        <span className="invoice-connection-lock__tag mono-text">eparagony</span>
+      </span>
+      <span className="invoice-connection-lock__hint">Retrying keeps the same connection, so the numbering series stays continuous.</span>
+    </div>
+  );
+}
+
+function NotIssuedPanel({ onIssue }) {
+  return (
+    <Panel headline={{ tone: 'idle', word: ['No document', 'Not issued'] }}>
+      <div className="doc-slot">
+        <div className="doc-slot__head"><span className="doc-slot__kind">nothing issued</span></div>
+        <details className="sales-document-panel__routing-disclosure" open>
+          <summary>Issue or register manually instead</summary>
+          <div className="sales-document-panel__actions sales-document-panel__actions--issue">
+            <select className="control control--select sales-document-panel__doc-type" aria-label="Document type" defaultValue="invoice">
+              <option value="invoice">Invoice (faktura)</option>
+            </select>
+            <Button onClick={onIssue}>Issue invoice</Button>
+            <p className="text-muted sales-document-panel__scope-note">This applies to this order only.</p>
+          </div>
+        </details>
+      </div>
+    </Panel>
+  );
+}
+
+/* TODAY: any failure reads as a provider rejection about the order's data. */
+function RejectedTodayPanel({ onRetry }) {
+  return (
+    <Panel headline={{ tone: 'error', word: ['Invoice', 'Rejected'], sub: CONNECTION }}>
+      <div className="doc-slot doc-slot--filled">
+        <div className="doc-slot__head"><span className="doc-slot__kind">invoice</span></div>
+        <RetryLock />
+        <div className="invoice-panel__inline-alert invoice-panel__inline-alert--error">
+          <span className="invoice-panel__inline-alert-bar" />
+          <span><strong>The provider rejected the document. Check the order’s data, then retry. Nothing was issued.</strong></span>
+        </div>
+        <div className="sales-document-panel__actions">
+          <span className="text-muted" style={{ fontSize: '11.5px' }}>Rejected — nothing was issued, so it is safe to retry once the cause is fixed.</span>
+          <span className="spacer" />
+          <Button tone="secondary" onClick={onRetry}>Retry</Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/* PROPOSAL: failureCode 'connection-setup-incomplete'. The reason line is
+   the adapter's own PII-free failureReason; the title and the link are
+   composed here from the connection the record already names. */
+const SETUP_REASON = 'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.';
+
+function SetupIncompletePanel({ onOpenSettings, onRetry }) {
+  return (
+    <Panel headline={{ tone: 'error', word: ['Invoice', 'Not issued'], sub: CONNECTION }}>
+      <div className="doc-slot doc-slot--filled">
+        <div className="doc-slot__head"><span className="doc-slot__kind">invoice</span></div>
+        <RetryLock />
+        <Alert tone="warning" title={`${CONNECTION} is not set up to issue invoices`}>
+          <p className="panel-copy">{SETUP_REASON}</p>
+          <p className="panel-copy">
+            <Button className="button--sm" onClick={onOpenSettings}>Open connection settings</Button>
+          </p>
+        </Alert>
+        <div className="sales-document-panel__actions">
+          <span className="text-muted" style={{ fontSize: '11.5px' }}>Nothing was sent to the provider, so nothing was issued. Retry once the connection is saved.</span>
+          <span className="spacer" />
+          <Button tone="secondary" onClick={onRetry}>Retry</Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function IssuedPanel() {
+  return (
+    <Panel headline={{ tone: 'done', word: ['Invoice', 'Issued'], sub: `FV/2026/0012 · ${CONNECTION}`, tick: true }}>
+      <div className="doc-slot doc-slot--filled">
+        <div className="doc-slot__head"><span className="doc-slot__kind">invoice</span></div>
+        <div className="invoice-connection-lock">
+          <span className="invoice-connection-lock__glyph" aria-hidden="true">🔒</span>
+          <span className="invoice-connection-lock__eyebrow">Issued by</span>
+          <span className="invoice-connection-lock__value">
+            <span className="invoice-connection-lock__name">{CONNECTION}</span>
+            <span className="invoice-connection-lock__tag mono-text">eparagony</span>
+          </span>
+        </div>
+        <div className="sales-document-panel__body">
+          <dl className="key-value-list">
+            <dt className="key-value-list__label">Number</dt>
+            <dd className="key-value-list__value"><span className="mono-text">FV/2026/0012</span></dd>
+            <dt className="key-value-list__label">Document</dt>
+            <dd className="key-value-list__value">Invoice (faktura)</dd>
+          </dl>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/* Connection edit form - the "Seller on invoices" group from #3771 */
+function ConnectionSettings({ onSaved, onCancel }) {
+  const [nip, setNip] = useState('');
+  return (
+    <div className="settings-card">
+      <div className="page-header__content">
+        <p className="eyebrow">Edit connection</p>
+        <h2 className="page-title">{CONNECTION}</h2>
+      </div>
+      <InlineDisclosure className="eparagony-seller" label="Seller on invoices:" value={nip ? `NIP ${nip}, incomplete for corrections` : 'No tax number, every invoice is refused'} defaultOpen>
+        <div className="eparagony-seller__panel">
+          <p className="form-field__description">eparagony.pl prints these on every invoice this connection issues, as the seller.</p>
+          {nip ? null : (
+            <Alert tone="warning" density="compact">Every invoice from this connection is refused until you add the seller’s tax number.</Alert>
+          )}
+          <FormField label="Tax number (NIP)" name="nip" description="The NIP your eparagony.pl account is registered with. eparagony.pl refuses an invoice under any other number.">
+            <Input value={nip} onChange={(e) => setNip(e.target.value)} inputMode="numeric" placeholder="1234567890" />
+          </FormField>
+        </div>
+      </InlineDisclosure>
+      <div className="settings-card__actions">
+        <Button onClick={onSaved} disabled={!nip.trim()}>Save changes</Button>
+        <Button tone="secondary" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * Flows
+ * ════════════════════════════════════════════════════════════════════ */
+
+const STATES = {
+  today: [
+    ['today-ready', 'Przed kliknięciem'],
+    ['today-toast', 'Po kliknięciu'],
+    ['today-reloaded', 'Po odświeżeniu'],
+  ],
+  proposal: [
+    ['proposal-ready', 'Przed kliknięciem'],
+    ['proposal-setup-incomplete', 'Po kliknięciu'],
+    ['proposal-connection-settings', 'Ustawienia połączenia'],
+    ['proposal-saved', 'Po zapisie'],
+    ['proposal-issued', 'Po ponowieniu'],
+    ['proposal-unclassified', 'Nieznany błąd'],
+  ],
+};
+
+const CAPTIONS = {
+  'today-ready': 'Operator wystawia fakturę ręcznie. Połączenie nie ma NIP sprzedawcy.',
+  'today-toast': <><strong>Toast obwinia dostawcę</strong>, choć eparagony.pl nic nie dostało. Panel się nie zmienia: nieudana próba nie jest wczytana, a correlationId nic operatorowi nie mówi.</>,
+  'today-reloaded': <>Dopiero po odświeżeniu panel pokazuje próbę. Każe <strong>sprawdzić dane zamówienia</strong>, a problem leży w połączeniu. Retry powtarza ten sam błąd.</>,
+  'proposal-ready': 'Ten sam punkt wyjścia.',
+  'proposal-setup-incomplete': <><strong>Bez toastu.</strong> Panel od razu pokazuje nieudaną próbę, mówi, czego brakuje i w którym połączeniu, i prowadzi tam jednym kliknięciem. Tak samo działa dziś brak serii numeracji.</>,
+  'proposal-connection-settings': 'Link otwiera edycję połączenia. Grupa „Seller on invoices” z #3771 jest już rozwinięta, bo brakuje NIP.',
+  'proposal-saved': 'Po zapisie wracasz do zamówienia. Komunikat dotyczy ostatniej próby, więc dalej jest prawdziwy. Retry to jedno kliknięcie.',
+  'proposal-issued': 'Faktura wystawiona.',
+  'proposal-unclassified': <>Błąd, którego nie umiemy sklasyfikować, <strong>nadal</strong> trafia do toastu z correlationId. Zmiana dotyczy tylko błędów, których przyczynę znamy.</>,
+};
+
+function Stage({ state, go }) {
+  const orderContext = (
+    <div className="proposal__context">
+      <p className="eyebrow">Orders</p>
+      <h2 className="page-title">Order 6fdb60d0</h2>
+      <p style={{ margin: 0 }}><strong>Handmade Resin Ring</strong> · PLN 1,148.35 · Allegro (sandbox)</p>
+      <p className="proposal__caption">{CAPTIONS[state]}</p>
+    </div>
+  );
+  let panel = null;
+  let toast = null;
+  switch (state) {
+    case 'today-ready':
+      panel = <NotIssuedPanel onIssue={() => go('today-toast')} />; break;
+    case 'today-toast':
+      panel = <NotIssuedPanel onIssue={() => go('today-toast')} />;
+      toast = <Toast tone="error" title="Could not issue invoice" description="Invoice issuance was rejected by the provider (correlationId: inv-mvaqap1b-gav5jf)" onDismiss={() => go('today-reloaded')} />;
+      break;
+    case 'today-reloaded':
+      panel = <RejectedTodayPanel onRetry={() => go('today-toast')} />; break;
+    case 'proposal-ready':
+      panel = <NotIssuedPanel onIssue={() => go('proposal-setup-incomplete')} />; break;
+    case 'proposal-setup-incomplete':
+    case 'proposal-saved':
+      panel = <SetupIncompletePanel onOpenSettings={() => go('proposal-connection-settings')} onRetry={() => go(state === 'proposal-saved' ? 'proposal-issued' : 'proposal-setup-incomplete')} />;
+      if (state === 'proposal-saved') toast = <Toast tone="success" title="Connection saved" description={`${CONNECTION} was updated.`} onDismiss={() => go('proposal-saved')} />;
+      break;
+    case 'proposal-connection-settings':
+      return <ConnectionSettings onSaved={() => go('proposal-saved')} onCancel={() => go('proposal-setup-incomplete')} />;
+    case 'proposal-issued':
+      panel = <IssuedPanel />;
+      toast = <Toast tone="success" title="Invoice issued" description="The invoice was issued." onDismiss={() => go('proposal-issued')} />;
+      break;
+    case 'proposal-unclassified':
+      panel = <NotIssuedPanel onIssue={() => go('proposal-unclassified')} />;
+      toast = <Toast tone="error" title="Could not issue invoice" description="The invoicing provider returned an unexpected error. Reference: inv-mvaqap1b-gav5jf" onDismiss={() => go('proposal-ready')} />;
+      break;
+    default: break;
+  }
+  return (
+    <div className="proposal__stage">
+      {orderContext}
+      <div>{panel}</div>
+      {toast}
+    </div>
+  );
+}
+
+function App() {
+  const [mode, setMode] = useState('proposal');
+  const [state, setState] = useState('proposal-ready');
+  const pick = (m) => { setMode(m); setState(STATES[m][0][0]); };
+  return (
+    <div className="proposal">
+      <main className="proposal__app" data-state={state}>
+        <div className="proposal__modes" role="tablist" aria-label="Wersja">
+          <div style={{ display: "inline-flex", gap: "0.375rem" }}>
+            {[['today', 'Dziś'], ['proposal', 'Propozycja']].map(([m, label]) => (
+              <Button key={m} tone={mode === m ? 'primary' : 'secondary'} className="button--sm" onClick={() => pick(m)} aria-pressed={mode === m}>{label}</Button>
+            ))}
+          </div>
+        </div>
+        <div className="proposal__steps">
+          {STATES[mode].map(([id, label], i) => (
+            <Button key={id} tone={state === id ? 'primary' : 'secondary'} className="button--sm" onClick={() => setState(id)}>{i + 1}. {label}</Button>
+          ))}
+        </div>
+        <Stage state={state} go={setState} />
+      </main>
+
+      <aside className="proposal__notes" aria-label="Opis propozycji">
+        <div className="proposal__note">
+          <span className="proposal__badge">propozycja</span>
+          <h3>Problem</h3>
+          <p style={{ margin: 0 }}>Adapter odmawia jeszcze przed wysłaniem, z konkretną instrukcją. Kontroler zamienia to na „rejected by the provider”, a rekord dostaje <code>provider-rejected</code>. Operator nie wie, co naprawić ani gdzie.</p>
+          <p style={{ margin: 0 }}>Klikalne: przyciski w panelu przechodzą do kolejnych stanów. <code>data-state="{state}"</code></p>
+        </div>
+        <div className="proposal__note">
+          <h3>Backend</h3>
+          <ol>
+            <li>Nowy neutralny kod <code>connection-setup-incomplete</code> w <code>InvoiceFailureCodeValues</code>.</li>
+            <li>Adapter oznacza tylko odmowy o brakującej konfiguracji połączenia (strukturalne pole na wyjątku, bez szukania słów). Dla tego kodu <code>failureReason</code> to zdanie adaptera, bez danych kupującego.</li>
+            <li>eparagony: brak NIP na fakturze i brak nazwy/adresu na korekcie dostają ten znacznik.</li>
+            <li>Kontroler: 422 niesie <code>failureCode</code> (i powód przy tym kodzie). correlationId tylko dla błędów nieznanych.</li>
+          </ol>
+        </div>
+        <div className="proposal__note">
+          <h3>Frontend</h3>
+          <ol>
+            <li>Po każdym błędzie panel od razu odświeża fakturę (dziś dopiero po przeładowaniu strony).</li>
+            <li>Dla nowego kodu: alert w panelu z linkiem do ustawień połączenia, bez toastu (wzór: brak serii numeracji).</li>
+            <li>Nagłówek „Not issued” zamiast „Rejected”, gdy dostawca nic nie dostał.</li>
+            <li>Lista <code>/invoices</code> dostaje ten sam tekst przez <code>resolveFailureCopy</code>.</li>
+          </ol>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>

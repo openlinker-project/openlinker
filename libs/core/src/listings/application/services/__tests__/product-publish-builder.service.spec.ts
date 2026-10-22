@@ -19,7 +19,11 @@ const MASTER = 'conn-master-1';
 const VARIANT = 'ol_variant_aaaa';
 
 describe('ProductPublishBuilderService', () => {
-  let products: { getVariant: jest.Mock; getVariantsByProductId: jest.Mock };
+  let products: {
+    getVariant: jest.Mock;
+    getVariantsByProductId: jest.Mock;
+    getEffectiveTaxRate: jest.Mock;
+  };
   let connectionPort: { get: jest.Mock };
   let integrations: { getCapabilityAdapter: jest.Mock };
   // #2323 — the seam owns the stock safety buffer. These fixtures configure
@@ -47,6 +51,11 @@ describe('ProductPublishBuilderService', () => {
       getVariantsByProductId: jest
         .fn()
         .mockResolvedValue([{ id: VARIANT, productId: 'prod-1', attributes: { Brand: 'Acme' } }]),
+      // ADR-077: the catalogue rate travels on the command. No rate by default,
+      // so the pre-#3737 suites keep building a rate-less command.
+      getEffectiveTaxRate: jest
+        .fn()
+        .mockResolvedValue({ code: null, countryIso2: null, readAt: null }),
     };
     connectionPort = {
       get: jest.fn().mockResolvedValue({ config: { masterCatalogConnectionId: MASTER } }),
@@ -350,6 +359,63 @@ describe('ProductPublishBuilderService', () => {
     await expect(service.buildPublishProductCommand(baseInput)).rejects.toBeInstanceOf(
       ProductPublishBuilderValidationException
     );
+  });
+
+  describe('catalogue tax rate (ADR-077)', () => {
+    const warnSpyOf = (): jest.SpyInstance =>
+      jest.spyOn((service as unknown as { logger: { warn: (message: string) => void } }).logger, 'warn');
+
+    it('should stamp taxRate and taxRateCountry when the catalogue holds a rate for the variant', async () => {
+      products.getEffectiveTaxRate.mockResolvedValue({
+        code: '23',
+        countryIso2: 'PL',
+        readAt: new Date('2026-10-01T00:00:00Z'),
+      });
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      // The variant's own product id, never the input's variant id twice.
+      expect(products.getEffectiveTaxRate).toHaveBeenCalledWith('prod-1', VARIANT);
+      expect(command.taxRate).toBe('23');
+      expect(command.taxRateCountry).toBe('PL');
+      // The price itself stays the gross catalogue price - the shop converts.
+      expect(command.price).toEqual({ amount: 12.5, currency: 'PLN' });
+    });
+
+    it('should stamp taxRate without a country when the rate was resolved country-less', async () => {
+      products.getEffectiveTaxRate.mockResolvedValue({
+        code: '8',
+        countryIso2: null,
+        readAt: new Date('2026-10-01T00:00:00Z'),
+      });
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command.taxRate).toBe('8');
+      expect(command).not.toHaveProperty('taxRateCountry');
+    });
+
+    it('should leave taxRate and taxRateCountry absent when the catalogue holds no rate', async () => {
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command).not.toHaveProperty('taxRate');
+      expect(command).not.toHaveProperty('taxRateCountry');
+    });
+
+    it('should build the command without a rate and warn when the rate read throws', async () => {
+      products.getEffectiveTaxRate.mockRejectedValue(new Error('rate read failed'));
+      const warnSpy = warnSpyOf();
+
+      const command = await service.buildPublishProductCommand(baseInput);
+
+      expect(command).not.toHaveProperty('taxRate');
+      expect(command).not.toHaveProperty('taxRateCountry');
+      expect(command.price).toEqual({ amount: 12.5, currency: 'PLN' });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Could not read the catalogue tax rate')
+      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rate read failed'));
+    });
   });
 
   describe('variantGroup (#1836)', () => {

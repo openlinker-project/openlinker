@@ -112,7 +112,7 @@ describe('buildNavGroups', () => {
         isAdmin: false,
         demoMode: false,
         role: 'operator',
-        permissions: ['orders:read', 'orders:write', 'bench:write'],
+        permissions: ['orders:read', 'orders:write', 'fulfillment:read', 'bench:write', 'bench:read'],
         omsRouting,
       });
       const operations = byLabel(groups, 'Operations');
@@ -124,6 +124,21 @@ describe('buildNavGroups', () => {
       const items = operationsItems('on');
       expect(items).toContain('Fulfilment');
       expect(items).toContain('Pack bench');
+    });
+
+    it('should show Fulfilment, and not Pack bench, to a viewer when routing is on (#3736)', () => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        role: 'viewer',
+        permissions: ['orders:read', 'fulfillment:read'],
+        omsRouting: 'on',
+      });
+      const operations = byLabel(groups, 'Operations');
+      if (operations?.kind !== 'live') throw new Error('expected a live Operations group');
+      const items = operations.items.map((i) => i.label);
+      expect(items).toContain('Fulfilment');
+      expect(items).not.toContain('Pack bench');
     });
 
     it('should hide Fulfilment and Pack bench when routing is off', () => {
@@ -175,9 +190,9 @@ describe('buildNavGroups', () => {
 
   describe('sessionNeedsOmsRouting', () => {
     it('should need the routing state for a session that can see a routing-gated entry', () => {
-      expect(sessionNeedsOmsRouting(['orders:read', 'orders:write'], 'operator')).toBe(true);
+      expect(sessionNeedsOmsRouting(['orders:read', 'orders:write', 'fulfillment:read'], 'operator')).toBe(true);
       // Pack bench is gated on bench:write since #3439.
-      expect(sessionNeedsOmsRouting(['bench:write'], 'operator')).toBe(true);
+      expect(sessionNeedsOmsRouting(['bench:read'], 'operator')).toBe(true);
     });
 
     it('should not need it for a session that cannot see any routing-gated entry', () => {
@@ -228,20 +243,31 @@ describe('buildNavGroups', () => {
   // this purpose.
   describe('"Pack bench" permission gate (#3439)', () => {
     it.each(['admin', 'operator', 'packer'])(
-      'is visible to a %s session holding bench:write',
+      'is visible to a %s session holding bench:read',
       (role) => {
         const groups = buildNavGroups({
           isAdmin: role === 'admin',
           demoMode: false,
           omsRouting: 'on',
           role,
-          permissions: ['bench:write'],
+          permissions: ['bench:write', 'bench:read'],
         });
         expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
       }
     );
 
-    it('is hidden from a viewer session, which holds no bench:write', () => {
+    it('is visible to a viewer session holding bench:read (#3734)', () => {
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        omsRouting: 'on',
+        role: 'viewer',
+        permissions: ['bench:read'],
+      });
+      expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
+    });
+
+    it('is hidden from a session holding no bench:read', () => {
       const groups = buildNavGroups({
         isAdmin: false,
         demoMode: false,
@@ -295,8 +321,8 @@ describe('buildNavGroups', () => {
       'Insights',
       'Orders',
       'Customers',
-      // Hidden via its pre-existing `requiresPermission: 'orders:write'`
-      // gate (#3340/#3368), not a #3221 `requiresRole` addition.
+      // Hidden via its `requiresPermission: 'fulfillment:read'` gate
+      // (#3736), which `packer` does not hold - not a #3221 `requiresRole`.
       'Fulfilment',
       'Sales documents',
       // Already hidden pre-#3221 via the permission gate (#2358 review I5) —
@@ -314,7 +340,7 @@ describe('buildNavGroups', () => {
         demoMode: false,
         omsRouting: 'on',
         role: 'packer',
-        permissions: ['bench:write'],
+        permissions: ['bench:write', 'bench:read'],
       });
       const labels = itemLabels(byLabel(groups, 'Operations'));
 

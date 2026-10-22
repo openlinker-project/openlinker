@@ -71,17 +71,14 @@ import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types
 import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
-// Published so an adapter spec can pin its own pre-call refusal message against
-// the very markers this service matches on (#2103 review) — see the constant's doc.
+// One classification for the stored record and the HTTP answer (#3772).
 import {
-  CURRENCY_REJECTION_MARKERS,
-  SALE_CLASSIFICATION_REJECTION_MARKERS,
-} from '../../domain/types/invoicing.types';
+  MAX_FAILURE_REASON_LENGTH,
+  classifyInvoiceFailure,
+} from '../../domain/domain-services/invoice-failure-classification.domain-service';
 import type {
   CorrectionLine,
   GetInvoiceByOrderQuery,
-  InvoiceFailureCode,
-  InvoiceFailureMode,
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
   InvoiceRecordPagination,
@@ -113,20 +110,7 @@ const INVOICING_CAPABILITY = 'Invoicing';
  */
 const MAX_ERROR_MESSAGE_LENGTH = 500;
 
-/**
- * Max persisted length of the PII-free `failureReason` (W1). Far shorter than
- * `errorMessage` because it is a sanitized, operator-facing one-liner that is
- * SAFE to expose on the response DTO — it must never become a PII sink.
- */
-const MAX_FAILURE_REASON_LENGTH = 200;
 
-/**
- * Substrings (case-insensitive) that mark a `rejected` failure as a buyer
- * tax-identifier problem, so the FE can prompt the operator to fix the buyer
- * data. Neutral vocabulary only (no country tax-system names per ADR-026):
- * matches the generic "tax id" the adapter surfaces in its rejection reason.
- */
-const TAX_ID_REJECTION_MARKERS = ['tax id', 'tax-id', 'taxid', 'tax identifier'] as const;
 
 /**
  * Lifetime of an `issuing` CAS lease (#1200). Bounds how long a crashed
@@ -170,22 +154,6 @@ if (ISSUING_LEASE_MS <= MAX_SUPPORTED_PROVIDER_TIMEOUT_MS) {
   );
 }
 
-/**
- * Neutral shape the SVC reads STRUCTURALLY off a caught adapter throwable to
- * classify the failure mode (#1200) — it is NOT an adapter error subclass and is
- * NOT value-imported. Adapters expose a neutral `failureMode` on their thrown
- * errors; the SVC reads it duck-typed. Anything it cannot read as the terminal
- * `'rejected'` is treated as the fiscal-safe `'in-doubt'`.
- */
-interface NeutralFailureCarrier {
-  failureMode?: unknown;
-  /**
-   * Operator-readable rejection reason some adapters stamp on a TERMINAL
-   * `rejected` throwable (e.g. Subiekt's `SubiektInvoiceRejectedError.reason`).
-   * Read STRUCTURALLY (duck-typed) — core never value-imports the adapter class.
-   */
-  reason?: unknown;
-}
 
 /** Money is kept to 2 decimal places (the minor-unit precision of ISO-4217 currencies used here). */
 function round2(value: number): number {
@@ -763,9 +731,7 @@ export class InvoiceService implements IInvoiceService {
       issueResult = await adapter.issueInvoice(cmd);
     } catch (error) {
       const sanitized = this.sanitizeError(error);
-      const failureMode = this.classifyFailure(error);
-      const failureCode = this.classifyFailureCode(error, failureMode);
-      const failureReason = this.deriveFailureReason(failureCode);
+      const { failureMode, failureCode, failureReason } = classifyInvoiceFailure(error);
       // Log the BOUNDED diagnostic + record id only — never the raw (unbounded,
       // possibly buyer-echoing) provider message to an external sink.
       this.logger.warn(
@@ -967,104 +933,6 @@ export class InvoiceService implements IInvoiceService {
   }
 
   /**
-   * Classify a caught adapter throwable into the neutral {@link InvoiceFailureMode}
-   * (#1200) WITHOUT value-importing any adapter error subclass. The adapter stamps
-   * a neutral `failureMode` on the errors it throws; the SVC reads it STRUCTURALLY
-   * (duck-typed) here.
-   *
-   * Fiscal-safe default: ONLY an explicit, recognised `'rejected'` is treated as a
-   * terminal no-document failure (safe to re-attempt). EVERYTHING else — an
-   * absent/unknown/`'in-doubt'` marker, a plain `Error`, a non-error throwable —
-   * collapses to `'in-doubt'`, which the read-gate will NOT auto-re-attempt. An
-   * unclassifiable failure must never be assumed safe to re-issue.
-   */
-  private classifyFailure(error: unknown): InvoiceFailureMode {
-    const mode = (error as NeutralFailureCarrier | null)?.failureMode;
-    return mode === 'rejected' ? 'rejected' : 'in-doubt';
-  }
-
-  /**
-   * Derive the neutral, closed {@link InvoiceFailureCode} (W1) from the already-
-   * classified {@link InvoiceFailureMode} plus a STRUCTURAL read of the adapter
-   * throwable's `reason`/message — never value-importing an adapter error class.
-   *
-   *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`;
-   *     a settlement-currency rejection → `invalid-currency`; a missing
-   *     sale-classification rejection → `sale-classification-required` (all
-   *     three operator-fixable on the source order / connection config);
-   *     anything else → `provider-rejected`.
-   *   - `in-doubt` (transient/indeterminate transport): `transport-timeout`.
-   *
-   * Tax id is checked first purely for determinism — a message naming both is
-   * routed to the buyer-data fix, which is the more specific remedy.
-   *
-   * The mode is the source of truth for re-attemptability; the code is the FE-
-   * facing cause refinement. An unrecognised mode can never reach here (the only
-   * two values are exhaustively handled), so there is no need for a separate
-   * `provider-error` branch on the mode — it is the fiscal-safe code reserved for
-   * a future widening of the mode set.
-   */
-  private classifyFailureCode(
-    error: unknown,
-    failureMode: InvoiceFailureMode,
-  ): InvoiceFailureCode {
-    if (failureMode === 'in-doubt') {
-      return 'transport-timeout';
-    }
-    // failureMode === 'rejected': refine off the provider's neutral reason text.
-    const carrier = error as NeutralFailureCarrier | null;
-    const reasonText =
-      typeof carrier?.reason === 'string'
-        ? carrier.reason
-        : error instanceof Error
-          ? error.message
-          : '';
-    const haystack = reasonText.toLowerCase();
-    if (TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
-      return 'buyer-tax-id-invalid';
-    }
-    if (CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
-      return 'invalid-currency';
-    }
-    if (SALE_CLASSIFICATION_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
-      return 'sale-classification-required';
-    }
-    return 'provider-rejected';
-  }
-
-  /**
-   * Map the neutral {@link InvoiceFailureCode} to a fixed, PII-free, operator-
-   * facing one-liner safe to expose on the response DTO. Deliberately NOT derived
-   * from the (possibly buyer-echoing) provider message — a constant per code — so
-   * `failureReason` can never leak PII. Bounded for defence in depth.
-   */
-  private deriveFailureReason(failureCode: InvoiceFailureCode): string {
-    const reasons: Record<InvoiceFailureCode, string> = {
-      'buyer-tax-id-invalid': 'The buyer tax identifier was rejected as invalid.',
-      // Worded to fit an adapter PRE-CALL refusal, which is the only origin
-      // that actually reaches this code today (see InvoiceFailureCode's doc):
-      // it never claims the provider saw a request it did not. It stays
-      // accurate for a provider-side currency rejection too, should one ever
-      // route here, which is why it names the condition rather than the actor.
-      'invalid-currency':
-        'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
-      // Names the connection config field an operator can actually set — the
-      // generic 'provider-rejected' copy gives no clue this is a one-field
-      // config gap rather than a per-order problem (#3031).
-      'sale-classification-required':
-        "This connection requires a sale classification (goods vs. services) to be configured before it can issue invoices. Set the connection's `defaultSaleType` and re-issue.",
-      'provider-rejected': 'The invoicing provider rejected the request.',
-      'transport-timeout':
-        'The invoicing request timed out; the document may or may not have been created.',
-      'provider-error': 'The invoicing provider returned an unexpected error.',
-    };
-    const reason = reasons[failureCode];
-    return reason.length <= MAX_FAILURE_REASON_LENGTH
-      ? reason
-      : reason.slice(0, MAX_FAILURE_REASON_LENGTH);
-  }
-
-  /**
    * Issue a correction of an already-issued document (#3372).
    *
    * A correction is a distinct new fiscal document with its own record (never
@@ -1251,9 +1119,7 @@ export class InvoiceService implements IInvoiceService {
       issueResult = await adapter.issueCorrection(cmd);
     } catch (error) {
       const sanitized = this.sanitizeError(error);
-      const failureMode = this.classifyFailure(error);
-      const failureCode = this.classifyFailureCode(error, failureMode);
-      const failureReason = this.deriveFailureReason(failureCode);
+      const { failureMode, failureCode, failureReason } = classifyInvoiceFailure(error);
       this.logger.warn(
         `Correction issuance failed for record ${recordId} (failureMode=${failureMode}, failureCode=${failureCode}): ${sanitized}`,
       );

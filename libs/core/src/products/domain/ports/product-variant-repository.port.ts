@@ -202,6 +202,15 @@ export interface ProductVariantRepositoryPort {
   ): Promise<string[]>;
 
   /**
+   * End the ADR-077 tax-basis correction window for these variants: clear
+   * `priceBasisPending`. Called only once the corrected price has been
+   * reported (or found unchanged), so a report that failed keeps the variant
+   * pending and the next price move is still treated as the correction.
+   * An empty list is a no-op.
+   */
+  clearPriceBasisPending(variantIds: readonly string[]): Promise<void>;
+
+  /**
    * Record what the ProductMaster said about this variant's tax rate (#2054).
    *
    * A separate writer from `upsert` / `upsertMany`, for the same reason the

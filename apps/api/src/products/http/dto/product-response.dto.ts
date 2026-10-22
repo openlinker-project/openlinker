@@ -21,7 +21,11 @@ export class ProductResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'Product SKU' })
   sku!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Product price' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Gross catalogue price (what a buyer pays in the master connection sales country, excluding promotions). Null when the master could not state a gross figure.',
+  })
   price!: number | null;
 
   @ApiPropertyOptional({

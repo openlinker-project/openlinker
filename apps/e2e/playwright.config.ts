@@ -325,6 +325,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // One price followed from PrestaShop to a live Allegro offer, recorded at
+      // every hop (net vs gross). Creates a PS product and a real sandbox offer,
+      // so `retries: 0`.
+      name: 'pricing',
+      testMatch: /pricing\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Category-blocker states in the bulk publish wizard (#2240). Every OL
       // route the wizard touches is stubbed in-test, so it needs no seeded
       // catalogue and no Allegro connection. `retries: 1` (nothing is mutated).

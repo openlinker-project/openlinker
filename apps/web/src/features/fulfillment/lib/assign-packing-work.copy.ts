@@ -212,9 +212,9 @@ export const ASSIGN_PACKING_WORK_COPY = {
   },
 
   /**
-   * A session without `orders:write` (#3096). The staffing board is a
-   * supervisor's screen: a viewer used to reach it by URL and meet a 403'd
-   * roster and a lane of "No longer a packer".
+   * A session without `fulfillment:read` (#3096, #3736). Every built-in role
+   * that is not a packer holds it, and a packer gets `deniedBench` instead, so
+   * this is the mid-session case: a role changed and the read was refused.
    */
   denied: {
     title: 'The fulfilment board is for supervisors',

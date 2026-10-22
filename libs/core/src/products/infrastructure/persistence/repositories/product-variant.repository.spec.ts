@@ -10,6 +10,7 @@
 import type { Repository } from 'typeorm';
 import { ProductVariantRepository } from './product-variant.repository';
 import type { ProductVariantOrmEntity } from '../entities/product-variant.orm-entity';
+import type { ProductVariant } from '../../../domain/entities/product-variant.entity';
 
 describe('ProductVariantRepository.fillPhysicalDimensionsIfAbsent', () => {
   let ormRepo: { query: jest.Mock };
@@ -85,5 +86,108 @@ describe('ProductVariantRepository.fillPhysicalDimensionsIfAbsent', () => {
     ]);
 
     expect(filled).toBe(1);
+  });
+});
+
+/**
+ * ADR-077 - `priceBasisPending` is set only by the migration and cleared only by
+ * `clearPriceBasisPending`, which the master sync calls once the corrected
+ * price was reported. An upsert never writes the column, so a report that
+ * failed leaves the variant pending.
+ */
+describe('ProductVariantRepository priceBasisPending (ADR-077)', () => {
+  let ormRepo: { save: jest.Mock; findOne: jest.Mock; createQueryBuilder: jest.Mock };
+  let qb: { update: jest.Mock; set: jest.Mock; where: jest.Mock; andWhere: jest.Mock; execute: jest.Mock };
+  let repository: ProductVariantRepository;
+
+  const baseVariant: ProductVariant = {
+    id: 'ol_variant_1',
+    productId: 'ol_product_1',
+    sku: 'SKU-1',
+    attributes: null,
+    ean: null,
+    gtin: null,
+  };
+
+  const savedEntity = (): ProductVariantOrmEntity =>
+    (ormRepo.save.mock.calls as ProductVariantOrmEntity[][])[0][0];
+
+  beforeEach(() => {
+    qb = {
+      update: jest.fn(),
+      set: jest.fn(),
+      where: jest.fn(),
+      andWhere: jest.fn(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    qb.update.mockReturnValue(qb);
+    qb.set.mockReturnValue(qb);
+    qb.where.mockReturnValue(qb);
+    qb.andWhere.mockReturnValue(qb);
+    ormRepo = {
+      save: jest.fn((entity: ProductVariantOrmEntity) => Promise.resolve(entity)),
+      findOne: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    };
+    repository = new ProductVariantRepository(
+      ormRepo as unknown as Repository<ProductVariantOrmEntity>
+    );
+  });
+
+  it('should map priceBasisPending from the stored row when reading a variant', async () => {
+    ormRepo.findOne.mockResolvedValue({
+      id: 'ol_variant_1',
+      productId: 'ol_product_1',
+      sku: 'SKU-1',
+      attributes: null,
+      ean: null,
+      gtin: null,
+      price: '100.00',
+      isStale: false,
+      staleAt: null,
+      priceBasisPending: true,
+      taxRate: null,
+      taxRateCountry: null,
+      taxRateReadAt: null,
+      taxRateUnknownReason: null,
+      weightGrams: null,
+      lengthMm: null,
+      widthMm: null,
+      heightMm: null,
+      createdAt: new Date('2026-10-01T00:00:00Z'),
+      updatedAt: new Date('2026-10-01T00:00:00Z'),
+    });
+
+    const variant = await repository.findById('ol_variant_1');
+
+    expect(variant?.priceBasisPending).toBe(true);
+    expect(variant?.price).toBe(100);
+  });
+
+  it.each([
+    ['carries a price', 123],
+    ['carries no price', undefined],
+  ])('should leave priceBasisPending out of the write when the upsert %s', async (_label, price) => {
+    await repository.upsert({ ...baseVariant, price });
+
+    expect(ormRepo.save).toHaveBeenCalledTimes(1);
+    expect(savedEntity().priceBasisPending).toBeUndefined();
+  });
+
+  it('should clear the flag only on pending rows of the given variants when asked to', async () => {
+    await repository.clearPriceBasisPending(['ol_variant_1', 'ol_variant_2']);
+
+    expect(qb.set).toHaveBeenCalledWith({ priceBasisPending: false });
+    expect(qb.where).toHaveBeenCalledWith('id IN (:...ids)', {
+      ids: ['ol_variant_1', 'ol_variant_2'],
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('priceBasisPending = true');
+    expect(qb.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not query when asked to clear no variants', async () => {
+    await repository.clearPriceBasisPending([]);
+
+    expect(ormRepo.createQueryBuilder).not.toHaveBeenCalled();
   });
 });

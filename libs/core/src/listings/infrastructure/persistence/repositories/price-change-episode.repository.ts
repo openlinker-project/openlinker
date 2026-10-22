@@ -61,6 +61,7 @@ import { PriceChangeEpisode } from '../../../domain/entities/price-change-episod
 import { PriceChangeEpisodePersistenceError } from '../../../domain/exceptions/price-change-episode-persistence.error';
 import { PriceChangeEpisodeSupersededError } from '../../../domain/exceptions/price-change-episode-superseded.error';
 import type { PriceChangeEpisodeRepositoryPort } from '../../../domain/ports/price-change-episode-repository.port';
+import { isPriceChangeCause } from '../../../domain/types/price-change-episode.types';
 import type {
   PriceChangeEpisodeClaimOutcome,
   PriceChangeEpisodeFilters,
@@ -145,6 +146,10 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
       // the contract (see the port docblock): they pin the episode's
       // ORIGINAL detection for its whole life.
       //
+      // `cause` is COALESCEd rather than overwritten: once an episode is a
+      // tax-basis correction (ADR-077) it stays one, so a later ordinary
+      // re-detection cannot quietly re-enable the automatic apply for it.
+      //
       // `refreshedAt` is stamped conditionally — only when the conflict arm's
       // incoming `sourceNewAmount` genuinely differs from what is already
       // stored — never unconditionally on every conflict. An unconditional
@@ -158,8 +163,8 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
         `INSERT INTO "price_change_episodes"
            ("productVariantId", "destinationConnectionId", "sourceConnectionId",
             "sourceCurrency", "sourceOldAmount", "sourceNewAmount",
-            "computedOldAmount", "computedNewAmount", "blockReason", "detectedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            "computedOldAmount", "computedNewAmount", "blockReason", "detectedAt", "cause")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT ("productVariantId", "destinationConnectionId", "sourceConnectionId")
            WHERE "resolvedAt" IS NULL
            DO UPDATE SET
@@ -167,6 +172,7 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
              "computedNewAmount" = EXCLUDED."computedNewAmount",
              "sourceCurrency" = EXCLUDED."sourceCurrency",
              "blockReason" = EXCLUDED."blockReason",
+             "cause" = COALESCE("price_change_episodes"."cause", EXCLUDED."cause"),
              "refreshedAt" = CASE
                WHEN "price_change_episodes"."sourceNewAmount" IS DISTINCT FROM EXCLUDED."sourceNewAmount"
                THEN now()
@@ -185,6 +191,7 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
           input.computedNewAmount,
           input.blockReason,
           input.detectedAt,
+          input.cause ?? null,
         ]
       );
 
@@ -606,7 +613,8 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
       row.resolvedByUserId,
       new Date(row.createdAt),
       new Date(row.updatedAt),
-      row.claimedAt === null ? null : new Date(row.claimedAt)
+      row.claimedAt === null ? null : new Date(row.claimedAt),
+      isPriceChangeCause(row.cause) ? row.cause : null
     );
   }
 }

@@ -55,6 +55,7 @@ export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
 export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
+export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 export { usePickBankAccount } from './hooks/use-pick-bank-account';
@@ -91,13 +92,6 @@ export {
   SUBIEKT_NEXO_IDENTITY,
 } from './components/subiekt-setup.schema';
 export type { SubiektProductIdentity } from './components/subiekt-setup.schema';
-
-export {
-  InfaktWebhookConfig,
-  InfaktWebhookConfigDialog,
-  activationLabel as infaktWebhookActivationLabel,
-  signatureLabel as infaktWebhookSignatureLabel,
-} from './components/infakt-webhook-config';
 
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { ConnectionCell } from './components/ConnectionCell';

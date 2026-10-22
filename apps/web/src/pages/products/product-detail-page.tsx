@@ -210,7 +210,7 @@ export function ProductDetailPage(): ReactElement {
             <h3 className="detail-section__title">At a glance</h3>
             <div className="product-detail__kpi-row product-detail__kpi-row--cols-4">
               <KpiCard
-                label="Price"
+                label="Price (gross)"
                 value={product.price !== null ? product.price.toFixed(2) : '—'}
                 description={product.currency ?? undefined}
               />

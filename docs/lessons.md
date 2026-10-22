@@ -1411,12 +1411,12 @@ than a double-check, since nothing downstream will do it for you.
 
 **Partly graduated (#2674)**: the stylesheet half of this lesson is now a gate.
 `scripts/check-css-structure.mjs` runs under `pnpm lint` (chained into `check:invariants`) and fails
-on an unclosed block, a stray `}`, an unclosed comment or an unterminated string in any `.css` /
-`.scss` / `.sass` / `.less` file, reporting `file:line:column`. Two things it deliberately does not
-do, so the manual habit above still matters everywhere else: it does not parse **YAML or JSON
-fixtures**, and it does not check **parenthesis balance** (a dropped `)` in `@media (min-width: 700px {`
-leaves braces balanced and still kills the block - deferred as #2677). The seam re-read remains the rule for every
-artefact the gate does not cover.
+on an unclosed block, a stray `}`, an unclosed `(`, a stray `)`, an unclosed comment or an
+unterminated string in any `.css` / `.scss` / `.sass` / `.less` file, reporting `file:line:column`.
+Parenthesis balance was added by #2677: a dropped `)` in `@media (min-width: 700px {` leaves braces
+balanced and still kills the block. One thing it deliberately does not do, so the manual habit above
+still matters everywhere else: it does not parse **YAML or JSON fixtures**. The seam re-read remains
+the rule for every artefact the gate does not cover.
 
 **Applies to**: any merge or rebase touching an append-heavy file — a stylesheet, a barrel, a job-type
 union, a DI provider list, a long positional constructor. Sharpest when several parallel bodies of
@@ -2589,3 +2589,43 @@ A container older than the commit under discussion invalidates every observation
 through it - including the ones that look like they confirm something.
 
 **Source**: PR #3365
+
+## Anchor a price parity test on what the buyer pays, never on the previous hop
+
+**Context**: a PrestaShop product at 100.00 net in a 23% group was published to Allegro as an active offer at 100.00 (#3737, ADR-077).
+
+**Problem**: the golden path compared OL's price with PrestaShop's raw `price` field, then the Allegro offer with OL's price. A net figure carried through unchanged satisfies both equalities, so the suite stayed green while every PrestaShop-mastered offer was underpriced by the VAT. The local PrestaShop stack hid it a second time: its default country was the United States, so the storefront showed net prices as well. And `Product.price` had no stated tax basis, so each master adapter filled it with whatever field its platform stores.
+
+**Rule**:
+- A price test asserts against the platform's own figure for the buyer: PrestaShop's computed `price[..][use_tax]=1` for a stated country, or an explicit gross in the fixture. Never against the previous hop.
+- A numeric field that crosses a context boundary states its basis in its docblock.
+- A fixture that exercises tax must use a product whose tax group is not "No tax", with net and gross set apart.
+
+**Applies to**: `apps/e2e/tests/golden-path/full-flow/*`, `apps/e2e/tests/pricing/*`, master-adapter mapper specs, any `price` field on a core type.
+
+**Source**: #3737, [ADR-077](./architecture/adrs/077-catalogue-prices-are-gross.md)
+
+## Build web fixtures from the API's field names, not from the web type alone
+
+**Context**: the Pricing & sync page (#3149/#3166/#3167) declared a per-source
+`isCustomOverride` in `apps/web`, while the API had always sent two flags,
+`modeOverridden` and `ruleOverridden`.
+
+**Problem**: `apps/web` cannot import the API's DTOs, and the API client passes
+the response body through unmapped, so the web type was a hand-written claim
+about the wire. Every test built its fixtures from that same wrong type, so
+type-check and the whole suite stayed green while the field was `undefined` at
+runtime. Every reader of it saw "no override", and because the PATCH replaces
+both override maps wholesale, a Save silently deleted existing overrides with
+no confirmation (#3729).
+
+**Rule**: when a web type describes an API response, copy the field names from
+the DTO (`apps/api/.../*-response.dto.ts`) rather than from another web file,
+and make at least one test's fixture exercise each field the UI branches on.
+When the write is a full replace, test that an override the operator did not
+touch is re-sent - "does not crash" does not cover "does not delete".
+
+**Applies to**: `apps/web/src/features/**/api/*.types.ts` and the specs that
+mock them.
+
+**Source**: #3729

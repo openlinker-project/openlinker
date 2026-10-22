@@ -183,7 +183,11 @@ export interface CreateOfferCommand {
   internalVariantId: string;
   /** Target marketplace connection id. */
   connectionId: string;
-  /** Offer price. Currency should match marketplace/connection locale. */
+  /**
+   * Offer price, GROSS (what the buyer pays), as every marketplace adapter writes
+   * it. Sourced from the master's gross catalogue price (ADR-077) unless the
+   * operator supplied one. Currency should match marketplace/connection locale.
+   */
   price: { amount: number; currency: string };
   /** Offered quantity. */
   stock: number;

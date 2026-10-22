@@ -10,7 +10,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import type { BenchDocuments } from './bench-parcel.types';
 import {
+  parseBenchDocuments,
   parseBenchLabelReplaceResult,
   parseBenchReceiptLink,
   readReplaceRefusalReason,
@@ -97,5 +99,63 @@ describe('parseBenchReceiptLink', () => {
 
   it('should reject a payload with no url when the field is missing', () => {
     expect(() => parseBenchReceiptLink({})).toThrow();
+  });
+});
+
+describe('parseBenchDocuments - the invoice verification link (#3649 review)', () => {
+  const base = { workId: 'w-1', label: { state: 'none' } };
+  const invoiceDocument = (verificationUrl: unknown): Record<string, unknown> => ({
+    kind: 'invoice',
+    recordId: 'inv-1',
+    connectionId: 'conn-1',
+    status: 'issued',
+    documentNumber: 'FV/1',
+    printable: false,
+    verificationUrl,
+  });
+
+  it.each(['https://qr.ksef.mf.gov.pl/invoice/1/01-02-2026/h', 'http://qr.example.test/x?y=1'])(
+    'should keep %s when it is an absolute http(s) URL',
+    (url) => {
+      const parsed = parseBenchDocuments({ ...base, document: invoiceDocument(url) });
+
+      expect(parsed.document?.verificationUrl).toBe(url);
+    }
+  );
+
+  it.each([
+    'javascript:alert(document.domain)',
+    ' javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'ftp://x.example.test/a',
+    '/invoice/1',
+    '',
+  ])('should read %j as no link, without failing the rest of the read', (url) => {
+    const parsed = parseBenchDocuments({ ...base, document: invoiceDocument(url) });
+
+    expect(parsed.document?.verificationUrl).toBeNull();
+    expect(parsed.label.state).toBe('none');
+  });
+
+  it('should read an absent link as no link', () => {
+    const withoutUrl = invoiceDocument(null);
+    delete withoutUrl.verificationUrl;
+
+    const parsed = parseBenchDocuments({ ...base, document: withoutUrl });
+
+    expect(parsed.document?.verificationUrl).toBeNull();
+  });
+
+  it('should apply the same constraint to the legacy invoice slot', () => {
+    const legacy = (verificationUrl: string): BenchDocuments =>
+      parseBenchDocuments({
+        ...base,
+        invoice: { state: 'link', invoiceId: 'inv-1', documentNumber: 'FV/1', verificationUrl },
+      });
+
+    expect(legacy('javascript:alert(1)').invoice?.verificationUrl).toBeNull();
+    expect(legacy('https://qr.example.test/x').invoice?.verificationUrl).toBe(
+      'https://qr.example.test/x'
+    );
   });
 });

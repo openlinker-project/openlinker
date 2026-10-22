@@ -39,4 +39,14 @@ export interface RoutingFacts {
    * holder — `FulfillmentWorkRejection` carries no location.
    */
   readonly blockedConnectionIds: ReadonlySet<string>;
+  /**
+   * Holders that cannot be dispatched to, because their connection does not
+   * have `FulfillmentExecutor` enabled (#3476). Work named after one of them is
+   * never offered: `fulfillment.work.dispatch` resolves the executor through
+   * `getCapabilityAdapter`, which is gated on `enabledCapabilities`, so the job
+   * dead-letters and the work stays `unsubmitted` for ever. Eliminated before
+   * any operator filter, because it is a fact about the holder rather than a
+   * routing preference.
+   */
+  readonly nonExecutingHolderIds: ReadonlySet<string>;
 }
