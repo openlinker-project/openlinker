@@ -30,7 +30,7 @@ export function ShoperStructuredSection({
         label="OL callback URL"
         name="openlinkerCallbackBaseUrl"
         error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-        description="OpenLinker's public URL as Shoper can reach it. Shoper calls it when an order changes. Pre-filled from your browser; it must be reachable from the internet. Required for the 'Configure webhooks' action."
+        description="OpenLinker's public URL as Shoper can reach it. Shoper calls it when an order changes. Pre-filled with the API address this app uses; it must be reachable from the internet. Required for the 'Configure webhooks' action."
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
