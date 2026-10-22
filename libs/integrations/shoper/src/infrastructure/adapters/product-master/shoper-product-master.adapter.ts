@@ -61,10 +61,13 @@ import {
   fetchShoperPage,
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
+import { fetchShoperProductImages } from '../../http/shoper-product-images';
 import { fetchShoperStocks } from '../../http/shoper-stocks';
 import {
+  buildShoperGalleryUrls,
   mapShoperProduct,
   mapShoperStockToVariant,
+  partitionShoperStocks,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
 } from '../../mappers/shoper-product.mapper';
@@ -121,7 +124,10 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
     const externalId = await this.resolveExternalProductId(productId);
     const data = await this.readProduct(externalId, productId);
     const ctx = await this.shopContext.get();
-    return { ...mapShoperProduct(data, ctx), id: productId };
+    const product = mapShoperProduct(data, ctx);
+    const gallery = await this.readGallery(externalId, ctx.host);
+    // An empty or unreadable gallery keeps the main image the product row carries.
+    return { ...product, images: gallery.length > 0 ? gallery : product.images, id: productId };
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -148,7 +154,9 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
     const externalId = await this.resolveExternalProductId(productId);
     const ctx = await this.shopContext.get();
-    const stocks = await this.fetchAllStocks(externalId);
+    // A product with variants also has a base row nobody can buy; it is left
+    // out, and kept only to resolve prices and weights stated relative to it.
+    const { variants: stocks, base } = partitionShoperStocks(await this.fetchAllStocks(externalId));
     if (stocks.length === 0) {
       return [];
     }
@@ -174,7 +182,10 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         continue;
       }
       const attributes = await this.resolveVariantAttributes(stock, ctx.language);
-      variants.push({ ...mapShoperStockToVariant(stock, productId, ctx, attributes), id: internalId });
+      variants.push({
+        ...mapShoperStockToVariant(stock, productId, ctx, attributes, base),
+        id: internalId,
+      });
     }
     return variants;
   }
@@ -463,6 +474,31 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
       );
     }
     return attributes;
+  }
+
+  /**
+   * The product's gallery URLs, or `[]` when it cannot be read. A failure is
+   * logged and does not fail the product read: the price, stock and text of a
+   * product matter more than its extra photos, and the caller keeps the main
+   * image. The cost is that a failed read shows only the main image until the
+   * next sync reads the gallery again.
+   */
+  private async readGallery(externalProductId: string, host: string): Promise<string[]> {
+    try {
+      const images = await fetchShoperProductImages(this.client, externalProductId, (count) =>
+        this.logger.warn(
+          `Shoper returned ${count} image row(s) of another product while reading product ` +
+            `${externalProductId}; dropped (connection: ${this.connection.id})`,
+        ),
+      );
+      return buildShoperGalleryUrls(host, images);
+    } catch (error) {
+      this.logger.warn(
+        `Shoper gallery of product ${externalProductId} could not be read; keeping the main image ` +
+          `(${error instanceof Error ? error.message : String(error)}, connection: ${this.connection.id})`,
+      );
+      return [];
+    }
   }
 
   private fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {
