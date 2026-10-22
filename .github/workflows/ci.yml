@@ -116,6 +116,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -137,6 +138,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
@@ -169,6 +171,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       # `actions/checkout` writes every file afresh, so each run sees new mtimes
       # for byte-identical content. Jest's transform-cache key is a function of
@@ -229,6 +232,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -280,6 +284,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       # A cold ts-jest transform cache costs the FIRST suite of each
       # integration step ~32 s (measured: 6.4 s warm vs 76.3 s cold locally for
@@ -512,6 +517,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       # A throwaway Postgres this job fully owns, published to an
@@ -681,6 +687,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
       - name: Run PHP unit tests
         run: pnpm test:php
 
@@ -699,6 +706,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
