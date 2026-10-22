@@ -25,6 +25,7 @@ import type { Product, ProductVariant } from '@openlinker/core/products';
 import type {
   ShoperMainImage,
   ShoperProduct,
+  ShoperProductImage,
   ShoperProductTranslation,
   ShoperStock,
   ShoperStockOptions,
@@ -117,6 +118,38 @@ export function buildShoperImageUrl(host: string, image: ShoperMainImage): strin
     return null;
   }
   return `https://${host}/userdata/public/gfx/${image.unic_name}.${image.extension}`;
+}
+
+/**
+ * Public URLs of a product's gallery, main image first, then in the shop's own
+ * gallery order. Hidden images are left out (the shop does not show them to a
+ * buyer, so they are not published either), as are rows whose file name is not
+ * a plain file name. Duplicates collapse to their first position.
+ */
+export function buildShoperGalleryUrls(
+  host: string,
+  images: readonly ShoperProductImage[],
+): string[] {
+  const position = (image: ShoperProductImage): number =>
+    parseShoperNumber(image.order) ?? Number.MAX_SAFE_INTEGER;
+  const isMain = (image: ShoperProductImage): number => (String(image.main) === '1' ? 0 : 1);
+  const sorted = images
+    .filter((image) => String(image.hidden) !== '1')
+    .slice()
+    .sort(
+      (a, b) =>
+        isMain(a) - isMain(b) ||
+        position(a) - position(b) ||
+        (parseShoperNumber(a.gfx_id) ?? 0) - (parseShoperNumber(b.gfx_id) ?? 0),
+    );
+  const urls: string[] = [];
+  for (const image of sorted) {
+    const url = buildShoperImageUrl(host, image);
+    if (url !== null && !urls.includes(url)) {
+      urls.push(url);
+    }
+  }
+  return urls;
 }
 
 function weightInKilograms(raw: string | null, unit: string): number | undefined {

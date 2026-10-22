@@ -8,6 +8,7 @@ import {
   LIVE_OPTION_VALUES,
   LIVE_VARIANT_STOCKS,
   MAP_CONTEXT,
+  SHOP_HOST,
   buildProduct,
   buildStock,
   envelope,
@@ -22,6 +23,7 @@ import {
   isModifiedProductLister,
   isProductTaxRateReader,
 } from '@openlinker/core/products';
+import type { ShoperProductImage } from '../../../../domain/types/shoper-api.types';
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
 
@@ -226,6 +228,59 @@ describe('ShoperProductMasterAdapter', () => {
   });
 
   describe('getProduct', () => {
+    const image = (gfx: string, extra: Record<string, string> = {}): ShoperProductImage => ({
+      gfx_id: gfx,
+      product_id: '93',
+      unic_name: gfx,
+      extension: 'jpg',
+      main: '0',
+      order: '0',
+      ...extra,
+    });
+
+    it('should return the whole gallery, main image first, then in the shop gallery order', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct(),
+        '/product-images': envelope([
+          image('302', { order: '2' }),
+          image('301', { order: '1' }),
+          image('300', { main: '1', order: '5' }),
+          image('303', { hidden: '1' }),
+          image('999', { product_id: '94' }),
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([
+        `https://${SHOP_HOST}/userdata/public/gfx/300.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/301.jpg`,
+        `https://${SHOP_HOST}/userdata/public/gfx/302.jpg`,
+      ]);
+      const calls = get.mock.calls as Array<[string, Record<string, unknown>]>;
+      const imageCall = calls.find(([path]) => path === '/product-images');
+      expect(imageCall?.[1]).toEqual(expect.objectContaining({ filters: '{"product_id":93}' }));
+    });
+
+    it('should keep the main image when the gallery cannot be read', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct() });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
+    });
+
+    it('should keep the main image when the gallery is empty', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct(), '/product-images': envelope([]) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
+    });
+
     it('should resolve the Shoper id from the mapping and return the product under its internal id', async () => {
       const { adapter, get, mapping } = setup();
       respond(get, { '/products/93': buildProduct() });

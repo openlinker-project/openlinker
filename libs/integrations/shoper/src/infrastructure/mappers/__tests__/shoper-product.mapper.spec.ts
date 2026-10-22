@@ -7,8 +7,10 @@ import {
   buildProduct,
   buildStock,
 } from '../../__tests__/shoper-test-data';
+import type { ShoperProductImage } from '../../../domain/types/shoper-api.types';
 import type { ShoperOptionEntry } from '../../shop-context/shoper-option-table.provider';
 import {
+  buildShoperGalleryUrls,
   buildShoperImageUrl,
   mapShoperProduct,
   mapShoperStockToVariant,
@@ -360,5 +362,28 @@ describe('partitionShoperStocks', () => {
     const { variants, base } = partitionShoperStocks([buildStock({ stock_id: '299' }), malformed]);
     expect(variants.map((s) => s.stock_id)).toEqual(['300']);
     expect(base?.stock_id).toBe('299');
+  });
+});
+
+describe('buildShoperGalleryUrls', () => {
+  const row = (gfx: string, extra: Record<string, string> = {}): ShoperProductImage => ({
+    gfx_id: gfx,
+    product_id: '93',
+    unic_name: gfx,
+    extension: 'png',
+    ...extra,
+  });
+
+  it('should drop a file name that is not a plain file name and collapse duplicates', () => {
+    expect(
+      buildShoperGalleryUrls(SHOP_HOST, [row('1', { main: '1' }), row('../x'), row('1')]),
+    ).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/1.png`]);
+  });
+
+  it('should place a row with no order after the ordered ones', () => {
+    expect(buildShoperGalleryUrls(SHOP_HOST, [row('8'), row('9', { order: '1' })])).toEqual([
+      `https://${SHOP_HOST}/userdata/public/gfx/9.png`,
+      `https://${SHOP_HOST}/userdata/public/gfx/8.png`,
+    ]);
   });
 });
