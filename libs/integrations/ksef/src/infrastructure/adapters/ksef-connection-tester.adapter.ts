@@ -114,7 +114,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
         fetchImpl,
       });
       await handshake.authenticate(authMaterial);
-      const issuance = await this.probeIssuancePermission(httpClient, contextNip);
+      const issuance = await this.probeIssuancePermission(httpClient, contextNip, credentials.secret);
 
       return {
         success: true,
@@ -129,18 +129,41 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
   /**
    * DEF-17: a token without the issuance grant authenticates perfectly well, so
    * the handshake alone told an operator "OK" and the first invoice then failed.
-   * KSeF 2.0 lists the session's own grants at
-   * `POST /permissions/query/personal/grants`; this asks for `InvoiceWrite`.
+   *
+   * A KSeF token carries its OWN permission list, read at
+   * `GET /tokens/{referenceNumber}` (`requestedPermissions`); the reference is
+   * the token's first `|`-separated segment. That is asked first. The personal
+   * grants query (`POST /permissions/query/personal/grants`) does NOT list a
+   * token's permissions - an entity owner's own token came back empty there on
+   * KSeF TEST and was reported as missing InvoiceWrite while it issued fine -
+   * so it is only the fallback for a secret that carries no reference.
    *
    * The answer is a SUGGESTION, never a refusal: a test reports what KSeF said,
-   * and an inconclusive read (the query itself refused, an unexpected shape)
-   * says so instead of failing a token that may be fine. Not one of the three
-   * rate-limited session writes, so the check spends no issuance budget.
+   * and an inconclusive read says so instead of failing a token that may be
+   * fine. Neither call is one of the three rate-limited session writes.
    */
   private async probeIssuancePermission(
     httpClient: IKsefHttpClient,
     contextNip: string,
+    secret: string,
   ): Promise<IssuanceProbe> {
+    const referenceNumber = secret.includes('|') ? secret.split('|')[0].trim() : '';
+    if (referenceNumber !== '') {
+      try {
+        const response = await httpClient.get<TokenStatusResponse>(
+          `/tokens/${encodeURIComponent(referenceNumber)}`,
+          { idempotent: true },
+        );
+        const permissions = response.data?.requestedPermissions;
+        if (Array.isArray(permissions)) {
+          return permissions.includes('InvoiceWrite') ? 'granted' : 'missing';
+        }
+      } catch (error) {
+        this.logger.debug(
+          `KSeF token-status probe inconclusive: ${error instanceof Error ? error.name : String(error)}`,
+        );
+      }
+    }
     try {
       const response = await httpClient.post<PersonalGrantsResponse>(
         '/permissions/query/personal/grants',
@@ -158,7 +181,9 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       const granted =
         data.permissions.some((p) => p?.permissionScope === 'InvoiceWrite') ||
         (Array.isArray(data.ownerPermissions) && data.ownerPermissions.includes('InvoiceWrite'));
-      return granted ? 'granted' : 'missing';
+      // An empty grants list says nothing about a token's own scope, so only a
+      // positive answer is trusted here.
+      return granted ? 'granted' : 'unknown';
     } catch (error) {
       this.logger.debug(
         `KSeF permission probe inconclusive: ${error instanceof Error ? error.name : String(error)}`,
@@ -200,6 +225,11 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
 }
 
 type IssuanceProbe = 'granted' | 'missing' | 'unknown';
+
+/** Subset of KSeF's `TokenStatusResponse` the probe reads. */
+interface TokenStatusResponse {
+  requestedPermissions?: string[];
+}
 
 /** Subset of KSeF's `QueryPersonalPermissionsResponse` the probe reads. */
 interface PersonalGrantsResponse {

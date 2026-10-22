@@ -185,13 +185,60 @@ describe('KsefConnectionTesterAdapter', () => {
       expect(result.message).toContain('may issue');
     });
 
-    it('should warn, not fail, when the permission is not listed', async () => {
+    it('should not read an empty grants list as a missing permission', async () => {
+      // A token's own scope is not in the grants list: an owner's token came
+      // back empty there on KSeF TEST while it issued fine.
       const post = jest.fn().mockResolvedValue({ data: { permissions: [], hasMore: false } });
 
       const result = await withGrants(post).test(connection(), creds);
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain('InvoiceWrite');
+      expect(result.message).toContain('not verified');
+    });
+
+    describe("from the token's own status", () => {
+      const tokenCreds = resolver({
+        'ref:ksef': { authType: 'ksef-token', secret: '20261022-EC-AAAA-BBBB-51|nip-1234563218|secret' },
+      });
+      function withTokenStatus(get: jest.Mock, post = jest.fn()): KsefConnectionTesterAdapter {
+        createKsefHttpClientMock.mockReturnValue({
+          httpClient: { get, post } as never,
+          publicKeyCache: {} as never,
+          handshake: { authenticate: jest.fn().mockResolvedValue({}) } as never,
+        });
+        return new KsefConnectionTesterAdapter(http);
+      }
+
+      it('should read the reference from the token and trust its permission list', async () => {
+        const get = jest.fn().mockResolvedValue({ data: { requestedPermissions: ['InvoiceRead', 'InvoiceWrite'] } });
+        const post = jest.fn();
+
+        const result = await withTokenStatus(get, post).test(connection(), tokenCreds);
+
+        expect(result.message).toContain('may issue');
+        expect(get).toHaveBeenCalledWith('/tokens/20261022-EC-AAAA-BBBB-51', expect.anything());
+        expect(post).not.toHaveBeenCalled();
+      });
+
+      it('should warn when the token itself lacks InvoiceWrite', async () => {
+        const get = jest.fn().mockResolvedValue({ data: { requestedPermissions: ['InvoiceRead'] } });
+
+        const result = await withTokenStatus(get).test(connection(), tokenCreds);
+
+        expect(result.success).toBe(true);
+        expect(result.message).toContain('InvoiceWrite');
+      });
+
+      it('should fall back to the grants query when the status read fails', async () => {
+        const get = jest.fn().mockRejectedValue(new Error('404'));
+        const post = jest.fn().mockResolvedValue({
+          data: { permissions: [{ permissionScope: 'InvoiceWrite' }], hasMore: false },
+        });
+
+        const result = await withTokenStatus(get, post).test(connection(), tokenCreds);
+
+        expect(result.message).toContain('may issue');
+      });
     });
 
     it('should say the check was not verified when the query fails', async () => {
