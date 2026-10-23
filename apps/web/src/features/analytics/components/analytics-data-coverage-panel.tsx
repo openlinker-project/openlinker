@@ -53,7 +53,7 @@ import {
   DATA_COVERAGE_CHECK_COUNT,
   deriveCoverageRowCopy,
   describeMatchingRecordStatus,
-} from '../lib/data-coverage-copy.lib';
+} from '../lib/data-coverage.copy';
 import type { AnalyticsCoverageFilters, CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
 import type { CurrencyMismatchOrder } from '../api/analytics-remediation.types';
 import type {

@@ -147,7 +147,7 @@ import {
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
 import { GapMark } from './gap-mark';
 import { RecalculatingValue } from './recalculating-value';
-import { deriveCoverageRowCopy } from '../lib/data-coverage-copy.lib';
+import { deriveCoverageRowCopy } from '../lib/data-coverage.copy';
 import type {
   AnalyticsCoverage,
   CoverageCategory,
