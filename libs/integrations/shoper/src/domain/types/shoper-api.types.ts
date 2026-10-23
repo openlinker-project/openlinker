@@ -124,6 +124,32 @@ export interface ShoperCategoryTreeNode {
 }
 
 /**
+ * A predefined value of a select-type attribute, as embedded in the attribute's
+ * `options`. NOT live-verified: modelled from Shoper's REST documentation, so
+ * every field is optional and ids are accepted as string or number.
+ */
+export interface ShoperAttributeOption {
+  readonly option_id?: string | number | null;
+  readonly value?: string | null;
+  readonly order?: string | number | null;
+}
+
+/**
+ * A `GET /attributes` / `GET /attributes/:id` row: a product attribute (e.g.
+ * "Materiał"), which belongs to an attribute GROUP (`/attribute-groups`) that
+ * may be bound to categories. `type` is documented as `0` text field, `1`
+ * checkbox, `2` select; only a select carries `options`. NOT live-verified:
+ * modelled from Shoper's REST documentation, hence the tolerant shapes.
+ */
+export interface ShoperAttribute {
+  readonly attribute_id?: string | number | null;
+  readonly attribute_group_id?: string | number | null;
+  readonly name?: string | null;
+  readonly type?: string | number | null;
+  readonly options?: readonly ShoperAttributeOption[] | null;
+}
+
+/**
  * A `GET /taxes` row. Three live rows share `value: "0"` (`0%`, `zw.`, `np.`),
  * so the NAME is what identifies the rate, not `value`.
  */

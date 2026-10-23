@@ -127,6 +127,31 @@ export async function fetchShoperWindow<T>(
   return rows.slice(skip, skip + limit);
 }
 
+/**
+ * Reads a whole (small) collection, page by page at Shoper's ceiling of 50,
+ * stopping on the shop's own last page. For directories a picker lists in full
+ * (attributes); a large collection belongs to `fetchShoperWindow`. The caller
+ * passes an explicit, stable `order`.
+ */
+export async function fetchAllShoperPages<T>(
+  client: ShoperHttpClient,
+  path: string,
+  query?: ShoperQuery,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const result = await fetchShoperPage<T>(client, path, {
+      page,
+      limit: SHOPER_MAX_PAGE_SIZE,
+      ...(query === undefined ? {} : { query }),
+    });
+    rows.push(...result.items);
+    if (result.items.length === 0 || page >= result.pages) {
+      return rows;
+    }
+  }
+}
+
 export async function fetchShoperPage<T>(
   client: ShoperHttpClient,
   path: string,

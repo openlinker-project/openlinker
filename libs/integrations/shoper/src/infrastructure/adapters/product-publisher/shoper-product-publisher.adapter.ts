@@ -40,6 +40,10 @@
  * And `ShopProductStatusReader` (#1845): the live visibility of a published
  * product, read as the inverse of how `publishProduct` writes it.
  *
+ * And `ShopAttributeReader` (#1835): the shop's attributes and the predefined
+ * values of a select attribute, for the attribute picker. Read only for now:
+ * a publish does not send `parameters` yet (they come back as a warning).
+ *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
  * the worker retries the job.
@@ -58,6 +62,9 @@ import {
   type ProvisionCategoryResult,
   type PublishProductCommand,
   type PublishProductResult,
+  type ShopAttribute,
+  type ShopAttributeReader,
+  type ShopAttributeTerm,
   type ShopCategory,
   type ShopCategoryBrowser,
   type ShopProductManagerPort,
@@ -69,13 +76,15 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
-import type { ShoperProduct } from '../../../domain/types/shoper-api.types';
+import type { ShoperAttribute, ShoperProduct } from '../../../domain/types/shoper-api.types';
 import type {
   ShoperCategoryWriteBody,
   ShoperImageWriteBody,
 } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
+import { fetchAllShoperPages } from '../../http/shoper-pagination';
+import { mapShoperAttributeTerms, mapShoperAttributes } from '../../mappers/shoper-attribute.mapper';
 import {
   findShoperCategoryChild,
   joinShoperCategories,
@@ -95,6 +104,7 @@ const PRODUCTS_PATH = '/products';
 
 const CATEGORIES_PATH = '/categories';
 const IMAGES_PATH = '/product-images';
+const ATTRIBUTES_PATH = '/attributes';
 
 /** A short, token-free reason for a warning. */
 function reasonOf(error: unknown): string {
@@ -102,7 +112,12 @@ function reasonOf(error: unknown): string {
 }
 
 export class ShoperProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser, ShopProductStatusReader
+  implements
+    ShopProductManagerPort,
+    CategoryProvisioner,
+    ShopCategoryBrowser,
+    ShopProductStatusReader,
+    ShopAttributeReader
 {
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
   private readonly categoryReader: ShoperCategoryReader;
@@ -274,6 +289,31 @@ export class ShoperProductPublisherAdapter
       );
     }
     return { publicationStatus };
+  }
+
+  /**
+   * The shop's product attributes, for the structured attribute picker (#1835).
+   * See `shoper-attribute.mapper.ts` for how Shoper's attribute model maps onto
+   * the neutral one. Read only: this publisher does not yet send `parameters`,
+   * so a picked attribute is not linked on publish.
+   */
+  async listAttributes(): Promise<ShopAttribute[]> {
+    const rows = await fetchAllShoperPages<ShoperAttribute>(this.client, ATTRIBUTES_PATH, {
+      order: 'attribute_id ASC',
+    });
+    return mapShoperAttributes(rows);
+  }
+
+  /**
+   * The predefined values of one attribute. They are embedded in the attribute
+   * itself, so this is one `GET /attributes/:id`. A text-field or checkbox
+   * attribute has none. A failure (an unknown id included) propagates.
+   */
+  async listAttributeTerms(attributeId: string): Promise<ShopAttributeTerm[]> {
+    const { data } = await this.client.get<ShoperAttribute | null>(
+      `${ATTRIBUTES_PATH}/${encodeURIComponent(attributeId)}`,
+    );
+    return mapShoperAttributeTerms(data);
   }
 
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {

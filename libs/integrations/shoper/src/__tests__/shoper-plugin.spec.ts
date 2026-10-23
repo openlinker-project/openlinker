@@ -1,6 +1,7 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   isCategoryProvisioner,
+  isShopAttributeReader,
   isShopCategoryBrowser,
   isShopProductStatusReader,
 } from '@openlinker/core/listings';
@@ -85,6 +86,7 @@ describe('Shoper plugin', () => {
         'OrderSource',
         'ShopCategoryBrowser',
         'ShopProductStatusReader',
+        'ShopAttributeReader',
       ],
       isDefault: true,
     });
@@ -183,7 +185,8 @@ describe('Shoper plugin', () => {
 
     expect(isShopCategoryBrowser(publisher)).toBe(true);
     expect(isShopProductStatusReader(publisher)).toBe(true);
-    for (const subCapability of ['ShopCategoryBrowser', 'ShopProductStatusReader']) {
+    expect(isShopAttributeReader(publisher)).toBe(true);
+    for (const subCapability of ['ShopCategoryBrowser', 'ShopProductStatusReader', 'ShopAttributeReader']) {
       await expect(
         plugin.createCapabilityAdapter<unknown>(connection(), subCapability, host),
       ).rejects.toThrow(/does not support/);

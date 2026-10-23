@@ -65,6 +65,8 @@ export const shoperAdapterManifest: AdapterMetadata = {
     'ShopCategoryBrowser',
     // Shop publication status read (#1845): backs the `shop.product.statusSync` reconcile.
     'ShopProductStatusReader',
+    // Shop attribute read (#1835): backs the publish edit flow's attribute picker.
+    'ShopAttributeReader',
   ],
   // `ProductPublisher` is opt-in as well: it WRITES products to the shop, so a
   // connection that exists only as a catalogue master must not become a publish
