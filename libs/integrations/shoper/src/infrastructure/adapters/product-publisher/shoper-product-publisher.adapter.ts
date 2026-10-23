@@ -19,8 +19,11 @@
  *   - a create with no category is refused, because Shoper requires `category_id`
  *     (category provisioning is a separate capability);
  *   - a create with no title is refused;
- *   - whatever Shoper itself rejects (duplicate code, invalid EAN, unknown
- *     category) is surfaced with the shop's own words.
+ *   - a code another shop product already carries is refused naming that
+ *     product (`shoper_duplicate_code`), not adopted: the WooCommerce
+ *     publisher's duplicate-SKU precedent;
+ *   - whatever else Shoper rejects (invalid EAN, unknown category) is
+ *     surfaced with the shop's own words.
  *
  * It also implements `CategoryProvisioner` (#3713): the category path of the
  * master product is mirrored onto the shop, creating whatever is missing. Shoper
@@ -45,8 +48,12 @@
  * product, read as the inverse of how `publishProduct` writes it.
  *
  * And `ShopAttributeReader` (#1835): the shop's attributes and the predefined
- * values of a select attribute, for the attribute picker. Read only for now:
- * a publish does not send `parameters` yet (they come back as a warning).
+ * values of a select attribute, for the attribute picker. A publish sends the
+ * command's `parameters` as Shoper attribute values (`ShoperAttributePlanner`):
+ * a parameter whose `id` is a Shoper attribute id is linked by id, any other is
+ * matched by attribute name, and one Shoper would refuse (an unknown option) or
+ * silently drop (a group not bound to the product's category) is not sent and
+ * comes back as a warning naming it.
  *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
@@ -89,7 +96,7 @@ import type {
 } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
-import { fetchAllShoperRows } from '../../http/shoper-pagination';
+import { fetchAllShoperRows, fetchShoperPage, SHOPER_MAX_PAGE_SIZE } from '../../http/shoper-pagination';
 import { mapShoperAttributeTerms, mapShoperAttributes } from '../../mappers/shoper-attribute.mapper';
 import {
   findShoperCategoryChild,
@@ -98,12 +105,14 @@ import {
 } from '../../mappers/shoper-category.mapper';
 import { mapShoperProductPublicationStatus } from '../../mappers/shoper-product-status.mapper';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
+import { readShoperId } from '../../mappers/shoper-product-attributes.mapper';
 import {
   buildShoperProductBody,
   parseShoperCategoryIds,
   planShoperImageUploads,
 } from '../../mappers/shoper-product-write.mapper';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
+import { ShoperAttributePlanner } from './shoper-attribute-planner';
 import { SHOPER_DESCRIPTION_FORMAT } from './shoper-description-format';
 
 const PRODUCTS_PATH = '/products';
@@ -132,6 +141,7 @@ export class ShoperProductPublisherAdapter
 {
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
   private readonly categoryReader: ShoperCategoryReader;
+  private readonly attributePlanner: ShoperAttributePlanner;
   /**
    * The joined directory `browseCategories` filters, memoised as a PROMISE so
    * concurrent browses share one read. A failure is dropped from the memo, so
@@ -145,6 +155,7 @@ export class ShoperProductPublisherAdapter
     private readonly connection: Connection,
   ) {
     this.categoryReader = new ShoperCategoryReader(client);
+    this.attributePlanner = new ShoperAttributePlanner(client);
   }
 
   getDescriptionFormat(): DescriptionFormat {
@@ -184,14 +195,24 @@ export class ShoperProductPublisherAdapter
     }
 
     const { body, warnings } = buildShoperProductBody(cmd, context);
+    if ((cmd.parameters?.length ?? 0) > 0) {
+      const attributePlan = await this.attributePlanner.plan(
+        cmd.parameters,
+        await this.attributeCategoryOf(cmd, isUpsert),
+      );
+      if (Object.keys(attributePlan.attributes).length > 0) {
+        body.attributes = attributePlan.attributes;
+      }
+      warnings.push(...attributePlan.warnings);
+    }
     this.logger.debug(
       `Publishing variant=${cmd.internalVariantId} connection=${this.connection.id} ` +
         `mode=${isUpsert ? 'upsert' : 'create'} status=${cmd.status}`,
     );
 
     const externalProductId = isUpsert
-      ? await this.update(String(cmd.externalProductId), body)
-      : await this.create(body);
+      ? await this.update(String(cmd.externalProductId), body, cmd.sku)
+      : await this.create(body, cmd.sku);
 
     // Everything below runs after the product exists, and is never allowed to
     // throw: the caller persists the product mapping only once this method
@@ -206,6 +227,36 @@ export class ShoperProductPublisherAdapter
       ...(externalVariantId === undefined ? {} : { externalVariantId }),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  /**
+   * The main category the product will sit in after this write, which decides
+   * whether Shoper keeps an attribute. It is the command's first destination
+   * category when it names one (that becomes `category_id`); an update that
+   * names none leaves the shop's category as it is, so that one is read.
+   *
+   * The read happens before the write, so a failure may propagate: nothing has
+   * been written yet, and a retry is safe. A 404 is the stale mapping core
+   * repairs, exactly as it would be on the write itself.
+   */
+  private async attributeCategoryOf(cmd: PublishProductCommand, isUpsert: boolean): Promise<number | null> {
+    const ids = parseShoperCategoryIds(cmd.destinationCategoryIds);
+    if (ids !== null && ids.length > 0) {
+      return ids[0] ?? null;
+    }
+    if (!isUpsert) {
+      return null;
+    }
+    const externalProductId = String(cmd.externalProductId);
+    try {
+      const { data } = await this.client.get<Pick<ShoperProduct, 'category_id'> | null>(
+        `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
+      );
+      const categoryId = readShoperId(data?.category_id);
+      return categoryId === null ? null : Number(categoryId);
+    } catch (error) {
+      throw this.toPublishError(error, externalProductId);
+    }
   }
 
   /**
@@ -343,8 +394,8 @@ export class ShoperProductPublisherAdapter
   /**
    * The shop's product attributes, for the structured attribute picker (#1835).
    * See `shoper-attribute.mapper.ts` for how Shoper's attribute model maps onto
-   * the neutral one. Read only: this publisher does not yet send `parameters`,
-   * so a picked attribute is not linked on publish.
+   * the neutral one. A picked attribute comes back on publish as a parameter
+   * whose `id` is the attribute id and whose `valuesIds` are option ids.
    */
   async listAttributes(): Promise<ShopAttribute[]> {
     const rows = await fetchAllShoperRows<ShoperAttribute>(this.client, ATTRIBUTES_PATH, {
@@ -471,7 +522,7 @@ export class ShoperProductPublisherAdapter
     return id;
   }
 
-  private async create(body: unknown): Promise<string> {
+  private async create(body: unknown, sku: string | undefined): Promise<string> {
     try {
       const { data } = await this.client.post<unknown>(PRODUCTS_PATH, body);
       const id = String(data);
@@ -486,16 +537,83 @@ export class ShoperProductPublisherAdapter
       }
       return id;
     } catch (error) {
-      throw this.toPublishError(error, null);
+      throw (await this.toDuplicateCodeRefusal(error, null, sku)) ?? this.toPublishError(error, null);
     }
   }
 
-  private async update(externalProductId: string, body: unknown): Promise<string> {
+  private async update(externalProductId: string, body: unknown, sku: string | undefined): Promise<string> {
     try {
       await this.client.put(`${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`, body);
       return externalProductId;
     } catch (error) {
-      throw this.toPublishError(error, externalProductId);
+      throw (
+        (await this.toDuplicateCodeRefusal(error, externalProductId, sku)) ??
+        this.toPublishError(error, externalProductId)
+      );
+    }
+  }
+
+  /**
+   * A write refused because ANOTHER product in the shop already carries this
+   * code, turned into a refusal that names that product, or `null` when the
+   * failure is something else.
+   *
+   * Refused rather than adopted, following the WooCommerce publisher, which
+   * refuses a duplicate SKU (`product_invalid_sku`) as a terminal rejection and
+   * never links the product it collided with: an existing product with the same
+   * code may be the operator's own, unrelated listing, and silently taking it
+   * over would overwrite it on every later publish.
+   *
+   * The duplicate is established by looking the code up, not by parsing
+   * Shoper's message, whose wording is the shop's to change. Only a product
+   * whose code is exactly this one counts, so an unhonoured filter (a page of
+   * unrelated products) can never be read as a collision.
+   */
+  private async toDuplicateCodeRefusal(
+    error: unknown,
+    externalProductId: string | null,
+    sku: string | undefined,
+  ): Promise<ProductPublishRejectedException | null> {
+    const code = sku?.trim() ?? '';
+    if (!(error instanceof ShoperApiError) || error.statusCode !== 400 || code.length === 0) {
+      return null;
+    }
+    const holders = (await this.findProductIdsByCode(code)).filter((id) => id !== externalProductId);
+    if (holders.length === 0) {
+      return null;
+    }
+    const named = holders.length === 1 ? `product ${holders[0]}` : `products ${holders.join(', ')}`;
+    return new ProductPublishRejectedException(this.adapterKey(), error.statusCode, [
+      {
+        code: 'shoper_duplicate_code',
+        message:
+          `Shoper already has a product with the code "${code}" (${named}). A product code must be unique in ` +
+          `a Shoper shop, so this product was not ${externalProductId === null ? 'created' : 'updated'}. ` +
+          `Change this variant's SKU, or change or remove the code on Shoper ${named}, then publish again. ` +
+          `Shoper said: ${error.message}`,
+      },
+    ]);
+  }
+
+  /** Ids of the shop products whose code is exactly `code`; empty when the lookup fails. */
+  private async findProductIdsByCode(code: string): Promise<string[]> {
+    try {
+      const page = await fetchShoperPage<Pick<ShoperProduct, 'product_id' | 'code'>>(this.client, PRODUCTS_PATH, {
+        page: 1,
+        limit: SHOPER_MAX_PAGE_SIZE,
+        query: { filters: JSON.stringify({ code }) },
+      });
+      return page.items
+        .filter((row) => typeof row.code === 'string' && row.code.trim() === code)
+        .map((row) => String(row.product_id))
+        .filter((id) => /^\d+$/.test(id));
+    } catch (error) {
+      // Only the wording of the refusal depends on this; the shop's own rejection still surfaces.
+      this.logger.warn(
+        `Could not look up which Shoper product holds code "${code}" (connection ${this.connection.id}): ` +
+          reasonOf(error),
+      );
+      return [];
     }
   }
 

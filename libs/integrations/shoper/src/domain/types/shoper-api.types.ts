@@ -150,6 +150,18 @@ export interface ShoperAttribute {
 }
 
 /**
+ * A `GET /attribute-groups` row. A group scopes its attributes to categories:
+ * live-verified (2026-10-23) that an attribute whose group does not list the
+ * product's category is ACCEPTED by `PUT /products/:id` and silently not stored,
+ * so `categories` is what decides whether an attribute is worth sending.
+ */
+export interface ShoperAttributeGroup {
+  readonly attribute_group_id?: string | number | null;
+  readonly name?: string | null;
+  readonly categories?: readonly (string | number)[] | null;
+}
+
+/**
  * A `GET /taxes` row. Three live rows share `value: "0"` (`0%`, `zw.`, `np.`),
  * so the NAME is what identifies the rate, not `value`.
  */

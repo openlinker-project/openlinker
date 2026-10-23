@@ -36,7 +36,26 @@ export interface ShoperProductWriteBody {
   /** Every category the product sits in, the main one included. */
   categories?: number[];
   stock?: ShoperProductStockWrite;
+  /**
+   * Attribute values, as a FLAT map of attribute id to value (live-verified
+   * 2026-10-23). This is NOT the grouped shape `GET /products/:id` reads back
+   * (`{ "<groupId>": { "<attributeId>": "..." } }`): sending that answers
+   * `400 Attribute '<groupId>' does not exist`. A select attribute takes the
+   * option TEXT, never its `option_id`.
+   */
+  attributes?: Record<string, string>;
 }
+
+/** The attribute values one publish sends, and why any parameter was left out. */
+export interface ShoperAttributeWritePlan {
+  readonly attributes: Record<string, string>;
+  readonly warnings: string[];
+}
+
+/** The value one parameter resolves to for one attribute, or why it has none. */
+export type ShoperAttributeValueResolution =
+  | { readonly ok: true; readonly value: string; readonly warning?: string }
+  | { readonly ok: false; readonly warning: string };
 
 /**
  * The body of `POST /product-images` (#3712 follow-up). Verified live: Shoper

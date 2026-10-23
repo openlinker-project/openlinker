@@ -441,6 +441,166 @@ describe('ShoperProductPublisherAdapter', () => {
     });
   });
 
+  describe('attributes', () => {
+    const COLOUR = {
+      attribute_id: '28',
+      attribute_group_id: '8',
+      name: 'Kolor',
+      type: '2',
+      options: [{ option_id: '113', value: 'Serenity' }],
+    };
+    const envelope = (list: unknown[]): { status: number; data: unknown } => ({
+      status: 200,
+      data: { list, count: String(list.length), pages: 1, page: 1 },
+    });
+
+    /** Answers the attribute reads, and `product` for `GET /products/:id`. */
+    function routeGets(get: jest.Mock, product: unknown = { category_id: '45', main_image: null, stock: { stock_id: '418' } }): void {
+      get.mockImplementation((path: string) => {
+        if (path === '/attributes/28') return Promise.resolve({ status: 200, data: COLOUR });
+        if (path === '/attribute-groups') {
+          return Promise.resolve(envelope([{ attribute_group_id: '8', categories: [45, 38] }]));
+        }
+        if (path === '/attributes') return Promise.resolve(envelope([COLOUR]));
+        return Promise.resolve({ status: 200, data: product });
+      });
+    }
+
+    it('should send the picked attribute as a flat id to option-text map on create', async () => {
+      const { adapter, post, get } = setup();
+      routeGets(get);
+
+      const result = await adapter.publishProduct(
+        command({ parameters: [{ id: '28', values: ['Serenity'], valuesIds: ['113'], section: 'product' }] }),
+      );
+
+      expect(bodyOf(post).attributes).toEqual({ '28': 'Serenity' });
+      expect(result).not.toHaveProperty('warnings');
+    });
+
+    it('should read the current category before an update that names none, and check the binding against it', async () => {
+      const { adapter, put, get } = setup();
+      routeGets(get, { category_id: '12', main_image: null, stock: { stock_id: '418' } });
+
+      const result = await adapter.publishProduct(
+        command({
+          externalProductId: '95',
+          destinationCategoryIds: [],
+          parameters: [{ id: '28', valuesIds: ['113'], section: 'product' }],
+        }),
+      );
+
+      expect(get).toHaveBeenCalledWith('/products/95');
+      expect(bodyOf(put).attributes).toBeUndefined();
+      expect(result.warnings).toEqual([expect.stringContaining('not bound to category 12')]);
+    });
+
+    it('should report a stale mapping when the product to update is gone before anything is written', async () => {
+      const { adapter, put, get } = setup();
+      get.mockRejectedValue(new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+      await expect(
+        adapter.publishProduct(
+          command({
+            externalProductId: '999',
+            destinationCategoryIds: [],
+            parameters: [{ id: '28', valuesIds: ['113'], section: 'product' }],
+          }),
+        ),
+      ).rejects.toBeInstanceOf(ProductPublishTargetNotFoundException);
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should read no attribute when the command carries no parameters', async () => {
+      const { adapter, get } = setup();
+
+      await adapter.publishProduct(command());
+
+      expect((get.mock.calls as [string][]).some(([path]) => path.startsWith('/attribute'))).toBe(false);
+    });
+  });
+
+  describe('duplicate product code', () => {
+    const duplicate = (): ShoperApiError =>
+      new ShoperApiError(400, 'invalid_request', "Wartość pola 'code' już istnieje");
+    const productsPage = (rows: { product_id: string; code: string | null }[]): { status: number; data: unknown } => ({
+      status: 200,
+      data: { list: rows, count: String(rows.length), pages: 1, page: 1 },
+    });
+
+    async function rejection(promise: Promise<unknown>): Promise<ProductPublishRejectedException> {
+      const error: unknown = await promise.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ProductPublishRejectedException);
+      return error as ProductPublishRejectedException;
+    }
+
+    it('should refuse a create whose code another product holds, naming that product', async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+      get.mockResolvedValue(productsPage([{ product_id: '95', code: 'SKU-1' }]));
+
+      const error = await rejection(adapter.publishProduct(command()));
+
+      expect(get).toHaveBeenCalledWith('/products', {
+        filters: JSON.stringify({ code: 'SKU-1' }),
+        limit: 50,
+        page: 1,
+      });
+      expect(error.statusCode).toBe(400);
+      expect(error.errors[0]?.code).toBe('shoper_duplicate_code');
+      expect(error.errors[0]?.message).toContain('"SKU-1" (product 95)');
+      expect(error.errors[0]?.message).toContain('was not created');
+    });
+
+    it('should refuse an update that would take the code of another product', async () => {
+      const { adapter, put, get } = setup();
+      put.mockRejectedValue(duplicate());
+      get.mockResolvedValue(
+        productsPage([
+          { product_id: '130', code: 'SKU-1' },
+          { product_id: '95', code: 'SKU-1' },
+        ]),
+      );
+
+      const error = await rejection(adapter.publishProduct(command({ externalProductId: '130' })));
+
+      expect(error.errors[0]?.code).toBe('shoper_duplicate_code');
+      expect(error.errors[0]?.message).toContain('(product 95)');
+      expect(error.errors[0]?.message).not.toContain('130');
+    });
+
+    it("should keep Shoper's own rejection when no other product holds the code", async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+      // An unhonoured filter answers unrelated products; they must not read as a collision.
+      get.mockResolvedValue(productsPage([{ product_id: '7', code: 'OTHER' }]));
+
+      const error = await rejection(adapter.publishProduct(command()));
+
+      expect(error.errors[0]?.code).toBe('invalid_request');
+    });
+
+    it("should keep Shoper's own rejection when the code lookup itself fails", async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+      get.mockRejectedValue(new ShoperApiError(503));
+
+      const error = await rejection(adapter.publishProduct(command()));
+
+      expect(error.errors[0]?.code).toBe('invalid_request');
+      expect(error.errors[0]?.message).toContain('już istnieje');
+    });
+
+    it('should not look anything up for a rejection of a product with no code', async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+
+      await rejection(adapter.publishProduct(command({ sku: undefined })));
+
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
   it('should declare the description grammar Shoper keeps, not the conservative default', () => {
     const { adapter } = setup();
 
