@@ -33,6 +33,21 @@
  * `stock_id` as `externalVariantId`: Shoper order lines name the stock, not the
  * product, so that is the id an order for this product will carry.
  *
+ * It also implements `ShopCategoryBrowser`, so the shop's existing tree reaches
+ * the destination taxonomy projection the publish category picker reads (#1979,
+ * #2085). The sync job browses one parent at a time against ONE adapter
+ * instance, while Shoper can only answer the whole directory (tree + every page
+ * of names), so the joined directory is read once per instance and every browse
+ * is a filter over it. A category this instance provisions drops that memo, so a
+ * later browse never hides what was just created.
+ *
+ * And `ShopProductStatusReader` (#1845): the live visibility of a published
+ * product, read as the inverse of how `publishProduct` writes it.
+ *
+ * And `ShopAttributeReader` (#1835): the shop's attributes and the predefined
+ * values of a select attribute, for the attribute picker. Read only for now:
+ * a publish does not send `parameters` yet (they come back as a warning).
+ *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
  * the worker retries the job.
@@ -44,18 +59,28 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
   ProductPublishTargetNotFoundException,
+  SHOP_PUBLICATION_STATUS,
   type CategoryProvisioner,
   type DescriptionFormat,
   type ProvisionCategoryCommand,
   type ProvisionCategoryResult,
   type PublishProductCommand,
   type PublishProductResult,
+  type ShopAttribute,
+  type ShopAttributeReader,
+  type ShopAttributeTerm,
+  type ShopCategory,
+  type ShopCategoryBrowser,
   type ShopProductManagerPort,
+  type ShopProductStatusReadResult,
+  type ShopProductStatusReader,
 } from '@openlinker/core/listings';
 import type { Category } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
+import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
+import type { ShoperAttribute, ShoperProduct } from '../../../domain/types/shoper-api.types';
 import type {
   ShoperCategoryWriteBody,
   ShoperImageWriteBody,
@@ -64,7 +89,14 @@ import type {
 } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
-import { findShoperCategoryChild, joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import { fetchAllShoperRows } from '../../http/shoper-pagination';
+import { mapShoperAttributeTerms, mapShoperAttributes } from '../../mappers/shoper-attribute.mapper';
+import {
+  findShoperCategoryChild,
+  joinShoperCategories,
+  selectShoperCategoryChildren,
+} from '../../mappers/shoper-category.mapper';
+import { mapShoperProductPublicationStatus } from '../../mappers/shoper-product-status.mapper';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
 import {
   buildShoperProductBody,
@@ -78,6 +110,7 @@ const PRODUCTS_PATH = '/products';
 
 const CATEGORIES_PATH = '/categories';
 const IMAGES_PATH = '/product-images';
+const ATTRIBUTES_PATH = '/attributes';
 
 /** A short, token-free reason for a warning. */
 function reasonOf(error: unknown): string {
@@ -89,9 +122,22 @@ function hasMainImage(product: ShoperPublishedProduct): boolean {
   return product.main_image !== null && product.main_image !== undefined;
 }
 
-export class ShoperProductPublisherAdapter implements ShopProductManagerPort, CategoryProvisioner {
+export class ShoperProductPublisherAdapter
+  implements
+    ShopProductManagerPort,
+    CategoryProvisioner,
+    ShopCategoryBrowser,
+    ShopProductStatusReader,
+    ShopAttributeReader
+{
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
   private readonly categoryReader: ShoperCategoryReader;
+  /**
+   * The joined directory `browseCategories` filters, memoised as a PROMISE so
+   * concurrent browses share one read. A failure is dropped from the memo, so
+   * the next browse retries instead of replaying the rejection.
+   */
+  private browseDirectory: Promise<Category[]> | null = null;
 
   constructor(
     private readonly client: ShoperHttpClient,
@@ -257,6 +303,68 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
     return warnings;
   }
 
+  /**
+   * The live visibility of a product this connection published, for the
+   * steady-state shop-status reconcile (#1845). The mapping is the inverse of
+   * the write (`mapShoperProductPublicationStatus`). Only Shoper's own "no such
+   * resource" 404 reads as `removed`: a bare 404 from something in front of the
+   * shop must never stale a listing. Every other failure propagates so the job
+   * retries, and so does an answer that carries no readable visibility, which
+   * is not guessed into either state.
+   *
+   * No `getShopVariationStatus`: this publisher refuses multi-variant products,
+   * so no record it wrote points at a variant row.
+   */
+  async getShopProductStatus(externalProductId: string): Promise<ShopProductStatusReadResult> {
+    // An empty body is possible on a misbehaving answer; it reads as unreadable below.
+    let product: Pick<ShoperProduct, 'translations'> | null;
+    try {
+      ({ data: product } = await this.client.get<Pick<ShoperProduct, 'translations'> | null>(
+        `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
+      ));
+    } catch (error) {
+      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
+        return { publicationStatus: SHOP_PUBLICATION_STATUS.Removed };
+      }
+      throw error;
+    }
+
+    const { language } = await this.shopContext.get();
+    const publicationStatus = mapShoperProductPublicationStatus(product?.translations, language);
+    if (publicationStatus === null) {
+      throw new ShoperNetworkError(
+        `Shoper product ${externalProductId} reports no readable visibility for language ` +
+          `"${language}" (connection ${this.connection.id})`,
+      );
+    }
+    return { publicationStatus };
+  }
+
+  /**
+   * The shop's product attributes, for the structured attribute picker (#1835).
+   * See `shoper-attribute.mapper.ts` for how Shoper's attribute model maps onto
+   * the neutral one. Read only: this publisher does not yet send `parameters`,
+   * so a picked attribute is not linked on publish.
+   */
+  async listAttributes(): Promise<ShopAttribute[]> {
+    const rows = await fetchAllShoperRows<ShoperAttribute>(this.client, ATTRIBUTES_PATH, {
+      order: 'attribute_id ASC',
+    });
+    return mapShoperAttributes(rows);
+  }
+
+  /**
+   * The predefined values of one attribute. They are embedded in the attribute
+   * itself, so this is one `GET /attributes/:id`. A text-field or checkbox
+   * attribute has none. A failure (an unknown id included) propagates.
+   */
+  async listAttributeTerms(attributeId: string): Promise<ShopAttributeTerm[]> {
+    const { data } = await this.client.get<ShoperAttribute | null>(
+      `${ATTRIBUTES_PATH}/${encodeURIComponent(attributeId)}`,
+    );
+    return mapShoperAttributeTerms(data);
+  }
+
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {
     if (cmd.path.length === 0) {
       throw this.refuse('shoper_category_path_empty', 'There is no category path to create on Shoper.');
@@ -310,6 +418,33 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
     };
   }
 
+  /**
+   * The shop's categories directly under `parentId` (omitted = the root level).
+   * Every Shoper category is a valid placement, so there is no leaf flag.
+   *
+   * Names are read in the shop's default language, the one the publisher writes
+   * category names in; a category with no name there falls back to any language
+   * that has one (`joinShoperCategories`). Unlike provisioning, an unreported
+   * default language is not refused: a read invents nothing, and the fallback
+   * still names every category truthfully.
+   */
+  async browseCategories(parentId?: string): Promise<ShopCategory[]> {
+    return selectShoperCategoryChildren(await this.loadBrowseDirectory(), parentId);
+  }
+
+  private loadBrowseDirectory(): Promise<Category[]> {
+    if (this.browseDirectory === null) {
+      this.browseDirectory = this.shopContext
+        .get()
+        .then(({ language }) => this.readCategories(language))
+        .catch((error: unknown) => {
+          this.browseDirectory = null;
+          throw error;
+        });
+    }
+    return this.browseDirectory;
+  }
+
   private async readCategories(language: string): Promise<Category[]> {
     const raw = await this.categoryReader.read();
     return joinShoperCategories(raw.list, raw.tree, language).categories;
@@ -321,6 +456,8 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
       translations: { [language]: { name, active: 1 } },
     };
     const { data } = await this.client.post<unknown>(CATEGORIES_PATH, body);
+    // Dropped even when the answer below is unreadable: the category may exist now.
+    this.browseDirectory = null;
     const id = String(data);
     if (!/^\d+$/.test(id)) {
       // Refused, not retried as a network fault: the answer was readable, just not an id.

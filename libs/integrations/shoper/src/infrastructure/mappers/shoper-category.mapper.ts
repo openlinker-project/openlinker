@@ -19,6 +19,7 @@
  *
  * @module libs/integrations/shoper/src/infrastructure/mappers
  */
+import type { ShopCategory } from '@openlinker/core/listings';
 import type { Category } from '@openlinker/core/products';
 
 import type {
@@ -171,4 +172,34 @@ export function primaryShoperCategoryId(
   }
   const assigned = Array.isArray(product.categories) ? product.categories.map(String).filter(isId) : [];
   return assigned.length === 1 ? assigned[0] : null;
+}
+
+/**
+ * The direct children of `parentId` (`undefined` = the root level), as the
+ * neutral `ShopCategory` the publish category picker browses, sorted by name so
+ * the picker is stable across reads.
+ *
+ * A category the tree does not place is left out for the same reason
+ * `findShoperCategoryChild` skips it: its parent is unknown, so listing it at
+ * the root would state a place the shop never reported. Any `parentId` other
+ * than `undefined` is matched exactly, and an unknown one lists nothing rather
+ * than falling back to the root: repeating the root under a node would read as
+ * a cycle to the taxonomy walk.
+ */
+export function selectShoperCategoryChildren(
+  categories: readonly Category[],
+  parentId: string | undefined,
+): ShopCategory[] {
+  return categories
+    .filter(
+      (category) =>
+        category.depth !== undefined &&
+        (parentId === undefined ? category.parentId === undefined : category.parentId === parentId),
+    )
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      parentId: category.parentId ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || Number(a.id) - Number(b.id));
 }

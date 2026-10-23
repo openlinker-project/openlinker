@@ -57,6 +57,16 @@ export const shoperAdapterManifest: AdapterMetadata = {
     'CategoryProvisioner',
     'OrderProcessorManager',
     'OrderSource',
+    // Advertised-without-dispatch sub-capabilities of the publisher: declared
+    // here only for host/FE discovery (the publish pickers read this list) and
+    // resolved by narrowing the dispatched `ProductPublisher` adapter with their
+    // `is*` guard, never via `getCapabilityAdapter`. Hence no dispatch entries.
+    // Shop category browse (#1834): feeds the destination taxonomy projection.
+    'ShopCategoryBrowser',
+    // Shop publication status read (#1845): backs the `shop.product.statusSync` reconcile.
+    'ShopProductStatusReader',
+    // Shop attribute read (#1835): backs the publish edit flow's attribute picker.
+    'ShopAttributeReader',
   ],
   // `ProductPublisher` is opt-in as well: it WRITES products to the shop, so a
   // connection that exists only as a catalogue master must not become a publish
@@ -130,7 +140,8 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
         SHOPER_ADAPTER_KEY,
         new ShoperWebhookEventTranslatorAdapter(),
       );
-      // Orders-poll backstop for a lost webhook (#3644, #904).
+      // Orders-poll backstop for a lost webhook (#3644, #904) and the
+      // published-product status reconcile (#1845).
       for (const task of buildShoperSchedulerTasks()) {
         host.schedulerTaskRegistry.register(task);
       }

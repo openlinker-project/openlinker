@@ -1,5 +1,10 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { isCategoryProvisioner } from '@openlinker/core/listings';
+import {
+  isCategoryProvisioner,
+  isShopAttributeReader,
+  isShopCategoryBrowser,
+  isShopProductStatusReader,
+} from '@openlinker/core/listings';
 import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
 import {
   isFulfillmentStatusReader,
@@ -73,7 +78,7 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should expose the documented manifest with its six capabilities', () => {
+  it('should expose the documented manifest with its six dispatched capabilities and the publisher read sub-capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
@@ -84,6 +89,9 @@ describe('Shoper plugin', () => {
         'CategoryProvisioner',
         'OrderProcessorManager',
         'OrderSource',
+        'ShopCategoryBrowser',
+        'ShopProductStatusReader',
+        'ShopAttributeReader',
       ],
       isDefault: true,
     });
@@ -102,7 +110,7 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should register the orders-poll task that backs up a lost webhook, and the fulfilment read-back', () => {
+  it('should register the orders-poll backstop, the fulfilment read-back and the published-product status reconcile', () => {
     const { host, schedulerRegister } = hostWithRegistries();
 
     createShoperPlugin().register?.(host);
@@ -115,6 +123,12 @@ describe('Shoper plugin', () => {
       expect.objectContaining({
         taskId: 'shoper-fulfillment-status-sync',
         jobType: 'marketplace.fulfillment.statusSync',
+      }),
+    );
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'shoper-product-status-sync',
+        jobType: 'shop.product.statusSync',
       }),
     );
   });
@@ -168,6 +182,26 @@ describe('Shoper plugin', () => {
 
     expect(adapter).toBeInstanceOf(ShoperProductPublisherAdapter);
     expect(isCategoryProvisioner(adapter as ShoperProductPublisherAdapter)).toBe(true);
+  });
+
+  it('should serve the advertised publisher read sub-capabilities by narrowing the ProductPublisher adapter, not by dispatch', async () => {
+    const { host } = hostWithRegistries();
+    const plugin = createShoperPlugin();
+
+    const publisher = await plugin.createCapabilityAdapter<ShoperProductPublisherAdapter>(
+      connection(),
+      'ProductPublisher',
+      host,
+    );
+
+    expect(isShopCategoryBrowser(publisher)).toBe(true);
+    expect(isShopProductStatusReader(publisher)).toBe(true);
+    expect(isShopAttributeReader(publisher)).toBe(true);
+    for (const subCapability of ['ShopCategoryBrowser', 'ShopProductStatusReader', 'ShopAttributeReader']) {
+      await expect(
+        plugin.createCapabilityAdapter<unknown>(connection(), subCapability, host),
+      ).rejects.toThrow(/does not support/);
+    }
   });
 
   it('should resolve InventoryMaster to the Shoper inventory master adapter', async () => {

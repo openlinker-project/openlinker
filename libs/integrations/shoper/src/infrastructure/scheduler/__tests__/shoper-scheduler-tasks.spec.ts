@@ -18,12 +18,13 @@ const connection = new Connection(
 );
 
 describe('buildShoperSchedulerTasks', () => {
-  const [task, fulfillment] = buildShoperSchedulerTasks();
+  const [task, fulfillment, statusTask] = buildShoperSchedulerTasks();
 
-  it('should register the orders poll and the fulfilment read-back, and nothing else', () => {
+  it('should register the orders poll, the fulfilment read-back and the product-status reconcile, and nothing else', () => {
     expect(buildShoperSchedulerTasks().map((t) => t.taskId)).toEqual([
       'shoper-orders-poll',
       'shoper-fulfillment-status-sync',
+      'shoper-product-status-sync',
     ]);
   });
 
@@ -78,6 +79,34 @@ describe('buildShoperSchedulerTasks', () => {
       });
       expect(fulfillment.generateIdempotencyKey(connection, 't1')).toBe(
         'marketplace:conn-shoper-1:shoper:fulfillment:status:sync:t1',
+      );
+    });
+  });
+
+  describe('product-status reconcile', () => {
+    it('should run the shared shop.product.statusSync job, gated on ProductPublisher', () => {
+      expect(statusTask.platformType).toBe('shoper');
+      expect(statusTask.requiredCapability).toBe('ProductPublisher');
+      expect(statusTask.jobType).toBe('shop.product.statusSync');
+      expect(statusTask.cronExpression).toBe('0 * * * *');
+    });
+
+    it('should have its own env switch with the same default as WooCommerce (on)', () => {
+      expect(statusTask.enabledEnvVar).toBe('OL_SHOPER_SHOP_STATUS_SYNC_SCHEDULER_ENABLED');
+      expect(statusTask.enabledDefault).toBeUndefined();
+    });
+
+    it('should page through the published records with the shared scan-offset cursor', () => {
+      expect(statusTask.generatePayload(connection)).toEqual({
+        schemaVersion: 1,
+        cursorKey: 'shop.productStatus.scanOffset',
+        limit: 100,
+      });
+    });
+
+    it('should key every tick per connection and timestamp', () => {
+      expect(statusTask.generateIdempotencyKey(connection, '2026-10-23T10:00')).toBe(
+        'shop:conn-shoper-1:product:status:sync:2026-10-23T10:00',
       );
     });
   });
