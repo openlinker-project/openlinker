@@ -11,6 +11,9 @@
  * The cadence is relaxed (10 min) because Shoper's request ceiling is unknown
  * (SPIKE-3638 C6) and webhooks already carry the primary load.
  *
+ * It also contributes the published-product status reconcile, for a connection
+ * used as a publish destination.
+ *
  * @module libs/integrations/shoper/src/infrastructure/scheduler
  */
 import type { Connection } from '@openlinker/core/identifier-mapping';
@@ -34,6 +37,27 @@ export function buildShoperSchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
         `marketplace:${connection.id}:shoper:orders:poll:${timestamp}`,
+    },
+    {
+      // Steady-state shop product-status reconcile (#1845), the same task
+      // WooCommerce registers: one page of the connection's published / draft
+      // products per tick, so a product hidden or deleted in the shop panel is
+      // detected. Hourly, one request per product, against a shop whose request
+      // ceiling is unknown (SPIKE-3638 C6). Gated on `ProductPublisher`; the core
+      // service further no-ops when the adapter lacks `ShopProductStatusReader`.
+      taskId: 'shoper-product-status-sync',
+      platformType: SHOPER_PLATFORM_TYPE,
+      requiredCapability: 'ProductPublisher',
+      jobType: 'shop.product.statusSync',
+      cronExpression: '0 * * * *',
+      enabledEnvVar: 'OL_SHOPER_SHOP_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: (_connection: Connection) => ({
+        schemaVersion: 1 as const,
+        cursorKey: 'shop.productStatus.scanOffset',
+        limit: 100,
+      }),
+      generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
+        `shop:${connection.id}:product:status:sync:${timestamp}`,
     },
   ];
 }

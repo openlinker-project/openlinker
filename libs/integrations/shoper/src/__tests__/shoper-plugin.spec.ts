@@ -1,5 +1,9 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { isCategoryProvisioner, isShopCategoryBrowser } from '@openlinker/core/listings';
+import {
+  isCategoryProvisioner,
+  isShopCategoryBrowser,
+  isShopProductStatusReader,
+} from '@openlinker/core/listings';
 import { isOrderStatusWriteback } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
@@ -80,6 +84,7 @@ describe('Shoper plugin', () => {
         'OrderProcessorManager',
         'OrderSource',
         'ShopCategoryBrowser',
+        'ShopProductStatusReader',
       ],
       isDefault: true,
     });
@@ -98,14 +103,20 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should register the orders-poll task that backs up a lost webhook', () => {
+  it('should register the orders-poll backstop and the published-product status reconcile', () => {
     const { host, schedulerRegister } = hostWithRegistries();
 
     createShoperPlugin().register?.(host);
 
-    expect(schedulerRegister).toHaveBeenCalledTimes(1);
+    expect(schedulerRegister).toHaveBeenCalledTimes(2);
     expect(schedulerRegister).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'shoper-orders-poll', jobType: 'marketplace.orders.poll' }),
+    );
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'shoper-product-status-sync',
+        jobType: 'shop.product.statusSync',
+      }),
     );
   });
 
@@ -171,9 +182,12 @@ describe('Shoper plugin', () => {
     );
 
     expect(isShopCategoryBrowser(publisher)).toBe(true);
-    await expect(
-      plugin.createCapabilityAdapter<unknown>(connection(), 'ShopCategoryBrowser', host),
-    ).rejects.toThrow(/does not support/);
+    expect(isShopProductStatusReader(publisher)).toBe(true);
+    for (const subCapability of ['ShopCategoryBrowser', 'ShopProductStatusReader']) {
+      await expect(
+        plugin.createCapabilityAdapter<unknown>(connection(), subCapability, host),
+      ).rejects.toThrow(/does not support/);
+    }
   });
 
   it('should resolve InventoryMaster to the Shoper inventory master adapter', async () => {

@@ -18,10 +18,16 @@ const connection = new Connection(
 );
 
 describe('buildShoperSchedulerTasks', () => {
-  const [task] = buildShoperSchedulerTasks();
+  const [task, statusTask] = buildShoperSchedulerTasks();
 
-  it('should register exactly the orders-poll task, gated on OrderSource', () => {
-    expect(buildShoperSchedulerTasks()).toHaveLength(1);
+  it('should register exactly the orders-poll and the product-status tasks', () => {
+    expect(buildShoperSchedulerTasks().map((t) => t.taskId)).toEqual([
+      'shoper-orders-poll',
+      'shoper-product-status-sync',
+    ]);
+  });
+
+  it('should gate the orders poll on OrderSource', () => {
     expect(task.taskId).toBe('shoper-orders-poll');
     expect(task.platformType).toBe('shoper');
     expect(task.requiredCapability).toBe('OrderSource');
@@ -48,5 +54,33 @@ describe('buildShoperSchedulerTasks', () => {
     expect(task.generateIdempotencyKey(connection, 'a')).not.toBe(
       task.generateIdempotencyKey(connection, 'b'),
     );
+  });
+
+  describe('product-status reconcile', () => {
+    it('should run the shared shop.product.statusSync job, gated on ProductPublisher', () => {
+      expect(statusTask.platformType).toBe('shoper');
+      expect(statusTask.requiredCapability).toBe('ProductPublisher');
+      expect(statusTask.jobType).toBe('shop.product.statusSync');
+      expect(statusTask.cronExpression).toBe('0 * * * *');
+    });
+
+    it('should have its own env switch with the same default as WooCommerce (on)', () => {
+      expect(statusTask.enabledEnvVar).toBe('OL_SHOPER_SHOP_STATUS_SYNC_SCHEDULER_ENABLED');
+      expect(statusTask.enabledDefault).toBeUndefined();
+    });
+
+    it('should page through the published records with the shared scan-offset cursor', () => {
+      expect(statusTask.generatePayload(connection)).toEqual({
+        schemaVersion: 1,
+        cursorKey: 'shop.productStatus.scanOffset',
+        limit: 100,
+      });
+    });
+
+    it('should key every tick per connection and timestamp', () => {
+      expect(statusTask.generateIdempotencyKey(connection, '2026-10-23T10:00')).toBe(
+        'shop:conn-shoper-1:product:status:sync:2026-10-23T10:00',
+      );
+    });
   });
 });

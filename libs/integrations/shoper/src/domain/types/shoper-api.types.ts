@@ -39,6 +39,12 @@ export interface ShoperProductTranslation {
   readonly name?: string | null;
   readonly description?: string | null;
   readonly short_description?: string | null;
+  /**
+   * Per-language visibility, the panel's "Aktywność". Written as `1` / `0`
+   * (`shoper-product-write.types.ts`); read back tolerantly, since Shoper
+   * serializes flags as strings elsewhere (`"1"` on categories).
+   */
+  readonly active?: string | number | boolean | null;
 }
 
 export interface ShoperMainImage {

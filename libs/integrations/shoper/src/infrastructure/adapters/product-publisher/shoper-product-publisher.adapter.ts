@@ -37,6 +37,9 @@
  * is a filter over it. A category this instance provisions drops that memo, so a
  * later browse never hides what was just created.
  *
+ * And `ShopProductStatusReader` (#1845): the live visibility of a published
+ * product, read as the inverse of how `publishProduct` writes it.
+ *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
  * the worker retries the job.
@@ -48,6 +51,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
   ProductPublishRejectedException,
   ProductPublishTargetNotFoundException,
+  SHOP_PUBLICATION_STATUS,
   type CategoryProvisioner,
   type DescriptionFormat,
   type ProvisionCategoryCommand,
@@ -57,11 +61,15 @@ import {
   type ShopCategory,
   type ShopCategoryBrowser,
   type ShopProductManagerPort,
+  type ShopProductStatusReadResult,
+  type ShopProductStatusReader,
 } from '@openlinker/core/listings';
 import type { Category } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
+import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
+import type { ShoperProduct } from '../../../domain/types/shoper-api.types';
 import type {
   ShoperCategoryWriteBody,
   ShoperImageWriteBody,
@@ -73,6 +81,7 @@ import {
   joinShoperCategories,
   selectShoperCategoryChildren,
 } from '../../mappers/shoper-category.mapper';
+import { mapShoperProductPublicationStatus } from '../../mappers/shoper-product-status.mapper';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
 import {
   buildShoperProductBody,
@@ -93,7 +102,7 @@ function reasonOf(error: unknown): string {
 }
 
 export class ShoperProductPublisherAdapter
-  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser
+  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser, ShopProductStatusReader
 {
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
   private readonly categoryReader: ShoperCategoryReader;
@@ -228,6 +237,43 @@ export class ShoperProductPublisherAdapter
       `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
     );
     return data.main_image !== null && data.main_image !== undefined;
+  }
+
+  /**
+   * The live visibility of a product this connection published, for the
+   * steady-state shop-status reconcile (#1845). The mapping is the inverse of
+   * the write (`mapShoperProductPublicationStatus`). Only Shoper's own "no such
+   * resource" 404 reads as `removed`: a bare 404 from something in front of the
+   * shop must never stale a listing. Every other failure propagates so the job
+   * retries, and so does an answer that carries no readable visibility, which
+   * is not guessed into either state.
+   *
+   * No `getShopVariationStatus`: this publisher refuses multi-variant products,
+   * so no record it wrote points at a variant row.
+   */
+  async getShopProductStatus(externalProductId: string): Promise<ShopProductStatusReadResult> {
+    // An empty body is possible on a misbehaving answer; it reads as unreadable below.
+    let product: Pick<ShoperProduct, 'translations'> | null;
+    try {
+      ({ data: product } = await this.client.get<Pick<ShoperProduct, 'translations'> | null>(
+        `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
+      ));
+    } catch (error) {
+      if (error instanceof ShoperApiError && error.isResourceNotFound()) {
+        return { publicationStatus: SHOP_PUBLICATION_STATUS.Removed };
+      }
+      throw error;
+    }
+
+    const { language } = await this.shopContext.get();
+    const publicationStatus = mapShoperProductPublicationStatus(product?.translations, language);
+    if (publicationStatus === null) {
+      throw new ShoperNetworkError(
+        `Shoper product ${externalProductId} reports no readable visibility for language ` +
+          `"${language}" (connection ${this.connection.id})`,
+      );
+    }
+    return { publicationStatus };
   }
 
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {
