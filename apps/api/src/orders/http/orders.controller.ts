@@ -135,6 +135,11 @@ import {
   type IShipmentQueryService,
 } from '@openlinker/core/shipping';
 import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type IFulfillmentWorkQueryService,
+  type OrderWorkSummary,
+} from '@openlinker/core/fulfillment';
+import {
   RETURNS_SERVICE_TOKEN,
   type IReturnsService,
   type OpenReturnOrderSummary,
@@ -173,6 +178,7 @@ import {
 } from './dto/order-hold-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 import type { OrderReservationShortfallDto } from './dto/order-reservation-shortfall.dto';
+import type { OrderHandledInOpenLinkerDto } from './dto/order-handled-in-openlinker.dto';
 import type { OrderOpenReturnDto } from './dto/order-open-return.dto';
 import {
   SalesDocumentViewResponseDto,
@@ -369,6 +375,11 @@ export class OrdersController {
     // `orders` back, so the composition happens here.
     @Inject(RETURNS_SERVICE_TOKEN)
     private readonly returnsService: IReturnsService,
+    // #3482 — the packing stage of an order OpenLinker handles itself. `orders`
+    // may not import `fulfillment` work rows directly; the read crosses the
+    // service seam, one batch per page.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly fulfillmentWork: IFulfillmentWorkQueryService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
     private readonly tagService: IOrderTagService
@@ -488,6 +499,13 @@ export class OrdersController {
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the packing stage for the whole page (#3482) — same shape, same
+    // reason: one read across the page's order ids, never a per-row lookup. A
+    // FAILED read renders nothing and makes no "not routed" claim.
+    const handledByOrderId = await this.loadHandledInOpenLinkerForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
     // Batch the tag ids for the whole page (#3532) — same shape, same reason.
     const tagsByOrderId = await this.tagService.getForOrders(
       items.map((order) => order.internalOrderId)
@@ -516,6 +534,10 @@ export class OrdersController {
         const openReturn = openReturnByOrderId.get(order.internalOrderId);
         if (openReturn) {
           dto.openReturn = this.toOpenReturnDto(openReturn);
+        }
+        const handled = handledByOrderId.get(order.internalOrderId);
+        if (handled) {
+          dto.handledInOpenLinker = this.toHandledInOpenLinkerDto(handled);
         }
         dto.tagIds = tagsByOrderId.get(order.internalOrderId) ?? [];
         return dto;
@@ -735,6 +757,14 @@ export class OrdersController {
     );
     if (openReturn) {
       dto.openReturn = this.toOpenReturnDto(openReturn);
+    }
+    // Packing stage (#3482) — the same projection the list carries, one read for
+    // this one order, so the row and the detail header cannot disagree.
+    const handled = (await this.loadHandledInOpenLinkerForPage([order.internalOrderId])).get(
+      order.internalOrderId
+    );
+    if (handled) {
+      dto.handledInOpenLinker = this.toHandledInOpenLinkerDto(handled);
     }
     dto.tagIds = await this.tagService.listForOrder(order.internalOrderId);
     return dto;
@@ -978,6 +1008,27 @@ export class OrdersController {
       );
       return [];
     }
+  }
+
+  private async loadHandledInOpenLinkerForPage(
+    internalOrderIds: string[]
+  ): Promise<ReadonlyMap<string, OrderWorkSummary>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.fulfillmentWork.summarizeWorkForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project the packing stage for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
+  private toHandledInOpenLinkerDto(summary: OrderWorkSummary): OrderHandledInOpenLinkerDto {
+    return { stage: summary.stage, workCount: summary.workCount };
   }
 
   private toOpenReturnDto(summary: OpenReturnOrderSummary): OrderOpenReturnDto {

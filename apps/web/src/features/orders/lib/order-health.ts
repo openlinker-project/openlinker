@@ -18,6 +18,7 @@ import {
   isFulfillmentRollupState,
   isSlaState,
   type OrderRecord,
+  type OrderHandledInOpenLinker,
   type OrderHealthValue,
   type OrderSyncStatus,
   type SlaStateValue,
@@ -25,6 +26,8 @@ import {
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { resolveDestinationRoutingCopy } from './destination-routing-copy';
+import { isHandledInOpenLinker } from './handled-in-openlinker';
+import { HANDLED_IN_OPENLINKER_COPY } from './handled-in-openlinker.copy';
 
 // ── List-row health classification (#929) ──────────────────────────────────
 // CANONICAL PRECEDENCE (highest wins) — single FE source of truth and the twin
@@ -148,7 +151,11 @@ export function deriveHealthLevel(rollup: SyncRollup): OrderHealthLevel {
   return 'healthy';
 }
 
-export function healthLabel(level: OrderHealthLevel): string {
+export function healthLabel(
+  level: OrderHealthLevel,
+  /** An order OpenLinker handles itself has no destination rows by design (#3482). */
+  handled?: OrderHandledInOpenLinker
+): string {
   switch (level) {
     case 'attention':
       return 'Needs attention';
@@ -157,7 +164,9 @@ export function healthLabel(level: OrderHealthLevel): string {
     case 'healthy':
       return 'Synced';
     case 'unknown':
-      return 'No destinations';
+      return isHandledInOpenLinker({ handledInOpenLinker: handled })
+        ? HANDLED_IN_OPENLINKER_COPY.syncLabel
+        : 'No destinations';
   }
 }
 
@@ -177,9 +186,16 @@ export function healthLabel(level: OrderHealthLevel): string {
  */
 export function syncCellLabel(
   rollup: SyncRollup,
-  destinationRoutingBlockReason?: string | null
+  destinationRoutingBlockReason?: string | null,
+  handled?: OrderHandledInOpenLinker
 ): string {
   if (rollup.total === 0) {
+    // Precedence (#3482): handled in OpenLinker (it has live pack-bench work) ->
+    // a router that chose nobody (#2703) -> nothing configured. An order the
+    // router sent nowhere has no work, so the first arm never shadows the second.
+    if (isHandledInOpenLinker({ handledInOpenLinker: handled })) {
+      return HANDLED_IN_OPENLINKER_COPY.syncLabel;
+    }
     return resolveDestinationRoutingCopy(destinationRoutingBlockReason)?.label ?? 'No destinations';
   }
   if (rollup.failed > 0) return `${rollup.failed} of ${rollup.total} failed`;

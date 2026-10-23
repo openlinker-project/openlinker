@@ -87,6 +87,7 @@ describe('FulfillmentStatusSyncService', () => {
     resolveLinkForOrder: jest.Mock;
     listBlockingRejectionConnectionIds: jest.Mock;
     findWorkById: jest.Mock;
+    summarizeWorkForOrders: jest.Mock;
   };
   let service: FulfillmentStatusSyncService;
 
@@ -173,6 +174,7 @@ describe('FulfillmentStatusSyncService', () => {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
       findWorkById: jest.fn().mockResolvedValue(null),
+      summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
     };
     service = new FulfillmentStatusSyncService(
       shipments,

@@ -10,6 +10,7 @@ import { Module } from '@nestjs/common';
 import { OrdersModule as CoreOrdersModule } from '@openlinker/core/orders';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings';
+import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { ShippingModule as CoreShippingModule } from '@openlinker/core/shipping';
 import { ReturnsModule as CoreReturnsModule } from '@openlinker/core/returns';
@@ -53,6 +54,10 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
     CoreInvoicingModule,
     CoreMappingsModule,
     CoreInventoryModule,
+    // CoreFulfillmentModule (#3482) provides FULFILLMENT_WORK_QUERY_SERVICE_TOKEN —
+    // the list row's packing stage for an order OpenLinker handles itself. Composed
+    // here, in the interface layer, like the shortfall and open-return projections.
+    CoreFulfillmentModule,
     CoreShippingModule,
     CoreReturnsModule,
     // CoreSyncModule (#3534) provides JOB_ENQUEUE_TOKEN — the export

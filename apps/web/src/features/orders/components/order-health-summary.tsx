@@ -12,7 +12,7 @@ import type { ReactElement } from 'react';
 
 import { ConnectionEntityLabel } from '../../connections';
 import { formatAmount } from '../../../shared/format/format-amount';
-import type { OrderSyncStatus } from '../api/orders.types';
+import type { OrderHandledInOpenLinker, OrderSyncStatus } from '../api/orders.types';
 import type { ParsedOrderTotals } from '../api/order-snapshot.schema';
 import {
   fulfillmentLabel,
@@ -21,6 +21,8 @@ import {
   type FulfillmentState,
 } from '../lib/order-health';
 import { resolveDestinationRoutingCopy } from '../lib/destination-routing-copy';
+import { isHandledInOpenLinker } from '../lib/handled-in-openlinker';
+import { HANDLED_IN_OPENLINKER_COPY } from '../lib/handled-in-openlinker.copy';
 
 interface OrderHealthSummaryProps {
   syncStatus: OrderSyncStatus[];
@@ -38,6 +40,12 @@ interface OrderHealthSummaryProps {
    * two states that both rendered "No destinations" before.
    */
   destinationRoutingBlockReason?: string | null;
+  /**
+   * The packing position of an order OpenLinker handles itself (#3482). Consulted
+   * ONLY when the rollup is empty and takes precedence over the routing reason:
+   * an order with live pack-bench work is not "routed nowhere".
+   */
+  handledInOpenLinker?: OrderHandledInOpenLinker;
 }
 
 export function OrderHealthSummary({
@@ -48,10 +56,12 @@ export function OrderHealthSummary({
   failedDestinationId,
   fulfillmentPending = false,
   destinationRoutingBlockReason,
+  handledInOpenLinker,
 }: OrderHealthSummaryProps): ReactElement {
   const rollup = rollupSyncStatus(syncStatus);
   const alarm = rollup.failed > 0;
   const routingCopy = resolveDestinationRoutingCopy(destinationRoutingBlockReason);
+  const handled = isHandledInOpenLinker({ handledInOpenLinker });
 
   const fulfillmentHint = fulfillmentPending
     ? 'Checking…'
@@ -68,7 +78,7 @@ export function OrderHealthSummary({
       <div className={`order-health__cell${alarm ? ' order-health__cell--alarm' : ''}`}>
         <div className="order-health__k">Sync</div>
         <div className={`order-health__v${alarm ? ' order-health__v--alarm' : ''}`}>
-          {syncCellLabel(rollup, destinationRoutingBlockReason)}
+          {syncCellLabel(rollup, destinationRoutingBlockReason, handledInOpenLinker)}
         </div>
         <div className="order-health__hint">
           {alarm && failedDestinationId ? (
@@ -77,7 +87,10 @@ export function OrderHealthSummary({
             // #2703 — the routing reason REPLACES the "nothing configured"
             // sentence, which would otherwise be a false statement about the
             // operator's own configuration whenever a router decided this.
-            (routingCopy?.hint ?? 'No destinations configured')
+            // #3482 - handled in OpenLinker first: it has no destination rows by design.
+            handled
+              ? HANDLED_IN_OPENLINKER_COPY.syncHint
+              : (routingCopy?.hint ?? 'No destinations configured')
           ) : (
             'All destinations reconciled'
           )}
