@@ -418,6 +418,23 @@ update channel; until it exists, a status change in the shop reaches OpenLinker 
 **Not mapped**: pickup point (locker) data, and the order's payment / delivery method ids beyond the delivery
 method label.
 
+## Webhooks
+
+"Configure webhooks" (`POST /connections/:id/webhooks/install`) registers ONE Shoper webhook carrying the order
+events (with `OrderSource`) and the product events (with `ProductMaster`). Each install rotates the connection's
+webhook secret. A delivery is accepted only when BOTH checks pass:
+
+- **Signature.** The secret is registered as the webhook's `secret`, and Shoper signs every delivery with it:
+  `x-webhook-sha1 = hex(sha1(x-webhook-id + ":" + secret + ":" + rawBody))`, over the raw body bytes.
+- **URL token.** The delivery URL is `.../webhooks/shoper/<connectionId>?token=<urlToken>`, where
+  `urlToken = hex(HMAC-SHA256(key = secret, message = "shoper-webhook-url-token:v1"))`. The secret itself is never
+  in the URL: the shop panel lists webhook URLs in plain text and proxies log them, and the token cannot be turned
+  back into the secret, so a leaked URL does not let anyone sign a delivery.
+
+A webhook installed before the URL token was derived still carries the raw secret as `?token=`. Its deliveries are
+still accepted (the signature still has to verify), but each one logs a warning: re-run "Configure webhooks" on the
+connection to rotate the secret, since the old URL has already shown it to anyone who could read it.
+
 ## Known gaps
 
 - **Rate limit.** Shoper's limit is per SHOP and shared by every token and integration on it: a

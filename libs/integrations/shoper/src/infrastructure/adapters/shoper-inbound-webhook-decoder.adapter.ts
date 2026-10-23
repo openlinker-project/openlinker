@@ -6,23 +6,35 @@
  *
  * AUTHENTICATION: two checks, BOTH required, over the one per-connection
  * webhook secret the host supplies:
- *   - the token in the delivery URL (`?token=<secret>`), constant-time; and
+ *   - the token in the delivery URL (`?token=<urlToken>`), where
+ *     `urlToken = deriveShoperWebhookUrlToken(secret)` is recomputed here and
+ *     compared in constant time; and
  *   - Shoper's signature, `x-webhook-sha1 = hex(sha1(webhook_id + ":" + secret +
  *     ":" + rawBody))`, with `webhook_id` taken from `x-webhook-id`, computed
- *     over the RAW body bytes and compared in constant time. Verified against
- *     12+ real deliveries (2026-10-23).
- * Before the signature was resolved the URL token was the only check, and a
- * delivery with a forged or missing `x-webhook-sha1` was accepted. The token is
- * kept as well because it costs nothing and a caller who learns only a webhook
- * id still has to know the secret twice over. Both values come from one secret
- * because the provisioner registers it as the URL token AND as the webhook's
- * `secret`, and has done so since #3644, so a webhook installed before the
- * signature check existed verifies without re-install. The token travels in
- * the URL, so it can appear in reverse-proxy / CDN / tunnel access logs;
- * re-running webhook install rotates it. No timestamp is signed, so `verify`
- * omits `timestampMs` and the host's replay-window check never fires (the
- * WooCommerce and Erli posture); a replayed delivery costs a redundant re-read
- * at worst, and the dedup gate catches an identical body.
+ *     over the RAW body bytes with the secret itself and compared in constant
+ *     time. Verified against 12+ real deliveries (2026-10-23).
+ * The two checks guard different things. The secret is the signing key and is
+ * never in the URL; the URL token is a one-way derivative of it, so the URL -
+ * shown in plain text in the shop's webhook list and written to reverse-proxy /
+ * CDN / tunnel access logs - can leak without letting its reader sign a
+ * delivery. Re-running webhook install rotates the secret, and with it the
+ * token. No timestamp is signed, so `verify` omits `timestampMs` and the host's
+ * replay-window check never fires (the WooCommerce and Erli posture); a replayed
+ * delivery costs a redundant re-read at worst, and the dedup gate catches an
+ * identical body.
+ *
+ * LEGACY URL TOKEN (accepted, warned about): a webhook installed before the URL
+ * token was derived carries the raw secret as `?token=`. Such a delivery is
+ * still accepted, provided its signature verifies, and logs a warning naming
+ * the remedy - re-running "Configure webhooks" on the connection, which rotates
+ * the secret and registers the derived token. Accepting it is safe: the
+ * signature check already requires the secret, and anyone holding the secret
+ * can compute the derived token anyway, so the legacy branch admits no request
+ * the derived branch would refuse. Rejecting it instead would close nothing (the
+ * old URL has already exposed that secret, and only a rotation retires it) while
+ * silently cutting every not-yet-reinstalled connection off its webhooks. The
+ * warning is logged only after the signature verifies, so an unauthenticated
+ * caller cannot use it to flood the log.
  *
  * TRIGGER MODEL: the delivery carries the whole order or product, and the
  * decoder reads only its id. The authoritative record is re-read - an order
@@ -41,7 +53,9 @@ import type {
   InboundWebhookDecoderPort,
   WebhookVerifyResult,
 } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
 
+import { deriveShoperWebhookUrlToken } from '../../domain/policies/shoper-webhook-url-token.policy';
 import {
   SHOPER_WEBHOOK_ID_HEADER,
   SHOPER_WEBHOOK_NAME_HEADER,
@@ -50,6 +64,7 @@ import {
   SHOPER_WEBHOOK_SIGNATURE_HEADER,
   SHOPER_WEBHOOK_TOKEN_QUERY_KEY,
   type ShoperWebhookResource,
+  type ShoperWebhookUrlTokenKind,
 } from '../../domain/types/shoper-webhook.types';
 
 /** Fallback when a delivery names no event: treated as an update, i.e. a safe re-read. */
@@ -65,6 +80,8 @@ const ID_FIELD_BY_RESOURCE: Readonly<Record<ShoperWebhookResource, string>> = {
 };
 
 export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoderPort {
+  private readonly logger = new Logger(ShoperInboundWebhookDecoderAdapter.name);
+
   verify(input: {
     rawBody: Buffer;
     headers: Record<string, string>;
@@ -74,8 +91,8 @@ export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     if (input.secret.length === 0) {
       return { ok: false };
     }
-    const token = input.query?.[SHOPER_WEBHOOK_TOKEN_QUERY_KEY];
-    if (typeof token !== 'string' || !constantTimeEquals(token, input.secret)) {
+    const tokenKind = this.classifyUrlToken(input.query?.[SHOPER_WEBHOOK_TOKEN_QUERY_KEY], input.secret);
+    if (tokenKind === null) {
       return { ok: false };
     }
 
@@ -93,7 +110,35 @@ export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     if (!constantTimeEquals(signature.toLowerCase(), expected)) {
       return { ok: false };
     }
+
+    if (tokenKind === 'legacy') {
+      // The decoder is not told the connection id; the host's own log lines for
+      // this delivery carry it, and the shop-side webhook id names the webhook.
+      this.logger.warn(
+        `Shoper delivery from webhook ${webhookId} authenticated with a legacy URL token that ` +
+          'exposes the webhook signing secret in the URL (visible in the shop panel and in access ' +
+          'logs). Re-run "Configure webhooks" on this Shoper connection to rotate the secret and ' +
+          'register a URL that no longer carries it.',
+      );
+    }
     return { ok: true };
+  }
+
+  /**
+   * Which URL token the delivery carries: the derived one, the raw secret a
+   * pre-derivation install put in the URL, or neither (null). Both comparisons
+   * always run, so the time taken does not reveal which one matched.
+   */
+  private classifyUrlToken(token: string | undefined, secret: string): ShoperWebhookUrlTokenKind | null {
+    if (typeof token !== 'string') {
+      return null;
+    }
+    const matchesDerived = constantTimeEquals(token, deriveShoperWebhookUrlToken(secret));
+    const matchesLegacy = constantTimeEquals(token, secret);
+    if (matchesDerived) {
+      return 'derived';
+    }
+    return matchesLegacy ? 'legacy' : null;
   }
 
   extractEnvelope(rawBody: Buffer, headers: Record<string, string>): DecodeResult {
@@ -177,7 +222,7 @@ function constantTimeEquals(provided: string, expected: string): boolean {
   const providedBuf = Buffer.from(provided);
   const expectedBuf = Buffer.from(expected);
   // `timingSafeEqual` throws on a length mismatch, and the length of a random
-  // secret or of a SHA-1 hex digest is not itself worth hiding.
+  // secret or of a hex digest is not itself worth hiding.
   return providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
 }
 

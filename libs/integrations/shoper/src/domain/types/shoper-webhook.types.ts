@@ -14,8 +14,10 @@
  * the token in the delivery URL, and Shoper's `x-webhook-sha1` signature,
  * `sha1(webhook_id + ":" + secret + ":" + rawBody)` in hex (resolved against
  * 12+ live deliveries, 2026-10-23, after SPIKE-3638 X5 left it open). The
- * provisioner registers the same secret as the URL token and as the webhook's
- * `secret`, so neither check needs anything the other does not.
+ * provisioner registers the secret as the webhook's `secret` (the signing key)
+ * and puts only a one-way derivative of it in the URL
+ * (`deriveShoperWebhookUrlToken`), because the URL is displayed in the shop
+ * panel and logged by proxies, and must not carry the signing key.
  *
  * @module libs/integrations/shoper/src/domain/types
  */
@@ -24,8 +26,24 @@ import { SHOPER_PLATFORM_TYPE } from '../../shoper.constants';
 /** Provider key of the inbound route `/webhooks/:provider/:connectionId` - the platform type. */
 export const SHOPER_WEBHOOK_PROVIDER = SHOPER_PLATFORM_TYPE;
 
-/** Query parameter of the delivery URL that carries the per-connection secret. */
+/** Query parameter of the delivery URL that carries the URL token (a derivative of the secret). */
 export const SHOPER_WEBHOOK_TOKEN_QUERY_KEY = 'token';
+
+/**
+ * HMAC message from which the URL token is derived. Versioned and namespaced so
+ * the derived value is bound to this one purpose: any other value ever derived
+ * from the same secret uses another label and cannot be swapped for this one.
+ * Changing it invalidates the URL of every installed webhook, so a new scheme
+ * gets a new version and the decoder keeps accepting the old one until every
+ * connection has re-run install.
+ */
+export const SHOPER_WEBHOOK_URL_TOKEN_LABEL = 'shoper-webhook-url-token:v1';
+
+/**
+ * The URL token a delivery authenticated with: the derived token, or the raw
+ * secret that webhooks installed before the derivation still carry.
+ */
+export type ShoperWebhookUrlTokenKind = 'derived' | 'legacy';
 
 /** Delivery header naming the event (`order.create`, ...). */
 export const SHOPER_WEBHOOK_NAME_HEADER = 'x-webhook-name';
