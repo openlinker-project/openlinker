@@ -29,6 +29,10 @@
  * the directory is read again so two publishes that raced settle on the same
  * (lowest-id) node.
  *
+ * After the write the product is read back once, to report its default
+ * `stock_id` as `externalVariantId`: Shoper order lines name the stock, not the
+ * product, so that is the id an order for this product will carry.
+ *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
  * the worker retries the job.
@@ -55,6 +59,8 @@ import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import type {
   ShoperCategoryWriteBody,
   ShoperImageWriteBody,
+  ShoperPublishedProduct,
+  ShoperPublishedProductRead,
 } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
@@ -76,6 +82,11 @@ const IMAGES_PATH = '/product-images';
 /** A short, token-free reason for a warning. */
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Whether Shoper already holds an image for the product; `main_image` is `null` when it holds none. */
+function hasMainImage(product: ShoperPublishedProduct): boolean {
+  return product.main_image !== null && product.main_image !== undefined;
 }
 
 export class ShoperProductPublisherAdapter implements ShopProductManagerPort, CategoryProvisioner {
@@ -136,16 +147,58 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
       ? await this.update(String(cmd.externalProductId), body)
       : await this.create(body);
 
-    // After the product exists, and never allowed to throw: the caller persists the
-    // product mapping only once this method returns, so a failure here would make
-    // the job retry into a SECOND product.
-    warnings.push(...(await this.publishImages(externalProductId, cmd, isUpsert)));
+    // Everything below runs after the product exists, and is never allowed to
+    // throw: the caller persists the product mapping only once this method
+    // returns, so a failure here would make the job retry into a SECOND product.
+    const published = await this.readPublished(externalProductId);
+    const externalVariantId = this.defaultStockIdOf(published, externalProductId);
+    warnings.push(...(await this.publishImages(externalProductId, cmd, isUpsert, published)));
 
     return {
       externalProductId,
       status: cmd.status,
+      ...(externalVariantId === undefined ? {} : { externalVariantId }),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  /**
+   * One read of the product as Shoper now holds it, shared by the stock-id
+   * lookup and the image check. A failure is returned rather than thrown (see
+   * the call).
+   */
+  private async readPublished(externalProductId: string): Promise<ShoperPublishedProductRead> {
+    if (!/^\d+$/.test(externalProductId)) {
+      return { ok: false, error: new Error('the product id is not a Shoper id') };
+    }
+    try {
+      const { data } = await this.client.get<ShoperPublishedProduct>(
+        `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
+      );
+      return { ok: true, product: data };
+    } catch (error) {
+      return { ok: false, error };
+    }
+  }
+
+  /**
+   * The id an order line for this product will carry: Shoper keys order lines
+   * by `stock_id`, and for a single-variant product that is the default stock,
+   * which Shoper creates together with the product. Absent when it cannot be
+   * read; only order matching is lost then, so it is logged, never a failure.
+   */
+  private defaultStockIdOf(published: ShoperPublishedProductRead, externalProductId: string): string | undefined {
+    const raw = published.ok ? published.product.stock?.stock_id : undefined;
+    const stockId = raw === undefined || raw === null ? '' : String(raw);
+    if (/^\d+$/.test(stockId)) {
+      return stockId;
+    }
+    const reason = published.ok ? 'Shoper reported no stock for it' : reasonOf(published.error);
+    this.logger.warn(
+      `Could not read the stock id of Shoper product ${externalProductId} (connection ${this.connection.id}): ` +
+        `${reason}. Orders for it will not be matched to the published variant until it is published again.`,
+    );
+    return undefined;
   }
 
   /**
@@ -164,6 +217,7 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
     externalProductId: string,
     cmd: PublishProductCommand,
     isUpsert: boolean,
+    published: ShoperPublishedProductRead,
   ): Promise<string[]> {
     if (!/^\d+$/.test(externalProductId)) {
       return ['Product images were not sent: the product id is not a Shoper id.'];
@@ -174,14 +228,17 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
       return warnings;
     }
 
-    try {
-      if (isUpsert && (await this.hasImages(externalProductId))) {
+    if (isUpsert) {
+      if (!published.ok) {
+        warnings.push(
+          `Product images were not sent: the shop's current images could not be read (${reasonOf(published.error)}).`,
+        );
+        return warnings;
+      }
+      if (hasMainImage(published.product)) {
         warnings.push('The product already has images in Shoper, so they were left as they are.');
         return warnings;
       }
-    } catch (error) {
-      warnings.push(`Product images were not sent: the shop's current images could not be read (${reasonOf(error)}).`);
-      return warnings;
     }
 
     const alt = cmd.content?.title?.trim();
@@ -198,14 +255,6 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
       }
     }
     return warnings;
-  }
-
-  /** Whether Shoper already holds an image for the product; `main_image` is `null` when it holds none. */
-  private async hasImages(externalProductId: string): Promise<boolean> {
-    const { data } = await this.client.get<{ main_image?: unknown }>(
-      `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
-    );
-    return data.main_image !== null && data.main_image !== undefined;
   }
 
   async provisionCategory(cmd: ProvisionCategoryCommand): Promise<ProvisionCategoryResult> {

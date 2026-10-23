@@ -25,6 +25,7 @@ import type {
   ShoperCategory,
   ShoperCategoryTranslation,
   ShoperCategoryTreeNode,
+  ShoperProduct,
 } from '../../domain/types/shoper-api.types';
 
 export interface ShoperTreePosition {
@@ -152,4 +153,22 @@ export function findShoperCategoryChild(
     .map((category) => category.id)
     .sort((a, b) => Number(a) - Number(b));
   return lowest ?? null;
+}
+
+/**
+ * The category a product's placement path is anchored on: its primary
+ * `category_id`, or - only when Shoper names none - the sole entry of
+ * `categories`. Several assigned categories with no primary is ambiguous, so
+ * `null` rather than a pick; `0` is Shoper's "none", never a category.
+ */
+export function primaryShoperCategoryId(
+  product: Pick<ShoperProduct, 'category_id' | 'categories'>,
+): string | null {
+  const isId = (value: string): boolean => /^\d+$/.test(value) && value !== '0';
+  const primary = product.category_id == null ? '' : String(product.category_id);
+  if (isId(primary)) {
+    return primary;
+  }
+  const assigned = Array.isArray(product.categories) ? product.categories.map(String).filter(isId) : [];
+  return assigned.length === 1 ? assigned[0] : null;
 }

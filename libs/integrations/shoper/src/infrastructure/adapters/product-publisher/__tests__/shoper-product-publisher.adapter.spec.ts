@@ -45,7 +45,9 @@ function setup(context: Partial<typeof MAP_CONTEXT> = {}): Harness {
   const post = jest.fn().mockResolvedValue({ status: 200, data: 130 });
   const put = jest.fn().mockResolvedValue({ status: 200, data: 1 });
   // A product with no image: `main_image` is null in Shoper's answer.
-  const get = jest.fn().mockResolvedValue({ status: 200, data: { main_image: null } });
+  const get = jest
+    .fn()
+    .mockResolvedValue({ status: 200, data: { main_image: null, stock: { stock_id: '418' } } });
   const adapter = new ShoperProductPublisherAdapter(
     { post, put, get } as unknown as ShoperHttpClient,
     { get: () => Promise.resolve({ ...MAP_CONTEXT, ...context }) } as unknown as ShoperShopContextProvider,
@@ -61,7 +63,7 @@ describe('ShoperProductPublisherAdapter', () => {
 
       const result = await adapter.publishProduct(command());
 
-      expect(result).toEqual({ externalProductId: '130', status: 'published' });
+      expect(result).toEqual({ externalProductId: '130', externalVariantId: '418', status: 'published' });
       expect(put).not.toHaveBeenCalled();
       expect(post).toHaveBeenCalledWith('/products', {
         translations: { pl_PL: { active: 1, name: 'Misa', description: '<p>opis</p>' } },
@@ -104,6 +106,7 @@ describe('ShoperProductPublisherAdapter', () => {
       const result = await adapter.publishProduct(command({ externalProductId: '130' }));
 
       expect(result.externalProductId).toBe('130');
+      expect(result.externalVariantId).toBe('418');
       expect(post).not.toHaveBeenCalled();
       expect(put).toHaveBeenCalledWith('/products/130', expect.objectContaining({ category_id: 38 }));
     });
@@ -128,6 +131,70 @@ describe('ShoperProductPublisherAdapter', () => {
       await expect(adapter.publishProduct(command({ externalProductId: '999' }))).rejects.toBeInstanceOf(
         ProductPublishTargetNotFoundException,
       );
+    });
+  });
+
+  // Shoper order lines carry the stock id, not the product id, so this is what
+  // lets an order for a published product be matched back to its variant.
+  describe('variant id (default stock)', () => {
+    it('should read the product back once and report its default stock id', async () => {
+      const { adapter, get } = setup();
+
+      const result = await adapter.publishProduct(command());
+
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(get).toHaveBeenCalledWith('/products/130');
+      expect(result.externalVariantId).toBe('418');
+    });
+
+    it('should accept a numeric stock id', async () => {
+      const { adapter, get } = setup();
+      get.mockResolvedValue({ status: 200, data: { main_image: null, stock: { stock_id: 419 } } });
+
+      const result = await adapter.publishProduct(command());
+
+      expect(result.externalVariantId).toBe('419');
+    });
+
+    it('should omit the variant id, not fail the publish, when the read-back fails', async () => {
+      const { adapter, get } = setup();
+      get.mockRejectedValue(new ShoperNetworkError('timed out'));
+
+      const result = await adapter.publishProduct(command());
+
+      expect(result.externalProductId).toBe('130');
+      expect(result).not.toHaveProperty('externalVariantId');
+      expect(result).not.toHaveProperty('warnings');
+    });
+
+    it('should omit the variant id when Shoper reports no stock for the product', async () => {
+      const { adapter, get } = setup();
+      get.mockResolvedValue({ status: 200, data: { main_image: null, stock: null } });
+
+      const result = await adapter.publishProduct(command());
+
+      expect(result).not.toHaveProperty('externalVariantId');
+    });
+
+    it('should share the one read with the image check on a re-publish', async () => {
+      const { adapter, get } = setup();
+
+      await adapter.publishProduct(
+        command({ externalProductId: '130', content: { title: 'Misa', imageUrls: ['https://x/a.png'] } }),
+      );
+
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still say the images were skipped when the read-back fails on a re-publish', async () => {
+      const { adapter, get } = setup();
+      get.mockRejectedValue(new ShoperNetworkError('timed out'));
+
+      const result = await adapter.publishProduct(
+        command({ externalProductId: '130', content: { title: 'Misa', imageUrls: ['https://x/a.png'] } }),
+      );
+
+      expect(result.warnings).toEqual([expect.stringContaining('could not be read')]);
     });
   });
 

@@ -272,4 +272,14 @@ export interface PublishProductResult {
    * variant's own `externalProductId`.
    */
   externalParentProductId?: string;
+  /**
+   * The shop's own VARIANT-grain id for this variant, reported only when it is a
+   * different id from `externalProductId` (Shoper: the product's `stock_id`).
+   * An order line on such a shop carries this id rather than the product id, so
+   * without it a product OpenLinker published could never be matched back when
+   * it is sold. The execution service persists it as a `ShopProductVariant`
+   * mapping. Omitted when the shop has no separate variant id, or when the
+   * adapter could not read it - a missing value never fails the publish.
+   */
+  externalVariantId?: string;
 }

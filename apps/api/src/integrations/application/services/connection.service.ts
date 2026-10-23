@@ -927,19 +927,35 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
-   * Best-effort initial product catalog bootstrap for newly created connections.
+   * Best-effort initial product catalog bootstrap.
    *
-   * Enqueues a single master.product.syncAll job when the connection's adapter
-   * supports the ProductMaster capability. The idempotency key is stable per
-   * connection ID so retries / re-creates with the same ID naturally dedupe — the
+   * Enqueues a single master.product.syncAll job when the connection has the
+   * ProductMaster capability ENABLED - not merely supported by its adapter. An
+   * adapter like Shoper supports both ProductMaster and ProductPublisher, and a
+   * connection created as a publish destination only must not have the shop's
+   * catalogue pulled into OpenLinker as master data. This is the same gate the
+   * recurring scheduler applies (`requiredCapability` against
+   * `enabledCapabilities`), so the bootstrap and the cron agree on which
+   * connections are masters. The adapter-supported check stays as a guard for a
+   * stored capability an upgraded adapter no longer declares.
+   *
+   * Like `enqueueInitialTaxonomySync`, NOT gated on status: a disabled
+   * connection's adapter does not resolve, so it skips on its own.
+   *
+   * The idempotency key is stable per connection ID, so this is run-once: a
+   * second call (a retry, a re-enable, ProductMaster switched off and on again)
+   * collapses into the original job. That is the intended reading - the
    * recurring scheduler (OL_PRODUCT_SYNC_CRON) and the manual "Sync now" button
-   * own ongoing re-sync.
+   * own ongoing re-sync, and this only makes the FIRST sync start now rather
+   * than at the next cron tick.
    *
-   * Failures here MUST NOT fail connection creation: a user has successfully
-   * created the connection even if the bootstrap enqueue fails; the scheduler
-   * will pick it up at the next cron tick.
+   * Failures here MUST NOT fail the connection write: the connection exists even
+   * if the bootstrap enqueue fails; the scheduler picks it up at the next tick.
    */
   private async enqueueInitialCatalogSync(connection: Connection): Promise<void> {
+    if (!connection.enabledCapabilities.includes('ProductMaster')) {
+      return;
+    }
     try {
       const { metadata } = await this.integrationsService.getAdapter(connection.id);
       if (!metadata.supportedCapabilities.includes('ProductMaster')) {
@@ -1155,8 +1171,21 @@ export class ConnectionService implements IConnectionService {
       // (its adapter cannot resolve), so enabling it is the moment its taxonomy
       // first becomes fetchable. Tested against the PERSISTED status, not
       // `patch.status`: a patch omitting status must not read as a transition.
-      if (existing.status !== 'active' && connection.status === 'active') {
+      const becameActive = existing.status !== 'active' && connection.status === 'active';
+      if (becameActive) {
         await this.enqueueInitialTaxonomySync(connection);
+      }
+
+      // The catalogue bootstrap follows the same transition rule, plus the one
+      // it has that taxonomy does not: ProductMaster switched on for a
+      // connection created without it (create skipped the bootstrap then).
+      // Compared against the PERSISTED capabilities, so a patch that does not
+      // touch them is never a transition.
+      const productMasterEnabled =
+        !existing.enabledCapabilities.includes('ProductMaster') &&
+        connection.enabledCapabilities.includes('ProductMaster');
+      if (becameActive || productMasterEnabled) {
+        await this.enqueueInitialCatalogSync(connection);
       }
 
       return connection;
