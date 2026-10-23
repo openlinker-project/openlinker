@@ -23,4 +23,20 @@ export class OrderHandledInOpenLinkerDto {
 
   @ApiProperty({ description: 'How many live work objects cover the order. Always >= 1.' })
   workCount!: number;
+
+  @ApiProperty({
+    enum: ['single', 'mixed'],
+    description:
+      'single: every live work agrees on its packer (assignedToUserId is that packer, or null for ' +
+      'Unassigned). mixed: a split order whose works are assigned to different people; no single ' +
+      'name is true, so assignedToUserId is null.',
+  })
+  assignment!: 'single' | 'mixed';
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The packer (user id) when assignment is single and someone is assigned, else null.',
+  })
+  assignedToUserId!: string | null;
 }

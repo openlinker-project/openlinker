@@ -224,6 +224,8 @@ export function toOrderRecordFilters(
     fulfillmentState: query.fulfillmentState,
     salesDocumentBlocked: query.salesDocumentBlocked,
     destinationRoutingBlocked: query.destinationRoutingBlocked,
+    waitingInOpenLinker: query.waitingInOpenLinker,
+    onPackBench: query.onPackBench,
     cancelled: query.cancelled,
     lifecyclePhase: query.phase,
     taxRateConflict: query.taxRateConflict,
@@ -590,7 +592,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Order health summary counts',
     description:
-      'Returns the count of order records per derived-health bucket (awaiting_mapping | needs_attention | synced | awaiting_dispatch) for the given source/customer/date scope. The four buckets partition the set, so `total` equals their sum — backs the list-page status segments.',
+      'Returns the count of order records per derived-health bucket (awaiting_mapping | needs_attention | synced | awaiting_dispatch) for the given source/customer/date scope. The buckets partition the set, so `total` equals their sum — backs the list-page status segments. An order OpenLinker handles itself (a live pack-bench work, #3482) counts as `synced` once it has shipped, and as `awaiting_dispatch` while it is still on the bench.',
   })
   @ApiResponse({
     status: 200,
@@ -612,6 +614,7 @@ export class OrdersController {
     return {
       ...summary,
       salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
+      waitingInOpenLinkerOldestAt: summary.waitingInOpenLinkerOldestAt?.toISOString() ?? null,
     };
   }
 
@@ -1028,7 +1031,12 @@ export class OrdersController {
   }
 
   private toHandledInOpenLinkerDto(summary: OrderWorkSummary): OrderHandledInOpenLinkerDto {
-    return { stage: summary.stage, workCount: summary.workCount };
+    return {
+      stage: summary.stage,
+      workCount: summary.workCount,
+      assignment: summary.assignment,
+      assignedToUserId: summary.assignedToUserId,
+    };
   }
 
   private toOpenReturnDto(summary: OpenReturnOrderSummary): OrderOpenReturnDto {

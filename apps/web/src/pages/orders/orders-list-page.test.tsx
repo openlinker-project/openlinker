@@ -1724,6 +1724,81 @@ describe('OrdersListPage', () => {
   });
 
   describe('an order OpenLinker handles itself (#3482)', () => {
+    it('should offer a Waiting-in-OpenLinker chip with its count and oldest age, and an On-pack-bench chip', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-23T12:00:00Z'));
+      try {
+        const mockApi = createMockApiClient({
+          orders: {
+            list: vi.fn().mockResolvedValue(paginated([syncedOrder])),
+            statusSummary: vi.fn().mockResolvedValue({
+              total: 20,
+              sourceDeleted: 0,
+              awaitingMapping: 0,
+              needsAttention: 0,
+              synced: 6,
+              awaitingDispatch: 14,
+              waitingInOpenLinker: 3,
+              waitingInOpenLinkerOldestAt: '2026-10-23T07:00:00Z',
+              onPackBench: 14,
+            }),
+          },
+        });
+
+        renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+        const waiting = await screen.findByRole('button', { name: /waiting in openlinker/i });
+        expect(waiting).toHaveTextContent('3 · oldest 5 h');
+        const bench = screen.getByRole('button', { name: /on pack bench/i });
+        expect(bench).toHaveTextContent('14');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should show the packer's name under To pack, fetching the roster only because a row needs it", async () => {
+      const handled: OrderRecord = {
+        ...syncedOrder,
+        syncStatus: [],
+        fulfillmentState: 'not-shipped',
+        handledInOpenLinker: {
+          stage: 'to-pack',
+          workCount: 1,
+          assignment: 'single',
+          assignedToUserId: 'user-kasia',
+        },
+      };
+      const listPackers = vi.fn().mockResolvedValue({
+        packers: [{ id: 'user-kasia', username: 'kasia', online: true, stationLabel: null }],
+      });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([handled])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+        users: { listPackers },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      expect(await within(row).findByText('kasia')).toBeInTheDocument();
+      expect(listPackers).toHaveBeenCalled();
+    });
+
+    it('should not fetch the packer roster when no row needs a name', async () => {
+      const listPackers = vi.fn().mockResolvedValue({ packers: [] });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+        users: { listPackers },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      expect(listPackers).not.toHaveBeenCalled();
+    });
+
     const olCarrierRoute: OrderRecord['deliveryResolution'] = {
       source: 'rule',
       processorKind: 'ol_managed_carrier',

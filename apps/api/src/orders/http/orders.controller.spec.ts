@@ -352,7 +352,7 @@ describe('OrdersController', () => {
         const other = orderRecordWith({ internalOrderId: 'ol_order_002' });
         repository.findMany.mockResolvedValue({ items: [mockOrder, other], total: 2 });
         fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
-          new Map([['ol_order_001', { stage: 'packing' as const, workCount: 1 }]])
+          new Map([['ol_order_001', { stage: 'packing' as const, workCount: 1, assignment: 'single' as const, assignedToUserId: null }]])
         );
 
         const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -362,7 +362,12 @@ describe('OrdersController', () => {
           'ol_order_001',
           'ol_order_002',
         ]);
-        expect(result.items[0].handledInOpenLinker).toEqual({ stage: 'packing', workCount: 1 });
+        expect(result.items[0].handledInOpenLinker).toEqual({
+          stage: 'packing',
+          workCount: 1,
+          assignment: 'single',
+          assignedToUserId: null,
+        });
         // Absent means "no live work found", never a "not routed" claim.
         expect(result.items[1].handledInOpenLinker).toBeUndefined();
       });
@@ -384,6 +389,17 @@ describe('OrdersController', () => {
 
         expect(fulfillmentWork.summarizeWorkForOrders).not.toHaveBeenCalled();
       });
+    });
+
+    it('should forward ?waitingInOpenLinker and ?onPackBench to the repository filters (#3482)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ limit: 20, offset: 0, waitingInOpenLinker: true, onPackBench: false });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ waitingInOpenLinker: true, onPackBench: false }),
+        expect.anything()
+      );
     });
 
     it('should pass filters to repository', async () => {
@@ -824,6 +840,7 @@ describe('OrdersController', () => {
         synced: 1,
         awaitingDispatch: 9,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
       const result = await controller.statusSummary({});
@@ -831,6 +848,25 @@ describe('OrdersController', () => {
       expect(result.total).toBe(11);
       expect(result.needsAttention).toBe(1);
       expect(result.awaitingDispatch).toBe(9);
+    });
+
+    it('should report the waiting and pack-bench counts with the oldest wait as ISO (#3482)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 5,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 4,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
+      });
+
+      const result = await controller.statusSummary({});
+
+      expect(result.waitingInOpenLinker).toBe(3);
+      expect(result.waitingInOpenLinkerOldestAt).toBe('2026-10-23T07:00:00.000Z');
+      expect(result.onPackBench).toBe(14);
     });
 
     it('should forward only the scope subset (source/date) to the repository (#929)', async () => {
@@ -842,6 +878,7 @@ describe('OrdersController', () => {
         synced: 0,
         awaitingDispatch: 0,
         salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
       });
 
       await controller.statusSummary({
@@ -873,12 +910,17 @@ describe('OrdersController', () => {
     it('should carry the same handledInOpenLinker projection as the list row (#3482)', async () => {
       repository.findById.mockResolvedValue(mockOrder);
       fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
-        new Map([['ol_order_001', { stage: 'packed' as const, workCount: 2 }]])
+        new Map([['ol_order_001', { stage: 'packed' as const, workCount: 2, assignment: 'single' as const, assignedToUserId: null }]])
       );
 
       const result = await controller.getOrder('ol_order_001');
 
-      expect(result.handledInOpenLinker).toEqual({ stage: 'packed', workCount: 2 });
+      expect(result.handledInOpenLinker).toEqual({
+        stage: 'packed',
+        workCount: 2,
+        assignment: 'single',
+        assignedToUserId: null,
+      });
     });
 
     it('should throw NotFoundException when order not found', async () => {

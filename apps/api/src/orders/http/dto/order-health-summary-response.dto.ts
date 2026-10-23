@@ -56,6 +56,29 @@ export class OrderHealthSummaryResponseDto {
 
   @ApiProperty({
     description:
+      'Orders OpenLinker holds as waiting (#3482): out of stock, no shipping address or a ' +
+      'routing error (#3485). ORTHOGONAL to the five health buckets and NOT part of the ' +
+      'partition, so this number must never be added to their sum.',
+  })
+  waitingInOpenLinker!: number;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When the OLDEST waiting order started waiting (ISO 8601), or null when none waits ' +
+      '(#3482). Rendered as the chip\'s age, the salesDocumentBlockedOldestAt shape.',
+  })
+  waitingInOpenLinkerOldestAt!: string | null;
+
+  @ApiProperty({
+    description:
+      'Orders with a live pack-bench work whose box is not shut yet - To pack or Packing ' +
+      '(#3482). ORTHOGONAL to the health partition; a list filter only.',
+  })
+  onPackBench!: number;
+
+  @ApiProperty({
+    description:
       'Orders where the shop and the channel named DIFFERENT tax rates (#2254). Its OWN count, ' +
       'never part of salesDocumentBlocked: a conflict does not stop the invoice, so an order can ' +
       'be in conflict and perfectly healthy, and folding it in would print one number twice on ' +

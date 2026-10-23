@@ -54,10 +54,13 @@ import { OmsAttentionBadges } from '../../features/fulfillment-authority';
 import { OrderPhaseOrWaitingBadge } from '../../features/orders/components/order-phase-or-waiting-badge';
 import { OrderPackingStage } from '../../features/orders/components/order-packing-stage';
 import {
+  derivePackerLabel,
   deriveWaiting,
   isHandledInOpenLinker,
+  needsPackerNames,
   showsPackingStage,
 } from '../../features/orders/lib/handled-in-openlinker';
+import { usePackersQuery } from '../../features/users';
 import { HANDLED_IN_OPENLINKER_COPY } from '../../features/orders/lib/handled-in-openlinker.copy';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
@@ -366,6 +369,14 @@ export function OrdersListPage(): ReactElement {
   // The 25-cap is enforced PER SOURCE connection, since the bulk endpoint takes
   // one source per request and the dialog fans out one call per source group.
   const items = query.data?.items ?? [];
+  // #3482 - the packer's name under "To pack" / "Packing". The roster is fetched
+  // only when a row on this page has an assigned, unpacked work.
+  const packersQuery = usePackersQuery({ enabled: needsPackerNames(items) });
+  const packerNameById = useMemo(
+    () =>
+      new Map((packersQuery.data?.packers ?? []).map((packer) => [packer.id, packer.username])),
+    [packersQuery.data]
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -872,7 +883,10 @@ export function OrdersListPage(): ReactElement {
                   and absent for a packed order with `packedAt`, whose tick above
                   already says "Packed" and when. */}
               {showsPackingStage(order) ? (
-                <OrderPackingStage handled={order.handledInOpenLinker} />
+                <OrderPackingStage
+                  handled={order.handledInOpenLinker}
+                  who={derivePackerLabel(order.handledInOpenLinker, packerNameById)}
+                />
               ) : null}
               {/* When the row offers "Generate label" the CTA is deferred to sit
                   directly under the Awaiting-label delivery chip (the state it
@@ -1013,6 +1027,8 @@ export function OrdersListPage(): ReactElement {
       // constant), so listing it costs no rebuild — but that invariant lives two
       // files away, and a stale closure here would render stale channel labels.
       platforms,
+      // #3482 - the packer names under the packing stage.
+      packerNameById,
       retryMutation.isPending,
       retryMutation.variables,
       retryWrite.visible,
@@ -1252,6 +1268,31 @@ export function OrdersListPage(): ReactElement {
             action={
               <Button onClick={filtersApi.clearAll}>
                 View all orders
+              </Button>
+            }
+          />
+        ) : filterState.waitingInOpenLinker ? (
+          /*
+            #3482 - nothing waiting is a good outcome, not a narrowed search coming
+            up empty. Worded "in this view" because other filters may be on.
+          */
+          <EmptyState
+            title="Nothing is waiting in OpenLinker in this view"
+            message="No order here is held for missing stock, a missing address or a routing error. Other filters are still applied."
+            action={
+              <Button onClick={filtersApi.clearAll}>
+                Clear filters
+              </Button>
+            }
+          />
+        ) : filterState.onPackBench ? (
+          /* #3482 - an empty pack bench is a good outcome too. */
+          <EmptyState
+            title="Nothing on the pack bench in this view"
+            message="No order here is waiting to be packed or being packed. Other filters are still applied."
+            action={
+              <Button onClick={filtersApi.clearAll}>
+                Clear filters
               </Button>
             }
           />
@@ -1569,7 +1610,10 @@ export function OrdersListPage(): ReactElement {
                         <div>
                           <dt>Packing</dt>
                           <dd>
-                            <OrderPackingStage handled={order.handledInOpenLinker} />
+                            <OrderPackingStage
+                              handled={order.handledInOpenLinker}
+                              who={derivePackerLabel(order.handledInOpenLinker, packerNameById)}
+                            />
                           </dd>
                         </div>
                       ) : isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (

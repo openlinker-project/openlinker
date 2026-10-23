@@ -201,6 +201,41 @@ describe('deriveHealthLevel + healthLabel', () => {
   });
 });
 
+describe('deriveOrderHealth for an order OpenLinker handles itself (#3482)', () => {
+  const handled = { stage: 'packed' as const, workCount: 1, assignment: 'single' as const, assignedToUserId: null };
+  const base = { recordStatus: 'ready', syncStatus: [] } as unknown as Parameters<typeof deriveOrderHealth>[0];
+
+  it('should stay awaiting dispatch while the order is still on the bench', () => {
+    expect(
+      deriveOrderHealth({ ...base, handledInOpenLinker: handled, fulfillmentState: 'not-shipped' }).key
+    ).toBe('awaiting_dispatch');
+  });
+
+  it.each(['dispatched', 'delivered'] as const)(
+    'should count as synced once it has %s',
+    (fulfillmentState) => {
+      expect(deriveOrderHealth({ ...base, handledInOpenLinker: handled, fulfillmentState }).key).toBe(
+        'synced'
+      );
+    }
+  );
+
+  it('should not move a shipped order that OpenLinker does not handle', () => {
+    expect(deriveOrderHealth({ ...base, fulfillmentState: 'delivered' }).key).toBe('awaiting_dispatch');
+  });
+
+  it('should still put a failed destination first', () => {
+    expect(
+      deriveOrderHealth({
+        ...base,
+        syncStatus: [status({ status: 'failed' })],
+        handledInOpenLinker: handled,
+        fulfillmentState: 'delivered',
+      }).key
+    ).toBe('needs_attention');
+  });
+});
+
 describe('syncCellLabel', () => {
   it('leads with failures when present', () => {
     expect(syncCellLabel(rollupSyncStatus([status({ status: 'failed' })]))).toBe('1 of 1 failed');

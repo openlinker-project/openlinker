@@ -10,7 +10,9 @@ import type { OrderHandledInOpenLinker } from '../api/orders.types';
 import {
   deriveWaiting,
   derivePackingStage,
+  derivePackerLabel,
   isHandledInOpenLinker,
+  needsPackerNames,
   showsPackingStage,
 } from './handled-in-openlinker';
 import { WAITING_REASON_COPY } from './handled-in-openlinker.copy';
@@ -103,5 +105,47 @@ describe('showsPackingStage', () => {
 
   it('should show nothing when OpenLinker found no live work', () => {
     expect(showsPackingStage({ packedAt: null })).toBe(false);
+  });
+});
+
+describe('derivePackerLabel (#3482)', () => {
+  const names = new Map([['user-1', 'kasia']]);
+  const work = (
+    stage: 'to-pack' | 'packing' | 'packed',
+    assignment: 'single' | 'mixed' | undefined,
+    assignedToUserId: string | null
+  ) => ({ stage, workCount: 1, assignment, assignedToUserId });
+
+  it('should say Unassigned when nobody packs it', () => {
+    expect(derivePackerLabel(work('to-pack', 'single', null), names)).toBe('Unassigned');
+  });
+
+  it("should show the packer's name for To pack and Packing", () => {
+    expect(derivePackerLabel(work('to-pack', 'single', 'user-1'), names)).toBe('kasia');
+    expect(derivePackerLabel(work('packing', 'single', 'user-1'), names)).toBe('kasia');
+  });
+
+  it('should say Assigned, never a raw id, when the name cannot be resolved', () => {
+    expect(derivePackerLabel(work('to-pack', 'single', 'user-gone'), names)).toBe('Assigned');
+  });
+
+  it('should say Several packers for a split order with different packers', () => {
+    expect(derivePackerLabel(work('to-pack', 'mixed', null), names)).toBe('Several packers');
+  });
+
+  it('should say nothing once the parcel is packed, or for an older response', () => {
+    expect(derivePackerLabel(work('packed', 'single', 'user-1'), names)).toBeNull();
+    expect(derivePackerLabel(work('to-pack', undefined, null), names)).toBeNull();
+    expect(derivePackerLabel(undefined, names)).toBeNull();
+  });
+});
+
+describe('needsPackerNames (#3482)', () => {
+  it('should be true only when a row has an assigned, unpacked work', () => {
+    const assigned = { stage: 'to-pack' as const, workCount: 1, assignment: 'single' as const, assignedToUserId: 'u' };
+    expect(needsPackerNames([{ handledInOpenLinker: assigned }])).toBe(true);
+    expect(needsPackerNames([{ handledInOpenLinker: { ...assigned, assignedToUserId: null } }])).toBe(false);
+    expect(needsPackerNames([{ handledInOpenLinker: { ...assigned, stage: 'packed' } }])).toBe(false);
+    expect(needsPackerNames([{}])).toBe(false);
   });
 });

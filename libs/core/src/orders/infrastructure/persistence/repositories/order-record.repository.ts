@@ -62,6 +62,7 @@ import {
 } from '../../../domain/types/net-sales-tax-rate.types';
 import {
   isFulfillmentBlockReason,
+  WaitingFulfillmentBlockReasonValues,
   type FulfillmentBlock,
   type FulfillmentBlockReason,
 } from '@openlinker/core/fulfillment';
@@ -397,6 +398,25 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.waitingInOpenLinker !== undefined) {
+      // #3482 — its own axis, ANDed with the others; the same predicate the
+      // `waitingInOpenLinker` count reads, so the chip and its rows agree.
+      qb.andWhere(
+        filters.waitingInOpenLinker
+          ? OrderRecordRepository.IS_WAITING_IN_OPENLINKER
+          : OrderRecordRepository.NOT_WAITING_IN_OPENLINKER
+      );
+    }
+
+    if (filters.onPackBench !== undefined) {
+      // #3482 — its own axis; the same predicate the `onPackBench` count reads.
+      qb.andWhere(
+        filters.onPackBench
+          ? OrderRecordRepository.IS_ON_PACK_BENCH
+          : `NOT (${OrderRecordRepository.IS_ON_PACK_BENCH})`
+      );
+    }
+
     if (filters.lifecyclePhase) {
       // #2309 — the derived-phase axis, deliberately ANDed with `health` rather
       // than folded into it (ADR-059, the #2100 trap): a held order is usually
@@ -603,11 +623,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'needs_attention'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED})`,
+        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.IS_SYNCED_HEALTH})`,
         'synced'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
+        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.IS_SYNCED_HEALTH}))`,
         'awaiting_dispatch'
       )
       // #2100 — ORTHOGONAL to the five buckets above, not a sixth partition
@@ -645,6 +665,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED})`,
         'destination_routing_blocked'
       )
+      // #3482 — two more counts beside the partition, never inside it. Each
+      // reads the SAME predicate as its filter arm.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_WAITING_IN_OPENLINKER})`,
+        'waiting_in_openlinker'
+      )
+      .addSelect(
+        `MIN(rec."fulfillmentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_WAITING_IN_OPENLINKER})`,
+        'waiting_in_openlinker_oldest_at'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_ON_PACK_BENCH})`,
+        'on_pack_bench'
+      )
       .addSelect(
         `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked_oldest_at'
@@ -671,6 +705,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       tax_rate_conflict: string;
       oms_attention: string;
       destination_routing_blocked: string;
+      waiting_in_openlinker: string;
+      waiting_in_openlinker_oldest_at: Date | null;
+      on_pack_bench: string;
       sales_document_blocked_oldest_at: Date | null;
       sales_document_issued_on_request: string;
     }>();
@@ -686,6 +723,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
       omsAttention: Number(raw?.oms_attention ?? 0),
       destinationRoutingBlocked: Number(raw?.destination_routing_blocked ?? 0),
+      waitingInOpenLinker: Number(raw?.waiting_in_openlinker ?? 0),
+      waitingInOpenLinkerOldestAt: raw?.waiting_in_openlinker_oldest_at ?? null,
+      onPackBench: Number(raw?.on_pack_bench ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
     };
@@ -1615,6 +1655,52 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
   /**
+   * #3482 — the order has a live pack-bench work: OpenLinker handles it itself.
+   *
+   * A RAW TABLE NAME on purpose — ADR-036's sanctioned escape hatch for a
+   * cross-context read that a filter / count needs (`fulfillment_works` belongs
+   * to the `fulfillment` context, and its ORM entity must not be imported into
+   * `orders`). Read-only and parameter-free. Depends on `fulfillment_works`
+   * columns `orderId` (leads `IDX_fulfillment_works_grouping`, so this is an
+   * index lookup) and `status`. "Live" = not `cancelled` / `incomplete`, the
+   * same rule as `stageOfFulfillmentWork`, so this matches the row's
+   * `handledInOpenLinker` field exactly.
+   */
+  private static readonly IS_HANDLED_IN_OPENLINKER =
+    `EXISTS (SELECT 1 FROM "fulfillment_works" fw WHERE fw."orderId" = rec."internalOrderId" ` +
+    `AND fw."status" NOT IN ('cancelled', 'incomplete'))`;
+  /**
+   * The `synced` side of the health partition (#3482).
+   *
+   * A destination row synced, OR an order OpenLinker handles itself that has
+   * SHIPPED. Before #3482 a handled order had no `syncStatus` and stayed the
+   * residual `awaiting_dispatch` for ever, even after delivery; while it is still
+   * on the bench it IS awaiting dispatch, so only shipping moves it. The handled
+   * condition is required so an order with nothing configured that a marketplace
+   * shipped keeps its old bucket. Twin of the FE `deriveOrderHealth` — change both.
+   */
+  private static readonly IS_SYNCED_HEALTH =
+    `(${OrderRecordRepository.HAS_SYNCED} OR (${OrderRecordRepository.IS_HANDLED_IN_OPENLINKER} ` +
+    `AND rec."fulfillmentState" IN ('dispatched', 'delivered')))`;
+  /**
+   * #3482 — a live pack-bench work whose box is not shut: To pack or Packing.
+   * ADR-036 raw read as above; also depends on `parcelClosedAt`. `closed` is
+   * excluded with the terminal statuses because a closed work is packed.
+   */
+  private static readonly IS_ON_PACK_BENCH =
+    `EXISTS (SELECT 1 FROM "fulfillment_works" fw WHERE fw."orderId" = rec."internalOrderId" ` +
+    `AND fw."status" NOT IN ('cancelled', 'incomplete', 'closed') AND fw."parcelClosedAt" IS NULL)`;
+  /**
+   * #3482 — held as "waiting in OpenLinker". The positive arm is the bare
+   * `IN (...)`; only the negation needs `COALESCE`, for the reason
+   * `NOT_DESTINATION_ROUTING_BLOCKED` documents (`NOT (NULL IN ...)` drops rows).
+   */
+  private static readonly WAITING_IN_OPENLINKER_IN_LIST = WaitingFulfillmentBlockReasonValues.map(
+    (reason) => `'${reason}'`
+  ).join(', ');
+  private static readonly IS_WAITING_IN_OPENLINKER = `rec."fulfillmentBlockReason" IN (${OrderRecordRepository.WAITING_IN_OPENLINKER_IN_LIST})`;
+  private static readonly NOT_WAITING_IN_OPENLINKER = `COALESCE(rec."fulfillmentBlockReason", '') NOT IN (${OrderRecordRepository.WAITING_IN_OPENLINKER_IN_LIST})`;
+  /**
    * #2100 — NOT part of the health partition. Deliberately kept out of the
    * `IS_*` bucket set above so it can never be pasted into `applyHealthFilter`
    * or `countByHealth`'s FILTER clauses by mistake: an invoicing block is
@@ -1801,7 +1887,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `CASE WHEN ${OrderRecordRepository.IS_SOURCE_DELETED} THEN -1 ` +
     `WHEN ${OrderRecordRepository.IS_MAPPING} THEN 1 ` +
     `WHEN ${OrderRecordRepository.HAS_FAILED} THEN 0 ` +
-    `WHEN ${OrderRecordRepository.HAS_SYNCED} THEN 3 ELSE 2 END`;
+    `WHEN ${OrderRecordRepository.IS_SYNCED_HEALTH} THEN 3 ELSE 2 END`;
 
   /** JSONB ORDER-BY expressions for the derived sortable columns (#944). */
   // Guarded with `jsonb_typeof(...) = 'number'` (mirrors ITEMS_EXPR) so a
@@ -1921,12 +2007,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         break;
       case 'synced':
         qb.andWhere(
-          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED}`
+          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.IS_SYNCED_HEALTH}`
         );
         break;
       case 'awaiting_dispatch':
         qb.andWhere(
-          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED})`
+          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.IS_SYNCED_HEALTH})`
         );
         break;
     }

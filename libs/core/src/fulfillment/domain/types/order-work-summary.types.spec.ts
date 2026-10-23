@@ -7,12 +7,22 @@
  */
 import { FulfillmentWorkStatusValues } from './fulfillment-work-status.types';
 import type { FulfillmentWorkStatus } from './fulfillment-work-status.types';
-import { stageOfFulfillmentWork, summarizeOrderWork } from './order-work-summary.types';
+import {
+  stageOfFulfillmentWork,
+  summarizeOrderWork,
+  type FulfillmentWorkProgress,
+} from './order-work-summary.types';
 
 const CLOSED_AT = new Date('2026-10-23T12:48:12Z');
-const work = (status: FulfillmentWorkStatus, parcelClosedAt: Date | null = null) => ({
+const work = (
+  status: FulfillmentWorkStatus,
+  parcelClosedAt: Date | null = null,
+  extra: { hasVerification?: boolean; assignedToUserId?: string | null } = {}
+): FulfillmentWorkProgress => ({
   status,
   parcelClosedAt,
+  hasVerification: extra.hasVerification ?? false,
+  assignedToUserId: extra.assignedToUserId ?? null,
 });
 
 describe('stageOfFulfillmentWork', () => {
@@ -22,6 +32,17 @@ describe('stageOfFulfillmentWork', () => {
 
   it('should report packed for a closed parcel even while the status is in progress', () => {
     expect(stageOfFulfillmentWork(work('in_progress', CLOSED_AT))).toBe('packed');
+  });
+
+  it('should report packing while the bench is scanning and the box is still open', () => {
+    // The bench writes a verification per scan and never moves `status`.
+    expect(stageOfFulfillmentWork(work('open', null, { hasVerification: true }))).toBe('packing');
+  });
+
+  it('should report packed once the box is shut, whatever was scanned', () => {
+    expect(stageOfFulfillmentWork(work('open', CLOSED_AT, { hasVerification: true }))).toBe(
+      'packed'
+    );
   });
 
   it.each([
@@ -59,31 +80,67 @@ describe('summarizeOrderWork', () => {
   });
 
   it('should report the stage of a single work', () => {
-    expect(summarizeOrderWork([work('in_progress')])).toEqual({ stage: 'packing', workCount: 1 });
+    expect(summarizeOrderWork([work('in_progress')])).toMatchObject({ stage: 'packing', workCount: 1 });
   });
 
   it('should report the earliest stage when a split order has works at different stages', () => {
-    expect(summarizeOrderWork([work('open', CLOSED_AT), work('open')])).toEqual({
+    expect(summarizeOrderWork([work('open', CLOSED_AT), work('open')])).toMatchObject({
       stage: 'to-pack',
       workCount: 2,
     });
-    expect(summarizeOrderWork([work('closed'), work('in_progress')])).toEqual({
+    expect(summarizeOrderWork([work('closed'), work('in_progress')])).toMatchObject({
       stage: 'packing',
       workCount: 2,
     });
   });
 
   it('should report packed only when every live parcel is packed', () => {
-    expect(summarizeOrderWork([work('open', CLOSED_AT), work('closed')])).toEqual({
+    expect(summarizeOrderWork([work('open', CLOSED_AT), work('closed')])).toMatchObject({
       stage: 'packed',
       workCount: 2,
     });
   });
 
   it('should not count a cancelled work towards the order', () => {
-    expect(summarizeOrderWork([work('open', CLOSED_AT), work('cancelled')])).toEqual({
+    expect(summarizeOrderWork([work('open', CLOSED_AT), work('cancelled')])).toMatchObject({
       stage: 'packed',
       workCount: 1,
     });
+  });
+});
+
+describe('summarizeOrderWork - who packs it', () => {
+  it('should report Unassigned as a single null assignee', () => {
+    expect(summarizeOrderWork([work('open')])).toMatchObject({
+      assignment: 'single',
+      assignedToUserId: null,
+    });
+  });
+
+  it('should report the packer when every live work is assigned to the same person', () => {
+    expect(
+      summarizeOrderWork([
+        work('open', null, { assignedToUserId: 'user-1' }),
+        work('in_progress', null, { assignedToUserId: 'user-1' }),
+      ])
+    ).toMatchObject({ assignment: 'single', assignedToUserId: 'user-1' });
+  });
+
+  it('should report mixed and no name when a split order has different packers', () => {
+    expect(
+      summarizeOrderWork([
+        work('open', null, { assignedToUserId: 'user-1' }),
+        work('open', null, { assignedToUserId: 'user-2' }),
+      ])
+    ).toMatchObject({ assignment: 'mixed', assignedToUserId: null });
+  });
+
+  it('should ignore a cancelled work when deciding the packer', () => {
+    expect(
+      summarizeOrderWork([
+        work('open', null, { assignedToUserId: 'user-1' }),
+        work('cancelled', null, { assignedToUserId: 'user-2' }),
+      ])
+    ).toMatchObject({ assignment: 'single', assignedToUserId: 'user-1' });
   });
 });

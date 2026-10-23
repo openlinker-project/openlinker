@@ -17,9 +17,14 @@ import { derivePackingStage } from '../lib/handled-in-openlinker';
 
 export interface OrderPackingStageProps {
   handled: OrderHandledInOpenLinker | undefined;
+  /**
+   * Who packs it ("Unassigned", a packer's name, ...), rendered muted after the
+   * label as in the mockup. `null` / absent renders no line.
+   */
+  who?: string | null;
 }
 
-export function OrderPackingStage({ handled }: OrderPackingStageProps): ReactElement | null {
+export function OrderPackingStage({ handled, who }: OrderPackingStageProps): ReactElement | null {
   const view = derivePackingStage(handled);
   if (!view) return null;
   return (
@@ -31,6 +36,7 @@ export function OrderPackingStage({ handled }: OrderPackingStageProps): ReactEle
         {view.mark}
       </span>
       <span className="orders-packed-tick__label">{view.label}</span>
+      {who ? <span className="orders-cell-sub orders-packed-tick__who">{who}</span> : null}
       <span className="sr-only">{` - ${view.hint}`}</span>
     </span>
   );
