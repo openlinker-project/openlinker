@@ -520,6 +520,87 @@ describe('ShoperProductPublisherAdapter', () => {
     });
   });
 
+  describe('duplicate product code', () => {
+    const duplicate = (): ShoperApiError =>
+      new ShoperApiError(400, 'invalid_request', "Wartość pola 'code' już istnieje");
+    const productsPage = (rows: { product_id: string; code: string | null }[]): { status: number; data: unknown } => ({
+      status: 200,
+      data: { list: rows, count: String(rows.length), pages: 1, page: 1 },
+    });
+
+    async function rejection(promise: Promise<unknown>): Promise<ProductPublishRejectedException> {
+      const error: unknown = await promise.catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ProductPublishRejectedException);
+      return error as ProductPublishRejectedException;
+    }
+
+    it('should refuse a create whose code another product holds, naming that product', async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+      get.mockResolvedValue(productsPage([{ product_id: '95', code: 'SKU-1' }]));
+
+      const error = await rejection(adapter.publishProduct(command()));
+
+      expect(get).toHaveBeenCalledWith('/products', {
+        filters: JSON.stringify({ code: 'SKU-1' }),
+        limit: 50,
+        page: 1,
+      });
+      expect(error.statusCode).toBe(400);
+      expect(error.errors[0]?.code).toBe('shoper_duplicate_code');
+      expect(error.errors[0]?.message).toContain('"SKU-1" (product 95)');
+      expect(error.errors[0]?.message).toContain('was not created');
+    });
+
+    it('should refuse an update that would take the code of another product', async () => {
+      const { adapter, put, get } = setup();
+      put.mockRejectedValue(duplicate());
+      get.mockResolvedValue(
+        productsPage([
+          { product_id: '130', code: 'SKU-1' },
+          { product_id: '95', code: 'SKU-1' },
+        ]),
+      );
+
+      const error = await rejection(adapter.publishProduct(command({ externalProductId: '130' })));
+
+      expect(error.errors[0]?.code).toBe('shoper_duplicate_code');
+      expect(error.errors[0]?.message).toContain('(product 95)');
+      expect(error.errors[0]?.message).not.toContain('130');
+    });
+
+    it("should keep Shoper's own rejection when no other product holds the code", async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+      // An unhonoured filter answers unrelated products; they must not read as a collision.
+      get.mockResolvedValue(productsPage([{ product_id: '7', code: 'OTHER' }]));
+
+      const error = await rejection(adapter.publishProduct(command()));
+
+      expect(error.errors[0]?.code).toBe('invalid_request');
+    });
+
+    it("should keep Shoper's own rejection when the code lookup itself fails", async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+      get.mockRejectedValue(new ShoperApiError(503));
+
+      const error = await rejection(adapter.publishProduct(command()));
+
+      expect(error.errors[0]?.code).toBe('invalid_request');
+      expect(error.errors[0]?.message).toContain('już istnieje');
+    });
+
+    it('should not look anything up for a rejection of a product with no code', async () => {
+      const { adapter, post, get } = setup();
+      post.mockRejectedValue(duplicate());
+
+      await rejection(adapter.publishProduct(command({ sku: undefined })));
+
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
   it('should declare the description grammar Shoper keeps, not the conservative default', () => {
     const { adapter } = setup();
 
