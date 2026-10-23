@@ -24,6 +24,7 @@ import {
   type FulfillmentRollupStateValue,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { resolveDestinationRoutingCopy } from './destination-routing-copy';
 
 // ── List-row health classification (#929) ──────────────────────────────────
 // CANONICAL PRECEDENCE (highest wins) — single FE source of truth and the twin
@@ -160,9 +161,27 @@ export function healthLabel(level: OrderHealthLevel): string {
   }
 }
 
-/** "1 of 1 failed" / "2 of 3 synced" — the headline for the Sync health cell. */
-export function syncCellLabel(rollup: SyncRollup): string {
-  if (rollup.total === 0) return 'No destinations';
+/**
+ * "1 of 1 failed" / "2 of 3 synced" — the headline for the Sync health cell.
+ *
+ * `destinationRoutingBlockReason` (#2703) is OPTIONAL and only ever consulted on
+ * the empty rollup. That is the whole fix: an empty `syncStatus[]` used to mean
+ * "No destinations" whether nothing was configured or a working router had
+ * decided this order needs none, and an operator could not tell a router making
+ * a decision from a configuration that was never set up — which is precisely the
+ * distinction routing exists to make.
+ *
+ * The reason is READ from the persisted column the backend wrote, never inferred
+ * from the rollup (#2100's rule). An unrecognised value falls through to the
+ * original wording rather than rendering a confident wrong sentence.
+ */
+export function syncCellLabel(
+  rollup: SyncRollup,
+  destinationRoutingBlockReason?: string | null
+): string {
+  if (rollup.total === 0) {
+    return resolveDestinationRoutingCopy(destinationRoutingBlockReason)?.label ?? 'No destinations';
+  }
   if (rollup.failed > 0) return `${rollup.failed} of ${rollup.total} failed`;
   if (rollup.skipped > 0)
     return `${rollup.synced} of ${rollup.total} synced (${rollup.skipped} skipped)`;

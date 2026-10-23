@@ -376,6 +376,15 @@ export function OrderListFilterBar({
         }}
       />
       <FilterCheck
+        label={COPY.checkRoutingBlocked}
+        tone="error"
+        checked={state.routingBlocked}
+        count={summary?.destinationRoutingBlocked}
+        onChange={() => {
+          filtersApi.toggle('destinationRoutingBlocked');
+        }}
+      />
+      <FilterCheck
         label={COPY.checkRateConflict}
         checked={state.rateConflict}
         count={summary?.taxRateConflict}
@@ -680,6 +689,20 @@ export function OrderListFilterBar({
               <span className="chip__count">
                 {`${salesDocsBlocked}${oldestAgeSuffix(summary?.salesDocumentBlockedOldestAt)}`}
               </span>
+            )}
+          </Chip>
+        ) : null}
+        {state.routingBlocked || summary?.destinationRoutingBlocked ? (
+          <Chip
+            tone="error"
+            active={state.routingBlocked}
+            onClick={() => {
+              filtersApi.toggle('destinationRoutingBlocked');
+            }}
+          >
+            {COPY.quickRoutingBlocked}
+            {summary?.destinationRoutingBlocked === undefined ? null : (
+              <span className="chip__count">{summary.destinationRoutingBlocked}</span>
             )}
           </Chip>
         ) : null}

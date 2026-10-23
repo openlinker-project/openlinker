@@ -20,6 +20,7 @@ import {
   syncCellLabel,
   type FulfillmentState,
 } from '../lib/order-health';
+import { resolveDestinationRoutingCopy } from '../lib/destination-routing-copy';
 
 interface OrderHealthSummaryProps {
   syncStatus: OrderSyncStatus[];
@@ -30,6 +31,13 @@ interface OrderHealthSummaryProps {
   failedDestinationId?: string | null;
   /** Shipping capability / shipments still resolving — show a neutral placeholder. */
   fulfillmentPending?: boolean;
+  /**
+   * How routing narrowed this order's destination fan-out (#2703), read from the
+   * persisted column. Consulted ONLY when the rollup is empty, where it tells a
+   * working router's decision apart from a configuration that was never set up —
+   * two states that both rendered "No destinations" before.
+   */
+  destinationRoutingBlockReason?: string | null;
 }
 
 export function OrderHealthSummary({
@@ -39,9 +47,11 @@ export function OrderHealthSummary({
   itemCount,
   failedDestinationId,
   fulfillmentPending = false,
+  destinationRoutingBlockReason,
 }: OrderHealthSummaryProps): ReactElement {
   const rollup = rollupSyncStatus(syncStatus);
   const alarm = rollup.failed > 0;
+  const routingCopy = resolveDestinationRoutingCopy(destinationRoutingBlockReason);
 
   const fulfillmentHint = fulfillmentPending
     ? 'Checking…'
@@ -57,12 +67,17 @@ export function OrderHealthSummary({
     <div className="order-health" role="group" aria-label="Order health">
       <div className={`order-health__cell${alarm ? ' order-health__cell--alarm' : ''}`}>
         <div className="order-health__k">Sync</div>
-        <div className={`order-health__v${alarm ? ' order-health__v--alarm' : ''}`}>{syncCellLabel(rollup)}</div>
+        <div className={`order-health__v${alarm ? ' order-health__v--alarm' : ''}`}>
+          {syncCellLabel(rollup, destinationRoutingBlockReason)}
+        </div>
         <div className="order-health__hint">
           {alarm && failedDestinationId ? (
             <ConnectionEntityLabel connectionId={failedDestinationId} showId={false} />
           ) : rollup.total === 0 ? (
-            'No destinations configured'
+            // #2703 — the routing reason REPLACES the "nothing configured"
+            // sentence, which would otherwise be a false statement about the
+            // operator's own configuration whenever a router decided this.
+            (routingCopy?.hint ?? 'No destinations configured')
           ) : (
             'All destinations reconciled'
           )}

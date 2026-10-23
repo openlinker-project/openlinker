@@ -1234,6 +1234,23 @@ export function OrdersListPage(): ReactElement {
               </Button>
             }
           />
+        ) : filterState.routingBlocked ? (
+          /*
+            #2703 / #2704 — `routing=blocked` counts only routing decisions that
+            named an unreachable destination, so an empty result is a good
+            outcome, not a narrowed search coming up empty. Ahead of the generic
+            `hasActiveFilters` arm for the same reason as `invoicingBlocked`
+            above, and worded "in this view" because other filters may be on.
+          */
+          <EmptyState
+            title="No routing problems in this view"
+            message="No order here was routed to a destination OpenLinker could not reach. Other filters are still applied."
+            action={
+              <Button onClick={filtersApi.clearAll}>
+                Clear filters
+              </Button>
+            }
+          />
         ) : debouncedSearch ? (
           /*
             #3529 (mockup M4 `noresults`) — its own arm, ahead of the generic

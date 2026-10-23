@@ -19,6 +19,7 @@ import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { DestinationRoutingBlockReason } from '../types/destination-routing-block.types';
 import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
@@ -440,7 +441,26 @@ export class OrderRecord {
      * Written only on the `'ready'` path (`upsertWithLineItems`), like the
      * analytics scalars. Appended LAST: positional constructor.
      */
-    public readonly paymentMethod: PaymentMethod | null = null
+    public readonly paymentMethod: PaymentMethod | null = null,
+    /**
+     * How a fulfilment routing decision narrowed this order's destination
+     * fan-out (#2703 / #2704), or `null` when it narrowed nothing — which is
+     * every order on every install today, since no production caller populates
+     * `OrderSyncRequest.destinationConnectionIds` yet.
+     *
+     * Appended at the tail for the reason every field above it was: this is a
+     * positional constructor, so a field inserted mid-list would silently shift
+     * every caller's argument by one, `toDomain`'s own call included.
+     *
+     * Written only by `updateDestinationRoutingBlock` and coerced on read, so an
+     * unrecognised value reads as `null` rather than widening the union.
+     */
+    public readonly destinationRoutingBlockReason: DestinationRoutingBlockReason | null = null,
+    /**
+     * PII-free elaboration of the reason above — connection ids and counts only.
+     * Moves as one group with `destinationRoutingBlockReason`.
+     */
+    public readonly destinationRoutingBlockDetail: string | null = null
   ) {}
 
   /**

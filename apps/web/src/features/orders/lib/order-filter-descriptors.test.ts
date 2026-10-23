@@ -50,6 +50,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'openReturn',
         'packed',
         'phase',
+        'routing',
         'search',
         'slaState',
         'sourceConnectionId',
@@ -81,6 +82,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       packed: 'packed=false',
       holdReason: 'hold=operator',
       salesDocumentBlocked: 'invoicing=blocked',
+      destinationRoutingBlocked: 'routing=blocked',
       attention: 'attention=true',
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
@@ -125,18 +127,20 @@ describe('toOrderQueryFilters', () => {
   });
 
   it('should send present-only toggles as true or omit them when off', () => {
-    const on = toOrderQueryFilters(parse('invoicing=blocked&taxRate=conflict&attention=true&openReturn=true'), {
+    const on = toOrderQueryFilters(parse('invoicing=blocked&routing=blocked&taxRate=conflict&attention=true&openReturn=true'), {
       dueBefore: undefined,
       search: '',
     });
     expect(on).toMatchObject({
       salesDocumentBlocked: true,
+      destinationRoutingBlocked: true,
       taxRateConflict: true,
       attention: true,
       openReturn: true,
     });
     const off = toOrderQueryFilters(parse(''), { dueBefore: undefined, search: '' });
     expect(off.salesDocumentBlocked).toBeUndefined();
+    expect(off.destinationRoutingBlocked).toBeUndefined();
     expect(off.search).toBeUndefined();
   });
 });

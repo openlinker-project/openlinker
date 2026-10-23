@@ -157,6 +157,7 @@ describe('OrderIngestionService', () => {
       markFulfillmentRoutingSkip: jest.fn().mockResolvedValue(undefined),
       markOmsAttention: jest.fn().mockResolvedValue(undefined),
       listOrderIdsByFulfillmentBlockReasons: jest.fn().mockResolvedValue([]),
+      markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 

@@ -81,6 +81,8 @@ export interface OrderListFilterState {
   slaState?: SlaStateValue;
   fulfillmentState?: FulfillmentRollupStateValue;
   invoicingBlocked: boolean;
+  /** `?routing=blocked` — a routing decision narrowed the destination fan-out (#2703/#2704). */
+  routingBlocked: boolean;
   phase?: OrderLifecyclePhaseValue;
   rateConflict: boolean;
   holdReason?: HoldReason;
@@ -264,6 +266,14 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     isActive: (s) => s.omsAttention,
     chip: (s) => single('attention', COPY.chipOms, s.omsAttention ? COPY.chipStopped : null),
   },
+  destinationRoutingBlocked: {
+    param: 'routing',
+    group: 'exceptions',
+    analyticsName: 'destination_routing_blocked',
+    isActive: (s) => s.routingBlocked,
+    chip: (s) =>
+      single('destinationRoutingBlocked', COPY.chipRouting, s.routingBlocked ? COPY.chipBlocked : null),
+  },
   taxRateConflict: {
     param: 'taxRate',
     group: 'exceptions',
@@ -344,6 +354,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     slaState: pick(SlaStateValues, params.get('slaState')),
     fulfillmentState: pick(FulfillmentRollupStateValues, params.get('fulfillmentState')),
     invoicingBlocked: params.get('invoicing') === 'blocked',
+    routingBlocked: params.get('routing') === 'blocked',
     phase: isOrderLifecyclePhase(rawPhase) ? rawPhase : undefined,
     rateConflict: params.get('taxRate') === 'conflict',
     holdReason: isHoldReason(rawHold) ? rawHold : undefined,
@@ -364,6 +375,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
 export const ORDER_TOGGLE_FILTER_VALUES = {
   dueBefore: 'breaching',
   salesDocumentBlocked: 'blocked',
+  destinationRoutingBlocked: 'blocked',
   taxRateConflict: 'conflict',
   attention: 'true',
   openReturn: 'true',
@@ -387,6 +399,7 @@ export function toOrderQueryFilters(
     slaState: state.slaState,
     fulfillmentState: state.fulfillmentState,
     salesDocumentBlocked: state.invoicingBlocked ? true : undefined,
+    destinationRoutingBlocked: state.routingBlocked ? true : undefined,
     phase: state.phase,
     taxRateConflict: state.rateConflict ? true : undefined,
     holdReason: state.holdReason,

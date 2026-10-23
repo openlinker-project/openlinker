@@ -181,6 +181,25 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
+      'Destination-routing filter (#2703/#2704): true keeps only orders whose routing decision ' +
+      'narrowed the destination fan-out in an ATTENTION-WORTHY way, false keeps only the rest, ' +
+      'omitted does not filter. Attention-worthy EXCLUDES "routed-to-no-destination" — a working ' +
+      'router deciding an order goes nowhere is a decision, not a fault — so true does not return ' +
+      'those and false does. Same subset the destinationRoutingBlocked count reports, so the two ' +
+      'always agree. An INDEPENDENT axis that composes with `health`: such an order is usually ' +
+      'also needs_attention, so folding them would hide one behind the other.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  destinationRoutingBlocked?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
       'Cancellation filter (#1984, exposed on this route by #2306): true keeps only cancelled ' +
       'orders, false excludes them, omitted does not filter. Maps directly to ' +
       '`cancelledAt IS [NOT] NULL` — the repository already honoured this field, it simply had ' +
