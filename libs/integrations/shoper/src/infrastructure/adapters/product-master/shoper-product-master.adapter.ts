@@ -51,7 +51,7 @@ import type {
   ShoperStock,
 } from '../../../domain/types/shoper-api.types';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
-import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import { joinShoperCategories, primaryShoperCategoryId } from '../../mappers/shoper-category.mapper';
 import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
 import type { ShoperOptionEntry, ShoperOptionTableProvider } from '../../shop-context/shoper-option-table.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
@@ -283,6 +283,24 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   }
 
   /**
+   * The product's placement as ONE path, root to leaf: the primary category
+   * (`category_id`) and every ancestor above it, each carrying the `parentId` and
+   * tree `depth` of the directory. The publish builder provisions exactly this
+   * path on the destination, so returning the leaf alone made it create the leaf
+   * a second time at the root (a product in "Kuchnia > Zestawy" published into a
+   * new root "Zestawy").
+   *
+   * Single-branch, the same rule the PrestaShop master follows with
+   * `id_category_default`: the other categories a Shoper product is also
+   * assigned to are not returned, because the builder treats the list as one
+   * path and a second branch would be stitched into it. Only when Shoper names
+   * no primary category is a sole entry of `categories` used as the anchor.
+   *
+   * A path that cannot be completed - the anchor or an ancestor is missing from
+   * the directory, the tree does not place it, or the parents loop - yields `[]`
+   * (publish uncategorised) rather than a truncated path, since a truncated path
+   * is precisely what lands a category at the wrong level.
+   *
    * Reads the product through the same translating read as `getProduct`, so a
    * product Shoper reports gone surfaces here as the neutral
    * `MasterProductNotFoundError` too - core may reach a deleted product through
@@ -291,24 +309,37 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
   async getProductCategories(productId: string): Promise<Category[]> {
     const externalId = await this.resolveExternalProductId(productId);
     const data = await this.readProduct(externalId, productId);
-    const ids = Array.isArray(data.categories) ? data.categories.map(String) : [];
-    if (ids.length === 0) {
+    const anchor = primaryShoperCategoryId(data);
+    if (anchor === null) {
       return [];
     }
 
     const directory = new Map((await this.getCategories()).map((c) => [c.id, c]));
-    const categories: Category[] = [];
-    for (const id of ids) {
-      const category = directory.get(id);
-      if (category === undefined) {
+    const path: Category[] = [];
+    const seen = new Set<string>();
+    let currentId: string | undefined = anchor;
+    while (currentId !== undefined) {
+      const category = directory.get(currentId);
+      const gap =
+        category === undefined
+          ? 'not in the directory'
+          : category.depth === undefined
+            ? 'not placed in the tree'
+            : seen.has(currentId)
+              ? 'parents loop'
+              : null;
+      if (category === undefined || gap !== null) {
         this.logger.warn(
-          `Shoper product ${externalId} references unknown category ${id}, skipped (connection: ${this.connection.id})`
+          `Shoper product ${externalId}: the path of category ${anchor} cannot be completed at ` +
+            `${currentId} (${gap ?? 'unknown'}); returning no categories (connection: ${this.connection.id})`
         );
-        continue;
+        return [];
       }
-      categories.push(category);
+      seen.add(currentId);
+      path.unshift(category);
+      currentId = category.parentId;
     }
-    return categories;
+    return path;
   }
 
   // ─── Not supported in this milestone ───────────────────────────────────────

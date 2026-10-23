@@ -877,41 +877,137 @@ describe('ShoperProductMasterAdapter', () => {
     it('should not keep a failed product read: the next call retries', async () => {
       const { adapter, get } = setup();
       get.mockRejectedValueOnce(new Error('product 500'));
-      respond(get, { '/products/93': buildProduct({ categories: [] }) });
+      respond(get, { '/products/93': buildProduct({ category_id: null, categories: [] }) });
 
       await expect(adapter.getProductCategories('ol_product_1')).rejects.toThrow('product 500');
       await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
     });
 
-    it('should resolve a product category ids through the directory', async () => {
+    // The builder provisions exactly this list as one root-to-leaf path, so the
+    // leaf alone made it create "Zestawy" again at the root.
+    it('should return the primary category with every ancestor, root first', async () => {
       const { adapter, get } = setup();
       respond(get, {
-        '/products/93': buildProduct({ categories: [39, 38] }),
-        '/categories-tree': tree,
-        '/categories': list,
-      });
-
-      const categories = await adapter.getProductCategories('ol_product_1');
-
-      expect(categories.map((c) => c.name)).toEqual(['Talerze', 'Zestawy']);
-    });
-
-    it('should skip an id absent from the directory instead of throwing', async () => {
-      const { adapter, get } = setup();
-      respond(get, {
-        '/products/93': buildProduct({ categories: [38, 777] }),
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
         '/categories-tree': tree,
         '/categories': list,
       });
 
       await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
-        expect.objectContaining({ id: '38' }),
+        { id: '45', name: 'Kolekcje', depth: 0, active: true },
+        { id: '38', name: 'Zestawy', parentId: '45', depth: 1, active: true },
       ]);
+    });
+
+    it('should walk a deeper tree all the way to the root', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '51', categories: [51] }),
+        '/categories-tree': [{ id: 45, children: [{ id: 38, children: [{ id: 51, children: [] }] }] }],
+        '/categories': envelope([
+          { category_id: '45', translations: { pl_PL: { name: 'Kolekcje' } } },
+          { category_id: '38', translations: { pl_PL: { name: 'Zestawy' } } },
+          { category_id: '51', translations: { pl_PL: { name: 'Obiadowe' } } },
+        ]),
+      });
+
+      const path = await adapter.getProductCategories('ol_product_1');
+
+      expect(path.map((c) => [c.id, c.parentId, c.depth])).toEqual([
+        ['45', undefined, 0],
+        ['38', '45', 1],
+        ['51', '38', 2],
+      ]);
+    });
+
+    it('should return a root primary category alone', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '45', categories: [45] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        expect.objectContaining({ id: '45', depth: 0 }),
+      ]);
+    });
+
+    // Single-branch, like PrestaShop's id_category_default: a second branch
+    // would be stitched into the one path the builder provisions.
+    it('should follow only the primary category, leaving the other assigned ones out', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [39, 38] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      const path = await adapter.getProductCategories('ol_product_1');
+
+      expect(path.map((c) => c.name)).toEqual(['Kolekcje', 'Zestawy']);
+    });
+
+    it('should anchor on the sole assigned category when Shoper names no primary one', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: null, categories: [39] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      const path = await adapter.getProductCategories('ol_product_1');
+
+      expect(path.map((c) => c.id)).toEqual(['45', '39']);
+    });
+
+    it('should not pick between several assigned categories when none is primary', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ category_id: '0', categories: [38, 39] }) });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    // A truncated path is exactly what lands a category at the wrong level.
+    it('should return [] rather than a truncated path when an ancestor is missing from the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': tree,
+        '/categories': envelope([
+          { category_id: '38', translations: { pl_PL: { name: 'Zestawy' } } },
+        ]),
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    it('should return [] when the primary category is absent from the directory', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '777', categories: [777] }),
+        '/categories-tree': tree,
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    it('should return [] when the tree does not place the primary category', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ category_id: '38', categories: [38] }),
+        '/categories-tree': [],
+        '/categories': list,
+      });
+
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
     });
 
     it('should return [] for a product with no categories without reading the directory', async () => {
       const { adapter, get } = setup();
-      respond(get, { '/products/93': buildProduct({ categories: [] }) });
+      respond(get, { '/products/93': buildProduct({ category_id: null, categories: [] }) });
 
       await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
       expect(get).toHaveBeenCalledTimes(1);
