@@ -42,6 +42,13 @@ describe('stageOfFulfillmentWork', () => {
     }
   );
 
+  it('should take no part in the flow when the status is outside the declared union', () => {
+    // The column is plain text cast at the repository boundary, so this is
+    // reachable at runtime; it must be `null`, never `undefined`.
+    const unknown = { status: 'archived' as FulfillmentWorkStatus, parcelClosedAt: null };
+    expect(stageOfFulfillmentWork(unknown)).toBeNull();
+  });
+
   it('should answer for every status the work axis declares', () => {
     for (const status of FulfillmentWorkStatusValues) {
       expect(() => stageOfFulfillmentWork(work(status))).not.toThrow();
@@ -52,6 +59,11 @@ describe('stageOfFulfillmentWork', () => {
 describe('summarizeOrderWork', () => {
   it('should return null when the order has no work', () => {
     expect(summarizeOrderWork([])).toBeNull();
+  });
+
+  it('should not count a work with an unrecognised status towards workCount', () => {
+    const unknown = { status: 'archived' as FulfillmentWorkStatus, parcelClosedAt: null };
+    expect(summarizeOrderWork([work('open'), unknown])).toEqual({ stage: 'to-pack', workCount: 1 });
   });
 
   it('should return null when every work is cancelled or incomplete', () => {

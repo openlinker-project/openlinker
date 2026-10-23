@@ -351,8 +351,9 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
   ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>> {
     if (orderIds.length === 0) return [];
     try {
-      // `orderId` is indexed (`IDX_fulfillment_works_order`). Header columns only:
-      // no lines are hydrated, which is the point of a list-page read.
+      // `orderId` leads `IDX_fulfillment_works_grouping`, which serves this
+      // `IN (...)`. Header columns only: no lines are hydrated, which is the point
+      // of a list-page read.
       const rows = await this.works.find({
         where: { orderId: In([...orderIds]) },
         select: { orderId: true, status: true, parcelClosedAt: true },
@@ -365,11 +366,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         parcelClosedAt: row.parcelClosedAt,
       }));
     } catch (error) {
-      this.logger.error(
-        `Failed to read work progress for ${String(orderIds.length)} order(s)`,
-        (error as Error).stack
-      );
-      throw error;
+      throw new FulfillmentPersistenceError('findProgressByOrderIds', error);
     }
   }
 
