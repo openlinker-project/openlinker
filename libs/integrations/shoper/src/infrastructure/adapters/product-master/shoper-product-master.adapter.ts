@@ -6,9 +6,11 @@
  * `listExternalIds`, `getCategories` and `getProductCategories`. Every write
  * throws `ShoperNotSupportedException` (a silent no-op would read as "done").
  *
- * Also implements the guard-only `ModifiedProductLister` rung (ADR-048), over
- * the `edit_date` filter - see `listExternalIdsModifiedSince` for what that
- * timestamp does and does not cover.
+ * Also implements two guard-only rungs (ADR-048), never advertised in the
+ * manifest: `ModifiedProductLister` over the `edit_date` filter - see
+ * `listExternalIdsModifiedSince` for what that timestamp does and does not
+ * cover - and `BulkProductReader`, a prefetch that warms a batch's products and
+ * stock rows in a few requests (see `prefetchProducts`).
  *
  * Variant model (SPIKE-3638 M1): `products` is the header and `product-stocks`
  * is the variant grain, so each stock row is one `ProductVariant` keyed by its
@@ -46,6 +48,7 @@ import type {
   TaxRateResolution,
   ModifiedProductLister,
   ListExternalIdsModifiedSinceInput,
+  BulkProductReader,
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -68,7 +71,7 @@ import {
   fetchShoperPage,
   fetchShoperWindow,
 } from '../../http/shoper-pagination';
-import { fetchShoperStocks } from '../../http/shoper-stocks';
+import { fetchShoperStocks, fetchShoperStocksForProducts } from '../../http/shoper-stocks';
 import {
   mapShoperProduct,
   mapShoperStockToVariant,
@@ -89,10 +92,12 @@ const DEFAULT_WINDOW = SHOPER_MAX_PAGE_SIZE;
 const SHOPER_ID = /^\d+$/;
 
 export class ShoperProductMasterAdapter
-  implements ProductMasterPort, ProductTaxRateReader, ModifiedProductLister
+  implements ProductMasterPort, ProductTaxRateReader, ModifiedProductLister, BulkProductReader
 {
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
+  /** Stock rows warmed by `prefetchProducts`, keyed by Shoper product id. Read-only paths only. */
+  private readonly stockCache = new Map<string, ShoperStock[]>();
   private readonly categoryReader: ShoperCategoryReader;
   private readonly productReader: ShoperProductReader;
 
@@ -171,6 +176,75 @@ export class ShoperProductMasterAdapter
       }
     );
     return rows.map((p) => String(p.product_id));
+  }
+
+  /**
+   * Warm a batch's products and stock rows (#2593 shape, `BulkProductReader`):
+   * per chunk of 50 ids, ONE `GET /products?filters={"product_id":{"in":[..]}}`
+   * seeding the shared product reader, and one filtered `/product-stocks` read
+   * for the products it returned. The per-product loop that follows then reads
+   * `/products/:id` and the product's stocks from memory - `getProduct`,
+   * `getProductCategories`, `readProductTaxRate` and `getProductVariants` all
+   * hit the warm copies - against two requests per product without it.
+   *
+   * Invisible except in request count, as the contract requires:
+   *   - An id the shop did NOT return is left unwarmed, product and stocks, so
+   *     its own `GET /products/:id` is what answers - and a 404 there is the
+   *     deletion signal, exactly as without the prefetch. Nothing here concludes
+   *     a deletion from an absence.
+   *   - A stock bucket is seeded only for a product the products read returned,
+   *     so an empty bucket means "the shop listed this product and no stock rows
+   *     for it" - the same answer its own stocks read would give.
+   *   - A row of an id nobody asked for means the filter was dropped; the chunk
+   *     is refused before anything from it is seeded.
+   *   - Any failure is logged and swallowed; whatever was not warmed is read per
+   *     product as before. No identifier mapping is created here.
+   */
+  async prefetchProducts(externalIds: readonly string[]): Promise<void> {
+    const ids = [...new Set(externalIds.map(String))].filter((id) => SHOPER_ID.test(id));
+    try {
+      for (let i = 0; i < ids.length; i += SHOPER_MAX_PAGE_SIZE) {
+        await this.prefetchChunk(ids.slice(i, i + SHOPER_MAX_PAGE_SIZE));
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Shoper bulk product prefetch failed for ${ids.length} product(s) ` +
+          `(connection: ${this.connection.id}); falling back to per-product reads: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private async prefetchChunk(chunk: readonly string[]): Promise<void> {
+    const result = await fetchShoperPage<ShoperProduct>(this.client, '/products', {
+      page: 1,
+      limit: SHOPER_MAX_PAGE_SIZE,
+      query: {
+        order: PRODUCT_ORDER,
+        filters: JSON.stringify({ product_id: { in: chunk.map(Number) } }),
+      },
+    });
+    const requested = new Set(chunk);
+    for (const product of result.items) {
+      if (!requested.has(String(product.product_id))) {
+        throw new Error(
+          `Shoper answered a products read for ${chunk.length} id(s) with product ` +
+            `${String(product.product_id)}, which was not asked for - the filter was not applied`
+        );
+      }
+    }
+
+    const returned = result.items.map((product) => String(product.product_id));
+    for (const product of result.items) {
+      this.productReader.seed(String(product.product_id), product);
+    }
+    if (returned.length === 0) {
+      return;
+    }
+    const stocks = await fetchShoperStocksForProducts(this.client, returned);
+    for (const [id, rows] of stocks) {
+      this.stockCache.set(id, rows);
+    }
   }
 
   async getProduct(productId: string): Promise<Product> {
@@ -522,6 +596,10 @@ export class ShoperProductMasterAdapter
   }
 
   private fetchAllStocks(externalProductId: string): Promise<ShoperStock[]> {
+    const warmed = this.stockCache.get(externalProductId);
+    if (warmed !== undefined) {
+      return Promise.resolve([...warmed]);
+    }
     // The filter-ignored guard lives in `fetchShoperStocks`; this only reports it.
     return fetchShoperStocks(this.client, externalProductId, (count) =>
       this.logger.warn(

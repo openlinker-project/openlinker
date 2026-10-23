@@ -150,6 +150,11 @@ Paging (all observed on a live shop):
   that cycle. That is acceptable only because absence is never a deletion signal: `master.product.reconcile`
   enumerates OpenLinker's own mappings and re-reads each product, and deletion is concluded solely from
   Shoper's explicit 404. A skipped product is picked up by the next cycle; it is never staled for being missing.
+- **Batched catalogue reads (`BulkProductReader`).** The catalogue sweep's batch child warms a page of products
+  before its per-product loop: per 50 ids one `/products` read (`product_id in`) and one filtered
+  `/product-stocks` read, so `getProduct`, the tax-rate read and `getProductVariants` then cost nothing - about
+  2-3 requests per 50 products instead of two per product. An id the shop did not return is left unwarmed, so its
+  own read still reports a deletion; a failed or filter-ignoring prefetch falls back to per-product reads.
 - **The sweeps need no Shoper-specific scheduler code.** `master.product.syncAll`, `master.product.reconcile`
   (the deletion audit) and `master.product.syncDelta` are registered core-side by capability
   (`CORE_CAPABILITY_TASKS`, `capability: 'ProductMaster'`), so declaring `ProductMaster` is what enrols a
@@ -185,6 +190,10 @@ at create and never retro-filled, so an existing connection must be edited.
   recognisably off): with the module active, `stock` is not known to be the whole pool, and a wrong level would
   be published to marketplaces. The error is terminal. It is raised per product, so on such a shop every product
   in an inventory sweep cycle ends as its own dead job - keep the connection to `ProductMaster` only.
+- **Batched stock reads (`BulkInventoryReader`).** The inventory sweep's batch child reads a page's stock rows in
+  one filtered `/product-stocks` read per 50 products (`product_id in`). A product with no rows in that answer is
+  probed exactly as on the per-product path, so deletion is still decided by the shop's own 404.
+  `adjustInventory` never uses the warm copy.
 - **An unreadable stock level is an error, never 0** - reading it as zero would zero a live offer. Retryable.
 - **Deletion** is reported only when Shoper itself says the product is gone (its own 404 envelope), as the
   neutral `MasterProductNotFoundError`. The product is only probed when its stock listing comes back empty (or

@@ -16,6 +16,11 @@
  * a failure is dropped so the next call retries. The instance lives for one
  * resolution, so a cached payload cannot go meaningfully stale.
  *
+ * A bulk prefetch (`BulkProductReader`) may `seed` it with products a filtered
+ * list read returned, so the per-product reads that follow cost nothing. Only a
+ * product the shop RETURNED is seeded; an id it did not return stays unseeded,
+ * and its own read is what reports the deletion.
+ *
  * @module libs/integrations/shoper/src/infrastructure/readers
  */
 import { MasterProductNotFoundError } from '@openlinker/core/products';
@@ -36,6 +41,13 @@ export class ShoperProductReader {
    * @param externalId - the Shoper product id to read
    * @param productId - the OpenLinker internal id, carried on the neutral error
    */
+  /** Prime the memo with a product a bulk read returned; an existing entry wins. */
+  seed(externalId: string, product: ShoperProduct): void {
+    if (!this.reads.has(externalId)) {
+      this.reads.set(externalId, Promise.resolve(product));
+    }
+  }
+
   read(externalId: string, productId: string): Promise<ShoperProduct> {
     let read = this.reads.get(externalId);
     if (read === undefined) {
