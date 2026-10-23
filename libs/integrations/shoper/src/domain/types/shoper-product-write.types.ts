@@ -59,3 +59,18 @@ export interface ShoperCategoryWriteBody {
   parent_id: number;
   translations: Record<string, { name: string; active: 0 | 1 }>;
 }
+
+/**
+ * The slice of `GET /products/:id` the publisher reads back after a write: the
+ * default stock's id (what an order line carries) and whether a main image is
+ * already there. Both optional because the read is a best-effort follow-up.
+ */
+export interface ShoperPublishedProduct {
+  readonly main_image?: unknown;
+  readonly stock?: { readonly stock_id?: string | number | null } | null;
+}
+
+/** That read-back, or the failure that prevented it - never a throw. */
+export type ShoperPublishedProductRead =
+  | { readonly ok: true; readonly product: ShoperPublishedProduct }
+  | { readonly ok: false; readonly error: unknown };

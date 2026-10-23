@@ -21,6 +21,17 @@
  * precedence right: a shop that really is a ProductMaster has the sweep's own
  * identity for the row, and that answer beats a publish record.
  *
+ * ## The `ShopProductVariant` fallback
+ *
+ * Some shops key an order line by their own VARIANT id rather than the product
+ * id (Shoper: `stock_id`). A `variant` ref from such a shop never matches the
+ * `ShopProduct` record, whose external id is the product id, so the publish
+ * also records the variant-grain id under `ShopProductVariant` and the
+ * `variant` branch consults it last. It is a separate entity type because the
+ * two ids are separate id spaces on the shop and can be the same number; the
+ * `ShopProduct` lookup stays first so a shop whose order lines carry the
+ * product id behaves exactly as before.
+ *
  * `ShopProduct` deliberately holds two kinds of internal id in one entityType -
  * a variant's own shop product id maps to a VARIANT, while a grouped parent's
  * maps to a PRODUCT (they never collide because the two id families are
@@ -131,14 +142,20 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (!internalVariantId) {
-          const published = await this.resolveViaShopProduct(connectionId, productRef);
+          const published =
+            (await this.resolveViaShopProduct(connectionId, productRef)) ??
+            (await this.resolveViaShopProduct(
+              connectionId,
+              productRef,
+              CORE_ENTITY_TYPE.ShopProductVariant
+            ));
           if (published) {
             return published;
           }
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,
-            'identifier_mappings:ProductVariant,ShopProduct'
+            'identifier_mappings:ProductVariant,ShopProduct,ShopProductVariant'
           );
         }
         const variant = await this.productsService.getVariant(internalVariantId);
@@ -192,10 +209,11 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
    */
   private async resolveViaShopProduct(
     connectionId: string,
-    productRef: IncomingOrderItemRef
+    productRef: IncomingOrderItemRef,
+    entityType: string = CORE_ENTITY_TYPE.ShopProduct
   ): Promise<ResolvedOrderItemProduct | null> {
     const internalId = await this.identifierMapping.getInternalId(
-      CORE_ENTITY_TYPE.ShopProduct,
+      entityType,
       productRef.externalId,
       connectionId
     );
@@ -221,7 +239,7 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
     throw new MissingOrderItemMappingError(
       connectionId,
       productRef,
-      'identifier_mappings:ShopProduct:target-missing'
+      `identifier_mappings:${entityType}:target-missing`
     );
   }
 }
