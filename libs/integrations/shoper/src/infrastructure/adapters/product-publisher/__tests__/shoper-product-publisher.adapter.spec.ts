@@ -542,7 +542,7 @@ describe('ShoperProductPublisherAdapter', () => {
       const error = await rejection(adapter.publishProduct(command()));
 
       expect(get).toHaveBeenCalledWith('/products', {
-        filters: JSON.stringify({ code: 'SKU-1' }),
+        filters: JSON.stringify({ 'stock.code': 'SKU-1' }),
         limit: 50,
         page: 1,
       });

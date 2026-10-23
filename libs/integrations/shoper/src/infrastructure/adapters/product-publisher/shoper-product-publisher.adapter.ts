@@ -601,7 +601,9 @@ export class ShoperProductPublisherAdapter
       const page = await fetchShoperPage<Pick<ShoperProduct, 'product_id' | 'code'>>(this.client, PRODUCTS_PATH, {
         page: 1,
         limit: SHOPER_MAX_PAGE_SIZE,
-        query: { filters: JSON.stringify({ code }) },
+        // `code` is not a filterable field on /products (Shoper answers 404 "Resource not
+        // found"); the product code lives on the default stock, so it filters as `stock.code`.
+        query: { filters: JSON.stringify({ 'stock.code': code }) },
       });
       return page.items
         .filter((row) => typeof row.code === 'string' && row.code.trim() === code)
