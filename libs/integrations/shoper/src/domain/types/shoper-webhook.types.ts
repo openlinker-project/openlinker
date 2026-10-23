@@ -5,9 +5,12 @@
  * a live shop (6 Oct 2026). One Shoper webhook carries MANY events, so one
  * registration covers every order event OpenLinker listens to.
  *
- * Authentication is a token in the delivery URL, not a signature: Shoper's own
- * `x-webhook-sha1` is unresolved (SPIKE-3638 X5), so there is nothing a decoder
- * can verify. The token is the per-connection webhook secret.
+ * Authentication is two checks over ONE per-connection secret, both required:
+ * the token in the delivery URL, and Shoper's `x-webhook-sha1` signature,
+ * `sha1(webhook_id + ":" + secret + ":" + rawBody)` in hex (resolved against
+ * 12+ live deliveries, 2026-10-23, after SPIKE-3638 X5 left it open). The
+ * provisioner registers the same secret as the URL token and as the webhook's
+ * `secret`, so neither check needs anything the other does not.
  *
  * @module libs/integrations/shoper/src/domain/types
  */
@@ -21,6 +24,12 @@ export const SHOPER_WEBHOOK_TOKEN_QUERY_KEY = 'token';
 
 /** Delivery header naming the event (`order.create`, ...). */
 export const SHOPER_WEBHOOK_NAME_HEADER = 'x-webhook-name';
+
+/** Delivery header carrying the shop-side webhook id, the first part of the signed string. */
+export const SHOPER_WEBHOOK_ID_HEADER = 'x-webhook-id';
+
+/** Delivery header carrying the hex SHA-1 signature. */
+export const SHOPER_WEBHOOK_SIGNATURE_HEADER = 'x-webhook-sha1';
 
 /** The neutral object type of an order delivery. */
 export const SHOPER_WEBHOOK_ORDER_RESOURCE = 'order';

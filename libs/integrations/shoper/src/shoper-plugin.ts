@@ -124,9 +124,9 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
         new ShoperRetryClassifierAdapter(),
       );
       // Inbound webhooks (#3644). The decoder is keyed by PLATFORM TYPE (the
-      // `:provider` segment of the delivery route) and authenticates the token in
-      // the delivery URL, since Shoper's own signature is unresolved (SPIKE-3638
-      // X5). The translator is keyed by adapter key. The PROVISIONER is registered
+      // `:provider` segment of the delivery route) and authenticates both the
+      // token in the delivery URL and Shoper's `x-webhook-sha1` signature. The
+      // translator is keyed by adapter key. The PROVISIONER is registered
       // by `ShoperIntegrationModule`: it needs `ConnectionPort` and
       // `IWebhookSecretService`, which the `HostServices` bag does not carry.
       host.inboundWebhookDecoderRegistry.register(

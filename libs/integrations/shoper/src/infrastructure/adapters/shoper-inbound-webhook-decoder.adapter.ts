@@ -4,17 +4,25 @@
  * Authenticates and decodes Shoper order webhooks at the host ingress, keyed by
  * `provider = 'shoper'`.
  *
- * AUTHENTICATION: a token in the delivery URL (`?token=<secret>`), compared in
- * constant time with the per-connection webhook secret the host supplies. This
- * is not a signature, and the reason is a real gap rather than a shortcut:
- * Shoper signs deliveries with `x-webhook-sha1`, whose algorithm is unresolved
- * (13 candidates ruled out in SPIKE-3638 X5). What the token buys is that a
- * caller who merely learns a connection id cannot trigger re-reads. What it does
- * not buy is payload integrity - which is not load-bearing here, because the body
- * is never trusted (below). The token travels in the URL, so it can appear in
- * reverse-proxy / CDN / tunnel access logs; re-running webhook install rotates it. No timestamp is signed, so `verify` omits
- * `timestampMs` and the host's replay-window check never fires (the WooCommerce
- * and Erli posture).
+ * AUTHENTICATION: two checks, BOTH required, over the one per-connection
+ * webhook secret the host supplies:
+ *   - the token in the delivery URL (`?token=<secret>`), constant-time; and
+ *   - Shoper's signature, `x-webhook-sha1 = hex(sha1(webhook_id + ":" + secret +
+ *     ":" + rawBody))`, with `webhook_id` taken from `x-webhook-id`, computed
+ *     over the RAW body bytes and compared in constant time. Verified against
+ *     12+ real deliveries (2026-10-23).
+ * Before the signature was resolved the URL token was the only check, and a
+ * delivery with a forged or missing `x-webhook-sha1` was accepted. The token is
+ * kept as well because it costs nothing and a caller who learns only a webhook
+ * id still has to know the secret twice over. Both values come from one secret
+ * because the provisioner registers it as the URL token AND as the webhook's
+ * `secret`, and has done so since #3644, so a webhook installed before the
+ * signature check existed verifies without re-install. The token travels in
+ * the URL, so it can appear in reverse-proxy / CDN / tunnel access logs;
+ * re-running webhook install rotates it. No timestamp is signed, so `verify`
+ * omits `timestampMs` and the host's replay-window check never fires (the
+ * WooCommerce and Erli posture); a replayed delivery costs a redundant re-read
+ * at worst, and the dedup gate catches an identical body.
  *
  * TRIGGER MODEL: the delivery carries the whole order, and the decoder reads only
  * its id. The authoritative order is re-read through `ShoperOrderSourceAdapter`
@@ -32,7 +40,9 @@ import type {
 } from '@openlinker/core/integrations';
 
 import {
+  SHOPER_WEBHOOK_ID_HEADER,
   SHOPER_WEBHOOK_NAME_HEADER,
+  SHOPER_WEBHOOK_SIGNATURE_HEADER,
   SHOPER_WEBHOOK_ORDER_RESOURCE,
   SHOPER_WEBHOOK_TOKEN_QUERY_KEY,
 } from '../../domain/types/shoper-webhook.types';
@@ -47,15 +57,26 @@ export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     secret: string;
     query?: Readonly<Record<string, string>>;
   }): WebhookVerifyResult {
-    const provided = input.query?.[SHOPER_WEBHOOK_TOKEN_QUERY_KEY];
-    if (typeof provided !== 'string' || provided.length === 0 || input.secret.length === 0) {
+    if (input.secret.length === 0) {
       return { ok: false };
     }
-    const providedBuf = Buffer.from(provided);
-    const expectedBuf = Buffer.from(input.secret);
-    // `timingSafeEqual` throws on a length mismatch, and the length of a random
-    // secret is not itself worth hiding.
-    if (providedBuf.length !== expectedBuf.length || !timingSafeEqual(providedBuf, expectedBuf)) {
+    const token = input.query?.[SHOPER_WEBHOOK_TOKEN_QUERY_KEY];
+    if (typeof token !== 'string' || !constantTimeEquals(token, input.secret)) {
+      return { ok: false };
+    }
+
+    const webhookId = this.header(input.headers, SHOPER_WEBHOOK_ID_HEADER);
+    const signature = this.header(input.headers, SHOPER_WEBHOOK_SIGNATURE_HEADER);
+    if (webhookId === undefined || signature === undefined) {
+      return { ok: false };
+    }
+    const expected = createHash('sha1')
+      .update(`${webhookId}:${input.secret}:`)
+      .update(input.rawBody)
+      .digest('hex');
+    // Hex is case-insensitive; Shoper sends lower case, but a proxy that
+    // normalises it must not turn an authentic delivery into a rejection.
+    if (!constantTimeEquals(signature.toLowerCase(), expected)) {
       return { ok: false };
     }
     return { ok: true };
@@ -123,4 +144,15 @@ export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoder
     const value = match?.[1];
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
   }
+}
+
+function constantTimeEquals(provided: string, expected: string): boolean {
+  if (provided.length === 0) {
+    return false;
+  }
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+  // `timingSafeEqual` throws on a length mismatch, and the length of a random
+  // secret or of a SHA-1 hex digest is not itself worth hiding.
+  return providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
 }

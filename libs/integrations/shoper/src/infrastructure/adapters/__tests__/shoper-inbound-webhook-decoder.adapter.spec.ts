@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { DecodeResult } from '@openlinker/core/integrations';
 
 import { ShoperInboundWebhookDecoderAdapter } from '../shoper-inbound-webhook-decoder.adapter';
@@ -18,33 +20,107 @@ function route(result: DecodeResult): Extract<DecodeResult, { action: 'route' }>
 
 describe('ShoperInboundWebhookDecoderAdapter', () => {
   describe('verify', () => {
-    const verify = (query?: Record<string, string>, secret = SECRET) =>
-      decoder.verify({ rawBody: body({}), headers: {}, secret, ...(query === undefined ? {} : { query }) });
+    const WEBHOOK_ID = '7';
+    const RAW = body({ product_id: 23, stock: { stock: '4.0000' }, name: 'Kubek' });
 
-    it('should accept the delivery whose URL token is the connection secret', () => {
-      expect(verify({ token: SECRET })).toEqual({ ok: true });
+    // Shoper's scheme, written out independently of the adapter so a change to
+    // it cannot make both sides agree on a wrong formula.
+    const sign = (rawBody: Buffer, secret = SECRET, webhookId = WEBHOOK_ID): string =>
+      createHash('sha1').update(`${webhookId}:${secret}:${rawBody.toString('utf8')}`).digest('hex');
+
+    const signedHeaders = (overrides: Record<string, string> = {}): Record<string, string> => ({
+      'x-webhook-name': 'product.edit',
+      'x-webhook-id': WEBHOOK_ID,
+      'x-webhook-sha1': sign(RAW),
+      ...overrides,
+    });
+
+    // `query: null` stands for a delivery URL with no query string at all.
+    const verify = ({
+      query = { token: SECRET },
+      headers = signedHeaders(),
+      rawBody = RAW,
+      secret = SECRET,
+    }: {
+      query?: Record<string, string> | null;
+      headers?: Record<string, string>;
+      rawBody?: Buffer;
+      secret?: string;
+    } = {}) => decoder.verify({ rawBody, headers, secret, ...(query === null ? {} : { query }) });
+
+    it('should accept a delivery whose URL token and signature both match the connection secret', () => {
+      expect(verify()).toEqual({ ok: true });
+    });
+
+    it('should accept the signature in upper-case hex', () => {
+      expect(verify({ headers: signedHeaders({ 'x-webhook-sha1': sign(RAW).toUpperCase() }) })).toEqual({
+        ok: true,
+      });
+    });
+
+    it('should read the signature headers case-insensitively', () => {
+      const headers = { 'X-Webhook-Id': WEBHOOK_ID, 'X-Webhook-Sha1': sign(RAW) };
+
+      expect(verify({ headers })).toEqual({ ok: true });
+    });
+
+    it('should sign the RAW bytes, so a re-serialised body with the same content is refused', () => {
+      const reformatted = Buffer.from(JSON.stringify(JSON.parse(RAW.toString('utf8')), null, 2));
+
+      expect(verify({ rawBody: reformatted })).toEqual({ ok: false });
     });
 
     it('should not report a timestamp, since Shoper signs none and the replay check must not fire', () => {
-      expect(verify({ token: SECRET })).not.toHaveProperty('timestampMs');
+      expect(verify()).not.toHaveProperty('timestampMs');
     });
 
-    it.each([
-      ['no query at all', undefined],
-      ['an empty query', {}],
-      ['an empty token', { token: '' }],
-      ['a wrong token', { token: 'a1b2c3d4e5f60718293a4b5c6d7e8f91' }],
-      ['a token of another length', { token: 'short' }],
-      ['a prefix of the secret', { token: SECRET.slice(0, -1) }],
-      ['the secret with extra characters', { token: `${SECRET}x` }],
-      ['the token under another key', { secret: SECRET }],
-    ])('should refuse %s', (_name, query) => {
-      expect(verify(query as Record<string, string> | undefined)).toEqual({ ok: false });
+    describe('the signature', () => {
+      it.each([
+        ['a forged signature', { 'x-webhook-sha1': 'f'.repeat(40) }],
+        ['a signature of another length', { 'x-webhook-sha1': 'abc' }],
+        ['an empty signature', { 'x-webhook-sha1': '' }],
+        ['a signature over another webhook id', { 'x-webhook-sha1': sign(RAW, SECRET, '8') }],
+        ['a signature made with another secret', { 'x-webhook-sha1': sign(RAW, 'another-secret') }],
+        ['the right signature under another webhook id', { 'x-webhook-id': '8' }],
+      ])('should refuse %s, even though the URL token is right', (_name, overrides) => {
+        expect(verify({ headers: signedHeaders(overrides) })).toEqual({ ok: false });
+      });
+
+      it('should refuse a delivery with no signature header, even though the URL token is right', () => {
+        const { 'x-webhook-sha1': _dropped, ...headers } = signedHeaders();
+
+        expect(verify({ headers })).toEqual({ ok: false });
+      });
+
+      it('should refuse a delivery with no webhook id header, even though the URL token is right', () => {
+        const { 'x-webhook-id': _dropped, ...headers } = signedHeaders();
+
+        expect(verify({ headers })).toEqual({ ok: false });
+      });
+
+      it('should refuse a body changed after signing', () => {
+        expect(verify({ rawBody: body({ product_id: 24 }) })).toEqual({ ok: false });
+      });
+    });
+
+    describe('the URL token', () => {
+      it.each([
+        ['no query at all', null],
+        ['an empty query', {}],
+        ['an empty token', { token: '' }],
+        ['a wrong token', { token: 'a1b2c3d4e5f60718293a4b5c6d7e8f91' }],
+        ['a token of another length', { token: 'short' }],
+        ['a prefix of the secret', { token: SECRET.slice(0, -1) }],
+        ['the secret with extra characters', { token: `${SECRET}x` }],
+        ['the token under another key', { secret: SECRET }],
+      ])('should refuse %s, even though the signature is right', (_name, query) => {
+        expect(verify({ query: query as Record<string, string> | null })).toEqual({ ok: false });
+      });
     });
 
     it('should refuse when the stored secret is empty, never matching an empty token', () => {
-      expect(verify({ token: '' }, '')).toEqual({ ok: false });
-      expect(verify({ token: 'anything' }, '')).toEqual({ ok: false });
+      expect(verify({ query: { token: '' }, secret: '' })).toEqual({ ok: false });
+      expect(verify({ query: { token: 'anything' }, secret: '' })).toEqual({ ok: false });
     });
   });
 

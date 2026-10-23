@@ -410,7 +410,6 @@ method label.
   idempotency key, so it reports `idempotency: 'unsupported'`): a change landing between the read and the PUT is
   overwritten, and a retry after a lost response applies the delta again. The remedy belongs at the call site: a
   short per-`(connection, stock)` `SyncLockPort` lock around the call, as #2617 does per offer.
-- The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
 - Only the main image is exposed; the rest need `product-images` (one extra call per product).
