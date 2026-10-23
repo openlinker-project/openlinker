@@ -1,4 +1,4 @@
-FROM node:22.23.1-alpine3.24 AS base
+FROM node:22.23.4-alpine3.24 AS base
 
 # Install pnpm — pinned to match the repo's packageManager field (package.json)
 # so the Docker build resolves the exact same pnpm release as local dev/CI.
@@ -69,7 +69,7 @@ RUN chown -R node:node /app
 USER node
 
 # Production stage
-FROM node:22.23.1-alpine3.24 AS production
+FROM node:22.23.4-alpine3.24 AS production
 
 WORKDIR /app
 
