@@ -150,15 +150,31 @@ Paging (all observed on a live shop):
   that cycle. That is acceptable only because absence is never a deletion signal: `master.product.reconcile`
   enumerates OpenLinker's own mappings and re-reads each product, and deletion is concluded solely from
   Shoper's explicit 404. A skipped product is picked up by the next cycle; it is never staled for being missing.
+- **Batched catalogue reads (`BulkProductReader`).** The catalogue sweep's batch child warms a page of products
+  before its per-product loop: per 50 ids one `/products` read (`product_id in`) and one filtered
+  `/product-stocks` read, so `getProduct`, the tax-rate read and `getProductVariants` then cost nothing - about
+  2-3 requests per 50 products instead of two per product. An id the shop did not return is left unwarmed, so its
+  own read still reports a deletion; a failed or filter-ignoring prefetch falls back to per-product reads.
 - **The sweeps need no Shoper-specific scheduler code.** `master.product.syncAll`, `master.product.reconcile`
   (the deletion audit) and `master.product.syncDelta` are registered core-side by capability
   (`CORE_CAPABILITY_TASKS`, `capability: 'ProductMaster'`), so declaring `ProductMaster` is what enrols a
   connection. They walk the catalogue through `listExternalIds`, which pages in ascending `product_id` order.
-- **No modified-since rung.** Shoper has no bulk "changed since" query - only a per-object
-  `GET /object-mtime/<object>/<id>` (the plural form answers 500) - so `ModifiedProductLister` is not
-  implemented and the delta pass skips Shoper connections. The full pass is the only sweep, from day one.
-- Webhook-driven deletion detection (a `product.deleted` trigger) belongs to the webhook work (#3644); until
-  then the periodic `reconcile` audit is the deletion authority, as for any master without a delete hook.
+- **Modified-since rung (`ModifiedProductLister`).** `/products` accepts
+  `filters={"edit_date":{">=":"YYYY-MM-DD HH:MM:SS"}}` (live-verified), so the opt-in delta pass
+  (`OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED`) can read only changed products. The bound is rendered in the shop's
+  own zone (`locale_timezone`) and only ever errs early: an unknown zone widens it by 14 h, a DST fall-back
+  moves it back an hour. Results are ordered by `product_id`, not `edit_date`, so a product edited mid-cycle
+  does not move and cannot shift another one out of the window. `edit_date` bumps on a name or category
+  edit, a variant stock/price write through the API, a variant add, a sale and an order line added; it does
+  **not** bump on a variant deleted through the API, an image added or removed, or stock returned (an order
+  line deleted, "return to stock"). Those reach OpenLinker only through the full pass, which therefore stays.
+- **Product webhooks are a trigger (#2647).** With `ProductMaster` enabled, "Configure webhooks" also
+  subscribes `product.create`, `product.edit` and `product.delete`; each routes to
+  `master.product.syncByExternalId`, which re-reads the product. Nothing in the delivery body is used, and a
+  delete is concluded only from the re-read's 404 envelope. A connection installed before this needs install
+  re-run to gain the product events. Shoper does not retry a failed delivery, so the periodic `reconcile` audit
+  stays the deletion backstop and the sweeps stay the change backstop. A panel stock edit also fires
+  `product.edit`; it re-syncs the product, while the stock itself still arrives through the inventory sweep.
 
 ## InventoryMaster (read)
 
@@ -174,6 +190,10 @@ at create and never retro-filled, so an existing connection must be edited.
   recognisably off): with the module active, `stock` is not known to be the whole pool, and a wrong level would
   be published to marketplaces. The error is terminal. It is raised per product, so on such a shop every product
   in an inventory sweep cycle ends as its own dead job - keep the connection to `ProductMaster` only.
+- **Batched stock reads (`BulkInventoryReader`).** The inventory sweep's batch child reads a page's stock rows in
+  one filtered `/product-stocks` read per 50 products (`product_id in`). A product with no rows in that answer is
+  probed exactly as on the per-product path, so deletion is still decided by the shop's own 404.
+  `adjustInventory` never uses the warm copy.
 - **An unreadable stock level is an error, never 0** - reading it as zero would zero a live offer. Retryable.
 - **Deletion** is reported only when Shoper itself says the product is gone (its own 404 envelope), as the
   neutral `MasterProductNotFoundError`. The product is only probed when its stock listing comes back empty (or
@@ -400,13 +420,16 @@ method label.
 
 ## Known gaps
 
-- **No rate limiting or retries yet.** The real request ceiling is unconfirmed (SPIKE-3638 C6); no
-  `defaultRateLimit` is declared. Set `config.rateLimit` on the connection if a shop needs a cap.
+- **Rate limit.** Shoper's limit is per SHOP and shared by every token and integration on it: a
+  sustained 10 req/s was answered in full, 15 req/s drew `429`s (an HTML page with no `Retry-After`).
+  The manifest default is 240 req/min with 4 in flight, leaving room for the merchant's other
+  integrations; `config.rateLimit` on the connection overrides it. A `429` / `503` that reaches a job
+  is deferred penalty-free (60 s / 300 s) instead of spending a retry attempt. The bound is per
+  connection, so two OpenLinker connections to one shop get 240 each.
 - **`adjustInventory` is a non-atomic read-modify-write** (Shoper has no conditional stock write and no
   idempotency key, so it reports `idempotency: 'unsupported'`): a change landing between the read and the PUT is
   overwritten, and a retry after a lost response applies the delta again. The remedy belongs at the call site: a
   short per-`(connection, stock)` `SyncLockPort` lock around the call, as #2617 does per offer.
-- The webhook signing algorithm (`x-webhook-sha1`) is unresolved; see #3644.
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
 - Only the main image is exposed; the rest need `product-images` (one extra call per product).

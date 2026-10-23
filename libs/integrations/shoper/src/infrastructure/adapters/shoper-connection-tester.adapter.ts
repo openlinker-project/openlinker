@@ -32,6 +32,7 @@ import type {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import type { ConnectionRateLimit } from '@openlinker/shared/rate-limit';
 
 import { SHOPER_CONNECTION_TEST_PATH } from '../../shoper.constants';
 import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
@@ -44,7 +45,12 @@ import { ShoperHttpClient } from '../http/shoper-http-client';
 export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
   private readonly logger = new Logger(ShoperConnectionTesterAdapter.name);
 
-  constructor(private readonly http: HttpTransportFactoryPort) {}
+  constructor(
+    private readonly http: HttpTransportFactoryPort,
+    // The manifest's `defaultRateLimit`, passed in by `shoper-plugin.ts` rather
+    // than imported back from it, which would be a module-load cycle.
+    private readonly defaultRateLimit?: ConnectionRateLimit,
+  ) {}
 
   async test(
     connection: Connection,
@@ -87,7 +93,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       // limiter as every other call site, not a bare fetch.
       const client = new ShoperHttpClient(
         { host: base.host, token: credentials.token },
-        this.http.forConnection(connection)
+        this.http.forConnection(connection, this.defaultRateLimit)
       );
       const response = await client.get<Partial<ShoperApplicationConfig>>(
         SHOPER_CONNECTION_TEST_PATH

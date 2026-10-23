@@ -19,10 +19,12 @@ import { ShoperOptionTableProvider } from '../../../shop-context/shoper-option-t
 import type { ShoperTaxTableProvider } from '../../../shop-context/shoper-tax-table.provider';
 import {
   MasterProductNotFoundError,
+  isBulkProductReader,
   isModifiedProductLister,
   isProductTaxRateReader,
 } from '@openlinker/core/products';
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
+import type { ShoperMapContext } from '../../../mappers/shoper-product.mapper';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
 
 const CONNECTION_ID = 'conn-1';
@@ -59,7 +61,7 @@ const TAX_TABLE = new Map(
   ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
 );
 
-function setup(): Harness {
+function setup(context: ShoperMapContext = MAP_CONTEXT): Harness {
   const get = jest.fn();
   const taxTable = { get: jest.fn().mockResolvedValue(TAX_TABLE) };
   const mapping = {
@@ -77,7 +79,7 @@ function setup(): Harness {
   const adapter = new ShoperProductMasterAdapter(
     { get } as unknown as ShoperHttpClient,
     mapping as unknown as IdentifierMappingPort,
-    { get: () => Promise.resolve(MAP_CONTEXT) } as unknown as ShoperShopContextProvider,
+    { get: () => Promise.resolve(context) } as unknown as ShoperShopContextProvider,
     taxTable as unknown as ShoperTaxTableProvider,
     new ShoperOptionTableProvider({ get } as unknown as ShoperHttpClient),
     { id: CONNECTION_ID } as Connection,
@@ -394,10 +396,123 @@ describe('ShoperProductMasterAdapter', () => {
       await expect(adapter.listExternalIds({ limit: 20, offset: 100 })).resolves.toEqual([]);
     });
 
-    it('should not offer a modified-since rung: Shoper has no bulk primitive to back it', () => {
+    it('should offer the modified-since rung, narrowed by its guard (never advertised)', () => {
       const { adapter } = setup();
 
-      expect(isModifiedProductLister(adapter)).toBe(false);
+      expect(isModifiedProductLister(adapter)).toBe(true);
+    });
+  });
+
+  describe('listExternalIdsModifiedSince', () => {
+    const WARSAW = { ...MAP_CONTEXT, timezone: 'Europe/Warsaw' };
+
+    function filtersOf(get: jest.Mock, call = 0): unknown {
+      const query = get.mock.calls[call]?.[1] as { filters: string };
+      return JSON.parse(query.filters);
+    }
+
+    it('should filter on edit_date in the shop’s own time, ordered by product id', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([{ product_id: '93' }, { product_id: '127' }]) });
+
+      const ids = await adapter.listExternalIdsModifiedSince({
+        // 08:15:30.900 UTC is 10:15:30 in Warsaw in summer (UTC+2); the fraction is dropped.
+        since: new Date('2026-07-10T08:15:30.900Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(ids).toEqual(['93', '127']);
+      expect(get).toHaveBeenCalledWith('/products', {
+        order: 'product_id ASC',
+        filters: JSON.stringify({ edit_date: { '>=': '2026-07-10 10:15:30' } }),
+        limit: 50,
+        page: 1,
+      });
+    });
+
+    it('should use the winter offset in winter (UTC+1)', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-01-15T23:30:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-01-16 00:30:00' } });
+    });
+
+    it('should move the bound back an hour when the clock turns back within the next hour', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([]) });
+
+      // 2026-10-25 00:30 UTC is 02:30 CEST; at 01:00 UTC the clock goes back to
+      // 02:00 CET, so a change at 01:10 UTC reads 02:10 - earlier than the 02:30 a
+      // naive bound would use. The bound must cover it.
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-10-25T00:30:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-10-25 01:30:00' } });
+    });
+
+    it('should widen the bound by 14 h when the shop names no time zone, never reading it as UTC', async () => {
+      const { adapter, get } = setup(MAP_CONTEXT);
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-07-10T20:00:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-07-10 06:00:00' } });
+    });
+
+    it('should widen the bound the same way for a zone the runtime does not know', async () => {
+      const { adapter, get } = setup({ ...MAP_CONTEXT, timezone: 'Mars/Olympus_Mons' });
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-07-10T20:00:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-07-10 06:00:00' } });
+    });
+
+    it('should serve any window from pages of 50, so a sweep cursor stays exact', async () => {
+      const { adapter, get } = setup(WARSAW);
+      fakeShop(400, get);
+
+      const since = new Date('2026-07-10T08:00:00Z');
+      const cycle = [
+        ...(await adapter.listExternalIdsModifiedSince({ since, limit: 100, offset: 0 })),
+        ...(await adapter.listExternalIdsModifiedSince({ since, limit: 100, offset: 100 })),
+      ];
+
+      expect(cycle).toEqual(idsFrom(1, 200));
+      expect(pagesRequested(get)).toEqual([1, 2, 3, 4]);
+      const limits = get.mock.calls.map(([, query]) => (query as { limit: number }).limit);
+      expect(Math.max(...limits)).toBe(50);
+    });
+
+    it('should return an empty page past the end instead of looping', async () => {
+      const { adapter, get } = setup(WARSAW);
+      fakeShop(30, get);
+
+      await expect(
+        adapter.listExternalIdsModifiedSince({
+          since: new Date('2026-07-10T08:00:00Z'),
+          limit: 100,
+          offset: 100,
+        }),
+      ).resolves.toEqual([]);
     });
   });
 
@@ -1031,6 +1146,184 @@ describe('ShoperProductMasterAdapter', () => {
 
       expect(error).toBeInstanceOf(ShoperNotSupportedException);
       expect((error as ShoperNotSupportedException).operation).toBe(name);
+    });
+  });
+
+  describe('prefetchProducts (BulkProductReader)', () => {
+    const NOT_FOUND = new ShoperApiError(404, 'invalid_request', 'Resource not found');
+
+    interface ShopQuery {
+      filters?: string;
+      page?: number;
+      limit?: number;
+      'filters[product_id]'?: string;
+    }
+
+    interface InFilter {
+      product_id: { in: number[] };
+    }
+
+    function stockOf(id: string): ReturnType<typeof buildStock> {
+      return buildStock({ product_id: id, stock_id: `${id}0` });
+    }
+
+    /** A shop holding `existing` products, one stock row each, answering both filter forms. */
+    function bulkShop(get: jest.Mock, existing: readonly string[]): void {
+      const has = new Set(existing);
+      get.mockImplementation((path: string, query: ShopQuery = {}) => {
+        const inIds = (): string[] =>
+          (JSON.parse(query.filters ?? '{}') as { product_id: { in: number[] } }).product_id.in.map(
+            String,
+          );
+        if (path === '/products' && query.filters !== undefined) {
+          const list = inIds()
+            .filter((id) => has.has(id))
+            .map((id) => buildProduct({ product_id: id, stock: stockOf(id) }));
+          return Promise.resolve({ status: 200, data: envelope(list) });
+        }
+        if (path === '/product-stocks' && query.filters !== undefined) {
+          const rows = inIds().filter((id) => has.has(id)).map(stockOf);
+          const page = query.page ?? 1;
+          const list = rows.slice((page - 1) * 50, page * 50);
+          const pages = Math.max(1, Math.ceil(rows.length / 50));
+          return Promise.resolve({ status: 200, data: envelope(list, { pages, page }) });
+        }
+        if (path === '/product-stocks') {
+          const id = String(query['filters[product_id]']);
+          return Promise.resolve({ status: 200, data: envelope(has.has(id) ? [stockOf(id)] : []) });
+        }
+        const single = /^\/products\/(\d+)$/.exec(path);
+        if (single !== null) {
+          const id = single[1] as string;
+          return has.has(id)
+            ? Promise.resolve({
+                status: 200,
+                data: buildProduct({ product_id: id, stock: stockOf(id) }),
+              })
+            : Promise.reject(NOT_FOUND);
+        }
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
+    }
+
+    /** Resolves `ol_<n>` to Shoper id `<n>`, as the real mapping would. */
+    function mapEveryId(mapping: Harness['mapping']): void {
+      mapping.getExternalIds.mockImplementation((_type: string, productId: string) =>
+        Promise.resolve([
+          {
+            externalId: productId.replace(/^ol_/, ''),
+            connectionId: CONNECTION_ID,
+            platformType: 'shoper',
+            entityType: 'Product',
+          },
+        ]),
+      );
+    }
+
+    function callsTo(get: jest.Mock, path: string): number {
+      return (get.mock.calls as Array<[string]>).filter(([p]) => p === path).length;
+    }
+
+    it('should be offered through its guard, never through the manifest', () => {
+      expect(isBulkProductReader(setup().adapter)).toBe(true);
+    });
+
+    it('should read 120 products in ceil(120/50) = 3 product reads, then none per product', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      const ids = idsFrom(1, 120);
+      bulkShop(get, ids);
+
+      await adapter.prefetchProducts(ids);
+
+      expect(callsTo(get, '/products')).toBe(3);
+      const productFilters = (get.mock.calls as Array<[string, ShopQuery]>)
+        .filter(([p]) => p === '/products')
+        .map(([, q]) => (JSON.parse(String(q.filters)) as InFilter).product_id.in);
+      expect(productFilters.map((chunk) => chunk.length)).toEqual([50, 50, 20]);
+      // One stock row per product, so each chunk's stocks fit one page.
+      expect(callsTo(get, '/product-stocks')).toBe(3);
+
+      get.mockClear();
+      for (const id of ids) {
+        await adapter.getProduct(`ol_${id}`);
+        await adapter.getProductVariants(`ol_${id}`);
+        await adapter.readProductTaxRate({ productId: `ol_${id}` });
+      }
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should leave a product the shop did not return unwarmed, so its own read reports the deletion', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      bulkShop(get, ['1', '2']);
+
+      await adapter.prefetchProducts(['1', '2', '3']);
+      get.mockClear();
+
+      await expect(adapter.getProduct('ol_3')).rejects.toBeInstanceOf(MasterProductNotFoundError);
+      expect(get).toHaveBeenCalledWith('/products/3');
+      await expect(adapter.getProduct('ol_1')).resolves.toMatchObject({ id: 'ol_1' });
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not ask for stocks when the shop returned none of the products', async () => {
+      const { adapter, get } = setup();
+      bulkShop(get, []);
+
+      await adapter.prefetchProducts(['7', '8']);
+
+      expect(callsTo(get, '/product-stocks')).toBe(0);
+    });
+
+    it('should swallow a failed prefetch and fall back to per-product reads', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      get.mockRejectedValueOnce(new ShoperNetworkError('ECONNRESET'));
+
+      await expect(adapter.prefetchProducts(['1'])).resolves.toBeUndefined();
+
+      bulkShop(get, ['1']);
+      get.mockClear();
+      await adapter.getProduct('ol_1');
+      expect(get).toHaveBeenCalledWith('/products/1');
+    });
+
+    it('should seed nothing when the shop ignored the filter and answered with other products', async () => {
+      const { adapter, get, mapping } = setup();
+      mapEveryId(mapping);
+      get.mockImplementationOnce(() =>
+        Promise.resolve({
+          status: 200,
+          data: envelope([buildProduct({ product_id: '1' }), buildProduct({ product_id: '999' })]),
+        }),
+      );
+
+      await expect(adapter.prefetchProducts(['1'])).resolves.toBeUndefined();
+
+      bulkShop(get, ['1']);
+      get.mockClear();
+      await adapter.getProduct('ol_1');
+      expect(get).toHaveBeenCalledWith('/products/1');
+    });
+
+    it('should never send an id that cannot be a Shoper id', async () => {
+      const { adapter, get } = setup();
+      bulkShop(get, ['1']);
+
+      await adapter.prefetchProducts(['1', 'abc', '1']);
+
+      const calls = get.mock.calls as Array<[string, ShopQuery]>;
+      const [, query] = calls.find(([p]) => p === '/products') ?? [];
+      expect(JSON.parse(String(query?.filters))).toEqual({ product_id: { in: [1] } });
+    });
+
+    it('should make no request for an empty batch', async () => {
+      const { adapter, get } = setup();
+
+      await adapter.prefetchProducts([]);
+
+      expect(get).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,3 +1,5 @@
+import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
+
 import { ShoperApiError } from '../../../domain/exceptions/shoper-api.error';
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
 import { ShoperHttpClient } from '../shoper-http-client';
@@ -240,5 +242,20 @@ describe('ShoperHttpClient', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it.each([
+    ['a rate-limit queue timeout', new RateLimitTimeoutError(30_000)],
+    ['an aborted rate-limit wait', new RateLimitAbortedError()],
+  ])('should rethrow %s unwrapped, so the runner requeues it penalty-free', async (_l, error) => {
+    const fetchImpl = jest.fn().mockRejectedValue(error);
+
+    await expect(build(fetchImpl).get('/products')).rejects.toBe(error);
+  });
+
+  it('should still wrap an ordinary transport failure as ShoperNetworkError', async () => {
+    const fetchImpl = jest.fn().mockRejectedValue(new Error('ECONNRESET'));
+
+    await expect(build(fetchImpl).get('/products')).rejects.toBeInstanceOf(ShoperNetworkError);
   });
 });

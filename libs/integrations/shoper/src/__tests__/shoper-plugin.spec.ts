@@ -95,7 +95,12 @@ describe('Shoper plugin', () => {
       ],
       isDefault: true,
     });
-    expect(shoperAdapterManifest.defaultRateLimit).toBeUndefined();
+    // Calibrated against the measured per-shop limit (10 req/s, shared by every
+    // integration on the shop), not copied from another platform.
+    expect(shoperAdapterManifest.defaultRateLimit).toEqual({
+      requestsPerMinute: 240,
+      maxConcurrent: 4,
+    });
     expect(createShoperPlugin().manifest).toBe(shoperAdapterManifest);
   });
 
@@ -260,13 +265,16 @@ describe('Shoper plugin', () => {
     ).rejects.toThrow(/customer provisioner/);
   });
 
-  it('should route the connection through the connection-bound transport', async () => {
+  it('should route the connection through the paced connection-bound transport', async () => {
     const { host } = hostWithRegistries();
     const conn = connection();
 
     await createShoperPlugin().createCapabilityAdapter<unknown>(conn, 'ProductMaster', host);
 
-    expect(host.http.forConnection).toHaveBeenCalledWith(conn);
+    expect(host.http.forConnection).toHaveBeenCalledWith(conn, {
+      requestsPerMinute: 240,
+      maxConcurrent: 4,
+    });
   });
 
   describe('an unsupported capability', () => {
