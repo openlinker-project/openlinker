@@ -1,6 +1,11 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { isCategoryProvisioner } from '@openlinker/core/listings';
-import { isOrderStatusWriteback } from '@openlinker/core/orders';
+import type { OrderProcessorManagerPort, OrderSourcePort } from '@openlinker/core/orders';
+import {
+  isFulfillmentStatusReader,
+  isOrderStatusWriteback,
+  isSourceOptionsReader,
+} from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
 import { ShoperInventoryMasterAdapter } from '../infrastructure/adapters/inventory-master/shoper-inventory-master.adapter';
@@ -97,14 +102,20 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should register the orders-poll task that backs up a lost webhook', () => {
+  it('should register the orders-poll task that backs up a lost webhook, and the fulfilment read-back', () => {
     const { host, schedulerRegister } = hostWithRegistries();
 
     createShoperPlugin().register?.(host);
 
-    expect(schedulerRegister).toHaveBeenCalledTimes(1);
+    expect(schedulerRegister).toHaveBeenCalledTimes(2);
     expect(schedulerRegister).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'shoper-orders-poll', jobType: 'marketplace.orders.poll' }),
+    );
+    expect(schedulerRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'shoper-fulfillment-status-sync',
+        jobType: 'marketplace.fulfillment.statusSync',
+      }),
     );
   });
 
@@ -181,6 +192,10 @@ describe('Shoper plugin', () => {
     );
 
     expect(adapter).toBeInstanceOf(ShoperOrderSourceAdapter);
+    // A source-only shop is reached by the lifecycle relay through its source
+    // capability, and the mapping page reads its options through the same one.
+    expect(isOrderStatusWriteback(adapter as object)).toBe(true);
+    expect(isSourceOptionsReader(adapter as OrderSourcePort)).toBe(true);
   });
 
   it('should resolve OrderProcessorManager to the Shoper order processor adapter', async () => {
@@ -200,6 +215,7 @@ describe('Shoper plugin', () => {
     // The lifecycle relay reaches a destination through exactly this narrowing
     // (#3643): resolve as OrderProcessorManager, then isOrderStatusWriteback.
     expect(isOrderStatusWriteback(adapter as object)).toBe(true);
+    expect(isFulfillmentStatusReader(adapter as OrderProcessorManagerPort)).toBe(true);
   });
 
   it('should refuse OrderProcessorManager when built without the customer provisioner', async () => {

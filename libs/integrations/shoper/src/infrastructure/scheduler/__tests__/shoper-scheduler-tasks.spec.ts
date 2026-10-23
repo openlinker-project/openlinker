@@ -18,10 +18,16 @@ const connection = new Connection(
 );
 
 describe('buildShoperSchedulerTasks', () => {
-  const [task] = buildShoperSchedulerTasks();
+  const [task, fulfillment] = buildShoperSchedulerTasks();
 
-  it('should register exactly the orders-poll task, gated on OrderSource', () => {
-    expect(buildShoperSchedulerTasks()).toHaveLength(1);
+  it('should register the orders poll and the fulfilment read-back, and nothing else', () => {
+    expect(buildShoperSchedulerTasks().map((t) => t.taskId)).toEqual([
+      'shoper-orders-poll',
+      'shoper-fulfillment-status-sync',
+    ]);
+  });
+
+  it('should gate the orders poll on OrderSource', () => {
     expect(task.taskId).toBe('shoper-orders-poll');
     expect(task.platformType).toBe('shoper');
     expect(task.requiredCapability).toBe('OrderSource');
@@ -48,5 +54,31 @@ describe('buildShoperSchedulerTasks', () => {
     expect(task.generateIdempotencyKey(connection, 'a')).not.toBe(
       task.generateIdempotencyKey(connection, 'b'),
     );
+  });
+
+  describe('fulfillment status sync', () => {
+    it('should read back shipments only for a shop that receives orders', () => {
+      expect(fulfillment.platformType).toBe('shoper');
+      expect(fulfillment.requiredCapability).toBe('OrderProcessorManager');
+      expect(fulfillment.jobType).toBe('marketplace.fulfillment.statusSync');
+      expect(fulfillment.cronExpression).toBe('*/15 * * * *');
+    });
+
+    it('should be switchable off through its own env var and default to on', () => {
+      expect(fulfillment.enabledEnvVar).toBe('OL_SHOPER_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED');
+      expect(fulfillment.enabledDefault).toBeUndefined();
+    });
+
+    it('should page with its own scan-offset cursor key', () => {
+      expect(fulfillment.generatePayload(connection)).toEqual({
+        schemaVersion: 1,
+        limit: 100,
+        cursorKey: 'shoper.fulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      });
+      expect(fulfillment.generateIdempotencyKey(connection, 't1')).toBe(
+        'marketplace:conn-shoper-1:shoper:fulfillment:status:sync:t1',
+      );
+    });
   });
 });

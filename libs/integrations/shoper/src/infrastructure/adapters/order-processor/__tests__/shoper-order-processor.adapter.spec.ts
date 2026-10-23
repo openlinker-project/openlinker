@@ -624,4 +624,94 @@ describe('ShoperOrderProcessorAdapter', () => {
       expect(h.put).not.toHaveBeenCalled();
     });
   });
+
+  describe('getFulfillmentStatus (FulfillmentStatusReader)', () => {
+    const STATUS_TABLE = {
+      count: '4',
+      pages: 1,
+      page: 1,
+      list: [
+        { status_id: '2', type: '2', translations: { pl_PL: { name: 'w realizacji' } } },
+        { status_id: '6', type: '4', translations: { pl_PL: { name: 'zwrócone' } } },
+        { status_id: '7', type: '3', translations: { pl_PL: { name: 'przesyłka wysłana' } } },
+        { status_id: '10', type: '4', translations: { pl_PL: { name: 'anulowane' } } },
+      ],
+    };
+
+    function shopWith(statusId: string, parcels: readonly Record<string, unknown>[]): Harness {
+      const h = setup();
+      h.get.mockImplementation((path: string) => {
+        if (path === '/orders/10') return Promise.resolve({ status: 200, data: { order_id: '10', status_id: statusId } });
+        if (path === '/statuses') return Promise.resolve({ status: 200, data: STATUS_TABLE });
+        if (path === '/parcels') return Promise.resolve({ status: 200, data: { list: parcels } });
+        return Promise.reject(new Error(`unexpected GET ${path}`));
+      });
+      return h;
+    }
+
+    it('should report a sent parcel as dispatched with its tracking number', async () => {
+      const h = shopWith('7', [{ parcel_id: '3', order_id: '10', shipping_code: ' 6200000000001 ', sent: '1' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toEqual({
+        status: 'dispatched',
+        trackingNumber: '6200000000001',
+        deliveredAt: null,
+      });
+      expect(h.get).toHaveBeenCalledWith('/parcels', { 'filters[order_id]': '10', limit: 50 });
+    });
+
+    it('should read a parcel with a send date but no flag as sent', async () => {
+      const h = shopWith('7', [{ parcel_id: '3', order_id: '10', shipping_code: null, send_date: '2026-10-20 10:00:00' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toEqual({
+        status: 'dispatched',
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+    });
+
+    it('should report nothing while the only parcel is not sent yet', async () => {
+      const h = shopWith('2', [{ parcel_id: '3', order_id: '10', shipping_code: '', sent: '0' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toEqual({
+        status: null,
+        trackingNumber: null,
+        deliveredAt: null,
+      });
+    });
+
+    it('should report a cancelled status as cancelled, even over a sent parcel', async () => {
+      const h = shopWith('10', [{ parcel_id: '3', order_id: '10', shipping_code: 'T1', sent: '1' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+      expect(h.get).not.toHaveBeenCalledWith('/parcels', expect.anything());
+    });
+
+    it('should keep a returned order that shipped as dispatched, and one that never shipped as cancelled', async () => {
+      const shipped = shopWith('6', [{ parcel_id: '3', order_id: '10', shipping_code: 'T1', sent: '1' }]);
+      await expect(shipped.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toMatchObject({
+        status: 'dispatched',
+      });
+
+      const unshipped = shopWith('6', []);
+      await expect(unshipped.adapter.getFulfillmentStatus({ externalOrderId: '10' })).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+    });
+
+    it('should refuse an answer when the parcels filter returned another order', async () => {
+      const h = shopWith('7', [{ parcel_id: '3', order_id: '11', shipping_code: 'T1', sent: '1' }]);
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '10' })).rejects.toThrow(ShoperNetworkError);
+    });
+
+    it('should refuse a non-numeric order id without calling the shop', async () => {
+      const h = setup();
+
+      await expect(h.adapter.getFulfillmentStatus({ externalOrderId: '../x' })).rejects.toThrow(RangeError);
+      expect(h.get).not.toHaveBeenCalled();
+    });
+  });
 });

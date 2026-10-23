@@ -36,15 +36,23 @@
  * Partial shipment is not expressed: the event carries no lines, so the parcel
  * ships the whole remainder.
  *
+ * **Fulfillment read-back (#834).** `FulfillmentStatusReader` reports a sent
+ * parcel as dispatched and a cancelled status as cancelled, for the branch-1
+ * shipment projection.
+ *
  * @module libs/integrations/shoper/src/infrastructure/adapters/order-processor
  * @implements {OrderProcessorManagerPort}
  * @implements {OrderStatusWriteback}
+ * @implements {FulfillmentStatusReader}
  */
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
+import { FULFILLMENT_STATUS } from '@openlinker/core/orders';
 import type {
   DestinationOptionsReader,
+  FulfillmentStatusReader,
+  FulfillmentStatusSnapshot,
   MappingOption,
   OrderCreate,
   OrderItem,
@@ -69,8 +77,14 @@ import type {
   ShoperOrderCreateRequest,
   ShoperOrderRef,
   ShoperOrderProductCreateRequest,
+  ShoperOrderShipping,
+  ShoperParcel,
 } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
+import { SHOPER_MAX_PAGE_SIZE } from '../../http/shoper-pagination';
+import { readShoperFlag } from '../../mappers/shoper-flag.mapper';
+import { mapShoperOrderStatus } from '../../mappers/shoper-incoming-order.mapper';
+import { normalizeTrackingNumber } from '../../mappers/shoper-parcel.mapper';
 import {
   expectedOrderSum,
   findShoperTaxForRate,
@@ -97,7 +111,7 @@ import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table
 const SUM_TOLERANCE = 0.011;
 
 export class ShoperOrderProcessorAdapter
-  implements OrderProcessorManagerPort, DestinationOptionsReader, OrderStatusWriteback
+  implements OrderProcessorManagerPort, DestinationOptionsReader, OrderStatusWriteback, FulfillmentStatusReader
 {
   private readonly logger = new Logger(ShoperOrderProcessorAdapter.name);
   private readonly statusWriter: ShoperOrderStatusWriter;
@@ -122,7 +136,7 @@ export class ShoperOrderProcessorAdapter
      * The shop's status table. The factory passes the cache-backed instance it
      * shares with the order source; the default (no cache) serves a bare build.
      */
-    reference: ShoperOrderReferenceProvider = new ShoperOrderReferenceProvider(client),
+    private readonly reference: ShoperOrderReferenceProvider = new ShoperOrderReferenceProvider(client),
   ) {
     this.statusWriter = new ShoperOrderStatusWriter(client, connection, reference);
   }
@@ -492,6 +506,57 @@ export class ShoperOrderProcessorAdapter
     return this.statusWriter.write(event);
   }
 
+  // ─── FulfillmentStatusReader (#834) ────────────────────────────────────────
+
+  /**
+   * The shop's view of an order OpenLinker created there, for the branch-1
+   * shipment read-back. Shoper has no "delivered" status, so `delivered` is never
+   * reported; what it does record is a SENT parcel (with the carrier's tracking
+   * number) and a terminal status.
+   *
+   * A cancelled-type status wins over a sent parcel: an order cancelled after its
+   * parcel left is cancelled. A refund or return status does not: those follow a
+   * shipment, so a sent parcel still reads as dispatched, and only a refunded
+   * order that never shipped reads as cancelled. Anything else is `null` - the
+   * shop has not acted on the order yet.
+   */
+  async getFulfillmentStatus(input: { externalOrderId: string }): Promise<FulfillmentStatusSnapshot> {
+    const { externalOrderId } = input;
+    if (!/^\d+$/.test(externalOrderId)) {
+      throw new RangeError(
+        `Shoper order id must be numeric, got "${externalOrderId}" (connection: ${this.connection.id})`,
+      );
+    }
+
+    const { data: order } = await this.client.get<ShoperOrderShipping>(`/orders/${externalOrderId}`);
+    const statusId = toPositiveInt(order.status_id);
+    const neutral = mapShoperOrderStatus(statusId === null ? null : await this.reference.getStatus(String(statusId)));
+    if (neutral === 'cancelled') {
+      return { status: FULFILLMENT_STATUS.Cancelled, trackingNumber: null, deliveredAt: null };
+    }
+
+    const parcels = await this.client.get<{ list?: readonly ShoperParcel[] }>('/parcels', {
+      'filters[order_id]': externalOrderId,
+      limit: SHOPER_MAX_PAGE_SIZE,
+    });
+    const rows = parcels.data.list ?? [];
+    // An ignored filter would report another order's shipment as this one's.
+    if (rows.some((parcel) => String(parcel.order_id) !== externalOrderId)) {
+      throw new ShoperNetworkError(
+        `Shoper returned parcels of other orders for order ${externalOrderId}; the /parcels filter was not honoured`,
+      );
+    }
+    const sent = rows.filter(isSentParcel);
+    if (sent.length > 0) {
+      const tracked = sent.map((parcel) => normalizeTrackingNumber(parcel.shipping_code ?? undefined)).find(Boolean);
+      return { status: FULFILLMENT_STATUS.Dispatched, trackingNumber: tracked ?? null, deliveredAt: null };
+    }
+    if (neutral === 'refunded') {
+      return { status: FULFILLMENT_STATUS.Cancelled, trackingNumber: null, deliveredAt: null };
+    }
+    return { status: null, trackingNumber: null, deliveredAt: null };
+  }
+
   // ─── Failure handling ──────────────────────────────────────────────────────
 
   private async rollBack(
@@ -559,3 +624,11 @@ export class ShoperOrderProcessorAdapter
   }
 }
 
+/** A parcel Shoper records as sent: its `sent` flag, or a send date when the flag is absent. */
+function isSentParcel(parcel: ShoperParcel): boolean {
+  const flag = readShoperFlag(parcel.sent);
+  if (flag !== undefined) {
+    return flag;
+  }
+  return typeof parcel.send_date === 'string' && parcel.send_date.trim() !== '';
+}

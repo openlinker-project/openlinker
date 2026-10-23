@@ -1,15 +1,24 @@
 /**
  * Shoper Scheduler Tasks
  *
- * Contributes the orders-poll cron task (#3644). Webhooks are the low-latency
- * path, but a delivery can be lost (tunnel down, API restarting, shop retry
- * budget exhausted); the poll is the reconciliation backstop, as it is for
- * PrestaShop and WooCommerce (#904). It reads the order feed's `order_id`
- * keyset cursor, so it finds NEW orders; an edit to an order whose id was
- * already read is only observed through its webhook.
+ * Two cron tasks:
  *
- * The cadence is relaxed (10 min) because Shoper's request ceiling is unknown
- * (SPIKE-3638 C6) and webhooks already carry the primary load.
+ *   - `shoper-orders-poll` (#3644) - the order-ingestion reconciliation
+ *     backstop. Webhooks are the low-latency path, but a delivery can be lost
+ *     (tunnel down, API restarting, shop retry budget exhausted); the poll heals
+ *     that, as it does for PrestaShop and WooCommerce (#904). Its cursor carries
+ *     two passes: the `order_id` keyset that finds NEW orders and a `status_date`
+ *     watermark that re-observes STATUS changes of orders already read (see
+ *     `ShoperOrderSourceAdapter`). The cursor key keeps its original name so an
+ *     upgraded connection keeps its place in the feed.
+ *   - `shoper-fulfillment-status-sync` - branch-1 shipment read-back (#834) for a
+ *     shop that RECEIVES orders: reads each mirrored order's parcels and status
+ *     through `FulfillmentStatusReader` and projects branch-1 `Shipment` rows.
+ *     Rolling scan-offset cursor `shoper.fulfillmentStatus.scanOffset`; cadence
+ *     and defaults follow the PrestaShop task.
+ *
+ * The orders-poll cadence is relaxed (10 min) because Shoper's request ceiling
+ * is unknown (SPIKE-3638 C6) and webhooks already carry the primary load.
  *
  * @module libs/integrations/shoper/src/infrastructure/scheduler
  */
@@ -34,6 +43,23 @@ export function buildShoperSchedulerTasks(): SchedulerTaskConfig[] {
       }),
       generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
         `marketplace:${connection.id}:shoper:orders:poll:${timestamp}`,
+    },
+    {
+      taskId: 'shoper-fulfillment-status-sync',
+      platformType: SHOPER_PLATFORM_TYPE,
+      // Only a shop that receives orders has mirrored orders to read back.
+      requiredCapability: 'OrderProcessorManager',
+      jobType: 'marketplace.fulfillment.statusSync',
+      cronExpression: '*/15 * * * *',
+      enabledEnvVar: 'OL_SHOPER_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      generatePayload: (_connection: Connection) => ({
+        schemaVersion: 1 as const,
+        limit: 100,
+        cursorKey: 'shoper.fulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      }),
+      generateIdempotencyKey: (connection: Connection, timestamp: string): string =>
+        `marketplace:${connection.id}:shoper:fulfillment:status:sync:${timestamp}`,
     },
   ];
 }
