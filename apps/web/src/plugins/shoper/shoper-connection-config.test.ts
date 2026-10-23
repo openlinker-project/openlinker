@@ -19,18 +19,38 @@ describe('shoperConnectionConfig', () => {
         shoperShippingId: '8',
         shoperPaymentId: '1',
         shoperStatusId: '3',
+        shoperParcelShippingId: '',
+        shoperCancelledStatusId: '',
+        shoperInProgressStatusId: '',
+      });
+    });
+
+    it('should read the writeback ids back as strings', () => {
+      expect(
+        readConfigToForm({ defaults: { parcelShippingId: 8, cancelledStatusId: 10, inProgressStatusId: 2 } }),
+      ).toMatchObject({
+        shoperParcelShippingId: '8',
+        shoperCancelledStatusId: '10',
+        shoperInProgressStatusId: '2',
       });
     });
 
     it('should read every field as empty when there are no defaults, or defaults is null', () => {
-      const empty = { shoperShippingId: '', shoperPaymentId: '', shoperStatusId: '' };
+      const empty = {
+        shoperShippingId: '',
+        shoperPaymentId: '',
+        shoperStatusId: '',
+        shoperParcelShippingId: '',
+        shoperCancelledStatusId: '',
+        shoperInProgressStatusId: '',
+      };
       expect(readConfigToForm({})).toEqual(empty);
       expect(readConfigToForm({ defaults: null })).toEqual(empty);
       expect(readConfigToForm({ defaults: 'oops' })).toEqual(empty);
     });
 
     it('should not invent a value for a non-positive or non-integer stored id', () => {
-      expect(readConfigToForm({ defaults: { shippingId: 0, paymentId: -2, statusId: 1.5 } })).toEqual({
+      expect(readConfigToForm({ defaults: { shippingId: 0, paymentId: -2, statusId: 1.5 } })).toMatchObject({
         shoperShippingId: '',
         shoperPaymentId: '',
         shoperStatusId: '',
@@ -43,6 +63,12 @@ describe('shoperConnectionConfig', () => {
       expect(
         applyToConfig({ baseUrl: 'shop.example.com', extra: true }, { shoperPaymentId: '4' }),
       ).toEqual({ baseUrl: 'shop.example.com', extra: true, defaults: { paymentId: 4 } });
+    });
+
+    it('should write a writeback id beside the order defaults', () => {
+      expect(
+        applyToConfig({ defaults: { shippingId: 8 } }, { shoperParcelShippingId: '9', shoperCancelledStatusId: '10' }),
+      ).toEqual({ defaults: { shippingId: 8, parcelShippingId: 9, cancelledStatusId: 10 } });
     });
 
     it('should preserve sibling defaults when one field is patched', () => {
@@ -75,7 +101,14 @@ describe('shoperConnectionConfig', () => {
   });
 
   describe('schemaShape', () => {
-    it.each(['shoperShippingId', 'shoperPaymentId', 'shoperStatusId'] as const)(
+    it.each([
+      'shoperShippingId',
+      'shoperPaymentId',
+      'shoperStatusId',
+      'shoperParcelShippingId',
+      'shoperCancelledStatusId',
+      'shoperInProgressStatusId',
+    ] as const)(
       'should accept empty and a positive integer, and refuse anything else for %s',
       (field) => {
         const schema = schemaShape[field]!;

@@ -5,7 +5,9 @@
  * order: delivery method, payment method and status. They are fallbacks - a
  * mapping (Mappings page) wins for delivery and status - but payment has no
  * mapping, so `paymentId` is the only source and a shop receiving orders cannot
- * work without it.
+ * work without it. Below them, the three optional ids the lifecycle writeback
+ * uses (parcel delivery method, cancelled and in-progress status); each has a
+ * fallback the adapter picks itself, so leaving them unset is fine.
  *
  * Each list is read live from the shop (`destination/carriers`,
  * `destination/payment-methods`, `destination/order-statuses`), so the operator
@@ -39,6 +41,9 @@ const BUNDLE_KEY_BY_FIELD = {
   shoperShippingId: 'prestashopCarriers',
   shoperPaymentId: 'prestashopPaymentModules',
   shoperStatusId: 'prestashopOrderStatuses',
+  shoperParcelShippingId: 'prestashopCarriers',
+  shoperCancelledStatusId: 'prestashopOrderStatuses',
+  shoperInProgressStatusId: 'prestashopOrderStatuses',
 } as const satisfies Record<
   (typeof SHOPER_DEFAULT_FIELDS)[number]['field'],
   keyof MappingBundle
@@ -61,6 +66,25 @@ const FIELD_COPY = {
     label: 'Default order status',
     description:
       "Used when the order's status has no mapping. Pick the status new orders should start in.",
+  },
+  shoperParcelShippingId: {
+    label: 'Delivery method for shipments',
+    description:
+      'Recorded on the parcel when OpenLinker marks an order as shipped. Shoper refuses parcels for ' +
+      'carrier-integrated methods (InPost, DPD, ...), so pick a plain one. Not set: the order\'s own method ' +
+      'if Shoper accepts it, otherwise the first plain method in the shop.',
+  },
+  shoperCancelledStatusId: {
+    label: 'Status for cancelled orders',
+    description:
+      'The status an order moves to when OpenLinker cancels it in the shop. Not set: the first active ' +
+      'cancelled-type status.',
+  },
+  shoperInProgressStatusId: {
+    label: 'Status for orders in progress',
+    description:
+      'The status an order moves to when OpenLinker reports it in progress. Not set: the first active ' +
+      'in-progress status.',
   },
 } as const;
 

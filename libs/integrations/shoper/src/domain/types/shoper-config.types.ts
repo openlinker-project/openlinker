@@ -18,6 +18,17 @@ export interface ShoperOrderDefaults {
   readonly shippingId?: number;
   readonly paymentId?: number;
   readonly statusId?: number;
+  /**
+   * The shipping method a parcel is written under when OpenLinker records a
+   * dispatch. Shoper refuses `POST /parcels` for a carrier-integrated method
+   * (InPost, DPD, ...), so the order's own method is often unusable; this names
+   * a non-integrated one to use instead.
+   */
+  readonly parcelShippingId?: number;
+  /** The status a `cancelled` writeback moves the order to; else the first active cancelled-type status. */
+  readonly cancelledStatusId?: number;
+  /** The status an `in-progress` writeback moves the order to; else the first active in-progress-type status. */
+  readonly inProgressStatusId?: number;
 }
 
 export interface ShoperConnectionConfig {
