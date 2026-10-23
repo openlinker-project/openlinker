@@ -1,8 +1,8 @@
 /**
  * Shoper Inbound Webhook Decoder Adapter (#3644, ADR-021)
  *
- * Authenticates and decodes Shoper order webhooks at the host ingress, keyed by
- * `provider = 'shoper'`.
+ * Authenticates and decodes Shoper order and product webhooks at the host
+ * ingress, keyed by `provider = 'shoper'`.
  *
  * AUTHENTICATION: two checks, BOTH required, over the one per-connection
  * webhook secret the host supplies:
@@ -24,10 +24,13 @@
  * WooCommerce and Erli posture); a replayed delivery costs a redundant re-read
  * at worst, and the dedup gate catches an identical body.
  *
- * TRIGGER MODEL: the delivery carries the whole order, and the decoder reads only
- * its id. The authoritative order is re-read through `ShoperOrderSourceAdapter`
- * by the `marketplace.order.sync` job, so a forged or stale body can at worst
- * cause one redundant re-read.
+ * TRIGGER MODEL: the delivery carries the whole order or product, and the
+ * decoder reads only its id. The authoritative record is re-read - an order
+ * through `ShoperOrderSourceAdapter` by `marketplace.order.sync`, a product
+ * through the product master by `master.product.syncByExternalId` (#2647) - so a
+ * forged or stale body can at worst cause one redundant re-read. A
+ * `product.delete` is likewise only a trigger: the re-read's 404 is what marks
+ * the product deleted, so a delete that did not happen costs one re-sync.
  *
  * @module libs/integrations/shoper/src/infrastructure/adapters
  * @implements {InboundWebhookDecoderPort}
@@ -42,13 +45,24 @@ import type {
 import {
   SHOPER_WEBHOOK_ID_HEADER,
   SHOPER_WEBHOOK_NAME_HEADER,
-  SHOPER_WEBHOOK_SIGNATURE_HEADER,
   SHOPER_WEBHOOK_ORDER_RESOURCE,
+  SHOPER_WEBHOOK_PRODUCT_RESOURCE,
+  SHOPER_WEBHOOK_SIGNATURE_HEADER,
   SHOPER_WEBHOOK_TOKEN_QUERY_KEY,
+  type ShoperWebhookResource,
 } from '../../domain/types/shoper-webhook.types';
 
 /** Fallback when a delivery names no event: treated as an update, i.e. a safe re-read. */
-const DEFAULT_EVENT = 'order.edit';
+const DEFAULT_EVENT_BY_RESOURCE: Readonly<Record<ShoperWebhookResource, string>> = {
+  order: 'order.edit',
+  product: 'product.edit',
+};
+
+/** The body field carrying the id of each resource. */
+const ID_FIELD_BY_RESOURCE: Readonly<Record<ShoperWebhookResource, string>> = {
+  order: 'order_id',
+  product: 'product_id',
+};
 
 export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoderPort {
   verify(input: {
@@ -93,19 +107,28 @@ export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoder
       return { action: 'reject', reason: 'body is not a JSON object' };
     }
 
+    const record = body as Record<string, unknown>;
     const eventName = this.header(headers, SHOPER_WEBHOOK_NAME_HEADER);
-    if (eventName !== undefined && !eventName.toLowerCase().startsWith(`${SHOPER_WEBHOOK_ORDER_RESOURCE}.`)) {
-      // Authentic but not an order event (someone registered more events on the
-      // shop): 202 without publish, so it does not become a retry storm.
-      return { action: 'ignore', reason: `not an order event (${eventName})` };
+    const resource = eventName !== undefined ? resourceOfEvent(eventName) : resourceOfBody(record);
+    if (resource === null) {
+      // Authentic but not an event OpenLinker handles (someone registered more
+      // events on the shop): 202 without publish, so it does not become a retry
+      // storm.
+      return {
+        action: 'ignore',
+        reason:
+          eventName !== undefined
+            ? `not an order or product event (${eventName})`
+            : 'body has no order or product id',
+      };
     }
 
-    const orderId = this.asId((body as Record<string, unknown>)['order_id']);
-    if (orderId === null) {
-      return { action: 'ignore', reason: 'body has no order id' };
+    const id = this.asId(record[ID_FIELD_BY_RESOURCE[resource]]);
+    if (id === null) {
+      return { action: 'ignore', reason: `body has no ${resource} id` };
     }
 
-    const eventType = eventName ?? DEFAULT_EVENT;
+    const eventType = eventName ?? DEFAULT_EVENT_BY_RESOURCE[resource];
     return {
       action: 'route',
       envelope: {
@@ -113,17 +136,18 @@ export class ShoperInboundWebhookDecoderAdapter implements InboundWebhookDecoder
         eventType,
         // Advisory only: the body's timestamps are naive and shop-local.
         occurredAt: new Date().toISOString(),
-        objectType: SHOPER_WEBHOOK_ORDER_RESOURCE,
-        externalId: orderId,
-        payload: { id: orderId },
+        objectType: resource,
+        externalId: id,
+        payload: { id },
       },
     };
   }
 
   /**
-   * Deterministic dedup key: the event name plus the exact body. A retried
-   * delivery re-hashes to the same id and is caught by the Postgres dedup gate; a
-   * real change alters the body (`status_id`, `status_date`, `sum`, ...). The
+   * Deterministic dedup key: the event name plus the exact body. Shoper does not
+   * retry deliveries itself, but a replayed or duplicated one re-hashes to the
+   * same id and is caught by the Postgres dedup gate; a real change alters the
+   * body (`status_id`, `sum`, a product's `edit_date` or stock, ...). The
    * decode-time `now` used for `occurredAt` is deliberately NOT part of the basis -
    * hashing it would mint a fresh id on every retry and defeat dedup.
    */
@@ -155,4 +179,31 @@ function constantTimeEquals(provided: string, expected: string): boolean {
   // `timingSafeEqual` throws on a length mismatch, and the length of a random
   // secret or of a SHA-1 hex digest is not itself worth hiding.
   return providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
+}
+
+/** The resource of an event name (`product.edit` -> `product`), or null for one not handled. */
+function resourceOfEvent(eventName: string): ShoperWebhookResource | null {
+  const prefix = eventName.toLowerCase().split('.')[0];
+  if (prefix === SHOPER_WEBHOOK_ORDER_RESOURCE) {
+    return SHOPER_WEBHOOK_ORDER_RESOURCE;
+  }
+  if (prefix === SHOPER_WEBHOOK_PRODUCT_RESOURCE) {
+    return SHOPER_WEBHOOK_PRODUCT_RESOURCE;
+  }
+  return null;
+}
+
+/**
+ * A delivery that names no event is classified by its body. An order body
+ * carries `order_id` and a product body `product_id`; an order wins when both
+ * are present, because an order's lines carry product ids too.
+ */
+function resourceOfBody(record: Record<string, unknown>): ShoperWebhookResource | null {
+  if (record['order_id'] !== undefined) {
+    return SHOPER_WEBHOOK_ORDER_RESOURCE;
+  }
+  if (record['product_id'] !== undefined) {
+    return SHOPER_WEBHOOK_PRODUCT_RESOURCE;
+  }
+  return null;
 }

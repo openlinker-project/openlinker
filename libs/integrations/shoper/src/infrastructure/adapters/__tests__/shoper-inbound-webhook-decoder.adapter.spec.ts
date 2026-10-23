@@ -174,6 +174,70 @@ describe('ShoperInboundWebhookDecoderAdapter', () => {
       });
     });
 
+    describe('a product delivery (#2647: a trigger, never an assertion)', () => {
+      const product = {
+        product_id: '23',
+        stock: { stock: '4.0000', price: '19.99' },
+        edit_date: '2026-10-23 10:00:00',
+      };
+
+      it.each([['product.create'], ['product.edit'], ['product.delete']])(
+        'should route %s on the product id only, never carrying the product body',
+        (eventName) => {
+          const { envelope } = route(
+            decoder.extractEnvelope(body(product), { 'x-webhook-name': eventName }),
+          );
+
+          expect(envelope).toMatchObject({
+            eventType: eventName,
+            objectType: 'product',
+            externalId: '23',
+            payload: { id: '23' },
+          });
+          expect(JSON.stringify(envelope)).not.toContain('19.99');
+        },
+      );
+
+      it('should accept a numeric product id', () => {
+        const { envelope } = route(
+          decoder.extractEnvelope(body({ product_id: 23 }), { 'x-webhook-name': 'product.edit' }),
+        );
+
+        expect(envelope.externalId).toBe('23');
+      });
+
+      it('should ignore a product event whose body carries no usable product id', () => {
+        expect(
+          decoder.extractEnvelope(body({ product_id: '0' }), { 'x-webhook-name': 'product.edit' }),
+        ).toMatchObject({ action: 'ignore' });
+        expect(
+          decoder.extractEnvelope(body({ order_id: '8' }), { 'x-webhook-name': 'product.edit' }),
+        ).toMatchObject({ action: 'ignore' });
+      });
+
+      it('should classify an unnamed delivery by its body, an order winning over a product', () => {
+        const unnamed = route(decoder.extractEnvelope(body({ product_id: '23' }), {}));
+        expect(unnamed.envelope).toMatchObject({ objectType: 'product', eventType: 'product.edit' });
+        expect(
+          route(decoder.extractEnvelope(body({ order_id: '8', product_id: '23' }), {})).envelope,
+        ).toMatchObject({ objectType: 'order', externalId: '8' });
+      });
+
+      it('should derive a deterministic event id for the same delivery', () => {
+        const headers = { 'x-webhook-name': 'product.edit' };
+        const idOf = (): string =>
+          route(decoder.extractEnvelope(body(product), headers)).envelope.eventId;
+
+        expect(idOf()).toBe(idOf());
+      });
+    });
+
+    it('should ignore an unnamed delivery that carries neither an order nor a product id', () => {
+      expect(decoder.extractEnvelope(body({ user_id: '3' }), {})).toMatchObject({
+        action: 'ignore',
+      });
+    });
+
     it.each([['not json'], ['']])('should reject a body that is not JSON: %p', (raw) => {
       expect(decoder.extractEnvelope(Buffer.from(raw), {})).toMatchObject({ action: 'reject' });
     });

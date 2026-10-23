@@ -157,8 +157,13 @@ Paging (all observed on a live shop):
 - **No modified-since rung.** Shoper has no bulk "changed since" query - only a per-object
   `GET /object-mtime/<object>/<id>` (the plural form answers 500) - so `ModifiedProductLister` is not
   implemented and the delta pass skips Shoper connections. The full pass is the only sweep, from day one.
-- Webhook-driven deletion detection (a `product.deleted` trigger) belongs to the webhook work (#3644); until
-  then the periodic `reconcile` audit is the deletion authority, as for any master without a delete hook.
+- **Product webhooks are a trigger (#2647).** With `ProductMaster` enabled, "Configure webhooks" also
+  subscribes `product.create`, `product.edit` and `product.delete`; each routes to
+  `master.product.syncByExternalId`, which re-reads the product. Nothing in the delivery body is used, and a
+  delete is concluded only from the re-read's 404 envelope. A connection installed before this needs install
+  re-run to gain the product events. Shoper does not retry a failed delivery, so the periodic `reconcile` audit
+  stays the deletion backstop and the sweeps stay the change backstop. A panel stock edit also fires
+  `product.edit`; it re-syncs the product, while the stock itself still arrives through the inventory sweep.
 
 ## InventoryMaster (read)
 

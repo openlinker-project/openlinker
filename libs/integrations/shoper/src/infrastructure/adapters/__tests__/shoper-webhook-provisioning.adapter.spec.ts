@@ -116,10 +116,12 @@ function setup(
 
 describe('ShoperWebhookProvisioningAdapter', () => {
   describe('refusals (nothing is rotated and nothing reaches the shop)', () => {
-    it('should refuse when OrderSource is not enabled, because every delivery would be accepted and then discarded', async () => {
-      const f = setup({ enabledCapabilities: ['ProductMaster', 'InventoryMaster'] });
+    it('should refuse when neither OrderSource nor ProductMaster is enabled, because every delivery would be discarded', async () => {
+      const f = setup({ enabledCapabilities: ['InventoryMaster', 'ProductPublisher'] });
 
-      await expect(f.adapter.install(CONNECTION_ID)).rejects.toThrow(/Enable the Order source capability/);
+      await expect(f.adapter.install(CONNECTION_ID)).rejects.toThrow(
+        /Enable the Order source or Product master capability/,
+      );
 
       expect(f.secretService.rotate).not.toHaveBeenCalled();
       expect(f.fetchMock).not.toHaveBeenCalled();
@@ -164,7 +166,7 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       );
     });
 
-    it('should register ONE webhook with every order event, active, whose URL carries the encoded token', async () => {
+    it('should register ONE webhook with every order and product event, active, whose URL carries the encoded token', async () => {
       const f = setup();
 
       await f.adapter.install(CONNECTION_ID);
@@ -174,11 +176,30 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       expect(posts[0]?.path).toBe('/webhooks');
       expect(posts[0]?.body).toEqual({
         url: `${ENDPOINT}?token=${ENCODED_SECRET}`,
-        events: ['order.create', 'order.edit', 'order.paid', 'order.status'],
+        events: [
+          'order.create',
+          'order.edit',
+          'order.paid',
+          'order.status',
+          'product.create',
+          'product.edit',
+          'product.delete',
+        ],
         active: 1,
         format: 0,
         secret: SECRET,
       });
+    });
+
+    it.each([
+      [['OrderSource'], ['order.create', 'order.edit', 'order.paid', 'order.status']],
+      [['ProductMaster', 'InventoryMaster'], ['product.create', 'product.edit', 'product.delete']],
+    ])('should subscribe only the events whose capability is enabled (%j)', async (caps, events) => {
+      const f = setup({ enabledCapabilities: caps });
+
+      await f.adapter.install(CONNECTION_ID);
+
+      expect(f.calls.find((c) => c.method === 'POST')?.body?.events).toEqual(events);
     });
 
     it('should never register order.delete, whose re-read would 404 and retry for nothing', async () => {
@@ -228,6 +249,23 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       expect(puts).toHaveLength(1);
       expect(puts[0]?.path).toBe('/webhooks/9');
       expect(puts[0]?.body).toMatchObject({ url: `${ENDPOINT}?token=${ENCODED_SECRET}`, active: 1 });
+    });
+
+    it('should give a webhook installed with order events only the product events on re-install', async () => {
+      const f = setup({
+        shopWebhooks: [
+          {
+            webhook_id: '9',
+            url: `${ENDPOINT}?token=OLD-TOKEN`,
+            events: ['order.create', 'order.edit', 'order.paid', 'order.status'],
+          },
+        ],
+      });
+
+      await f.adapter.install(CONNECTION_ID);
+
+      const put = f.calls.find((c) => c.method === 'PUT');
+      expect(put?.body?.events).toEqual(expect.arrayContaining(['product.edit', 'product.delete']));
     });
 
     it('should leave every other webhook of the shop alone', async () => {

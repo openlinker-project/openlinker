@@ -48,6 +48,23 @@ describe('ShoperWebhookEventTranslatorAdapter', () => {
     expect(translator.translate(event({ objectType: 'Order' }))).not.toBeNull();
   });
 
+  it.each([['product.create'], ['product.edit'], ['product.delete']])(
+    'should translate %s into the product domain, so it routes to a product re-read',
+    (eventType) => {
+      expect(
+        translator.translate(
+          event({ objectType: 'product', eventType, externalId: '23', payload: { id: '23' } }),
+        ),
+      ).toEqual({
+        domain: 'product',
+        externalId: '23',
+        eventType,
+        occurredAt: '2026-10-06T10:00:00.000Z',
+        payload: { id: '23' },
+      });
+    },
+  );
+
   it('should dead-letter an object type this plugin cannot decode', () => {
     expect(translator.translate(event({ objectType: 'client' }))).toBeNull();
   });

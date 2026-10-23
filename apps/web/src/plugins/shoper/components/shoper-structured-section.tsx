@@ -22,7 +22,9 @@ export function ShoperStructuredSection({
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
-  const orderSourceEnabled = connection.enabledCapabilities.includes('OrderSource');
+  const webhookCapabilityEnabled =
+    connection.enabledCapabilities.includes('OrderSource') ||
+    connection.enabledCapabilities.includes('ProductMaster');
 
   return (
     <>
@@ -30,7 +32,7 @@ export function ShoperStructuredSection({
         label="OL callback URL"
         name="openlinkerCallbackBaseUrl"
         error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-        description="OpenLinker's public URL as Shoper can reach it. Shoper calls it when an order changes. Pre-filled from your browser; it must be reachable from the internet. Required for the 'Configure webhooks' action."
+        description="OpenLinker's public URL as Shoper can reach it. Shoper calls it when an order or a product changes. Pre-filled from your browser; it must be reachable from the internet. Required for the 'Configure webhooks' action."
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
@@ -42,10 +44,10 @@ export function ShoperStructuredSection({
           invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
         />
       </FormField>
-      {orderSourceEnabled ? null : (
-        <Alert tone="warning" title="Order source is off">
-          Webhooks only deliver orders when the Order source capability is enabled on this
-          connection. Enable it first, then configure webhooks.
+      {webhookCapabilityEnabled ? null : (
+        <Alert tone="warning" title="Nothing here uses webhooks">
+          Webhooks deliver orders when Order source is enabled on this connection and product
+          changes when Product master is. Enable one of them first, then configure webhooks.
         </Alert>
       )}
       <ShoperOrderDefaultsSection
