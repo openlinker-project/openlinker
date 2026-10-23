@@ -120,7 +120,7 @@ describe('Shoper plugin', () => {
 
     createShoperPlugin().register?.(host);
 
-    expect(schedulerRegister).toHaveBeenCalledTimes(2);
+    expect(schedulerRegister).toHaveBeenCalledTimes(3);
     expect(schedulerRegister).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: 'shoper-orders-poll', jobType: 'marketplace.orders.poll' }),
     );

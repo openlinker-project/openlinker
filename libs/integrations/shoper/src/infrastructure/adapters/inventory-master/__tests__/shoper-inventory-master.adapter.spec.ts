@@ -423,7 +423,7 @@ describe('ShoperInventoryMasterAdapter', () => {
         }
         const single = /^\/products\/(\d+)$/.exec(path);
         if (single !== null) {
-          const id = single[1] as string;
+          const id = single[1];
           return products.has(id)
             ? Promise.resolve({ status: 200, data: buildProduct({ product_id: id }) })
             : Promise.reject(NOT_FOUND);

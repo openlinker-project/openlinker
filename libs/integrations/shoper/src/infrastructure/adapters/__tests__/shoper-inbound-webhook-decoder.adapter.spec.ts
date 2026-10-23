@@ -87,13 +87,15 @@ describe('ShoperInboundWebhookDecoderAdapter', () => {
       });
 
       it('should refuse a delivery with no signature header, even though the URL token is right', () => {
-        const { 'x-webhook-sha1': _dropped, ...headers } = signedHeaders();
+        const headers = { ...signedHeaders() };
+        delete headers['x-webhook-sha1'];
 
         expect(verify({ headers })).toEqual({ ok: false });
       });
 
       it('should refuse a delivery with no webhook id header, even though the URL token is right', () => {
-        const { 'x-webhook-id': _dropped, ...headers } = signedHeaders();
+        const headers = { ...signedHeaders() };
+        delete headers['x-webhook-id'];
 
         expect(verify({ headers })).toEqual({ ok: false });
       });

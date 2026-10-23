@@ -407,7 +407,7 @@ describe('ShoperProductMasterAdapter', () => {
     const WARSAW = { ...MAP_CONTEXT, timezone: 'Europe/Warsaw' };
 
     function filtersOf(get: jest.Mock, call = 0): unknown {
-      const query = get.mock.calls[call]?.[1] as { filters: string };
+      const query = (get.mock.calls as unknown[][])[call]?.[1] as { filters: string };
       return JSON.parse(query.filters);
     }
 
@@ -1194,7 +1194,7 @@ describe('ShoperProductMasterAdapter', () => {
         }
         const single = /^\/products\/(\d+)$/.exec(path);
         if (single !== null) {
-          const id = single[1] as string;
+          const id = single[1];
           return has.has(id)
             ? Promise.resolve({
                 status: 200,
