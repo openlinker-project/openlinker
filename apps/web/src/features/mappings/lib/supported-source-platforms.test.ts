@@ -24,6 +24,10 @@ describe('isSupportedSourcePlatform', () => {
     expect(isSupportedSourcePlatform('erli')).toBe(true);
   });
 
+  it('returns true for an allowlisted platform (shoper)', () => {
+    expect(isSupportedSourcePlatform('shoper')).toBe(true);
+  });
+
   it('returns false for a non-allowlisted platform (shopify)', () => {
     expect(isSupportedSourcePlatform('shopify')).toBe(false);
   });
