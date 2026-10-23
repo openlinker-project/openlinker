@@ -88,6 +88,13 @@ export class ShoperAdapterFactory {
     // rest on sharing the instance; it rests on both going through this class.
     const productReader = new ShoperProductReader(client, connection.id);
     const taxTable = new ShoperTaxTableProvider(client);
+    // Through the host cache: the bag is rebuilt per call, so a per-instance memo
+    // alone would re-read these tables in every order job. One instance serves
+    // both order roles, which read the same status table.
+    const orderReference = new ShoperOrderReferenceProvider(client, {
+      cache,
+      keyPrefix: `shoper:order-reference:${connection.id}:${base.host}`,
+    });
 
     return {
       productMaster: new ShoperProductMasterAdapter(
@@ -107,17 +114,7 @@ export class ShoperAdapterFactory {
         connection,
       ),
       productPublisher: new ShoperProductPublisherAdapter(client, shopContext, connection),
-      orderSource: new ShoperOrderSourceAdapter(
-        client,
-        // Through the host cache: the bag is rebuilt per call, so a per-instance memo
-        // alone would re-read these tables in every order job.
-        new ShoperOrderReferenceProvider(client, {
-          cache,
-          keyPrefix: `shoper:order-reference:${connection.id}:${base.host}`,
-        }),
-        shopContext,
-        connection,
-      ),
+      orderSource: new ShoperOrderSourceAdapter(client, orderReference, shopContext, connection),
       orderProcessor:
         customerProvisioner === undefined
           ? null
@@ -131,6 +128,7 @@ export class ShoperAdapterFactory {
               connection,
               mappingConfig,
               this.warnedStockFlagConnections,
+              orderReference,
             ),
     };
   }

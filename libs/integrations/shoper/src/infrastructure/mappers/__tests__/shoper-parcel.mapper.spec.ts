@@ -1,8 +1,10 @@
-import type { ShoperParcel } from '../../../domain/types/shoper-api.types';
+import type { ShoperParcel, ShoperShippingRow } from '../../../domain/types/shoper-api.types';
 import {
+  acceptsShoperManualParcel,
   buildShoperParcelCreateRequest,
   normalizeTrackingNumber,
   planShoperParcelWrite,
+  selectShoperParcelShipping,
 } from '../shoper-parcel.mapper';
 
 function parcel(id: string, code: string | null): ShoperParcel {
@@ -64,6 +66,63 @@ describe('shoper-parcel.mapper', () => {
       expect(normalizeTrackingNumber(' T1 ')).toBe('T1');
       expect(normalizeTrackingNumber('   ')).toBeUndefined();
       expect(normalizeTrackingNumber(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('acceptsShoperManualParcel', () => {
+    it('should accept only the plain personal engine, whatever its case', () => {
+      expect(acceptsShoperManualParcel({ shipping_id: '8', engine: 'personal' })).toBe(true);
+      expect(acceptsShoperManualParcel({ shipping_id: '8', engine: ' Personal ' })).toBe(true);
+      expect(acceptsShoperManualParcel({ shipping_id: '1', engine: 'inpost' })).toBe(false);
+      expect(acceptsShoperManualParcel({ shipping_id: '2', engine: null })).toBe(false);
+      expect(acceptsShoperManualParcel({ shipping_id: '3' })).toBe(false);
+    });
+  });
+
+  describe('selectShoperParcelShipping', () => {
+    const SHIPPINGS: ShoperShippingRow[] = [
+      { shipping_id: '1', engine: 'inpost', active: '1' },
+      { shipping_id: '7', engine: 'personal', active: '0' },
+      { shipping_id: '8', engine: 'personal', active: '1' },
+      { shipping_id: '9', engine: 'personal' },
+    ];
+
+    it("should take the operator's configured method first, whatever the order uses", () => {
+      expect(
+        selectShoperParcelShipping({ configuredShippingId: 4, orderShippingId: 9, shippings: SHIPPINGS }),
+      ).toEqual({ shippingId: 4, source: 'config' });
+    });
+
+    it("should keep the order's own method when Shoper accepts a parcel for it, even an inactive one", () => {
+      expect(
+        selectShoperParcelShipping({ configuredShippingId: undefined, orderShippingId: 7, shippings: SHIPPINGS }),
+      ).toEqual({ shippingId: 7, source: 'order' });
+    });
+
+    it('should fall back to the first ACTIVE plain method for an integrated order method', () => {
+      expect(
+        selectShoperParcelShipping({ configuredShippingId: undefined, orderShippingId: 1, shippings: SHIPPINGS }),
+      ).toEqual({ shippingId: 8, source: 'fallback' });
+    });
+
+    it('should read a method with no active flag as active', () => {
+      expect(
+        selectShoperParcelShipping({
+          configuredShippingId: undefined,
+          orderShippingId: null,
+          shippings: [{ shipping_id: '9', engine: 'personal' }],
+        }),
+      ).toEqual({ shippingId: 9, source: 'fallback' });
+    });
+
+    it('should answer null when nothing qualifies', () => {
+      expect(
+        selectShoperParcelShipping({
+          configuredShippingId: undefined,
+          orderShippingId: 1,
+          shippings: [{ shipping_id: '1', engine: 'inpost', active: '1' }],
+        }),
+      ).toBeNull();
     });
   });
 });

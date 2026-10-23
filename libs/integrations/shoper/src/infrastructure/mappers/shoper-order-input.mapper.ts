@@ -13,6 +13,19 @@ import type { OrderCreate } from '@openlinker/core/orders';
 import { ShoperOrderUnbuildableException } from '../../domain/exceptions/shoper-order-unbuildable.exception';
 import type { ShoperOrderDefaults } from '../../domain/types/shoper-config.types';
 
+/**
+ * Every `config.defaults` key, in one list so the reader and the shape
+ * validator cannot disagree about which ids exist.
+ */
+export const SHOPER_DEFAULT_KEYS = [
+  'shippingId',
+  'paymentId',
+  'statusId',
+  'parcelShippingId',
+  'cancelledStatusId',
+  'inProgressStatusId',
+] as const satisfies ReadonlyArray<keyof ShoperOrderDefaults>;
+
 /** RFC-5322-lite: enough to refuse an obviously unusable value. */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -37,14 +50,14 @@ export function readDefaults(connection: Connection): ShoperOrderDefaults {
     return {};
   }
   const record = raw as Record<string, unknown>;
-  const shippingId = toPositiveInt(record.shippingId);
-  const paymentId = toPositiveInt(record.paymentId);
-  const statusId = toPositiveInt(record.statusId);
-  return {
-    ...(shippingId !== null ? { shippingId } : {}),
-    ...(paymentId !== null ? { paymentId } : {}),
-    ...(statusId !== null ? { statusId } : {}),
-  };
+  const defaults: { -readonly [K in keyof ShoperOrderDefaults]: ShoperOrderDefaults[K] } = {};
+  for (const key of SHOPER_DEFAULT_KEYS) {
+    const value = toPositiveInt(record[key]);
+    if (value !== null) {
+      defaults[key] = value;
+    }
+  }
+  return defaults;
 }
 
 export function requireDefault(value: number | undefined, key: string, label: string, connectionId: string): number {

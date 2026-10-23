@@ -25,8 +25,12 @@ import type {
   ShoperCurrency,
   ShoperStatusRow,
 } from '../../domain/types/shoper-api.types';
-import type { ShoperOrderStatusInfo } from '../../domain/types/shoper-order-status.types';
+import type {
+  ShoperOrderStatusEntry,
+  ShoperOrderStatusInfo,
+} from '../../domain/types/shoper-order-status.types';
 import type { ShoperHttpClient } from '../http/shoper-http-client';
+import { readShoperFlag } from '../mappers/shoper-flag.mapper';
 import { SHOPER_MAX_PAGE_SIZE, fetchShoperPage } from '../http/shoper-pagination';
 
 export const ORDER_REFERENCE_CACHE_TTL_SEC = 300;
@@ -41,12 +45,13 @@ function isStatusInfo(value: unknown): value is ShoperOrderStatusInfo {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
-  const { type, labels } = value as { type?: unknown; labels?: unknown };
+  const { type, labels, active } = value as { type?: unknown; labels?: unknown; active?: unknown };
   return (
     typeof type === 'number' &&
     Number.isInteger(type) &&
     Array.isArray(labels) &&
-    labels.every((label) => typeof label === 'string')
+    labels.every((label) => typeof label === 'string') &&
+    (active === undefined || typeof active === 'boolean')
   );
 }
 
@@ -66,6 +71,18 @@ export class ShoperOrderReferenceProvider {
 
   /** A status's lifecycle type (1 new .. 4 terminal) and labels, or null when the shop lists no usable type. */
   async getStatus(statusId: string): Promise<ShoperOrderStatusInfo | null> {
+    return (await this.statusTable()).get(statusId) ?? null;
+  }
+
+  /** Every status the shop lists with a usable type, in ascending numeric id order. */
+  async listStatuses(): Promise<readonly ShoperOrderStatusEntry[]> {
+    const table = await this.statusTable();
+    return [...table.entries()]
+      .map(([statusId, info]) => ({ statusId, ...info }))
+      .sort((a, b) => Number(a.statusId) - Number(b.statusId));
+  }
+
+  private statusTable(): Promise<ReadonlyMap<string, ShoperOrderStatusInfo>> {
     this.statuses ??= this.throughCache('statuses', isStatusInfo, () => this.loadAll<ShoperStatusRow, ShoperOrderStatusInfo>(
       '/statuses',
       'status_id ASC',
@@ -78,13 +95,14 @@ export class ShoperOrderReferenceProvider {
         const labels = Object.values(row.translations ?? {})
           .map((t) => t?.name)
           .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
-        return [String(row.status_id), { type, labels }];
+        const active = readShoperFlag(row.active);
+        return [String(row.status_id), { type, labels, ...(active === undefined ? {} : { active }) }];
       },
     )).catch((error: unknown) => {
       this.statuses = null;
       throw error;
     });
-    return (await this.statuses).get(statusId) ?? null;
+    return this.statuses;
   }
 
   /** The ISO code (`PLN`) of a `currency_id`, or null when the shop lists none. */

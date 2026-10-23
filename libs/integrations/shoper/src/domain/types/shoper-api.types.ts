@@ -230,10 +230,26 @@ export interface ShoperOrderRef {
   readonly status_id?: string | number | null;
 }
 
-/** The slice of `GET /orders/:id` the parcel writeback reads: the shipping method the order uses. */
+/**
+ * The slice of `GET /orders/:id` the status writeback reads: the shipping method
+ * the order uses and the status it is in.
+ */
 export interface ShoperOrderShipping {
   readonly order_id: string | number;
   readonly shipping_id?: string | number | null;
+  readonly status_id?: string | number | null;
+}
+
+/**
+ * A `GET /shippings` row as the parcel writeback reads it. `engine` names what
+ * drives the method: `personal` for a plain, non-integrated one (verified live on
+ * the trial shop, id 8), a carrier module for InPost, DPD and the like.
+ */
+export interface ShoperShippingRow {
+  readonly shipping_id: string | number;
+  readonly engine?: string | null;
+  /** `"1"` / `"0"` on the wire like every other flag; absent reads as active. */
+  readonly active?: string | number | boolean | null;
 }
 
 /** Row of `GET /parcels`. `shipping_code` is the carrier tracking number. */
@@ -241,6 +257,10 @@ export interface ShoperParcel {
   readonly parcel_id: string | number;
   readonly order_id: string | number;
   readonly shipping_code?: string | null;
+  /** Whether the parcel has been sent; a flag like every other (`"1"` / `true`). */
+  readonly sent?: string | number | boolean | null;
+  /** When it was sent, naive and shop-local; absent or null while unsent. */
+  readonly send_date?: string | null;
 }
 
 /**
@@ -254,6 +274,11 @@ export interface ShoperParcelCreateRequest {
   readonly shipping_id: number;
   readonly shipping_code?: string;
   readonly sent: true;
+}
+
+/** Body of `PUT /orders/:id` that moves an order to another status (live-verified for cancel). */
+export interface ShoperOrderStatusUpdate {
+  readonly status_id: number;
 }
 
 /** Body of `PUT /parcels/:id` that attaches a tracking number arriving after the parcel. */
@@ -343,6 +368,8 @@ export interface ShoperOrderLineRow {
 export interface ShoperStatusRow {
   readonly status_id: string;
   readonly type?: string | number | null;
+  /** Whether the shop offers the status (`"1"` / `"0"`). */
+  readonly active?: string | number | boolean | null;
   /** Per-language labels (`pl_PL: { name: 'zwrócone' }`); the row's own `name` is null on the live shop. */
   readonly translations?: Readonly<Record<string, { readonly name?: string | null }>> | null;
 }
