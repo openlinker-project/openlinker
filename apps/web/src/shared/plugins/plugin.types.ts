@@ -25,16 +25,16 @@
  *
  * @module shared/plugins
  */
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import type { RouteObject } from 'react-router-dom';
 import type { RefinementCtx, ZodType } from 'zod';
 
 import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
-import type { Role } from '../../app/nav-registry.types';
+import type { GroupRoleGate } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
-import type { InvoiceRecord } from '../../features/invoicing';
+import type { CorrectionSuggestedLine, InvoiceRecord } from '../../features/invoicing';
 import type { StructuredError } from '../types/structured-error.types';
 
 /**
@@ -56,12 +56,19 @@ export interface NavContribution {
   label: string;
   end?: boolean;
   /**
-   * Declarative role gate (#610). When set, the contribution is dropped for
-   * sessions whose role doesn't match — same UI-hide semantics as the AI
-   * group's `requiresRole: 'admin'` on `BASE_NAV_GROUPS`. Authorization is
-   * still enforced backend-side; this only hides the nav affordance.
+   * Declarative ADMIN-ONLY gate (#610). When set, the contribution is dropped
+   * for non-admin sessions — same UI-hide semantics as the AI group's
+   * `requiresRole: 'admin'` on `BASE_NAV_GROUPS`. Authorization is still
+   * enforced backend-side; this only hides the nav affordance.
+   *
+   * Typed {@link GroupRoleGate} rather than the wider `Role` union (#3107
+   * review):
+   * `merge-nav-contributions.ts` tests `requiresRole === 'admin'`, so this said
+   * "dropped for sessions whose role doesn't match" while a contribution
+   * declaring `'operator'` was in fact shown to EVERY role. A plugin author
+   * gets a compile error now instead of a gate that silently does nothing.
    */
-  requiresRole?: Role;
+  requiresRole?: GroupRoleGate;
 }
 
 /**
@@ -126,6 +133,13 @@ export interface PlatformSetupCard {
   description: string;
   to: string;
   badge: string;
+  /**
+   * Render the card as the platform's own product rather than a third-party
+   * integration (the OpenLinker OMS): listed first and styled apart. It also
+   * makes the card appear in the picker even when the platform is
+   * `hideFromCreateConnection` (hidden from the by-hand advanced form only).
+   */
+  featured?: boolean;
 }
 
 /**
@@ -554,6 +568,36 @@ export interface InvoiceDetailSectionProps {
 }
 
 /**
+ * Props the per-integration receipt section on the pack bench receives (#3647).
+ *
+ * Content-only, the `invoiceDetailSection` pattern: the host keeps the card's
+ * badge, top line and title, so no integration can restate a status the host
+ * owns. A plugin replaces the body and the actions of a REGISTERED receipt only.
+ * Resolved via `usePlatform(document.platformType)`; absent means the host
+ * renders its neutral default (a file prints, a link opens, nothing says so).
+ *
+ * The same rules bind a plugin as the host: say nothing about paper or the box
+ * that OpenLinker cannot see, and never that the buyer received the receipt.
+ */
+export interface BenchReceiptArtefactLike {
+  /** `document` | `link` | `markup` | `code` | `text`, or something newer. */
+  readonly medium: string;
+  /** A hint, never evidence of delivery. */
+  readonly disposition: string;
+  readonly label: string | null;
+  readonly contentType: string | null;
+}
+
+export interface BenchReceiptSectionProps {
+  readonly workId: string;
+  readonly documentReference: string | null;
+  /** Payload-free: the bench is never handed a receipt's content in its read. */
+  readonly artefacts: readonly BenchReceiptArtefactLike[];
+  /** The host's own body and actions, for a plugin that only adds to them. */
+  readonly defaultBody: ReactNode;
+}
+
+/**
  * Props the per-provider correction flow receives (#1240, Wave C). Launched
  * from "Issue correction" on an issued invoice. The form is per-provider by
  * design (KSeF emits a KOR linked to the original KSeF number; Subiekt issues a
@@ -568,6 +612,14 @@ export interface InvoiceCorrectionFlowProps {
   connection?: Connection;
   onClose: () => void;
   onCorrectionIssued: (correctionInvoiceId: string) => void;
+  /**
+   * Lines a return's own correction proposal already resolved (#3090) — the
+   * mount site on the return-detail page supplies these from
+   * `ReturnCorrectionProposal.lines`; the order-detail mount omits the field
+   * entirely, and every implementer's `CorrectionLineGrid` degrades to
+   * showing every invoice line unprefilled when it is absent.
+   */
+  suggestedLines?: CorrectionSuggestedLine[];
 }
 
 /**
@@ -593,8 +645,25 @@ export interface BuildContribution {
 export interface PlatformContribution {
   /** Human-readable display name (dropdown labels, etc.). */
   displayName: string;
+  /**
+   * Compact label for space-constrained surfaces such as the connection chip
+   * face (#3670). Set it only when part of `displayName` is incidental detail
+   * (`Subiekt GT (Sfera GT bridge)` → `Subiekt GT`); omitted, surfaces use
+   * `displayName`. Declared here because only the plugin knows which part of
+   * its own name is detail - see `resolvePlatformShortLabel`.
+   */
+  shortLabel?: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
+  /**
+   * When true, the platform is NOT offered by "Add new connection" (the
+   * picker or the advanced form's platform dropdown), while its existing
+   * connections still render normally everywhere else. For a platform whose
+   * connection is created by its own setup flow rather than by hand — the
+   * OpenLinker OMS, created by `/settings/packing` (#3457), where a bare
+   * connection with none of the flow's other writes would pack nothing.
+   */
+  hideFromCreateConnection?: boolean;
   /**
    * When true, the inline create-connection form replaces its submit
    * affordances with an Alert linking to the guided setup wizard (today:
@@ -690,7 +759,7 @@ export interface PlatformContribution {
   bulkOfferRowSection?: ComponentType<BulkOfferRowSectionProps>;
   /**
    * Bulk offer creation: per-connection override for whether the Review edit
-   * modal shows the browsable category tree (`CategoryPicker` +
+   * modal shows the browsable category tree (`BulkCategoryChooseModal` +
    * category-parameters step) instead of the manual Allegro-category-id
    * input. The default signal (`connection.supportedCapabilities.includes
    * ('CategoryBrowser')`) is a static, manifest-level flag — it can never be
@@ -730,6 +799,12 @@ export interface PlatformContribution {
    * the correction affordance is hidden for that provider.
    */
   invoiceCorrectionFlow?: ComponentType<InvoiceCorrectionFlowProps>;
+  /**
+   * Pack bench: the body and actions of a registered fiscal receipt's card
+   * (#3647). Resolved via `usePlatform(document.platformType)`. Absent means the
+   * host's neutral default by artefact medium.
+   */
+  benchReceiptSection?: ComponentType<BenchReceiptSectionProps>;
 }
 
 /**

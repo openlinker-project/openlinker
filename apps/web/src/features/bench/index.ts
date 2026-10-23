@@ -8,9 +8,9 @@
  *
  * Deliberately NOT exported, per the start-narrow rule: the copy module (it is
  * read by the two components inside this folder and by nothing outside), and
- * `BenchIdentityOverlay` / `BenchIdentityBar` individually — a caller composing
- * them by hand could render the bar without the overlay and ship a bench that
- * never locks. `BenchSurface` is the composition, and it is what leaves.
+ * `BenchIdentityOverlay` on its own - a caller composing it by hand could
+ * render a body with no idle lock and ship a bench that never locks.
+ * `BenchSurface` is the composition, and it is what leaves.
  *
  * @module apps/web/src/features/bench
  */
@@ -44,6 +44,19 @@ export type { PendingGesture } from './lib/scanner-gesture-log';
 // with no surface owning the scan.
 export { BenchParcelView } from './components/bench-parcel';
 export type { BenchParcelProps } from './components/bench-parcel';
+
+// #3401's two-pane rebuild. The page composes the metric row above the grid
+// and the placeholder in the parcel pane while nothing is open — both are
+// facts about the WHOLE bench, so neither belongs inside the rail.
+export { BenchMetricRow } from './components/bench-metric-row';
+export { BenchParcelPlaceholder } from './components/bench-parcel-placeholder';
+
+// The mobile-first rebuild. The PAGE picks the layout, because the compact
+// bench is a different tree rather than the same one narrowed — see
+// `use-bench-layout.ts`. `BenchScanDock` is deliberately NOT exported: it is
+// only correct inside `BenchParcelView`, which owns the submit path it calls.
+export { useBenchLayout, BENCH_PHONE_MAX_WIDTH, BENCH_TWO_PANE_MIN_WIDTH } from './hooks/use-bench-layout';
+export type { BenchLayout } from './hooks/use-bench-layout';
 
 // #2421 — Surface H and C4 are BEHAVIOUR of the parcel view, not a component a
 // caller composes, so nothing new leaves this barrel. The reachability hook,

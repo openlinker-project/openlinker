@@ -465,6 +465,41 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('updateFulfillmentRoutingSkipReason (#3455)', () => {
+    function skipCall(): { sql: string; params: unknown[] } {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return { sql: calls[0][0] as string, params: calls[0][1] as unknown[] };
+    }
+
+    it('should write the reason for the order', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', 'mirrored-before-routing');
+
+      expect(skipCall().params).toEqual(['mirrored-before-routing', 'order-123']);
+    });
+
+    // Level-triggered: `null` is what clears a stale reason once the order is
+    // routed or the OMS is switched off.
+    it('should send an explicit null when the reason clears', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', null);
+
+      expect(skipCall().params).toEqual([null, 'order-123']);
+    });
+
+    // Every ingestion on an OMS-off install writes null over null; `updatedAt`
+    // is a live filter axis, so the unchanged write must touch no row.
+    it('should guard the write so an unchanged value touches no row', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', null);
+
+      expect(skipCall().sql).toContain('"fulfillmentRoutingSkipReason" IS DISTINCT FROM $1');
+    });
+  });
+
   describe('countOrdersWithOmsAttention (#2352)', () => {
     function countSql(): string {
       const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
@@ -1265,7 +1300,41 @@ describe('OrderRecordRepository', () => {
     });
   });
 
-  describe('findNetExcludedOrderCandidates (#2465)', () => {
+  describe('stampPreRolloutEraForTesting (#2855, TEST-FIXTURE-ONLY)', () => {
+    const mockUpdateQueryBuilder = (affected: number) => {
+      const chain = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected }),
+      };
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(chain);
+      return chain;
+    };
+
+    it("stamps taxRateEra='pre-rollout' guarded on the row not already carrying it", async () => {
+      const chain = mockUpdateQueryBuilder(1);
+
+      await expect(repository.stampPreRolloutEraForTesting('ol_order_a')).resolves.toBe(true);
+
+      expect(chain.set).toHaveBeenCalledWith({ taxRateEra: 'pre-rollout' });
+      expect(chain.where).toHaveBeenCalledWith(expect.stringContaining('"internalOrderId"'), {
+        internalOrderId: 'ol_order_a',
+      });
+      expect(chain.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('"taxRateEra" IS DISTINCT FROM \'pre-rollout\'')
+      );
+    });
+
+    it('reports false when the row already carries pre-rollout, so a repeated call is idempotent', async () => {
+      mockUpdateQueryBuilder(0);
+
+      await expect(repository.stampPreRolloutEraForTesting('ol_order_a')).resolves.toBe(false);
+    });
+  });
+
+  describe('findNetExcludedOrderCandidatesPage (#2465, keyset-bounded by #2834)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),
       to: new Date('2026-08-08T00:00:00.000Z'),
@@ -1275,81 +1344,146 @@ describe('OrderRecordRepository', () => {
     const rawCandidateRow = (overrides: {
       internal_order_id: string;
       source_connection_id: string;
-      placed_at: Date | null;
+      placed_at: Date;
       tax_rate_era: string | null;
     }): typeof overrides => overrides;
 
-    it('selects only the four candidate columns and applies the non-cancelled, current-era-stamped, NOT-net-eligible predicate (#2826)', async () => {
-      const select = jest.fn().mockReturnThis();
-      const addSelect = jest.fn().mockReturnThis();
-      const andWhere = jest.fn().mockReturnThis();
-      const orderBy = jest.fn().mockReturnThis();
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select,
-        addSelect,
-        andWhere,
-        orderBy,
-        getRawMany: jest.fn().mockResolvedValue([]),
-      });
-
-      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
-
-      expect(select).toHaveBeenCalledWith('rec."internalOrderId"', 'internal_order_id');
-      expect(addSelect).toHaveBeenCalledWith('rec."sourceConnectionId"', 'source_connection_id');
-      expect(addSelect).toHaveBeenCalledWith('rec."placedAt"', 'placed_at');
-      expect(addSelect).toHaveBeenCalledWith('rec."taxRateEra"', 'tax_rate_era');
-      expect(andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT'),
-        { currentReportingCurrency: 'EUR' }
-      );
-      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
-    });
-
-    it('is unpaged — no take/skip call on the query builder', async () => {
+    /** A fully-chainable query-builder mock, matching this repository's fluent-call style. */
+    const makeQb = (rows: ReturnType<typeof rawCandidateRow>[]): Record<string, jest.Mock> => {
       const qb: Record<string, jest.Mock> = {
         select: jest.fn(),
         addSelect: jest.fn(),
         andWhere: jest.fn(),
         orderBy: jest.fn(),
-        getRawMany: jest.fn().mockResolvedValue([]),
+        addOrderBy: jest.fn(),
+        take: jest.fn(),
+        getRawMany: jest.fn().mockResolvedValue(rows),
       };
       qb.select.mockReturnValue(qb);
       qb.addSelect.mockReturnValue(qb);
       qb.andWhere.mockReturnValue(qb);
       qb.orderBy.mockReturnValue(qb);
+      qb.addOrderBy.mockReturnValue(qb);
+      qb.take.mockReturnValue(qb);
+      return qb;
+    };
+
+    it('selects only the four candidate columns and applies the non-cancelled, current-era-stamped, NOT-net-eligible predicate (#2826)', async () => {
+      const qb = makeQb([]);
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR');
 
-      expect(qb.take).toBeUndefined();
-      expect(qb.skip).toBeUndefined();
+      expect(qb.select).toHaveBeenCalledWith('rec."internalOrderId"', 'internal_order_id');
+      expect(qb.addSelect).toHaveBeenCalledWith('rec."sourceConnectionId"', 'source_connection_id');
+      expect(qb.addSelect).toHaveBeenCalledWith('rec."placedAt"', 'placed_at');
+      expect(qb.addSelect).toHaveBeenCalledWith('rec."taxRateEra"', 'tax_rate_era');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT'),
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(qb.orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('rec."internalOrderId"', 'DESC');
     });
 
-    it('maps a pre-rollout candidate to the row shape, including taxRateEra', async () => {
+    it('is bounded — requests exactly limit + 1 rows via take() (#2834)', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 50);
+
+      expect(qb.take).toHaveBeenCalledWith(51);
+    });
+
+    it('defaults to the repository page-size constant when no limit is passed', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR');
+
+      expect(qb.take).toHaveBeenCalledWith(501);
+    });
+
+    it('applies no cursor predicate on the first page (cursor: null)', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 10);
+
+      const cursorCall = qb.andWhere.mock.calls.find(([sql]) =>
+        String(sql).includes('cursorPlacedAt')
+      );
+      expect(cursorCall).toBeUndefined();
+    });
+
+    it('applies the keyset cursor predicate when a cursor is supplied', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+      const cursor = { placedAt: new Date('2026-08-05T00:00:00.000Z'), internalOrderId: 'order-99' };
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, cursor, 10);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('rec."placedAt" < :cursorPlacedAt'),
+        { cursorPlacedAt: cursor.placedAt, cursorInternalOrderId: cursor.internalOrderId }
+      );
+    });
+
+    it('reports nextCursor: null and returns every row when fewer than limit+1 rows come back', async () => {
       const row = rawCandidateRow({
         internal_order_id: 'order-pre-rollout',
         source_connection_id: 'conn-a',
         placed_at: new Date('2026-08-02T00:00:00.000Z'),
         tax_rate_era: 'pre-rollout',
       });
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([row]),
+      const qb = makeQb([row]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 10);
+
+      expect(result).toEqual({
+        items: [
+          {
+            internalOrderId: 'order-pre-rollout',
+            sourceConnectionId: 'conn-a',
+            placedAt: row.placed_at,
+            taxRateEra: 'pre-rollout',
+          },
+        ],
+        nextCursor: null,
       });
+    });
 
-      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+    it('trims the peeked extra row and derives nextCursor from the LAST row of the returned page when limit+1 rows come back', async () => {
+      const rowA = rawCandidateRow({
+        internal_order_id: 'order-a',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-03T00:00:00.000Z'),
+        tax_rate_era: null,
+      });
+      const rowB = rawCandidateRow({
+        internal_order_id: 'order-b',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-02T00:00:00.000Z'),
+        tax_rate_era: null,
+      });
+      const peekedExtraRow = rawCandidateRow({
+        internal_order_id: 'order-c',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-01T00:00:00.000Z'),
+        tax_rate_era: null,
+      });
+      const qb = makeQb([rowA, rowB, peekedExtraRow]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      expect(result).toEqual([
-        {
-          internalOrderId: 'order-pre-rollout',
-          sourceConnectionId: 'conn-a',
-          placedAt: row.placed_at,
-          taxRateEra: 'pre-rollout',
-        },
-      ]);
+      const result = await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 2);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items.map((item) => item.internalOrderId)).toEqual(['order-a', 'order-b']);
+      expect(result.nextCursor).toEqual({
+        placedAt: rowB.placed_at,
+        internalOrderId: 'order-b',
+      });
     });
 
     it('maps a non-pre-rollout candidate with taxRateEra: null', async () => {
@@ -1359,17 +1493,12 @@ describe('OrderRecordRepository', () => {
         placed_at: new Date('2026-08-03T00:00:00.000Z'),
         tax_rate_era: null,
       });
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([row]),
-      });
+      const qb = makeQb([row]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+      const result = await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR');
 
-      expect(result).toEqual([
+      expect(result.items).toEqual([
         {
           internalOrderId: 'order-post-rollout',
           sourceConnectionId: 'conn-a',
@@ -1380,21 +1509,15 @@ describe('OrderRecordRepository', () => {
     });
 
     it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
-      const andWhere = jest.fn().mockReturnThis();
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        andWhere,
-        orderBy: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([]),
-      });
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      await repository.findNetExcludedOrderCandidates(
+      await repository.findNetExcludedOrderCandidatesPage(
         { ...baseFilters, sourceConnectionId: 'conn-a' },
         'EUR'
       );
 
-      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+      expect(qb.andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
         salesConnectionId: 'conn-a',
       });
     });
@@ -1627,6 +1750,8 @@ describe('OrderRecordRepository', () => {
       'sourceConnectionId',
       'sourceEventId',
       'orderSnapshot',
+      // #3507 G03-1 — derived from the snapshot, so written whenever it is.
+      'searchText',
       'recordStatus',
       'mappingFailureReason',
       'dispatchByAt',
@@ -1723,6 +1848,106 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  /**
+   * #3507 G03-1 — the statement enumerates its own columns, so `toOrm`
+   * stamping `entity.searchText` wrote nothing: a new order kept the column
+   * default `''` (unsearchable) and `ON CONFLICT` never refreshed a re-ingested
+   * one. Asserted against the REAL builder for BOTH paths, since the column
+   * belongs to the shared half.
+   */
+  describe('searchText in the frozen-attribution upsert (#3507 G03-1, G03-14)', () => {
+    type Builder = {
+      buildFrozenAttributionUpsert: (
+        entity: OrderRecordOrmEntity,
+        includeReadyPathColumns: boolean
+      ) => { sql: string; params: unknown[]; writeSet: ReadonlySet<string> };
+    };
+
+    const originalStorePii = process.env.OL_STORE_PII;
+
+    afterEach(() => {
+      if (originalStorePii === undefined) {
+        delete process.env.OL_STORE_PII;
+      } else {
+        process.env.OL_STORE_PII = originalStorePii;
+      }
+    });
+
+    it.each<[string, boolean]>([
+      ['upsert', false],
+      ['upsertWithLineItems', true],
+    ])(
+      'should name "searchText" in both the INSERT and the DO UPDATE SET halves when building the %s statement',
+      (_path, includeReadyPathColumns) => {
+        const entity = createOrmEntity();
+        entity.searchText = 'ord-001 sku-1';
+
+        const { sql, params, writeSet } = (
+          repository as unknown as Builder
+        ).buildFrozenAttributionUpsert(entity, includeReadyPathColumns);
+
+        const insertHalf = sql.slice(0, sql.indexOf('VALUES'));
+        const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+        expect(insertHalf).toContain('"searchText"');
+        expect(updateHalf).toContain('"searchText" = EXCLUDED."searchText"');
+        expect(writeSet.has('searchText')).toBe(true);
+        expect(params).toContain('ord-001 sku-1');
+      }
+    );
+
+    it('should write the text derived from the snapshot when upserting with PII stored', async () => {
+      process.env.OL_STORE_PII = 'true';
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(
+        new OrderRecord(
+          'order-123',
+          null,
+          'source-connection-123',
+          null,
+          {
+            orderNumber: 'ORD-001',
+            customerEmail: 'anna@example.test',
+            billingAddress: { firstName: 'Anna', lastName: 'Nowąk' },
+            items: [{ sku: 'SKU-1' }],
+          },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z')
+        )
+      );
+
+      expect(upsertParams()[5]).toBe('ord-001 anna@example.test anna nowak sku-1');
+    });
+
+    it('should index only the order number and SKUs when upserting with OL_STORE_PII=false', async () => {
+      process.env.OL_STORE_PII = 'false';
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(
+        new OrderRecord(
+          'order-123',
+          null,
+          'source-connection-123',
+          null,
+          {
+            orderNumber: 'ORD-001',
+            customerEmail: 'anna@example.test',
+            billingAddress: { firstName: 'Anna', lastName: 'Nowak' },
+            items: [{ sku: 'SKU-1' }],
+          },
+          [],
+          'ready',
+          new Date('2025-01-01T10:00:00Z'),
+          new Date('2025-01-01T10:00:00Z')
+        )
+      );
+
+      expect(upsertParams()[5]).toBe('ord-001 sku-1');
+    });
+  });
+
   describe('upsert', () => {
     it('should create new order record', async () => {
       const domainEntity = createDomainEntity();
@@ -1802,8 +2027,9 @@ describe('OrderRecordRepository', () => {
 
       await repository.upsert(domainEntity);
 
-      // `recordStatus` IS in the write set - the 6th bound parameter.
-      expect(upsertParams()[5]).toBe('awaiting_mapping');
+      // `recordStatus` IS in the write set - the 7th bound parameter, after
+      // the snapshot and the `searchText` derived from it (#3507 G03-1).
+      expect(upsertParams()[6]).toBe('awaiting_mapping');
     });
 
     it('should report cancelledAt as null even though RETURNING carries it (#2282)', async () => {
@@ -2014,7 +2240,7 @@ describe('OrderRecordRepository', () => {
 
       // No interpolation: the connection id reaches Postgres as a bound param.
       expect(upsertSql()).not.toContain('source-connection-123');
-      expect(upsertParams()).toHaveLength(10);
+      expect(upsertParams()).toHaveLength(11);
       expect(upsertParams()[2]).toBe('source-connection-123');
       expect(typeof upsertParams()[4]).toBe('string');
       expect(JSON.parse(upsertParams()[4] as string)).toEqual({
@@ -2280,6 +2506,89 @@ describe('OrderRecordRepository', () => {
       expect((await repository.findById('order-123'))?.shippingAddressHash).toBe('abc123hash');
     });
 
+    it('pins paymentMethod into the ready-path statement and reads it back (#3294)', async () => {
+      // Same argument as `shippingAddressHash` above: the frozen-attribution
+      // upsert ENUMERATES its columns, so a value stamped on the entity but never
+      // added to the statement is silently not written.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        'customer-456',
+        'source-connection-123',
+        'event-456',
+        { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2025-01-01T09:00:00Z'),
+        'PLN',
+        'inclusive',
+        199.99,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [],
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        'cash_on_delivery'
+      );
+      const savedOrm = createOrmEntity();
+      savedOrm.paymentMethod = 'cash_on_delivery';
+      transactionalManager.query.mockResolvedValue([savedOrm]);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const [sql, params] = transactionalManager.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"paymentMethod"');
+      expect(params).toContain('cash_on_delivery');
+
+      ormRepository.findOne.mockResolvedValue(savedOrm);
+      expect((await repository.findById('order-123'))?.paymentMethod).toBe('cash_on_delivery');
+    });
+
+    it.each([
+      ['online', 'online'],
+      ['bank_transfer', 'bank_transfer'],
+      [null, null],
+      // A value written by a newer release and then rolled back must read as
+      // "not reported", never reach a consumer as an unmapped literal.
+      ['crypto', null],
+      ['', null],
+    ])('coerces the stored paymentMethod %j to %j on read (#3294)', async (stored, expected) => {
+      const entity = createOrmEntity();
+      entity.paymentMethod = stored;
+      ormRepository.findOne.mockResolvedValue(entity);
+
+      const read = await repository.findById('order-123');
+
+      expect(read?.paymentMethod).toBe(expected);
+      expect(read?.paymentMethodOrUnknown).toBe(expected ?? 'unknown');
+    });
+
     it('decodes the round-tripped column back to the three domain states', async () => {
       const withColumn = (stored: string | null): OrderRecordOrmEntity => {
         const entity = createOrmEntity();
@@ -2304,6 +2613,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2322,6 +2632,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2339,6 +2650,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2354,6 +2666,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2375,6 +2688,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2399,6 +2713,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2721,6 +3036,18 @@ describe('OrderRecordRepository', () => {
         expectColumnAbsentFromUpsert('fulfillmentBlockDetail');
       });
 
+      it('should NOT include fulfillmentRoutingSkipReason in the upsert statement (#3455)', async () => {
+        // Same reason as the fulfillmentBlock columns: `persistOrder` runs
+        // BEFORE the intercept, so a round-trip would null the reason the
+        // previous ingestion recorded. `updateFulfillmentRoutingSkipReason` is
+        // the sole writer.
+        mockUpsertReturning(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        expectColumnAbsentFromUpsert('fulfillmentRoutingSkipReason');
+      });
+
       it('should NOT include any of the six FX columns in the upsert statement', async () => {
         // upsert() is an update-or-create on the ingestion path, so naming
         // these columns would let a re-poll of an already-stamped order write
@@ -2995,10 +3322,12 @@ describe('OrderRecordRepository', () => {
 
       await repository.countOrdersByRoutingCountrySince(new Date());
 
-      // NULLIF(btrim(...), '') collapses blank into NULL, and the NOT NULL arm
-      // then drops both: the evaluator cannot route such an order either.
+      // NULLIF(upper(btrim(...)), '') collapses blank into NULL, and the NOT
+      // NULL arm then drops both: the evaluator cannot route such an order
+      // either. The `upper(` wrapper is #3176's case normalisation — a market
+      // reported as 'pl' must group with 'PL' rather than as a second market.
       expect(parts.select).toHaveBeenCalledWith(
-        expect.stringContaining("NULLIF(btrim("),
+        expect.stringContaining("NULLIF(upper(btrim("),
         'country'
       );
       expect(parts.andWhere).toHaveBeenCalledWith(expect.stringContaining('IS NOT NULL'));

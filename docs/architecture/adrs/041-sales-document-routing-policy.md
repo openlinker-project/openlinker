@@ -26,7 +26,11 @@ Defence in depth, if a value ever must cross: the allow/deny import shapes in `d
 
 **4. `operator-configured` mode first.** For the first Polish slice the routing input is explicit operator configuration, in two parts: (a) per connection, which document kind that connection issues; (b) which single connection is primary for issuance. Both live in `Connection.config` JSONB - no schema change, following the `stockSafetyBuffer` / `pricingRule` config-coercion precedent and read with a pure `readSalesDocumentRouting(connection.config)` helper next to `parseTriggerModel`. #2047 already introduces (b) as `connection.config.invoicing.isPrimary`; decision 4 fixes that shape so the router reads what #2047 wrote. No matching, no legal matrix. The mode is named `operator-configured`, not `manual`, because `manual` is already taken by the per-connection invoicing **trigger model** and the two would collide in the same sentence.
 
-**5. Rule shape, for when the engine arrives (deferred - see below).** Rules are **operator-authored** (the #1841 `AttributeMappingRule` precedent), never OL-derived: matching on buyer type, country and threshold is the shape of a legal determination, which stays with the seller.
+**5. Rule shape, for when the engine arrives (deferred - see below).**
+
+> **Superseded in part (#3189).** The `thresholdRef` indirection described in the third paragraph below is retired: a threshold condition now carries an inline `amount` + `currency`, and the amount is compared while the currency is compared and never converted. Everything else in this decision stands. See *Amendment (#3189, 2026-09-11)* at the end of this document for what forced it and what was given up.
+
+Rules are **operator-authored** (the #1841 `AttributeMappingRule` precedent), never OL-derived: matching on buyer type, country and threshold is the shape of a legal determination, which stays with the seller.
 
 Of the facts such a rule wants, only two are on the `Order` today: delivery country (`Address.country`) and amount (`totals.total`). **Buyer type and tax identifier are not** - `buyerTaxId` is caller-supplied and scheme-tagged ("the `Order` has none"), it drives the B2B/B2C axis alone, and no issuance caller wires it, so every auto-issued document is `type: 'private'`, `taxId: null`. Payment method is absent from core order types entirely, and source channel is a separate argument (`sourceConnectionId`), not a field. Since the canonical invoice-vs-receipt split turns on tax-id presence, **a buyer tax-id / buyer-type on the order contract is a blocking prerequisite of the engine**, not an assumption it may make.
 
@@ -205,6 +209,29 @@ it needs a gate that acts on the fact, and on this coverage a refusal keyed to i
 that simply do not report. That is a routing-policy choice to take deliberately, not a wiring step that fell
 out of #2599.
 
+## Amendment (#2822, 2026-09-04): coverage widened to all four order sources, and every path is conditional
+
+The **Coverage is one source** paragraph in the #2599 amendment above no longer holds. #2822 wired the field
+onto the three remaining order sources, so all four supply it now. What did **not** change is the reason a rule
+keyed on `buyerHasTaxId === false` still matches almost nothing: every path is *conditional*, so the widening
+moves orders from *not asserted* into *present*, never into *asserted none*.
+
+| source | where the value comes from | when it is present |
+|---|---|---|
+| PrestaShop | `ps_address.vat_number`, via the shared `hydrateAddress` used for both the billing and the shipping address | whenever the address carries one |
+| Allegro | `invoice.address.company` (`ids?.[0]?.value ?? company.taxId`) | only on a buyer's VAT-invoice request at checkout |
+| Erli | `mapAddress` reads `address.nip` under `options.isInvoiceAddress` | only on a buyer's VAT-invoice request at checkout |
+| WooCommerce | an allowlisted `meta_data` key (`WOOCOMMERCE_VAT_META_KEY_ALLOWLIST`) | only when the store runs a VAT-number plugin |
+
+**No shipped adapter emits the asserted-none middle state**, and that is structural rather than merely observed:
+the shared `readSourceBuyerTaxId` coercer cannot return `null` - a missing key, a JSON `null` and a blank string
+all yield `undefined`. The three-state contract stands; only two of its states are reachable from a source today.
+
+So **`'missing-required-tax-id'` is still declared and never written**, for the same reason and in the same shape
+as before - on this coverage a refusal keyed to it would block every order that none of the four sources happened
+to report on. Wider coverage does not turn enabling it into a wiring step; it remains the routing-policy choice
+#2599 deferred.
+
 ## Alternatives considered
 
 - **Put routing in `orders`** (order transition picks the document): rejected - `orders` would have to learn both fiscal domains' connections, capabilities and document types, and it is depended on by five sibling contexts that have no fiscal concern.
@@ -257,10 +284,27 @@ Three consequences follow, and they are testable rather than aspirational.
 
 **Scope.** The invariant binds three surfaces: `/settings/sales-documents`, the `/orders` row, and the order-detail sales-document panel. It is a UI contract; the write-path guard in decision 3a remains the enforcement of record, and no surface may rely on being the only thing preventing a second document.
 
+## Amendment (#3189, 2026-09-11): the threshold becomes an inline amount, and decision 5's indirection is retired
+
+Decision 5 above specifies the threshold as a **`thresholdRef`** — "a named amount resolved from a versioned regime pack rather than an inline literal, so the legal matrix versions independently of the rules". That property was real and is deliberately given up.
+
+**What forced it.** The indirection was never reachable by an operator. The composer offers a threshold **picker**, not an amount field, so a market whose legal figure is not already seeded cannot be configured at all — and Poland's own rule names two figures, 450 PLN *or* 100 EUR, of which only the first is seeded. The control also renders truncated (`Selec…`), so the one available option cannot be read without opening it. An indirection whose only consumer is seed data is not versioning a legal matrix; it is hiding the amount from the person responsible for it.
+
+**What replaces it.** `orderTotalGross` carries an inline amount plus an ISO-4217 currency, alongside the comparison operator and the mismatch rule decision 5 already specifies. The amount is a **decimal string**, never a JSON number — the automation condition types are the precedent, and a `jsonb`-stored IEEE double loses precision on exactly the figures this compares. The currency is a standards value, not country knowledge; `BuyerAddress.countryIso2` and `orderCountry` already sit in core on the same footing.
+
+**What is given up, stated plainly.** A legal amount that changes now requires editing every rule citing it, rather than one row in a threshold table. That is the honest cost. It is accepted because no shipped install can cite a threshold it was never able to pick, and because the alternative — keeping an indirection the operator cannot see — makes template-born rules the only ones they cannot read or correct.
+
+**The migration is the load-bearing part.** `isSalesDocumentCondition` returns `null` on a shape mismatch and callers read that as *"never matches"*. Shipping the new shape without migrating persisted `sales_document_rules.conditions` (and their `conditions_hash`) therefore makes every existing rule **silently stop matching**, with orders held and nothing logged. The model change and the data migration ship in one release, never two. The starter-template catalogue is a separate, additional migration — it is not a substitute for migrating operator-authored rules.
+
+**On this ADR's status.** The amendment is settled, not provisional: decision 5's rule engine is shipped (#2170/#2173), so the `thresholdRef` it retires is a live model this change edits rather than a proposal it revises. It does **not** move the parent's status — ADR-041 stays `Proposed` because decision 1's router and decision 8's aggregation mechanics are still unbuilt, which is what that status is about; a settled amendment to one decision does not make the rest of the document accepted.
+
+**Unchanged by this amendment:** the gross-amount evaluation and the `exclusive`-resolves-`unresolved` rule, the currency-mismatch rule, and decision 6's treatment of two matches as a conflict rather than a tie-break.
+
+
 ## References
 
-- Related PRs: #2055 (this ADR)
-- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract)
-- Related ADRs: [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
+- Related PRs: #2055 (this ADR), #3200 (the #3189 threshold amendment)
+- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract), #3175 (the epic issue this amendment ships under), #3189 (inline threshold amount)
+- Related ADRs: [ADR-073](./073-buyer-tax-identity-and-dual-role-document-connections.md) (buyer tax identity and dual-role connections; its decision 3 lands a guard on decision 3a's single-primary pool), [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § 14 Invoicing, § Cross-context dependencies in core
 - Spec: [`docs/specs/product-spec-1902-eparagony-e-receipts.md`](../../specs/product-spec-1902-eparagony-e-receipts.md)

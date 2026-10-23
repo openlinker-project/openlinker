@@ -48,7 +48,7 @@ async function seedInvoice(ds: DataSource, overrides: SeedOverrides = {}): Promi
   const entity = repo.create({
     connectionId: overrides.connectionId ?? CONN_A,
     orderId: overrides.orderId ?? `ol_order_${Math.random().toString(36).slice(2, 8)}`,
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: overrides.status ?? 'issued',
     providerInvoiceId: null,
@@ -76,6 +76,19 @@ describe('Invoicing list (integration)', () => {
     // it derives from cached per-file timings. It surfaced when #2300 changed
     // api boot time (no drain) and shrank this file's sibling, reshuffling the
     // run: two leftover `ol_order_*` rows made this assert `total: 2`.
+    await resetTestHarness();
+  });
+
+  // The FIRST test asserts `total: 0` against a Postgres instance shared with
+  // every other int-spec file in this suite (single worker, no
+  // testSequencer) — an `afterEach`-only reset is a courtesy to the next
+  // file, not isolation for this one, so this file's first assertion can
+  // read whatever the previous file left behind.
+  // `invoice-record-offline-recovery-query.int-spec.ts`'s own
+  // `beforeEach`-only reset leaves its last test's rows in `invoice_records`
+  // after that file finishes, which is exactly what was observed failing
+  // this test in CI (#2986).
+  beforeEach(async () => {
     await resetTestHarness();
   });
 

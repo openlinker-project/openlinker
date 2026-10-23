@@ -186,6 +186,19 @@ const stockPolicyFormSchema = z.object({
  * neutral config keys, which is what covers the raw JSON editor on this very
  * form and every non-browser caller.
  */
+/**
+ * Per-connection stock-location override (#3206/#3207) - platform-neutral,
+ * flat string field. An operator ASSERTION ("all of this connection's
+ * currently un-located stock physically lives here"), not a detected fact -
+ * the server (`ConnectionService.validateStockLocationOverride`) is the only
+ * place the location id is actually checked for existence/active status, so
+ * this schema stays a plain non-empty-string check and lets the 400 surface
+ * as a field-level error on submit (see `EditConnectionForm.onSubmit`).
+ */
+const stockLocationOverrideFormSchema = z
+  .union([z.string().trim().min(1), z.literal('')])
+  .optional();
+
 const pricingRuleFormSchema = z
   .object({
     type: z
@@ -396,6 +409,10 @@ export const editConnectionSchema = z
     // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
     stockPolicy: stockPolicyFormSchema.optional(),
     pricingRule: pricingRuleFormSchema.optional(),
+    // Per-connection stock-location override (#3206/#3207) — platform-neutral.
+    stockLocationOverride: stockLocationOverrideFormSchema,
+    // Per-connection "this system packs and ships orders itself" flag (#2118) — platform-neutral.
+    fulfilmentOwnedByDestination: z.boolean().nullable().optional(),
   });
 
 /**
@@ -560,6 +577,19 @@ export type StructuredConfigPatch = {
    * (see `rateLimit` for why not a delete).
    */
   pricingRule?: PricingRuleFormValues | null;
+  /**
+   * Per-connection stock-location override — flat `config.stockLocationOverride`
+   * (#3206/#3207). Platform-neutral. An empty selection writes an EXPLICIT
+   * `null` rather than deleting the key (see `rateLimit` for why not a delete).
+   */
+  stockLocationOverride?: string | null;
+  /**
+   * Per-connection display flag — flat `config.fulfilmentOwnedByDestination`
+   * (#2118). Platform-neutral. Written as an explicit boolean, never deleted:
+   * `false` is the same "off" statement an absent key makes, and writing it
+   * keeps the shallow-spread merge honest (see `rateLimit`).
+   */
+  fulfilmentOwnedByDestination?: boolean | null;
 };
 
 /**
@@ -856,28 +886,80 @@ export function mergeStructuredIntoConfig(
         threshold === undefined || threshold === '' ? null : Number.parseInt(threshold, 10);
     }
   }
-  // Pricing rule (#2610). Whole-object key; an empty `type` means the operator
-  // wants the catalogue price untouched, which is an explicit `null` (see the
-  // rateLimit clause for why not a delete). `percent` is omitted for
-  // `passthrough` - the core helper ignores it there, and writing a stale
-  // percentage into a passthrough rule invites a later misreading.
+  // Pricing rule (#2610, widened by #3142 ADR-072 decision 2). An empty
+  // `type` means the operator wants the catalogue price untouched, which is
+  // an explicit `null` for the DEFAULT rule (see the rateLimit clause for why
+  // not a delete). `percent` is omitted for `passthrough` - the core helper
+  // ignores it there, and writing a stale percentage into a passthrough rule
+  // invites a later misreading.
+  //
+  // This form edits only the destination-level DEFAULT rule -
+  // `structured.pricingRule` never carries `sourceOverrides` (a separate
+  // per-source picker, #3149). `base.pricingRule` may already hold the #3142
+  // nested `{ default, sourceOverrides }` shape with real overrides in it, so
+  // writing the flat legacy shape back unconditionally would SILENTLY DESTROY
+  // every per-source override the first time an operator saved an unrelated
+  // field on this page. When overrides exist they are preserved by re-nesting
+  // the edited default underneath them; only when there is nothing to
+  // preserve does this write the flat legacy shape, matching the pre-#3142
+  // wire format byte-for-byte for every connection that never used overrides.
   if (structured.pricingRule !== undefined) {
-    if (structured.pricingRule === null || !structured.pricingRule.type) {
-      next.pricingRule = null;
-    } else {
-      const rule: Record<string, unknown> = { type: structured.pricingRule.type };
+    const existingContainer =
+      typeof base.pricingRule === 'object' && base.pricingRule !== null
+        ? (base.pricingRule as Record<string, unknown>)
+        : null;
+    // `readPricingRuleConfig` (core) recognises the nested shape by
+    // `'default' in candidate || 'sourceOverrides' in candidate` - a legacy
+    // flat rule can never carry either key. Testing only `'default' in
+    // existingContainer` here missed a headless `{ sourceOverrides: {...} }`
+    // container (no `default` key): `existingSourceOverrides` resolved to
+    // `null` even though real overrides were present, so this clause -
+    // written specifically to preserve per-source overrides - destroyed them
+    // the moment such a connection saved any unrelated field on this page.
+    const existingSourceOverrides =
+      existingContainer &&
+      ('default' in existingContainer || 'sourceOverrides' in existingContainer) &&
+      typeof existingContainer.sourceOverrides === 'object' &&
+      existingContainer.sourceOverrides !== null &&
+      Object.keys(existingContainer.sourceOverrides as Record<string, unknown>).length > 0
+        ? (existingContainer.sourceOverrides as Record<string, unknown>)
+        : null;
+
+    let defaultRule: Record<string, unknown> | null = null;
+    if (structured.pricingRule !== null && structured.pricingRule.type) {
+      defaultRule = { type: structured.pricingRule.type };
       if (
         structured.pricingRule.type !== 'passthrough' &&
         structured.pricingRule.percent !== undefined &&
         structured.pricingRule.percent !== ''
       ) {
-        rule.percent = Number(structured.pricingRule.percent);
+        defaultRule.percent = Number(structured.pricingRule.percent);
       }
       if (structured.pricingRule.rounding) {
-        rule.rounding = structured.pricingRule.rounding;
+        defaultRule.rounding = structured.pricingRule.rounding;
       }
-      next.pricingRule = rule;
     }
+
+    next.pricingRule = existingSourceOverrides
+      ? { default: defaultRule, sourceOverrides: existingSourceOverrides }
+      : defaultRule;
+  }
+  // Stock-location override (#3206/#3207). Platform-neutral, one flat key. An
+  // empty selection writes an EXPLICIT `null` rather than deleting the key -
+  // same shallow-spread reason as rateLimit/stockPolicy above. Trimmed to
+  // match `readStockLocationOverride`'s own trim (core), so a value that
+  // round-trips through this form never differs from what the core reader
+  // sees, and an unrelated save never blanks an already-stored id (the
+  // server-side guard only re-validates the id when its trimmed value CHANGES).
+  if (structured.stockLocationOverride !== undefined) {
+    const trimmed =
+      typeof structured.stockLocationOverride === 'string' ? structured.stockLocationOverride.trim() : '';
+    next.stockLocationOverride = trimmed.length === 0 ? null : trimmed;
+  }
+  // "This system packs and ships orders itself" (#2118). One flat boolean; only
+  // `true` is a statement, everything else is written as an explicit `false`.
+  if (structured.fulfilmentOwnedByDestination !== undefined) {
+    next.fulfilmentOwnedByDestination = structured.fulfilmentOwnedByDestination === true;
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch

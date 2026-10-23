@@ -121,6 +121,84 @@ titles/descriptions — in `lib/fulfillment-task.copy.ts`. A copy table named
 `…-copy.ts`, or left as a `Record` inside a component, is scanned by nothing:
 adding the scan root does not by itself make the copy covered.
 
+**A routed task detail, beside the worklist (#3096).** `/fulfillment/works/:workId`
+is a second page, reached by clicking a task's own id on the assign board or on the
+order-detail panel — not a split screen. The detail is two columns of cards
+(`DetailSection`) on the order page's own grid (`.order-detail__primary-grid--split`):
+the left column is the mockup — hero, holds, lines, facts, the action card — and the
+right column is the Packer card plus the order page's own `OrderShipmentPanel`,
+`SalesDocumentPanel` and `OrderTotalsPanel`, fed by one `useOrderQuery`, rather than
+new variations of them (#3096). The assign board is already lane-grouped with its own
+filters and paging, so side by side collapses one of them at every width an operator
+actually uses; a page also has an ADDRESS an operator can paste into a ticket, which
+"the third row I had selected" cannot be. Its own copy lives in `lib/fulfillment-work-detail.copy.ts` —
+the same `*.copy.ts` gate rule as `fulfillment-task.copy.ts` above, and load-bearing
+for the same reason: `scripts/check-ui-vocabulary.mjs` does not scan
+`apps/web/src/pages` at all, so the page file itself (`pages/fulfillment/fulfillment-work-detail-page.tsx`)
+carries no string literal of its own. Both the detail page and the assign board share
+ONE toast surface (`useToast()`) for reporting an action's outcome — there is
+deliberately no page-local result banner on either, because a second place for an
+outcome to be reported is a second place for it to drift. The back link between the
+two pages is built from one shared whitelist
+(`fulfillmentWorkDetailPath` / `fulfillmentWorklistPath`, `lib/fulfillment-filters.ts`)
+so the assign board's filters, paging and `?groupBy=` axis survive a round trip through
+the detail page rather than being lost the moment an operator drills into one task.
+
+**The "vs Orders" framing is stated once, here, not only inside a component
+(#3096/#3102).** An order is one commercial row always; a fulfilment task is one
+physical packing job, and one order becomes more than one task the moment it ships
+from more than one place. `FulfillmentVsOrdersExplainer` renders this distinction —
+always visible on the detail page, never behind a disclosure, because the operator
+who needs the explanation is the one who does not know they need it.
+
+**A frontend derivation may narrow the "server decides, frontend renders" rule for
+DISPLAY only, never for legality (#3099, ADR-076).** `fulfillment-work-summary.ts`
+derives one plain-language sentence from `status`, `requestStatus`, `activeHolds.length`,
+`locationId`, `expeditedAt` and `cancellationReason` — a held task reads
+`status: 'open'` with a non-empty `activeHolds`, since nothing writes `status: 'on_hold'`,
+so the raw status alone can mislead. The function takes a narrow six-field struct, never
+the whole `FulfillmentTask`, so `supportedActions` is structurally unreachable from
+inside it; an unrecognised `(status, requestStatus)` combination returns `null` rather
+than a guessed sentence, and the hero's two raw axis labels render regardless, so the
+page is never blank. See ADR-076 for the decision, the rejected alternatives and the
+fail-closed rule in full.
+
+**The board and the detail are readable by admin, operator and viewer; writes stay admin + operator (#3096, #3736).**
+Both pages render inside `AccessGate require="fulfillment:read"` with an `AccessDeniedState`
+fallback, so no query mounts for a session that would be refused. `fulfillment:read` is held by
+admin, operator and viewer and never by `packer`, and must stay identical to the `@Roles` lists
+on `FulfillmentWorkController`'s GET routes and `GET /users/packers` (the roster the board names
+packers with). `scripts/check-bench-write-roles.mjs` compares the permission against the UNION of
+roles across the controller's routes and against `GET /users/packers` alone; it cannot see a single
+GET narrowed back to admin + operator (the list route would keep `viewer` in the union), so the
+per-route lists are pinned by `fulfillment-work.controller.spec.ts`. The API matches:
+`GET /fulfillment/works`, `GET /fulfillment/works/:workId` and its `/shipments` are
+`@Roles('admin', 'operator', 'viewer')`, while `POST .../actions/:action` and
+`PATCH .../assignment` stay `@Roles('admin', 'operator')`. Every write control (assign/move,
+self-serve toggle, actions, drag-and-drop) stays behind `useWriteAccess('orders:write')`, so a
+regular viewer sees none and the public-demo viewer keeps the locked-but-visible rendering. The
+one disclosure a viewer gains is `GET /users/packers`: each active packer's id and username, so
+assignments render as names. The board asks for `active=true`, a server-resolved alias for "every
+status outside the domain's terminal set", so closed and cancelled work never reaches its lanes
+without this app mirroring the status vocabulary.
+
+**A bench-only session never renders the app shell (#3096, F-9).**
+`resolveSessionSurface` (`shared/auth/session-surface.ts`) derives "bench-only" from
+`permissions[]` — `bench:write` without `orders:read` — never from the role name, and
+`AuthenticatedAppLayout` redirects such a session to `/bench` BEFORE its loading branch
+(which already renders `AppShell`). `/bench` sits outside that layout, so one check
+closes every core and plugin route. `GuestLayout` sends a signed-in bench-only session
+to `/bench` and everyone else to their `?next=` deep link, sanitised by
+`shared/lib/resolve-next-path.ts`. `role.types.spec.ts` pins that exactly one role
+matches the predicate.
+
+**A 403 is a role fact, not an outage (#3096).** `QueryErrorState` (`shared/ui`) picks
+`AccessDeniedState` for a 403 (`isAccessDeniedError`, which excludes the demo-consent
+403 that has its own redirect), `EmptyState` for a 404 when the caller supplies copy,
+and `ErrorState` with a Retry for anything else — so no 403 offers a Retry that cannot
+succeed. The fulfilment pages, the Analytics coverage card and `/users` use it; the
+remaining `ErrorState` call sites migrate to it as they are touched.
+
 **Cross-feature consumption example (#2150):** `invoicing` type-imports `OrderRecord` from the `orders` feature's public barrel (`import type { OrderRecord } from '../../orders';`) in `order-invoice-panel.tsx` and `sales-document-block-copy.ts`, and `shipments` imports `ordersQueryKeys` the same way in `use-notify-dispatched-mutation.ts`. `orders` is now the most cross-imported feature barrel in the app — five call sites (Orders, Shipments, Invoices, Products, Customers) render its `OrderIdentityCell` — so the slug was added to both `no-restricted-imports` pattern groups (`features/**` and `plugins/**`) in `.eslintrc.js`, for every canonical subdirectory (`orders/api`, `orders/hooks`, `orders/components`, `orders/lib`, `orders/types`).
 
 **Cross-feature consumption example (#2761):** `orders` imports `resolveSalesDocumentReasonCopy` and the `SalesDocumentReasonTone` type from the `sales-documents` feature's public barrel (`import { resolveSalesDocumentReasonCopy } from '../../sales-documents';` in `sales-document-cell-state.ts`) to resolve the orders-list sales-document cell's persisted block/unresolved reason into operator copy, reusing the same reason vocabulary the settings-page routing rules render. The `sales-documents` slug is now registered in both `no-restricted-imports` pattern groups for every canonical subdirectory — it was a pre-existing omission (every other cross-imported feature was already enumerated), newly load-bearing once this consumer appeared.
@@ -311,6 +389,17 @@ Rules:
 - server-side validation remains the source of truth
 - server validation errors should be mapped back to fields where practical
 
+`FormField` has two modes, chosen by its children:
+
+- **One control element** - cloned with `id`, `aria-describedby` and `aria-invalid`
+  automatically; the control must forward them to its native element.
+- **Anything else** (a fragment, an array, several controls on one row, a conditional that
+  can be `null`) - rendered as-is and nothing is cloned. The one control that owns the
+  label and error must spread `useFormFieldControl()` itself. Call the hook in a **child**
+  component: called in the parent that renders `<FormField>`, it reads the context above
+  itself and silently returns `{}`. In dev, a multi-child field with an `error` whose
+  children never called the hook logs a `console.warn`.
+
 ### Local UI State
 
 Use local component state for short-lived interaction state:
@@ -369,15 +458,23 @@ This means FE-001 intentionally preserves the adapter boundary while avoiding an
 
 ### Access Control And UI Visibility
 
-The session's `permissions[]` array (derived backend-side from `ROLE_PERMISSIONS`, `libs/core/src/users/domain/types/role.types.ts`) is the only authorization input the frontend reads. `session.user.role` is typed `string` and must never be compared inline — a typo type-checks and silently evaluates false. Backend endpoint authorization is a **separate** axis (`@Roles(...)` guards); a permission drives UI visibility only, and some permissions exist for exactly that purpose (`shipments:write` is documented display-only, #1826).
+The session's `permissions[]` array (derived backend-side from `ROLE_PERMISSIONS`, `libs/core/src/users/domain/types/role.types.ts`) is the authorization input the frontend reads **wherever a permission exists to read**. `session.user.role` is typed `string` and must never be compared inline — a typo type-checks and silently evaluates false. Backend endpoint authorization is a **separate** axis (`@Roles(...)` guards); a permission drives UI visibility only, and some permissions exist for exactly that purpose (`shipments:write` is documented display-only, #1826).
 
-Three primitives cover every case, chosen by **what** is being gated:
+Four primitives cover every case, chosen by **what** is being gated, plus one role helper for the case the fifth row names:
 
-| Gating | Primitive | Behaviour for a session lacking the permission |
+| Gating | Primitive | Behaviour for a session lacking it |
 |---|---|---|
 | Content — a banner, panel, section, table column, tooltip copy | `AccessGate` (`shared/ui/access-gate.tsx`) | renders `fallback`, or nothing when omitted |
 | A write affordance — button, checkbox, form, menu item | `useWriteAccess` (`shared/auth/use-permission.ts`) + `ReadOnlyLock` (`shared/ui/read-only-lock.tsx`) | in demo mode: rendered **disabled** with a tooltip; otherwise hidden |
 | Anything that is not a subtree — a query's `enabled:`, a computed `disabled`, derived copy | `usePermission` (`shared/auth/use-permission.ts`) | plain `false` |
+| A nav entry whose audience has **no permission to gate on** | `LiveNavItem.requiresRole` (`app/nav-registry.types.ts`), applied by `isNavItemVisible` | the item is hidden — from the sidebar *and* ⌘K, which read the same function |
+| A control whose endpoint's `@Roles(...)` is strictly narrower than any permission that implies it (e.g. an admin-only route under `orders:write`) | `useIsAdmin` (`shared/auth/use-permission.ts`), **paired with** the permission, never replacing it | plain `false`, including while the session hydrates — render the affordance or nothing, never a denial |
+
+**The fourth row is the exception the first sentence now allows for, and it is narrow.** `packer` (ADR-071/#2413) holds an intentionally EMPTY `ROLE_PERMISSIONS` grant — its access is enforced route-by-route by `@Roles(...)` and nothing else — so there is no permission in existence that "a packer may open the pack bench" could be expressed as. `requiresPermission` is still the default and still correct everywhere a permission exists; reach for `requiresRole` only when none does.
+
+It does not breach the never-compare-inline rule, and the reason is worth stating because the rule's stated hazard is precisely what the typing removes: the role is declared as `readonly Role[]` **data** on the nav registry and compared in exactly one function, so a typo is a compile error rather than a silently-false expression. A hand-rolled `session.user.role === 'packer'` at a call site remains banned. Note also that this gate is one-directional — it hides an affordance and grants nothing; the API refuses the request either way.
+
+Two related gates are deliberately narrower than they look, and the type now says so (#3107 review): `LiveNavGroup.requiresRole` and `NavContribution.requiresRole` are typed `GroupRoleGate = 'admin'`, not `Role`, because both consumers test equality against `'admin'` alone. Typed as the full union they let a declaration type-check and then show the group or contribution to **everyone** — the same defect as a mistyped role, failing in the worse direction.
 
 **Demo mode inverts the policy between the first two rows, deliberately.** A public-demo viewer is *shown* write controls, disabled, because the point of the demo is to advertise that the capability exists (#1615). Informational content is the opposite: an explanation addressed to someone who cannot act is noise at best and misleading at worst — the MCP capabilities hint told a demo viewer to reconnect an agent it could not have, over a toggle it could not operate (#1993). So `AccessGate` does not read demo mode at all, and must not grow a prop to do so; a call site that wants the disabled-but-visible treatment is gating an affordance and belongs in row two.
 
@@ -451,6 +548,14 @@ The frontend's public component catalog lives at `apps/web/src/shared/ui/index.t
 Components that wrap headless libraries (Radix, TanStack) sit on the same footing as native-HTML wrappers — the wrapper is the public surface, the underlying library is an implementation detail.
 
 **Live reference**: navigate to `/dev/ui` in a running app (admin tree, hidden from nav) for the brandbook + primitives gallery + composed patterns. Source under `apps/web/src/pages/dev-ui/`. The standalone HTML mockup at `docs/plans/ui-overhaul-mockup.html` is the offline reference.
+
+### Test-introspection `data-testid` prop (the `Combobox` convention)
+
+A shared primitive that renders as the ROOT of a spec-addressable unit (a notice, a badge, a control) may accept an optional `'data-testid'?: string` prop, forwarded onto the same element a test needs to name — never onto an internal wrapper `<div>`/`<span>`, since that changes how the primitive lays out inside its parent's flex/grid context. `Combobox` established the shape; `Alert` and `StatusBadge` adopted it together in the same change (#3268 review, S3).
+
+**Add it only when a real spec needs to name one instance among several of the same primitive on a page** — not defensively on every primitive up front. When adding it to a new primitive, update the running count in this paragraph in the same commit, so the next author has an accurate precedent count rather than a docblock that says "third" while a fourth already shipped:
+
+Primitives carrying the prop today (in the order adopted): `Combobox`, `Alert`, `StatusBadge`.
 
 ## UX Mockups (`docs/plans/mockups/`)
 
@@ -671,9 +776,11 @@ Both bags are exported from one barrel (`apps/web/src/plugins/index.ts`) as a si
 
 A plugin author writes one file per plugin (`plugins/<name>/index.ts`) containing one `definePlugin({...})` call. Adding a new in-tree platform is a single edit point: drop a new directory under `plugins/` and append one entry to the `plugins` array.
 
-`build.navItems` accepts an optional `requiresRole?: Role` (today: `'admin'`) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
+`build.navItems` accepts an optional `requiresRole` typed `GroupRoleGate` (today: `'admin'` only, a single role) — admin-only contributions are filtered out for non-admin sessions, mirroring the declarative gate the in-tree `AI` group uses on `BASE_NAV_GROUPS` (#610). Item-level gating on the in-tree registry (`LiveNavItem.requiresRole`, `ItemRequiresRole`) is different: it takes a plural `readonly Role[]` (e.g. `['admin', 'operator', 'viewer']`), not a single role. Group-level and contribution-level gates stay the singular admin-only form. Authorization is still enforced backend-side; the gate only hides the nav affordance. Plugin route modules contribute breadcrumb metadata the same way host routes do — via `handle: { crumb: { group, title } } satisfies RouteCrumbHandle`. See [Breadcrumb metadata on routes](#breadcrumb-metadata-on-routes-610).
 
 Literal-equality dispatch on `platformType` (`connection.platformType === 'allegro'`) is forbidden outside `plugins/<platformType>/` — use `usePlatform()`, `usePlatforms()`, or capability checks (`supportedCapabilities.includes('OfferManager')`) instead. The ESLint rule `no-restricted-syntax` enforces this. The same rule bans re-introduction of the old `WebPlugin` / `PlatformPlugin` / `IN_TREE_PLUGINS` identifiers (#702).
+
+Provider **names** are held to the same boundary (#3272): `scripts/check-provider-name-boundary.mjs` (under `pnpm check:invariants`) fails the build when `eparagony`, `ksef`, `paragon` or `kasa` appears in operator-facing copy (JSX text, user-facing JSX attribute values and `*-copy.ts` / `*.copy.ts` strings) anywhere in `apps/web/src` outside `plugins/`. Identifiers, comments and imports are deliberately unscanned, so a shared component may still explain in a docblock why it is neutral. Its exemption table is empty and must stay empty: an unavoidable hit means the surface is in the wrong folder (or the copy should be provider-neutral). Provider setup screens therefore live under `plugins/<name>/components/`. Hooks that call the API client stay in the feature that owns the neutral endpoint (e.g. `features/invoicing`) with a provider-neutral name, because plugins may not import `useApiClient` (see the plugin `no-restricted-imports` rule).
 
 ### `BuildContribution` slot reference
 
@@ -693,6 +800,7 @@ Every slot is optional. A plugin contributes only the affordances its platform a
 |---|---|---|---|
 | `displayName` | `string` | dropdowns, alerts | Human-readable label. Required. |
 | `setupCard` | `PlatformSetupCard` | `PlatformPicker` (`features/connections`) | One card on `/connections/new`. Omit for advanced-only platforms. |
+| `hideFromCreateConnection` | `boolean` | `PlatformPicker`, `CreateConnectionForm` (`features/connections`) | When true, the platform is omitted from the create-connection platform list and inline form because its connection is created by a dedicated flow, not by hand (#3457: the `openlinker` OMS connection, created by the onboarding wizard's Confirm step). Independent of `setupCard`; a platform with no `setupCard` is already absent from the picker, and this flag additionally keeps it out of the inline form's platform select. |
 | `requiresExternalAuthRedirect` | `boolean` | `CreateConnectionForm` | When true, the inline create form swaps in an Alert linking to the guided wizard (today: Allegro OAuth). Named broadly so non-OAuth redirect flows can opt in. |
 | `getCallbackUrlDefault` | `() => string \| undefined` | `EditConnectionForm` | Default for the OL callback URL field when the connection has none stored. PrestaShop uses `window.location.origin`. |
 | `StructuredConfigSection` | `ComponentType<StructuredConfigSectionProps>` | `EditConnectionForm` | Platform-specific structured-config inputs (PS: shop URL / storefront / shop ID / OL callback / fallback carrier). When absent, the form falls back to raw JSON. |

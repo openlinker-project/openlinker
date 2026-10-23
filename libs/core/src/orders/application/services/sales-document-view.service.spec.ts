@@ -8,9 +8,14 @@ import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
-import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
+import {
+  FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationRecordNotFoundException,
+} from '@openlinker/core/fiscalization';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
+import type { SalesDocumentView } from '@openlinker/core/sales-documents';
+import { SalesDocumentRule } from '@openlinker/core/sales-documents';
 
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -113,20 +118,45 @@ function connection(overrides: Partial<Connection> = {}): Connection {
   } as Connection;
 }
 
+/**
+ * Drops `matchedRule` without binding it, so the parity assertion below compares
+ * every other field. A rest-destructure would name a binding the linter then
+ * reports as unused.
+ */
+const withoutMatchedRule = (view: SalesDocumentView): Record<string, unknown> => {
+  const rest: Record<string, unknown> = { ...view };
+  delete rest.matchedRule;
+  return rest;
+};
+
 describe('SalesDocumentViewService', () => {
   let service: SalesDocumentViewService;
   let orderRecords: { findByIds: jest.Mock };
-  let invoices: { listInvoicesForOrders: jest.Mock };
-  let fiscalRegistrations: { getByOrderIds: jest.Mock };
+  let invoices: { listInvoicesForOrders: jest.Mock; listInvoicesKeyset: jest.Mock };
+  let fiscalRegistrations: {
+    getByOrderIds: jest.Mock;
+    listRegistrationsKeyset: jest.Mock;
+    getById: jest.Mock;
+  };
   let connections: { list: jest.Mock };
-  let rules: { resolveRoutingBatch: jest.Mock };
+  let rules: { resolveRoutingBatch: jest.Mock; getRulesByIds: jest.Mock };
 
   beforeEach(async () => {
     orderRecords = { findByIds: jest.fn().mockResolvedValue([]) };
-    invoices = { listInvoicesForOrders: jest.fn().mockResolvedValue([]) };
-    fiscalRegistrations = { getByOrderIds: jest.fn().mockResolvedValue([]) };
+    invoices = {
+      listInvoicesForOrders: jest.fn().mockResolvedValue([]),
+      listInvoicesKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    };
+    fiscalRegistrations = {
+      getByOrderIds: jest.fn().mockResolvedValue([]),
+      listRegistrationsKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      getById: jest.fn(),
+    };
     connections = { list: jest.fn().mockResolvedValue([]) };
-    rules = { resolveRoutingBatch: jest.fn().mockResolvedValue([]) };
+    rules = {
+      resolveRoutingBatch: jest.fn().mockResolvedValue([]),
+      getRulesByIds: jest.fn().mockResolvedValue([]),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -203,6 +233,7 @@ describe('SalesDocumentViewService', () => {
       failureMode: null,
       failureReason: null,
       artefactCount: 0,
+      artefacts: [],
       identity: {
         recordId: 'fis-1',
         connectionId: 'conn-fiscal',
@@ -214,6 +245,102 @@ describe('SalesDocumentViewService', () => {
       },
     });
     expect(view?.document && 'regulatoryStatus' in view.document).toBe(false);
+  });
+
+  it('should summarise a receipt link artefact without its payload', async () => {
+    orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+    fiscalRegistrations.getByOrderIds.mockResolvedValue([
+      fiscalRecord({
+        artefacts: [
+          {
+            medium: 'link',
+            disposition: 'send',
+            content: 'https://receipts.example.test/r/16240',
+            contentType: null,
+            label: 'Receipt',
+          },
+        ],
+      }),
+    ]);
+
+    const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+    expect(view?.document?.kind === 'fiscal-receipt' && view.document.artefacts).toEqual([
+      { medium: 'link', disposition: 'send', label: 'Receipt', contentType: null },
+    ]);
+    expect(JSON.stringify(view)).not.toContain('receipts.example.test');
+  });
+
+  it('should keep an unfinished registration as `artefacts: null`, not an empty list', async () => {
+    orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+    fiscalRegistrations.getByOrderIds.mockResolvedValue([
+      fiscalRecord({ status: 'registering', artefacts: null, registeredAt: null }),
+    ]);
+
+    const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+    expect(view?.document?.kind === 'fiscal-receipt' && view.document.artefacts).toBeNull();
+  });
+
+  describe('getReceiptHandoverArtefact (#3646)', () => {
+    const link = {
+      medium: 'link' as const,
+      disposition: 'send' as const,
+      content: 'https://receipts.example.test/r/16240',
+      contentType: null,
+      label: 'Receipt',
+    };
+
+    it('should serve the winning registered receipt artefact, re-read by its record id', async () => {
+      const record = fiscalRecord({ artefacts: [link] });
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([record]);
+      fiscalRegistrations.getById.mockResolvedValue(record);
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toEqual(link);
+      expect(fiscalRegistrations.getById).toHaveBeenCalledWith('fis-1');
+    });
+
+    it('should serve nothing while the receipt is still being registered', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([
+        fiscalRecord({ status: 'registering', artefacts: null }),
+      ]);
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toBeNull();
+      expect(fiscalRegistrations.getById).not.toHaveBeenCalled();
+    });
+
+    it('should serve nothing when the order has no document at all', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toBeNull();
+      expect(fiscalRegistrations.getById).not.toHaveBeenCalled();
+    });
+
+    it('should serve nothing for an order OpenLinker has never seen', async () => {
+      await expect(service.getReceiptHandoverArtefact('ol_order_missing')).resolves.toBeNull();
+    });
+
+    it('should serve nothing when the record disappears between the projection read and the re-read', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscalRecord({ artefacts: [link] })]);
+      fiscalRegistrations.getById.mockRejectedValue(
+        new FiscalRegistrationRecordNotFoundException('fis-1'),
+      );
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).resolves.toBeNull();
+    });
+
+    it('should propagate any other failure of the re-read when it is not a not-found', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscalRecord({ artefacts: [link] })]);
+      fiscalRegistrations.getById.mockRejectedValue(new Error('connection reset'));
+
+      await expect(service.getReceiptHandoverArtefact('ol_order_1')).rejects.toThrow(
+        'connection reset',
+      );
+    });
   });
 
   it('should return the persisted block reasons verbatim', async () => {
@@ -356,6 +483,91 @@ describe('SalesDocumentViewService', () => {
     await expect(service.getForOrders(['ol_order_missing'])).resolves.toEqual(new Map());
   });
 
+  describe('matchedRule (#3186)', () => {
+    function rule(overrides: Partial<SalesDocumentRule> = {}): SalesDocumentRule {
+      const base = new SalesDocumentRule(
+        'rule-1',
+        'PL',
+        [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        'hash-1',
+        'fiscal-receipt',
+        'conn-fiscal-1',
+        NOW,
+        null,
+        null,
+        NOW,
+        NOW,
+      );
+      return Object.assign(Object.create(SalesDocumentRule.prototype) as SalesDocumentRule, base, overrides);
+    }
+
+    it('projects the rule that decided the order\'s kind, when one did', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      const view = await service.getForOrder('ol_order_1');
+
+      expect(rules.getRulesByIds).toHaveBeenCalledWith(['rule-1']);
+      expect(view?.matchedRule).toEqual({
+        id: 'rule-1',
+        country: 'PL',
+        conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-fiscal-1',
+      });
+    });
+
+    it('reports null when no rule decided the order\'s kind', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+
+      const view = await service.getForOrder('ol_order_1');
+
+      expect(rules.getRulesByIds).not.toHaveBeenCalled();
+      expect(view?.matchedRule).toBeNull();
+    });
+
+    it('reports null when the matched rule has since been deleted', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-gone' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([]);
+
+      const view = await service.getForOrder('ol_order_1');
+
+      expect(view?.matchedRule).toBeNull();
+    });
+
+    it('reads the rule store ONCE even when several records share a matched rule id', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ internalOrderId: 'ol_order_1', salesDocumentMatchedRuleId: 'rule-1' }),
+        orderRecord({ internalOrderId: 'ol_order_2', salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      await service.getForOrder('ol_order_1');
+
+      expect(rules.getRulesByIds).toHaveBeenCalledTimes(1);
+      expect(rules.getRulesByIds).toHaveBeenCalledWith(['rule-1']);
+    });
+
+    it('the LIST read neither resolves the rule nor reads the rule store (#3186 review)', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      // Detail-only disclosure (#2349/#2350's convention): the paged row renders
+      // nothing from it, so the conditions array never rides on a list response
+      // and the extra `IN (...)` read is never issued.
+      expect(rules.getRulesByIds).not.toHaveBeenCalled();
+      expect(view?.matchedRule).toBeNull();
+    });
+  });
+
   it('should not grow its query count with the number of ids', async () => {
     const ids = Array.from({ length: 50 }, (_, index) => `ol_order_${index}`);
     orderRecords.findByIds.mockResolvedValue(
@@ -379,7 +591,7 @@ describe('SalesDocumentViewService', () => {
   });
 
   describe('getForOrder', () => {
-    it('should return the same projection the batch read builds', async () => {
+    it('should return the same projection the batch read builds, apart from matchedRule', async () => {
       orderRecords.findByIds.mockResolvedValue([orderRecord()]);
       invoices.listInvoicesForOrders.mockResolvedValue([invoiceRecord()]);
 
@@ -388,7 +600,13 @@ describe('SalesDocumentViewService', () => {
         service.getForOrders(['ol_order_1']),
       ]);
 
-      expect(single).toEqual(batched.get('ol_order_1'));
+      // One assembly path with one flag (#3186 review): `matchedRule` is the
+      // ONLY field the two reads may differ on, so every other field is
+      // compared here rather than left to drift.
+      expect(single).not.toBeNull();
+      const batchedView = batched.get('ol_order_1');
+      expect(batchedView).toBeDefined();
+      expect(withoutMatchedRule(single!)).toEqual(withoutMatchedRule(batchedView!));
     });
 
     it('should report null for an order with no record at all', async () => {
@@ -404,6 +622,102 @@ describe('SalesDocumentViewService', () => {
     await service.getForOrders(['ol_order_1', 'ol_order_1']);
 
     expect(orderRecords.findByIds).toHaveBeenCalledWith(['ol_order_1']);
+  });
+
+  describe('listSalesDocuments (#3306)', () => {
+    it('returns an empty page and never reads amounts/siblings when both sources are empty', async () => {
+      const page = await service.listSalesDocuments({}, { limit: 20 });
+
+      expect(page).toEqual({ items: [], nextCursor: { invoice: null, fiscal: null } });
+      expect(orderRecords.findByIds).not.toHaveBeenCalled();
+      expect(invoices.listInvoicesForOrders).not.toHaveBeenCalled();
+      expect(fiscalRegistrations.getByOrderIds).not.toHaveBeenCalled();
+    });
+
+    it('merges an invoice and a fiscal-receipt row newest-first, with amount and no duplicate', async () => {
+      const invoice = invoiceRecord({
+        id: 'inv-newer',
+        createdAt: new Date('2026-08-02T10:00:00.000Z'),
+        orderId: 'ol_order_a',
+        connectionId: 'conn-invoicing',
+      });
+      const fiscal = fiscalRecord({
+        id: 'fis-older',
+        createdAt: new Date('2026-08-01T10:00:00.000Z'),
+        orderId: 'ol_order_b',
+        connectionId: 'conn-fiscal',
+      });
+      invoices.listInvoicesKeyset.mockResolvedValue({ items: [invoice], nextCursor: null });
+      fiscalRegistrations.listRegistrationsKeyset.mockResolvedValue({
+        items: [fiscal],
+        nextCursor: null,
+      });
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ internalOrderId: 'ol_order_a', totalAmount: 199, currency: 'PLN' }),
+        orderRecord({ internalOrderId: 'ol_order_b', totalAmount: 49, currency: 'EUR' }),
+      ]);
+      // Only what's already on the page comes back from the sibling lookup -
+      // one record each, so nothing is a duplicate.
+      invoices.listInvoicesForOrders.mockResolvedValue([invoice]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscal]);
+
+      const page = await service.listSalesDocuments({}, { limit: 20 });
+
+      expect(page.items.map((item) => item.orderId)).toEqual(['ol_order_a', 'ol_order_b']);
+      expect(page.items[0]).toMatchObject({
+        connectionId: 'conn-invoicing',
+        amount: { value: 199, currency: 'PLN' },
+        otherRecordCount: 0,
+      });
+      expect(page.items[0]?.document.kind).toBe('invoice');
+      expect(page.items[1]).toMatchObject({
+        connectionId: 'conn-fiscal',
+        amount: { value: 49, currency: 'EUR' },
+        otherRecordCount: 0,
+      });
+      expect(page.items[1]?.document.kind).toBe('fiscal-receipt');
+      // Both order ids passed to the sibling lookup in ONE batched call, not
+      // one per row.
+      expect(invoices.listInvoicesForOrders).toHaveBeenCalledWith(['ol_order_a', 'ol_order_b']);
+    });
+
+    it('reports otherRecordCount when a second connection holds a record for the same order', async () => {
+      const winner = invoiceRecord({
+        id: 'inv-1',
+        orderId: 'ol_order_1',
+        connectionId: 'conn-invoicing',
+      });
+      const rival = invoiceRecord({
+        id: 'inv-2',
+        orderId: 'ol_order_1',
+        connectionId: 'conn-rival',
+      });
+      invoices.listInvoicesKeyset.mockResolvedValue({ items: [winner], nextCursor: null });
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      // The sibling lookup for this order's ids finds BOTH records.
+      invoices.listInvoicesForOrders.mockResolvedValue([winner, rival]);
+
+      const page = await service.listSalesDocuments({}, { limit: 20 });
+
+      expect(page.items[0]?.otherRecordCount).toBe(1);
+    });
+
+    it('skips the fiscal source entirely when kind=invoice, reporting its cursor as permanently exhausted', async () => {
+      await service.listSalesDocuments({ kind: 'invoice' }, { limit: 20 });
+
+      expect(fiscalRegistrations.listRegistrationsKeyset).not.toHaveBeenCalled();
+      expect(invoices.listInvoicesKeyset).toHaveBeenCalled();
+    });
+
+    it('does not re-query a source whose incoming cursor is already null (exhausted)', async () => {
+      await service.listSalesDocuments(
+        {},
+        { limit: 20, cursor: { invoice: null, fiscal: undefined } },
+      );
+
+      expect(invoices.listInvoicesKeyset).not.toHaveBeenCalled();
+      expect(fiscalRegistrations.listRegistrationsKeyset).toHaveBeenCalled();
+    });
   });
 });
 

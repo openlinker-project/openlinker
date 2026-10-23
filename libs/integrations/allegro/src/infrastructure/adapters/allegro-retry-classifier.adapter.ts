@@ -12,6 +12,15 @@
  *   - `AllegroApiException` with a status in `NON_RETRYABLE_STATUS_CODES` —
  *     deterministic 4xx (e.g., 415 unsupported content type, 422 validation)
  *     where retrying burns worker capacity and masks the real issue.
+ *   - `AllegroAmbiguousWriteException` (#3469 IMPORTANT-1 review) — a
+ *     non-idempotent write (POST/PATCH, no `idempotent: true`) that failed
+ *     with an ambiguous 5xx/network error and MAY have already committed.
+ *     `AllegroHttpClient` already refuses to retry it internally; classifying
+ *     it as non-retryable here too is what stops `SyncJobRunner` from
+ *     re-running the whole job and re-sending the same POST — checked
+ *     BEFORE the generic `AllegroApiException` status-code test below, since
+ *     it IS one (subclass) and must not fall through to the retryable
+ *     default for an ambiguous (non-4xx) status.
  *
  * Retryable cases intentionally left out (return `false`):
  *   - `AllegroApiException` with 5xx / 408 / 425 — transient; the HTTP client
@@ -33,6 +42,7 @@
 import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroAuthenticationException } from '../../domain/exceptions/allegro-authentication.exception';
+import { AllegroAmbiguousWriteException } from '../../domain/exceptions/allegro-ambiguous-write.exception';
 
 /**
  * Deterministic Allegro 4xx status codes — retrying never helps.
@@ -52,6 +62,14 @@ export class AllegroRetryClassifierAdapter implements RetryClassifierPort {
     // AllegroApiException), so the two branches are disjoint: a 401 never
     // reaches the status-code check below.
     if (cause instanceof AllegroAuthenticationException) {
+      return true;
+    }
+
+    // Checked before the generic AllegroApiException branch — an ambiguous
+    // write's status is typically undefined (network) or >=500, neither of
+    // which NON_RETRYABLE_STATUS_CODES lists, so it would otherwise fall
+    // through to the retryable default.
+    if (cause instanceof AllegroAmbiguousWriteException) {
       return true;
     }
 

@@ -372,6 +372,80 @@ export type {
   OfferStatusSnapshotRepositoryPort,
   OfferStatusUpsertResult,
 } from './domain/ports/offer-status-snapshot-repository.port';
+// Recurring price propagation (#3142, ADR-072)
+export { PriceChangeEpisode } from './domain/entities/price-change-episode.entity';
+export {
+  PriceChangeResolutionValues,
+  PriceChangeBlockReasonValues,
+  isPriceChangeResolution,
+  isPriceChangeBlockReason,
+} from './domain/types/price-change-episode.types';
+export type {
+  PriceChangeResolution,
+  PriceChangeBlockReason,
+  UpsertOpenPriceChangeEpisodeInput,
+  PriceChangeEpisodeFilters,
+  PriceChangeEpisodeClaimOutcome,
+} from './domain/types/price-change-episode.types';
+// `PriceChangeEpisodeRepositoryPort` stays on the main barrel — the SAME
+// sanctioned round-trip exception `OfferMappingRepositoryPort` /
+// `OfferStatusSnapshotRepositoryPort` already carry above (int-spec
+// `apps/api/test/integration/listings-price-change-episode.int-spec.ts`
+// drives the conflict-arm write and the reopen-vs-rival-episode race
+// directly, allow-listed by symbol in `check-cross-context-imports.mjs`,
+// rewire tracked at #722 once #3162's `PriceChangesService` lands).
+export type { PriceChangeEpisodeRepositoryPort } from './domain/ports/price-change-episode-repository.port';
+export { PriceChangeEpisodePersistenceError } from './domain/exceptions/price-change-episode-persistence.error';
+export { PriceChangeEpisodeSupersededError } from './domain/exceptions/price-change-episode-superseded.error';
+export { resolvePriceChangeBlockReason, readConnectionCurrency } from './domain/types/price-change-block.types';
+export type { IPriceChangeDetectionService } from './application/services/price-change-detection.service.interface';
+// Destination currency resolution (#3203): a destination's REAL currency,
+// resolved via an adapter-declared value (Allegro/Erli, `OfferCurrencyDeclarer`
+// / `ShopCurrencyDeclarer`), consumed by `readConnectionCurrency`'s callers as
+// the primary source before the `Connection.config.currency` key.
+export type { OfferCurrencyDeclarer } from './domain/ports/capabilities/offer-currency-declarer.capability';
+export { isOfferCurrencyDeclarer } from './domain/ports/capabilities/offer-currency-declarer.capability';
+export type { ShopCurrencyDeclarer } from './domain/ports/capabilities/shop-currency-declarer.capability';
+export { isShopCurrencyDeclarer } from './domain/ports/capabilities/shop-currency-declarer.capability';
+export {
+  resolveOfferDestinationCurrency,
+  resolveShopDestinationCurrency,
+} from './application/services/destination-currency-resolution';
+export type { IDestinationCurrencyResolutionService } from './application/services/destination-currency-resolution.service.interface';
+export { PriceChangeAutoAppliedLogEntry } from './domain/entities/price-change-auto-applied-log-entry.entity';
+export type { RecordAutoAppliedPriceChangeInput } from './domain/types/price-change-auto-applied-log.types';
+// #3161 re-review, IMPORTANT — `PriceChangeAutoAppliedLogRepositoryPort` had
+// NO consumer outside `libs/core/src/listings` (unlike
+// `PriceChangeEpisodeRepositoryPort` above, which has a sanctioned int-spec
+// exception): every reader inside the context already imports it via a
+// relative path. Publishing it on the main barrel was gratuitous cross-context
+// surface with nothing behind it — removed rather than exported "just in
+// case"; a future external caller goes through `IPriceChangeApplyService`.
+export type {
+  PriceChangeApplyInput,
+  PriceChangeApplyResult,
+} from './domain/types/price-change-apply.types';
+export type { IPriceChangeApplyService } from './application/services/price-change-apply.service.interface';
+export { PriceChangeEpisodeNotFoundException } from './domain/exceptions/price-change-episode-not-found.exception';
+export { PriceChangeEpisodeAlreadyResolvedException } from './domain/exceptions/price-change-episode-already-resolved.exception';
+export { PriceChangeEpisodeStaleException } from './domain/exceptions/price-change-episode-stale.exception';
+export { PriceChangeEpisodeBlockedException } from './domain/exceptions/price-change-episode-blocked.exception';
+export { PriceChangeEpisodeInFlightException } from './domain/exceptions/price-change-episode-in-flight.exception';
+export type {
+  PriceChangeQueueItem,
+  PriceChangeQueueItemRuleSummary,
+  PriceChangeQueuePage,
+} from './application/types/price-change-queue-item.types';
+export type { PriceChangeAutoAppliedView } from './application/types/price-change-auto-applied-view.types';
+export type {
+  IPriceChangesService,
+  AcceptPriceChangeInput,
+  EditPriceChangeInput,
+  BulkAcceptItemInput,
+  BulkAcceptResult,
+  PriceChangeConnectionPair,
+  PriceChangeResolutionResult,
+} from './application/services/price-changes.service.interface';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,
@@ -393,6 +467,7 @@ export type {
 } from './application/types/offer-stock-restore.types';
 export { OfferStockRestoreOutcomeValues } from './application/types/offer-stock-restore.types';
 export { OfferStockRestoreReleaseIncompleteError } from './domain/exceptions/offer-stock-restore-release-incomplete.error';
+export { OfferStockRestoreReversalIncompleteError } from './domain/exceptions/offer-stock-restore-reversal-incomplete.error';
 export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
 export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
@@ -450,6 +525,15 @@ export type { ShopAttribute, ShopAttributeTerm } from './domain/types/shop-attri
 export type { ShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
 export { isShopAttributeReader } from './domain/ports/capabilities/shop-attribute-reader.capability';
 export type { IShopAttributeReadService } from './application/interfaces/shop-attribute-read.service.interface';
+// Price-only shop write (#3505, G01-10): change an already-published product's
+// price without re-sending stock / name / description. Narrowed from the
+// `ProductPublisher` adapter via `isShopProductPriceUpdater`.
+export type { ShopProductPriceUpdater } from './domain/ports/capabilities/shop-product-price-updater.capability';
+export { isShopProductPriceUpdater } from './domain/ports/capabilities/shop-product-price-updater.capability';
+export type {
+  ShopProductPriceAmount,
+  UpdateShopProductPriceCommand,
+} from './domain/types/shop-product-price-update.types';
 // Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
@@ -605,3 +689,13 @@ export type {
 
 // Tokens
 export * from './listings.tokens';
+export {
+  checkPriceOverrideBound,
+  PRICE_OVERRIDE_MAX_FACTOR,
+  PriceOverrideBoundOutcomeValues,
+} from './domain/types/price-override-bound.types';
+export type {
+  PriceOverrideBoundOutcome,
+  PriceOverrideBoundResult,
+} from './domain/types/price-override-bound.types';
+export { PriceChangeOverrideOutOfRangeException } from './domain/exceptions/price-change-override-out-of-range.exception';

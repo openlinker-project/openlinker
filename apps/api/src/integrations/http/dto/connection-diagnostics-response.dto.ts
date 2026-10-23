@@ -5,11 +5,52 @@
  * status with recent sync job activity to give the FE a single read endpoint
  * for per-connection diagnostics.
  *
+ * **`lastSucceededAt` / `lastFailedAt` are NOT `sync_jobs`-only (#3179).** A
+ * document registration IS activity on the connection whether or not the
+ * `sync_jobs` row that dispatched it still sits inside this read's own
+ * 10-row recency window, and a connection that has genuinely registered
+ * documents must never read "Never" - the unqualified claim this DTO makes,
+ * unlike `ConnectionSyncStatusPanel`'s honestly-windowed "None in the last
+ * week". `fromDomain` therefore folds in the connection's own
+ * `FiscalRegistrationRecord` / `InvoiceRecord` history alongside the sync-job
+ * one and reports whichever source observed the most recent success/failure.
+ * The `recentJobs` table stays `sync_jobs`-only - it is a job-orchestration
+ * view, not a document ledger.
+ *
+ * **The three reads are independently fallible, and a failure must never
+ * read as a confirmed zero.** `ConnectionDiagnosticsService` reads sync jobs,
+ * fiscal registrations and invoices via `Promise.allSettled` rather than
+ * `Promise.all` (#3179) — a fiscalization- or invoicing-table outage must
+ * not take down the whole diagnostics panel the way it would if any one of
+ * the three `Promise.all` legs rejected. A rejected read is folded in as `[]`
+ * (no observations lost from it, because there were none to lose) and its
+ * source is named in `unreadableSources` — the `analytics-trust` /
+ * `catalog-trust` / `sync-status` precedent of a distinct `unknown` rather
+ * than a silently healthy-looking zero.
+ *
+ * That field is RENDERED, not merely modelled: `ConnectionDiagnosticsPanel`
+ * shows "Unknown" rather than "Never" behind a `null` timestamp while any
+ * source is unreadable, and states which ones it could not read. A field
+ * nothing reads would be a guarantee nobody has, and the panel printing a
+ * flat "Never" for a source it failed to read is the same false claim #3179
+ * exists to remove, from a different cause.
+ *
+ * **`recentErrors` is newest-first across all three sources**, not
+ * source-ordered: the panel renders the array verbatim, so a concatenated
+ * order would sit a month-old job error above today's invoice failure with
+ * nothing to indicate it.
+ *
  * @module apps/api/src/integrations/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
+import type { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
+import type { InvoiceRecord } from '@openlinker/core/invoicing';
+import {
+  ConnectionDiagnosticsSourceValues,
+  type ConnectionDiagnosticsSource,
+} from '../../application/types/connection-diagnostics.types';
 
 export class RecentJobSummaryDto {
   @ApiProperty({ description: 'Job UUID' })
@@ -34,6 +75,12 @@ export class RecentJobSummaryDto {
   lastError!: string | null;
 }
 
+/** One (timestamp, message) observation, from whichever source produced it. */
+interface Observation {
+  at: Date;
+  message: string | null;
+}
+
 export class ConnectionDiagnosticsResponseDto {
   @ApiProperty({ description: 'Connection UUID' })
   connectionId!: string;
@@ -44,21 +91,48 @@ export class ConnectionDiagnosticsResponseDto {
   @ApiProperty({ description: 'Connection status', example: 'active' })
   connectionStatus!: string;
 
-  @ApiProperty({ description: 'Timestamp of last succeeded job (ISO 8601), or null if none', nullable: true })
+  @ApiProperty({
+    description:
+      'Timestamp of the last succeeded activity on this connection (ISO 8601), or null if none. ' +
+      'Considers sync jobs AND any document (invoice / fiscal receipt) this connection has ' +
+      'registered, whichever is more recent.',
+    nullable: true,
+  })
   lastSucceededAt!: string | null;
 
-  @ApiProperty({ description: 'Timestamp of last failed, dead, or retrying job with a recorded error (ISO 8601), or null if none', nullable: true })
+  @ApiProperty({
+    description:
+      'Timestamp of the last failed activity on this connection (ISO 8601), or null if none. ' +
+      'Considers sync jobs AND any document (invoice / fiscal receipt) this connection has ' +
+      'failed to register, whichever is more recent.',
+    nullable: true,
+  })
   lastFailedAt!: string | null;
 
-  @ApiProperty({ description: 'Error messages from recent failed jobs', type: [String] })
+  @ApiProperty({ description: 'Error messages from recent failed activity', type: [String] })
   recentErrors!: string[];
 
   @ApiProperty({ description: 'Last 10 sync jobs for this connection, newest first', type: [RecentJobSummaryDto] })
   recentJobs!: RecentJobSummaryDto[];
 
+  @ApiProperty({
+    description:
+      'Which of the three activity sources (sync jobs, fiscal registrations, invoices) could ' +
+      'NOT be read for this response. A non-empty list means lastSucceededAt / lastFailedAt / ' +
+      'recentErrors are computed from the remaining, readable sources only - a null timestamp ' +
+      'here is NOT a confirmed absence of activity and must not be rendered as "Never".',
+    type: [String],
+    enum: ConnectionDiagnosticsSourceValues,
+    isArray: true,
+  })
+  unreadableSources!: ConnectionDiagnosticsSource[];
+
   static fromDomain(
     connection: Connection,
     recentJobs: SyncJob[],
+    recentFiscalRegistrations: FiscalRegistrationRecord[] = [],
+    recentInvoices: InvoiceRecord[] = [],
+    unreadableSources: ConnectionDiagnosticsSource[] = [],
   ): ConnectionDiagnosticsResponseDto {
     const dto = new ConnectionDiagnosticsResponseDto();
     dto.connectionId = connection.id;
@@ -67,20 +141,47 @@ export class ConnectionDiagnosticsResponseDto {
 
     const succeededJobs = recentJobs.filter((j) => j.status === 'succeeded');
     // 'failed' status is never written — markFailed() re-queues jobs as 'queued'.
-    // Capture dead jobs and any retrying job that has a recorded lastError.
+    // Capture dead jobs and any retrying job that has a recorded error.
     const failedJobs = recentJobs.filter((j) => j.status === 'dead' || j.lastError !== null);
 
-    dto.lastSucceededAt = succeededJobs.length > 0
-      ? new Date(succeededJobs[0].updatedAt).toISOString()
-      : null;
+    const succeeded: Observation[] = succeededJobs.map((j) => ({
+      at: new Date(j.updatedAt),
+      message: null,
+    }));
+    const failed: Observation[] = failedJobs.map((j) => ({
+      at: new Date(j.updatedAt),
+      message: j.lastError ?? null,
+    }));
 
-    dto.lastFailedAt = failedJobs.length > 0
-      ? new Date(failedJobs[0].updatedAt).toISOString()
-      : null;
+    for (const record of recentFiscalRegistrations) {
+      if (record.status === 'registered') {
+        succeeded.push({ at: record.registeredAt ?? record.updatedAt, message: null });
+      } else if (record.status === 'failed') {
+        failed.push({ at: record.updatedAt, message: record.failureReason ?? null });
+      }
+    }
 
-    dto.recentErrors = failedJobs
-      .map((j) => j.lastError)
-      .filter((e): e is string => e !== null && e !== undefined);
+    for (const record of recentInvoices) {
+      if (record.status === 'issued') {
+        succeeded.push({ at: record.issuedAt ?? record.updatedAt, message: null });
+      } else if (record.status === 'failed') {
+        failed.push({ at: record.updatedAt, message: record.failureReason ?? null });
+      }
+    }
+
+    // Newest-first, ACROSS sources. The three lists above are appended in
+    // source order, so an unsorted `recentErrors` would put a month-old job
+    // error above today's invoice failure with nothing on the panel — which
+    // renders the array verbatim — to indicate it. `Array.prototype.sort` is
+    // stable, so observations sharing an instant keep their source order.
+    const failedNewestFirst = [...failed].sort((a, b) => b.at.getTime() - a.at.getTime());
+
+    dto.lastSucceededAt = mostRecent(succeeded)?.at.toISOString() ?? null;
+    dto.lastFailedAt = failedNewestFirst[0]?.at.toISOString() ?? null;
+
+    dto.recentErrors = failedNewestFirst
+      .map((f) => f.message)
+      .filter((message): message is string => message !== null && message !== undefined);
 
     dto.recentJobs = recentJobs.map((j) => {
       const jobDto = new RecentJobSummaryDto();
@@ -94,6 +195,18 @@ export class ConnectionDiagnosticsResponseDto {
       return jobDto;
     });
 
+    dto.unreadableSources = unreadableSources;
+
     return dto;
   }
+}
+
+/** The observation with the latest `at`, or `undefined` for an empty list. */
+function mostRecent(observations: Observation[]): Observation | undefined {
+  return observations.reduce<Observation | undefined>((latest, current) => {
+    if (latest === undefined || current.at.getTime() > latest.at.getTime()) {
+      return current;
+    }
+    return latest;
+  }, undefined);
 }

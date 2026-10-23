@@ -74,6 +74,18 @@ import { createInventoryApi, type InventoryApi } from '../../features/inventory/
 import { createInvoicingApi, type InvoicingApi } from '../../features/invoicing/api/invoicing.api';
 import { createListingsApi, type ListingsApi } from '../../features/listings/api/listings.api';
 import {
+  createPriceChangesApi,
+  type PriceChangesApi,
+} from '../../features/price-changes/api/price-changes.api';
+import {
+  createSalesDocumentListApi,
+  type SalesDocumentListApi,
+} from '../../features/sales-documents/api/sales-document-list.api';
+import {
+  createPricingSyncApi,
+  type PricingSyncApi,
+} from '../../features/price-changes/api/pricing-sync.api';
+import {
   createMailerSettingsApi,
   type MailerSettingsApi,
 } from '../../features/mailer-settings/api/mailer-settings.api';
@@ -87,6 +99,10 @@ import {
   createSalesDocumentRulesApi,
   type SalesDocumentRulesApi,
 } from '../../features/sales-documents/api/sales-document-rules.api';
+import {
+  createSourcingRulesApi,
+  type SourcingRulesApi,
+} from '../../features/oms/api/sourcing-rules.api';
 import {
   createFulfillmentAuthorityApi,
   type FulfillmentAuthorityApi,
@@ -112,6 +128,10 @@ import {
   type PromptTemplatesApi,
 } from '../../features/prompt-templates/api/prompt-templates.api';
 import { createSyncJobsApi, type SyncJobsApi } from '../../features/sync-jobs/api/sync.api';
+import {
+  createStreamDeadLettersApi,
+  type StreamDeadLettersApi,
+} from '../../features/sync-jobs/api/stream-dead-letters.api';
 import { createMappingsApi, type MappingsApi } from '../../features/mappings/api/mappings.api';
 import {
   createWebhookDeliveriesApi,
@@ -214,6 +234,8 @@ export interface CoreApiClient {
   inventory: InventoryApi;
   invoicing: InvoicingApi;
   listings: ListingsApi;
+  priceChanges: PriceChangesApi;
+  pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
   mcpTokens: McpTokensApi;
@@ -227,12 +249,15 @@ export interface CoreApiClient {
   requestBlob: ApiBlobRequest;
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
+  salesDocumentList: SalesDocumentListApi;
   salesDocumentRules: SalesDocumentRulesApi;
+  sourcingRules: SourcingRulesApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
   fulfillment: FulfillmentApi;
   bench: BenchApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
+  streamDeadLetters: StreamDeadLettersApi;
   system: SystemApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
@@ -448,18 +473,22 @@ export function createApiClient({
     inventory: createInventoryApi(request),
     invoicing: createInvoicingApi(request, requestBlob),
     listings: createListingsApi(request, requestStream),
+    priceChanges: createPriceChangesApi(request),
+    pricingSync: createPricingSyncApi(request),
     mailerSettings: createMailerSettingsApi(request),
     mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
     operationalSettings: createOperationalSettingsApi(request),
-    orders: createOrdersApi(request),
+    orders: createOrdersApi(request, requestBlob),
     posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,
     requestStream,
+    salesDocumentList: createSalesDocumentListApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    sourcingRules: createSourcingRulesApi(request),
     automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
@@ -467,6 +496,7 @@ export function createApiClient({
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
+    streamDeadLetters: createStreamDeadLettersApi(request),
     system: createSystemApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),

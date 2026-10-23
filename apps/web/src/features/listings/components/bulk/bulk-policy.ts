@@ -690,7 +690,15 @@ export function recomputeVariantBlockers(
   // gated on the destination - an invalid barcode is invalid everywhere, even
   // where the category is resolved server-side.
   const ean = effectiveVariantEan(variant);
-  if (ean !== null && !isValidGtin(ean) && !filtered.includes('invalid-barcode')) {
+  if (
+    ean !== null &&
+    !isValidGtin(ean) &&
+    !filtered.includes('invalid-barcode') &&
+    // The operator confirmed this checksum failure is a false positive
+    // (#3492) - fall through to whatever computeBlockers already resolved
+    // (still gates on no-match/no-ean if the EAN also has no catalogue card).
+    variant.override.overrides?.eanOverrideAcknowledged !== true
+  ) {
     // The collapse rule lives in `collapseToInvalidBarcode`, shared with the
     // Resolve step, so the two cannot drift.
     return collapseToInvalidBarcode(filtered);

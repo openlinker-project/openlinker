@@ -15,6 +15,7 @@ import {
   PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
   PrestashopApiException,
+  PrestashopAmbiguousWriteException,
 } from '@openlinker/integrations-prestashop';
 
 // Mock fetch globally
@@ -250,6 +251,60 @@ describe('PrestashopWebserviceClient', () => {
       const result = await client.getResource<{ id: string; name: string }>('products', '1');
 
       expect(result).toEqual({ id: '1', name: 'Test Product' });
+    });
+
+    // ADR-077: a single-product read asks PrestaShop for its own gross price
+    // through the WebService virtual price fields.
+    it('should append the virtual price-field parameters when priceFields are given', async () => {
+      const mockResponse = {
+        prestashop: { product: { id: '1', price: '100.000000', ol_gross: '123.000000' } },
+      };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      const result = await client.getResource<{ ol_gross: string }>('products', '1', {
+        priceFields: [{ name: 'ol_gross', countryId: 14, useTax: true, productAttribute: 0 }],
+      });
+
+      const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://shop.example.com/api/products/1' +
+          '?price[ol_gross][use_tax]=1' +
+          '&price[ol_gross][country]=14' +
+          '&price[ol_gross][use_reduction]=0' +
+          '&price[ol_gross][product_attribute]=0'
+      );
+      expect(result.ol_gross).toBe('123.000000');
+    });
+
+    it('should leave the URL unchanged when the options carry no price fields', async () => {
+      const mockResponse = { prestashop: { product: { id: '1' } } };
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      });
+
+      await client.getResource('products', '1', { priceFields: [] });
+
+      const fetchMock = global.fetch as jest.MockedFunction<typeof fetch>;
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://shop.example.com/api/products/1'
+      );
+    });
+
+    it('should refuse to send a request when a price field name is not a bare identifier', async () => {
+      await expect(
+        client.getResource('products', '1', {
+          priceFields: [{ name: 'ol_gross]&x=[1', countryId: 14, useTax: true }],
+        })
+      ).rejects.toThrow('Invalid PrestaShop filter key');
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 
@@ -739,6 +794,134 @@ describe('PrestashopWebserviceClient', () => {
         // Restore fake timers
         jest.useFakeTimers();
       }
+    });
+
+    describe('non-idempotent POST (createResource) retry gating (#3469 — guards duplicate rows)', () => {
+      it('should NOT retry an ambiguous 5xx on createResource (exactly one request)', async () => {
+        (global.fetch as jest.Mock).mockResolvedValue({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          text: () => Promise.resolve('Server Error'),
+        });
+
+        const error = await client
+          .createResource('customers', { email: 'a@b.com' })
+          .then(() => null)
+          .catch((e: unknown) => e);
+
+        // #3469 IMPORTANT-1 review: raised as the distinguishable
+        // PrestashopAmbiguousWriteException (a subclass of
+        // PrestashopApiException, so every existing `instanceof
+        // PrestashopApiException` consumer still matches it) —
+        // PrestashopRetryClassifierAdapter keys on this type so a job-level
+        // retry does not re-send the same POST.
+        expect(error).toBeInstanceOf(PrestashopApiException);
+        expect(error).toBeInstanceOf(PrestashopAmbiguousWriteException);
+        expect(error).toMatchObject({ statusCode: 500 });
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('should NOT retry a network error on createResource (exactly one request)', async () => {
+        (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNRESET'));
+
+        const error = await client
+          .createResource('customers', { email: 'a@b.com' })
+          .then(() => null)
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(PrestashopAmbiguousWriteException);
+        expect((error as PrestashopAmbiguousWriteException).statusCode).toBeUndefined();
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still retry a 429 on createResource (the shop never processed the request)', async () => {
+        const mockResponse = { prestashop: { customer: { id: '1' } } };
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 429,
+            headers: new Headers(),
+            text: () => Promise.resolve('Too Many Requests'),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve(JSON.stringify(mockResponse)),
+          });
+
+        jest.useRealTimers();
+        const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+          retryConfig: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 1000, backoffMultiplier: 2 },
+        });
+        try {
+          await clientWithFastRetry.createResource('customers', { email: 'a@b.com' });
+          expect(global.fetch).toHaveBeenCalledTimes(2);
+        } finally {
+          jest.useFakeTimers();
+        }
+      });
+
+      it('should retry an ambiguous 5xx on createResource when the caller opts in via idempotent: true', async () => {
+        const mockResponse = { prestashop: { customer: { id: '1' } } };
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            headers: new Headers(),
+            text: () => Promise.resolve('Server Error'),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 201,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve(JSON.stringify(mockResponse)),
+          });
+
+        jest.useRealTimers();
+        const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+          retryConfig: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 1000, backoffMultiplier: 2 },
+        });
+        try {
+          await clientWithFastRetry.createResource(
+            'customers',
+            { email: 'a@b.com' },
+            { idempotent: true },
+          );
+          expect(global.fetch).toHaveBeenCalledTimes(2);
+        } finally {
+          jest.useFakeTimers();
+        }
+      });
+
+      it('should still retry an ambiguous 5xx on updateResource (PUT is idempotent by HTTP semantics)', async () => {
+        const mockResponse = { prestashop: { customer: { id: '1' } } };
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 500,
+            headers: new Headers(),
+            text: () => Promise.resolve('Server Error'),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: () => Promise.resolve(JSON.stringify(mockResponse)),
+          });
+
+        jest.useRealTimers();
+        const clientWithFastRetry = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+          retryConfig: { maxRetries: 1, initialDelayMs: 0, maxDelayMs: 1000, backoffMultiplier: 2 },
+        });
+        try {
+          await clientWithFastRetry.updateResource('customers', '1', { id: '1' });
+          expect(global.fetch).toHaveBeenCalledTimes(2);
+        } finally {
+          jest.useFakeTimers();
+        }
+      });
     });
   });
 

@@ -86,8 +86,46 @@ function stripComments(source) {
 }
 
 /**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for the array's real closing
+ * bracket. Length-preserving: any index found in the blanked string is a valid
+ * index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * Extract the string literals of `export const <name> = [...] as const;`.
  * Returns `string[]`, or `null` when the declaration is absent.
+ *
+ * The closing bracket is located on a comment-BLANKED copy of the content, or
+ * a `]` written inside a comment between the real brackets is mistaken for
+ * the declaration's own close and truncates everything after it (#3002).
  */
 export function parseReasonValues(content, name = DECLARATION) {
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
@@ -95,7 +133,7 @@ export function parseReasonValues(content, name = DECLARATION) {
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+  const closeBracket = blankComments(content).indexOf(']', openBracket);
   if (closeBracket === -1) return null;
 
   const body = stripComments(content.slice(openBracket + 1, closeBracket));
@@ -159,6 +197,29 @@ function selfCheck() {
     ['a', 'b'],
   );
   expect('reports an absent declaration', parseReasonValues('export const Other = [];'), null);
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array. Red-first against the pre-fix `indexOf(']', openBracket)` on
+  // raw content: that stopped at the comment's own `]`.
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    parseReasonValues(
+      `export const ${DECLARATION} = [\n  'a', // e.g. some-list: []\n  'b',\n] as const;`,
+    ),
+    ['a', 'b'],
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    parseReasonValues(
+      `export const ${DECLARATION} = [\n  'a', /* e.g. some-list: [] */\n  'b',\n] as const;`,
+    ),
+    ['a', 'b'],
+  );
+  expect(
+    'a declaration whose every entry is commented out parses to zero values',
+    parseReasonValues(`export const ${DECLARATION} = [\n  // 'a',\n] as const;`),
+    [],
+  );
   expect('agrees on identical lists', diffVocabularies(['a', 'b'], ['a', 'b']), []);
   expect('detects a missing value', diffVocabularies(['a', 'b'], ['a']), [
     "'b' is declared in core but MISSING from the frontend mirror",

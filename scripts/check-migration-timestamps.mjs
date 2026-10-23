@@ -39,7 +39,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -299,6 +299,194 @@ function loadPluginMigrationDirsWithDriftCheck() {
   return result.dirs;
 }
 
+/**
+ * Migration timestamp prefixes claimed by OTHER branches, and by whom.
+ *
+ * WHY THIS EXISTS. Review assigned migration prefixes across PRs three times in
+ * one week and all three broke - not three people ignoring advice, one
+ * structural problem showing up three times. `loadBaselineFilenames` compares
+ * this tree against `origin/main` and is therefore blind to every other open
+ * branch BY CONSTRUCTION, so nothing between "an author picks a number" and
+ * "the second branch to merge fails lint" can see a clash. With ~19 open PRs
+ * and dense sequential prefixes, collisions are the expected outcome rather
+ * than bad luck, and a review comment is not an allocator.
+ *
+ * WHAT IT IS, PRECISELY: a PRE-MERGE CONVENIENCE, not a hard gate, and the
+ * difference is deliberate rather than a shortcut. It reports what is already
+ * FETCHED under `refs/remotes/origin/*` - it performs no network I/O, so on a
+ * shallow CI clone carrying only `origin/main` it has nothing to compare and
+ * says so instead of pretending. It cannot be a gate for the same reason the
+ * ordering check is not one everywhere: `docs/migrations.md` records that some
+ * self-hosted runners have no `git` binary at all.
+ *
+ * IT OVER-REPORTS, and that is a property of git rather than a rough edge to
+ * file off. `--no-merged origin/main` cannot see a branch that was SQUASH-merged
+ * - the squash commit shares no ancestry with it - so a long-dead branch keeps
+ * appearing as open work and its prefixes keep being listed. `git remote prune
+ * origin` cuts the stale refs, but that is the operator's call, not this
+ * script's. Over-reporting is the survivable direction here: every entry names
+ * its branch and its filename, so a reader dismisses a stale one in a glance,
+ * whereas a missed live collision is the whole failure this exists to catch.
+ *
+ * It therefore WARNS and never fails. A collision between two unmerged branches
+ * is not a defect in either one - whichever merges second has to move, and that
+ * is a conversation, not a build break. Failing here would block a branch for
+ * something another branch did, which is precisely the allocation problem one
+ * level down.
+ *
+ * Returns `{ kind: 'ok', collisions, scanned }`, or `{ kind }` naming why it
+ * could not look (`'no-git'`, reusing `classifyBaselineError`).
+ */
+export function findCrossBranchCollisions(
+  ownFilenames,
+  listRefs,
+  listFiles,
+  selfRef = null,
+  baselineFilenames = null
+) {
+  const branches = listRefs().filter(
+    (b) => b !== 'origin/main' && b !== 'origin/HEAD' && b !== selfRef
+  );
+
+  // A COLLISION IS SAME PREFIX, DIFFERENT FILE. Same prefix AND same filename is
+  // this branch's own migration seen on its own remote ref, or on a branch that
+  // took it along in a merge - the one thing that is certainly not a clash, and
+  // reporting it buries the real ones. Keyed by prefix -> the filename WE claim.
+  //
+  // AND A MERGED PREFIX CANNOT BE CONTENDED. `baselineFilenames` is what is
+  // already on `origin/main`; anything of ours in that set has landed, so
+  // whoever else claims its prefix is either a dead branch or is alive and
+  // already failing the ordering check above. Without this the scanner printed
+  // 11 contended prefixes on a clean tree - every one of them ours, already
+  // merged - and the true-positive set was empty. #2615's rule: an alert that
+  // fires on a healthy install is worse than no alert, because the twelfth line
+  // is the real one and nobody reads past the eleventh.
+  const merged = baselineFilenames === null ? null : new Set(baselineFilenames);
+  const owned = new Map();
+  for (const name of ownFilenames) {
+    if (merged !== null && merged.has(name)) continue;
+    owned.set(name.split('-')[0], name);
+  }
+
+  const collisions = new Map();
+  for (const branch of branches) {
+    for (const name of listFiles(branch)) {
+      const prefix = name.split('-')[0];
+      const ours = owned.get(prefix);
+      if (ours === undefined || ours === name) continue;
+      if (!collisions.has(prefix)) collisions.set(prefix, []);
+      collisions.get(prefix).push({ branch, filename: name });
+    }
+  }
+  return { kind: 'ok', collisions, scanned: branches.length };
+}
+
+/** Remote-tracking branches already present locally. No fetch: see the docblock
+ * above for why this is a convenience rather than a gate. */
+function listLocalRemoteBranches() {
+  // `--no-merged origin/main` is what makes this about OPEN work. A repository
+  // accumulates every branch it ever fetched - 539 on the machine this was
+  // written on - and a merged one shares prefixes with main by definition, so
+  // scanning them all costs one `ls-tree` each and reports nothing true.
+  const out = execSync(
+    "git for-each-ref --no-merged origin/main --format='%(refname:short)' refs/remotes/origin",
+    {
+    cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }
+  ).toString();
+  return out
+    .split('\n')
+    .map((l) => l.trim().replace(/^'|'$/g, ''))
+    .filter(Boolean);
+}
+
+/** This branch's own remote-tracking ref, so it is not reported against itself. */
+function currentRemoteRef() {
+  try {
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+    return branch && branch !== 'HEAD' ? `origin/${branch}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Migration basenames on one ref. A ref whose objects are missing yields
+ * nothing rather than throwing - a branch we cannot read is a branch we simply
+ * did not compare, which is the honest answer for a convenience. */
+function listMigrationFilenamesOnRef(ref, relativeDirs) {
+  try {
+    return execSync(`git ls-tree -r --name-only ${ref} -- ${relativeDirs.join(' ')}`, {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .split('\n')
+      .filter((line) => line.endsWith('.ts'))
+      .map((line) => line.split('/').pop());
+  } catch {
+    return [];
+  }
+}
+
+/** Report cross-branch prefix collisions. Warns, never fails - see the
+ * `findCrossBranchCollisions` docblock. */
+function reportCrossBranchCollisions(ownFilenames, relativeDirs, baseline) {
+  // NO BASELINE, NO SCAN. Falling back to the unfiltered behaviour would print
+  // the 11-entry noise floor precisely where the guard is least able to say
+  // anything true, which is the opposite of the fail-honest posture the rest of
+  // this function takes.
+  if (baseline.kind !== 'ok') {
+    return `cross-branch: skipped (no baseline: ${baseline.kind})`;
+  }
+
+  let result;
+  try {
+    result = findCrossBranchCollisions(
+      ownFilenames,
+      listLocalRemoteBranches,
+      (ref) => listMigrationFilenamesOnRef(ref, relativeDirs),
+      currentRemoteRef(),
+      baseline.filenames
+    );
+  } catch (error) {
+    return classifyBaselineError(error) === 'no-git'
+      ? 'cross-branch: skipped (no git)'
+      : 'cross-branch: skipped (refs unreadable)';
+  }
+
+  if (result.scanned === 0) {
+    return 'cross-branch: no other unmerged branches fetched';
+  }
+  // "unmerged" is said plainly rather than dressed up as open PRs. Measured on
+  // this repository: 509 fetched branches, 503 of them unmerged, against about
+  // nineteen open PRs - because `--no-merged` cannot see a SQUASH merge, which
+  // is how everything lands here. The number is branches we could read, not
+  // work in flight, and reporting it as the latter would be a false statement
+  // in the one line an operator actually reads.
+  if (result.collisions.size === 0) {
+    return `cross-branch: clean (${result.scanned} fetched branches compared)`;
+  }
+
+  console.warn(
+    `\nmigration-timestamps: WARNING - ${result.collisions.size} migration prefix(es) also claimed elsewhere:\n`
+  );
+  for (const [prefix, claims] of [...result.collisions].sort()) {
+    console.warn(`  ${prefix}`);
+    for (const c of claims) console.warn(`    ${c.branch}: ${c.filename}`);
+  }
+  console.warn(
+    '\nNot a failure: whichever branch merges second has to move, which is a\n' +
+      'conversation rather than a build break. Renumber before merge to avoid it.\n'
+  );
+  return `cross-branch: ${result.collisions.size} prefix(es) contended (${result.scanned} fetched branches compared)`;
+}
+
 function runAgainstTree() {
   // Core migrations (apps/api/src/migrations) + plugin-owned migrations
   // from every directory listed in the shared #599 manifest. The single
@@ -346,7 +534,12 @@ function runAgainstTree() {
 
   const pluginSummary = pluginDirs.length > 0 ? ` (incl. ${pluginDirs.length} plugin dir)` : '';
   console.log(
-    `migration-timestamps: OK (${entries.length} migrations${pluginSummary}; ${orderingSummary})`,
+    `migration-timestamps: OK (${entries.length} migrations${pluginSummary}; ${orderingSummary}; ` +
+      `${reportCrossBranchCollisions(
+        entries.map((e) => e.filename),
+        ['apps/api/src/migrations', ...pluginDirs],
+        baseline
+      )})`,
   );
 }
 
@@ -604,11 +797,140 @@ function runSelfCheck() {
   expectClass('git binary absent (ENOENT) → no-git', { code: 'ENOENT' }, 'no-git');
   expectClass('git present, ref missing (128) → no-ref', { status: 128 }, 'no-ref');
 
+  // --- Cross-branch prefix collisions (the guard review asked for) ---
+
+  const expectCollisions = (label, own, branches, files, selfRef, expected) => {
+    const { collisions } = findCrossBranchCollisions(
+      own,
+      () => branches,
+      (ref) => files[ref] ?? [],
+      selfRef
+    );
+    const got = [...collisions.keys()].sort().join(',');
+    if (got !== expected) {
+      console.error(`self-check FAIL: "${label}" expected '${expected}', got '${got}'`);
+      process.exit(1);
+    }
+  };
+
+  // THE CASE THE SCANNER EXISTS FOR: two branches, one prefix, two files.
+  expectCollisions(
+    'same prefix, different file on another branch → collision',
+    ['1902000000000-split-subiekt-product-lines.ts'],
+    ['origin/other'],
+    { 'origin/other': ['1902000000000-create-inventory-sale-decrements.ts'] },
+    null,
+    '1902000000000'
+  );
+
+  // The noise that made the first run useless: our OWN migration, seen on our
+  // own remote ref or carried along by a merge, is not a clash with anything.
+  expectCollisions(
+    'same prefix AND same file → not a collision',
+    ['1902000000000-split-subiekt-product-lines.ts'],
+    ['origin/other'],
+    { 'origin/other': ['1902000000000-split-subiekt-product-lines.ts'] },
+    null,
+    ''
+  );
+
+  expectCollisions(
+    'our own remote ref is excluded outright',
+    ['1902000000000-a.ts'],
+    ['origin/mine'],
+    { 'origin/mine': ['1902000000000-b.ts'] },
+    'origin/mine',
+    ''
+  );
+
+  expectCollisions(
+    'origin/main is never a collision - that is the ordering check above',
+    ['1902000000000-a.ts'],
+    ['origin/main'],
+    { 'origin/main': ['1902000000000-b.ts'] },
+    null,
+    ''
+  );
+
+  // THE 11-FALSE-POSITIVE CASE: our migration is already on origin/main, so its
+  // prefix cannot be contended - whoever else claims it is a dead branch, or is
+  // alive and already failing the ordering check.
+  {
+    const { collisions } = findCrossBranchCollisions(
+      ['1799000000000-add-shipments-table.ts'],
+      () => ['origin/792-persist-variant-price'],
+      () => ['1799000000000-add-price-to-product-variants.ts'],
+      null,
+      ['1799000000000-add-shipments-table.ts']
+    );
+    if (collisions.size !== 0) {
+      console.error(
+        "self-check FAIL: 'a merged prefix cannot be contended' expected none, got " +
+          [...collisions.keys()].join(',')
+      );
+      process.exit(1);
+    }
+  }
+
+  // And the filter must not swallow a LIVE one: same shape, ours not on main.
+  {
+    const { collisions } = findCrossBranchCollisions(
+      ['1902000000000-split-subiekt-product-lines.ts'],
+      () => ['origin/other'],
+      () => ['1902000000000-create-inventory-sale-decrements.ts'],
+      null,
+      ['1899000000000-something-else.ts']
+    );
+    if (collisions.size !== 1 || !collisions.has('1902000000000')) {
+      console.error(
+        "self-check FAIL: 'an unmerged prefix is still reported' expected 1902000000000, got " +
+          [...collisions.keys()].join(',')
+      );
+      process.exit(1);
+    }
+  }
+
+  expectCollisions(
+    'a prefix we do not claim is somebody else business',
+    ['1902000000000-a.ts'],
+    ['origin/other'],
+    { 'origin/other': ['1999000000000-z.ts'] },
+    null,
+    ''
+  );
+
   console.log('migration-timestamps: self-check OK');
 }
 
-if (process.argv.includes('--self-check')) {
-  runSelfCheck();
-} else {
-  runAgainstTree();
+// RUN-IF-MAIN. Without this, `import`ing the module to drive its exported
+// functions executes `runAgainstTree()` - which reads
+// `scripts/plugin-migration-dirs.json` relative to its own ROOT and dies
+// outside a checkout. `findCrossBranchCollisions` is exported with injectable
+// `listRefs` / `listFiles` precisely so it can be driven from a spec, and a
+// module that runs on import cannot be. Costs nothing today, since the
+// self-check lives in the same module; costs the next person who wants a real
+// one (PR #3365 review).
+// `realpathSync` THROWS `ENOENT` when `argv[1]` is defined but absent from
+// disk. Unreachable through `node scripts/…` or a `.bin` symlink, both of which
+// resolve - but this module is now written to be IMPORTED, and an uncaught
+// throw at module load breaks the importer rather than the runner it was meant
+// to serve. Not a live defect; one line, and the failure it prevents is the one
+// this guard exists to avoid being the cause of (PR #3365 review).
+function isInvokedDirectly() {
+  if (process.argv[1] === undefined) return false;
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+const invokedDirectly = isInvokedDirectly();
+
+if (invokedDirectly) {
+  if (process.argv.includes('--self-check')) {
+    runSelfCheck();
+  } else {
+    runAgainstTree();
+  }
 }

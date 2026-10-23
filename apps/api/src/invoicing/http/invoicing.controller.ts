@@ -101,6 +101,8 @@ import {
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   IPaymentStatusRefreshService,
   normalizeShippingLineName,
+  classifyInvoiceFailure,
+  classifyInvoiceFailureMode,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -115,6 +117,7 @@ import type {
   StoredDocument,
 } from '@openlinker/core/invoicing';
 import {
+  decodeBuyerTaxIdColumn,
   ORDER_RECORD_SERVICE_TOKEN,
   IOrderRecordService,
   orderFromReadySnapshot,
@@ -483,10 +486,18 @@ export class InvoicingController {
    *
    * Best-effort: an invoice really was issued, so a failure to tidy the badge must
    * never turn a 201 into a 500. The next order transition re-decides it anyway.
+   *
+   * Clears the block ONLY (#3186 review). This path knows nothing about which
+   * routing rule chose the document kind, so it passes `preserve` rather than
+   * `null`: writing `null` here would drop "Why this kind?" off the order panel
+   * on the most ordinary configuration there is (`parseTriggerModel` defaults to
+   * `manual`, so rule decides -> gate blocks -> operator issues by hand), and
+   * the next unrelated transition would put it straight back. A surface fact
+   * that flaps on an unrelated action is worse than one that is simply absent.
    */
   private async clearSalesDocumentBlock(orderId: string): Promise<void> {
     try {
-      await this.orders.markSalesDocumentBlock(orderId, null);
+      await this.orders.markSalesDocumentBlock(orderId, null, { action: 'preserve' });
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(
@@ -830,6 +841,14 @@ export class InvoicingController {
       'connection adapter to implement the CorrectionIssuer sub-capability.',
   })
   @ApiResponse({ status: 201, description: 'Correction invoice issued', type: InvoiceRecordResponseDto })
+  @ApiResponse({
+    status: 409,
+    description:
+      'A same-key correction record exists that this request did not advance. ' +
+      '`CORRECTION_IN_PROGRESS` means another attempt is still in flight - retry later. ' +
+      '`CORRECTION_NEEDS_RECONCILIATION` means an earlier attempt ended without knowing ' +
+      'whether the provider created a document - retrying cannot settle it.',
+  })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 422, description: 'Provider rejected the correction or adapter does not support corrections' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
@@ -923,6 +942,41 @@ export class InvoicingController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+
+    // #3365 review: only an ISSUED record is a 201.
+    //
+    // `issueCorrection` returns the existing record unchanged on two resume
+    // arms, and answering 201 Created for either of them states something that
+    // did not happen. The sibling issue route already draws this line and says
+    // why (#1200: "a re-issue must NOT be reported as a fresh 201 success while
+    // an original attempt is in flight"); the correction route simply never
+    // applied it.
+    //
+    // A same-key replay of an ALREADY-ISSUED correction stays 201 with the
+    // original record, deliberately unlike the issue route's 409: that route
+    // keys on (order, connection), where a second document is a genuine
+    // conflict, while this one keys on the caller's idempotency key, where
+    // returning the original result IS the contract. A genuinely new correction
+    // that fails throws from the service and never reaches here.
+    if (issued.status !== 'issued') {
+      if (issued.isLeaseLive(new Date())) {
+        throw new ConflictException({
+          message:
+            `Correction for invoice ${original.id} is already being issued by an attempt that is ` +
+            `still in flight; nothing was issued by this request. Retry once it settles.`,
+          code: 'CORRECTION_IN_PROGRESS',
+        });
+      }
+      throw new ConflictException({
+        message:
+          `A correction record for invoice ${original.id} exists in a state this request cannot ` +
+          `advance (status=${issued.status}, failureMode=${issued.failureMode ?? 'unknown'}); ` +
+          `nothing was issued. The provider may or may not hold a document for it, so it needs ` +
+          `reconciling rather than retrying.`,
+        code: 'CORRECTION_NEEDS_RECONCILIATION',
+      });
+    }
+
     // #2100: a correction implies an issued original, so the gate's own
     // invoice-awareness already suppresses a block here. Clearing anyway is the
     // cheap belt-and-braces for a row that predates that suppression.
@@ -1500,8 +1554,31 @@ export class InvoicingController {
     if (error instanceof AdapterNotFoundException) {
       return new BadGatewayException('Invoicing provider is unavailable');
     }
-    // Any other throw from the issuance path is an adapter rejection (the service
-    // rethrows the raw provider error). Do NOT return it verbatim — it may carry
+    // A TERMINAL rejection the adapter classified (#3772). The service has
+    // already stored this exact classification on the record - `classifyInvoiceFailure`
+    // is the one function both read - so the response and the record can never
+    // disagree. The body carries only the closed code and PII-free sentences:
+    // `failureReason` is a fixed constant for every code except
+    // `connection-setup-incomplete`, where it is the adapter's own sentence the
+    // adapter vouched for by opting in. The raw message is still logged, never
+    // returned, since it may echo provider or buyer data.
+    if (classifyInvoiceFailureMode(error) === 'rejected') {
+      const { failureCode, failureReason } = classifyInvoiceFailure(error);
+      const correlationId = `inv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      this.logger.warn(
+        `Invoice issuance rejected (${correlationId}, failureCode=${failureCode}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return new UnprocessableEntityException({
+        message: failureReason,
+        error: 'InvoiceIssueRejected',
+        failureCode,
+        ...(failureCode === 'connection-setup-incomplete' ? { failureReason } : {}),
+      });
+    }
+    // Any other throw from the issuance path is an adapter failure the service
+    // could not classify. Do NOT return it verbatim - it may carry
     // provider-echoed buyer PII. Log internally with a correlation id; return a
     // generic 422 referencing only that id.
     if (error instanceof Error) {
@@ -1532,6 +1609,8 @@ export class InvoicingController {
       status: record.status,
       providerInvoiceId: record.providerInvoiceId,
       providerInvoiceNumber: record.providerInvoiceNumber,
+      warehouseReleaseOutcome: record.warehouseReleaseOutcome,
+      warehouseReleaseNumber: record.warehouseReleaseNumber,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
       // W1 failure semantics (errorMessage stays omitted — PII).
@@ -1543,6 +1622,10 @@ export class InvoicingController {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
       orderSummary: orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null,
+      // #3188 - the three-state value the `taxId=with|without` filter was asking
+      // about. Decoded here for the same reason `fromDomain` decodes it: `''` is
+      // the asserted-none state, not an empty id.
+      buyerTaxId: decodeBuyerTaxIdColumn(record.buyerTaxId),
     };
   }
 

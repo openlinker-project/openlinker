@@ -62,7 +62,7 @@ describe('SalesDocumentView', () => {
         failureCode: null,
         failureReason: null,
         regulatoryStatus: 'rejected',
-        clearanceReference: 'KSEF-REF-1',
+        clearanceReference: 'CLEARANCE-REF-1',
         identity,
       };
 
@@ -84,7 +84,8 @@ describe('SalesDocumentView', () => {
         failureMode: null,
         failureReason: null,
         artefactCount: 0,
-        identity: { ...identity, recordId: 'fis-1', providerType: 'eparagony' },
+        artefacts: [],
+        identity: { ...identity, recordId: 'fis-1', providerType: 'fiscal-provider' },
       };
 
       // The compiler does the work here: a receipt cannot carry an authority
@@ -111,7 +112,7 @@ describe('SalesDocumentView', () => {
           failureCode: null,
           failureReason: null,
           regulatoryStatus: 'cleared',
-          clearanceReference: 'KSEF-REF-2',
+          clearanceReference: 'CLEARANCE-REF-2',
           identity,
         },
         {
@@ -120,6 +121,7 @@ describe('SalesDocumentView', () => {
           failureMode: null,
           failureReason: null,
           artefactCount: 0,
+          artefacts: null,
           identity: { ...identity, recordId: 'fis-2', completedAt: null },
         },
       ];
@@ -142,6 +144,7 @@ describe('SalesDocumentView', () => {
         unresolvedReason: 'no-configuration-for-country',
         blockDetail: null,
         otherRecords: [],
+        matchedRule: null,
       };
 
       expect(view.documentKind).toBeNull();
@@ -158,6 +161,7 @@ describe('SalesDocumentView', () => {
         unresolvedReason: null,
         blockDetail: null,
         otherRecords: [],
+        matchedRule: null,
       };
 
       expect(view.documentKind).toBe('fiscal-receipt');
@@ -191,6 +195,7 @@ describe('SalesDocumentView', () => {
             blocksFurtherIssuance: false,
           },
         ],
+        matchedRule: null,
       };
 
       expect(view.otherRecords).toHaveLength(1);

@@ -1,0 +1,569 @@
+// Kontrahent.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/Kontrahent.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
+
+// Kontrahent.cs - one rule for "which Subiekt kontrahent is this buyer?".
+//
+// WHY THIS FILE EXISTS
+//
+// The rule lived in THREE copies - OrdersEndpoints, Invoicing and Program's
+// WooCommerce shim - and all three carried the same defect, which is what
+// three copies of a rule reliably produce.
+//
+// The defect: the lookup was `WHERE kh_Symbol = @sym`, an exact match on the
+// BASE symbol. When Subiekt cannot use the symbol it was handed (because some
+// other kontrahent already holds it) it appends its own counter, so the record
+// is stored as `NORBERTKULUS(5)`. The next order derives `NORBERTKULUS` again,
+// the exact-match lookup cannot see `(5)`, the address check against whatever
+// old record DOES hold the base symbol fails, and a brand-new kontrahent is
+// created - `(6)`. Then `(7)`. Every order, forever.
+//
+// Observed live on 2026-09-23: two purchases by one buyer produced kontrahent
+// 94 `NORBERTKULUS(5)` and kontrahent 95 `NORBERTKULUS(6)`. That defeats the
+// entire point of writing the buyer into Subiekt, which is to see how often a
+// customer buys from you.
+//
+// THE RULE, in order:
+//
+//   1. NIP, when the buyer supplied one. A tax id IS an identity, so a match
+//      needs no further checking.
+//   2. OpenLinker's own customer id, when the caller supplied one. Also an
+//      identity, and unlike the NIP every ordinary consumer has one.
+//   3. Symbol - the base one AND Subiekt's own `(n)` variants of it - with the
+//      address VERIFIED before the match is trusted. Two unrelated people
+//      called Jan Kowalski derive the same symbol, and reusing that match
+//      would issue the second one's document to the first one's name and
+//      address, which the operator cannot see from Subiekt.
+//   4. No match: the caller creates, and Subiekt suffixes if it must. Next
+//      time, step 2 or 3 finds it.
+//
+// STEP 2 IS WHAT MAKES STEP 3 SAFE, and it is the whole point of this change.
+// The symbol is derived from the NAME, so it is not an identity at all - it is
+// a guess that holds right up until two customers share a surname. Before the
+// customer id existed there was nothing better to guess with; now there is, and
+// step 3 is demoted to what it always was: a fallback for a buyer we cannot
+// identify, used only after the identities have had their turn.
+//
+// Step 3 therefore gained one refusal and one write:
+//
+//   - a candidate CLAIMED BY SOMEBODY ELSE is skipped, never reused. That is
+//     the fix. `NORBERTKULUS` holding customer A is not customer B's card
+//     however well the address lines up.
+//   - a candidate claimed by NOBODY is adopted and STAMPED with this buyer's
+//     id, so an install that predates the field converges card by card as its
+//     customers come back, with no migration and no day zero.
+//
+// The adoption is a presumption, and an honest one: on the evidence the bridge
+// has - same derived symbol, same address, no competing claim - this is the
+// same person, which is exactly the presumption step 3 has always made. What
+// changes is that the presumption is now RECORDED, so the next order does not
+// have to make it again.
+//
+// Candidates are ordered oldest-first, so a repeat buyer converges on their
+// FIRST record rather than drifting onto the newest duplicate.
+using Microsoft.Data.SqlClient;
+
+public static class Kontrahent
+{
+    /// <summary>
+    /// The deterministic symbol derived from a buyer's name. Subiekt's
+    /// `kh_Symbol` is 16 characters and is the operator-facing key.
+    ///
+    /// `fallbackPrefix` names the caller when the name yields nothing usable,
+    /// so an unnamed buyer does not collide across paths.
+    ///
+    /// The unnamed fallback is DETERMINISTIC (PR #7 review). It used to append
+    /// `DateTime.Now.ToString("HHmmssfff")`, so every order from an unnamed
+    /// buyer minted a fresh symbol and therefore a fresh kontrahent - an
+    /// unbounded set of one-order contractors, which is the `NORBERTKULUS(5)`,
+    /// `(6)`, `(7)` defect this file exists to prevent, arrived at by another
+    /// route. One well-known symbol that every such order attaches to is more
+    /// honest than a new contractor per sale: a buyer OpenLinker cannot name is
+    /// genuinely one unidentified party, and an operator can find and split
+    /// them afterwards.
+    /// </summary>
+    public static string MakeSymbol(string name, string fallbackPrefix = "ZAM")
+        => BridgeKeys.MakeSymbol(name, fallbackPrefix);
+
+    /// <summary>
+    /// A tax id reduced to its digits, for comparison only (PR #7 review).
+    ///
+    /// `FindByNip` matched on `nip.Trim()` alone, so `123-456-78-90` and
+    /// `1234567890` were two different buyers and each minted its own
+    /// kontrahent. Polish NIPs are written both ways routinely, and the stored
+    /// side is whatever an operator typed years ago, so BOTH sides are reduced
+    /// rather than assuming either is clean.
+    /// </summary>
+    public static string DigitsOnly(string? value) => BridgeKeys.DigitsOnly(value);
+
+    /// <summary>
+    /// kh__Kontrahent carries no NIP column of its own - it lives on the
+    /// linked address row.
+    /// </summary>
+    public static async Task<int?> FindByNip(string? nip)
+    {
+        if (string.IsNullOrWhiteSpace(nip)) return null;
+        await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+        await c.OpenAsync();
+        // Both sides reduced to digits (PR #7 review): the stored value is
+        // whatever an operator typed, and the incoming one is whatever the
+        // marketplace sent. Matching on the raw strings made `123-456-78-90`
+        // and `1234567890` two buyers.
+        var wanted = DigitsOnly(nip);
+        if (wanted == "") return null;
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP 1 k.kh_Id FROM kh__Kontrahent k
+              JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id AND a.adr_TypAdresu = 1
+              WHERE REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(a.adr_NIP,''),'-',''),' ',''),'.',''),'/','') = @nip
+              ORDER BY k.kh_Id", c);
+        cmd.Parameters.AddWithValue("@nip", wanted);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>
+    /// The base symbol plus Subiekt's own `SYMBOL(n)` variants, oldest first,
+    /// returning the first whose address matches the buyer's.
+    ///
+    /// Deliberately NOT a `LIKE` - `MakeSymbol` admits `_`, which `LIKE` reads
+    /// as a single-character wildcard, so `JAN_KOWAL` would match `JANXKOWAL`.
+    /// The prefix test below has no wildcard semantics at all.
+    /// </summary>
+    public static async Task<int?> FindBySymbol(
+        string symbol, string? kod, string? miasto, string? telefon = null, bool refuseSymbolOnly = false)
+    {
+        foreach (var id in await SymbolCandidates(symbol))
+            if (await MatchesAddress(id, kod, miasto, telefon, refuseSymbolOnly))
+                return id;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Every kontrahent whose symbol is this one or one of Subiekt's own `(n)`
+    /// variants of it, oldest first. The address check is the CALLER's, because
+    /// the two callers differ in what else they weigh - see
+    /// <see cref="FindBySymbolUnclaimed"/>.
+    ///
+    /// Extracted so there is ONE such query. Two copies of a lookup is what put
+    /// the `(n)` defect in three files in the first place, which is the reason
+    /// this class exists.
+    /// </summary>
+    private static async Task<List<int>> SymbolCandidates(string symbol)
+    {
+        var candidates = new List<int>();
+        if (string.IsNullOrWhiteSpace(symbol)) return candidates;
+
+        await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT kh_Id FROM kh__Kontrahent
+               WHERE kh_Symbol = @sym
+                  OR (LEN(kh_Symbol) > LEN(@sym)
+                      AND LEFT(kh_Symbol, LEN(@sym)) = @sym
+                      AND SUBSTRING(kh_Symbol, LEN(@sym) + 1, 1) = '(')
+               ORDER BY kh_Id", c);
+        cmd.Parameters.AddWithValue("@sym", symbol);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync()) candidates.Add(r.GetInt32(0));
+        return candidates;
+    }
+
+    /// <summary>
+    /// Is this kontrahent's address consistent with the buyer's?
+    ///
+    /// #5-review fix: this used to fail open whenever EITHER side lacked a
+    /// field, not only when BOTH did - so a candidate with a blank stored
+    /// address (e.g. created from a prior order that carried none) matched
+    /// ANY incoming buyer, whatever address they supplied. A false negative
+    /// here creates a duplicate kontrahent, which is untidy; a false POSITIVE
+    /// bills one person's document to another's name and address, which the
+    /// operator cannot see from Subiekt - so the rule is now: a match needs
+    /// at least one field CONFIRMED equal on both sides, and no field
+    /// CONTRADICTED.
+    ///
+    /// With ONE stated exception, which the body carries and which this
+    /// docblock used to contradict (PR #7 review): a buyer who supplies NO
+    /// address at all is accepted on the symbol alone. The reasoning, and an
+    /// honest measure of what it costs, is at the carve-out itself. A candidate
+    /// with a blank STORED address against a buyer who supplied one is still no
+    /// match - that half is closed, and it is the half the original finding
+    /// named.
+    /// </summary>
+
+
+    /// <summary>Which column on `kh__Kontrahent` holds the buyer's telephone,
+    /// or null when this install has none under a name we recognise.
+    ///
+    /// DISCOVERED rather than assumed. The bridge writes the phone through
+    /// Sfera (`kh.Telefon`), which does not tell us the underlying column, and
+    /// guessing wrong would throw on every address-less buyer - turning the
+    /// phone axis from a dedupe improvement into a duplicate per order, which
+    /// is the opposite of what it is for. Looked up once and cached; an install
+    /// where nothing matches simply does not get the axis.</summary>
+    private static string? _phoneColumn;
+    private static bool _phoneColumnResolved;
+
+    private static async Task<string?> PhoneColumn()
+    {
+        if (_phoneColumnResolved) return _phoneColumn;
+        try
+        {
+            await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                @"SELECT TOP 1 COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_NAME = 'kh__Kontrahent'
+                     AND COLUMN_NAME IN ('kh_Telefon','kh_Telefon1','kh_TelefonKom')
+                   ORDER BY CASE COLUMN_NAME
+                              WHEN 'kh_Telefon' THEN 0 WHEN 'kh_Telefon1' THEN 1 ELSE 2 END", c);
+            var r = await cmd.ExecuteScalarAsync();
+            _phoneColumn = r is null || r is DBNull ? null : Convert.ToString(r);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Kontrahent.PhoneColumn: {e.Message} - phone axis disabled.");
+            _phoneColumn = null;
+        }
+        _phoneColumnResolved = true;
+        if (_phoneColumn is null)
+            Console.Error.WriteLine(
+                "Kontrahent: no recognised telephone column on kh__Kontrahent, so an address-less " +
+                "buyer cannot be told apart by phone and will get its own kontrahent rather than " +
+                "being merged on name alone.");
+        return _phoneColumn;
+    }
+
+    /// <summary>The address truth table, as a PURE function so it can be tested
+    /// without a database (PR #7 second review, finding 4).
+    ///
+    /// A match needs at least one field CONFIRMED equal on both sides and no
+    /// field CONTRADICTED. A false negative mints a duplicate kontrahent, which
+    /// is untidy; a false POSITIVE bills one person's document to another's name
+    /// and address, which the operator cannot see from Subiekt - so the
+    /// asymmetry is deliberate and this is where it is pinned.
+    ///
+    /// The address-less BUYER carve-out is NOT here: it is decided by the caller
+    /// before any row is read, because there is nothing to compare against.</summary>
+    public static bool AddressesMatch(string wantKod, string wantMiasto, string storedKod, string storedMiasto)
+        => BridgeKeys.AddressesMatch(wantKod, wantMiasto, storedKod, storedMiasto);
+
+    public static async Task<bool> MatchesAddress(
+        int kontrahentId, string? kod, string? miasto, string? telefon = null, bool refuseSymbolOnly = false)
+    {
+        var wantKod = (kod ?? "").Trim();
+        var wantMiasto = (miasto ?? "").Trim();
+        // THE ONE CARVE-OUT, stated here because the docblock above states the
+        // opposite rule without it (PR #7 review).
+        //
+        // A buyer who supplied no postcode and no city is accepted on the
+        // SYMBOL alone. That is a real risk and it is chosen deliberately.
+        //
+        // #3365 review - the risk is LARGER than this comment used to claim.
+        // It said "two different people whose names both reduce to the same
+        // 16-character `MakeSymbol` output", which reads like a hash collision.
+        // `MakeSymbol` is not a hash: it uppercases the name and keeps the first
+        // 16 alphanumeric characters, so the colliding case is simply TWO
+        // CUSTOMERS WITH THE SAME NAME - common rather than exotic for Polish
+        // surnames. Two address-less orders from two different Jan Kowalskis
+        // resolve to one kontrahent, and the second sale is booked against the
+        // first one's record.
+        //
+        // It is still the lesser risk, for the reason below, and the bridge
+        // cannot do better with what it is given: OL sends `{name, nip,
+        // isCompany, address}` and nothing that identifies the buyer, so with no
+        // NIP and no address there is genuinely nothing left to tell them apart.
+        // The REAL fix is a discriminating identifier in the payload (an OL buyer
+        // id or the buyer e-mail) folded into the symbol - a contract change
+        // across core, this bridge and every existing kontrahent's symbol, so it
+        // is named here rather than improvised.
+        //
+        // It is the lesser risk because the alternative refuses EVERY
+        // address-less buyer a match and mints a fresh kontrahent per order,
+        // which is the unbounded-duplicates defect this file exists to prevent
+        // and which an operator meets on every marketplace order that carries
+        // no invoice address - the common case, not the exceptional one. A NIP,
+        // when the buyer supplies one, is matched first and is not affected by
+        // this at all.
+        //
+        // #7 THIRD REVIEW: the real fix named above now EXISTS for the order
+        // path - `olBuyerId` is in the payload and `Resolve` consults it before
+        // it ever reaches a symbol. What is left is the path that carries no
+        // such identifier: an invoice issued with no `zkId`, whose buyer goes
+        // through `Invoicing.UpsertCustomer` from `IssueInvoiceCommand`, which
+        // has no customer id on it at all. That caller passes
+        // `refuseSymbolOnly: true` below and takes the duplicate instead.
+        var wantTelefon = (telefon ?? "").Trim();
+        // NO LONGER accepted on the symbol alone (PR #7 second review, finding
+        // 6). A buyer who supplied no address is told apart by PHONE, the one
+        // discriminating field OpenLinker sends, and when there is none on
+        // either side this refuses - so the caller creates its own kontrahent
+        // rather than billing a document to whoever shares the name.
+        if (wantKod == "" && wantMiasto == "")
+        {
+            var phoneColumn = await PhoneColumn();
+            // NO PHONE TO COMPARE falls back to accepting the symbol match,
+            // which is the pre-review behaviour. Measured live on the reference
+            // install and it overturned the first version of this: that Subiekt
+            // build has no `Telefon` property AND no telephone column, so
+            // refusing here minted a kontrahent on EVERY call - 102 and 103 for
+            // one buyer, upserted twice. That is the unbounded-duplicates
+            // defect arriving by way of the fix for a rarer one.
+            //
+            // The phone therefore TIGHTENS the match where the data exists and
+            // never replaces it.
+            //
+            // ... UNLESS the caller asked us not to. `refuseSymbolOnly` is the
+            // invoice path, where the two costs are not the ones weighed above:
+            // the document is FISCAL, so billing it to whoever shares the name
+            // is not untidy but wrong on paper somebody files, and a buyer with
+            // no address at all is unusual on an invoice rather than the common
+            // case a marketplace order presents. Same rule the file already
+            // states - a false negative is a duplicate, a false positive is
+            // somebody else's document - applied where the arithmetic flips.
+            if (phoneColumn is null || wantTelefon == "")
+                return BridgeKeys.AcceptsSymbolOnlyMatch(refuseSymbolOnly);
+            try
+            {
+                await using var pc = new SqlConnection(BridgeConfig.ConnectionString);
+                await pc.OpenAsync();
+                await using var pcmd = new SqlCommand(
+                    $"SELECT ISNULL({phoneColumn},'') FROM kh__Kontrahent WHERE kh_Id = @id", pc);
+                pcmd.Parameters.AddWithValue("@id", kontrahentId);
+                var stored = await pcmd.ExecuteScalarAsync();
+                return BridgeKeys.AddresslessBuyerMatches(
+                    wantTelefon, stored is null || stored is DBNull ? "" : Convert.ToString(stored)!);
+            }
+            catch (Exception e)
+            {
+                // Fails CLOSED, like the address read below: a duplicate
+                // kontrahent is recoverable, a misattributed document is not.
+                Console.Error.WriteLine($"Kontrahent.MatchesAddress({kontrahentId}) phone: {e.Message} - no match.");
+                return false;
+            }
+        }
+
+        try
+        {
+            await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT TOP 1 ISNULL(adr_Kod,''), ISNULL(adr_Miejscowosc,'') " +
+                "FROM kh__Kontrahent k LEFT JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id " +
+                "AND a.adr_TypAdresu = 1 WHERE k.kh_Id = @id", c);
+            cmd.Parameters.AddWithValue("@id", kontrahentId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            if (!await r.ReadAsync()) return false;
+
+            var storedKod = r.GetString(0).Trim();
+            var storedMiasto = r.GetString(1).Trim();
+
+            return AddressesMatch(wantKod, wantMiasto, storedKod, storedMiasto);
+        }
+        catch (Exception e)
+        {
+            // #5-review fix: was "treating as a match" - a transient DB
+            // hiccup would otherwise silently attach a document to whichever
+            // candidate happened to come first. Failing safe here costs an
+            // extra kontrahent at worst; failing open could misattribute one.
+            Console.Error.WriteLine($"Kontrahent.MatchesAddress({kontrahentId}): {e.Message} - treating as no match (fails safe).");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The OpenLinker customer-id prefix. Anything else stored in the
+    /// configured column is the OPERATOR's data and is never read as a claim -
+    /// not as a match, and not as a rival claim that would refuse one. A field
+    /// we share with an operator has to be one we can be wrong about safely.
+    /// </summary>
+    /// <summary>Could this stored value be an OpenLinker customer id at all?
+    /// The rule itself lives in BridgeKeys, with every other pure decision this
+    /// bridge makes, so it is reachable from the test project - which compiles
+    /// only the files that need neither COM nor a SQL connection.</summary>
+    public static bool LooksLikeOlBuyerId(string? value) => BridgeKeys.LooksLikeOlBuyerId(value);
+
+    /// <summary>
+    /// The kontrahent this OpenLinker customer already holds, or null.
+    ///
+    /// Oldest first, matching every other lookup here: a repeat buyer converges
+    /// on their FIRST card rather than drifting onto the newest duplicate. More
+    /// than one row carrying one id should not happen - only <see
+    /// cref="StampOlBuyerId"/> writes the column and it refuses an occupied
+    /// slot - but ordering makes the answer STABLE if it ever does, which is
+    /// worth more than detecting it: a lookup that returns a different card on
+    /// alternate calls would split one customer's history in half.
+    /// </summary>
+    public static async Task<int?> FindByOlBuyerId(string? olBuyerId)
+    {
+        var col = BridgeConfig.KontrahentOlIdColumn;
+        if (col is null || !LooksLikeOlBuyerId(olBuyerId)) return null;
+
+        try
+        {
+            await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+            await c.OpenAsync();
+            // `col` is NOT user input: BridgeConfig.KontrahentOlIdColumn returns
+            // one of eight compiled-in names or null. A column cannot be a SQL
+            // parameter, so that allowlist is what stands in for one.
+            await using var cmd = new SqlCommand(
+                $"SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE {col} = @id ORDER BY kh_Id", c);
+            cmd.Parameters.AddWithValue("@id", olBuyerId!);
+            var r = await cmd.ExecuteScalarAsync();
+            return r is null || r is DBNull ? null : Convert.ToInt32(r);
+        }
+        catch (Exception e)
+        {
+            // Fails to NO MATCH, like every other lookup in this file. The cost
+            // is a duplicate kontrahent; the cost of failing the other way would
+            // be an order refused over a dedupe nicety.
+            Console.Error.WriteLine($"Kontrahent.FindByOlBuyerId: {e.Message} - no match.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The OpenLinker customer id stored on one kontrahent, or null when the
+    /// slot is empty, disabled, holds the operator's own data, or cannot be read.
+    ///
+    /// Every one of those reads as UNCLAIMED, and the collapse is deliberate:
+    /// the only decision taken on this value is whether a card is claimed by
+    /// somebody OTHER than the buyer in hand, and a value this bridge cannot
+    /// interpret is not evidence that it is.
+    /// </summary>
+    private static async Task<string?> ReadOlBuyerId(int kontrahentId)
+    {
+        var col = BridgeConfig.KontrahentOlIdColumn;
+        if (col is null) return null;
+
+        try
+        {
+            await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                $"SELECT {col} FROM kh__Kontrahent WHERE kh_Id = @id", c);
+            cmd.Parameters.AddWithValue("@id", kontrahentId);
+            var r = await cmd.ExecuteScalarAsync();
+            var v = r is null || r is DBNull ? null : Convert.ToString(r);
+            return LooksLikeOlBuyerId(v) ? v : null;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Kontrahent.ReadOlBuyerId({kontrahentId}): {e.Message} - treating as unclaimed.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Record that this kontrahent is this OpenLinker customer's. Returns
+    /// whether the claim landed.
+    ///
+    /// A GUARDED conditional UPDATE - `WHERE` the slot is still empty, rows
+    /// affected as the answer - so it can only ever FILL the field and never
+    /// change or clear one. That is what makes it safe to run against an
+    /// operator's own database: the worst case is that it writes nothing.
+    ///
+    /// It is its own statement rather than part of the create, because
+    /// `Sfera.EnsureKontrahent` returns an existing card UNTOUCHED on purpose -
+    /// re-saving one raises a modal in Subiekt and the COM call then blocks
+    /// forever. Stamping is precisely the case where the card already exists,
+    /// so it cannot go through Sfera at all.
+    /// </summary>
+    public static async Task<bool> StampOlBuyerId(int kontrahentId, string olBuyerId)
+    {
+        var col = BridgeConfig.KontrahentOlIdColumn;
+        if (col is null || !LooksLikeOlBuyerId(olBuyerId)) return false;
+
+        try
+        {
+            await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                $"UPDATE kh__Kontrahent SET {col} = @id WHERE kh_Id = @kh AND ({col} IS NULL OR {col} = '')", c);
+            cmd.Parameters.AddWithValue("@id", olBuyerId);
+            cmd.Parameters.AddWithValue("@kh", kontrahentId);
+            return await cmd.ExecuteNonQueryAsync() > 0;
+        }
+        catch (Exception e)
+        {
+            // Never fatal. The claim is an optimisation of the NEXT lookup; the
+            // order it was taken for is already correct without it.
+            Console.Error.WriteLine($"Kontrahent.StampOlBuyerId({kontrahentId}): {e.Message} - not stamped.");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The whole rule in one call: NIP, else the OpenLinker customer id, else
+    /// an address-verified symbol that nobody else has claimed, else null for
+    /// "create a new one".
+    ///
+    /// `olBuyerId` is OPTIONAL and its absence is never read as a claim: an
+    /// order whose source exposed neither a buyer id nor an e-mail carries
+    /// none, and resolves exactly as it did before the argument existed.
+    /// </summary>
+    public static async Task<int?> Resolve(
+        string? nip, string symbol, string? kod, string? miasto, string? telefon = null, string? olBuyerId = null)
+    {
+        var byNip = await FindByNip(nip);
+        if (byNip is not null)
+        {
+            // A NIP match is the strongest answer there is, and it is also a
+            // chance to record the id on a card that has none - so the NEXT
+            // order from this buyer resolves even if they drop the NIP.
+            if (LooksLikeOlBuyerId(olBuyerId)) await StampOlBuyerId(byNip.Value, olBuyerId!);
+            return byNip;
+        }
+
+        var byOlId = await FindByOlBuyerId(olBuyerId);
+        if (byOlId is not null) return byOlId;
+
+        return await FindBySymbolUnclaimed(symbol, kod, miasto, telefon, olBuyerId);
+    }
+
+    /// <summary>
+    /// <see cref="FindBySymbol"/> with the claim rule applied: the first
+    /// address-matching candidate that is not somebody else's, stamped with
+    /// this buyer's id if it had none.
+    ///
+    /// Candidates claimed by ANOTHER customer are SKIPPED rather than ending
+    /// the walk. `NORBERTKULUS` and `NORBERTKULUS(1)` are both candidates, and
+    /// the first being taken says nothing about the second - giving up there
+    /// would mint a fresh card on every order for a buyer whose own card is
+    /// sitting one row further down.
+    /// </summary>
+    private static async Task<int?> FindBySymbolUnclaimed(
+        string symbol, string? kod, string? miasto, string? telefon, string? olBuyerId)
+    {
+        var claiming = LooksLikeOlBuyerId(olBuyerId);
+
+        foreach (var id in await SymbolCandidates(symbol))
+        {
+            if (!await MatchesAddress(id, kod, miasto, telefon)) continue;
+
+            if (!claiming) return id;
+
+            var held = await ReadOlBuyerId(id);
+            if (held is null)
+            {
+                await StampOlBuyerId(id, olBuyerId!);
+                return id;
+            }
+            if (string.Equals(held, olBuyerId, StringComparison.Ordinal)) return id;
+
+            // Somebody else's card. THIS is the misbilling the file exists to
+            // stop: same derived symbol, same town, different person.
+            Console.Error.WriteLine(
+                $"Kontrahent: symbol '{symbol}' candidate {id} is claimed by another OpenLinker customer - skipping.");
+        }
+
+        return null;
+    }
+}

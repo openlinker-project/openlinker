@@ -1,8 +1,9 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { renderWithProviders, createMockApiClient, findToastTitle } from '../../test/test-utils';
 import { UsersPage } from './users-page';
+import { ApiError } from '../../shared/api/api-error';
 import type { UserListFilters, UserListResponse, UserSummary } from '../../features/users/api/users.types';
 
 function makeUser(overrides: Partial<UserSummary> = {}): UserSummary {
@@ -13,6 +14,7 @@ function makeUser(overrides: Partial<UserSummary> = {}): UserSummary {
     role: 'viewer',
     status: 'active',
     createdAt: '2026-01-01T00:00:00.000Z',
+    packStationLabel: null,
     ...overrides,
   };
 }
@@ -66,6 +68,19 @@ describe('UsersPage', () => {
 
     expect(await screen.findByText('Unable to load users')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('should show the access-denied state and no Retry when the list is refused with a 403', async () => {
+    const mockApi = createMockApiClient({
+      users: { list: vi.fn().mockRejectedValue(new ApiError('Insufficient permissions', 403, null)) },
+    });
+    renderWithProviders(<UsersPage />, { apiClient: mockApi });
+
+    expect(
+      await screen.findByRole('heading', { name: 'User management is for administrators' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Unable to load users')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
   });
 
   it('should show role picker and Approve + Reject buttons for pending users', async () => {
@@ -172,7 +187,7 @@ describe('UsersPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
 
-    expect(await screen.findByText('Deactivation failed')).toBeInTheDocument();
+    expect(await findToastTitle('Deactivation failed')).toBeInTheDocument();
   });
 
   it('should call reactivate API when Reactivate clicked', async () => {

@@ -19,7 +19,18 @@ export class SubiektBridgeUnreachableError extends Error {
 
 /** The bridge reached Subiekt, but Subiekt rejected the request (e.g. invalid NIP). */
 export class SubiektRejectedError extends Error {
-  constructor(public readonly reason: string) {
+  /**
+   * `code` is the bridge envelope's own machine-readable `error.code`, carried
+   * so a caller can tell "no such towar" (`'not_found'`) from every other
+   * business refusal without reading free text. It is OPTIONAL because the
+   * value is purely additive: every construction site that predates it keeps
+   * compiling and behaves exactly as before, and `looksLikeSubiektNotFound`
+   * falls back to the prose when it is absent.
+   */
+  constructor(
+    public readonly reason: string,
+    public readonly code?: string,
+  ) {
     super(`Subiekt rejected the request: ${reason}`);
     this.name = 'SubiektRejectedError';
     Error.captureStackTrace(this, this.constructor);

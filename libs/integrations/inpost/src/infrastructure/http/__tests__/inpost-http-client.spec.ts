@@ -11,6 +11,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { ShippingProviderRejectionException } from '@openlinker/core/shipping';
 import { InpostUnauthorizedException } from '../../../domain/exceptions/inpost-unauthorized.exception';
 import { InpostNetworkException } from '../../../domain/exceptions/inpost-network.exception';
+import { InpostAmbiguousWriteException } from '../../../domain/exceptions/inpost-ambiguous-write.exception';
 import { InpostHttpClient } from '../inpost-http-client';
 
 interface FakeResponseInit {
@@ -355,6 +356,81 @@ describe('InpostHttpClient', () => {
       InpostNetworkException,
     );
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  describe('non-idempotent POST retry gating (#3469 — guards double-label)', () => {
+    it('should NOT retry an ambiguous 5xx on a POST with no idempotent flag (exactly one request)', async () => {
+      fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 500, body: '{}' }));
+
+      const error = await client
+        .request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} })
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      // #3469 IMPORTANT-1 review: raised as the distinguishable
+      // InpostAmbiguousWriteException (a subclass of InpostNetworkException,
+      // so every pre-existing consumer still matches it) —
+      // InpostRetryClassifierAdapter keys on this type so a job-level retry
+      // does not re-send the same POST.
+      expect(error).toBeInstanceOf(InpostNetworkException);
+      expect(error).toBeInstanceOf(InpostAmbiguousWriteException);
+      expect(error).toMatchObject({
+        method: 'POST',
+        path: '/v1/organizations/org-1/shipments',
+        statusCode: 500,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT retry a network error on a POST with no idempotent flag (exactly one request)', async () => {
+      fetchMock.mockRejectedValue(new Error('ECONNRESET'));
+
+      const error = await client
+        .request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} })
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(InpostAmbiguousWriteException);
+      expect((error as InpostAmbiguousWriteException).statusCode).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still retry a 429 on POST (ShipX never processed the request)', async () => {
+      fetchMock
+        .mockResolvedValueOnce(fakeResponse({ ok: false, status: 429, retryAfter: '0', body: '{}' }))
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"id":"s1"}' }));
+
+      await expect(
+        client.request({ method: 'POST', path: '/v1/organizations/org-1/shipments', body: {} }),
+      ).resolves.toEqual({ id: 's1' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('should generate exactly one request for generateLabel-shaped POST on a persistent 5xx (no duplicate label)', async () => {
+      // Mirrors what InpostShippingAdapter.generateLabel actually sends —
+      // asserted at the client level since the adapter is a thin pass-through.
+      fetchMock.mockResolvedValue(fakeResponse({ ok: false, status: 502, body: '{}' }));
+
+      await expect(
+        client.request({
+          method: 'POST',
+          path: '/v1/organizations/org-1/shipments',
+          body: { receiver: {}, parcels: [] },
+        }),
+      ).rejects.toBeInstanceOf(InpostNetworkException);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry an ambiguous 5xx on a POST explicitly marked idempotent', async () => {
+      fetchMock
+        .mockResolvedValueOnce(fakeResponse({ ok: false, status: 500, body: '{}' }))
+        .mockResolvedValueOnce(fakeResponse({ ok: true, status: 200, body: '{"ok":true}' }));
+
+      await expect(
+        client.request({ method: 'POST', path: '/v1/x', idempotent: true }),
+      ).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('requestBinary', () => {

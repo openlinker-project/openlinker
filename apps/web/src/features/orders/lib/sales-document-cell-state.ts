@@ -18,7 +18,10 @@
  *
  * @module apps/web/src/features/orders/lib
  */
-import { resolveSalesDocumentReasonCopy } from '../../sales-documents';
+import {
+  resolveSalesDocumentReasonCopy,
+  resolveSalesDocumentRecordWord,
+} from '../../sales-documents';
 import type { SalesDocumentReasonTone } from '../../sales-documents';
 import type { SalesDocumentView } from '../api/orders.types';
 
@@ -122,44 +125,9 @@ export function resolveSalesDocumentCellState(
     };
   }
 
-  if (document.kind === 'fiscal-receipt') {
-    if (document.status === 'pending') return withDoc(view.documentKind, 'Queued', 'progress');
-    if (document.status === 'registering')
-      return withDoc(view.documentKind, 'Registering', 'progress');
-    if (document.status === 'registered')
-      return withDoc(view.documentKind, 'Registered', 'done');
-    if (document.status === 'failed') {
-      return document.failureMode === 'rejected'
-        ? withDoc(view.documentKind, 'Rejected', 'error')
-        : withDoc(view.documentKind, 'Unconfirmed', 'warning');
-    }
-    // A status this build does not recognise — a newer backend answering an
-    // FE compiled against an older union. Reported as needing a look rather
-    // than silently rendering nothing.
-    return withDoc(view.documentKind, 'Unrecognised status', 'warning');
-  }
-
-  // document.kind === 'invoice'. Clearance takes precedence over issuance —
-  // "issued, then rejected by the authority" is the state a flattened status
-  // could not express (ADR-065), and it is more actionable than "Issued".
-  if (document.regulatoryStatus === 'rejected') {
-    return withDoc(view.documentKind, 'Authority rejected', 'error');
-  }
-  if (document.regulatoryStatus === 'submitted' || document.regulatoryStatus === 'pending-submission') {
-    return withDoc(view.documentKind, 'At authority', 'progress');
-  }
-  if (document.status === 'issued') return withDoc(view.documentKind, 'Issued', 'done');
-  if (document.status === 'issuing' || document.status === 'pending')
-    return withDoc(view.documentKind, 'Issuing', 'progress');
-  if (document.status === 'failed') {
-    return document.failureMode === 'rejected'
-      ? withDoc(view.documentKind, 'Failed', 'error')
-      : withDoc(view.documentKind, 'Needs review', 'warning');
-  }
-  // A status this build does not recognise.
-  return withDoc(view.documentKind, 'Unrecognised status', 'warning');
-}
-
-function withDoc(kind: string, word: string, tone: SalesDocumentCellTone): SalesDocumentCellState {
-  return { kind, word, tone, reasonDetail: null, keepsAction: false };
+  // The "given a record, what word/tone" rule has exactly one definition,
+  // shared with the merged /sales-documents list (#3307) — see
+  // `resolveSalesDocumentRecordWord`'s own docblock for why.
+  const { word, tone } = resolveSalesDocumentRecordWord(document);
+  return { kind: view.documentKind, word, tone, reasonDetail: null, keepsAction: false };
 }

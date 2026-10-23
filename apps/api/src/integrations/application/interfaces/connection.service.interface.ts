@@ -88,4 +88,28 @@ export interface IConnectionService {
    * @returns Disabled Connection entity or throws if not found
    */
   disable(connectionId: string): Promise<Connection>;
+
+  /**
+   * Archive (soft delete) a disabled connection (#3657): removes its stored
+   * credential and hides it from every list. Idempotent on an archived row;
+   * 409 for any other status.
+   *
+   * A consumer that resolves a referenced connection by enumerating
+   * `ConnectionPort.list()` loses an archived referent, while one that uses
+   * `get()` keeps it - pick `get()` when the referent must still resolve.
+   * `config.masterCatalogConnectionId` is resolved through the list (the
+   * mapping pages), so archiving is refused with `ConnectionInUseException`
+   * (409) while any non-archived connection still names this one as its
+   * catalog. `fulfillment_routing_rules`, `routing_decisions.routerConnectionId`
+   * and the authority claims in `config` resolve through `get()` or capability
+   * listings, so they need no refusal.
+   */
+  archive(connectionId: string): Promise<Connection>;
+
+  /**
+   * Restore an archived connection to `disabled`. Its credential is not
+   * restored - it must be re-entered before the connection can be enabled.
+   * 409 for any status other than `archived`.
+   */
+  restore(connectionId: string): Promise<Connection>;
 }

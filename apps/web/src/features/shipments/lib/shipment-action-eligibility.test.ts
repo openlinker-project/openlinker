@@ -123,9 +123,22 @@ describe('canRegenerateLabel', () => {
 });
 
 describe('the remaining eligibility sets', () => {
-  it('should gate cancel and manual dispatch to generated only', () => {
-    expect([...CAN_CANCEL]).toEqual(['generated']);
+  // Cancel covers `dispatched` since #3365: the automatic dispatch
+  // notification advances a shipment within seconds of the label being bought,
+  // so gating on `generated` alone meant an operator who bought the wrong
+  // label could not void it at all. Manual dispatch stays `generated`-only -
+  // there is nothing to mark dispatched on a row that already is.
+  it('should gate cancel to generated and dispatched, and manual dispatch to generated only', () => {
+    expect([...CAN_CANCEL].sort()).toEqual(['dispatched', 'generated']);
     expect([...CAN_NOTIFY_DISPATCHED]).toEqual(['generated']);
+  });
+
+  // `in-transit` is the line: at `dispatched` the label exists and the carrier
+  // has moved nothing, while `in-transit` is the carrier reporting that it has.
+  it('should not offer cancel once the carrier reports movement', () => {
+    for (const status of ['in-transit', 'delivered', 'failed', 'cancelled'] as const) {
+      expect(CAN_CANCEL.has(status)).toBe(false);
+    }
   });
 
   it('should keep the label document retrievable across the carrier-tracked lifecycle', () => {

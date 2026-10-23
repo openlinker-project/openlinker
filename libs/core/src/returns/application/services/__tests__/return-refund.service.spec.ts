@@ -37,6 +37,8 @@ function buildLine(moneyState: ReturnMoneyState = 'not_refundable'): ReturnLine 
     null,
     null,
     null,
+    null,
+    null,
     'SKU-1',
     'Widget',
     'withdrawal',

@@ -28,6 +28,7 @@ import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
+import { FulfillmentWorkDispatchConflictException } from '../../domain/exceptions/fulfillment-work-dispatch-conflict.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -108,6 +109,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.fulfillmentWorkId ?? null,
     // #2073 waybill-relay failure history — none by default.
     overrides.waybillRelayFailure ?? null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
@@ -120,7 +123,31 @@ function resolution(
       overrides.processorConnectionId === undefined ? INPOST : overrides.processorConnectionId,
     source: overrides.source ?? 'rule',
     processorAvailable: overrides.processorAvailable ?? true,
+    parcelProfile: null,
   };
+}
+
+/**
+ * A `getAdapter` answer carrying just the `config` the dispatch path reads. Cast
+ * because the real return type carries a full `Connection` plus adapter
+ * metadata, and none of it is consulted here - the opt-in read touches
+ * `connection.config` and nothing else.
+ */
+function connectionWithConfig(
+  config: Record<string, unknown>
+): Awaited<ReturnType<IIntegrationsService['getAdapter']>> {
+  return { connection: { id: 'conn-1', config } } as unknown as Awaited<
+    ReturnType<IIntegrationsService['getAdapter']>
+  >;
+}
+
+/**
+ * A connection that HAS opted into notifying the marketplace when a label is
+ * bought (#3365 review). The default mock deliberately does not, because that is
+ * what every existing install looks like.
+ */
+function optedInConnection(): Awaited<ReturnType<IIntegrationsService['getAdapter']>> {
+  return connectionWithConfig({ shipping: { notifyMarketplaceOnLabelPurchase: true } });
 }
 
 describe('ShipmentDispatchService', () => {
@@ -131,7 +158,12 @@ describe('ShipmentDispatchService', () => {
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
   let orderHolds: jest.Mocked<IOrderHoldService>;
-  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
+  let fulfillmentWorks: {
+    resolveLinkForOrder: jest.Mock;
+    listBlockingRejectionConnectionIds: jest.Mock;
+    findWorkById: jest.Mock;
+  };
+  let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock };
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -146,11 +178,15 @@ describe('ShipmentDispatchService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      giveUpWaybillRelay: jest.fn(),
       clearWaybillRelayFailures: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
+      findDeliveredRelayPending: jest.fn(),
+      markDeliveredRelayed: jest.fn(),
+      recordDeliveredRelayFailure: jest.fn(),
     };
     routing = {
       getRules: jest.fn(),
@@ -166,7 +202,10 @@ describe('ShipmentDispatchService', () => {
       getSupportedMethods: jest.fn().mockReturnValue(['paczkomat', 'kurier']),
     };
     integrations = {
-      getAdapter: jest.fn(),
+      // #3365 review: the notification is opt-in, so the DEFAULT connection here
+      // carries no `config.shipping.notifyMarketplaceOnLabelPurchase` - which is
+      // what every existing install looks like.
+      getAdapter: jest.fn().mockResolvedValue(connectionWithConfig({})),
       getCapabilityAdapter: jest.fn().mockResolvedValue(adapter),
       resolveAdapterMetadata: jest.fn(),
       listCapabilityAdapters: jest.fn(),
@@ -182,9 +221,12 @@ describe('ShipmentDispatchService', () => {
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
+      recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
       markDestinationRoutingBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -222,6 +264,15 @@ describe('ShipmentDispatchService', () => {
     fulfillmentWorks = {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+      findWorkById: jest.fn().mockResolvedValue(null),
+    };
+    // #3365: every successful label buy enqueues the dispatch notification, so
+    // the queue is present on every pre-existing test. Resolving by default
+    // keeps them byte-identical; the enqueue is best-effort, so a rejection
+    // would be swallowed rather than changing any assertion here.
+    jobQueue = {
+      enqueue: jest.fn().mockResolvedValue('job-1'),
+      enqueueBulk: jest.fn().mockResolvedValue([]),
     };
     service = new ShipmentDispatchService(
       repository,
@@ -232,6 +283,7 @@ describe('ShipmentDispatchService', () => {
       dispatchLock,
       orderHolds,
       fulfillmentWorks,
+      jobQueue,
     );
   });
 
@@ -297,6 +349,137 @@ describe('ShipmentDispatchService', () => {
 
       await expect(service.dispatch(makeInput())).rejects.toThrow('db down');
       expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+  });
+
+  // #3365. Before this, `notifyDispatched` had one caller - the "Mark
+  // dispatched" button - so a marketplace learned a tracking number only if
+  // somebody clicked, and a label bought by `fulfillment.work.autoDispatch`
+  // told nobody at all. Both paths reach `dispatch()`, so the enqueue lives
+  // here and covers both.
+  describe('automatic dispatch notification (#3365)', () => {
+    it('enqueues the notification once a label is bought, when the connection opted in', async () => {
+      arrangeOlManagedCarrierHappyPath();
+      integrations.getAdapter.mockResolvedValue(optedInConnection());
+
+      await service.dispatch(makeInput());
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'shipping.shipment.notifyDispatched',
+          payload: expect.objectContaining({ schemaVersion: 1 }),
+          // Per SHIPMENT, so the retry path - which reuses the same row after
+          // a failed label - does not enqueue a second notification for one
+          // parcel.
+          options: expect.objectContaining({
+            dedupeKey: expect.stringContaining('shipment:notifyDispatched:') as unknown as string,
+          }),
+        }),
+      );
+    });
+
+    // The label is bought and the carrier has committed. A queue that is
+    // momentarily unreachable must not turn that into a failed dispatch - the
+    // operator's manual action is the remaining route, and the warn names it.
+    it('still reports the dispatch when the enqueue fails', async () => {
+      arrangeOlManagedCarrierHappyPath();
+      jobQueue.enqueue.mockRejectedValue(new Error('redis down'));
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result.kind).toBe('dispatched');
+    });
+
+    // THE PATH THAT TOLD NOBODY (#3365 audit). A retry that finds the carrier
+    // already minted a label ADOPTS it and used to `return` straight out,
+    // short-circuiting past the only `enqueueDispatchNotification` in the file.
+    // The parcel shipped, the marketplace was never told, and permanently:
+    // `waybillRelayedAt` stayed null so the failure counter stayed 0 and the
+    // "Tracking not sent" badge could never render, while
+    // `ShipmentStatusSyncService`'s push gate opens only from
+    // `dispatched`/`in-transit` and nothing else moves a row off `generated`.
+    it('enqueues the notification for a label ADOPTED on the retry path', async () => {
+      routing.resolve.mockResolvedValue(
+        resolution({
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      );
+      // An existing row from a prior attempt, with no provider reference yet -
+      // which is what sends `dispatch` down the reconciliation branch.
+      const prior = makeShipment({ status: 'failed', providerShipmentId: null });
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(prior);
+      const adopted = makeShipment({ status: 'generated', providerShipmentId: 'shipx-adopted' });
+      repository.update.mockResolvedValue(adopted);
+      (adapter as unknown as { findShipmentByReference: jest.Mock }).findShipmentByReference =
+        jest.fn().mockResolvedValue({
+          providerShipmentId: 'shipx-adopted',
+          trackingNumber: 'TRACK-ADOPTED',
+          labelPdfRef: 'shipx:label:shipx-adopted',
+        });
+
+      integrations.getAdapter.mockResolvedValue(optedInConnection());
+
+      integrations.getAdapter.mockResolvedValue(optedInConnection());
+
+      await service.dispatch(makeInput());
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'shipping.shipment.notifyDispatched' }),
+      );
+    });
+
+    it('enqueues nothing when the connection did not opt in', async () => {
+      // The default state of every install. Buying a label and dispatching a
+      // parcel are two acts, and telling the buyer "your order shipped" the
+      // moment a label prints is a claim the operator has to choose to make.
+      routing.resolve.mockResolvedValue(resolution());
+      const generated = makeShipment({ status: 'generated' });
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(generated);
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-1',
+        trackingNumber: 'TRACK-1',
+        labelPdfRef: 'shipx:label:shipx-1',
+      });
+
+      await service.dispatch(makeInput());
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'shipping.shipment.notifyDispatched' }),
+      );
+    });
+
+    it('does not notify when the opt-in cannot be read, and does not fail the dispatch', async () => {
+      // The label is bought by this point. A config read that fails must not
+      // turn a completed dispatch into an error, and must not send a notice on
+      // a guess either.
+      routing.resolve.mockResolvedValue(resolution());
+      const generated = makeShipment({ status: 'generated' });
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(generated);
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-1',
+        trackingNumber: 'TRACK-1',
+        labelPdfRef: 'shipx:label:shipx-1',
+      });
+      integrations.getAdapter.mockRejectedValue(new Error('connection vanished'));
+
+      await expect(service.dispatch(makeInput())).resolves.toBeDefined();
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'shipping.shipment.notifyDispatched' }),
+      );
+    });
+
+    it('enqueues nothing when the label was never bought', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockRejectedValue(new Error('db down'));
+
+      await expect(service.dispatch(makeInput())).rejects.toThrow('db down');
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
     });
   });
 
@@ -542,6 +725,35 @@ describe('ShipmentDispatchService', () => {
       await service.dispatch(makeInput({ cod }));
 
       expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    // An order that says nothing about how it is paid (an unrecognised plugin
+    // gateway, say) must never pre-fill a COD amount from the order record, even
+    // if one were present on the snapshot: only an order REPORTED cash-on-delivery
+    // may supply it (#3294). The operator's own figure stays authoritative.
+    it('should not take a COD amount from the order when its payment status is unreported (#3294)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(
+        makeOrderRecord(undefined, { amount: '510.94', currency: 'PLN' }),
+      );
+
+      const cod = { amount: '39.99', currency: 'PLN' };
+      await service.dispatch(makeInput({ cod }));
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(expect.objectContaining({ cod }));
+    });
+
+    it('should send no COD at all when the order is unreported and the caller supplies none (#3294)', async () => {
+      primeCodDispatch();
+      orders.getOrderRecord.mockResolvedValue(
+        makeOrderRecord(undefined, { amount: '510.94', currency: 'PLN' }),
+      );
+
+      await service.dispatch(makeInput());
+
+      expect(adapter.generateLabel).toHaveBeenCalledWith(
+        expect.objectContaining({ cod: undefined }),
+      );
     });
 
     it('should forward cod as undefined when the caller omits it', async () => {
@@ -1251,6 +1463,121 @@ describe('ShipmentDispatchService', () => {
 
       expect(reconciling.findShipmentByReference).toHaveBeenCalled();
       expect(reconciling.generateLabel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a split order never reports another work\'s shipment as its own (#3340 follow-up)', () => {
+    it('should throw when an active shipment already exists, the order is ambiguous, and it is not linked to THIS work', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      // Work A's own shipment, created while the order already had >1 live
+      // work, so #2402's own rule left its link NULL — reproducing the
+      // reported bug exactly: the active row cannot be told apart from "mine"
+      // by its `fulfillmentWorkId` alone.
+      const workASShipment = makeShipment({
+        id: 'ol_shipment_work_a',
+        status: 'generated',
+        providerShipmentId: 'shipx-work-a',
+        fulfillmentWorkId: null,
+      });
+      repository.findActiveByOrderId.mockResolvedValue(workASShipment);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+
+      await expect(
+        service.dispatch(makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_b' })),
+      ).rejects.toBeInstanceOf(FulfillmentWorkDispatchConflictException);
+
+      // Never a false success naming another parcel's shipment.
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should NOT throw when the caller supplies no fulfillmentWorkId — the manual route is unaffected', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      const existing = makeShipment({ status: 'generated', providerShipmentId: 'shipx-existing' });
+      repository.findActiveByOrderId.mockResolvedValue(existing);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result).toEqual({ kind: 'dispatched', shipment: existing });
+    });
+
+    it('should NOT throw when the order has only ONE live work, even though the active row is unlinked', async () => {
+      // A legitimate branch-1 row the status poll minted before this order was
+      // routed. No ambiguity exists, so nothing else could own this shipment.
+      routing.resolve.mockResolvedValue(resolution());
+      const existing = makeShipment({
+        status: 'generated',
+        providerShipmentId: 'shipx-single-work',
+        fulfillmentWorkId: null,
+      });
+      repository.findActiveByOrderId.mockResolvedValue(existing);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'unique',
+        workId: 'ol_fulfillmentwork_only',
+      });
+
+      const result = await service.dispatch(
+        makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_only' }),
+      );
+
+      expect(result).toEqual({ kind: 'dispatched', shipment: existing });
+    });
+
+    it('should NOT throw when the active shipment is already linked to THIS caller\'s work — an idempotent retry', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      const own = makeShipment({
+        status: 'generated',
+        providerShipmentId: 'shipx-own',
+        fulfillmentWorkId: 'ol_fulfillmentwork_b',
+      });
+      repository.findActiveByOrderId.mockResolvedValue(own);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+
+      const result = await service.dispatch(
+        makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_b' }),
+      );
+
+      expect(result).toEqual({ kind: 'dispatched', shipment: own });
+    });
+
+    it('should stamp the caller-supplied fulfillmentWorkId on a genuinely NEW shipment, preferred over the ambiguous guess', async () => {
+      routing.resolve.mockResolvedValue(
+        resolution({
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+      // Even though the per-order guess is ambiguous, the caller KNOWS which
+      // work this dispatch is for.
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-new',
+        trackingNumber: null,
+        labelPdfRef: 'ref-new',
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await service.dispatch(makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_b' }));
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ fulfillmentWorkId: 'ol_fulfillmentwork_b' }),
+      );
     });
   });
 });

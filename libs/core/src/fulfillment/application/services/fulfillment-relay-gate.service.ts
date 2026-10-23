@@ -65,4 +65,12 @@ export class FulfillmentRelayGateService implements IFulfillmentRelayGateService
   async releaseDispatch(workId: string): Promise<void> {
     await this.workRepository.releaseDispatchRelay(workId);
   }
+
+  async markRelayedExternally(workId: string): Promise<boolean> {
+    // The identical conditional UPDATE `claimDispatch` takes — the DB fact
+    // ("this slot is taken") is the same either way; only the CALLER's reason
+    // differs, which is why this stays a thin, separately-named wrapper
+    // rather than a second persistence path.
+    return this.workRepository.claimDispatchRelay(workId, new Date());
+  }
 }

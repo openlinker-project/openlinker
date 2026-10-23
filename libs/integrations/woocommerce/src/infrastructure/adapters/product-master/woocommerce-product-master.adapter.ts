@@ -53,6 +53,10 @@ import type { IdentifierMappingPort, Connection } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import { exceedsAdapterPageSize } from '@openlinker/core/operational-settings';
+import {
+  buildWooCommercePhysicalData,
+  type WooCommerceStoreUnits,
+} from '../../mappers/woocommerce-physical-data';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
@@ -73,6 +77,12 @@ import type {
   WooCommerceGeneralSetting,
 } from './woocommerce-product.types';
 import { fetchAllPages } from '../../utils/woocommerce-utils';
+import { WooCommerceTaxClassResolver } from '../order-processor/woocommerce-tax-class.resolver';
+import {
+  effectiveTaxClass,
+  isStoredPriceGross,
+  toGrossPrice,
+} from '../../tax/woocommerce-price-basis';
 
 /**
  * WooCommerce's REST layer caps `per_page` at 100 on every list endpoint
@@ -207,7 +217,14 @@ export class WooCommerceProductMasterAdapter
         }
         throw err;
       }
-      return { ...this.mapper.mapProduct(p), id: productId };
+      const mapped = await this.withStoreCurrency(this.mapper.mapProduct(p));
+      const price = await this.toGrossCataloguePrice({
+        stored: mapped.price,
+        taxClass: effectiveTaxClass(p.tax_class),
+        taxStatus: p.tax_status,
+        subject: `product ${mapping.externalId}`,
+      });
+      return { ...mapped, price: price ?? null, id: productId };
     } catch (error) {
       // Translate the platform not-found (missing mapping OR a 404, i.e. deleted
       // at the master) into the neutral core error so core services can
@@ -240,16 +257,28 @@ export class WooCommerceProductMasterAdapter
       })),
     );
 
-    return validProducts
-      .map((p) => {
-        const internalId = idMap.get(`${String(p.id)}:${this.connection.id}`);
-        if (!internalId) {
-          this.logger.warn(`No internal ID for WC product ${String(p.id)}`);
-          return null;
-        }
-        return { ...this.mapper.mapProduct(p), id: internalId };
-      })
-      .filter((p): p is Product => p !== null);
+    // Resolved once for the whole page rather than per row — the store has
+    // exactly one currency, and readStoreCurrency() is cache-cheap after the
+    // first call regardless.
+    const currency = await this.readStoreCurrency();
+
+    const result: Product[] = [];
+    for (const p of validProducts) {
+      const internalId = idMap.get(`${String(p.id)}:${this.connection.id}`);
+      if (!internalId) {
+        this.logger.warn(`No internal ID for WC product ${String(p.id)}`);
+        continue;
+      }
+      const mapped = this.applyStoreCurrency(this.mapper.mapProduct(p), currency);
+      const price = await this.toGrossCataloguePrice({
+        stored: mapped.price,
+        taxClass: effectiveTaxClass(p.tax_class),
+        taxStatus: p.tax_status,
+        subject: `product ${String(p.id)}`,
+      });
+      result.push({ ...mapped, price: price ?? null, id: internalId });
+    }
+    return result;
   }
 
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
@@ -301,8 +330,14 @@ export class WooCommerceProductMasterAdapter
           metadata: { variantExternalId: syntheticExternalId, synthetic: true },
         },
       );
-      const price =
-        product.price !== undefined ? this.parseVariantPrice(product.price) : undefined;
+      // The regular price (ADR-077: no promotions), made gross for the store.
+      const storedPrice = product.regular_price || product.price;
+      const price = await this.toGrossCataloguePrice({
+        stored: storedPrice !== undefined ? this.parseVariantPrice(storedPrice) : undefined,
+        taxClass: effectiveTaxClass(product.tax_class),
+        taxStatus: product.tax_status,
+        subject: `product ${wcId}`,
+      });
       return [
         {
           id: internalVariantId,
@@ -312,6 +347,7 @@ export class WooCommerceProductMasterAdapter
           ean: null,
           gtin: null,
           price,
+          ...buildWooCommercePhysicalData(product, undefined, await this.readStoreUnits()),
         },
       ];
     }
@@ -348,16 +384,37 @@ export class WooCommerceProductMasterAdapter
       })),
     );
 
-    return validVariations
-      .map((v) => {
-        const internalId = idMap.get(`${String(v.id)}:${this.connection.id}`);
-        if (!internalId) {
-          this.logger.warn(`No internal ID for WC variation ${String(v.id)}`);
-          return null;
-        }
-        return { ...this.mapper.mapVariation(v, productId), id: internalId };
-      })
-      .filter((v): v is ProductVariant => v !== null);
+    const storeUnits = await this.readStoreUnits();
+
+    const result: ProductVariant[] = [];
+    for (const v of validVariations) {
+      const internalId = idMap.get(`${String(v.id)}:${this.connection.id}`);
+      if (!internalId) {
+        this.logger.warn(`No internal ID for WC variation ${String(v.id)}`);
+        continue;
+      }
+      const mapped = this.mapper.mapVariation(v, productId);
+      // A variation's `tax_class` of `parent` inherits the parent's class; its
+      // own `tax_status` wins when it states one.
+      const price = await this.toGrossCataloguePrice({
+        stored: mapped.price,
+        taxClass: effectiveTaxClass(v.tax_class, product.tax_class),
+        taxStatus: v.tax_status ?? product.tax_status,
+        subject: `variation ${String(v.id)}`,
+      });
+      const variant: ProductVariant = {
+        ...mapped,
+        ...buildWooCommercePhysicalData(product, v, storeUnits),
+        id: internalId,
+      };
+      if (price !== undefined) {
+        variant.price = price;
+      } else {
+        delete variant.price;
+      }
+      result.push(variant);
+    }
+    return result;
   }
 
   async getProductCategories(productId: string): Promise<Category[]> {
@@ -447,7 +504,8 @@ export class WooCommerceProductMasterAdapter
       String(raw.id),
       this.connection.id,
     );
-    return { ...this.mapper.mapProduct(raw), id: internalId };
+    const mapped = await this.withStoreCurrency(this.mapper.mapProduct(raw));
+    return { ...mapped, id: internalId };
   }
 
   async updateProduct(productId: string, product: ProductUpdate): Promise<Product> {
@@ -490,7 +548,8 @@ export class WooCommerceProductMasterAdapter
       }
       throw err;
     }
-    return { ...this.mapper.mapProduct(raw), id: productId };
+    const mapped = await this.withStoreCurrency(this.mapper.mapProduct(raw));
+    return { ...mapped, id: productId };
   }
 
   async deleteProduct(productId: string): Promise<void> {
@@ -902,13 +961,82 @@ export class WooCommerceProductMasterAdapter
    */
   private async readStoreCountry(): Promise<string | null> {
     if (this.storeCountry !== undefined) return this.storeCountry;
-    const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
-      '/wp-json/wc/v3/settings/general'
-    );
-    const raw = settings?.find((s) => s.id === 'woocommerce_default_country')?.value;
+    const settings = await this.readGeneralSettings();
+    const raw = settings.find((s) => s.id === 'woocommerce_default_country')?.value;
     const value = Array.isArray(raw) ? raw[0] : raw;
     this.storeCountry = value ? (value.split(':')[0]?.toUpperCase() ?? null) : null;
     return this.storeCountry;
+  }
+
+  /**
+   * The store's own selling currency, from `woocommerce_currency` (#3310).
+   *
+   * WooCommerce reports no currency on the product resource itself, and the
+   * mapper's `WooCommerceProductMapperOptions.currency` construction option is
+   * never populated in production — the mapper is built in the plugin factory
+   * before any HTTP call can run, so the value has to be resolved here and
+   * stamped onto the mapped product afterwards (`withStoreCurrency`) rather
+   * than threaded through the mapper's constructor.
+   *
+   * Shares `readGeneralSettings()`'s cache with `readStoreCountry()`, so a read
+   * that needs both never fetches `/settings/general` twice.
+   *
+   * Follows `readStoreCountry`'s two rules verbatim: **a transport failure
+   * throws** (never recorded as "the store declares no currency"), and **only
+   * a successful read is cached** (a failure must not pin a false `null` for
+   * the adapter's lifetime). `null` means the store answered and genuinely
+   * declares none — callers must keep producing the existing
+   * `REQUIRED` / `price.currency` refusal for that case, never a defaulted or
+   * guessed code.
+   */
+  private async readStoreCurrency(): Promise<string | null> {
+    if (this.storeCurrency !== undefined) return this.storeCurrency;
+    const settings = await this.readGeneralSettings();
+    const raw = settings.find((s) => s.id === 'woocommerce_currency')?.value;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    this.storeCurrency = value ? value.toUpperCase() : null;
+    return this.storeCurrency;
+  }
+
+  /**
+   * Overlays the store's resolved currency onto a mapped product, when there
+   * is one to overlay. Leaves the mapper's own output untouched otherwise, so
+   * a store that declares no currency keeps `Product.currency: null` and the
+   * builders' existing `REQUIRED` / `price.currency` refusal.
+   */
+  private async withStoreCurrency(product: Omit<Product, 'id'>): Promise<Omit<Product, 'id'>> {
+    const currency = await this.readStoreCurrency();
+    return this.applyStoreCurrency(product, currency);
+  }
+
+  /**
+   * The one rule behind `withStoreCurrency` / `getProducts`, shared rather
+   * than restated: overlay the store's currency onto a mapped product when
+   * there is one, otherwise leave the mapper's own output untouched.
+   */
+  private applyStoreCurrency(
+    product: Omit<Product, 'id'>,
+    currency: string | null,
+  ): Omit<Product, 'id'> {
+    return currency ? { ...product, currency } : product;
+  }
+
+  /**
+   * Fetches `GET /wp-json/wc/v3/settings/general` once per adapter instance
+   * and caches the raw row list, so `readStoreCountry()` and
+   * `readStoreCurrency()` — which read different rows of the same response —
+   * never issue two requests for one product read (#3310 AC).
+   *
+   * Only a successful read is cached; a transport failure propagates and the
+   * next caller retries the fetch.
+   */
+  private async readGeneralSettings(): Promise<WooCommerceGeneralSetting[]> {
+    if (this.generalSettings !== undefined) return this.generalSettings;
+    const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
+      '/wp-json/wc/v3/settings/general',
+    );
+    this.generalSettings = settings ?? [];
+    return this.generalSettings;
   }
 
   /**
@@ -930,7 +1058,112 @@ export class WooCommerceProductMasterAdapter
     }
   }
 
+  /**
+   * The store's weight and dimension units, from `GET /settings/products`
+   * (#3650), cached for the adapter's lifetime so a page of products issues one
+   * request. Only a successful read is cached. Physical data is enrichment, so a
+   * failed read degrades to `null` ("not recorded") and never fails the sync.
+   */
+  private async readStoreUnits(): Promise<WooCommerceStoreUnits | null> {
+    if (this.storeUnits !== undefined) return this.storeUnits;
+    try {
+      const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
+        '/wp-json/wc/v3/settings/products',
+      );
+      const read = (id: string): string | null => {
+        const raw = (settings ?? []).find((s) => s.id === id)?.value;
+        const value = Array.isArray(raw) ? raw[0] : raw;
+        return value && value.trim() ? value.trim() : null;
+      };
+      this.storeUnits = {
+        weightUnit: read('woocommerce_weight_unit'),
+        dimensionUnit: read('woocommerce_dimension_unit'),
+      };
+      return this.storeUnits;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the store's weight/dimension units (connection: ${this.connection.id}); ` +
+          `variant weight and dimensions stay unrecorded: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  private storeUnits: WooCommerceStoreUnits | null | undefined;
   private storeCountry: string | null | undefined;
+  private storeCurrency: string | null | undefined;
+  private generalSettings: WooCommerceGeneralSetting[] | undefined;
+  private taxClassResolver: WooCommerceTaxClassResolver | undefined;
+  private readonly grossUnavailableLogged = new Set<string>();
+
+  /** Shares this instance's `/settings/general` read with the price-basis lookup. */
+  private priceTaxResolver(): WooCommerceTaxClassResolver {
+    if (this.taxClassResolver === undefined) {
+      this.taxClassResolver = new WooCommerceTaxClassResolver(this.httpClient, () =>
+        this.readGeneralSettings(),
+      );
+    }
+    return this.taxClassResolver;
+  }
+
+  /**
+   * The GROSS catalogue price for a stored WooCommerce price (ADR-077), or
+   * `undefined` when it cannot be stated.
+   *
+   * A store that does not tax, that enters prices with tax, or a product it
+   * does not tax (`tax_status` `none` / `shipping`) already stores what the
+   * buyer pays. Otherwise the stored price is net and is grossed up with the
+   * store's own rate for the product's tax class in the store's base country -
+   * the same class x country table the order processor uses - rounded to the
+   * store's price decimals. A class with no single rate there reports no price
+   * rather than the net figure, which every consumer would read as gross.
+   *
+   * A failed settings or tax read throws, so the sync retries rather than
+   * recording a missing price over a transient error.
+   */
+  private async toGrossCataloguePrice(input: {
+    stored: number | null | undefined;
+    taxClass: string;
+    taxStatus: string | undefined;
+    subject: string;
+  }): Promise<number | undefined> {
+    if (input.stored === null || input.stored === undefined) {
+      return undefined;
+    }
+    const resolver = this.priceTaxResolver();
+    const basis = await resolver.readPriceBasis();
+    if (isStoredPriceGross(basis, input.taxStatus)) {
+      return input.stored;
+    }
+    if (basis.storeCountry === null) {
+      return this.grossUnavailable(input.subject, 'the store declares no base country');
+    }
+    const table = await resolver.load();
+    if (table === null) {
+      return input.stored;
+    }
+    const rate = table.rateFor(input.taxClass, basis.storeCountry);
+    if (rate === null) {
+      return this.grossUnavailable(
+        input.subject,
+        `the tax class '${input.taxClass || 'standard'}' has no single rate for ${basis.storeCountry}`,
+      );
+    }
+    return toGrossPrice(input.stored, rate, basis.priceDecimals);
+  }
+
+  /** Log once per subject per instance, then report "no price". */
+  private grossUnavailable(subject: string, reason: string): undefined {
+    if (!this.grossUnavailableLogged.has(subject)) {
+      this.grossUnavailableLogged.add(subject);
+      this.logger.warn(
+        `woocommerce_gross_price_unavailable - ${subject} (connection: ${this.connection.id}) ` +
+          `reports no catalogue price: ${reason}. The store enters prices without tax, so ` +
+          `OpenLinker needs the store's rate to state the price a buyer pays.`,
+      );
+    }
+    return undefined;
+  }
 
   /**
    * Refuse a requested page size WooCommerce will not honour.

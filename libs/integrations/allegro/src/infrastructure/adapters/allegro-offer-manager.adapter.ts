@@ -71,6 +71,7 @@ import type {
   TaxonomyIdentityProvider,
   TaxonomyOwner,
   ResolveConcurrencyCeiling,
+  OfferCurrencyDeclarer,
 } from '@openlinker/core/listings';
 
 import { ALLEGRO_DESCRIPTION_FORMAT } from '../util/allegro-description-format';
@@ -324,7 +325,8 @@ export class AllegroOfferManagerAdapter
     SellerPoliciesReader,
     ResponsibleProducerReader,
     SafetyAttachmentUploader,
-    TaxonomyIdentityProvider
+    TaxonomyIdentityProvider,
+    OfferCurrencyDeclarer
 {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
@@ -443,6 +445,40 @@ export class AllegroOfferManagerAdapter
    */
   getTaxonomyIdentity(): TaxonomyOwner {
     return this.environment === 'sandbox' ? 'allegro:sandbox' : 'allegro';
+  }
+
+  /**
+   * The currency this connection is ASSUMED to settle in (#3203,
+   * `OfferCurrencyDeclarer`, #3159 review — IMPORTANT). A fixed value
+   * rather than a live read: Allegro's marketplace is PL-first in this
+   * tree (see `DEFAULT_ALLEGRO_TAX_COUNTRY` above — the same assumption
+   * already baked into the tax-settings write path), and no connection
+   * config here distinguishes a .cz/.sk/.hu account whose settlement
+   * currency would differ — `this.environment` is `sandbox` vs
+   * `production` only, a different axis, and carries no country/region
+   * signal this method could read instead.
+   *
+   * **This describes the assumed ACCOUNT, not what this adapter WRITES.**
+   * `updateOfferQuantity` and `updateOfferFields` both send whatever
+   * currency the caller's command carries (`cmd.price.currency` /
+   * `cmd.fields.price.currency` — the SOURCE's currency, passed through
+   * verbatim); nothing here pins the two together, because one is a
+   * standing assumption about the seller's storefront and the other is a
+   * per-call passthrough with no currency conversion anywhere in this
+   * adapter. Declaring `'PLN'` therefore is NOT a claim that offers are
+   * published in PLN — it only answers "what does this account settle
+   * in", for `price-change-block.types.ts`'s currency-mismatch guard.
+   *
+   * Consumed by `DestinationCurrencyResolutionService`, and — because the
+   * value is a fixed guess rather than a verified fact — it is
+   * deliberately the FALLBACK there: `readConnectionCurrency`'s
+   * operator-set `Connection.config.currency` key wins over this value
+   * when set, so a seller on a non-PL Allegro storefront has a remedy
+   * (see that function's docblock). Revisit this once a connection can
+   * declare a non-PL Allegro storefront.
+   */
+  getDestinationCurrency(): string | null {
+    return 'PLN';
   }
 
   /**
@@ -1880,8 +1916,9 @@ export class AllegroOfferManagerAdapter
     // #431 — smart-link pre-step. Compute once at the top so the body
     // builder + platform-params applier stay synchronous (their current
     // contract). On `unique`, `productSet[0]` becomes a card-link reference
-    // and Allegro inherits GPSR + parameters from the card; otherwise we
-    // fall through to inline (which uses the seller-defaults checked above).
+    // and Allegro inherits name/parameters/images from the card (GPSR does
+    // not come from the card: the seller declares it); otherwise we fall
+    // through to inline. Both paths use the seller-defaults checked above.
     const cardLinkResult = await this.maybeResolveProductCard(cmd);
 
     const body = this.buildCreateOfferRequest(cmd, cardLinkResult);
@@ -2439,11 +2476,12 @@ export class AllegroOfferManagerAdapter
 
     // #431 — smart-link short-circuit. When the variant's EAN uniquely
     // matches an existing Allegro product card, build the productSet entry
-    // as a card reference: `product.id` only, plus the per-entry quantity.
-    // Allegro inherits `name`, `parameters`, `images`, and the EU GPSR
-    // fields (`responsibleProducer`, `safetyInformation`) from the card,
-    // so we **skip** writing all of those on the entry. Offer-section
-    // `body.parameters[]` (set above) still flows through normally.
+    // as a card reference: `product.id` plus the seller's GPSR declaration.
+    // Allegro inherits `name`, `parameters` and `images` from the card, so we
+    // skip those. `responsibleProducer` / `safetyInformation` are the
+    // seller's own declaration, not card properties, and Allegro rejects the
+    // create with RESPONSIBLE_PRODUCER_NOT_SPECIFIED without them (#3708).
+    // Offer-section `body.parameters[]` (set above) still flows through.
     if (cardLinkResult.kind === 'unique') {
       // Reference the catalogue card by id only. The offer's sellable quantity
       // lives on `body.stock.available` (set in buildCreateOfferRequest on
@@ -2452,7 +2490,16 @@ export class AllegroOfferManagerAdapter
       // sellable stock here was both wrong-typed (Allegro wants an object, not
       // a bare int → `JsonMappingException` at `productSet[0].quantity`) and
       // wrong semantics. OL lists 1 variant = 1 sale unit, so we omit it (#808).
-      body.productSet = [{ product: { id: cardLinkResult.productId } }];
+      // `sellerDefaults!` is guaranteed by the `createOffer` preflight
+      // (`collectMissingSellerDefaultsFields`), which runs on every path,
+      // card-linked included.
+      body.productSet = [
+        {
+          product: { id: cardLinkResult.productId },
+          responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
+          safetyInformation: this.sellerDefaults!.safetyInformation,
+        },
+      ];
       this.logger.log(
         `Allegro smart-link applied: connection=${this.connectionId} ` +
           `productId=${cardLinkResult.productId} outcome=unique`

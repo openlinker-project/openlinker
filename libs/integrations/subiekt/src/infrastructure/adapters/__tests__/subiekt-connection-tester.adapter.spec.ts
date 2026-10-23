@@ -20,14 +20,14 @@ function makeConnection(
 ): Connection {
   return new Connection(
     'conn-1',
-    'subiekt' as never,
+    'subiekt-gt' as never,
     'Test',
     'active' as never,
     (overrides.config ?? { bridgeBaseUrl: 'http://192.168.1.10:5000' }) as never,
     overrides.credentialsRef ?? '',
     new Date(),
     new Date(),
-    'subiekt.invoicing.v1',
+    'subiekt.gt.v1',
     ['Invoicing'],
   );
 }
@@ -71,7 +71,7 @@ describe('SubiektConnectionTesterAdapter', () => {
     expect(http.forConnection).toHaveBeenCalledWith(connection, subiektAdapterManifest.defaultRateLimit);
   });
 
-  it('returns success:true with a token when the /health probe succeeds', async () => {
+  it('returns success:true with a token when the authorized probe succeeds', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
     const get = jest.fn().mockResolvedValue({ bridgeToken: 'secret-token' });
     const resolver = { get } as unknown as CredentialsResolverPort;
@@ -83,6 +83,21 @@ describe('SubiektConnectionTesterAdapter', () => {
     // Token attached to the request header, never echoed in the result.
     const firstCall = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
     expect(firstCall[1].headers.authorization).toBe('Bearer secret-token');
+  });
+
+  it('probes an AUTHORIZED route, never /health', async () => {
+    // The bridge exempts /health from its auth middleware, so probing it proves
+    // reachability and NOTHING about the credential. Asserted on the URL rather
+    // than on a client method name so that swapping the probe back to /health
+    // fails here even if the method keeps its name.
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    const resolver = { get: jest.fn() } as unknown as CredentialsResolverPort;
+
+    await tester.test(makeConnection(), resolver);
+
+    const url = (fetchMock.mock.calls[0] as [string, unknown])[0];
+    expect(url).toContain('/api/bank-accounts');
+    expect(url).not.toContain('/health');
   });
 
   it("credentialsRef '' -> success:true WITHOUT calling credentialsResolver.get", async () => {
@@ -125,5 +140,136 @@ describe('SubiektConnectionTesterAdapter', () => {
 
     expect(result.success).toBe(false);
     expect(result.message).not.toContain('super-secret-token');
+  });
+
+  // --- the defect this probe exists to close ---------------------------------
+
+  it('401 -> success:false, NOT a green tick', async () => {
+    // The whole point. Before the probe moved off /health, this case answered
+    // success:true and the connection then failed on its first real call.
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, {
+        success: false,
+        data: null,
+        error: { code: 'unauthorized', reason: 'bad or missing bridge token' },
+      }),
+    );
+    const resolver = { get: jest.fn() } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection(), resolver);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("401 surfaces the bridge's OWN reason, so the operator can tell WHICH auth problem they have", async () => {
+    // "not configured" and "wrong value" need different remedies, and only the
+    // bridge knows which one applies. Generic copy sent the operator hunting a
+    // bad value when nothing had been set at all.
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, {
+        success: false,
+        data: null,
+        error: {
+          code: 'unauthorized',
+          reason:
+            'bridge token is not configured - set InvoiceToken in appsettings.json or OL_BRIDGE_INVOICE_TOKEN',
+        },
+      }),
+    );
+    const resolver = { get: jest.fn() } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection(), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('InvoiceToken');
+  });
+
+  it('redacts the token from a 401 reason that echoes it back', async () => {
+    // Reading the 401 body is only safe because of this. The body comes from a
+    // service we do not control, so "our bridge does not echo the token" is not
+    // a property this client may rely on.
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, {
+        success: false,
+        data: null,
+        error: { code: 'unauthorized', reason: 'token super-secret-token was rejected' },
+      }),
+    );
+    const get = jest.fn().mockResolvedValue({ bridgeToken: 'super-secret-token' });
+    const resolver = { get } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection({ credentialsRef: 'cred-1' }), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message).not.toContain('super-secret-token');
+    expect(result.message).toContain('[redacted]');
+  });
+
+  it.each([
+    ['a different case', 'super-secret-token', 'token SUPER-SECRET-TOKEN was rejected'],
+    // The token has to carry characters `encodeURIComponent` actually escapes.
+    // It leaves `-` alone, so a hyphenated token has no second form and this
+    // row would assert the verbatim match the row above already covers.
+    [
+      'a percent-encoded copy',
+      'super/secret+token',
+      'see /auth?t=super%2Fsecret%2Btoken for details',
+    ],
+    [
+      'a WWW-Authenticate-style challenge',
+      'super-secret-token',
+      'Bearer realm="bridge", token="super-secret-token"',
+    ],
+  ])('redacts the token echoed back as %s', async (_label, token, reason) => {
+    // The argument for reading the 401 body at all is that "our bridge does not
+    // echo the token" is not a property this client may rely on - so it must not
+    // assume the echo is byte-identical either.
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, { success: false, data: null, error: { code: 'unauthorized', reason } }),
+    );
+    const get = jest.fn().mockResolvedValue({ bridgeToken: token });
+    const resolver = { get } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection({ credentialsRef: 'cred-1' }), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message.toLowerCase()).not.toContain(token.toLowerCase());
+    expect(result.message.toLowerCase()).not.toContain(encodeURIComponent(token).toLowerCase());
+    expect(result.message).toContain('[redacted]');
+  });
+
+  it('does NOT redact a token too short to redact safely', async () => {
+    // `split/join` on a two-character secret would shred the bridge's own
+    // sentence - the redaction would become the thing that made the message
+    // unreadable. A secret that short is not one worth protecting.
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, {
+        success: false,
+        data: null,
+        error: { code: 'unauthorized', reason: 'bridge token is not configured' },
+      }),
+    );
+    const get = jest.fn().mockResolvedValue({ bridgeToken: 'ab' });
+    const resolver = { get } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection({ credentialsRef: 'cred-1' }), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('bridge token is not configured');
+    expect(result.message).not.toContain('[redacted]');
+  });
+
+  it('401 with an unreadable body does not pad the message with "HTTP 401"', async () => {
+    fetchMock.mockResolvedValue({
+      status: 401,
+      headers: { get: (): string | null => null },
+      json: (): Promise<unknown> => Promise.reject(new Error('not json')),
+    } as unknown as Response);
+    const resolver = { get: jest.fn() } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection(), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message).not.toContain('HTTP 401');
   });
 });

@@ -6,6 +6,7 @@ import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-re
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
 import type { WooCommerceOrder } from '../order-source/woocommerce-order.types';
 
 const makeConnection = (overrides: Partial<Connection> = {}): Connection =>
@@ -395,6 +396,34 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: '55' });
     });
 
+    it.each([
+      ['cod', 'processing', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
+      ['cod', 'on-hold', 'cash_on_delivery', 'cod', { amount: '109.98', currency: 'PLN' }],
+      ['bacs', 'on-hold', 'bank_transfer', undefined, undefined],
+      ['przelewy24', 'processing', 'unknown', 'paid', undefined],
+      [undefined, 'processing', 'unknown', 'paid', undefined],
+      ['cod', 'cancelled', 'cash_on_delivery', undefined, undefined],
+    ])(
+      'should report method, status and COD amount together for gateway %s in status %s (#3294)',
+      async (payment_method, status, expectedMethod, expectedStatus, expectedCod) => {
+        const order = makeOrder({ status, payment_method });
+        const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+        const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+        const result = await adapter.getOrder({ externalOrderId: '1' });
+
+        expect(result.paymentMethod).toBe(expectedMethod);
+        expect(result.paymentStatus).toBe(expectedStatus);
+        // The collect amount is the gross `total` (tax and fees included), and
+        // exists only while the order is reported cod. Everything else - paid,
+        // unreported, dead - must carry none, or a label would pre-fill it.
+        expect(result.codToCollect).toEqual(expectedCod);
+        // The core-COD order is the one that used to read as paid and lose its
+        // COD amount on the label; the facts must never disagree again.
+        expect(checkPaymentFactsConsistency(result)).toEqual([]);
+      },
+    );
+
     it('should map shipping.methodName from the shipping line method_title so the delivery-method label populates (#1776)', async () => {
       const order = makeOrder({
         shipping_lines: [{ id: 1, method_id: 'flat_rate', method_title: 'Flat Rate', total: '5.00' }],
@@ -516,6 +545,102 @@ describe('WooCommerceOrderSourceAdapter', () => {
       const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
 
       await expect(adapter.getOrder({ externalOrderId: '1' })).rejects.toBe(serverError);
+    });
+
+    describe('gross amounts WooCommerce reports as components (#3365)', () => {
+      // WC keeps line prices net and reports the tax beside them. Their sum is
+      // what the buyer paid, which is what a fiscal document's gross line needs.
+      // Summing two reported figures and dividing by the quantity is grouping
+      // and division, not computing tax - no rate is read anywhere here.
+      const grossOrder = (): ReturnType<typeof makeOrder> =>
+        makeOrder({
+          total: '135.30',
+          total_tax: '25.30',
+          shipping_total: '10.00',
+          shipping_tax: '2.30',
+          line_items: [
+            { id: 10, name: 'Product A', product_id: 100, variation_id: 0, quantity: 2, sku: 'SKU-A', price: '50.00', subtotal: '100.00', total: '100.00', total_tax: '23.00', image: null },
+          ],
+        });
+
+      it('should derive the gross UNIT price from total + total_tax over quantity', async () => {
+        const order = grossOrder();
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+
+        // (100.00 + 23.00) / 2 = 61.50
+        expect(result.items[0].unitPriceGross).toBe(61.5);
+        // `price` is untouched and still the net unit price.
+        expect(result.items[0].price).toBe(50);
+        expect(result.totals.taxTreatment).toBe('exclusive');
+      });
+
+      it('should sum shipping_total and shipping_tax into shippingGross', async () => {
+        const order = grossOrder();
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+
+        expect(result.totals.shipping).toBe(10);
+        expect(result.totals.shippingGross).toBe(12.3);
+      });
+
+      it('should use the POST-discount line total, so a discounted line reproduces what was paid', async () => {
+        const order = grossOrder();
+        // subtotal 100 (pre-discount), total 80 (post-discount), tax on the 80.
+        order.line_items[0].subtotal = '100.00';
+        order.line_items[0].total = '80.00';
+        order.line_items[0].total_tax = '18.40';
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+
+        // (80.00 + 18.40) / 2 = 49.20 - the pre-discount `price` of 50.00 would
+        // have over-charged the buyer on the document.
+        expect(result.items[0].unitPriceGross).toBe(49.2);
+      });
+
+      it('should leave both fields ABSENT when the tax components are not reported', async () => {
+        const order = makeOrder();
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+
+        // Absent rather than zero: an unreported tax component read as zero
+        // would label a net figure gross.
+        expect('unitPriceGross' in result.items[0]).toBe(false);
+        expect('shippingGross' in result.totals).toBe(false);
+      });
+
+      it('should report a zero-tax store honestly rather than skipping the field', async () => {
+        const order = grossOrder();
+        order.line_items[0].total_tax = '0';
+        order.shipping_tax = '0';
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+
+        // A store with no VAT configured has gross == net, and that is a real
+        // answer the document gate must be allowed to accept.
+        expect(result.items[0].unitPriceGross).toBe(50);
+        expect(result.totals.shippingGross).toBe(10);
+      });
     });
 
     it('should compute subtotal from line_items total when fee_lines are present', async () => {

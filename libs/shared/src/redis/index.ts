@@ -15,7 +15,7 @@ export {
   reclaimOrphans,
   RecoveryAttemptTracker,
   MAX_RECOVERY_ATTEMPTS,
-  MAX_TRACKED_ATTEMPTS,
+  POISON_COUNTER_TTL_SECONDS,
   resolveConsumerName,
   toClaimedMessage,
   toPendingRows,

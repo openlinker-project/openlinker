@@ -45,6 +45,7 @@
  */
 import { DataSource } from 'typeorm';
 
+import { ensureMigrationPrerequisites } from '../../src/database/ensure-migration-prerequisites';
 import { getTestHarness, IntegrationTestHarness, teardownTestHarness } from './setup';
 
 // Every fulfillment table joins this one spec rather than getting a sibling:
@@ -153,27 +154,13 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     });
     await migrated.initialize();
 
-    // ## A pre-existing chain defect, tracked as #2684 — NOT something #2392 owns
-    //
-    // The FIRST migration (`1766246163229-add-connections-and-mappings`) creates
-    // `identifier_mappings` with `DEFAULT uuid_generate_v4()` but never issues
-    // `CREATE EXTENSION "uuid-ossp"` — so the chain cannot run against a
-    // genuinely empty database. Nothing noticed because no automated path ever
-    // ran migrations from empty (the harness uses `synchronize`), and real
-    // deployments happen to have the extension already.
-    //
-    // Creating it here satisfies the precondition without pretending the gap is
-    // absent. Fixing migration 1766246163229 is out of scope for this issue — it
-    // would rewrite the oldest migration in the tree for a defect this slice did
-    // not introduce, and the interesting part needs its own decision: an APPLIED
-    // migration never re-runs, so an in-place edit reaches nobody who already
-    // deployed. (#2392's own migration does issue the CREATE EXTENSION, which is
-    // why it is not implicated.)
-    //
-    // **Removal condition**: delete this line when #2684 lands. It is a
-    // workaround with an owner, not a permanent fixture — left unmarked it would
-    // quietly become the reason nobody notices the chain cannot bootstrap.
-    await migrated.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+    // The first migration (`1766246163229-add-connections-and-mappings`) uses
+    // `uuid_generate_v4()` without ever creating `uuid-ossp` itself (#2684) —
+    // this is the SAME bootstrap production runs on every `migration:run`
+    // (`BootstrappedDataSource.runMigrations` in `data-source.ts`), called here
+    // directly because this spec drives `runMigrations()` on a raw DataSource
+    // rather than through the CLI.
+    await ensureMigrationPrerequisites(migrated);
 
     await migrated.runMigrations();
   }, 180000);
@@ -275,6 +262,25 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     for (const column of fromMigration as { is_nullable: string; data_type: string }[]) {
       expect(column).toMatchObject({ is_nullable: 'YES', data_type: 'text' });
     }
+  });
+
+  it('should build order_records.fulfillmentRoutingSkipReason identically from the migration (#3455)', async () => {
+    const sql = `
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'order_records'
+        AND column_name = 'fulfillmentRoutingSkipReason'`;
+
+    const fromMigration = (await migrated.query(sql)) as unknown[];
+    const synchronized = (await harness.getDataSource().query(sql)) as unknown[];
+
+    // Non-vacuity: two empty result sets would compare equal and assert nothing.
+    expect(fromMigration).toHaveLength(1);
+    expect(fromMigration).toEqual(synchronized);
+    // Nullable `text` with no backfill: an order ingested before the column
+    // existed has no recorded answer until its next ingestion re-decides it.
+    expect(fromMigration[0]).toMatchObject({ is_nullable: 'YES', data_type: 'text' });
   });
 
   it('should agree on every column, type, nullability and default', async () => {
@@ -414,6 +420,12 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // a plausible edit — and one that would leave both schemas matching and
       // the constraint's own name gone.
       'CHK_fulfillment_works_closed_parcel_actor',
+      // #3360 (ADR-074). Named for the same reason: it is the THIRD `@Check`
+      // on this table, quantifying over `selfServeEligible`/`assignedToUserId`
+      // rather than the packing-actor pair above, and a silent drop here would
+      // leave both sides matching while re-admitting the "exclusive to nobody"
+      // state the migration comment says it exists to close.
+      'CHK_fulfillment_works_exclusive_needs_packer',
       // #2727. Named here rather than left to the definition diff because this
       // file's prose reasons about it: it deliberately OMITS the obvious
       // `"shippedQuantity" <= "quantity"` clause (re-ingestion rewrites the
@@ -510,6 +522,17 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'NOT',
     ]) {
       expect(closedParcelActor).toContain(clause);
+    }
+
+    // The exclusivity predicate (ADR-074), clause by clause: both columns must
+    // appear under a `NOT (… AND …)`, or a weakening applied to both schemas
+    // at once still passes the definition-equality assertion above.
+    const exclusiveNeedsPacker = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_exclusive_needs_packer')
+    );
+    expect(exclusiveNeedsPacker).toBeDefined();
+    for (const clause of ['"selfServeEligible" = false', '"assignedToUserId" IS NULL', 'NOT']) {
+      expect(exclusiveNeedsPacker).toContain(clause);
     }
 
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
@@ -699,6 +722,57 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // majority as OMS routing is adopted, and a partial predicate would also
       // refuse to serve the `IS NULL` scan the fill-in-when-NULL repair needs.
       expect(fromMigration[0].indexdef).not.toContain('WHERE');
+    });
+  });
+
+  /**
+   * `fulfillment_works`' four print/completion columns (pack-bench completion). Already covered
+   * BLANKET by "should agree on every column, type, nullability and default"
+   * above — `fulfillment_works` was already in `TABLES` before this issue, so
+   * the generic comparison alone would already fail on a divergence. This is
+   * a NARROW, targeted assertion beside it: it names the migration that
+   * creates these columns
+   * (`1897000000000-add-fulfillment-work-print-and-completion.ts`) and pins the
+   * shape a divergence would otherwise report only as an opaque row-count
+   * mismatch in the blanket comparison.
+   */
+  describe('fulfillment_works print/completion columns (pack-bench completion)', () => {
+    const COLUMN_SQL = `
+      SELECT column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'fulfillment_works'
+        AND column_name IN ('invoicePrintedAt', 'labelPrintedAt', 'completedAt', 'completedByUserId')
+      ORDER BY column_name
+    `;
+
+    it('should declare all four columns identically in the migration and the entity', async () => {
+      const [fromEntity, fromMigration] = (await Promise.all([
+        harness.getDataSource().query(COLUMN_SQL),
+        migrated.query(COLUMN_SQL),
+      ])) as Record<string, unknown>[][];
+
+      // Non-vacuity: four columns, or the two empty sets below would "match".
+      expect(fromMigration).toHaveLength(4);
+      expect(fromEntity).toEqual(fromMigration);
+
+      const byName = new Map(
+        (fromMigration as { column_name: string; data_type: string; is_nullable: string }[]).map(
+          (row) => [row.column_name, row]
+        )
+      );
+
+      // Every one nullable with NO default: an existing parcel predates every
+      // one of these facts, and a default would fabricate history for
+      // something nobody recorded.
+      for (const column of fromMigration as { is_nullable: string; column_default: unknown }[]) {
+        expect(column).toMatchObject({ is_nullable: 'YES', column_default: null });
+      }
+
+      expect(byName.get('invoicePrintedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
+      expect(byName.get('labelPrintedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
+      expect(byName.get('completedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
+      expect(byName.get('completedByUserId')).toMatchObject({ data_type: 'uuid' });
     });
   });
 });

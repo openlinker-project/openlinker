@@ -47,6 +47,18 @@ export {
 // Return source reader (#2329 / ADR-060): the returns half of OrderSource.
 // Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
 // the guard; never getCapabilityAdapter('ReturnSourceReader').
+export type { OrderFulfillmentReadback } from './domain/ports/capabilities/order-fulfillment-readback.capability';
+export { isOrderFulfillmentReadback } from './domain/ports/capabilities/order-fulfillment-readback.capability';
+export type {
+  SourceFulfillmentReadback,
+  SourceFulfillmentReadbackOutcome,
+  SourceFulfillmentWaybill,
+} from './domain/types/source-fulfillment-readback.types';
+export {
+  SourceFulfillmentReadbackOutcomeValues,
+  unavailableSourceFulfillmentReadback,
+  unsupportedSourceFulfillmentReadback,
+} from './domain/types/source-fulfillment-readback.types';
 export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 // The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a
@@ -108,7 +120,22 @@ export {
 } from './domain/types/destination-routing-block.types';
 export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
+export {
+  PaymentMethodValues,
+  PAYMENT_METHOD,
+  isPaymentMethod,
+} from './domain/types/payment-method.types';
+export type { PaymentMethod } from './domain/types/payment-method.types';
+export {
+  PaymentFactsViolationValues,
+  checkPaymentFactsConsistency,
+} from './domain/types/payment-facts-consistency.types';
+export type {
+  PaymentFacts,
+  PaymentFactsViolation,
+} from './domain/types/payment-facts-consistency.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';
+export { toCodToCollect } from './domain/types/cod-to-collect.types';
 export { OrderCreate, OrderRef, OrderSourceRef } from './domain/types/order-processor.types';
 export {
   IncomingOrder,
@@ -141,6 +168,7 @@ export {
   OrderRecordSortDirection,
   OrderRecordSortDirectionValues,
   FailedSyncValueSummary,
+  SalesDocumentMatchedRuleWrite,
 } from './domain/types/order-record.types';
 // Ship-by SLA axis + fulfillment rollup (#1108)
 export {
@@ -198,6 +226,8 @@ export type {
   TaxCoverageLineRateObservation,
   PaginatedTaxCoverageOrders,
   NetExcludedOrderCandidate,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
   TaxCoverageClassification,
   ProductMatchingErrorOrderRow,
   PaginatedProductMatchingErrorOrders,
@@ -279,6 +309,14 @@ export { IOrderRecordService } from './application/interfaces/order-record.servi
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
 export { SalesDocumentViewService } from './application/services/sales-document-view.service';
+export type {
+  SalesDocumentListAmount,
+  SalesDocumentListCursor,
+  SalesDocumentListFilters,
+  SalesDocumentListItem,
+  SalesDocumentListPage,
+  SalesDocumentListPagination,
+} from './domain/types/sales-document-list.types';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
 export type { IOrderFxRestatementService } from './application/interfaces/order-fx-restatement.service.interface';
 export type {
@@ -323,7 +361,73 @@ export type {
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
+export type { IOrderTestFixtureService } from './application/interfaces/order-test-fixture.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
+// Orders-list column presets (#3530).
+export type { IOrderColumnPresetService } from './application/services/order-column-preset.service.interface';
+export type {
+  OrderColumnPreset,
+  CreateOrderColumnPresetInput,
+  UpdateOrderColumnPresetInput,
+} from './domain/types/order-column-preset.types';
+export { OrderColumnPresetNotFoundError } from './domain/exceptions/order-column-preset-not-found.error';
+// Internal order notes (#3531).
+export type { IOrderNoteService } from './application/services/order-note.service.interface';
+export type {
+  OrderNote,
+  CreateOrderNoteInput,
+  UpdateOrderNoteInput,
+  OrderNoteTimelineEntry,
+  OrderNoteTimelineEventKind,
+} from './domain/types/order-note.types';
+export { OrderNoteTimelineEventKindValues } from './domain/types/order-note.types';
+export { OrderNoteNotFoundError } from './domain/exceptions/order-note-not-found.error';
+export { OrderNoteNotAuthoredError } from './domain/exceptions/order-note-not-authored.error';
+// Order tags (#3532, D34).
+export type { IOrderTagService } from './application/services/order-tag.service.interface';
+export type {
+  OrderTag,
+  OrderTagColor,
+  OrderTagWithCount,
+  BulkAssignOrderTagResult,
+} from './domain/types/order-tag.types';
+export { OrderTagColorValues, ORDER_TAG_WORKSPACE_LIMIT } from './domain/types/order-tag.types';
+export { OrderTagLimitReachedError } from './domain/exceptions/order-tag-limit-reached.error';
+export { OrderTagNotFoundError } from './domain/exceptions/order-tag-not-found.error';
+// Orders CSV/XLSX export (#3534, D35).
+export type { IOrderExportService } from './application/services/order-export.service.interface';
+export { OrderExportRun } from './domain/entities/order-export-run.entity';
+export type {
+  OrderExportFile,
+  OrderExportFormat,
+  OrderExportScope,
+  OrderExportStatus,
+  CreateOrderExportRunInput,
+} from './domain/types/order-export.types';
+export {
+  OrderExportFormatValues,
+  OrderExportScopeValues,
+  OrderExportStatusValues,
+  ORDER_EXPORT_BACKGROUND_THRESHOLD,
+  ORDER_EXPORT_TTL_DAYS,
+} from './domain/types/order-export.types';
+export {
+  ORDER_EXPORT_COLUMN_IDS,
+  ORDER_EXPORT_COLUMN_LABELS,
+  ORDER_EXPORT_DEFAULT_COLUMNS,
+  ORDER_EXPORT_PII_COLUMNS,
+  narrowOrderExportColumns,
+  resolveOrderExportCell,
+} from './domain/order-export-columns';
+export type { OrderExportColumnId, OrderExportCellValue } from './domain/order-export-columns';
+export { buildOrderExportCsv } from './domain/order-export-csv';
+// `searchText` re-derivation under the current PII mode (#3507 G03-14).
+export type { IOrderSearchTextReindexService } from './application/services/order-search-text-reindex.service.interface';
+export type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+  OrderSearchTextReindexRunResult,
+} from './domain/types/order-search-text-reindex.types';
 export * from './orders.tokens';
 
 // Domain entities
@@ -346,6 +450,7 @@ export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapsho
 export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
+export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
@@ -366,6 +471,7 @@ export type { OrderSummary } from './domain/order-summary-projection';
 
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
+export type { HeldOrderRef } from './domain/ports/order-record-repository.port';
 
 // ADR-044 change proposals (#2333) — the Wave-2 gate. `OrderChangeRepositoryPort`
 // is deliberately NOT exported: it is intra-context, and a sibling reaches the
@@ -395,7 +501,14 @@ export type {
   PlaceOrderHoldInput,
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
+// #3455 — why the fulfilment intercept deliberately did not route an order.
+export {
+  FulfillmentRoutingSkipReasonValues,
+  isFulfillmentRoutingSkipReason,
+  type FulfillmentRoutingSkipReason,
+} from './domain/types/fulfillment-routing-eligibility.types';
 export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
+export { TestFixturesDisabledException } from './domain/exceptions/test-fixtures-disabled.exception';
 export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';
 export { HoldAlreadyReleasedError } from './domain/exceptions/hold-already-released.error';
 export { OrderHoldNotFoundError } from './domain/exceptions/order-hold-not-found.error';
@@ -442,3 +555,4 @@ export { OrderChangesModule } from './order-changes.module';
 export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
+export * from './domain/types/order-discount-split.types';

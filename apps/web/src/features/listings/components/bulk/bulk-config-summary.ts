@@ -26,21 +26,6 @@ export interface BulkConfigChange {
   value: string;
 }
 
-export type ConnectionEnvironment = 'sandbox' | 'production';
-
-/**
- * `Connection.config` is an untyped `Record<string, unknown>`, so the
- * environment is narrowed rather than cast - and an absent or unrecognised
- * value returns `null` so the bar can omit the badge instead of guessing an
- * environment the operator would act on.
- */
-export function readConnectionEnvironment(
-  config: Record<string, unknown> | undefined,
-): ConnectionEnvironment | null {
-  const value = config?.environment;
-  return value === 'sandbox' || value === 'production' ? value : null;
-}
-
 /** Signed percent, so a negative markup reads as a discount rather than `+-5%`. */
 function formatPercent(percent: number): string {
   return `${percent > 0 ? '+' : ''}${percent}%`;

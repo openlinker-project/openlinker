@@ -29,6 +29,7 @@ import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   IncompatibleProcessorException,
   DuplicateRoutingRuleException,
+  InvalidParcelProfileException,
 } from '@openlinker/core/mappings';
 import { UpsertRoutingRulesDto } from './dto/upsert-routing-rules.dto';
 import { RoutingRuleResponseDto } from './dto/routing-rule-response.dto';
@@ -109,7 +110,8 @@ export class FulfillmentRoutingController {
   private toHttpException(error: unknown): Error {
     if (
       error instanceof IncompatibleProcessorException ||
-      error instanceof DuplicateRoutingRuleException
+      error instanceof DuplicateRoutingRuleException ||
+      error instanceof InvalidParcelProfileException
     ) {
       return new BadRequestException(error.message);
     }

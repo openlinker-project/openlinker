@@ -8,6 +8,8 @@
  *
  *  - `ConnectionNotFoundException`  → 404 Not Found
  *  - `ConnectionDisabledException`  → 409 Conflict
+ *  - `ConnectionInUseException`     → 409 Conflict, plus `reason` and
+ *    `referrers` so the client can name the connections to re-pair (#3657)
  *
  * Sibling of `CapabilityNotSupportedFilter`; both are registered globally in
  * `main.ts`. They catch disjoint exception types, so registration order is
@@ -20,6 +22,7 @@
  *
  * @module apps/api/src/common/filters
  * @see {@link ConnectionNotFoundException} / {@link ConnectionDisabledException}
+ * @see {@link ConnectionInUseException}
  */
 
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
@@ -27,16 +30,29 @@ import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   ConnectionDisabledException,
+  ConnectionInUseException,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
 
-@Catch(ConnectionNotFoundException, ConnectionDisabledException)
+type ConnectionException =
+  | ConnectionNotFoundException
+  | ConnectionDisabledException
+  | ConnectionInUseException;
+
+@Catch(ConnectionNotFoundException, ConnectionDisabledException, ConnectionInUseException)
 export class ConnectionExceptionFilter implements ExceptionFilter {
-  catch(
-    exception: ConnectionNotFoundException | ConnectionDisabledException,
-    host: ArgumentsHost,
-  ): void {
+  catch(exception: ConnectionException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
+    if (exception instanceof ConnectionInUseException) {
+      response.status(HttpStatus.CONFLICT).json({
+        statusCode: HttpStatus.CONFLICT,
+        error: exception.name,
+        message: exception.message,
+        reason: exception.reason,
+        referrers: exception.referrers,
+      });
+      return;
+    }
     const statusCode =
       exception instanceof ConnectionDisabledException
         ? HttpStatus.CONFLICT

@@ -101,6 +101,17 @@ export interface FulfillmentWorkListFilter {
    */
   readonly parcelClosed?: boolean;
   /**
+   * Bound `parcelClosedAt` to a half-open `[parcelClosedAfter,
+   * parcelClosedBefore)` window (#3413, mockup-parity epic #3401) — the
+   * "packed today" tab's own filter, so the day boundary is the CALLER's
+   * decision (their own timezone's midnight) rather than one this context
+   * would have to guess. Both are optional and independent: either alone
+   * narrows to a half-bounded range, and neither implies `parcelClosed:
+   * true` — a caller wanting closed-only-and-in-range must still pass both.
+   */
+  readonly parcelClosedAfter?: Date;
+  readonly parcelClosedBefore?: Date;
+  /**
    * Which end of the creation order the page is taken from (#2416).
    *
    * The default is `'createdAt_DESC'`, which is what `listWorks` has always

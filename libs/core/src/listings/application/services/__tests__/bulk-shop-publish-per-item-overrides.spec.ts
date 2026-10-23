@@ -127,6 +127,13 @@ describe('Bulk shop publish per-item overrides (end-to-end, #1831)', () => {
       getVariantsByProductId: jest
         .fn()
         .mockResolvedValue([{ id: 'v', productId: 'prod-1', attributes: { Brand: 'Acme' } }]),
+      // ADR-077: the builder stamps the catalogue rate so a net-priced shop can
+      // convert the gross catalogue price back to net.
+      getEffectiveTaxRate: jest.fn().mockResolvedValue({
+        code: '23',
+        countryIso2: 'PL',
+        readAt: new Date('2026-10-01T00:00:00Z'),
+      }),
     };
     const connectionPort = {
       get: jest.fn().mockResolvedValue({ config: { masterCatalogConnectionId: MASTER } }),
@@ -232,5 +239,16 @@ describe('Bulk shop publish per-item overrides (end-to-end, #1831)', () => {
     // The overriding item must NOT have triggered provisioning or projection.
     expect(shopAdapter.provisionCategory).toHaveBeenCalledTimes(1);
     expect(attributeProjection.project).toHaveBeenCalledTimes(1);
+
+    // ADR-077: both items reach the adapter with the catalogue rate - an
+    // override touches content/categories/parameters, never the rate - and the
+    // price stays the gross master price.
+    for (const cmd of [overrideCmd, passthroughCmd]) {
+      expect(cmd.taxRate).toBe('23');
+      expect(cmd.taxRateCountry).toBe('PL');
+      expect(cmd.price).toEqual({ amount: 20, currency: 'PLN' });
+    }
+    expect(productsService.getEffectiveTaxRate).toHaveBeenCalledWith('prod-1', 'v-override');
+    expect(productsService.getEffectiveTaxRate).toHaveBeenCalledWith('prod-1', 'v-passthrough');
   });
 });

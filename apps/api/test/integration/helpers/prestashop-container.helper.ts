@@ -20,7 +20,16 @@
  */
 import { execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'fs';
 import { createConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -1032,6 +1041,82 @@ function sharedRecordFile(): string {
 }
 
 /**
+ * The claim file for "a worker is currently booting the shared container".
+ * Distinct from {@link sharedRecordFile} (which only exists once the boot has
+ * *finished*) so a peer can tell "nobody has started yet" apart from
+ * "somebody is mid-boot" and poll instead of racing a second boot (#3276
+ * review — with `maxWorkers` now > 1, several workers can reach
+ * `startSharedPrestashopContainer` inside the same ~90s boot window).
+ */
+function sharedBootLockFile(): string {
+  return `${sharedRecordFile()}.lock`;
+}
+
+/**
+ * Past this age a lock is treated as abandoned rather than in-progress — its
+ * holder crashed (or was killed) before writing the record or removing the
+ * lock, and polling forever would wedge every remaining spec in the run. Set
+ * comfortably above the cold-cache boot budget so a slow-but-alive boot is
+ * never mistaken for a dead one.
+ */
+const BOOT_LOCK_STALE_MS = INSTALL_DEADLINE_MS + 60_000;
+
+/** How often a losing worker re-checks for the completed record. */
+const BOOT_POLL_INTERVAL_MS = 1_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Exclusive, atomic claim on "I will boot the shared container". `wx` fails
+ * with `EEXIST` if the file already exists — the same-syscall guarantee
+ * `getOrCreateInternalId`'s insert-then-recover pattern relies on elsewhere
+ * in this repo, applied to a filesystem claim instead of a unique index.
+ * Reclaims a stale lock (see {@link BOOT_LOCK_STALE_MS}) rather than leaving
+ * every subsequent spec in the run to poll out to its own timeout.
+ */
+function tryClaimSharedBoot(): boolean {
+  const lockFile = sharedBootLockFile();
+  try {
+    closeSync(openSync(lockFile, 'wx'));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+      throw error;
+    }
+  }
+  // Somebody already holds the claim. If it's fresh, we lost — poll instead.
+  // If it's stale, its holder is presumed dead; remove it and race the
+  // exclusive create again. Only one of any number of simultaneous
+  // reclaimers can win that create, so this can never produce two winners —
+  // a loser here (including one that lost to a peer's fresh re-creation)
+  // just falls back to polling like any other loser.
+  try {
+    const age = Date.now() - statSync(lockFile).mtimeMs;
+    if (age < BOOT_LOCK_STALE_MS) {
+      return false;
+    }
+  } catch {
+    return false; // lock vanished mid-check — a peer is already handling it
+  }
+  rmSync(lockFile, { force: true });
+  try {
+    closeSync(openSync(lockFile, 'wx'));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function releaseSharedBootLock(): void {
+  rmSync(sharedBootLockFile(), { force: true });
+}
+
+/**
  * The recorded shared container, but only if Docker still reports it running.
  * A crashed run can leave the record behind pointing at containers that are
  * gone; reusing those would fail every spec with a connection error instead of
@@ -1086,6 +1171,13 @@ function readLiveSharedRecord(): SharedPrestashopRecord | undefined {
  * `startPrestashopContainer` for its own fresh container.
  *
  * The returned `cleanup` is a no-op - the container outlives the caller.
+ *
+ * Boot dedup is an atomic filesystem claim (`tryClaimSharedBoot`), not a
+ * plain check-then-act on the record file: with `maxWorkers` now > 1 (#3263),
+ * several workers can reach this function inside the same ~90s boot window,
+ * and a naive "no record yet -> boot" check lets more than one of them win
+ * (#3276 review). Exactly one worker per run boots; the rest poll for its
+ * completed record.
  */
 export async function startSharedPrestashopContainer(): Promise<PrestashopTestContainer> {
   const existing = readLiveSharedRecord();
@@ -1093,6 +1185,18 @@ export async function startSharedPrestashopContainer(): Promise<PrestashopTestCo
     return { ...existing.handle, cleanup: () => Promise.resolve() };
   }
 
+  if (!tryClaimSharedBoot()) {
+    return await waitForSharedPrestashopContainer();
+  }
+
+  try {
+    return await bootSharedPrestashopContainer();
+  } finally {
+    releaseSharedBootLock();
+  }
+}
+
+async function bootSharedPrestashopContainer(): Promise<PrestashopTestContainer> {
   let containers: SharedPrestashopContainers | undefined;
   const started = await startPrestashopContainer({
     // The module-installed container satisfies the assertions of the specs that
@@ -1123,11 +1227,47 @@ export async function startSharedPrestashopContainer(): Promise<PrestashopTestCo
 }
 
 /**
+ * Lost the claim race — a peer worker is (or was) booting the shared
+ * container. Poll for its completed record rather than booting a second
+ * pair. If the claim holder turns out to have died without ever writing one
+ * (crash, kill, OOM), `tryClaimSharedBoot` will eventually reclaim the stale
+ * lock and this call becomes the new booter instead of polling out to the
+ * deadline below for nothing.
+ */
+async function waitForSharedPrestashopContainer(): Promise<PrestashopTestContainer> {
+  const deadline = Date.now() + BOOT_LOCK_STALE_MS;
+  while (Date.now() < deadline) {
+    const existing = readLiveSharedRecord();
+    if (existing) {
+      return { ...existing.handle, cleanup: () => Promise.resolve() };
+    }
+    if (tryClaimSharedBoot()) {
+      try {
+        return await bootSharedPrestashopContainer();
+      } finally {
+        releaseSharedBootLock();
+      }
+    }
+    await sleep(BOOT_POLL_INTERVAL_MS);
+  }
+  throw new Error(
+    `startSharedPrestashopContainer: timed out after ${BOOT_LOCK_STALE_MS}ms waiting for a ` +
+      'peer worker to finish booting the shared PrestaShop container'
+  );
+}
+
+/**
  * Stop the shared container, if one was booted. Called from `globalTeardown`,
  * which runs in the main realm and so must work from the ids on disk rather
  * than from the `cleanup` closure the worker realm held.
  */
 export function stopSharedPrestashopContainer(): void {
+  // Defensive: a SIGKILLed boot (not a thrown error - `finally` would have
+  // handled that) can leave the claim lock behind. It is scoped to this same
+  // run (see `sharedBootLockFile`), so removing it here can never race a
+  // still-running peer from a DIFFERENT run.
+  rmSync(sharedBootLockFile(), { force: true });
+
   const file = sharedRecordFile();
   if (!existsSync(file)) {
     return;

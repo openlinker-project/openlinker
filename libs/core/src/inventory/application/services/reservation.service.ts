@@ -235,11 +235,18 @@ export class ReservationService implements IReservationService {
   }
 
   async closeForOrder(input: CloseForOrderInput): Promise<CloseForOrderResult> {
-    const held = await this.reservations.listHeldByOrderRecordId(input.orderRecordId);
+    const held = await this.reservations.listHeldByOrderRecordId(
+      input.orderRecordId,
+      input.orderLineIds
+    );
     if (held.length === 0) {
-      // Not a warning. An order legitimately holds nothing when reservations are
-      // disabled, when no line resolved to a live position, or when a peer
-      // already consumed it.
+      // Not a warning, in EITHER of the two things this can mean: an order
+      // legitimately holds nothing when reservations are disabled, when no
+      // line resolved to a live position, or when a peer already consumed it
+      // — and with `orderLineIds` supplied, it can also mean the order holds
+      // something, just not for these specific lines (e.g. a line the caller
+      // is closing that never resolved to a position at all). Both read as
+      // "nothing to close here" to this call, which is why neither warns.
       return { closed: 0, alreadyTerminal: 0, failed: 0 };
     }
 

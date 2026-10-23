@@ -12,9 +12,17 @@ import type {
   CreateInvoiceRecordInput,
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
+  InvoiceRecordKeysetCursor,
   InvoiceRecordPagination,
   PaginatedInvoiceRecords,
 } from '../types/invoicing.types';
+
+/** Page of {@link InvoiceRecordRepositoryPort.findManyKeyset}. */
+export interface InvoiceRecordKeysetPage {
+  items: InvoiceRecord[];
+  /** `null` means the filtered set is exhausted - there is no next page. */
+  nextCursor: InvoiceRecordKeysetCursor | null;
+}
 
 export interface InvoiceRecordRepositoryPort {
   /**
@@ -119,6 +127,29 @@ export interface InvoiceRecordRepositoryPort {
    * `InvoiceRecordNotFoundException` when the id does not exist.
    */
   claimForIssue(id: string, leaseExpiresAt: Date): Promise<InvoiceRecord | null>;
+
+  /**
+   * Recent records for ONE connection, newest-first (`createdAt` DESC, `id`
+   * DESC), capped at `limit` (#3179). Backs the connection health/diagnostics
+   * read, whose sibling leg is
+   * `FiscalRegistrationRecordRepositoryPort.findRecentByConnectionId`: an
+   * issued document is real connection activity, and it must count even when
+   * the `sync_jobs` row that dispatched it has aged out of that read's own
+   * recency window. Deliberately NOT {@link findMany} with a
+   * `{ connectionId }` filter: that one ends in `getManyAndCount()`, which in
+   * `typeorm@0.3.17` always runs its `COUNT` (see
+   * `docs/engineering-standards.md` § When A Paginated Total Is Expensive),
+   * and a health panel that discards the total must not pay for it.
+   *
+   * **The selection clock is not the comparison clock.** The window is the
+   * newest `limit` rows by `createdAt`, while the caller ranks them by
+   * `issuedAt ?? updatedAt`. A record created outside that window but issued
+   * recently therefore never reaches the merge, so the caller's
+   * "last succeeded" is a lower bound rather than an exact answer — an
+   * accepted proxy for a diagnostics read, not an invariant. Returns `[]` for
+   * a connection with no records.
+   */
+  findRecentByConnectionId(connectionId: string, limit: number): Promise<InvoiceRecord[]>;
 
   /**
    * Read-only paginated list (#1119). Backs ONLY the AC-6 list endpoint;
@@ -250,4 +281,24 @@ export interface InvoiceRecordRepositoryPort {
       cursor?: { updatedAt: Date; id: string };
     },
   ): Promise<{ items: InvoiceRecord[]; total: number }>;
+
+  /**
+   * Cross-order operational list (#3306) - the SAME filter surface as
+   * {@link findMany}, keyset-paginated on `(createdAt, id)` instead of
+   * `OFFSET`. Never a widening of `findMany` itself: that method's `OFFSET`
+   * pagination is a published contract of `GET /invoices` and stays untouched
+   * (`docs/engineering-standards.md` § When A Paginated Total Is Expensive).
+   * This sibling exists because a merged, financial-audit-adjacent list must
+   * not silently skip or duplicate a row when a new invoice is created between
+   * two page fetches - the failure mode plain `OFFSET` has under concurrent
+   * inserts.
+   *
+   * `opts.cursor` absent means "first page." `nextCursor` on the returned page
+   * is the last row's `(createdAt, id)` only when a FULL page was returned,
+   * else `null`.
+   */
+  findManyKeyset(
+    filter: InvoiceRecordFilters,
+    opts: { limit: number; cursor?: InvoiceRecordKeysetCursor },
+  ): Promise<InvoiceRecordKeysetPage>;
 }

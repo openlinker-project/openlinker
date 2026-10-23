@@ -36,6 +36,7 @@ import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/retur
 import type { ReturnSourceSweepFilter, ReturnSweepCandidate } from '../types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnListFilter,
   ReturnStageCounts,
@@ -201,6 +202,72 @@ export interface ReturnRepositoryPort {
      * absent the emitted statement is byte-identical to the pre-#2372 one.
      */
     match?: ReturnAttributionMatch
+  ): Promise<boolean>;
+
+  /**
+   * Claim a line's resolved order line (#3171) — the `orderSnapshot.items[].id`
+   * it came from.
+   *
+   * Fill-in-when-NULL, never a correction, and for the same reason
+   * `claimAttribution` is monotonic: a failed or later re-resolve must not be
+   * able to un-resolve a line that already carries an answer. The predicate IS
+   * the guarantee, so nothing reads the column and then decides in application
+   * code.
+   *
+   * `false` is an ordinary outcome, not an error — it means the line already
+   * held a resolution (a concurrent claim, or a re-ingestion arriving after the
+   * first resolve). Deliberately NOT reported as a failure, because the desired
+   * end state was reached either way (the #2332 `alreadyAttributed` counter's
+   * reasoning).
+   *
+   * Note the column stays absent from BOTH halves of `upsertFromSource`: it is
+   * core-resolved and must never be echoed from a source payload, which is why
+   * this is its own narrow write rather than a field on the upsert input.
+   *
+   * `catalogIdentity` (#3450) denormalizes the winning order line's already-
+   * resolved `productId` / `variantId` onto the SAME row in the SAME
+   * statement — the `resolvedProductId` / `resolvedVariantId` columns — so
+   * restock target resolution can use them without a live order-snapshot
+   * read. Optional and independent of the claim guard: an omitted value
+   * simply leaves those two columns `NULL`, exactly as they were before this
+   * parameter existed.
+   */
+  claimOrderLineResolution(
+    returnLineId: string,
+    orderLineId: string,
+    catalogIdentity?: { productId?: string; variantId?: string }
+  ): Promise<boolean>;
+
+  /**
+   * Backfill catalogue identity onto a line that already carries a
+   * `resolvedOrderLineId` from BEFORE those two columns existed (#3450).
+   *
+   * A DIFFERENT claim from {@link claimOrderLineResolution}: that one's guard
+   * is `resolvedOrderLineId IS NULL`, which is exactly the state an
+   * already-resolved legacy line does NOT have, so it can never be re-entered
+   * through the normal path — `resolveOrderLinesForReturn` skips it as
+   * `alreadyResolved` before the claim is ever attempted. Without this second,
+   * narrower conditional UPDATE (`resolvedOrderLineId IS NOT NULL AND
+   * resolvedProductId IS NULL`), every return line resolved before this
+   * column existed would stay on the sku-only restock-target fallback
+   * forever — the exact bug #3450 reports, permanently unfixed for the
+   * historical backlog.
+   *
+   * The guard keys on `resolvedProductId` ALONE, deliberately asymmetric with
+   * the restock read (which requires both ids): a product-only resolution
+   * writes `resolvedVariantId = null` and is then permanently excluded from
+   * this pass, which is correct — re-backfilling would write the same nulls,
+   * and such a line takes the sku fallback by design. Do NOT "tighten" the
+   * guard to `resolvedVariantId IS NULL`: every product-only line would then
+   * match on every pass and the backfill would re-run forever.
+   *
+   * `false` is ordinary: a concurrent backfill already won, or the row was
+   * resolved by a later release that populated the columns already — nothing
+   * to do either way, not a failure.
+   */
+  backfillResolvedCatalogIdentity(
+    returnLineId: string,
+    catalogIdentity: { productId?: string; variantId?: string }
   ): Promise<boolean>;
 
   /**
@@ -377,6 +444,34 @@ export interface ReturnRepositoryPort {
    * {@link countReturnsByStage} strips `stage`.
    */
   countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts>;
+
+  /**
+   * All internal order ids currently carrying an `all_open` return (#2998).
+   *
+   * Backs the `/orders?openReturn=` FILTER: `orders` cannot join `returns`
+   * (see this file's class docblock — the edge runs the other way), so the
+   * interface layer resolves this id list FIRST and hands it to
+   * `OrderRecordFilters.openReturnOrderIds`, exactly as the #3528
+   * tracking-number search resolves shipping's answer before asking `orders`.
+   *
+   * Orphan returns (`internalOrderId IS NULL`) are excluded by construction —
+   * `internalOrderId IS NOT NULL` is part of the query, not a caller-side
+   * filter, so an orphan can never badge or count an order it isn't attributed
+   * to.
+   */
+  findOpenReturnOrderIds(): Promise<string[]>;
+
+  /**
+   * Per-order open-return summary for a PAGE of order ids (#2998) — the badge.
+   *
+   * ONE query across the whole page, never a per-row lookup — the
+   * `getLatestInvoicesForOrders` (#1713) / reservation-shortfall (#2350)
+   * precedent. An order absent from the returned map has no open return; an
+   * order present always has `openCount >= 1`.
+   */
+  findOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>>;
 
   /**
    * One line plus its parent return, WITHOUT a row lock (#2370).

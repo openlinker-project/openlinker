@@ -56,7 +56,9 @@ export function CreateConnectionForm(): ReactElement {
   // for a demo viewer (#1667); only this form's own final submit is locked,
   // matching EditConnectionForm's "Save changes" treatment (#1615).
   const write = useWriteAccess('connections:write', demoMode);
-  const platformOptions = plugins.map((p) => ({ value: p.platformType, label: p.displayName }));
+  const platformOptions = plugins
+    .filter((p) => p.hideFromCreateConnection !== true)
+    .map((p) => ({ value: p.platformType, label: p.displayName }));
   // The schema depends on the SELECTED platform's adapter, which is only known
   // after the operator picks one — so the resolver delegates through a ref
   // rather than being captured once at first render. Passing

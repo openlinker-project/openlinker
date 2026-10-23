@@ -39,6 +39,9 @@ export {
   SYSTEM_CONNECTION_ID,
 } from './api/connections.types';
 
+// #3457 — the packing onboarding wizard writes connections through its own
+// orchestrating mutation and invalidates this family afterwards.
+export { connectionsQueryKeys } from './api/connections.query-keys';
 export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
@@ -48,8 +51,11 @@ export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secre
 export { useSetWebhookSecretMutation } from './hooks/use-set-webhook-secret-mutation';
 export { useWebhookStatusQuery } from './hooks/use-webhook-status-query';
 export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
+// #2118 - which connections the operator declared as packing and shipping by themselves.
+export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
+export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 export { usePickBankAccount } from './hooks/use-pick-bank-account';
@@ -74,19 +80,34 @@ export type {
   EditConnectionFormValues,
 } from './components/edit-connection.schema';
 
+// Subiekt product identity (#3464) — the two guided-setup routes live in
+// `plugins/subiekt-gt` and `plugins/subiekt-nexo` and each passes its OWN
+// identity into the shared wizard page, so the constants have to cross the
+// feature boundary. They are re-exported here rather than deep-imported
+// because a plugin reaching into `components/` is banned (#609), and the
+// distinction they carry is load-bearing: a connection created under the
+// wrong identity points at an adapter that cannot talk to its bridge.
 export {
-  InfaktWebhookConfig,
-  InfaktWebhookConfigDialog,
-  activationLabel as infaktWebhookActivationLabel,
-  signatureLabel as infaktWebhookSignatureLabel,
-} from './components/infakt-webhook-config';
+  SUBIEKT_GT_IDENTITY,
+  SUBIEKT_NEXO_IDENTITY,
+} from './components/subiekt-setup.schema';
+export type { SubiektProductIdentity } from './components/subiekt-setup.schema';
 
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { ConnectionCell } from './components/ConnectionCell';
 export { ConnectionFold } from './components/ConnectionFold';
+export { ConnectionChip } from './components/ConnectionChip';
+export type { ConnectionChipChannel, ConnectionChipProps } from './components/ConnectionChip';
+export { readConnectionEnvironment } from './lib/connection-environment';
+export type { ConnectionEnvironment } from './lib/connection-environment';
 export type { ConnectionFoldProps } from './components/ConnectionFold';
 export type { ConnectionCellProps, ConnectionCellFacts } from './components/ConnectionCell';
 export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-readout';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
+export {
+  hasPricingSyncPage,
+  isPricingDestination,
+  PRICING_DESTINATION_CAPABILITIES,
+} from './lib/pricing-destination';

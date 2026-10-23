@@ -133,7 +133,14 @@ export class SalesDocumentTemplatesController {
             ? {
                 field: 'orderTotalGross' as const,
                 op: condition.op as 'gte' | 'lt',
-                thresholdRef: condition.thresholdRef ?? '',
+                // #3189: inline amount + currency. Both are REQUIRED on an
+                // `orderTotalGross` template condition, so an absent one is a
+                // malformed catalogue entry rather than a defaultable field -
+                // the service's own `isSalesDocumentCondition` check refuses it
+                // at create, which is where a bad template should fail rather
+                // than silently adopting a rule that matches nothing.
+                amount: condition.amount ?? '',
+                currency: condition.currency ?? '',
               }
             : condition.field === 'buyerHasTaxId'
               ? { field: 'buyerHasTaxId' as const, op: 'eq' as const, value: Boolean(condition.value) }

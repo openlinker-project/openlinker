@@ -13,6 +13,7 @@ export { SalesDocumentRuleEnginePanel } from './components/sales-document-rule-e
 export type {
   SalesDocumentCapability,
   SalesDocumentKind,
+  ConcreteDocumentKind,
   SalesDocumentRow,
   SalesDocumentConfigPatch,
 } from './api/sales-documents.types';
@@ -35,3 +36,28 @@ export type {
   SalesDocumentGateReasonCopy,
   SalesDocumentReasonTone,
 } from './lib/sales-document-reason-copy';
+
+// #3340 follow-up — whether a missing document is on a list anyone will see.
+// Derived from the same guarded values array as the copy map above.
+export { resolveInvoiceAbsenceAudience } from './lib/invoice-absence-audience';
+export type { InvoiceAbsenceAudience } from './lib/invoice-absence-audience';
+
+// #3307 — one word/tone rule for an EXISTING record, shared between the
+// /orders row (via features/orders/lib/sales-document-cell-state.ts) and the
+// merged /sales-documents list.
+export { resolveSalesDocumentRecordWord } from './lib/resolve-sales-document-record-word';
+export type {
+  SalesDocumentRecordTone,
+  SalesDocumentRecordWord,
+} from './lib/resolve-sales-document-record-word';
+
+// #3307 — the merged, keyset-paginated /sales-documents list (#3306).
+export { useSalesDocumentsListQuery } from './hooks/use-sales-documents-list-query';
+export { SalesDocumentListCell } from './components/sales-document-list-cell';
+export type {
+  PaginatedSalesDocuments,
+  SalesDocumentListAmount,
+  SalesDocumentListFilters,
+  SalesDocumentListItem,
+  SalesDocumentListPagination,
+} from './api/sales-document-list.types';

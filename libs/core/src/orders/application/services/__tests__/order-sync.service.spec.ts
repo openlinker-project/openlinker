@@ -6,21 +6,23 @@
  *
  * @module libs/core/src/orders/application/services/__tests__
  */
+import type { PostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import { OrderSyncService } from '../order-sync.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderProcessorManagerPort } from '../../../domain/ports/order-processor-manager.port';
 import type { OrderSyncRequest } from '../../interfaces/order-sync.service.interface';
-import type { Order } from '../../../domain/types/order.types';
+import type { Order, OrderItem } from '../../../domain/types/order.types';
 import type { OrderRef } from '../../../domain/types/order-processor.types';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import { NoOrderDestinationsAvailableException } from '../../../domain/exceptions/no-order-destinations-available.exception';
 import { OrderCreateContendedException } from '../../../domain/exceptions/order-create-contended.exception';
-import type { SyncLockPort, SyncJobQueuePort } from '@openlinker/core/sync';
+import type { SyncLockPort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderHold } from '../../../domain/entities/order-hold.entity';
+import { ORDER_CREATE_LOCK_TTL_MS } from '../order-create-lock';
 import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
@@ -34,7 +36,7 @@ describe('OrderSyncService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let orderHoldService: jest.Mocked<IOrderHoldService>;
-  let jobQueue: jest.Mocked<SyncJobQueuePort>;
+  let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -96,6 +98,7 @@ describe('OrderSyncService', () => {
       upsertPaymentMappings: jest.fn().mockResolvedValue([]),
       resolveStatusMapping: jest.fn().mockResolvedValue(null),
       resolveCarrierMapping: jest.fn().mockResolvedValue(null),
+      resolvePaymentMapping: jest.fn().mockResolvedValue(null),
       getOrderStateMappings: jest.fn().mockResolvedValue([]),
       upsertOrderStateMappings: jest.fn().mockResolvedValue([]),
       resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
@@ -143,10 +146,10 @@ describe('OrderSyncService', () => {
       release: jest.fn(),
       listHolds: jest.fn(),
     } as unknown as jest.Mocked<IOrderHoldService>;
-    jobQueue = {
-      enqueue: jest.fn().mockResolvedValue('job-id'),
-      enqueueBulk: jest.fn().mockResolvedValue([]),
-    } as jest.Mocked<SyncJobQueuePort>;
+
+    postSaleInventoryRefresh = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<PostSaleInventoryRefreshService>;
 
     service = new OrderSyncService(
       integrationsService,
@@ -155,7 +158,7 @@ describe('OrderSyncService', () => {
       identifierMapping,
       orderRecordService,
       orderHoldService,
-      jobQueue
+      postSaleInventoryRefresh
     );
   });
 
@@ -164,6 +167,193 @@ describe('OrderSyncService', () => {
   });
 
   describe('syncOrder', () => {
+    // #3365. This projection is the THIRD allowlist an `OrderItem` field has to
+    // be named in, after the snapshot writer and the snapshot reader, and it is
+    // the one that feeds the destination adapter. A field missing here is
+    // invisible to every destination while being visibly present on the order -
+    // which is exactly how it was found: a PrestaShop order carried
+    // `unitPriceGross` in its persisted snapshot and the Subiekt adapter still
+    // refused it for not reporting one.
+    it('carries the source-reported gross figures onto the destination command', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.items[0].unitPriceGross = 36.89;
+      order.totals.taxTreatment = 'exclusive';
+      order.totals.shippingGross = 6.15;
+
+      await service.syncOrder({
+        order,
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].unitPriceGross).toBe(36.89);
+      expect(command.totals.shippingGross).toBe(6.15);
+      // `price` and `shipping` are untouched - the gross figures are carried
+      // beside them, never in place of them.
+      expect(command.items[0].price).toBe(29.99);
+      expect(command.totals.shipping).toBe(5.0);
+    });
+
+    it('should carry the resolved line tax rate onto the destination command when the order has one', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.items[0].taxRate = '23';
+
+      await service.syncOrder({
+        order,
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].taxRate).toBe('23');
+    });
+
+    it('should leave taxRate absent on the destination command when the order line has none', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect('taxRate' in command.items[0]).toBe(false);
+    });
+
+    it('leaves the gross keys absent when the source reported none', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect('unitPriceGross' in command.items[0]).toBe(false);
+      expect('shippingGross' in command.totals).toBe(false);
+    });
+
+    // #3710. `name` was on `OrderItem` and populated by every source, yet this
+    // allowlist dropped it - so WooCommerce created every line unnamed and
+    // Shoper named lines after the SKU or the raw internal line id.
+    it('carries the source-reported line name onto the destination command', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.items[0].name = 'Blue T-shirt';
+
+      await service.syncOrder({
+        order,
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].name).toBe('Blue T-shirt');
+    });
+
+    it('leaves the name key absent when the source reported none', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect('name' in command.items[0]).toBe(false);
+    });
+
+    // The projection is an allowlist, so the next `OrderItem` field is silently
+    // dropped unless someone remembers to name it here. `Record<keyof
+    // OrderItem, ...>` makes a new field a COMPILE error until it is classified
+    // as projected or withheld-with-a-reason, and the runtime assertion keeps
+    // the table honest against what the service actually emits.
+    describe('destination line allowlist', () => {
+      type Disposition = { projected: true } | { withheld: string };
+      const DESTINATION_ITEM_FIELDS: Record<keyof OrderItem, Disposition> = {
+        id: { projected: true },
+        productId: { projected: true },
+        variantId: { projected: true },
+        quantity: { projected: true },
+        price: { projected: true },
+        sku: { projected: true },
+        name: { projected: true },
+        unitPriceGross: { projected: true },
+        taxRate: { projected: true },
+        taxRateCountry: { projected: true },
+        imageUrl: {
+          withheld:
+            'reserved for future enrichment - no adapter sets it on ingestion and no destination reads it',
+        },
+        taxSource: {
+          withheld:
+            'provenance for the operator-facing caption (ADR-063); a destination needs the rate, not who stated it',
+        },
+        taxRateReadAt: {
+          withheld: 'provenance only - shown to the operator, never enforced, never sent',
+        },
+        taxRateChannel: {
+          withheld:
+            'the channel rate recorded only on a shop/channel conflict; the shop rate won and is the one sent',
+        },
+      };
+
+      it('should project exactly the fields classified as projected, and nothing else', async () => {
+        const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+        registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+        const fullItem: Required<OrderItem> = {
+          id: 'item-1',
+          productId: 'ol_product_789',
+          variantId: 'ol_variant_1',
+          quantity: 2,
+          price: 29.99,
+          sku: 'SKU-001',
+          name: 'Blue T-shirt',
+          unitPriceGross: 36.89,
+          imageUrl: 'https://example.test/a.png',
+          taxRate: '23',
+          taxRateCountry: 'PL',
+          taxSource: 'shop',
+          taxRateReadAt: '2026-10-01T00:00:00.000Z',
+          taxRateChannel: '8',
+        };
+        const order = createOrder();
+        order.items = [fullItem];
+
+        await service.syncOrder({
+          order,
+          sourceConnectionId: 'source-1',
+          sourceEventId: 'event-456',
+        });
+
+        const [command] = adapter.createOrder.mock.calls[0];
+        const projected = Object.entries(DESTINATION_ITEM_FIELDS)
+          .filter(([, d]) => 'projected' in d)
+          .map(([key]) => key)
+          .sort();
+        expect(Object.keys(command.items[0]).sort()).toEqual(projected);
+        for (const d of Object.values(DESTINATION_ITEM_FIELDS)) {
+          if ('withheld' in d) expect(d.withheld.length).toBeGreaterThan(0);
+        }
+      });
+    });
+
     it('should sync to a single destination and return a success result', async () => {
       const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
@@ -407,6 +597,33 @@ describe('OrderSyncService', () => {
       );
     });
 
+    it('should thread each line tax rate into OrderCreate when the snapshot carries mixed rates', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.items = [
+        { ...order.items[0], id: 'item-1', taxRate: '23', taxRateCountry: 'PL' },
+        { ...order.items[0], id: 'item-2', taxRate: '8' },
+      ];
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      const sent = adapter.createOrder.mock.calls[0][0];
+      expect(sent.items.map((i) => i.taxRate)).toEqual(['23', '8']);
+      expect(sent.items[0].taxRateCountry).toBe('PL');
+    });
+
+    it('should leave taxRate absent on OrderCreate items when the snapshot line has none', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      const sent = adapter.createOrder.mock.calls[0][0];
+      expect('taxRate' in sent.items[0]).toBe(false);
+    });
+
     it('should pass the source payment status through to the destination (#2600)', async () => {
       // A destination cannot tell a cash-on-delivery order from a prepaid one
       // without this, and there is nothing else on the contract that says so.
@@ -421,6 +638,55 @@ describe('OrderSyncService', () => {
       expect(adapter.createOrder).toHaveBeenCalledWith(
         expect.objectContaining({ paymentStatus: 'cod' })
       );
+    });
+
+    it('should pass the neutral payment method through to the destination (#3294)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.paymentMethod = 'cash_on_delivery';
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentMethod: 'cash_on_delivery' })
+      );
+    });
+
+    it('should leave the neutral payment method absent when the source reported none (#3294)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder.mock.calls[0][0].paymentMethod).toBeUndefined();
+    });
+
+    it('should pass the source payment method through as the payment-mapping key (#3474)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.sourcePaymentMethod = 'CASH_ON_DELIVERY';
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourcePaymentMethod: 'CASH_ON_DELIVERY',
+          source: expect.objectContaining({ connectionId: 'source-1' }),
+        })
+      );
+    });
+
+    it('should leave the source payment method absent when the source reported none (#3474)', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(adapter.createOrder.mock.calls[0][0].sourcePaymentMethod).toBeUndefined();
     });
 
     it('should leave the payment status absent when the source reported none (#2600)', async () => {
@@ -455,7 +721,15 @@ describe('OrderSyncService', () => {
 
       await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
 
-      expect(syncLock.acquire).toHaveBeenCalledWith('order:create:dest-a:ol_order_123', 120000);
+      // Reads the constant rather than restating it. The literal was 120000 and
+      // had to move to 180000 when Subiekt's client timeout became 150s - a TTL
+      // below the slowest destination's worst case inverts the lock's own
+      // stated precondition, and a test pinned to the number would have made
+      // that a two-file edit with no reason recorded in either.
+      expect(syncLock.acquire).toHaveBeenCalledWith(
+        'order:create:dest-a:ol_order_123',
+        ORDER_CREATE_LOCK_TTL_MS,
+      );
       expect(adapter.createOrder).toHaveBeenCalledTimes(1);
       expect(syncLock.release).toHaveBeenCalledWith(
         'order:create:dest-a:ol_order_123',
@@ -869,6 +1143,14 @@ describe('OrderSyncService', () => {
         expect(adapter.createOrder).toHaveBeenCalledTimes(1);
         expect(adapter.createOrder.mock.calls[0][0]).toStrictEqual({
           orderNumber: 'ORDER-001',
+          // #3365: the one identifier that is always present. `orderNumber` is
+          // optional and Erli's order source never sets it, which left the
+          // Subiekt adapter sending an EMPTY idempotency key - the bridge then
+          // ran the create unlocked and undeduped, so a timeout retry wrote a
+          // second sales order for one sale. Added to this characterisation
+          // expectation deliberately, which is what the whole-object assertion
+          // is for.
+          internalOrderId: 'ol_order_123',
           status: 'processing',
           customerId: 'ol_customer_456',
           items: [
@@ -1132,171 +1414,67 @@ describe('OrderSyncService', () => {
   });
 
   describe('post-sale master inventory refresh (#2623)', () => {
-    // resolveDestinations and the InventoryMaster lookup share one mocked
-    // method (`listCapabilityAdapters`) — this discriminates by `capability`
-    // so both callers get the right answer in the same test.
-    const registerDestinationsAndInventoryMaster = (
-      destinationConnectionId: string,
-      inventoryMasterConnectionId: string | null
-    ): void => {
-      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
-        if (filters.capability === 'InventoryMaster') {
-          return Promise.resolve(
-            inventoryMasterConnectionId
-              ? [
-                  {
-                    connectionId: inventoryMasterConnectionId,
-                    connection: {} as never,
-                    adapter: {} as never,
-                    metadata: {} as never,
-                  },
-                ]
-              : []
-          );
-        }
-        return Promise.resolve([
-          {
-            connectionId: destinationConnectionId,
-            connection: {} as never,
-            adapter: makeAdapter(),
-            metadata: {} as never,
-          },
-        ]);
-      });
+    // The resolution + enqueue itself now lives in
+    // `PostSaleInventoryRefreshService` (shared with the post-document caller,
+    // so both build the same dedupe key). What this service still owns is WHEN
+    // to ask for it, and that asking can never fail an order sync — so that is
+    // what is asserted here; the key format and the master/mapping filtering
+    // are covered by that service's own spec.
+    const registerDestination = (destinationConnectionId: string): void => {
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          connectionId: destinationConnectionId,
+          connection: {} as never,
+          adapter: makeAdapter(),
+          metadata: {} as never,
+        },
+      ]);
     };
 
-    it('should enqueue a master inventory refresh for a product mapped at an InventoryMaster connection', async () => {
-      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
-      identifierMapping.getExternalIds.mockImplementation((entityType) =>
-        Promise.resolve(
-          entityType === 'Product'
-            ? [
-                {
-                  externalId: 'PS-PRODUCT-789',
-                  connectionId: 'master-conn',
-                  platformType: 'prestashop',
-                  entityType: 'Product',
-                },
-              ]
-            : []
-        )
-      );
+    it('should ask for a refresh of every product on the order, scoped to that order', async () => {
+      registerDestination('dest-a');
 
       await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
 
-      expect(jobQueue.enqueue).toHaveBeenCalledWith({
-        type: 'master.inventory.syncByExternalId',
-        connectionId: 'master-conn',
-        payload: { schemaVersion: 1, externalId: 'PS-PRODUCT-789', objectType: 'Inventory' },
-        options: { dedupeKey: 'order:ol_order_123:inventory:sync:master-conn:PS-PRODUCT-789' },
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith({
+        productIds: ['ol_product_789'],
+        // Pinned deliberately: this scope produced the pre-extraction key
+        // `order:{id}:inventory:sync:{conn}:{externalId}` and must keep doing
+        // so, or an order mid-flight across a deploy re-enqueues under a new
+        // key.
+        keyScope: 'order:ol_order_123',
       });
     });
 
-    it('should enqueue nothing when no InventoryMaster-capable connection exists', async () => {
-      registerDestinationsAndInventoryMaster('dest-a', null);
+    it('should not fail order sync when the refresh itself throws', async () => {
+      registerDestination('dest-a');
+      postSaleInventoryRefresh.enqueue.mockRejectedValue(new Error('queue unavailable'));
 
-      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
-
-      expect(jobQueue.enqueue).not.toHaveBeenCalled();
-    });
-
-    it('should enqueue nothing for a product with no external-id mapping at any InventoryMaster connection', async () => {
-      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
-      identifierMapping.getExternalIds.mockResolvedValue([]);
-
-      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
-
-      expect(jobQueue.enqueue).not.toHaveBeenCalled();
-    });
-
-    it('should not fail order sync when the inventory refresh enqueue itself fails', async () => {
-      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
-      identifierMapping.getExternalIds.mockImplementation((entityType) =>
-        Promise.resolve(
-          entityType === 'Product'
-            ? [
-                {
-                  externalId: 'PS-PRODUCT-789',
-                  connectionId: 'master-conn',
-                  platformType: 'prestashop',
-                  entityType: 'Product',
-                },
-              ]
-            : []
-        )
-      );
-      jobQueue.enqueue.mockRejectedValue(new Error('queue unavailable'));
-
-      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
 
       expect(results[0]).toMatchObject({ status: 'success' });
     });
 
-    it('should not fail order sync when resolving InventoryMaster connections itself throws', async () => {
-      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
-      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
-        if (filters.capability === 'InventoryMaster') {
-          return Promise.reject(new Error('registry unavailable'));
-        }
-        return Promise.resolve([
-          {
-            connectionId: 'dest-a',
-            connection: {} as never,
-            adapter: makeAdapter(),
-            metadata: {} as never,
-          },
-        ]);
-      });
+    it('should ask for nothing when every destination create fails', async () => {
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          connectionId: 'dest-a',
+          connection: {} as never,
+          adapter: {
+            createOrder: jest.fn().mockRejectedValue(new Error('destination down')),
+          } as never,
+          metadata: {} as never,
+        },
+      ]);
 
-      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+      await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
 
-      expect(results[0]).toMatchObject({ status: 'success' });
-      expect(jobQueue.enqueue).not.toHaveBeenCalled();
-    });
-
-    it('should enqueue nothing when every destination create fails', async () => {
-      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
-        if (filters.capability === 'InventoryMaster') {
-          return Promise.resolve([
-            {
-              connectionId: 'master-conn',
-              connection: {} as never,
-              adapter: {} as never,
-              metadata: {} as never,
-            },
-          ]);
-        }
-        const failingAdapter: jest.Mocked<OrderProcessorManagerPort> = {
-          createOrder: jest.fn().mockRejectedValue(new Error('destination unreachable')),
-        };
-        return Promise.resolve([
-          {
-            connectionId: 'dest-a',
-            connection: {} as never,
-            adapter: failingAdapter,
-            metadata: {} as never,
-          },
-        ]);
-      });
-      identifierMapping.getExternalIds.mockImplementation((entityType) =>
-        Promise.resolve(
-          entityType === 'Product'
-            ? [
-                {
-                  externalId: 'PS-PRODUCT-789',
-                  connectionId: 'master-conn',
-                  platformType: 'prestashop',
-                  entityType: 'Product',
-                },
-              ]
-            : []
-        )
-      );
-
-      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
-
-      expect(results[0]).toMatchObject({ status: 'failed' });
-      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+      // Nothing decremented the master, so a refresh would spend outbound
+      // quota against it for no observable change.
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
     });
   });
 });

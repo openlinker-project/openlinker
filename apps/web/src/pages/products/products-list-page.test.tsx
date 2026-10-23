@@ -1061,16 +1061,17 @@ describe('ProductsListPage', () => {
         return found!;
       });
 
-      // The pill is the Products adornment (Listings passes none, Shipments a
-      // carrier dot) and it leads line 1 rather than replacing the name.
-      const adornment = cell.querySelector('.connection-cell__adornment');
-      expect(adornment).not.toBeNull();
-      const pill = adornment!.querySelector('.channel-pill');
-      expect(pill).toHaveAttribute('data-channel', 'prestashop');
-      expect(pill).toHaveTextContent('PrestaShop');
+      // Products passes the channel (Listings passes none, Shipments a carrier
+      // dot), and since #3670 channel and name are ONE link, never a pill
+      // beside a separate name link.
+      const chip = cell.querySelector('.connection-chip');
+      expect(chip).not.toBeNull();
+      expect(chip).toHaveAttribute('data-channel', 'prestashop');
+      expect(chip!.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      expect(within(cell).getAllByRole('link')).toHaveLength(1);
 
       // Name over a shortened, copyable id — the fact the old cell dropped.
-      expect(within(cell).getByRole('link', { name: 'PrestaShop Terra Store' })).toHaveAttribute(
+      expect(within(cell).getByRole('link', { name: 'PrestaShop Terra Store, PrestaShop' })).toHaveAttribute(
         'href',
         '/connections/conn_presta',
       );
@@ -1174,7 +1175,7 @@ describe('ProductsListPage', () => {
       expect(getById).not.toHaveBeenCalled();
       // The pill still resolves: its platformType is on the product's own
       // external-id row, not on the connection the page could not find.
-      expect(cell.querySelector('.channel-pill')).toHaveTextContent('PrestaShop');
+      expect(cell.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
     });
 
     it('renders erli and woocommerce source pills through the plugin registry, not the lowercase slug', async () => {
@@ -1220,7 +1221,7 @@ describe('ProductsListPage', () => {
       await screen.findByText('Test Product');
       const pills = await waitFor(() => {
         const found = Array.from(
-          container.querySelectorAll('.connection-cell__adornment .channel-pill'),
+          container.querySelectorAll('.connection-cell .connection-chip'),
         );
         expect(found).toHaveLength(2);
         return found;
@@ -1260,10 +1261,9 @@ describe('ProductsListPage', () => {
       expect(fold).not.toBeNull();
 
       const foldEl = fold as HTMLElement;
-      // One line: adornment + name. The pill is the same adornment the desktop
-      // cell passes on this page.
-      expect(foldEl.querySelector('.conn-fold__adornment .channel-pill')).not.toBeNull();
-      expect(within(foldEl).getByRole('link', { name: 'PrestaShop Terra Store' })).toBeInTheDocument();
+      // One line: the same channel chip the desktop cell renders on this page.
+      expect(foldEl.querySelector('.connection-chip')).not.toBeNull();
+      expect(within(foldEl).getByRole('link', { name: 'PrestaShop Terra Store, PrestaShop' })).toBeInTheDocument();
 
       // Deliberately NO copyable id: copying is a hover affordance and there is
       // no hover on touch, so the tablet form answers "which connection", not

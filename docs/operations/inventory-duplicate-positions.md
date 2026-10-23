@@ -103,6 +103,15 @@ curl -s \
       "sourceConnectionId": null,
       "rowCount": 3,
       "liveRowCount": 2,
+      "productName": "Merino Wool Beanie",  // #3239 — resolved from productId, batched
+      "sku": "BEA-MER-001",                 // null when the product can't be resolved
+                                             // OR when a resolved product has no SKU —
+                                             // check productName to tell the two apart
+      "connectionName": null,               // always null when sourceConnectionId is
+                                             // null or 'legacy' (not yet backfilled)
+      "locationName": null,                 // always null when locationId is null
+                                             // (ADR-058 decision 2 — master declines
+                                             // to locate its stock, never a fabricated name)
       "rows": [                       // newest first
         { "id": "…", "availableQuantity": 7, "reservedQuantity": 0,
           "isStale": false, "updatedAt": "2026-08-20T10:00:00.000Z" }
@@ -111,6 +120,11 @@ curl -s \
   ]
 }
 ```
+
+`productName`/`sku`/`connectionName`/`locationName` (#3239) are resolved by the
+service layer from the raw ids above — batched across the whole response's
+*unique* ids, never per group or per row, so a report with hundreds of
+duplicate groups still costs a handful of extra reads rather than one per row.
 
 `maxGroups` defaults to 100 and is capped at 500. It bounds the returned
 **detail only** — `groupCount`, `rowCount` and `excessRowCount` are always
@@ -185,8 +199,12 @@ For each group:
 4. **Delete the losers by primary key**, taken from the report:
 
    ```sql
-   -- ids come from the report's groups[].rows[].id — bare UUIDs, NOT
-   -- ol_-prefixed internal ids (inventory_items.id is a plain uuid).
+   -- ids come from the report's groups[].rows[].id — `ol_inventory_*`
+   -- internal ids, not bare UUIDs. `inventory_items.id` was converted from
+   -- uuid to text by 1767555200000-change-product-ids-to-varchar.ts, and
+   -- IdentifierMappingService mints every row's id via formatInternalId
+   -- (docs/architecture-overview.md § Identifier Mapping Service) — an
+   -- `ol_`-prefixed id here is correct, not a sign the report is wrong.
    DELETE FROM "inventory_items"
     WHERE "id" IN ('{loser id from the report}', '{loser id from the report}');
    ```

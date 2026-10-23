@@ -25,7 +25,7 @@ import {
   RegulatoryStatusBadge,
   regCardToneFor,
   useInvoiceRenderedDocumentDownload,
-  useResendToKsefMutation,
+  useResendToAuthorityMutation,
   useSendInvoiceEmailMutation,
   type InvoiceEmailLocale,
 } from '../../../features/invoicing';
@@ -35,7 +35,7 @@ export function InfaktInvoiceDetailSection({
 }: InvoiceDetailSectionProps): ReactElement | null {
   const { t } = useTranslation();
   const pdfDownload = useInvoiceRenderedDocumentDownload();
-  const resendToKsef = useResendToKsefMutation();
+  const resendToAuthority = useResendToAuthorityMutation();
   const sendEmail = useSendInvoiceEmailMutation();
   const [emailLocale, setEmailLocale] = useState<InvoiceEmailLocale>('pl');
   const { showToast } = useToast();
@@ -62,7 +62,7 @@ export function InfaktInvoiceDetailSection({
 
   async function handleResendToKsef(): Promise<void> {
     try {
-      await resendToKsef.mutateAsync(invoice.id);
+      await resendToAuthority.mutateAsync(invoice.id);
       showToast({
         tone: 'success',
         title: t('infakt.invoice.detail.resendSuccess', 'Re-sent to KSeF'),
@@ -158,9 +158,9 @@ export function InfaktInvoiceDetailSection({
             tone="primary"
             className="button--sm"
             onClick={() => void handleResendToKsef()}
-            disabled={resendToKsef.isPending}
+            disabled={resendToAuthority.isPending}
           >
-            {resendToKsef.isPending
+            {resendToAuthority.isPending
               ? t('infakt.invoice.detail.resending', 'Re-sending…')
               : t('infakt.invoice.detail.resend', 'Resend to KSeF')}
           </Button>

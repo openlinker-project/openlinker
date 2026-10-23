@@ -10,10 +10,13 @@
 import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
+import type { FiscalRegistrationKeysetPage } from '../../domain/ports/fiscal-registration-record-repository.port';
 import type { FiscalRegistrationRequestAccepted } from '../../domain/types/fiscal-registration-request.types';
 import type { FiscalRegistrationProgress } from '../../domain/types/fiscal-registration-progress.types';
 import type {
   FiscalReconcileOutcome,
+  FiscalRegistrationKeysetCursor,
+  FiscalRegistrationListFilters,
   RegisterTransactionCommand,
 } from '../../domain/types/fiscalization.types';
 
@@ -169,6 +172,19 @@ export interface IFiscalRegistrationService {
    */
   assertRegistrable(orderId: string, requestedConnectionId: string): Promise<void>;
 
+  /**
+   * Cross-order operational list (#3306) - every registration record matching
+   * `filters`, newest-first, keyset-paginated. NEVER queries the
+   * provider/adapter. Backs the merged `GET /sales-documents` read alongside
+   * `IInvoiceService.listInvoicesKeyset` - see
+   * `libs/core/src/orders/application/services/sales-document-view.service.ts`
+   * for how the two are merged.
+   */
+  listRegistrationsKeyset(
+    filters: FiscalRegistrationListFilters,
+    opts: { limit: number; cursor?: FiscalRegistrationKeysetCursor },
+  ): Promise<FiscalRegistrationKeysetPage>;
+
   /** Every registration record held by an order, across connections, newest-first. */
   getByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]>;
 
@@ -181,6 +197,19 @@ export interface IFiscalRegistrationService {
    * are absent; returns `[]` for an empty input.
    */
   getByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]>;
+
+  /**
+   * Recent registration records for ONE connection, newest-first, capped at
+   * `limit` (#3179). Backs the connection health/diagnostics read: a document
+   * registration is real activity on that connection even when it left no
+   * trace in that read's own recent `sync_jobs` window (the job aged out, or
+   * the record predates job-based dispatch, #2525). Returns `[]` for a
+   * connection with no records.
+   */
+  listRecentByConnectionId(
+    connectionId: string,
+    limit: number,
+  ): Promise<FiscalRegistrationRecord[]>;
 
   /**
    * Is a registration for this order being attempted RIGHT NOW (#2521, ADR-042

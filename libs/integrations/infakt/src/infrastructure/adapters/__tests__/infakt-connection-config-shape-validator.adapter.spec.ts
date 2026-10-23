@@ -76,6 +76,57 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
     );
   });
 
+  describe('bare-host baseUrl override missing /api/v3 (#3030)', () => {
+    it('should reject a bare-host override with no path at all', async () => {
+      await expect(validator.validate({ baseUrl: 'https://api.infakt.pl' })).rejects.toMatchObject(
+        {
+          pluginName: 'Infakt',
+          errors: [{ path: 'baseUrl', message: expect.stringContaining('/api/v3') }],
+        },
+      );
+    });
+
+    it('should reject a bare-host override with only a trailing slash', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://api.infakt.pl/' }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'baseUrl', message: expect.stringContaining('/api/v3') }],
+      });
+    });
+
+    it('should resolve when baseUrl already carries the /api/v3 path', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://api.infakt.pl/api/v3' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when baseUrl is the sandbox host with /api/v3', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://api.sandbox-infakt.pl/api/v3' }),
+      ).resolves.toBeUndefined();
+    });
+
+    // An operator-run proxy mounted under its own path must not be refused
+    // just because that path isn't literally /api/v3 — see
+    // `isRootPathInfaktBaseUrlOverride`'s own docblock for why this package
+    // cannot verify a proxy's internal routing.
+    it('should resolve when baseUrl carries a distinct, non-/api/v3 path (operator proxy)', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://proxy.internal.example/infakt' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should still surface the https rejection first for a plain-http bare host', async () => {
+      // Guards against the two checks racing / re-ordering: a plain-http
+      // bare host must fail on "must use https", not "must include /api/v3".
+      await expect(
+        validator.validate({ baseUrl: 'http://api.infakt.pl' }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'baseUrl', message: 'must use https' }],
+      });
+    });
+  });
+
   it('should carry a flat { path, message } issue for baseUrl', async () => {
     await expect(validator.validate({ baseUrl: 'not-a-url' })).rejects.toMatchObject({
       pluginName: 'Infakt',
@@ -113,6 +164,46 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
     await expect(validator.validate({ defaultPaymentMethod: 123 })).rejects.toBeInstanceOf(
       InvalidConnectionConfigException,
     );
+  });
+
+  describe('defaultSaleType (#2177)', () => {
+    it('should resolve when defaultSaleType is absent', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it.each(['service'])('should resolve when defaultSaleType is %s', async (defaultSaleType) => {
+      await expect(validator.validate({ defaultSaleType })).resolves.toBeUndefined();
+    });
+
+    it('should resolve when defaultSaleType is null', async () => {
+      await expect(validator.validate({ defaultSaleType: null })).resolves.toBeUndefined();
+    });
+
+    it('should reject when defaultSaleType is not a supported value', async () => {
+      await expect(
+        validator.validate({ defaultSaleType: 'towar' }),
+      ).rejects.toMatchObject({
+        pluginName: 'Infakt',
+        errors: [{ path: 'defaultSaleType', message: expect.stringContaining('service') }],
+      });
+    });
+
+    // #2995 review: 'goods' is a CONFIRMED-REJECTED inFakt value (#2177), not
+    // merely an unconfirmed one — it must be refused at save time exactly
+    // like any other unsupported string, never accepted as a placeholder for
+    // a still-unknown correct value.
+    it('should reject when defaultSaleType is the confirmed-rejected value "goods"', async () => {
+      await expect(validator.validate({ defaultSaleType: 'goods' })).rejects.toMatchObject({
+        pluginName: 'Infakt',
+        errors: [{ path: 'defaultSaleType', message: expect.stringContaining('service') }],
+      });
+    });
+
+    it('should reject when defaultSaleType is not a string', async () => {
+      await expect(validator.validate({ defaultSaleType: 123 })).rejects.toBeInstanceOf(
+        InvalidConnectionConfigException,
+      );
+    });
   });
 
   describe('environment (#2174)', () => {

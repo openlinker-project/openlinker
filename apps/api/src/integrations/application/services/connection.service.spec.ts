@@ -9,8 +9,12 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConnectionService } from './connection.service';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConnectionService,
+  ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+  STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+} from './connection.service';
 import type {
   ConnectionPort,
   ConnectionUpdate,
@@ -20,6 +24,7 @@ import type {
 import {
   CONNECTION_PORT_TOKEN,
   Connection,
+  ConnectionInUseException,
   ConnectionNotFoundException,
 } from '@openlinker/core/identifier-mapping';
 import type {
@@ -218,6 +223,10 @@ describe('ConnectionService', () => {
     const mockLocations = {
       countActiveLocations: jest.fn().mockResolvedValue(1),
       bootstrapDefaultLocations: jest.fn(),
+      // #3206 — `validateStockLocationOverride` only calls this when the
+      // config key is present, so a `null` default costs nothing for every
+      // existing test that never sets `stockLocationOverride`.
+      getLocation: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ILocationService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -303,6 +312,87 @@ describe('ConnectionService', () => {
       const rest: ConnectionCreateInput = { ...payload };
       delete rest.credentialsRef;
       await expect(service.create(rest)).rejects.toThrow(/Exactly one of/);
+    });
+
+    describe('unique config keys (#3391)', () => {
+      const subiektMetadata = {
+        adapterKey: 'subiekt.invoicing.v1',
+        platformType: 'subiekt',
+        supportedCapabilities: ['Invoicing'],
+        uniqueConfigKeys: ['bridgeBaseUrl'],
+      };
+      const subiektPayload: ConnectionCreateInput = {
+        name: 'New Subiekt',
+        platformType: 'subiekt',
+        config: { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+        credentialsRef: 'db:existing-ref',
+      };
+
+      it('should refuse a second active connection sharing the same bridgeBaseUrl', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([
+          new Connection(
+            'subiekt-existing',
+            'subiekt',
+            'Existing Subiekt',
+            'active',
+            { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+            'db:cred-existing',
+            new Date(),
+            new Date(),
+            'subiekt.invoicing.v1',
+            ['Invoicing']
+          ),
+        ]);
+
+        await expect(service.create(subiektPayload)).rejects.toThrow(/must be unique/);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+      });
+
+      it('should allow the create when no active sibling shares the bridgeBaseUrl', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([
+          new Connection(
+            'subiekt-other',
+            'subiekt',
+            'Other bridge',
+            'active',
+            { bridgeBaseUrl: 'http://10.0.0.5:5056' },
+            'db:cred-other',
+            new Date(),
+            new Date(),
+            'subiekt.invoicing.v1',
+            ['Invoicing']
+          ),
+        ]);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(subiektPayload)).resolves.toEqual(mockConnection);
+      });
+
+      it('should ignore a DISABLED sibling sharing the same bridgeBaseUrl', async () => {
+        // `list({ status: 'active' })` already excludes it server-side; this
+        // pins that the filter is actually threaded through, not just documented.
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([]);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(subiektPayload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.list).toHaveBeenCalledWith({ platformType: 'subiekt', status: 'active' });
+      });
+
+      it('should skip the collision check entirely when the adapter declares no uniqueConfigKeys', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'prestashop.webservice.v1',
+          platformType: 'prestashop',
+          supportedCapabilities: [],
+        } as never);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.list).not.toHaveBeenCalled();
+      });
     });
 
     describe('credential-less adapter (requiresCredentials: false, #2405 / ADR-055)', () => {
@@ -682,6 +772,77 @@ describe('ConnectionService', () => {
       });
     });
 
+    // #3192 review (I1) — a dual-role fiscal manifest (Fiscalization +
+    // Invoicing) must not silently grant the invoicing lane on an omitted
+    // enabledCapabilities, the same server-side-defense-in-depth shape #1498
+    // already gives InventoryMaster/OfferManager.
+    describe('Invoicing capability defaults on a dual-role fiscal manifest (#3192 review I1)', () => {
+      const eparagonyManifest = {
+        adapterKey: 'eparagony.documents.v3',
+        platformType: 'eparagony',
+        supportedCapabilities: [
+          'Fiscalization',
+          'FiscalRegistrationLocator',
+          'Invoicing',
+          'RegulatoryStatusReader',
+        ],
+        defaultEnabledCapabilities: [
+          'Fiscalization',
+          'FiscalRegistrationLocator',
+          'RegulatoryStatusReader',
+        ],
+      };
+
+      it('should exclude Invoicing from defaulted capabilities when the manifest also declares Fiscalization', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          eparagonyManifest as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, platformType: 'eparagony' });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).not.toContain('Invoicing');
+        expect(created.enabledCapabilities).toContain('Fiscalization');
+      });
+
+      it('should allow create with Invoicing explicitly requested', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          eparagonyManifest as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({
+          ...payload,
+          platformType: 'eparagony',
+          enabledCapabilities: ['Fiscalization', 'Invoicing'] as never,
+        });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).toContain('Invoicing');
+      });
+
+      it('should keep Invoicing defaulted for a manifest that declares it without Fiscalization', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'invoicing-only.test.v1',
+          platformType: 'test-invoicing-only',
+          supportedCapabilities: ['Invoicing', 'RegulatoryStatusReader'],
+        } as never);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, platformType: 'test-invoicing-only' });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).toContain('Invoicing');
+      });
+    });
+
     // #509 — create-path config validation. Mirrors the update-path hook
     // (#437) so that operators get the same 400 surface on POST /connections
     // as they do on PATCH /connections/:id.
@@ -837,6 +998,46 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('fulfilment ownership flag validation (#2118)', () => {
+      it('should accept a boolean flag and a cleared null on create', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: true },
+          })
+        ).resolves.toEqual(mockConnection);
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: null },
+          })
+        ).resolves.toEqual(mockConnection);
+      });
+
+      it('should reject a non-boolean flag on create', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, fulfilmentOwnedByDestination: 'true' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a non-boolean flag on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', fulfilmentOwnedByDestination: 1 },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
     describe('neutral stock and pricing config validation (#2610)', () => {
       it('should accept a create carrying all three keys within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);
@@ -903,6 +1104,69 @@ describe('ConnectionService', () => {
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
 
+      it('should accept the #3142 nested { default, sourceOverrides } shape within bounds', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              pricingRule: {
+                default: { type: 'markup', percent: 20 },
+                sourceOverrides: { 'src-1': { type: 'margin', percent: 30 } },
+              },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should reject a >=100% margin inside a #3142 sourceOverrides entry', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              pricingRule: {
+                default: { type: 'passthrough' },
+                sourceOverrides: { 'src-1': { type: 'margin', percent: 100 } },
+              },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a >=100% margin in a headless { sourceOverrides } container with no `default` key (PR #3158 review, BLOCKING)', async () => {
+        // Before the fix, the absence of a `default` key routed this whole
+        // container through the LEGACY flat-shape validator, which checked
+        // `type`/`percent`/`rounding` on the container itself (all
+        // `undefined`) and let every override through unchecked.
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              pricingRule: {
+                sourceOverrides: { 'src-1': { type: 'margin', percent: 150 } },
+              },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a percent with no type, which coercePricingRule would silently drop on read (SUGGESTION 1)', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, pricingRule: { percent: 150 } as unknown as PricingRule },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
       it('should reject the same values on update, which is the path the raw JSON editor takes', async () => {
         connectionPort.get.mockResolvedValue(mockConnection);
 
@@ -924,6 +1188,135 @@ describe('ConnectionService', () => {
 
         await expect(service.update('connection-123', { config })).resolves.toEqual(mockConnection);
         expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
+      });
+    });
+
+    describe('stockLocationOverride validation (#3206)', () => {
+      it('should accept a create whose override names an existing location', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        locations.getLocation.mockResolvedValue({
+          id: 'ol_location_main',
+          status: 'active',
+        } as never);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_main' },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(locations.getLocation).toHaveBeenCalledWith('ol_location_main');
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should reject a create whose override names an unknown location', async () => {
+        locations.getLocation.mockResolvedValue(null);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_ghost' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      // #3207 review — the FE mapping branches on this machine-readable
+      // code, not on the message text. Pin the response shape so a future
+      // reword of the message can't silently drop the code too.
+      it('should carry the machine-readable error code (#3207 review)', async () => {
+        locations.getLocation.mockResolvedValue(null);
+
+        try {
+          await service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_ghost' },
+          });
+          throw new Error('expected create() to reject');
+        } catch (error) {
+          expect(error).toBeInstanceOf(BadRequestException);
+          const response = (error as BadRequestException).getResponse();
+          expect(response).toMatchObject({ error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE });
+        }
+      });
+
+      it('should reject a non-string override value', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 42 as unknown as string },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should leave an absent override untouched and never call the location lookup', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(locations.getLocation).not.toHaveBeenCalled();
+      });
+
+      it('should reject the same unknown-location value on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        locations.getLocation.mockResolvedValue(null);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', stockLocationOverride: 'ol_location_ghost' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      // An inactive location is retired: the fulfilment router filters
+      // `status: 'active'`, so an override naming it writes a config that
+      // decides nothing — the #2407 shape this refusal exists to prevent.
+      it('should reject a create whose override names a retired location', async () => {
+        locations.getLocation.mockResolvedValue({
+          id: 'ol_location_retired',
+          status: 'inactive',
+        } as never);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_retired' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      // Transition-scoped, mirroring `assertRouterEnablementPreconditions`:
+      // `config` is replaced wholesale, so every unrelated patch re-asserts the
+      // stored override. A location retired AFTER the override was set must not
+      // make the connection un-editable.
+      it('should not re-validate an unchanged override on update', async () => {
+        connectionPort.get.mockResolvedValue(
+          new Connection(
+            'connection-123',
+            'prestashop',
+            'Test Connection',
+            'active',
+            { baseUrl: 'https://example.com', stockLocationOverride: 'ol_location_retired' },
+            'cred_123',
+            new Date(),
+            new Date(),
+            undefined,
+            ['ProductMaster']
+          )
+        );
+        connectionPort.update.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: {
+              baseUrl: 'https://shop.example.com',
+              stockLocationOverride: 'ol_location_retired',
+            },
+          })
+        ).resolves.toBeDefined();
+        expect(locations.getLocation).not.toHaveBeenCalled();
       });
     });
   });
@@ -988,6 +1381,67 @@ describe('ConnectionService', () => {
 
       expect(result).toEqual(updatedConnection);
       expect(connectionPort.update).toHaveBeenCalledWith('connection-123', patch);
+    });
+
+    describe('unique config keys (#3391)', () => {
+      const subiektMetadata = {
+        adapterKey: 'subiekt.invoicing.v1',
+        platformType: 'subiekt',
+        supportedCapabilities: ['Invoicing'],
+        uniqueConfigKeys: ['bridgeBaseUrl'],
+      };
+      const subiektConnection = new Connection(
+        'subiekt-self',
+        'subiekt',
+        'Self',
+        'active',
+        { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+        'db:cred-self',
+        new Date(),
+        new Date(),
+        'subiekt.invoicing.v1',
+        ['Invoicing']
+      );
+
+      it('should refuse an update that collides with ANOTHER active sibling', async () => {
+        connectionPort.get.mockResolvedValue(subiektConnection);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([
+          subiektConnection,
+          new Connection(
+            'subiekt-sibling',
+            'subiekt',
+            'Sibling',
+            'active',
+            { bridgeBaseUrl: 'http://10.0.0.9:5056' },
+            'db:cred-sibling',
+            new Date(),
+            new Date(),
+            'subiekt.invoicing.v1',
+            ['Invoicing']
+          ),
+        ]);
+
+        await expect(
+          service.update('subiekt-self', {
+            config: { bridgeBaseUrl: 'http://10.0.0.9:5056' },
+          })
+        ).rejects.toThrow(/must be unique/);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should NOT collide with its own unchanged row (self-exclusion)', async () => {
+        connectionPort.get.mockResolvedValue(subiektConnection);
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(subiektMetadata as never);
+        connectionPort.list.mockResolvedValueOnce([subiektConnection]);
+        connectionPort.update.mockResolvedValue(subiektConnection);
+
+        await expect(
+          service.update('subiekt-self', {
+            config: { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+          })
+        ).resolves.toEqual(subiektConnection);
+      });
     });
 
     describe('taxonomy bootstrap on enable (#2084)', () => {
@@ -1741,6 +2195,22 @@ describe('ConnectionService', () => {
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
 
+      it('should carry a machine-readable code on the refusal (#3457)', async () => {
+        // The OMS onboarding wizard branches on this field, never on the prose,
+        // so a reworded message cannot silently turn its inline remedy into a
+        // generic error banner.
+        locations.countActiveLocations.mockResolvedValue(0);
+
+        const error = await service
+          .create(claiming({ sourcingAuthority: true }))
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toEqual(
+          expect.objectContaining({ error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE })
+        );
+      });
+
       it('should allow the same claim once a location exists', async () => {
         // The control for the test above: proves the refusal was caused by the
         // location count and not by the payload being rejected for some other
@@ -1814,6 +2284,299 @@ describe('ConnectionService', () => {
         await expect(
           service.create(claiming(config as Record<string, unknown>))
         ).resolves.toEqual(mockConnection);
+      });
+    });
+  });
+  describe('archive / restore (#3657)', () => {
+    const withState = (
+      status: Connection['status'],
+      credentialsRef: string
+    ): Connection =>
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Test Connection',
+        status,
+        {},
+        credentialsRef,
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
+
+    describe('archive', () => {
+      beforeEach(() => {
+        connectionPort.list.mockResolvedValue([]);
+      });
+
+      const marketplaceNaming = (
+        id: string,
+        name: string,
+        masterCatalogConnectionId: string
+      ): Connection =>
+        new Connection(
+          id,
+          'allegro',
+          name,
+          'active',
+          { masterCatalogConnectionId },
+          'db:other-ref',
+          new Date(),
+          new Date(),
+          undefined,
+          ['OfferManager']
+        );
+
+      it('should refuse with ConnectionInUseException naming the referrers and change nothing when another connection uses it as its catalog', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.list.mockResolvedValue([
+          marketplaceNaming('allegro-1', 'Allegro PL', 'connection-123'),
+          marketplaceNaming('erli-1', 'Erli', 'connection-123'),
+          marketplaceNaming('allegro-2', 'Allegro CZ', 'some-other-shop'),
+        ]);
+
+        const refusal = await service.archive('connection-123').catch((error: unknown) => error);
+
+        expect(refusal).toBeInstanceOf(ConnectionInUseException);
+        expect(refusal).toMatchObject({
+          connectionId: 'connection-123',
+          reason: 'master-catalog-referenced',
+          referrers: [
+            { id: 'allegro-1', name: 'Allegro PL' },
+            { id: 'erli-1', name: 'Erli' },
+          ],
+        });
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should archive when no other connection uses it as its catalog', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.list.mockResolvedValue([
+          marketplaceNaming('allegro-2', 'Allegro CZ', 'some-other-shop'),
+        ]);
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
+        // Unfiltered list(): archived referrers are left out by the port, so
+        // they never block an archive.
+        expect(connectionPort.list).toHaveBeenCalledWith();
+      });
+
+      it('should delete the credential, clear the ref and set archived when the connection is disabled', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        const result = await service.archive('connection-123');
+
+        expect(credentials.delete).toHaveBeenCalledWith('cred-ref-1');
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'archived',
+          credentialsRef: '',
+        });
+        expect(mockHttpTransportFactory.evict).toHaveBeenCalledWith('connection-123');
+        expect(result.status).toBe('archived');
+      });
+
+      it('should remove the credential before archiving the row when both are written', async () => {
+        const order: string[] = [];
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        credentials.delete.mockImplementation(() => {
+          order.push('credential');
+          return Promise.resolve(true);
+        });
+        connectionPort.update.mockImplementation(() => {
+          order.push('row');
+          return Promise.resolve(withState('archived', ''));
+        });
+
+        await service.archive('connection-123');
+
+        expect(order).toEqual(['credential', 'row']);
+      });
+
+      it('should skip the credential delete when the ref is not db-backed', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await service.archive('connection-123');
+
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'archived',
+          credentialsRef: '',
+        });
+      });
+
+      it('should still archive when the credential row was already gone', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+        credentials.delete.mockResolvedValue(false);
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.archive('connection-123')).resolves.toMatchObject({
+          status: 'archived',
+        });
+      });
+
+      it.each(['active', 'error', 'needs_reauth'] as const)(
+        'should refuse with 409 and change nothing when the connection is %s',
+        async (status) => {
+          connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
+
+          await expect(service.archive('connection-123')).rejects.toBeInstanceOf(
+            ConflictException
+          );
+          expect(credentials.delete).not.toHaveBeenCalled();
+          expect(connectionPort.update).not.toHaveBeenCalled();
+        }
+      );
+
+      it('should refuse with 409 and change nothing when the adapter declares itself non-archivable', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'openlinker.oms.v1',
+          platformType: 'openlinker',
+          supportedCapabilities: ['FulfillmentExecutor'],
+          requiresCredentials: false,
+          archivable: false,
+        } as never);
+
+        await expect(service.archive('connection-123')).rejects.toBeInstanceOf(ConflictException);
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should return the row unchanged when the connection is already archived', async () => {
+        const archived = withState('archived', '');
+        connectionPort.get.mockResolvedValue(archived);
+
+        await expect(service.archive('connection-123')).resolves.toBe(archived);
+        expect(credentials.delete).not.toHaveBeenCalled();
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should answer 404 when the connection does not exist', async () => {
+        connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('connection-123'));
+
+        await expect(service.archive('connection-123')).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('restore', () => {
+      it('should return an archived connection to disabled', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+        connectionPort.update.mockResolvedValue(withState('disabled', ''));
+
+        const result = await service.restore('connection-123');
+
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          status: 'disabled',
+        });
+        expect(result.status).toBe('disabled');
+      });
+
+      it.each(['active', 'disabled', 'error', 'needs_reauth'] as const)(
+        'should refuse with 409 when the connection is %s',
+        async (status) => {
+          connectionPort.get.mockResolvedValue(withState(status, 'db:cred-ref-1'));
+
+          await expect(service.restore('connection-123')).rejects.toBeInstanceOf(
+            ConflictException
+          );
+          expect(connectionPort.update).not.toHaveBeenCalled();
+        }
+      );
+    });
+
+    describe('update guards', () => {
+      it('should refuse to set archived through a plain update', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', 'db:cred-ref-1'));
+
+        await expect(
+          service.update('connection-123', { status: 'archived' })
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should refuse any status change on an archived connection', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+
+        await expect(
+          service.update('connection-123', { status: 'active' })
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      it('should still allow a rename on an archived connection', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+        connectionPort.update.mockResolvedValue(withState('archived', ''));
+
+        await expect(service.update('connection-123', { name: 'Old shop' })).resolves.toBeDefined();
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { name: 'Old shop' });
+      });
+    });
+
+    describe('updateCredentials after a restore', () => {
+      it('should store a fresh credential row and point the connection at it', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockResolvedValue(withState('disabled', 'db:new'));
+
+        await service.updateCredentials('connection-123', {
+          webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345',
+        });
+
+        expect(credentials.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            platformType: 'prestashop',
+            credentialsJson: { webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345' },
+          })
+        );
+        const createdRef = (credentials.create.mock.calls[0][0] as { ref: string }).ref;
+        expect(connectionPort.update).toHaveBeenCalledWith('connection-123', {
+          credentialsRef: `db:${createdRef}`,
+        });
+        expect(credentials.update).not.toHaveBeenCalled();
+      });
+
+      it('should delete the new credential row when pointing the connection at it fails', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        connectionPort.update.mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.updateCredentials('connection-123', {
+            webserviceApiKey: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345',
+          })
+        ).rejects.toThrow('db down');
+
+        const createdRef = (credentials.create.mock.calls[0][0] as { ref: string }).ref;
+        expect(credentials.delete).toHaveBeenCalledWith(createdRef);
+      });
+
+      it('should refuse with 409 while the connection is still archived', async () => {
+        connectionPort.get.mockResolvedValue(withState('archived', ''));
+
+        await expect(
+          service.updateCredentials('connection-123', { webserviceApiKey: 'KEY' })
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(credentials.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse when the adapter takes no credentials', async () => {
+        connectionPort.get.mockResolvedValue(withState('disabled', ''));
+        integrationsService.resolveAdapterMetadata.mockResolvedValue({
+          adapterKey: 'openlinker.oms.v1',
+          platformType: 'openlinker',
+          supportedCapabilities: [],
+          requiresCredentials: false,
+        } as never);
+
+        await expect(
+          service.updateCredentials('connection-123', { anything: 'x' })
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(credentials.create).not.toHaveBeenCalled();
       });
     });
   });

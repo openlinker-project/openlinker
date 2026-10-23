@@ -110,15 +110,17 @@ const AUTO_ACCEPTED_DISPATCH: FulfillmentRequestResult = Object.freeze({
  * would invent a refusal from a holder that has no independent will, and `blocking: true` would then
  * exclude the OL-OMS from re-sourcing its own work.
  *
- * **Known gap, made reachable by this change rather than pre-existing it**: neither this adapter nor
- * `FulfillmentHandshakeService` checks the EXECUTION axis before cancelling — that guard is
- * `requestStatus === 'accepted'`, and for OL-executed work `requestStatus` stays `accepted` for the
- * life of the work because completion moves the other axis. So a cancellation against work already
- * picked, packed and shipped answers `accepted` and core persists `cancellation_accepted`. The path
- * was unreachable until now because no executor existed anywhere in the tree. **Owner: #2738**,
- * which prefers the core-side `FulfillmentWorkStatus` guard over the operator surface (#2406/#2410)
- * — a surface-only fix would leave the API path open, and the guard covers every future executor,
- * including a vendor whose own API would accept the cancellation just as readily.
+ * **The gap this constant used to name is CLOSED, by #2738.**
+ * `FulfillmentHandshakeService.requestCancellation` now checks the EXECUTION axis
+ * (`isTerminalFulfillmentWorkStatus(work.status)` — `closed`/`cancelled`/`incomplete`, never
+ * `in_progress`, which stays cancellable by design) BEFORE crossing this port at all, so a
+ * cancellation against work whose execution axis has already reached a terminal status never
+ * reaches `requestCancellation` below — it answers the handshake's own `not-cancellable` outcome
+ * instead, and this adapter's unconditional `accepted` is never asked the question. The fix lives
+ * core-side rather than here (or on the operator surface, #2406/#2410) precisely because this
+ * adapter has no independent will to refuse with, and a surface-only fix would have left the API
+ * path open for every OTHER executor too, including a vendor whose own API would accept the
+ * cancellation just as readily.
  */
 const AUTO_ACCEPTED_CANCELLATION: FulfillmentRequestResult = Object.freeze({
   status: 'accepted',

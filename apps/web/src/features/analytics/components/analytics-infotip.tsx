@@ -1,55 +1,19 @@
 /**
  * Analytics infotip
  *
- * Click-to-open definition popover for a KPI card's eyebrow (ⓘ). Wraps the
- * project's Radix-backed `Popover` rather than hand-rolling open/close/escape
- * behaviour — Radix `Tooltip` returns early on `pointerType === 'touch'`, so
- * a hover-only definition never reaches a phone; a click-toggle does.
+ * Click-to-open definition popover for a KPI card's eyebrow (ⓘ).
+ *
+ * Since #3268 this is a thin alias over the shared `Infotip` primitive rather
+ * than its own copy of the markup: a second consumer appeared (the eparagony.pl
+ * connection form's tax-fallback hazard), and two copies would have meant
+ * fixing the unnamed `role="dialog"` twice. Kept as a named export so the
+ * analytics call sites and `display-currency.lib.ts` read in their own
+ * vocabulary.
  *
  * @module features/analytics/components
  */
-import type { ReactElement } from 'react';
-import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
-
-export interface AnalyticsInfotipDefinition {
-  term: string;
-  text: string;
-  formula?: string;
-  caveat?: string;
-}
-
-interface AnalyticsInfotipProps {
-  ariaLabel: string;
-  definitions: AnalyticsInfotipDefinition[];
-  align?: 'end' | 'start';
-}
-
-export function AnalyticsInfotip({
-  align = 'start',
-  ariaLabel,
-  definitions,
-}: AnalyticsInfotipProps): ReactElement {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button type="button" className="section-infotip" aria-label={ariaLabel}>
-          &#9432;
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="infotip-popover" align={align} sideOffset={6}>
-        {definitions.map((definition) => (
-          <span className="infotip-def" key={definition.term}>
-            <span className="infotip-def__term">{definition.term}</span>
-            <span>{definition.text}</span>
-            {definition.formula ? (
-              <span className="infotip-def__formula">{definition.formula}</span>
-            ) : null}
-            {definition.caveat ? (
-              <span className="infotip-def__caveat">{definition.caveat}</span>
-            ) : null}
-          </span>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
+export { Infotip as AnalyticsInfotip } from '../../../shared/ui/infotip';
+export type {
+  InfotipDefinition as AnalyticsInfotipDefinition,
+  InfotipProps as AnalyticsInfotipProps,
+} from '../../../shared/ui/infotip';

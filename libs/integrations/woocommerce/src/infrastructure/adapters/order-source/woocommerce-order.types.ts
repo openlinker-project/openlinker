@@ -16,6 +16,22 @@ export interface WooCommerceOrder {
   date_created_gmt: string;
   date_modified: string;
   date_modified_gmt: string;
+  /**
+   * When WooCommerce recorded the payment, in UTC. `null` on an unpaid order,
+   * and absent on a store or plugin that does not report it - which is why
+   * `deriveWooCommercePaymentStatus` treats it as the strongest evidence when
+   * present and falls back to the status when it is not.
+   */
+  date_paid_gmt?: string | null;
+  /** Site-local twin of `date_paid_gmt`. Read only as a presence signal. */
+  date_paid?: string | null;
+  /**
+   * The payment gateway id the buyer chose, e.g. `cod`, `bacs`, `paypal`.
+   * WooCommerce core ships a handful of ids; every other value is a slug a
+   * store's own plugin picked, so only the core ids are evidence of a method
+   * (see `deriveWooCommercePaymentMethod`). Absent on a payload that omits it.
+   */
+  payment_method?: string;
   customer_id: number; // 0 = guest
   billing: WooCommerceBillingAddress;
   shipping: WooCommerceShippingAddress;
@@ -23,7 +39,9 @@ export interface WooCommerceOrder {
   shipping_lines: WooCommerceShippingLine[];
   total: string; // decimal string
   total_tax: string; // decimal string
-  shipping_total: string; // decimal string
+  shipping_total: string; // decimal string, tax EXCLUDED
+  /** Tax on shipping, reported separately like `line_items[].total_tax`. */
+  shipping_tax?: string; // decimal string
   fee_lines: WooCommerceFeeLine[];
   currency: string; // ISO 4217
   // NOTE: WC REST API v3 has NO top-level subtotal field.
@@ -81,7 +99,16 @@ export interface WooCommerceLineItem {
   sku: string;
   price: string; // unit price, decimal string
   subtotal: string; // pre-discount line total
-  total: string; // post-discount line total
+  total: string; // post-discount line total, tax EXCLUDED
+  /**
+   * Tax on this line, reported separately because WooCommerce keeps line
+   * prices net. `total + total_tax` is what the buyer paid for the line, which
+   * is what a fiscal document's gross line needs (#3365). Declared optional: a
+   * store with no tax configured still returns `"0"`, but an older WC or a
+   * trimmed response can omit it, and an absent value must read as "not
+   * reported" rather than as zero tax.
+   */
+  total_tax?: string;
   image: WooCommerceLineItemImage | null;
 }
 

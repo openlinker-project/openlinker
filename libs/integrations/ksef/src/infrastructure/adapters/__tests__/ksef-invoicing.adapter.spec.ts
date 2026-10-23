@@ -13,6 +13,7 @@ import {
   isRegulatoryDocumentReader,
   isRegulatoryRecordLocator,
   isRegulatoryTransmitter,
+  supportsRegulatoryDocumentKind,
   UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
 import type {
@@ -678,6 +679,39 @@ describe('KsefInvoicingAdapter', () => {
       expect(result.providerCustomerId).toBe('ksef:pl-nip:9876543210');
       expect(http.calls).toHaveLength(0);
     });
+
+    // #3225 review: `scheme` is optional since #3224, so interpolating it
+    // rendered `ksef:undefined:…` and split one buyer across two handles
+    // depending on which path issued. The domestic case must resolve to the
+    // SAME handle either way, and nothing may ever render `undefined`.
+    it('resolves an UNTAGGED domestic tax id to the same handle as a tagged one', async () => {
+      const http = new FakeKsefHttpClient();
+      const untagged = new BuyerProfile(
+        'Klient Sp. z o.o.',
+        { value: '9876543210' },
+        { line1: 'ul. Kupiecka 2', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+      );
+
+      const result = await adapter(http).upsertCustomer({ connectionId: 'conn-1', buyer: untagged });
+
+      expect(result.providerCustomerId).toBe('ksef:pl-nip:9876543210');
+    });
+
+    it('never renders undefined for an untagged value it cannot place domestically', async () => {
+      const http = new FakeKsefHttpClient();
+      const foreign = new BuyerProfile(
+        'Kunde GmbH',
+        { value: 'DE123456789' },
+        { line1: 'Hauptstr. 1', line2: null, city: 'Berlin', postalCode: '10115', countryIso2: 'DE' },
+        'company',
+      );
+
+      const result = await adapter(http).upsertCustomer({ connectionId: 'conn-1', buyer: foreign });
+
+      expect(result.providerCustomerId).toBe('ksef:untagged:DE123456789');
+      expect(result.providerCustomerId).not.toContain('undefined');
+    });
   });
 
   describe('isRegulatoryTransmitter', () => {
@@ -931,6 +965,69 @@ describe('KsefInvoicingAdapter', () => {
       await expect(
         adapter(new FakeKsefHttpClient()).getRegulatoryDocument(record(), 'source'),
       ).rejects.toBeInstanceOf(UnsupportedRegulatoryDocumentKindError);
+    });
+
+    it('should declare confirmation as its only document kind so a surface never offers rendered (#3648)', () => {
+      const a = adapter(new FakeKsefHttpClient());
+      expect(a.supportedRegulatoryDocumentKinds()).toEqual(['confirmation']);
+      expect(supportsRegulatoryDocumentKind(a, 'rendered')).toBe(false);
+      expect(supportsRegulatoryDocumentKind(a, 'confirmation')).toBe(true);
+    });
+  });
+
+  describe('getVerificationLink (#3648)', () => {
+    // sha256 of the XML below, base64url, computed independently of the adapter.
+    const FA3_XML = '<Faktura><Fa><P_1>2026-02-01</P_1></Fa></Faktura>';
+    const FA3_BASE64 = Buffer.from(FA3_XML).toString('base64');
+    const FA3_HASH = 'isJ-0_4oKhK07iDqQNFu-jqvu-OfoBvvaS0Oebq6HR0';
+
+    function linkAdapter(environment?: 'test' | 'demo' | 'prod'): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', new FakeKsefHttpClient(), fakeCrypto(), fakeBuilder, SELLER, {
+        environment,
+      });
+    }
+
+    function record(
+      overrides: { regulatoryStatus?: 'accepted' | 'submitted'; xmlBase64?: string | null } = {},
+    ): InvoiceRecord {
+      const xmlBase64 = overrides.xmlBase64 === undefined ? FA3_BASE64 : overrides.xmlBase64;
+      return Object.assign(
+        new InvoiceRecord(
+          'rec-1', 'conn-1', 'ol_order_123', 'ksef', 'invoice', 'issued', 'sess|inv', null,
+          overrides.regulatoryStatus ?? 'accepted', null, null, null, new Date(), null, new Date(), new Date(),
+        ),
+        {
+          sourceDocument:
+            xmlBase64 === null ? null : { contentType: 'application/xml', contentBase64: xmlBase64 },
+        },
+      );
+    }
+
+    it.each([
+      ['test', 'https://qr-test.ksef.mf.gov.pl'],
+      ['demo', 'https://qr-demo.ksef.mf.gov.pl'],
+      ['prod', 'https://qr.ksef.mf.gov.pl'],
+    ] as const)('should build the MF KOD I url for the %s environment', async (env, host) => {
+      const link = await linkAdapter(env).getVerificationLink(record());
+
+      expect(link).toEqual({ url: `${host}/invoice/1234567890/01-02-2026/${FA3_HASH}` });
+    });
+
+    it('should yield no link when the invoice is not accepted', async () => {
+      expect(await linkAdapter('prod').getVerificationLink(record({ regulatoryStatus: 'submitted' }))).toBeNull();
+    });
+
+    it('should yield no link when the FA(3) bytes were not persisted', async () => {
+      expect(await linkAdapter('prod').getVerificationLink(record({ xmlBase64: null }))).toBeNull();
+    });
+
+    it('should yield no link when the stored XML carries no P_1 issue date', async () => {
+      const noDate = Buffer.from('<Faktura/>').toString('base64');
+      expect(await linkAdapter('prod').getVerificationLink(record({ xmlBase64: noDate }))).toBeNull();
+    });
+
+    it('should yield no link when the environment is unknown rather than guessing a host', async () => {
+      expect(await linkAdapter(undefined).getVerificationLink(record())).toBeNull();
     });
   });
 

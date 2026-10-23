@@ -22,8 +22,10 @@
 import type { FulfillmentWorkListFilter } from '../../domain/types/fulfillment-worklist-page.types';
 import type {
   ApplyFulfillmentWorkActionInput,
+  ClaimFulfillmentWorkAssignmentResult,
   FulfillmentWorkPageView,
   FulfillmentWorkView,
+  UpdateFulfillmentWorkAssignmentInput,
 } from '../types/fulfillment-work-view.types';
 
 export interface IFulfillmentWorklistService {
@@ -64,4 +66,34 @@ export interface IFulfillmentWorklistService {
    * @throws {FulfillmentWorkActionNotLegalError} the token matched but the action is not legal now.
    */
   applyAction(input: ApplyFulfillmentWorkActionInput): Promise<FulfillmentWorkView>;
+
+  /**
+   * A supervisor's staffing decision (#3337, ADR-074) — pre-assign, reassign
+   * or clear `assignedToUserId`, and/or set `selfServeEligible`. Deliberately
+   * NOT gated by `supportedActions` / `expectedVersion`: see
+   * `UpdateFulfillmentWorkAssignmentInput`'s docblock for why this sits
+   * outside the ADR-052 authority matrix `applyAction` enforces.
+   *
+   * @throws {FulfillmentWorkNotFoundError} no such work.
+   * @throws {EmptyFulfillmentWorkAssignmentUpdateError} neither field was supplied.
+   */
+  updateAssignment(input: UpdateFulfillmentWorkAssignmentInput): Promise<FulfillmentWorkView>;
+
+  /**
+   * A packer's own self-claim of an UNASSIGNED parcel (#3340 follow-up) — the
+   * EXCLUSIVE counterpart to `updateAssignment`'s advisory, unconditional
+   * write. Callers must use THIS method only when they read the parcel as
+   * unassigned; an already-assigned-and-still-claimable parcel (self-serve,
+   * or reclaiming your own assignment) stays `updateAssignment`, since
+   * ADR-074's advisory model has no exclusivity there and this method would
+   * wrongly refuse a legitimate reassignment.
+   *
+   * `claimed: false` means a peer claimed it first between the caller's read
+   * and this call — an ordinary outcome, never an error, and the returned
+   * `work` is the FRESH row so the caller can report who actually holds it
+   * now rather than a stale pre-write view.
+   *
+   * @throws {FulfillmentWorkNotFoundError} no such work.
+   */
+  claimAssignment(workId: string, userId: string): Promise<ClaimFulfillmentWorkAssignmentResult>;
 }

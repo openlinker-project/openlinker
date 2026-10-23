@@ -20,6 +20,39 @@
  * *"the bench reaches the parcel through the work, never by enumerating a
  * register"*, which is #2413's own principle rather than a new one.
  *
+ * ## The receipt route is work-scoped for the same reason (#3646)
+ *
+ * `downloadReceipt` takes a work id and serves the artefact of that order's own
+ * registered receipt - the one the documents read reports - via
+ * `ISalesDocumentViewService`, never the fiscal registration service, which is
+ * a write surface `bench-never-issues.spec.ts` keeps out of this directory. A
+ * link comes back as JSON rather than a redirect: the client fetches with a
+ * bearer token, and a redirect would leave it nothing to put in a plain link.
+ *
+ * ## The invoice print is stamped, best-effort (pack-bench completion)
+ *
+ * `FulfillmentWork.invoicePrintedAt` records the FIRST time this route served
+ * bytes, fill-in-when-NULL so a reprint never moves it. The stamp is written
+ * AFTER the document is already in hand and wrapped in its own try/catch: a
+ * print that worked and a stamp that failed must serve the exact same 200 a
+ * stamp that succeeded would have, because the packer's box does not care
+ * whether OpenLinker remembered it printed the invoice.
+ *
+ * ## The label print is stamped HERE, never on the general shipment route
+ *
+ * `GET /shipments/:id/label` serves any caller for any reason — it carries no
+ * `@Roles`, a viewer may legitimately download a label to look at it, and a
+ * script re-reading it proves nothing about a packer's box. A fetch there is
+ * therefore not evidence anyone printed anything, and stamping it there was
+ * the bug: it silenced `BenchCompletionPanel`'s "the label is not printed"
+ * confirmation on a box a packer never actually printed a label for. This
+ * route is the ONLY place `FulfillmentWork.labelPrintedAt` is written — it is
+ * reachable solely through the work, by the bench, the same shape the invoice
+ * stamp above already has — and it resolves the shipment the SAME way the
+ * documents read does (`IBenchDocumentsService.getDocuments`'s label view),
+ * never by taking a caller-supplied shipment id, so this route cannot be
+ * walked to print — and stamp — another parcel's label.
+ *
  * @module apps/api/src/bench/http
  */
 import {
@@ -41,22 +74,35 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   FulfillmentWorkNotFoundError,
   type FulfillmentWorkView,
+  type IFulfillmentVerificationService,
 } from '@openlinker/core/fulfillment';
 import {
   INVOICE_SERVICE_TOKEN,
   isRegulatoryDocumentReader,
+  supportsRegulatoryDocumentKind,
+  UnsupportedRegulatoryDocumentKindError,
   type IInvoiceService,
   type InvoicingPort,
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
+import {
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  type ISalesDocumentViewService,
+} from '@openlinker/core/orders';
+import {
+  SHIPMENT_LABEL_SERVICE_TOKEN,
+  type IShipmentLabelService,
+} from '@openlinker/core/shipping';
 import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 import { Logger } from '@openlinker/shared/logging';
 
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { extensionForContentType } from '../../shipping/http/shipment.controller';
 import {
   BENCH_DOCUMENTS_SERVICE_TOKEN,
   type IBenchDocumentsService,
@@ -72,8 +118,22 @@ import type {
 } from '../application/types/bench-parcel.types';
 import {
   BenchDocumentsResponseDto,
+  BenchReceiptLinkResponseDto,
   BenchUnlabelledParcelListResponseDto,
 } from './dto/bench-documents-response.dto';
+
+// The invoice and receipt Content-Type is adapter-declared, ultimately a
+// provider's own value. Only types a browser displays without executing
+// anything open inline; `text/html` or `image/svg+xml` inline would render
+// provider-controlled markup on the OpenLinker origin, on a route a `packer`
+// reaches, so everything else is served as a download. An allow-list rather
+// than a deny-list, as the product-image proxy does, so an unforeseen type
+// fails safe.
+const INLINE_SAFE_CONTENT_TYPES: ReadonlySet<string> = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+]);
 
 @ApiBearerAuth()
 @ApiTags('bench')
@@ -89,7 +149,13 @@ export class BenchDocumentsController {
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoices: IInvoiceService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService
+    private readonly integrations: IIntegrationsService,
+    @Inject(FULFILLMENT_VERIFICATION_SERVICE_TOKEN)
+    private readonly verification: IFulfillmentVerificationService,
+    @Inject(SHIPMENT_LABEL_SERVICE_TOKEN)
+    private readonly labelDocuments: IShipmentLabelService,
+    @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
+    private readonly salesDocuments: ISalesDocumentViewService
   ) {}
 
   @Get('work/:workId/documents')
@@ -97,8 +163,9 @@ export class BenchDocumentsController {
   @ApiOperation({
     summary: 'The paper that belongs with this parcel',
     description:
-      'The invoice that goes inside the box and the label that goes on it, each with its own ' +
-      'state. A missing invoice is NAMED — in the sales-document vocabulary the rest of the ' +
+      'The sales document (invoice or fiscal receipt, in any status) and the label that goes on ' +
+      'the box, each with its own state. A missing document is NAMED — in the sales-document ' +
+      'vocabulary the rest of the ' +
       'product already uses — and never blocks packing: a tax-rate gap is an office problem the ' +
       'packer cannot fix. A packed parcel with no label is a real state, reported here and on ' +
       'GET /bench/unlabelled-parcels, which dispatch reads too.',
@@ -166,7 +233,13 @@ export class BenchDocumentsController {
         'This invoice has no printable version. Send the box without it.'
       );
     }
-    if (record.regulatoryStatus !== 'accepted' || !isRegulatoryDocumentReader(adapter)) {
+    if (
+      record.regulatoryStatus !== 'accepted' ||
+      !isRegulatoryDocumentReader(adapter) ||
+      // The same test the read applies (#3648): a reader that only has a
+      // confirmation document must not be asked for a rendering.
+      !supportsRegulatoryDocumentKind(adapter, 'rendered')
+    ) {
       // 409, matching what this route ADVERTISES (#2905 review). It threw 404,
       // which contradicted the `@ApiResponse` two decorators up — reported not
       // matching enforced, on a published contract — and additionally collapsed
@@ -182,17 +255,143 @@ export class BenchDocumentsController {
       );
     }
 
-    const document = await adapter.getRegulatoryDocument(record, 'rendered');
-    res.setHeader('Content-Type', document.contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename="invoice-${record.id}"`
-    );
+    // Defence in depth: an adapter that declares no kind hint but still refuses
+    // `rendered` is a 409 like any other "nothing printable", never a 500.
+    let document: Awaited<ReturnType<typeof adapter.getRegulatoryDocument>>;
+    try {
+      document = await adapter.getRegulatoryDocument(record, 'rendered');
+    } catch (error) {
+      if (error instanceof UnsupportedRegulatoryDocumentKindError) {
+        throw new ConflictException(
+          'This invoice has no printable version. Send the box without it.'
+        );
+      }
+      throw error;
+    }
+
+    // Best-effort (pack-bench completion): the print itself already succeeded above, so a
+    // failure to STAMP that it happened must never turn a working download
+    // into a 500, or delay it further than one indexed UPDATE. Fill-in-when-
+    // NULL on the repository side means a reprint is a harmless no-op here
+    // too — this call site never needs to know which.
+    try {
+      await this.verification.markInvoicePrinted(work.id, new Date());
+    } catch (error) {
+      this.logger.warn(
+        `bench_invoice_print_stamp_failed workId=${workId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    this.setProviderDocumentHeaders(res, document.contentType, `invoice-${record.id}`);
     return new StreamableFile(Buffer.from(document.content));
   }
 
-  @Get('unlabelled-parcels')
+  @Get('work/:workId/documents/receipt')
   @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: "Open or print this parcel's fiscal receipt",
+    description:
+      "The artefact of the parcel's own order's REGISTERED receipt, chosen the way the documents " +
+      'read above reports it: a file first, then a link. A file is streamed; a link is returned as ' +
+      'JSON `{ url }` (not a redirect) so a client fetching with a token can render a plain link. ' +
+      'It creates nothing and registers nothing: the receipt was registered away from this bench.',
+  })
+  @ApiProduces('application/json', 'application/pdf')
+  @ApiResponse({ status: 200, type: BenchReceiptLinkResponseDto, description: 'A link artefact' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'No such parcel, its order has no registered receipt, or the receipt produced nothing to hand over',
+  })
+  async downloadReceipt(
+    @Param('workId') workId: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile | BenchReceiptLinkResponseDto> {
+    const work = await this.resolveWork(workId);
+    // Through the work's own order only: no registration id is taken, so this
+    // cannot be walked to another order's receipt.
+    const artefact = await this.salesDocuments.getReceiptHandoverArtefact(work.orderId);
+    if (artefact === null) {
+      throw new NotFoundException('No receipt to open for this parcel');
+    }
+
+    if (artefact.medium === 'link') {
+      return { url: artefact.content };
+    }
+
+    // `selectHandoverArtefact` only ever yields `document` or `link`, and a
+    // `document` payload is base64 by the artefact contract.
+    const contentType = artefact.contentType ?? 'application/octet-stream';
+    this.setProviderDocumentHeaders(res, contentType, `receipt-${work.orderId}`);
+    return new StreamableFile(Buffer.from(artefact.content, 'base64'));
+  }
+
+  @Get('work/:workId/documents/label')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: "Print this parcel's label",
+    description:
+      "The label document for the shipment linked to this work — the ONLY route that stamps " +
+      '`FulfillmentWork.labelPrintedAt`, and it does so because it is the only place a print can ' +
+      'be attributed to this parcel. `GET /shipments/:id/label` still serves the same bytes for ' +
+      'any caller with a shipment id, but no longer marks anything printed. 404 when the parcel ' +
+      "has no label — the same reading the documents read above already gives that box's label " +
+      'state.',
+  })
+  @ApiProduces('application/pdf')
+  @ApiResponse({ status: 200, description: 'Label document bytes (Content-Type per provider)' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench, or no label for it' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The label could not be retrieved from the shipping provider. One neutral refusal, because ' +
+      "the provider's own words must not reach a packer.",
+  })
+  async downloadLabel(
+    @Param('workId') workId: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    const work = await this.resolveWork(workId);
+    // `canSeeCarrierText: false` — this route only needs the label's
+    // `shipmentId`, never the carrier's own rejection prose.
+    const view = await this.documents.getDocuments(work, false);
+    if (view.label.state !== 'ready') {
+      throw new NotFoundException('No label for this parcel');
+    }
+
+    let document: Awaited<ReturnType<IShipmentLabelService['fetchLabel']>>;
+    try {
+      document = await this.labelDocuments.fetchLabel(view.label.shipmentId);
+    } catch (error) {
+      this.logger.warn(
+        `bench_label_fetch_failed workId=${workId} shipmentId=${view.label.shipmentId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      throw new ConflictException('This label could not be retrieved. Check with dispatch.');
+    }
+
+    // Stamped AFTER the bytes are already in hand, in its OWN try/catch
+    // (pack-bench completion, see the module header): the print already
+    // succeeded, so a failed stamp must serve the exact same 200 a
+    // successful one would.
+    try {
+      await this.verification.markLabelPrinted(work.id, new Date());
+    } catch (error) {
+      this.logger.warn(
+        `bench_label_print_stamp_failed workId=${workId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    const ext = extensionForContentType(document.contentType);
+    res.setHeader('Content-Type', document.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="ol-shipment-label-${workId}.${ext}"`);
+    return new StreamableFile(Buffer.from(document.body));
+  }
+
+  @Get('unlabelled-parcels')
+  @Roles('admin', 'operator', 'packer', 'viewer')
   @ApiOperation({
     summary: 'Finished boxes with no label on them',
     description:
@@ -230,6 +429,19 @@ export class BenchDocumentsController {
   }
 
   /**
+   * Headers for a document whose Content-Type a provider declared: `inline`
+   * only for an {@link INLINE_SAFE_CONTENT_TYPES} type, `attachment` otherwise.
+   * The type is compared stripped of parameters and lowercased, so a
+   * legitimate `application/pdf; charset=binary` still opens inline.
+   */
+  private setProviderDocumentHeaders(res: Response, contentType: string, filename: string): void {
+    const normalized = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
+    const disposition = INLINE_SAFE_CONTENT_TYPES.has(normalized) ? 'inline' : 'attachment';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
+  }
+
+  /**
    * May this caller see the carrier's own words?
    *
    * The identical predicate `ShipmentController` applies, and it must stay
@@ -245,6 +457,7 @@ export class BenchDocumentsController {
 
   private toDto(view: BenchDocumentsView): BenchDocumentsResponseDto {
     const invoice = view.invoice;
+    const document = view.document;
     const label = view.label;
     // Field by field, never a spread, and the union arms are flattened into one
     // nullable shape so a client reads an explicit `null` rather than an absent
@@ -256,9 +469,42 @@ export class BenchDocumentsController {
         invoiceId: invoice.state === 'missing' ? null : invoice.invoiceId,
         documentNumber: invoice.state === 'missing' ? null : invoice.documentNumber,
         issuedAt: invoice.state === 'missing' ? null : invoice.issuedAt,
+        verificationUrl: invoice.state === 'link' ? invoice.verificationUrl : null,
         blockReason: invoice.state === 'missing' ? invoice.blockReason : null,
         unresolvedReason: invoice.state === 'missing' ? invoice.unresolvedReason : null,
       },
+      document:
+        document === null
+          ? null
+          : {
+              kind: document.kind,
+              recordId: document.recordId,
+              connectionId: document.connectionId,
+              platformType: document.kind === 'fiscal-receipt' ? document.platformType : null,
+              status: document.status,
+              failureMode: document.failureMode,
+              documentNumber:
+                document.kind === 'fiscal-receipt'
+                  ? document.documentReference
+                  : document.documentNumber,
+              completedAt: document.completedAt,
+              printable: document.kind === 'invoice' ? document.printable : false,
+              verificationUrl: document.kind === 'invoice' ? document.verificationUrl : null,
+              // Field by field: the summary carries no payload, and a spread
+              // would inherit one the day the summary type grows it.
+              artefacts:
+                document.kind === 'fiscal-receipt' && document.artefacts !== null
+                  ? document.artefacts.map((artefact) => ({
+                      medium: artefact.medium,
+                      disposition: artefact.disposition,
+                      label: artefact.label,
+                      contentType: artefact.contentType,
+                    }))
+                  : null,
+            },
+      documentKind: view.noDocument?.documentKind ?? null,
+      blockReason: view.noDocument?.blockReason ?? null,
+      unresolvedReason: view.noDocument?.unresolvedReason ?? null,
       label: {
         state: label.state,
         shipmentId: label.state === 'none' ? null : label.shipmentId,

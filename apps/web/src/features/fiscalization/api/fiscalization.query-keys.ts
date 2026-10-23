@@ -7,6 +7,8 @@
 export const fiscalizationQueryKeys = {
   all: ['fiscalization'] as const,
   forOrder: (orderId: string) => ['fiscalization', 'order', orderId] as const,
+  /** One record by id (#3306/#3307) — the fiscal-receipt detail route. */
+  detail: (id: string) => ['fiscalization', 'detail', id] as const,
   /**
    * Where a registration has got to, per (order, connection) - the same pair the
    * exactly-once key is built from, so two connections cannot share a cache

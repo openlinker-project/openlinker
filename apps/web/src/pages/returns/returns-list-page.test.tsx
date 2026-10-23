@@ -1,10 +1,21 @@
 import { cleanup, screen, waitFor, within, type RenderResult } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi, type Mock } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  renderWithProviders,
+  createMockApiClient,
+} from '../../test/test-utils';
+import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
+import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { mockMobileViewport } from '../../test/viewport';
 import { ReturnsListPage } from './returns-list-page';
-import type { ReturnListItem, ReturnListResult } from '../../features/returns';
+import {
+  ORPHAN_RETURNS_WORKLIST_COPY,
+  RECORD_RETURN_DIALOG_COPY,
+  type ReturnListItem,
+  type ReturnListResult,
+} from '../../features/returns';
 import type { Connection } from '../../features/connections/api/connections.types';
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
@@ -83,6 +94,13 @@ interface SetupOptions {
   availabilityPending?: boolean;
   connections?: Connection[];
   route?: string;
+  /**
+   * Defaults to an `orders:write`-holding session — every pre-existing test
+   * in this file predates the #3285 write-access gate on "+ Record a
+   * return" and keeps exercising it as before. The gate's own negative
+   * cases pass a permission-less session explicitly.
+   */
+  sessionAdapter?: SessionAdapter;
 }
 
 interface SetupResult extends RenderResult {
@@ -91,7 +109,28 @@ interface SetupResult extends RenderResult {
 }
 
 function setup(options: SetupOptions = {}): SetupResult {
-  const listFn = vi.fn().mockResolvedValue(options.list ?? listResult());
+  // `OrphanReturnsWorklist` (#3085) mounts on this same page and issues its
+  // OWN two `apiClient.returns.list` calls — always `{ bucket: 'orphan' }`
+  // and `{ bucket: 'attributed' }`, regardless of the operator's own filter
+  // selection — independent of the main table's own query. A single
+  // unconditional mock therefore serves the SAME fixture to both, so any
+  // test whose fixture includes an orphan/attributed-bucket item renders it
+  // TWICE (once in the worklist, once in the table) and every unscoped
+  // `findByText`/`getByText` in this file resolves ambiguously. None of the
+  // existing tests in this file exercise the worklist itself — that lives
+  // in `orphan-returns-worklist.test.tsx` — so a call is routed to the
+  // fixture only when its `bucket` matches what the URL/local filter state
+  // (`options.route`) is ACTUALLY driving for the table; the worklist's two
+  // fixed queries are a mismatch in every test that isn't itself already
+  // filtering the table to that same bucket, and get an empty page instead.
+  const routeBucket = new URLSearchParams((options.route ?? '/returns').split('?')[1] ?? '').get(
+    'bucket'
+  );
+  const listFn = vi.fn((filters: { bucket?: string } = {}) =>
+    Promise.resolve(
+      (filters.bucket ?? null) === routeBucket ? (options.list ?? listResult()) : listResult()
+    )
+  );
   const availabilityFn = options.availabilityPending
     ? vi.fn().mockReturnValue(new Promise(() => undefined))
     : vi.fn().mockResolvedValue({
@@ -107,6 +146,7 @@ function setup(options: SetupOptions = {}): SetupResult {
   const result = renderWithProviders(<ReturnsListPage />, {
     apiClient,
     route: options.route ?? '/returns',
+    sessionAdapter: options.sessionAdapter ?? createAuthenticatedSessionAdapter(),
   });
 
   return { ...result, listFn, availabilityFn };
@@ -498,6 +538,55 @@ describe('ReturnsListPage', () => {
       const select = await screen.findByLabelText('Filter by source connection');
       expect(select).toBeInTheDocument();
       expect(await screen.findByRole('option', { name: 'Allegro Main' })).toBeInTheDocument();
+    });
+  });
+
+  describe('entry point (#3085)', () => {
+    it('should render the orphan-returns worklist with no separate route', async () => {
+      setup();
+
+      expect(await screen.findByText(ORPHAN_RETURNS_WORKLIST_COPY.sectionTitle)).toBeInTheDocument();
+    });
+
+    it('should open the record-a-return dialog from the page action', async () => {
+      setup();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel }),
+      );
+
+      expect(await screen.findByText(RECORD_RETURN_DIALOG_COPY.title)).toBeInTheDocument();
+    });
+
+    it('should hide "+ Record a return" for a session with no write permission', async () => {
+      // POST /returns/record is @Roles('admin', 'operator') — an enabled CTA
+      // for a viewer/packer session ends in an unactionable 403.
+      setup({ sessionAdapter: createNoopSessionAdapter() });
+
+      await screen.findByText(ORPHAN_RETURNS_WORKLIST_COPY.sectionTitle);
+      expect(
+        screen.queryByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should render "+ Record a return" DISABLED behind a ReadOnlyLock for a demo viewer with no write permission', async () => {
+      const listFn = vi.fn().mockResolvedValue(listResult());
+      const availabilityFn = vi.fn().mockResolvedValue({ configured: true, connectionIds: [] });
+      const apiClient = createMockApiClient({
+        returns: { list: listFn, getIngestionAvailability: availabilityFn },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(<ReturnsListPage />, {
+        apiClient,
+        route: '/returns',
+        sessionAdapter: createNoopSessionAdapter(),
+      });
+
+      const action = await screen.findByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel });
+      expect(action).toBeDisabled();
+      expect(action.closest('.read-only-lock')).not.toBeNull();
     });
   });
 

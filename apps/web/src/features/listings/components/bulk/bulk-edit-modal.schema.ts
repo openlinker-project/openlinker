@@ -6,7 +6,7 @@
  * inherited field pre-filled with the base value is not "dirty" yet renders as
  * inherited), so they are not part of this schema; the base scope is the only
  * RHF form and it reuses the key names the single-offer-wizard subcomponents
- * (`CategoryPicker`, `CategoryParametersStep`) already read via
+ * (`BulkCategoryChooseModal`, `CategoryParametersStep`) already read via
  * `useFormContext()` (`categoryId`, `parameters`).
  *
  * @module apps/web/src/features/listings/components/bulk

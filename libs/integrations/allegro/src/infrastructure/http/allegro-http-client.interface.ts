@@ -16,6 +16,18 @@ export interface AllegroHttpRequestOptions {
   headers?: Record<string, string>;
   body?: string | Record<string, unknown>;
   queryParams?: Record<string, string | number | boolean>;
+  /**
+   * Whether the call is safe to auto-retry on an **ambiguous** failure — a
+   * network/timeout or an ambiguous `5xx` that might have committed
+   * server-side. `GET`/`PUT`/`DELETE` are always treated as idempotent
+   * regardless of this flag; `POST`/`PATCH` need an explicit
+   * `idempotent: true` (#3469 — DPD/KSeF precedent). `429` is retried
+   * regardless of this flag — Allegro did not process the request, so a
+   * retry can't double-create. Not honoured by `postExpectingBinary` /
+   * `postBinary` / `postMultipart`, whose only production call sites are
+   * genuine creates.
+   */
+  idempotent?: boolean;
 }
 
 /**

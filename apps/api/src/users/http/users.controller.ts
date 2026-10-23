@@ -6,6 +6,9 @@
  * can detect regressions per method.
  *
  * GET    /users                — list all users (optional ?status filter)
+ * GET    /users/packers        — minimal active-packer roster (admin+operator+viewer, #3340/#3736)
+ * POST   /users                — create an active account with a one-time password (#3456)
+ * POST   /users/:id/temporary-password — re-issue a one-time password (#3456)
  * POST   /users/:id/approve    — approve a pending registration with a role
  * POST   /users/:id/reject     — reject and delete a pending registration
  * PATCH  /users/:id/role       — change a user's role
@@ -35,8 +38,10 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import {
   CannotSelfModifyException,
   LastAdminException,
+  UserAlreadyExistsException,
   UserNotFoundException,
   UserNotActiveException,
+  UserNotAwaitingFirstSignInException,
   UserNotDeactivatedException,
   UserNotPendingException,
 } from '@openlinker/core/users';
@@ -44,8 +49,12 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
+import { CreateUserDto } from '../dto/create-user.dto';
+import { CreateUserResponseDto } from '../dto/create-user-response.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
+import { PackerListResponseDto } from '../dto/packer-list-response.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
+import { UpdatePackStationLabelDto } from '../dto/update-pack-station-label.dto';
 import { UserListResponseDto } from '../dto/user-list-response.dto';
 import { IUserManagementService, USER_MANAGEMENT_SERVICE_TOKEN } from '../user-management.service.interface';
 
@@ -69,6 +78,108 @@ export class UsersController {
       pageSize: query.pageSize,
     });
     return UserListResponseDto.fromDomain(result);
+  }
+
+  @Post()
+  @Roles('admin')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Create an active account with a one-time password (admin only). The account ' +
+      'must set a new password at first sign-in.',
+  })
+  @ApiResponse({ status: 201, description: 'User created', type: CreateUserResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 403, description: 'Caller is not an admin' })
+  @ApiResponse({ status: 409, description: 'Username or email already in use (field named)' })
+  async createUser(@Body() dto: CreateUserDto): Promise<CreateUserResponseDto> {
+    try {
+      const created = await this.userManagement.createUser({
+        displayName: dto.displayName,
+        username: dto.username,
+        email: dto.email ?? null,
+        role: dto.role,
+      });
+      const response = new CreateUserResponseDto();
+      response.id = created.id;
+      response.temporaryPassword = created.temporaryPassword;
+      return response;
+    } catch (error) {
+      if (error instanceof UserAlreadyExistsException) {
+        // Naming the field is safe HERE (admin-only; an admin already sees
+        // every account) and is what the form needs to point at the right input.
+        // The public registration route keeps its generic message.
+        const field = error.field ?? 'username';
+        throw new ConflictException({
+          field,
+          message: `That ${field} is already in use.`,
+        });
+      }
+      throw error;
+    }
+  }
+
+  @Get('packers')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary: 'List active packers for work assignment (admin/operator/viewer)',
+    description:
+      'Minimal roster used by the Assign Packing Work screen (#3340) — id + ' +
+      'username only, unlike GET /users which is admin-only and carries the ' +
+      'full user-management projection. ' +
+      'Deliberately narrowed to role=packer only, even though the bench routes ' +
+      '(@Roles(admin, operator, packer)) and the claim predicate accept any user ' +
+      'id — an operator/admin packing a shift is not offered as an assignment ' +
+      'target here. Capped at 500 rows (pageSize) with no total reported back; ' +
+      'past that cap the board silently renders a partial roster. ' +
+      'Disclosure (#3736): a viewer holds no users:read, so this is the one place ' +
+      'they can enumerate accounts - every active packer\'s id and username, ' +
+      'nothing else (no email, status or last-active). Accepted because the read-only ' +
+      'Fulfilment board resolves `assignedToUserId` to a name through it (raw ids ' +
+      'would make the board unreadable) and the projection is minimal and scoped to ' +
+      'role=packer; on a public demo instance the roster is effectively public.',
+  })
+  @ApiResponse({ status: 200, description: 'Packer roster', type: PackerListResponseDto })
+  async listPackers(): Promise<PackerListResponseDto> {
+    const result = await this.userManagement.listUsers({
+      status: 'active',
+      role: 'packer',
+      pageSize: 500,
+    });
+    return PackerListResponseDto.fromDomain(result.users);
+  }
+
+  @Post(':id/temporary-password')
+  @Roles('admin')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Re-issue the one-time password of an account that has not set its own yet (admin only)',
+  })
+  @ApiResponse({ status: 201, description: 'New one-time password', type: CreateUserResponseDto })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  @ApiResponse({ status: 409, description: 'The account has already set its own password' })
+  async reissueTemporaryPassword(@Param('id') id: string): Promise<CreateUserResponseDto> {
+    try {
+      const issued = await this.userManagement.reissueTemporaryPassword(id);
+      const response = new CreateUserResponseDto();
+      response.id = issued.id;
+      response.temporaryPassword = issued.temporaryPassword;
+      return response;
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof UserNotAwaitingFirstSignInException) {
+        // Machine-readable, like the create route's { field, message }: the
+        // wizard tells this conflict apart by `code`, never by prose.
+        throw new ConflictException({
+          code: 'ALREADY_SET_OWN_PASSWORD',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   @Post(':id/approve')
@@ -133,6 +244,38 @@ export class UsersController {
       }
       if (error instanceof CannotSelfModifyException || error instanceof LastAdminException) {
         throw new ForbiddenException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Patch(':id/pack-station-label')
+  @Roles('admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Set or clear a packer's bench/printer label (admin only)",
+    description:
+      'Operator CONFIGURATION, not identity (#3424): the label authenticates ' +
+      'nothing - ADR-071 refuses a station principal - and is displayed ' +
+      "exactly like a connection's operator-authored name. Send null to " +
+      'clear; a blank string is stored as null, so "no label" has one ' +
+      'spelling in the column.',
+  })
+  @ApiResponse({ status: 204, description: 'Label updated' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async updatePackStationLabel(
+    @Param('id') id: string,
+    @Body() dto: UpdatePackStationLabelDto
+  ): Promise<void> {
+    // No `@CurrentUser` and no self-modify guard, unlike the role and status
+    // writes above: a label is not a privilege, so there is no escalation for
+    // an admin editing their own, and the last-admin rule protects access
+    // rather than furniture.
+    try {
+      await this.userManagement.setPackStationLabel(id, dto.packStationLabel);
+    } catch (error) {
+      if (error instanceof UserNotFoundException) {
+        throw new NotFoundException(error.message);
       }
       throw error;
     }

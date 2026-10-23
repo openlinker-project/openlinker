@@ -121,6 +121,13 @@ export class InventoryItemOrmEntity {
   @Column({ type: 'boolean', default: false })
   isStale!: boolean;
 
+  // Operator-authored bin/shelf code at this position (#3402, mockup parity
+  // epic #3401). Free text, no format validation — the same discipline as
+  // `externalRef` elsewhere in this codebase. Purely a display aid for the
+  // pack bench; carries no warehouse-routing meaning of its own.
+  @Column({ type: 'text', nullable: true })
+  binCode!: string | null;
+
   @UpdateDateColumn()
   updatedAt!: Date;
 }

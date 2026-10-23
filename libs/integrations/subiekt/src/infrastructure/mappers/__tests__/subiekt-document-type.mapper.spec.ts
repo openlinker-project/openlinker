@@ -41,6 +41,17 @@ describe('deriveNeutralDocumentType', () => {
     );
   });
 
+  // #3224 — an untagged tax id is still a tax id here, so it must trigger a
+  // faktura. Reading it as absent would silently downgrade every auto-issued
+  // B2B document to a paragon.
+  it("derives 'invoice' from an UNTAGGED tax id (#3224)", () => {
+    expect(deriveNeutralDocumentType(buyer({ value: '5213796333' }))).toBe('invoice');
+  });
+
+  it("derives 'receipt' when an untagged tax id has an empty value (#3224)", () => {
+    expect(deriveNeutralDocumentType(buyer({ value: '' }))).toBe('receipt');
+  });
+
   it("derives 'receipt' when buyer has no tax id", () => {
     expect(deriveNeutralDocumentType(buyer(null))).toBe('receipt');
   });

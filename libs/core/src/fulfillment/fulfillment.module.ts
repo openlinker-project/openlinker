@@ -132,6 +132,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_WORKLIST_SERVICE_TOKEN,
     // Exported for `BenchApiModule` (#2418): the pack bench verifies a parcel
     // through this interface. The repository port stays off the barrel.
+    // `ShippingApiModule` (pack-bench completion) imports this module for the same token, to
+    // best-effort stamp a shipment's linked work object's `labelPrintedAt`.
     FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   ],
 })

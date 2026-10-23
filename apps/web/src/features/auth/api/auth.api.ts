@@ -1,4 +1,5 @@
 import type {
+  ChangePasswordRequest,
   ConfirmEmailRequest,
   ForgotPasswordRequest,
   LoginRequest,
@@ -21,6 +22,7 @@ export interface AuthApi {
   resetPassword: (input: ResetPasswordRequest) => Promise<OkResponse>;
   confirmEmail: (input: ConfirmEmailRequest) => Promise<OkResponse>;
   updateAnalyticsConsent: (input: UpdateAnalyticsConsentRequest) => Promise<MeResponse>;
+  changePassword: (input: ChangePasswordRequest) => Promise<OkResponse>;
 }
 
 export function createAuthApi(request: ApiRequest): AuthApi {
@@ -58,6 +60,12 @@ export function createAuthApi(request: ApiRequest): AuthApi {
     updateAnalyticsConsent(input): Promise<MeResponse> {
       return request<MeResponse>('/auth/me/analytics-consent', {
         method: 'PATCH',
+        body: JSON.stringify(input),
+      });
+    },
+    changePassword(input): Promise<OkResponse> {
+      return request<OkResponse>('/auth/me/password', {
+        method: 'POST',
         body: JSON.stringify(input),
       });
     },

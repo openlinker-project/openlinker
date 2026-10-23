@@ -38,12 +38,14 @@ import type {
   SyncJobGroupFilters,
   BulkRetryResult,
   PenaltyFreeRequeuePatch,
+  SyncJobRetentionStatus,
 } from '../../../domain/types/sync-job.types';
 import {
   JobOutcomeValues,
   JobOutcomeReasonValues,
   JobStatusValues,
   JobTypeValues,
+  SyncJobRetentionStatusValues,
 } from '../../../domain/types/sync-job.types';
 
 @Injectable()
@@ -366,6 +368,41 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       .execute();
 
     return result.affected || 0;
+  }
+
+  async pruneTerminalJobs(
+    status: SyncJobRetentionStatus,
+    olderThan: Date,
+    batchSize: number
+  ): Promise<number> {
+    // Runtime guard, not just the compile-time SyncJobRetentionStatus type -
+    // the ADR-049/#2604 "throws unless it is exactly one of the whitelisted
+    // values" shape, so a caller that bypassed the type (an `as` cast, a
+    // value threaded through untyped JSON) cannot reach `queued`/`running`.
+    if (!SyncJobRetentionStatusValues.includes(status)) {
+      throw new Error(
+        `pruneTerminalJobs: status must be one of ${SyncJobRetentionStatusValues.join(', ')}, got "${String(status)}"`
+      );
+    }
+    if (!Number.isInteger(batchSize) || batchSize <= 0) {
+      throw new Error('pruneTerminalJobs: batchSize must be a positive integer');
+    }
+
+    // Postgres has no `DELETE ... LIMIT` - the oldest-first sub-select is the
+    // standard workaround. `updatedAt` is the last write to the row, which for
+    // a terminal row is the transition into `status` itself.
+    const result = (await this.repository.query(
+      `DELETE FROM "sync_jobs"
+       WHERE "id" IN (
+         SELECT "id" FROM "sync_jobs"
+         WHERE "status" = $1 AND "updatedAt" < $2
+         ORDER BY "updatedAt" ASC
+         LIMIT $3
+       )`,
+      [status, olderThan, batchSize]
+    )) as [unknown[], number];
+
+    return result[1] ?? 0;
   }
 
   async requeueDeadJob(id: string): Promise<SyncJob> {

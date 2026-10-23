@@ -45,6 +45,21 @@ export function isCapabilityDisabledError(error: unknown): boolean {
 }
 
 /**
+ * True for the issue endpoint's answer to an adapter refusal about the
+ * connection's own configuration (#3772): a 422 whose body names
+ * `connection-setup-incomplete`. The panel answers it in place - an alert
+ * linking to the connection's settings - rather than with a toast, the same
+ * treatment {@link isMissingNumberingSeriesError} gets.
+ */
+export function isConnectionSetupIncompleteError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 422) {
+    return false;
+  }
+  const body = error.details as { error?: unknown; failureCode?: unknown } | null;
+  return body?.error === 'InvoiceIssueRejected' && body.failureCode === 'connection-setup-incomplete';
+}
+
+/**
  * Discriminates the "no numbering series configured" 400 (AC #6). The invoicing
  * controller maps `MissingNumberingSeriesException` to a 400 carrying
  * `{ error: 'MissingNumberingSeriesException' }`, so an issue-without-series

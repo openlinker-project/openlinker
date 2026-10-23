@@ -31,6 +31,7 @@
 import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { FormField } from '../../../shared/ui/form-field';
+import { HelpLink } from '../../../shared/ui/help-link';
 import { Input } from '../../../shared/ui/input';
 import { useRateLimitStatusQuery } from '../hooks/use-rate-limit-status-query';
 import type { EditConnectionFormValues } from './edit-connection.schema';
@@ -132,7 +133,10 @@ export function RateLimitSection({
 
   return (
     <section className="rate-limit-section">
-      <h3 className="rate-limit-section__title">Outbound rate limit</h3>
+      <div className="section-title__with-help">
+        <h3 className="rate-limit-section__title">Outbound rate limit</h3>
+        <HelpLink surfaceKey="connection-rate-limit" />
+      </div>
       <p className="rate-limit-section__help">
         OpenLinker spaces requests evenly rather than sending them in bursts.{' '}
         {defaultRateLimit ? (

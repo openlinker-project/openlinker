@@ -41,6 +41,13 @@ export type FailureMode = (typeof FailureModeValues)[number];
 export const FailureCodeValues = [
   'buyer-tax-id-invalid',
   'invalid-currency',
+  // A missing per-connection sale classification (goods vs. services) — a
+  // one-field config gap, not an order-data problem (#3031).
+  'sale-classification-required',
+  // The adapter refused before contacting the provider because the
+  // connection is missing a setting (#3772). The only code whose
+  // `failureReason` is the adapter's own sentence naming that setting.
+  'connection-setup-incomplete',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
@@ -107,6 +114,18 @@ export interface InvoiceRecord {
   issuedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Buyer tax id as it stood when this document was ISSUED (#3188) — THREE
+   * states, the same shape the order detail renders: the key is ABSENT when
+   * nothing was asserted, `null` when the source asserted the buyer has none,
+   * and a string when the document carries one. Never collapse the two
+   * absences: they decide different fiscal documents.
+   *
+   * Frozen server-side at issue, not joined from the order, so it cannot drift
+   * away from the document after a re-ingestion. `undefined` on every invoice
+   * issued before the column existed.
+   */
+  buyerTaxId?: string | null;
   /**
    * Batched order-identity projection (#1995). Only populated by `GET
    * /invoices` (the list endpoint) — single-invoice reads carry `null` (not

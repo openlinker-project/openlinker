@@ -37,26 +37,37 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoicing';
-import type { InvoiceRecord } from '@openlinker/core/invoicing';
+import type { InvoiceRecord, InvoiceRecordFilters, InvoiceStatus } from '@openlinker/core/invoicing';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationRecordNotFoundException,
   IFiscalRegistrationService,
+  selectHandoverArtefact,
+  summarizeFiscalArtefacts,
 } from '@openlinker/core/fiscalization';
-import type { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
+import type {
+  FiscalArtefact,
+  FiscalRegistrationListFilters,
+  FiscalRegistrationRecord,
+  FiscalRegistrationStatus,
+} from '@openlinker/core/fiscalization';
 import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
   chooseSalesDocumentDecision,
+  expandSalesDocumentRoutingCandidates,
   readSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
 import type {
   SalesDocumentDecision,
   SalesDocumentIdentity,
   SalesDocumentKind,
+  SalesDocumentMatchedRuleView,
   SalesDocumentOrderFacts,
   SalesDocumentOtherRecord,
   SalesDocumentRecordView,
   SalesDocumentRoutingCandidate,
+  SalesDocumentRule,
   SalesDocumentView,
 } from '@openlinker/core/sales-documents';
 
@@ -66,6 +77,17 @@ import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repos
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import { PriceTaxTreatmentValues } from '../../domain/types/order.types';
 import { buyerHasTaxId } from '../../domain/types/buyer-tax-id.types';
+import type {
+  SalesDocumentListFilters,
+  SalesDocumentListItem,
+  SalesDocumentListPage,
+  SalesDocumentListPagination,
+} from '../../domain/types/sales-document-list.types';
+import {
+  mergeSalesDocumentPages,
+  type MergeCandidate,
+  type SourcePage,
+} from '../../domain/sales-document-page-merge';
 
 /** Capability names a connection must enable to be a routing candidate at all. */
 const INVOICING_CAPABILITY = 'Invoicing';
@@ -100,6 +122,144 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
   ) {}
 
   async getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>> {
+    return this.buildViews(orderIds, false);
+  }
+
+  /**
+   * Cross-order operational list (#3306) - see the interface docblock. Four
+   * steps: fetch each source's own keyset page (skipping a source the `kind`
+   * filter excludes, or one already reported exhausted); merge them with the
+   * pure {@link mergeSalesDocumentPages}; batch-resolve the merged page's
+   * orders for their amount AND their full sibling-record set (reusing
+   * `groupRankedRecords`, the SAME grouping `getForOrders` uses, scoped to
+   * just this page's orders rather than a caller-supplied set); assemble the
+   * wire shape.
+   */
+  async listSalesDocuments(
+    filters: SalesDocumentListFilters,
+    pagination: SalesDocumentListPagination,
+  ): Promise<SalesDocumentListPage> {
+    const { limit } = pagination;
+    const incomingInvoiceCursor = pagination.cursor?.invoice;
+    const incomingFiscalCursor = pagination.cursor?.fiscal;
+
+    const wantInvoice = filters.kind !== 'fiscal-receipt' && incomingInvoiceCursor !== null;
+    const wantFiscal = filters.kind !== 'invoice' && incomingFiscalCursor !== null;
+
+    const [invoicePage, fiscalPage] = await Promise.all([
+      wantInvoice
+        ? this.invoices.listInvoicesKeyset(toInvoiceListFilter(filters), {
+            limit,
+            cursor: incomingInvoiceCursor ?? undefined,
+          })
+        : Promise.resolve({ items: [], nextCursor: null }),
+      wantFiscal
+        ? this.fiscalRegistrations.listRegistrationsKeyset(toFiscalListFilter(filters), {
+            limit,
+            cursor: incomingFiscalCursor ?? undefined,
+          })
+        : Promise.resolve({ items: [], nextCursor: null }),
+    ]);
+
+    type ListSource = 'invoice' | 'fiscal-receipt';
+    type ListMergeItem =
+      | (MergeCandidate<'invoice'> & { record: InvoiceRecord })
+      | (MergeCandidate<'fiscal-receipt'> & { record: FiscalRegistrationRecord });
+
+    const sourcePages: Record<ListSource, SourcePage<ListSource, ListMergeItem>> = {
+      invoice: {
+        items: invoicePage.items.map((record) => ({
+          source: 'invoice' as const,
+          createdAt: record.createdAt,
+          id: record.id,
+          record,
+        })),
+        ownNextCursor: invoicePage.nextCursor,
+      },
+      'fiscal-receipt': {
+        items: fiscalPage.items.map((record) => ({
+          source: 'fiscal-receipt' as const,
+          createdAt: record.createdAt,
+          id: record.id,
+          record,
+        })),
+        ownNextCursor: fiscalPage.nextCursor,
+      },
+    };
+
+    const merged = mergeSalesDocumentPages<ListSource, ListMergeItem>(
+      sourcePages,
+      { invoice: incomingInvoiceCursor, 'fiscal-receipt': incomingFiscalCursor },
+      limit,
+    );
+
+    const nextCursor = {
+      invoice: merged.nextCursor.invoice,
+      fiscal: merged.nextCursor['fiscal-receipt'],
+    };
+
+    if (merged.items.length === 0) {
+      return { items: [], nextCursor };
+    }
+
+    const orderIds = [...new Set(merged.items.map((item) => item.record.orderId))];
+    const [orderRecords, invoicesForOrders, fiscalForOrders] = await Promise.all([
+      this.orderRecords.findByIds(orderIds),
+      this.invoices.listInvoicesForOrders(orderIds),
+      this.fiscalRegistrations.getByOrderIds(orderIds),
+    ]);
+    const orderRecordById = new Map(orderRecords.map((record) => [record.internalOrderId, record]));
+    // Reuse the SAME grouping `buildViews` uses - the duplicate signal must
+    // never be computed a second, possibly-drifting way.
+    const rankedByOrderId = groupRankedRecords(invoicesForOrders, fiscalForOrders);
+
+    const items: SalesDocumentListItem[] = merged.items.map((mergedItem) => {
+      const ranked =
+        mergedItem.source === 'invoice'
+          ? toRankedInvoice(mergedItem.record)
+          : toRankedFiscal(mergedItem.record);
+      const orderId = mergedItem.record.orderId;
+      const orderRecord = orderRecordById.get(orderId) ?? null;
+      const siblings = rankedByOrderId.get(orderId) ?? [];
+      // "Other" = held on any OTHER connection than THIS row's own - a
+      // duplicate is a fact about the ORDER, not about which record happens
+      // to be this row's "winner" (unlike `otherRecords` on the per-order
+      // projection, which is relative to one designated winner).
+      const otherRecordCount = siblings.filter(
+        (sibling) => sibling.connectionId !== ranked.connectionId,
+      ).length;
+      return {
+        orderId,
+        connectionId: ranked.connectionId,
+        document: ranked.view,
+        amount:
+          orderRecord && orderRecord.totalAmount !== null && orderRecord.currency !== null
+            ? { value: orderRecord.totalAmount, currency: orderRecord.currency }
+            : null,
+        otherRecordCount,
+      };
+    });
+
+    return { items, nextCursor };
+  }
+
+  /**
+   * The one assembly path behind both reads (#2517). `includeMatchedRule`
+   * decides ONLY whether the "Why this kind?" disclosure (#3186) is resolved —
+   * a second assembly path would be how the row and the panel stop agreeing
+   * about the same order, which is the property `getForOrder`'s own doc comment
+   * names.
+   *
+   * It is off for the list because `matchedRule` is a DETAIL-only disclosure
+   * (#3186 review, the #2349/#2350 convention): the paged row renders nothing
+   * from it, so resolving it there would put a full conditions array on every
+   * row of every page plus one extra `IN (...)` read per page, for a sentence
+   * nothing on that surface shows.
+   */
+  private async buildViews(
+    orderIds: readonly string[],
+    includeMatchedRule: boolean,
+  ): Promise<Map<string, SalesDocumentView>> {
     const uniqueIds = [...new Set(orderIds)];
     if (uniqueIds.length === 0) {
       return new Map();
@@ -118,6 +278,13 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     const prospectiveKinds = await this.resolveProspectiveKinds(
       records.filter((record) => !rankedByOrderId.has(record.internalOrderId)),
     );
+    // The rule (#3186) that decided each order's document kind, batch-loaded
+    // ONCE for the whole page rather than one read per row — mirrors
+    // `resolveProspectiveKinds`' own batching rationale. Skipped entirely on
+    // the list path, which renders none of it.
+    const matchedRulesById = includeMatchedRule
+      ? await this.loadMatchedRules(records)
+      : new Map<string, SalesDocumentMatchedRuleView>();
 
     const views = new Map<string, SalesDocumentView>();
     for (const record of records) {
@@ -137,13 +304,68 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
         otherRecords: rest
           .filter((other) => winner !== undefined && other.connectionId !== winner.connectionId)
           .map(toOtherRecord),
+        // `null` covers BOTH "no rule ever decided this order's kind" and "one
+        // did, but has since been deleted" — see `SalesDocumentMatchedRuleView`'s
+        // own doc comment for why a surface must not tell the two apart. On the
+        // list path it additionally means "this read did not resolve it", which
+        // is why only the detail surface may render an explanation from it.
+        matchedRule:
+          !includeMatchedRule || record.salesDocumentMatchedRuleId === null
+            ? null
+            : (matchedRulesById.get(record.salesDocumentMatchedRuleId) ?? null),
       });
     }
     return views;
   }
 
+  /**
+   * Batch-resolve every distinct `salesDocumentMatchedRuleId` on this page of
+   * records (#3186) into its {@link SalesDocumentMatchedRuleView} projection, in
+   * ONE call to the rule store. A record whose matched rule has since been
+   * deleted is simply absent from the returned map — `getForOrders` reads that
+   * identically to "no rule ever matched".
+   */
+  private async loadMatchedRules(
+    records: readonly OrderRecord[],
+  ): Promise<Map<string, SalesDocumentMatchedRuleView>> {
+    const ruleIds = [
+      ...new Set(
+        records
+          .map((record) => record.salesDocumentMatchedRuleId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    if (ruleIds.length === 0) {
+      return new Map();
+    }
+    const rules = await this.salesDocumentRules.getRulesByIds(ruleIds);
+    return new Map(rules.map((rule) => [rule.id, toMatchedRuleView(rule)]));
+  }
+
   async getForOrder(orderId: string): Promise<SalesDocumentView | null> {
-    return (await this.getForOrders([orderId])).get(orderId) ?? null;
+    return (await this.buildViews([orderId], true)).get(orderId) ?? null;
+  }
+
+  async getReceiptHandoverArtefact(orderId: string): Promise<FiscalArtefact | null> {
+    // The SAME winner the projection names, so a surface that offered "open the
+    // receipt" off `getForOrders` is served that receipt and not another one.
+    const view = (await this.buildViews([orderId], false)).get(orderId);
+    const document = view?.document ?? null;
+    if (document === null || document.kind !== 'fiscal-receipt' || document.status !== 'registered') {
+      return null;
+    }
+    let record: FiscalRegistrationRecord;
+    try {
+      record = await this.fiscalRegistrations.getById(document.identity.recordId);
+    } catch (error) {
+      // A record gone between the projection read and this one is a receipt
+      // that no longer exists - the route's advertised 404, not a 500.
+      if (error instanceof FiscalRegistrationRecordNotFoundException) {
+        return null;
+      }
+      throw error;
+    }
+    return selectHandoverArtefact(record.artefacts);
   }
 
   /**
@@ -208,11 +430,14 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
    * The install's sales-document candidate connections, reduced to what the
    * resolve depends on.
    *
-   * Mirrors `AutoIssueTriggerService`'s own candidate build, including
-   * `selfRoutesDocumentKind: false`: no adapter in this repo declares
-   * `SelfRoutingDocumentKind` (#2158 shipped the mechanism, not a consumer),
-   * and constructing every candidate's adapter to ask a question that can only
-   * answer `false` would turn a list read into per-connection I/O.
+   * Mirrors `AutoIssueTriggerService`'s own candidate build — both call the
+   * shared `expandSalesDocumentRoutingCandidates` (#3195), so a dual-role
+   * `documentKind: 'both'` connection expands into the identical two rows on
+   * both sides — including `selfRoutesDocumentKind: false`: no adapter in this
+   * repo declares `SelfRoutingDocumentKind` (#2158 shipped the mechanism, not
+   * a consumer), and constructing every candidate's adapter to ask a question
+   * that can only answer `false` would turn a list read into per-connection
+   * I/O.
    */
   private async loadRoutingCandidates(): Promise<SalesDocumentRoutingCandidate[]> {
     const connections = await this.connections.list({ status: 'active' });
@@ -222,15 +447,15 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
           connection.enabledCapabilities.includes(INVOICING_CAPABILITY) ||
           connection.enabledCapabilities.includes(FISCALIZATION_CAPABILITY),
       )
-      .map((connection: Connection) => {
+      .flatMap((connection: Connection) => {
         const routing = readSalesDocumentRouting(connection.config);
-        return {
+        return expandSalesDocumentRoutingCandidates({
           connectionId: connection.id,
           documentKind: routing.documentKind,
           isPrimary: routing.isPrimary,
           enabledCapabilities: connection.enabledCapabilities,
           selfRoutesDocumentKind: false,
-        };
+        });
       });
   }
 }
@@ -379,6 +604,9 @@ function toRankedInvoice(record: InvoiceRecord): RankedRecord {
 }
 
 function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
+  // The count is read off the summaries so the two are one fact: a future
+  // filter on the summaries cannot leave the count describing a different list.
+  const artefacts = summarizeFiscalArtefacts(record.artefacts);
   return {
     orderId: record.orderId,
     connectionId: record.connectionId,
@@ -392,7 +620,8 @@ function toRankedFiscal(record: FiscalRegistrationRecord): RankedRecord {
       failureReason: record.failureReason,
       // `0` on a registered row is a SUCCESS - a pure reporting regime returns
       // identifiers and no artefact at all.
-      artefactCount: record.artefacts?.length ?? 0,
+      artefactCount: artefacts?.length ?? 0,
+      artefacts,
       identity: toIdentity({
         recordId: record.id,
         connectionId: record.connectionId,
@@ -431,11 +660,51 @@ function toIdentity(input: {
   };
 }
 
+/** Reduce a full `SalesDocumentRule` to what the "Why this kind?" disclosure renders (#3186). */
+function toMatchedRuleView(rule: SalesDocumentRule): SalesDocumentMatchedRuleView {
+  return {
+    id: rule.id,
+    country: rule.country,
+    conditions: rule.conditions,
+    documentKind: rule.documentKind,
+    connectionId: rule.connectionId,
+  };
+}
+
 function toOtherRecord(ranked: RankedRecord): SalesDocumentOtherRecord {
   return {
     recordId: ranked.id,
     connectionId: ranked.connectionId,
     kind: ranked.view.kind,
     blocksFurtherIssuance: ranked.blocksFurtherIssuance,
+  };
+}
+
+/**
+ * Project the merged list's neutral filters onto invoicing's own shape
+ * (#3306). `status` is passed through with an unsafe cast rather than
+ * validated against `InvoiceStatus` here - a value naming a fiscal-only
+ * status simply matches no invoice row, which is the documented,
+ * accepted behaviour (`SalesDocumentListFilters`'s own doc comment).
+ */
+function toInvoiceListFilter(filters: SalesDocumentListFilters): InvoiceRecordFilters {
+  return {
+    status: filters.status as InvoiceStatus | undefined,
+    connectionId: filters.connectionId,
+    issuedFrom: filters.issuedFrom,
+    issuedTo: filters.issuedTo,
+    taxId: filters.taxId,
+    search: filters.search,
+  };
+}
+
+/** The fiscal-side counterpart of {@link toInvoiceListFilter}. */
+function toFiscalListFilter(filters: SalesDocumentListFilters): FiscalRegistrationListFilters {
+  return {
+    status: filters.status as FiscalRegistrationStatus | undefined,
+    connectionId: filters.connectionId,
+    createdFrom: filters.issuedFrom,
+    createdTo: filters.issuedTo,
+    search: filters.search,
   };
 }

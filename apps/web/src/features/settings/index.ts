@@ -5,7 +5,7 @@
  */
 export { SyncPacingTile } from './components/sync-pacing-tile';
 export { SyncPacingConfirmDialog } from './components/sync-pacing-confirm-dialog';
-export { SyncPacingImpact } from './components/sync-pacing-impact';
+export { SyncPacingRail } from './components/sync-pacing-rail';
 export { useOperationalSettingsQuery } from './hooks/use-operational-settings-query';
 export { useUpdateOperationalSettingsMutation } from './hooks/use-update-operational-settings-mutation';
 export * from './lib/sync-pacing-model';

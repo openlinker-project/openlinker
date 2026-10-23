@@ -43,11 +43,19 @@ import {
 import {
   INVOICE_SERVICE_TOKEN,
   isRegulatoryDocumentReader,
+  isRegulatoryVerificationLinkReader,
+  supportsRegulatoryDocumentKind,
   type IInvoiceService,
+  type InvoiceRecord,
   type InvoicingPort,
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
-import { ORDER_RECORD_SERVICE_TOKEN, IOrderRecordService } from '@openlinker/core/orders';
+import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  IOrderRecordService,
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  type ISalesDocumentViewService,
+} from '@openlinker/core/orders';
 import {
   SHIPMENT_QUERY_SERVICE_TOKEN,
   type IShipmentQueryService,
@@ -64,6 +72,9 @@ import type {
   BenchDocumentsView,
   BenchInvoiceView,
   BenchLabelView,
+  BenchNoSalesDocumentView,
+  BenchSalesDocumentView,
+  InvoicePrintability,
   BenchUnlabelledParcelListView,
   BenchUnlabelledParcelView,
 } from '../types/bench-parcel.types';
@@ -94,19 +105,114 @@ export class BenchDocumentsService implements IBenchDocumentsService {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
-    private readonly shipments: IShipmentQueryService
+    private readonly shipments: IShipmentQueryService,
+    @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
+    private readonly salesDocuments: ISalesDocumentViewService
   ) {}
 
   async getDocuments(work: FulfillmentWorkView, canSeeCarrierText: boolean): Promise<BenchDocumentsView> {
-    const [invoice, label] = await Promise.all([
+    const [invoice, salesDocument, label] = await Promise.all([
       this.describeInvoice(work.orderId),
+      this.describeSalesDocument(work.orderId),
       this.describeLabel(work.id, canSeeCarrierText),
     ]);
-    return { workId: work.id, invoice, label };
+    return { workId: work.id, invoice, ...salesDocument, label };
+  }
+
+  /**
+   * The order's sales document, of either kind and in any status (#3646).
+   *
+   * Read from the per-order projection the `/orders` row and the order panel
+   * read (ADR-065), so the three surfaces cannot name different documents. The
+   * block reason is reported ONLY when no document of any kind exists: once one
+   * does, a persisted reason is left over from before it, and printing it beside
+   * the document would contradict it.
+   */
+  private async describeSalesDocument(
+    orderId: string
+  ): Promise<{ document: BenchSalesDocumentView | null; noDocument: BenchNoSalesDocumentView | null }> {
+    const view = (await this.salesDocuments.getForOrders([orderId])).get(orderId);
+    const document = view?.document ?? null;
+
+    if (document === null) {
+      return {
+        document: null,
+        noDocument: {
+          documentKind: view?.documentKind ?? null,
+          blockReason: view?.blockReason ?? null,
+          unresolvedReason: view?.unresolvedReason ?? null,
+        },
+      };
+    }
+
+    if (document.kind === 'invoice') {
+      // The projection carries no document bytes, so the record is read only
+      // when it could possibly be printable or linkable.
+      const record =
+        document.status === 'issued'
+          ? await this.invoices.getInvoiceById(document.identity.recordId)
+          : null;
+      const { printable, verificationUrl } =
+        record === null
+          ? { printable: false, verificationUrl: null }
+          : await this.assessPrintability(record);
+      return {
+        document: {
+          kind: 'invoice',
+          recordId: document.identity.recordId,
+          connectionId: document.identity.connectionId,
+          status: document.status,
+          failureMode: document.failureMode,
+          documentNumber: document.identity.documentNumber,
+          completedAt: document.identity.completedAt,
+          printable,
+          verificationUrl,
+        },
+        noDocument: null,
+      };
+    }
+
+    return {
+      document: {
+        kind: 'fiscal-receipt',
+        recordId: document.identity.recordId,
+        connectionId: document.identity.connectionId,
+        platformType: await this.resolvePlatformType(document.identity.connectionId),
+        status: document.status,
+        failureMode: document.failureMode,
+        documentReference: document.identity.documentNumber,
+        completedAt: document.identity.completedAt,
+        artefacts: document.artefacts,
+      },
+      noDocument: null,
+    };
+  }
+
+  /**
+   * The connection's `platformType`, for picking a per-integration presentation.
+   *
+   * A metadata-only lookup. An unresolvable connection (disabled, deleted)
+   * degrades to `null` and the surface uses its neutral default - a
+   * presentation hint must never blank the rest of the documents read.
+   */
+  private async resolvePlatformType(connectionId: string): Promise<string | null> {
+    try {
+      const { connection } = await this.integrations.getAdapter(connectionId);
+      return connection.platformType;
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve connection ${connectionId} for the bench receipt; using the neutral ` +
+          `presentation: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return null;
+    }
   }
 
   /**
    * The invoice, and whether the bench can actually print it.
+   *
+   * @deprecated since #3646 - the legacy `invoice` slot, kept verbatim for a
+   * frontend that predates `document`. {@link describeSalesDocument} is the read.
    *
    * `ready` means issued AND printable, deliberately: the machine-readable
    * source document is XML, and a `rendered` document exists only when the
@@ -130,13 +236,15 @@ export class BenchDocumentsService implements IBenchDocumentsService {
       };
     }
 
-    const printable = await this.canRenderDocument(record.connectionId, record.regulatoryStatus);
-    return {
-      state: printable ? 'ready' : 'issued-not-printable',
+    const { printable, verificationUrl } = await this.assessPrintability(record);
+    const identity = {
       invoiceId: record.id,
       documentNumber: record.documentNumber ?? null,
       issuedAt: record.issuedAt?.toISOString() ?? null,
     };
+    if (printable) return { state: 'ready', ...identity };
+    if (verificationUrl !== null) return { state: 'link', verificationUrl, ...identity };
+    return { state: 'issued-not-printable', ...identity };
   }
 
   /**
@@ -148,20 +256,34 @@ export class BenchDocumentsService implements IBenchDocumentsService {
    * degrades to "not printable" rather than failing the read — a disabled
    * invoicing connection must not blank the label half of this surface too.
    */
-  private async canRenderDocument(connectionId: string, regulatoryStatus: string): Promise<boolean> {
-    if (regulatoryStatus !== 'accepted') return false;
+  private async assessPrintability(record: InvoiceRecord): Promise<InvoicePrintability> {
+    const notPrintable: InvoicePrintability = { printable: false, verificationUrl: null };
+    if (record.regulatoryStatus !== 'accepted') return notPrintable;
     try {
       const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
-        connectionId,
+        record.connectionId,
         'Invoicing'
       );
-      return isRegulatoryDocumentReader(adapter);
+      // The SAME question the print route asks, including the kind it asks for
+      // (#3648): implementing the reader is not enough, since a provider that
+      // only has a confirmation document (KSeF's UPO) would be reported ready
+      // and then refused on the press.
+      if (isRegulatoryDocumentReader(adapter) && supportsRegulatoryDocumentKind(adapter, 'rendered')) {
+        return { printable: true, verificationUrl: null };
+      }
+      // Nothing to render, but the authority may give the document a public link
+      // a person can print from. Neutral URL only - its format is the adapter's.
+      if (isRegulatoryVerificationLinkReader(adapter)) {
+        const link = await adapter.getVerificationLink(record);
+        return { printable: false, verificationUrl: link?.url ?? null };
+      }
+      return notPrintable;
     } catch (error) {
       this.logger.warn(
-        `Could not resolve the invoicing adapter for connection ${connectionId}; reporting the ` +
+        `Could not resolve the invoicing adapter for connection ${record.connectionId}; reporting the ` +
           `invoice as not printable at the bench: ${error instanceof Error ? error.message : String(error)}`
       );
-      return false;
+      return notPrintable;
     }
   }
 

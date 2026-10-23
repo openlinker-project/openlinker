@@ -309,7 +309,12 @@ export function BulkResolveStep({
         // its own cause since #2240. The collapse rule itself lives in
         // `collapseToInvalidBarcode` - shared with `recomputeVariantBlockers`,
         // which applies it after an edit.
-        if (ean !== null && !isValidGtin(ean) && !blockers.includes('invalid-barcode')) {
+        if (
+          ean !== null &&
+          !isValidGtin(ean) &&
+          !blockers.includes('invalid-barcode') &&
+          variant.override.overrides?.eanOverrideAcknowledged !== true
+        ) {
           blockers = collapseToInvalidBarcode(blockers);
         }
 

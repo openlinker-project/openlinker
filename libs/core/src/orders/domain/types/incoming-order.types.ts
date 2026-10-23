@@ -16,6 +16,7 @@ import type {
   OrderDispatchWindow,
   PriceTaxTreatment,
 } from './order.types';
+import type { PaymentMethod } from './payment-method.types';
 import type { PaymentStatus } from './payment-status.types';
 import type { CodToCollect } from './cod-to-collect.types';
 
@@ -89,8 +90,31 @@ export interface IncomingOrder {
    * the Smart! program.
    */
   deliverySmart?: boolean;
+  /**
+   * The source asserts that IT (the marketplace) ships this order itself, e.g.
+   * Allegro One Fulfillment (#3636). Three-state like `buyerTaxId` (#2599):
+   * `true` is a positive statement; ABSENT means "not asserted" and must never
+   * be read as "the seller ships" - a source that cannot tell leaves it unset.
+   * Typed `true` on purpose: there is no `false` a source needs to send, so a
+   * source that cannot tell leaves the field unset.
+   */
+  fulfilledBySource?: true;
   /** Source-reported payment status (#928); absent when the source did not report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * How the buyer pays (#3294), mapped onto the closed neutral vocabulary by the
+   * source adapter. Absent when the source did not report it; an adapter that
+   * cannot map its native value with evidence reports `'unknown'` - never a
+   * guess. Orthogonal to `paymentStatus`.
+   */
+  paymentMethod?: PaymentMethod;
+  /**
+   * The source's own payment-method id (#3474), e.g. Allegro `payment.type`.
+   * Opaque: the same vocabulary `SourceOptionsReader.listPaymentMethods`
+   * returns, used only as the key of an operator-configured payment mapping.
+   * Absent when the source did not report one.
+   */
+  sourcePaymentMethod?: string;
 
   /**
    * Marketplace-sourced cash-on-delivery collect amount (#1435). Set by the
@@ -145,6 +169,13 @@ export interface IncomingOrderItem {
   quantity: number;
   price: number;
   sku?: string;
+
+  /**
+   * Gross (tax-inclusive) UNIT price as the SOURCE reported it. See
+   * {@link OrderItem.unitPriceGross} for why this exists and why carrying a
+   * reported figure is not computing tax. Absent when the source reports none.
+   */
+  unitPriceGross?: number;
 
   /**
    * Source-reported display label (e.g. Allegro `lineItem.offer.name`).
@@ -214,6 +245,12 @@ export interface IncomingOrderTotals {
    * {@link OrderTotals.totalTaxTreatment} (#2829).
    */
   totalTaxTreatment?: PriceTaxTreatment;
+
+  /**
+   * Gross shipping as the SOURCE reported it. See
+   * {@link OrderTotals.shippingGross}.
+   */
+  shippingGross?: number;
 }
 
 export interface IncomingOrderAddress {

@@ -23,13 +23,23 @@ import type { SyncJobs } from './jobs';
 import type { Poller } from './poller';
 import type { World } from '../world/world';
 import { PlatformType } from '../world/world';
-import type { Product, ProductVariant } from '../api/api.types';
+import type { Connection, Product, ProductVariant } from '../api/api.types';
 import { PrestashopWebserviceClient } from '../api/prestashop-webservice';
 import { waitForOrderByExternalId } from './orders';
 
 export interface SynthesizeOrderOptions {
   /** Quantity of the driver variant to sell. Defaults to 1. */
   quantity?: number;
+  /**
+   * The buyer's tax number, written onto the PrestaShop address the order is
+   * placed against.
+   *
+   * Absent means the buyer asserted none, which is the ordinary consumer case
+   * and the one that must stay the default. Supplying it is how a caller
+   * exercises the invoice-versus-receipt decision, which reads exactly this
+   * field (#2599/#2822) rather than any flag OpenLinker holds.
+   */
+  buyerVatNumber?: string;
   /**
    * PrestaShop currency id to denominate the order in. Defaults to the
    * webservice client's own default, which is the shop's first currency.
@@ -43,6 +53,23 @@ export interface SynthesizeOrderOptions {
   currencyId?: string;
   /** Override unit gross (tax-incl) price; defaults to the variant/product price. */
   unitPriceTaxIncl?: number;
+  /**
+   * Sell BELOW the catalogue price, as a fraction off (`0.39` = 39% off).
+   *
+   * Expressed as a PrestaShop `specific_price` scoped to this run's own fresh
+   * customer, NOT merely as a lower `unitPriceTaxIncl` on the order rows. A
+   * price posted on the order alone does not survive: PrestaShop recomputes
+   * the cart's total from the CATALOGUE, and when the two disagree it files
+   * the order under "Payment error" (`paid = 0`), which then stalls every
+   * downstream gate. So the reduction has to be something the shop itself
+   * applies, and the order rows are priced to MATCH what it will compute.
+   *
+   * The caller must not assume the resulting figure: read it back off the
+   * ingested order. This is what makes an amount assertion downstream able to
+   * tell a carried price from a catalogue lookup, which at list price it
+   * cannot.
+   */
+  discountFraction?: number;
   /**
    * Requested gross (tax-incl) shipping cost, defaulting to `9.99`.
    *
@@ -71,6 +98,48 @@ export interface SynthesizeOrderOptions {
    * its turn.
    */
   timeoutMs?: number;
+  /**
+   * Sell THIS product/variant instead of whatever `pickDriverProduct` finds.
+   *
+   * The picker answers "any catalogue product this PrestaShop connection has a
+   * mapping for", which is the right default and the wrong one for a caller
+   * that needs a SPECIFIC product - one mapped on a second system, say,
+   * because the thing under test is what happens on that second system when
+   * this one sells it. Such a caller cannot express its requirement as a
+   * filter on the picker without teaching the picker about the other system.
+   *
+   * The variant must still carry a PrestaShop mapping, exactly as a picked one
+   * does; supplying one that does not fails the same way and with the same
+   * message.
+   */
+  driver?: { product: Product; variant: ProductVariant };
+  /**
+   * The SHOP-side product id to put on the order, overriding the lookup.
+   *
+   * The lookup reads the product's `Product`-type identifier mappings, and a
+   * shop OpenLinker PUBLISHED to has none: the publish writes `ShopProduct`,
+   * keyed by VARIANT, and `GET /products/:id` returns `Product` mappings only
+   * for both the product and its variants. So a caller that published the
+   * product itself already holds the shop-side id - read back from the shop,
+   * because OpenLinker's own API does not expose it - and passes it here
+   * rather than being told the product has no mapping.
+   */
+  externalProductId?: string;
+  /**
+   * Which PrestaShop connection's ingestion to WAIT for.
+   *
+   * The default is `resolvePrestashopStore`, which prefers the connection that
+   * owns the catalogue - right for every spec that sells a product OpenLinker
+   * mastered FROM the shop. It is wrong for a spec that sells a product
+   * OpenLinker PUBLISHED to the shop: a stand may carry two connections on the
+   * same store, both poll the same order, and only the publishing one holds a
+   * mapping that resolves the line. The other ingests the same order as
+   * `awaiting_mapping` - correctly - so waiting on it can only ever time out.
+   *
+   * Passing the connection makes the spec state which ingestion it means,
+   * rather than inheriting a preference expressed for a different question.
+   */
+  ingestConnection?: Connection;
 }
 
 export interface SynthesizedOrder {
@@ -89,8 +158,33 @@ export interface SynthesizedOrder {
  * see `docs/engineering-standards.md`, this is test-support code, not a
  * cross-context port).
  */
+/**
+ * The PrestaShop connection that is an actual STORE, not merely the first
+ * active row for the platform.
+ *
+ * `world.connectionFor` answers positionally, and a stand can carry several
+ * PrestaShop connections - a seed fixture, a retired perf harness, the real
+ * shop. On the demo stand the seed fixture ("E2E bench seed source", zero
+ * enabled capabilities, zero products) sorts FIRST, so every caller resolving
+ * the platform positionally got it: `pickDriverProduct` scoped to it found no
+ * catalogue and reported "no catalogue product with a priced, EAN-complete
+ * variant" about a stand whose real store has six.
+ *
+ * A connection OpenLinker reads a catalogue from declares `ProductMaster`, so
+ * that is what this asks for. It falls back to the positional answer rather
+ * than throwing: a stand with exactly one PrestaShop connection that happens
+ * to declare nothing behaves as it always did.
+ */
+export function resolvePrestashopStore(world: World): Connection | undefined {
+  const active = world.connectionsFor(PlatformType.prestashop).filter((c) => c.status === 'active');
+  return (
+    active.find((c) => c.enabledCapabilities.includes('ProductMaster')) ??
+    world.connectionFor(PlatformType.prestashop)
+  );
+}
+
 export function buildPrestashopWebserviceClient(world: World): PrestashopWebserviceClient | null {
-  const connection = world.connectionFor(PlatformType.prestashop);
+  const connection = resolvePrestashopStore(world);
   const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
   const baseUrl =
     process.env.OL_PS_ADMIN_URL?.trim() ||
@@ -120,7 +214,13 @@ async function pickDriverProduct(
   api: ApiClient,
   connectionId: string,
 ): Promise<{ product: Product; variant: ProductVariant } | undefined> {
-  const page = await api.products.list({ limit: 50 });
+  // SCOPED to the connection, not a bare first page. `externalIdFor` below
+  // filters by connection anyway, so an unscoped page merely decided the
+  // outcome by whatever happened to sort first - on a stack whose catalogue is
+  // mostly another master's, every candidate fell off the end of page one and
+  // this answered "no catalogue product with a priced, EAN-complete variant"
+  // about a catalogue that had six.
+  const page = await api.products.list({ limit: 50, connectionId });
   for (const summary of page.items) {
     const detail = await api.products.getById(summary.id);
     if (!externalIdFor(detail, connectionId)) continue;
@@ -149,7 +249,10 @@ export async function synthesizeOrder(
   options: SynthesizeOrderOptions = {},
 ): Promise<SynthesizedOrder> {
   const { api, world, jobs } = ctx;
-  const prestashop = world.requireConnection(PlatformType.prestashop);
+  const prestashop = resolvePrestashopStore(world);
+  if (!prestashop) {
+    throw new Error('synthesizeOrder found no active PrestaShop connection to sell through');
+  }
   const ps = buildPrestashopWebserviceClient(world);
   if (!ps) {
     throw new Error(
@@ -157,16 +260,36 @@ export async function synthesizeOrder(
     );
   }
 
-  const driver = await pickDriverProduct(api, prestashop.id);
+  const driver = options.driver ?? (await pickDriverProduct(api, prestashop.id));
   if (!driver) {
     throw new Error('synthesizeOrder found no catalogue product with a priced, EAN-complete variant');
   }
   const { product, variant } = driver;
 
   const quantity = options.quantity ?? 1;
-  const unitPrice = options.unitPriceTaxIncl ?? variant.price ?? product.price ?? 0;
-  if (unitPrice <= 0) {
+  const cataloguePrice = options.unitPriceTaxIncl ?? variant.price ?? product.price ?? 0;
+  if (cataloguePrice <= 0) {
     throw new Error(`synthesizeOrder: driver variant ${variant.id} has no positive price`);
+  }
+  const discountFraction = options.discountFraction ?? 0;
+  if (discountFraction < 0 || discountFraction >= 1) {
+    throw new Error(
+      `synthesizeOrder: discountFraction must be in [0, 1), got ${discountFraction}`,
+    );
+  }
+  // Rounded the way PrestaShop rounds a percentage reduction, so the order
+  // rows we post agree with the total the shop recomputes from the cart. A
+  // disagreement here is not a rounding nit - it is the "Payment error" state
+  // the shipping comment below records.
+  const unitPrice =
+    discountFraction === 0
+      ? cataloguePrice
+      : Math.round(cataloguePrice * (1 - discountFraction) * 100) / 100;
+  if (unitPrice <= 0) {
+    throw new Error(
+      `synthesizeOrder: a ${discountFraction * 100}% reduction on ${cataloguePrice} rounds to ` +
+        `${unitPrice}, which is not a sellable price`,
+    );
   }
 
   const countryId = (await ps.getCountryIdByIso('PL')) ?? '1';
@@ -189,13 +312,26 @@ export async function synthesizeOrder(
     city: 'Warszawa',
     postcode: '00-001',
     idCountry: countryId,
+    vatNumber: options.buyerVatNumber,
   });
 
-  const externalProductId = externalIdFor(product, prestashop.id);
+  const externalProductId = options.externalProductId ?? externalIdFor(product, prestashop.id);
   if (!externalProductId) {
     throw new Error(`synthesizeOrder: product ${product.id} has no PrestaShop external id mapped`);
   }
   const externalVariantId = externalIdForVariant(variant, prestashop.id);
+
+  // The reduction has to exist BEFORE the cart, because PrestaShop prices a
+  // cart row when the row is created. Scoped to the customer minted two
+  // statements above, which exists only for this run.
+  if (discountFraction > 0) {
+    await ps.createSpecificPrice({
+      productId: externalProductId,
+      productAttributeId: externalVariantId ?? '0',
+      idCustomer: customer.id,
+      reductionFraction: discountFraction,
+    });
+  }
 
   const cart = await ps.createCart({
     idCustomer: customer.id,
@@ -205,7 +341,26 @@ export async function synthesizeOrder(
     rows: [{ productId: externalProductId, productAttributeId: externalVariantId ?? '0', quantity }],
   });
 
-  const shipping = options.shippingTaxIncl ?? 9.99;
+  // Shipping defaults to ZERO, and that is a fact about PrestaShop rather than
+  // a simplification (#3365).
+  //
+  // `POST /api/orders` resets `total_shipping` to 0 whatever the request or its
+  // cart carries - already recorded in `infakt-provider.spec.ts` - so the 9.99
+  // this used to add never reached the shop. What it DID do was make
+  // `total_paid_real` (the figure we post) disagree with `total_paid` (the
+  // figure PrestaShop recomputes from the cart), and PrestaShop answers that
+  // disagreement by discarding the requested state and filing the order under
+  // "Payment error" (id 8, `paid = 0`).
+  //
+  // Measured on the demo shop: all 29 orders in state 8 carry that mismatch,
+  // while the consistent ones sit in state 2 "Payment accepted". An unpaid
+  // order is then correctly `awaiting`, the `auto-on-paid` gate waits for ever,
+  // no document is issued, no warehouse release follows and stock never moves -
+  // which is how a spec asserting a stock drop came to read `517 -> 517`.
+  //
+  // The option survives for the day synthesis moves to `validateOrder` through
+  // the OL module's `importorder` endpoint, where a carrier cost is real.
+  const shipping = options.shippingTaxIncl ?? 0;
   const totalProducts = (unitPrice * quantity).toFixed(6);
   const totalPaid = (unitPrice * quantity + shipping).toFixed(6);
   const created = await ps.createOrder({
@@ -236,14 +391,15 @@ export async function synthesizeOrder(
   // order before that call lands — the order then sits INSIDE the snapshot and
   // the wait can never be satisfied. Identity beats novelty, and it also
   // removes any confusion with orders other activity produces concurrently.
+  const ingestConnection = options.ingestConnection ?? prestashop;
   const order = await waitForOrderByExternalId(api, {
-    sourceConnectionId: prestashop.id,
+    sourceConnectionId: ingestConnection.id,
     externalOrderId: created.id,
     timeoutMs: options.timeoutMs ?? 180_000,
     intervalMs: 3_000,
     // The webhook is the fast path; re-triggering a direct per-order sync is
     // the backstop for a dropped delivery. See `retriggerDirectOrderSync`.
-    retriggerPoll: jobs.retriggerDirectOrderSync(prestashop.id, created.id),
+    retriggerPoll: jobs.retriggerDirectOrderSync(ingestConnection.id, created.id),
   });
 
   return { order, externalOrderId: created.id, product, variant };

@@ -45,6 +45,7 @@ export { InventoryItem as InventoryItemEntity } from './domain/entities/inventor
 export { InventoryLocation } from './domain/entities/inventory-location.entity';
 export { Reservation } from './domain/entities/reservation.entity';
 export { ReservationShortfallEpisode } from './domain/entities/reservation-shortfall-episode.entity';
+export { InventorySaleDecrement } from './domain/entities/inventory-sale-decrement.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
@@ -67,6 +68,14 @@ export {
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
 export { InventoryService } from './application/services/inventory.service';
+export {
+  PostSaleInventoryRefreshService,
+  buildPostSaleInventoryRefreshKey,
+} from './application/services/post-sale-inventory-refresh.service';
+export type {
+  IPostSaleInventoryRefreshService,
+  PostSaleInventoryRefreshInput,
+} from './application/services/post-sale-inventory-refresh.service.interface';
 export { IInventorySyncService } from './application/services/inventory-sync.service.interface';
 export { InventorySyncService } from './application/services/inventory-sync.service';
 export {
@@ -119,6 +128,20 @@ export {
   DetectShortfallsInput,
 } from './application/services/reservation-shortfall.service.interface';
 export { ReservationShortfallService } from './application/services/reservation-shortfall.service';
+export {
+  IInventorySaleDecrementService,
+  DecrementForWorkInput,
+  DecrementForWorkResult,
+  SaleDecrementLineInput,
+  SaleDecrementLineOutcome,
+} from './application/services/inventory-sale-decrement.service.interface';
+export { InventorySaleDecrementService } from './application/services/inventory-sale-decrement.service';
+export {
+  IInventorySaleReversalService,
+  ReverseSaleForOrderResult,
+  SaleReversalLineOutcome,
+} from './application/services/inventory-sale-reversal.service.interface';
+export { InventorySaleReversalService } from './application/services/inventory-sale-reversal.service';
 
 // Application Types
 export {
@@ -159,8 +182,30 @@ export {
   DuplicatePositionGroup,
   DuplicatePositionReport,
   InventoryPositionCandidate,
+  InventoryOwnerPosition,
 } from './domain/types/inventory.types';
 export { LEGACY_SOURCE_CONNECTION_ID } from './domain/types/inventory.types';
+export {
+  InventoryOwnerBlockReasonValues,
+  resolveInventoryPositionOwner,
+  type InventoryOwnerBlockReason,
+  type InventoryOwnerQuery,
+  type InventoryOwnerResolution,
+} from './domain/types/inventory-owner.types';
+export {
+  InventorySaleDecrementStatusValues,
+  InventorySaleDecrementStatus,
+  InventorySaleDecrementReasonValues,
+  InventorySaleDecrementReason,
+  SaleDecrementAttention,
+  SaleDecrementAttentionRow,
+  SaleDecrementOwnerResolution,
+  buildSaleDecrementIdempotencyKey,
+  buildUnresolvedSaleDecrementKey,
+  buildSaleReversalIdempotencyKey,
+  deriveSaleDecrementAttention,
+  resolveSaleDecrementOwner,
+} from './domain/types/inventory-sale-decrement.types';
 export {
   AvailabilityScope,
   AvailabilityProvenance,

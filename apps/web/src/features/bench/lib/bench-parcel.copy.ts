@@ -25,13 +25,25 @@
  * @module apps/web/src/features/bench/lib
  */
 
+import { formatVariantAttributes } from '../../../shared/lib/variant-attributes';
+
 export const benchParcelCopy = {
   header: {
     orderLabel: 'Order',
     buyerLabel: 'Buyer',
+    parcelLabel: 'Parcel',
+    /** #3409 (epic #3401) — a deliberate reversal of the original PII exclusion. */
+    totalLabel: 'Order total',
+    carrierLabel: 'Carrier',
+    dispatchByLabel: 'Ship by',
     /** D3. Always shown, on every state of this surface. */
     parcelOf: (index: number, total: number): string =>
       `Parcel ${String(index)} of ${String(total)}`,
+    /** #3418 (epic #3401) — the order-head's own status pill, one per state. */
+    statusInProgress: 'In progress',
+    statusHeld: 'On hold',
+    statusCancelled: 'Cancelled',
+    statusPacked: 'Packed',
     /** D3's second half: one box's contents are never presented as the order. */
     thisBoxOnly:
       'Everything below belongs in this box only. The other boxes of this order are being handled somewhere else.',
@@ -58,17 +70,57 @@ export const benchParcelCopy = {
       [parts.ean === null ? null : `EAN ${parts.ean}`, parts.sku === null ? null : `SKU ${parts.sku}`]
         .filter((part): part is string => part !== null)
         .join(' · '),
+    /** The mockup's own caption above the item list. */
+    allItemsCaption: 'All items in this parcel',
+    groupByLocationLabel: 'Group by bin',
+    groupByLocationNote: 'Sorts this box\u2019s own items by bin.',
+    colItem: 'Item',
+    colIdentifiers: 'Identifiers',
+    colLocation: 'Location',
+    colScanned: 'Scanned',
+    colStatus: 'Status',
     badgeVerified: 'Verified',
     badgeScanning: 'Scanning now',
     badgeNotScanned: 'Not scanned yet',
     matchedHeading: 'Matched · in the box',
     /**
-     * E4. Named for what it does — confirm this line — and never for how. There
+     * E4. Named for what it does — confirm this item — and never for how. There
      * is deliberately no second word anywhere that would let a reader, or a
      * screenshot, tell the two paths apart afterwards.
      */
-    confirmAction: 'Confirm this line',
+    confirmAction: 'Confirm this item',
+    /**
+     * The same act, named for a screen reader so several rows' buttons are not
+     * all announced identically. Never rendered on screen — see the `aria-label`
+     * in `bench-parcel-line.tsx` for why the visible text stays uniform.
+     */
+    confirmActionFor: (item: string): string => `Confirm ${item}`,
     confirmHint: 'For an item whose barcode is damaged, missing or will not read.',
+    /**
+     * The variant's attributes, one line (#3417, mockup-parity epic #3401).
+     * Sorted by key so the same variant always reads the same way.
+     *
+     * The NAME is rendered beside the value, not dropped. This shipped as
+     * values-only on the assumption that a variant's attributes are the
+     * distinguishing ones — colour, size — where "Red · M" reads perfectly.
+     * Real catalogue data is not like that: a live PrestaShop product here
+     * carries `{Wariant: "…50ml", "Reklamowany w TV": "tak", "Kosmetyk
+     * ekskluzywny": "tak", "Produkt dla mężczyzn": "tak"}`, which rendered as
+     * `tak · tak · tak · …` — three identical words that tell a packer holding
+     * the box precisely nothing.
+     *
+     * A value with no name is only readable when the name is obvious from the
+     * value, and nothing guarantees that. Naming it costs a few characters and
+     * always reads.
+     */
+    attributesText: (attrs: Record<string, string>): string => formatVariantAttributes(attrs),
+    /** Operator-authored bin/shelf code, rendered as a short label (#3402/#3410). */
+    binCodeLabel: (code: string): string => `Bin ${code}`,
+    /** Display-only physical master data — never a claim OpenLinker measured it. */
+    weightGrams: (grams: number): string =>
+      grams >= 1000 ? `${(grams / 1000).toFixed(grams % 1000 === 0 ? 0 : 1)} kg` : `${String(grams)} g`,
+    dimensionsMm: (lengthMm: number, widthMm: number, heightMm: number): string =>
+      `${String(lengthMm)} × ${String(widthMm)} × ${String(heightMm)} mm`,
   },
 
   verify: {
@@ -84,10 +136,19 @@ export const benchParcelCopy = {
       `Third scan turned down — this box takes ${String(parts.required)}. The count stayed at ${String(parts.kept)}. The bench beeped.`,
     overPackedBadge: 'Extra scan refused',
     notPackable: 'Nothing was recorded. This box must not be packed — take it back to the trolley.',
+    /**
+     * The lock, which is NOT `notPackable` and must never borrow its words.
+     * That sentence sends the packer back to the trolley, which is right for a
+     * held or cancelled box and wrong here: this box is fine, somebody else is
+     * packing it. It names the remedy a packer can actually act on - take
+     * another box - rather than leaving them holding this one.
+     */
+    notYours:
+      'Nothing was recorded. This box belongs to another packer now. Take the next one instead.',
     parcelClosed:
       'Nothing was recorded. This box is already closed. Reopen it first if something needs changing.',
     noSuchLine:
-      'Nothing was recorded. That line is not part of this box any more. The screen has been refreshed.',
+      'Nothing was recorded. That item is not part of this box any more. The screen has been refreshed.',
     /** A refusal this build does not recognise. Never silently swallowed. */
     unknownRefusal:
       'Nothing was recorded, and this bench cannot say why. Show this screen to your supervisor.',
@@ -141,16 +202,132 @@ export const benchParcelCopy = {
     reopenShipped:
       'This box has already gone. It cannot be reopened here, because the goods are not in the building any more.',
     reopenNotClosed: 'This box is not closed, so there is nothing to reopen. Carry on scanning.',
+    /** ADR-074 / #3336 / #3337 / #3341 — the assignment-lock refusal. */
+    reopenAssignedToAnotherPacker: 'This box could not be reopened — it is assigned to another packer.',
     reopenUnknownRefusal:
       'The box was not reopened, and this bench cannot say why. Show this screen to your supervisor.',
     reopenFailed: 'That did not go through. Nothing changed — try again.',
   },
 
+  /**
+   * Pack-bench completion — the second, explicit act after a box closes.
+   * Closing (the last scan) says the ITEMS are right; this says the PACKER
+   * has finished with the box. Offered only on a closed box, and distinct
+   * from the no-commit rule above: that rule is about the box's CONTENTS
+   * having nothing to press, not about this later question, which has a real
+   * control and a real write behind it.
+   *
+   * ## Why this says "off the bench" and never "sent" or "on the trolley"
+   *
+   * The earlier wording claimed the box was labelled and on its way, which is
+   * false on a box the carrier refused a label for — `BenchDocumentsPanel`
+   * says so, four lines above this control, in the same breath as "this box
+   * cannot go out". A packer pressing the button had just told the office
+   * something untrue. "Off the bench" is true either way: it records that
+   * THIS PACKER is finished with the box, never that a carrier accepted it —
+   * an unlabelled box legitimately leaves the bench for a dispatch queue, and
+   * `completedAt` is the packer's act, not a claim about the carrier's. See
+   * `BenchCompletionPanel`'s own docblock.
+   */
+  completion: {
+    action: 'Mark as done here',
+    hint: "This tells the office you're finished with this box — it's off your bench now.",
+    doneNotice: (formattedAt: string): string => `Marked done at ${formattedAt}.`,
+    confirmTitle: 'Before you mark it done',
+    /** Named for WHAT is missing, never a bare "are you sure". */
+    confirmBodyBoth: 'Neither the label nor the invoice for this box has been printed yet.',
+    confirmBodyLabel: 'The label for this box has not been printed yet.',
+    confirmBodyInvoice: 'The invoice for this box has not been printed yet.',
+    /**
+     * Read live off the current parcel, so if the packer prints from inside
+     * this dialog, the sentence catches up rather than keeping the gap it
+     * opened with.
+     */
+    confirmBodyNoneLeft: 'Both papers are printed now.',
+    confirmHint: 'Print them now, or go ahead if you already printed them somewhere else.',
+    printInvoiceAction: 'Print the invoice',
+    printLabelAction: 'Print the label',
+    printFailed: 'That did not print. Try again, or go ahead anyway.',
+    confirmAction: 'Mark as done anyway',
+    cancelAction: 'Not yet',
+    refusedNotClosed: 'This box is not closed yet, so there is nothing to mark done. Carry on scanning.',
+    refusedAlreadyCompleted: 'This box was already marked done.',
+    refusedStale: 'Somebody else changed this box. This screen now shows the latest — try again.',
+    refusedLocked:
+      'This box is assigned to someone else right now, so it cannot be marked done from here.',
+    refusedUnknown:
+      'That did not go through, and this bench cannot say why. Show this screen to your supervisor.',
+    failed: 'That did not go through. Nothing changed — try again.',
+
+    // ── Take it back (#3415) — the way back from "done" that is not a reopen ──
+    // A reopen unpacks the box; this clears only the "done" mark, so the
+    // wording must never suggest the contents are touched.
+    undoAction: 'Take this back',
+    undoHint: 'The box stays packed exactly as it is — only the "done" mark clears.',
+    undoneNotice: 'Taken back. This box is on your bench again.',
+    undoRefusedNotCompleted: 'This box was never marked done, so there is nothing to take back.',
+    undoRefusedStale: 'Somebody else changed this box. This screen now shows the latest — try again.',
+    /**
+     * The completion lock, said the same way `refusedLocked` says it above —
+     * both are the ADR-074 pre-assignment lock, checked at the same seam.
+     */
+    undoRefusedLocked:
+      'This box is assigned to someone else right now, so it cannot be taken back from here.',
+    undoRefusedUnknown:
+      'That did not go through, and this bench cannot say why. Show this screen to your supervisor.',
+    undoFailed: 'That did not go through. Nothing changed — try again.',
+  },
+
+  /** #3734. Shown to a session that may read the bench but not pack at it. */
+  preview: {
+    title: 'Preview only',
+    body: 'You can look at this parcel, but you cannot scan, confirm or close it.',
+  },
+
   /** E5's promise, rendered on the verifying surface. */
   footer: {
     noCommit:
-      'This box closes itself the moment the last line is verified. There is nothing here to press.',
+      'This box closes itself the moment the last item is verified. There is nothing here to press.',
     scannerReady: 'Scanner in · keyboard not needed',
+    /**
+     * The "C" shortcut has no visible control of its own to attach a hint
+     * to — unlike every other affordance on this surface, which is a
+     * button (#3339 review). Stated here rather than left undiscoverable.
+     */
+    keyboardHint: 'Not scanning? Press C to confirm the next open item by hand.',
+  },
+
+  /** Notes flagged "Show to packer" (D12), read only. */
+  officeNotes: {
+    title: (count: number): string => `Notes from the office (${String(count)})`,
+    /**
+     * Calendar words, not "3h ago": a packer reads an office instruction
+     * against the clock on the wall and the shift they are on, and "today"
+     * versus "yesterday" is what tells them whether it was written for this
+     * batch. Beyond yesterday the absolute date says it better than any word.
+     */
+    today: (time: string): string => `today ${time}`,
+    yesterday: (time: string): string => `yesterday ${time}`,
+  },
+
+  /** #3411 (epic #3401) — recent activity, newest first. */
+  activity: {
+    heading: 'Recent activity',
+    verified: 'verified',
+    undone: 'undone',
+  },
+
+  /**
+   * #3405 (epic #3401) — undo the single most recent scan, whichever line it
+   * landed on. A lighter correction than reopen: it never touches a closed
+   * box.
+   */
+  undo: {
+    action: 'Undo last scan',
+    voidedNotice: (name: string | null): string =>
+      `Undone — the last unit on ${name ?? 'that line'} no longer counts.`,
+    nothingToUndo: 'Nothing to undo yet.',
+    parcelClosed: 'This box already closed. Reopen it first.',
   },
 
   /**
@@ -167,6 +344,88 @@ export const benchParcelCopy = {
    * is why the in-flight state is named rather than papered over with a tick
    * that arrives early.
    */
+  /**
+   * The hero scan card (mockup-parity epic #3401).
+   *
+   * Says outright that scanning needs no button, because the previous
+   * surface had no visible field at all and a packer could not tell whether
+   * their reader was reaching the screen. `confirmAction` is named for what
+   * it does and never for how — the same rule `lines.confirmAction` follows,
+   * and for the same D20 reason.
+   */
+  /** The mockup's `.copy-btn`, beside the order reference and the hero's EAN. */
+  /**
+   * #3406 — the mockup's collision banner. Advisory, never a lock: both
+   * packers keep scanning and the counts are one count. The copy says that in
+   * as many words, because the packer's instinct on seeing a colleague's name
+   * is to stop, and stopping is the wrong move.
+   */
+  /**
+   * The phone and tablet bench (mobile-first rebuild, epic #3401).
+   *
+   * Every string here is about the packer's own hands: what to point the
+   * camera at, which item the count belongs to, and what to do when the
+   * device cannot read a barcode at all. Nothing here promises a camera on a
+   * browser that has no decoder - `cameraUnsupported` says which path is
+   * left instead, because a control that cannot work is worse than none.
+   */
+  mobile: {
+    scanAction: 'Scan with camera',
+    scanClose: 'Close the camera',
+    torch: 'Torch',
+    aim: 'Hold the barcode inside the frame',
+    keepScanning: 'Keep scanning - the camera stays open until this item is done.',
+    lastRead: 'Read',
+    cameraUnsupported:
+      'This browser cannot read a barcode from the camera. Type the code instead - it counts exactly the same.',
+    cameraNoDevice: 'No camera on this device. Type the code instead.',
+    cameraDenied:
+      'The camera is blocked for this page. Allow it in your browser settings, or type the code instead.',
+    cameraFailed: 'The camera did not start. Try again, or type the code instead.',
+    /** The accordion handle, collapsed. */
+    itemOf: (index: number, total: number): string =>
+      `Item ${String(index)} of ${String(total)}`,
+    itemsHeading: 'Items in this box',
+    switchParcel: 'Switch to another parcel',
+    closeList: 'Back to the box',
+    /** Said on the handle so the packer knows what opening it costs them. */
+    stillToScanShort: (remaining: number): string =>
+      remaining === 1 ? '1 left' : `${String(remaining)} left`,
+    allItemsDone: 'All items scanned',
+  },
+
+  collision: {
+    title: 'Someone else has this box open too',
+    body: (names: readonly string[]): string => {
+      const who =
+        names.length === 1
+          ? names[0]
+          : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`;
+      const verb = names.length === 1 ? 'is' : 'are';
+      return `${who} ${verb} scanning this box as well. Your scans and theirs are counted together, so carry on - just do not both go hunting for the same missing unit.`;
+    },
+  },
+
+  copy: {
+    action: (what: string): string => `Copy ${what}`,
+    copied: (what: string): string => `${what} copied`,
+    orderReference: 'order reference',
+    barcode: 'barcode',
+  },
+
+  hero: {
+    scanLabel: 'Scan this item',
+    /** The mockup's transient `✓ Matched`. Announced separately by the live region. */
+    matched: 'Matched',
+    scanPlaceholder: 'Scan or type SKU / EAN, then press Enter',
+    confirmAction: 'Confirm this item',
+    scanHint: 'Scanning counts on its own. Confirm by hand only when a barcode will not read.',
+    keyboardHint: 'C confirm · U undo · Esc back to the scan box',
+    countOf: (required: number): string => `of ${String(required)}`,
+    /** The progress bar's own right-hand figure. */
+    percent: (value: number): string => `${String(value)}%`,
+  },
+
   inFlight: {
     sent: 'Sent — waiting for the system',
     sentAnnouncement: (name: string): string => `${name} sent. Waiting for the system.`,
@@ -237,34 +496,217 @@ export const benchParcelCopy = {
     printLabelAction: 'Print label',
     invoiceHint: 'Fold it once and drop it in on top of the goods, before you tape the box.',
     labelHint: 'Stick it flat on the largest side. Cover nothing else with it.',
+    changeSizeAction: 'Change size',
     invoiceTitle: (number: string | null): string =>
       number === null ? 'Invoice for this order' : `Invoice ${number}`,
-    labelTitle: (carrier: string | null): string =>
-      carrier === null ? 'Label for this box' : `${carrier} label`,
+    /**
+     * Deliberately does NOT name the carrier.
+     *
+     * `Shipment.carrier` holds the adapter's own key — `inpost`, lowercase —
+     * so interpolating it printed `inpost label` at a packer, an internal
+     * identifier dressed as a sentence. Title-casing it would produce
+     * `Inpost`, which is a different wrong answer, and no display-name map
+     * exists to look the real one up in.
+     *
+     * Nothing is lost by leaving it out: the order head one row above already
+     * names the carrier correctly, from the SOURCE's own delivery-method label
+     * ("InPost Paczkomat"), and the tracking number sits directly under this
+     * heading. The carrier arrives here only to be recorded, not rendered.
+     */
+    labelTitle: (): string => 'Label for this box',
     trackingLabel: 'Tracking',
     printFailed: 'That did not print. Nothing changed — try again.',
 
+    /**
+     * #3647 - a document still being made, or one that failed. Each is its own
+     * fact; reporting any of them as "no invoice was made" told the packer
+     * something false.
+     */
+    doesNotStop: 'It does not stop the box going out.',
+    mentionOffice: 'Mention it to the office.',
+    invoiceStatus: {
+      inProgressBadge: 'Being issued',
+      inProgressTitle: 'Invoice on its way',
+      rejectedBadge: 'Not issued',
+      rejectedTitle: 'The invoice did not go through',
+      notConfirmedBadge: 'Not confirmed',
+      notConfirmedTitle: 'Invoice not confirmed',
+      notConfirmedBody: 'OpenLinker does not know if this invoice was made.',
+    },
+    /**
+     * #3647 - the fiscal receipt. Nothing here says anything about paper or the
+     * box (a provider may print on the seller's own fiscal printer, which
+     * OpenLinker cannot see), or that the buyer received it (`disposition` is a
+     * hint, never evidence).
+     */
+    receipt: {
+      slot: 'Receipt for this order',
+      title: (reference: string | null): string =>
+        reference === null ? 'Receipt' : `Receipt ${reference}`,
+      madeBadge: 'Receipt made',
+      linkBody: 'Open with the link below.',
+      openAction: 'Open receipt',
+      linkPending: 'Getting the link. One moment.',
+      linkFailed: 'The link did not load.',
+      retryAction: 'Try again',
+      printAction: 'Print receipt',
+      noArtefactBody: 'There is no link to this receipt in OpenLinker.',
+      inProgressBadge: 'Being registered',
+      inProgressTitle: 'Receipt on its way',
+      rejectedBadge: 'Not registered',
+      rejectedTitle: 'The receipt did not go through',
+      notConfirmedBadge: 'Not confirmed',
+      notConfirmedTitle: 'Receipt not confirmed',
+      notConfirmedBody: 'OpenLinker does not know if this receipt was made.',
+    },
+    /** #3647 - a document kind this build does not know. Should not happen today. */
+    unknownDocument: {
+      badge: 'Document',
+      slot: 'Document for this order',
+      title: 'This screen cannot show this document',
+    },
+
     /** F1's honest exception: the document exists but only as machine-readable source. */
-    notPrintableTitle: 'There is nothing to print for this one',
-    notPrintableBody:
-      'An invoice was made for this order, but it only exists in a form a printer cannot use. Send the box without it — the office will post it to the buyer.',
+    notPrintableBadge: 'Issued, not printable',
+    notPrintableTitle: (documentNumber: string | null): string =>
+      documentNumber === null ? 'Invoice issued' : `Invoice ${documentNumber}`,
+    notPrintableBody: 'Issued, but it cannot be printed here.',
+
+    /**
+     * #3649 - the provider cannot render the invoice but the authority's own page
+     * can be printed from. Never "Ready to print": nothing here prints by itself.
+     */
+    link: {
+      badge: 'Print from the online page',
+      body: 'This invoice cannot be printed from here. Open it, then print it from that page.',
+      openAction: 'Open invoice online',
+    },
+    /** A 409 from the print route: the provider has nothing printable (#3648). */
+    printNotAvailable: 'This invoice has no printable version. Send the box without it.',
 
     /** F2 — named, never silently skipped, and never blocking. */
     missingTitle: 'Carry on packing — one paper is not coming',
     missingBody:
       'This is not something you can fix at the bench, and it does not stop the box going out.',
     missingInvoiceTitle: 'No invoice was made for this order',
-    missingInvoiceBody:
-      'There is nothing to put in the box. Send it without one. The office will post it to the buyer afterwards.',
-    missingReasonLabel: 'What the office will see',
+    missingInvoiceBody: 'There is nothing to put in the box. Send it without one.',
+    missingReasonLabel: 'Why',
     /** Said when nothing recorded a reason — itself an answer, not a gap to fill in. */
-    missingReasonUnknown: 'Nothing on this order says why. The office has it on their list either way.',
-    flaggedTitle: 'This one is flagged for the office.',
-    flaggedBody:
-      'It is already on their list of orders that went out without a document — you do not need to tell anyone or write it down.',
+    missingReasonUnknown: 'Nothing on this order says why.',
+
+    /**
+     * Three endings, because there are three different truths — see
+     * `features/sales-documents/lib/invoice-absence-audience.ts` for which
+     * applies when, and for what the single old ending got wrong.
+     */
+    audience: {
+      /** The order really is in the blocked count and under the filter. */
+      onOfficeList: {
+        title: 'The office can see this one.',
+        body: 'It is in their list of orders that went out without a document — you do not need to write it down.',
+      },
+      /**
+       * `trigger-model-manual`. Nothing is counted, nothing is filtered, so
+       * nobody is told unless a person says so — which is the whole point of
+       * naming it here rather than leaving the packer reassured.
+       */
+      issuedOnRequest: {
+        title: 'Nobody is told automatically.',
+        body: 'This shop only makes an invoice when someone asks for one. Send the box; if this order needs an invoice, tell the office.',
+      },
+      /** No recorded reason, or one this build cannot place. No list holds it. */
+      nobodyTold: {
+        title: 'Nobody has been told.',
+        body: 'This order is not on any list OpenLinker keeps. Send the box, and mention it to the office.',
+      },
+    },
+
+    /**
+     * The mockup's "Printing to Zebra ZD420 · Bench 3", from the signed-in
+     * packer's own `packStationLabel` (#3404). Never rendered at all when
+     * unset — an empty "Printing to —" line is noise at a touch screen, not
+     * reassurance.
+     *
+     * The mockup's trailing clause, "this station's printer, always", is
+     * dropped rather than copied. The label is stored on the USER, not on the
+     * terminal, so it follows the packer to whichever bench they sign in at —
+     * which makes "this station's, always" the one thing about it that is not
+     * true. A reassurance that is wrong about where the paper comes out is
+     * worse than no reassurance at all.
+     */
+    printingTo: (label: string): string => `Printing to ${label}`,
+
+    /**
+     * The label card on a box that is still OPEN while no label exists yet.
+     * Deliberately not the unlabelled block's "this box cannot go out": that
+     * is a statement about a CLOSED box, and on an open one it told a packer
+     * at "0 of 1" that the box was finished and closed. Nothing here asks
+     * them to stop - the label is dispatch's to buy, and packing carries on.
+     */
+    labelPendingBadge: 'Not ready yet',
+    labelPendingTitle: 'The label is not ready yet',
+    labelPendingBody: 'Dispatch will sort it out. Carry on packing — nothing here waits for it.',
   },
 
   /** F3/F4 — packed, and it cannot go out. */
+  /** #3655 - replacing a label whose size or weight is wrong. Parcel data only. */
+  changeSize: {
+    title: 'Change the label size',
+    description: 'Tell us what this box really is. Nothing else about the order changes.',
+    modeLegend: 'What is wrong',
+    modeTemplate: 'Pick a size',
+    modeBox: 'Measure the box',
+    modeWeight: 'Weight only',
+    templateLabel: 'Size',
+    templatePlaceholder: 'Choose a size',
+    lengthLabel: 'Length (cm)',
+    widthLabel: 'Width (cm)',
+    heightLabel: 'Height (cm)',
+    weightKgLabel: 'Weight (kg)',
+    required: 'Enter a number above zero.',
+    tooLarge: 'That is more than a carrier will take.',
+    pickTemplate: 'Choose a size first.',
+    confirmNotice: 'The current label will be cancelled and a new one bought.',
+    confirmAction: 'Cancel it and buy a new label',
+    pendingAction: 'Buying a new label...',
+    cancelAction: 'Keep the current label',
+    refusedCannotCancel:
+      'This carrier does not let us cancel a label from the bench. The current label stays. Ask the office.',
+    /** Transient, unlike `refusedCannotCancel`: the connection, not the carrier (#1947's split). */
+    refusedAdapterUnresolved:
+      'We cannot reach the carrier connection right now, so the label cannot be replaced. The current label stays. Try again in a minute - ask the office if it keeps happening.',
+    refusedAlreadyHandedOver:
+      'The carrier already has this parcel, so its label cannot be replaced. The current label stays.',
+    refusedParcelCompleted:
+      'This box is already marked done, so its label cannot be replaced. The current label stays.',
+    refusedNoLabel: 'This box has no label yet, so there is nothing to replace. Ask the office to buy one.',
+    refusedRecipientUnavailable:
+      'The delivery address for this order is missing, so no new label can be bought. The current label stays. Ask the office.',
+    refusedParcelSizeUnknown:
+      'A weight alone is not enough here - choose a size or enter the box measurements too. The current label stays.',
+    refusedReplaceInProgress: 'A new label for this box is already being bought. Wait a moment, then look again.',
+    refusedUnknown:
+      'That did not go through and the current label stays. Show this screen to your supervisor.',
+    /**
+     * Any non-2xx that is not a refusal. Deliberately says nothing about the
+     * old label: this arm cannot know whether it was cancelled, and a retry is
+     * safe because the server re-reads the box and refuses if it changed.
+     */
+    failed: 'That did not go through - try again.',
+    voidTitle: 'The old label is void and no new one was bought',
+    voidBody:
+      'Do not stick the old label on the box. Tell the office - they need to buy a new label for this parcel.',
+    /** `voidState: 'in-doubt'`: the cancel's outcome is unknown, so neither answer is claimed. */
+    voidDoubtTitle: 'The old label may already be void, and no new one was bought',
+    voidDoubtBody:
+      'The carrier did not confirm whether it cancelled the old label, so do not use it - do not stick it on the box. Tell the office - they need to check it and buy a new label for this parcel.',
+    voidDismiss: 'Understood',
+    replacedNotice: 'New label bought. Print it now.',
+    /** The weight-only path keeps the connection's configured size; named so it is not a guess. */
+    replacedKeptSizeNotice: (template: string): string =>
+      `New label bought in size ${template}. Print it now.`,
+  },
+
   unlabelled: {
     eyebrow: 'This box cannot go out',
     title: 'Packed, but there is no label',

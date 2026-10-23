@@ -65,6 +65,14 @@ export const RETURN_DISPOSE_COPY = {
   overDisposition: 'You only have {n} received unit(s) left to deal with on this line.',
   nothingToDispose: 'Every received unit on this line has already been dealt with.',
   /**
+   * Shown in the dispose form, beside a disabled `Restock`, while the line has
+   * an outstanding restock block (#3466). It says "restocking", not
+   * "disposing", on purpose: scrap stays available and the server accepts it,
+   * so the form must not suggest the whole disposition is locked.
+   */
+  awaitingAttestation:
+    'This line has a stock write waiting on you — see the notice above and mark it handled before restocking more. You can still scrap these units.',
+  /**
    * Past-tense and event-shaped, naming the ACTION — distinct from the notice,
    * which is present-tense and names the remediation. The two are visible
    * together for a moment after a blocked dispose and must not read as two
@@ -90,6 +98,12 @@ export const RETURN_RESTOCK_TARGET_COPY = {
     'No connection owns your stock, so restocking cannot add units anywhere. Scrapping still works.',
   'adapter-unresolved':
     "OpenLinker can't reach the system that owns your stock right now, so it can't say where these units would land.",
+  'no-position':
+    'OpenLinker holds no stock for this product in any connected product master, so it cannot tell where these units would land.',
+  'unattributed-owner':
+    'The stock for this product has no known owner yet — run a stock sync from the product master, then restock.',
+  'ambiguous-owner':
+    '{n} product masters hold stock for this product, so OpenLinker will not guess which one to put the units back into.',
 } as const;
 
 export const RETURN_NOT_RETURNED_COPY = {
@@ -126,6 +140,8 @@ export const RETURN_CUSTODY_ERROR_COPY = {
     'nothing-advised': 'The source advised no units on this line, so there is nothing to write off.',
     'illegal-transition':
       'This line is already finished, so it cannot change. Reload the page to see where it ended up.',
+    'restock-already-blocked':
+      'This line already has a stock write waiting on you — mark it handled before restocking more.',
   } as Record<string, string>,
 } as const;
 

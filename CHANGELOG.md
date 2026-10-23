@@ -12,6 +12,248 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.16.1](https://github.com/openlinker-project/openlinker/compare/v0.16.0...v0.16.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **infra:** patch the Node.js 2026-10-21 security release ([#3782](https://github.com/openlinker-project/openlinker/issues/3782)) ([7eefd32](https://github.com/openlinker-project/openlinker/commit/7eefd3284dafa18f65c313427aa9b3e9fefb5149))
+
+## [0.16.0](https://github.com/openlinker-project/openlinker/compare/v0.15.0...v0.16.0) (2026-10-19)
+
+
+### Features
+
+* **fulfillment:** replace the "Handshake" field with a pack-bench warning ([#3768](https://github.com/openlinker-project/openlinker/issues/3768)) ([9d05663](https://github.com/openlinker-project/openlinker/commit/9d05663e81cda5acf730431c665a32c1930bd607))
+* **lint:** check parenthesis balance in the stylesheet structure guard ([#2677](https://github.com/openlinker-project/openlinker/issues/2677)) ([#3745](https://github.com/openlinker-project/openlinker/issues/3745)) ([6999154](https://github.com/openlinker-project/openlinker/commit/6999154450d7ea55f90437b7ad253050852f182b))
+* **orders:** neutral payment method on orders, and the COD amount from every source ([#3294](https://github.com/openlinker-project/openlinker/issues/3294)) ([#3756](https://github.com/openlinker-project/openlinker/issues/3756)) ([897421b](https://github.com/openlinker-project/openlinker/commit/897421b5e5815406e694d73cd6ef8826072a4196))
+* **orders:** write the payment method to destinations and invoices, and show it in the UI ([#3294](https://github.com/openlinker-project/openlinker/issues/3294)) ([#3758](https://github.com/openlinker-project/openlinker/issues/3758)) ([a96fb58](https://github.com/openlinker-project/openlinker/commit/a96fb58805aa33ecd2f227d36905ec476d47c4ee))
+* **shipping:** default parcel dimensions for auto-dispatch labels ([#3571](https://github.com/openlinker-project/openlinker/issues/3571)) ([#3742](https://github.com/openlinker-project/openlinker/issues/3742)) ([7122ed0](https://github.com/openlinker-project/openlinker/commit/7122ed0ee31c6dd4dfa7a1b11fdbe2c6f623e476))
+* **web:** calmer sales document panel - one notice for an unconfirmed invoice ([#3770](https://github.com/openlinker-project/openlinker/issues/3770)) ([ea4f75a](https://github.com/openlinker-project/openlinker/commit/ea4f75a952c007eda60ed4954f34a1f50aa18822))
+
+
+### Bug Fixes
+
+* **fulfillment:** never route to a holder that cannot execute, and re-drive stranded work ([#3476](https://github.com/openlinker-project/openlinker/issues/3476)) ([#3744](https://github.com/openlinker-project/openlinker/issues/3744)) ([a4d8434](https://github.com/openlinker-project/openlinker/commit/a4d8434f09ecf920e5995fa11bc24d98f46c6d66))
+* **invoicing:** show a refusal for a missing connection setting where it can be fixed ([#3773](https://github.com/openlinker-project/openlinker/issues/3773)) ([9790137](https://github.com/openlinker-project/openlinker/commit/979013719d3269adb0f046308e2329f8c48099bc))
+* **orders:** do not route an order the source ships itself ([#3636](https://github.com/openlinker-project/openlinker/issues/3636)) ([#3743](https://github.com/openlinker-project/openlinker/issues/3743)) ([2f83029](https://github.com/openlinker-project/openlinker/commit/2f83029c5284d27f12e3b321f15b04814d43affa))
+* **prestashop:** honour the configured payment mapping when creating an order ([#3474](https://github.com/openlinker-project/openlinker/issues/3474)) ([#3754](https://github.com/openlinker-project/openlinker/issues/3754)) ([fe48990](https://github.com/openlinker-project/openlinker/commit/fe48990d5617ca80551cd8e2e3a46a5c80d2e3eb))
+* **web:** classify the motion tokens and make the form-field-row column count private ([#2436](https://github.com/openlinker-project/openlinker/issues/2436)) ([#3753](https://github.com/openlinker-project/openlinker/issues/3753)) ([42d3b73](https://github.com/openlinker-project/openlinker/commit/42d3b73d9fe9df5c0eef6305c4d80327b70947cf))
+* **web:** drop the duplicate "both" option from the sales-documents kind filter ([#3762](https://github.com/openlinker-project/openlinker/issues/3762)) ([0151c5a](https://github.com/openlinker-project/openlinker/commit/0151c5a7d03adb9287d860b6cdcf0d3b11f0ef9d)), closes [#3761](https://github.com/openlinker-project/openlinker/issues/3761)
+* **web:** let FormField compose with fragments, arrays and multi-control rows ([#2435](https://github.com/openlinker-project/openlinker/issues/2435)) ([#3748](https://github.com/openlinker-project/openlinker/issues/3748)) ([bae2bbb](https://github.com/openlinker-project/openlinker/commit/bae2bbb7a54b2984e9117c90c544f7b6480e0ade))
+* **web:** let the eparagony.pl setup choose its documents and ask for the seller an invoice needs ([#3771](https://github.com/openlinker-project/openlinker/issues/3771)) ([d5e923a](https://github.com/openlinker-project/openlinker/commit/d5e923a2a0dbb4998ff85b8c8b19d35af4d63459))
+* **web:** paint the error border for a standalone Input invalid ([#2415](https://github.com/openlinker-project/openlinker/issues/2415)) ([#3747](https://github.com/openlinker-project/openlinker/issues/3747)) ([e6b2589](https://github.com/openlinker-project/openlinker/commit/e6b25894b6ba298c49e875750cc41a1a41481edd))
+* **web:** report every failed Edit connection save with a toast ([#3767](https://github.com/openlinker-project/openlinker/issues/3767)) ([e00b843](https://github.com/openlinker-project/openlinker/commit/e00b843ac6c55e0bb3c1f4b15153c2861a7992ee))
+* **web:** stop InvoiceConnectionLock breaking one word per line in a narrow container ([#3484](https://github.com/openlinker-project/openlinker/issues/3484)) ([#3751](https://github.com/openlinker-project/openlinker/issues/3751)) ([d6b910f](https://github.com/openlinker-project/openlinker/commit/d6b910fb23c75f195332be8c058a61d9eeb5905e))
+
+## [0.15.0](https://github.com/openlinker-project/openlinker/compare/v0.14.0...v0.15.0) (2026-10-12)
+
+
+### Features
+
+* **bench:** read-only pack bench preview for the viewer role ([#3734](https://github.com/openlinker-project/openlinker/issues/3734)) ([#3735](https://github.com/openlinker-project/openlinker/issues/3735)) ([5750380](https://github.com/openlinker-project/openlinker/commit/5750380ba0ffac54d51b71cf68a5811f935ca9fd))
+* **fulfillment:** read-only board and task detail for the viewer role ([#3736](https://github.com/openlinker-project/openlinker/issues/3736)) ([#3738](https://github.com/openlinker-project/openlinker/issues/3738)) ([2802aaf](https://github.com/openlinker-project/openlinker/commit/2802aafdb5981bc56dfbbff24d912034f2a73fa3))
+* **shoper:** CategoryProvisioner - ensure a category path exists before publishing ([#3713](https://github.com/openlinker-project/openlinker/issues/3713)) ([#3719](https://github.com/openlinker-project/openlinker/issues/3719)) ([67766db](https://github.com/openlinker-project/openlinker/commit/67766db7ddbd83a6d3bfa7518fbaa70ac307ffee))
+* **shoper:** connection skeleton - adapter registration, connection test, shape validators ([#3674](https://github.com/openlinker-project/openlinker/issues/3674)) ([7860ffb](https://github.com/openlinker-project/openlinker/commit/7860ffbcd5b2262f3843cdca9d26715b95182575))
+* **shoper:** fulfillment writeback - record a dispatch as a Shoper parcel ([#3643](https://github.com/openlinker-project/openlinker/issues/3643)) ([#3704](https://github.com/openlinker-project/openlinker/issues/3704)) ([a077f00](https://github.com/openlinker-project/openlinker/commit/a077f00f0078b18e09dd3c5bc4688f81920532df))
+* **shoper:** InventoryMaster - stock read and adjust ([#3641](https://github.com/openlinker-project/openlinker/issues/3641)) ([#3691](https://github.com/openlinker-project/openlinker/issues/3691)) ([128ddba](https://github.com/openlinker-project/openlinker/commit/128ddbadc6e0a6a4373c5f34f01c4a606bcf1231))
+* **shoper:** map variant options to ProductVariant.attributes ([#3706](https://github.com/openlinker-project/openlinker/issues/3706)) ([#3707](https://github.com/openlinker-project/openlinker/issues/3707)) ([46ad87b](https://github.com/openlinker-project/openlinker/commit/46ad87b648c3f76a6af45d0805a4a06aee4f8b01))
+* **shoper:** OrderProcessorManager - push orders, real price, idempotency ([#3642](https://github.com/openlinker-project/openlinker/issues/3642)) ([#3701](https://github.com/openlinker-project/openlinker/issues/3701)) ([21284b2](https://github.com/openlinker-project/openlinker/commit/21284b24bc01c2d189c4acfc4db9c252acee1393))
+* **shoper:** OrderSource - carry the order's pickup point ([#3720](https://github.com/openlinker-project/openlinker/issues/3720)) ([#3721](https://github.com/openlinker-project/openlinker/issues/3721)) ([bf88e36](https://github.com/openlinker-project/openlinker/commit/bf88e366565d217b76e5421e12561b41f9abf146))
+* **shoper:** OrderSource - ingest orders placed in the shop ([#3711](https://github.com/openlinker-project/openlinker/issues/3711)) ([#3714](https://github.com/openlinker-project/openlinker/issues/3714)) ([a5ee8c0](https://github.com/openlinker-project/openlinker/commit/a5ee8c08ab52411953e9415ade34290b4e7ce898))
+* **shoper:** ProductMaster - catalogue read, categories, tax rate, deletion detection ([#3640](https://github.com/openlinker-project/openlinker/issues/3640)) ([#3684](https://github.com/openlinker-project/openlinker/issues/3684)) ([664e8b4](https://github.com/openlinker-project/openlinker/commit/664e8b483e545f37fbe8c8982f0d762e2b4d40ec))
+* **shoper:** ProductPublisher - publish a product to the shop ([#3712](https://github.com/openlinker-project/openlinker/issues/3712)) ([#3718](https://github.com/openlinker-project/openlinker/issues/3718)) ([b4c0d94](https://github.com/openlinker-project/openlinker/commit/b4c0d9420374ed44212df1dcd1e4eb4aedf6275c))
+* **shoper:** webhooks - decoder, translator, provisioner, UI ([#3644](https://github.com/openlinker-project/openlinker/issues/3644)) ([#3716](https://github.com/openlinker-project/openlinker/issues/3716)) ([b23c187](https://github.com/openlinker-project/openlinker/commit/b23c187bb5cba692e2378f00572a417b3a58a84d))
+* **web:** Shoper guided connection setup ([#3702](https://github.com/openlinker-project/openlinker/issues/3702)) ([#3703](https://github.com/openlinker-project/openlinker/issues/3703)) ([bcbb9fd](https://github.com/openlinker-project/openlinker/commit/bcbb9fdd78f1004317898b929c66b4603d4ef6ff))
+
+
+### Bug Fixes
+
+* **allegro:** send GPSR fields on card-linked offers ([#3715](https://github.com/openlinker-project/openlinker/issues/3715)) ([ce6f2aa](https://github.com/openlinker-project/openlinker/commit/ce6f2aaee820a8a9c4eca79851cbd997b0056622))
+* **bench:** stop reporting KSeF invoices as printable and offer the KOD I link ([#3648](https://github.com/openlinker-project/openlinker/issues/3648)) ([#3722](https://github.com/openlinker-project/openlinker/issues/3722)) ([7000b24](https://github.com/openlinker-project/openlinker/commit/7000b24d8c999387c35358a02499a7a8bd9c4e04))
+* **orders:** carry OrderItem.name through the destination allowlist ([#3710](https://github.com/openlinker-project/openlinker/issues/3710)) ([#3717](https://github.com/openlinker-project/openlinker/issues/3717)) ([61afd7c](https://github.com/openlinker-project/openlinker/commit/61afd7cc2510678577ebe5baca020b4d934a51fa))
+* **pricing:** catalogue prices are gross - what the buyer pays ([#3740](https://github.com/openlinker-project/openlinker/issues/3740)) ([7b61d52](https://github.com/openlinker-project/openlinker/commit/7b61d525a51c1b535c7150667367e3a88cfd7e05))
+* **web:** bench offers the authority's invoice link instead of Print when nothing can render ([#3649](https://github.com/openlinker-project/openlinker/issues/3649)) ([#3723](https://github.com/openlinker-project/openlinker/issues/3723)) ([af894af](https://github.com/openlinker-project/openlinker/commit/af894af77355f36fa95096a42c8a603730e329b2))
+* **web:** keep Publish products modal actions reachable with many destinations ([#3726](https://github.com/openlinker-project/openlinker/issues/3726)) ([8a84511](https://github.com/openlinker-project/openlinker/commit/8a845118d7a012715cbaec90aa0c8b7f47a2922f))
+* **web:** Pricing & sync page no longer crashes when a connection has no pricing rule ([#3727](https://github.com/openlinker-project/openlinker/issues/3727)) ([#3728](https://github.com/openlinker-project/openlinker/issues/3728)) ([b249877](https://github.com/openlinker-project/openlinker/commit/b2498776b33e648736cbf7e3a54cf8027d951f18))
+* **web:** Pricing & sync reads the real per-source override flags ([#3729](https://github.com/openlinker-project/openlinker/issues/3729)) ([#3730](https://github.com/openlinker-project/openlinker/issues/3730)) ([b859a42](https://github.com/openlinker-project/openlinker/commit/b859a4253b6f3f9ebfaf67d08bb7b1846814d9db))
+* **web:** send a packer owing a password change from /bench to /change-password ([#3732](https://github.com/openlinker-project/openlinker/issues/3732)) ([#3733](https://github.com/openlinker-project/openlinker/issues/3733)) ([b605c6c](https://github.com/openlinker-project/openlinker/commit/b605c6c36cc48826cc55b6936382386b43bf4ecb))
+
+## [0.14.0](https://github.com/openlinker-project/openlinker/compare/v0.13.0...v0.14.0) (2026-10-06)
+
+
+### Features
+
+* **bench:** 'Change size' on the pack bench label card ([#3664](https://github.com/openlinker-project/openlinker/issues/3664)) ([d858c0f](https://github.com/openlinker-project/openlinker/commit/d858c0f8b6a926364abe1f19edf5c1dcff2e55c9))
+* **bench:** packers can change the parcel size and replace the label ([#3663](https://github.com/openlinker-project/openlinker/issues/3663)) ([343b1e5](https://github.com/openlinker-project/openlinker/commit/343b1e58c4729625fb7a6d5f5bf0c3e70ead6c19))
+* **bench:** the pack bench uses the application topbar ([#3658](https://github.com/openlinker-project/openlinker/issues/3658)) ([9a4ae69](https://github.com/openlinker-project/openlinker/commit/9a4ae694f63c62112ef6c3ba7aaea1f17b2635ca))
+* **connections:** archive and restore a disabled connection ([#3665](https://github.com/openlinker-project/openlinker/issues/3665)) ([4639b29](https://github.com/openlinker-project/openlinker/commit/4639b291271fdf3358982cd76a584449d152fe9d))
+* **connections:** flag a destination that packs and ships orders itself ([#2118](https://github.com/openlinker-project/openlinker/issues/2118)) ([#3672](https://github.com/openlinker-project/openlinker/issues/3672)) ([1a8ccce](https://github.com/openlinker-project/openlinker/commit/1a8ccce2dc0fa62067150a17ab05f92006050a48))
+* **fulfillment:** closing a parcel tells the sales channel it shipped, with the tracking number ([#3627](https://github.com/openlinker-project/openlinker/issues/3627)) ([7c0be13](https://github.com/openlinker-project/openlinker/commit/7c0be1310d3766216372feee0e620ee335f8117a))
+* **fulfillment:** fulfilment work detail page ([#3096](https://github.com/openlinker-project/openlinker/issues/3096)) ([#3632](https://github.com/openlinker-project/openlinker/issues/3632)) ([e710b59](https://github.com/openlinker-project/openlinker/commit/e710b59ef477c3c18017b7d3e87784adcc4d60ff))
+* **orders:** order search, internal notes, tags, column presets and CSV/XLSX export ([#3633](https://github.com/openlinker-project/openlinker/issues/3633)) ([edce7dd](https://github.com/openlinker-project/openlinker/commit/edce7dd16ae9b38bad2af150b187f747e4749960))
+* **platform:** migrations run on an empty database, sync job retention, dead-lettered stream entries and nightly backups ([#3631](https://github.com/openlinker-project/openlinker/issues/3631)) ([17aeb21](https://github.com/openlinker-project/openlinker/commit/17aeb21f461723a04290b84774f931991c373cd3))
+* **products:** fill empty variant weight and dimensions from the shop on master sync ([#3660](https://github.com/openlinker-project/openlinker/issues/3660)) ([3b97389](https://github.com/openlinker-project/openlinker/commit/3b97389fb7faffaca2aa775c596231106bbf80a5))
+* **shipping:** parcel profile per delivery method for automatic labels ([#3661](https://github.com/openlinker-project/openlinker/issues/3661)) ([9b062d0](https://github.com/openlinker-project/openlinker/commit/9b062d0c9b57b4ecc9bd491c893aedc0ef38b974))
+* **users:** admin creates an account with a one-time password ([#3456](https://github.com/openlinker-project/openlinker/issues/3456)) ([#3504](https://github.com/openlinker-project/openlinker/issues/3504)) ([10af9a3](https://github.com/openlinker-project/openlinker/commit/10af9a3ceec969bc90ec195e6d4a0c41caf00cfa))
+* **web,api:** OMS onboarding wizard - turn OpenLinker packing on from the UI ([#3457](https://github.com/openlinker-project/openlinker/issues/3457)) ([#3628](https://github.com/openlinker-project/openlinker/issues/3628)) ([3e4fd70](https://github.com/openlinker-project/openlinker/commit/3e4fd70d8f4ff11d8a48af749e13ec50903e6d61))
+* **web:** make the connection channel pill one clickable chip ([#3673](https://github.com/openlinker-project/openlinker/issues/3673)) ([2dbe581](https://github.com/openlinker-project/openlinker/commit/2dbe581c7359a430e8565dd0cbd3781fe9104fe1))
+* **web:** OMS setup wizard as seven steps, continuation of [#3457](https://github.com/openlinker-project/openlinker/issues/3457) ([#3668](https://github.com/openlinker-project/openlinker/issues/3668)) ([3c92c0d](https://github.com/openlinker-project/openlinker/commit/3c92c0d3d4b45663dc0d7fe41cebc3ef9533aa7b))
+* **web:** rename Document routing to Sales documents routing and link to it from /sales-documents ([#3659](https://github.com/openlinker-project/openlinker/issues/3659)) ([28facad](https://github.com/openlinker-project/openlinker/commit/28facad64a783b63ed0ce1d2ace8ae7ebc8445b0))
+* **web:** set a default parcel per delivery method and prefill label forms from it ([#3662](https://github.com/openlinker-project/openlinker/issues/3662)) ([762aa24](https://github.com/openlinker-project/openlinker/commit/762aa2468f25595c8b6bf2fc020528dbe7fb823f))
+
+
+### Bug Fixes
+
+* **bench:** name the order's sales document in every status, receipts included ([#3666](https://github.com/openlinker-project/openlinker/issues/3666)) ([dd390f8](https://github.com/openlinker-project/openlinker/commit/dd390f86750b48afc42e56d8c657375e3e915e27))
+* **bench:** show the order's receipt or invoice in every status on the pack bench ([#3667](https://github.com/openlinker-project/openlinker/issues/3667)) ([2f4f549](https://github.com/openlinker-project/openlinker/commit/2f4f549394d7a18e9535f738664c344369a46dc6))
+* **eparagony:** declare EparagonyInvoicingAdapter a DocumentNumberConsumer ([#3501](https://github.com/openlinker-project/openlinker/issues/3501)) ([146e60c](https://github.com/openlinker-project/openlinker/commit/146e60c8329f99f08752f60fe9c75d1206dc8a9f))
+* **integrations:** no duplicate labels, offers or orders when a write is retried; correct WooCommerce and PrestaShop order creation ([#3630](https://github.com/openlinker-project/openlinker/issues/3630)) ([64f91a8](https://github.com/openlinker-project/openlinker/commit/64f91a89c04b5e0242bee36c50156a04686bbbb8))
+* **inventory:** count a routed order's reserved units exactly once ([#3480](https://github.com/openlinker-project/openlinker/issues/3480)) ([#3491](https://github.com/openlinker-project/openlinker/issues/3491)) ([c5bce15](https://github.com/openlinker-project/openlinker/commit/c5bce15d6c6568382d7b2fb362c7396074690301))
+* **inventory:** give stock back to the product master on routed-order cancellation ([#3479](https://github.com/openlinker-project/openlinker/issues/3479)) ([#3493](https://github.com/openlinker-project/openlinker/issues/3493)) ([15c57b8](https://github.com/openlinker-project/openlinker/commit/15c57b82b1a7a1791ee530ccf6ee92eb42c9b276))
+* **inventory:** lower product-master stock once per routed order line ([#3453](https://github.com/openlinker-project/openlinker/issues/3453)) ([#3489](https://github.com/openlinker-project/openlinker/issues/3489)) ([a678d56](https://github.com/openlinker-project/openlinker/commit/a678d5608697e7218724a52252e61eeadac422b8))
+* **listings:** readiness/submit-gate drift + operator override for checksum-invalid EAN ([#3495](https://github.com/openlinker-project/openlinker/issues/3495)) ([a652d8a](https://github.com/openlinker-project/openlinker/commit/a652d8adfe6cdc76505a6339df14618445e4846f))
+* **oms:** route on live stock only, never on stale inventory rows ([#3481](https://github.com/openlinker-project/openlinker/issues/3481)) ([#3499](https://github.com/openlinker-project/openlinker/issues/3499)) ([cc6607c](https://github.com/openlinker-project/openlinker/commit/cc6607ca7e5ded7aee780cca5235e4963721c028))
+* **orders:** do not route an order the product master already had ([#3455](https://github.com/openlinker-project/openlinker/issues/3455)) ([#3497](https://github.com/openlinker-project/openlinker/issues/3497)) ([c73bc9d](https://github.com/openlinker-project/openlinker/commit/c73bc9d232e04b535b2dfbdda9e575af914a29e6))
+* **orders:** do not route orders another system has been told to ship ([#3488](https://github.com/openlinker-project/openlinker/issues/3488)) ([#3496](https://github.com/openlinker-project/openlinker/issues/3496)) ([f61ce22](https://github.com/openlinker-project/openlinker/commit/f61ce2260afa9da2def71f2fe1907e1379e9befb))
+* **orders:** do not route orders placed in the operator's own shop ([#3487](https://github.com/openlinker-project/openlinker/issues/3487)) ([#3490](https://github.com/openlinker-project/openlinker/issues/3490)) ([ec53478](https://github.com/openlinker-project/openlinker/commit/ec53478e8995ce50a45884ab3377929e707632b5))
+* **orders:** hold an order the OMS router cannot place instead of mirroring it ([#3485](https://github.com/openlinker-project/openlinker/issues/3485)) ([#3503](https://github.com/openlinker-project/openlinker/issues/3503)) ([0018bfa](https://github.com/openlinker-project/openlinker/commit/0018bfad6738bac7c9ebe2a8a6c627d3f98762f6))
+* **returns:** restock a returned line in the master that owns it ([#3486](https://github.com/openlinker-project/openlinker/issues/3486)) ([#3498](https://github.com/openlinker-project/openlinker/issues/3498)) ([01db5c6](https://github.com/openlinker-project/openlinker/commit/01db5c6d7ba8e70cb4b44a9d04ca5d68cb5d72ad))
+
+## [0.13.0](https://github.com/openlinker-project/openlinker/compare/v0.12.0...v0.13.0) (2026-09-29)
+
+
+### Features
+
+* **bench,fulfillment:** mockup-parity Interface layer — widened projections, activity log, self-claim, packed-today, masked buyer name ([#3401](https://github.com/openlinker-project/openlinker/issues/3401)) ([#3438](https://github.com/openlinker-project/openlinker/issues/3438)) ([3acef84](https://github.com/openlinker-project/openlinker/commit/3acef8476e1442f468c8c3fb35db8633daed6394))
+* **bench:** add the C keyboard shortcut (scope narrowed after auditing the real feature) ([#3363](https://github.com/openlinker-project/openlinker/issues/3363)) ([91a746c](https://github.com/openlinker-project/openlinker/commit/91a746cb72afce737dee013b9650e3329abeed47))
+* **bench:** render the assigned/unassigned/assignment-only rail distinction ([#3374](https://github.com/openlinker-project/openlinker/issues/3374)) ([b18f4c3](https://github.com/openlinker-project/openlinker/commit/b18f4c3761ccd4d674c94ee5df312c3e6ca7548f))
+* **connections:** add stock-location override field to connection form ([#3326](https://github.com/openlinker-project/openlinker/issues/3326)) ([b18033d](https://github.com/openlinker-project/openlinker/commit/b18033dc87da298dda59cac6b874c9c7cddcec68))
+* **core:** mockup-parity CORE schema — bin location, weight/dims, undo-scan, presence ([#3401](https://github.com/openlinker-project/openlinker/issues/3401)) ([#3435](https://github.com/openlinker-project/openlinker/issues/3435)) ([99f5c20](https://github.com/openlinker-project/openlinker/commit/99f5c203d0e999b183a17af965bc11b89a595aab))
+* **eparagony:** issue corrective invoices ([#3332](https://github.com/openlinker-project/openlinker/issues/3332)) ([b418ffa](https://github.com/openlinker-project/openlinker/commit/b418ffaa70de5d08e5d5b86d2a7d152d6471ec59))
+* **fulfillment:** add FulfillmentWork assignment columns + repository writers (ADR-074) ([#3360](https://github.com/openlinker-project/openlinker/issues/3360)) ([f196564](https://github.com/openlinker-project/openlinker/commit/f19656429b6f2ed6c1d0eb8f07d2009b1f8bf6fc))
+* **fulfillment:** Assign Packing Work operator screen ([#3368](https://github.com/openlinker-project/openlinker/issues/3368)) ([a1bd4a7](https://github.com/openlinker-project/openlinker/commit/a1bd4a797e587613daa7a2a3d4fd3d3efed39543))
+* **fulfillment:** assignment endpoint, worklist projection, server-side claim guard ([#3361](https://github.com/openlinker-project/openlinker/issues/3361)) ([78009bb](https://github.com/openlinker-project/openlinker/commit/78009bb9e03f5fc16207b0767a41661a51437b90))
+* **fulfillment:** pack-bench mockup parity + one merged /fulfillment screen ([#3401](https://github.com/openlinker-project/openlinker/issues/3401)) ([#3439](https://github.com/openlinker-project/openlinker/issues/3439)) ([fbae25c](https://github.com/openlinker-project/openlinker/commit/fbae25c1bb1770ae175d5611a4b33df30444cc31))
+* **listings:** replace CHIP_COUNTS_LIMIT with a real counts-by-connection endpoint ([#3387](https://github.com/openlinker-project/openlinker/issues/3387)) ([5510f6a](https://github.com/openlinker-project/openlinker/commit/5510f6ae407625bacceba49e04f29e91d60a1a23)), closes [#3325](https://github.com/openlinker-project/openlinker/issues/3325)
+* **listings:** resolve a destination's real currency for price-change detection ([#3328](https://github.com/openlinker-project/openlinker/issues/3328)) ([b1ab2eb](https://github.com/openlinker-project/openlinker/commit/b1ab2eb17c7a066d3831219cc8997737ee72e77b))
+* **returns:** correction-proposal entry point + orphan placeholder ([#3379](https://github.com/openlinker-project/openlinker/issues/3379)) ([015837a](https://github.com/openlinker-project/openlinker/commit/015837abed860d09aacd0a93aab97052897eb637))
+* **returns:** correction-proposal headline + breakdown panel ([#3376](https://github.com/openlinker-project/openlinker/issues/3376)) ([131f0a6](https://github.com/openlinker-project/openlinker/commit/131f0a66829aa7c02f3c485a5be73ec46e6577ad))
+* **returns:** correction-proposal record API client ([#3088](https://github.com/openlinker-project/openlinker/issues/3088)) ([#3301](https://github.com/openlinker-project/openlinker/issues/3301)) ([b869c39](https://github.com/openlinker-project/openlinker/commit/b869c399af082fee6ae9a2f2c141b980b2a63797))
+* **returns:** correction-proposal record mutation hook ([#3375](https://github.com/openlinker-project/openlinker/issues/3375)) ([653f930](https://github.com/openlinker-project/openlinker/commit/653f93088aa78e86a41b79db6ac1a86ba58ebf9c))
+* **returns:** distinct badges + a real remedy link for the 4 non-proposing correction-proposal outcomes ([#3093](https://github.com/openlinker-project/openlinker/issues/3093)) ([#3378](https://github.com/openlinker-project/openlinker/issues/3378)) ([45f7b18](https://github.com/openlinker-project/openlinker/commit/45f7b1811591b174b17204b6496345f878b51be7))
+* **returns:** narrow the correction matcher onto ReturnLine.resolvedOrderLineId ([#3313](https://github.com/openlinker-project/openlinker/issues/3313)) ([6dc871f](https://github.com/openlinker-project/openlinker/commit/6dc871fa9e1cb1035889dbe87f673d4605fed829))
+* **returns:** record-for-review action + recorded state ([#3092](https://github.com/openlinker-project/openlinker/issues/3092)) ([#3377](https://github.com/openlinker-project/openlinker/issues/3377)) ([85ce338](https://github.com/openlinker-project/openlinker/commit/85ce3381f3c68db4cf31672e53cc2de9b6eca878))
+* **sales-documents:** invoice clearance filters, rule dry-run, and dual-role connections ([#3320](https://github.com/openlinker-project/openlinker/issues/3320)) ([a6069dd](https://github.com/openlinker-project/openlinker/commit/a6069dd0e11f50c9c473333ec6b05ceedc56f379))
+* **subiekt:** crash-recovery locator, payment status read, bridgeBaseUrl uniqueness guard ([#3398](https://github.com/openlinker-project/openlinker/issues/3398)) ([9315b8d](https://github.com/openlinker-project/openlinker/commit/9315b8db5f6ed44f686c162e653eec473d7108ac))
+* **subiekt:** Subiekt GT as product master, inventory master, order source, order destination and invoicing provider ([#3365](https://github.com/openlinker-project/openlinker/issues/3365)) ([31854b9](https://github.com/openlinker-project/openlinker/commit/31854b990eb78970aa86079c78fb155a1787cef4))
+* **web:** give DataTable per-row identity, migrate the price-changes queue onto it ([#3327](https://github.com/openlinker-project/openlinker/issues/3327)) ([bd5a2c4](https://github.com/openlinker-project/openlinker/commit/bd5a2c4e02152d6f75a55316dabdc142f7ab369d))
+* **web:** hide OMS routing UI behind VITE_OL_OMS_ROUTING_UI_ENABLED ([#3634](https://github.com/openlinker-project/openlinker/issues/3634)) ([#3635](https://github.com/openlinker-project/openlinker/issues/3635)) ([f7c09eb](https://github.com/openlinker-project/openlinker/commit/f7c09eb232a847d6b96910bfde9589a841808bdb))
+* **web:** pack bench reachable from the app chrome for the packer role ([#3244](https://github.com/openlinker-project/openlinker/issues/3244)) ([f13b534](https://github.com/openlinker-project/openlinker/commit/f13b534056d384bde8f1715906db03632d4628b7))
+
+
+### Bug Fixes
+
+* **eparagony:** memoize HTTP client per connection to cut redundant /auth/token calls ([#3383](https://github.com/openlinker-project/openlinker/issues/3383)) ([5d470b9](https://github.com/openlinker-project/openlinker/commit/5d470b97eb304f748b9153d797d1915e9814c408)), closes [#3382](https://github.com/openlinker-project/openlinker/issues/3382)
+* **price-changes:** scope toast-copy assertions to avoid Radix announcer duplicate ([#3315](https://github.com/openlinker-project/openlinker/issues/3315)) ([bc7bd61](https://github.com/openlinker-project/openlinker/commit/bc7bd618ec5a7ea86643640c1583abb6dece4f3b))
+* **returns:** refuse a second restock dispose while one is already blocked ([#3477](https://github.com/openlinker-project/openlinker/issues/3477)) ([c3dccc1](https://github.com/openlinker-project/openlinker/commit/c3dccc180bb84f57f9bb46b963fc032158d66382))
+* **returns:** resolve restock target via resolvedOrderLineId, fall back to sku ([#3451](https://github.com/openlinker-project/openlinker/issues/3451)) ([113d192](https://github.com/openlinker-project/openlinker/commit/113d19262bb33b4a9162495731d1a1cf3715146a))
+* **sales-documents:** warn at pick time instead of converging the destination predicate ([#3324](https://github.com/openlinker-project/openlinker/issues/3324)) ([803dd53](https://github.com/openlinker-project/openlinker/commit/803dd53bb45dac330be9ac982e7a3bbda71dbc42))
+* **web:** eparagony.pl unrecognised-select can now be fixed by re-selecting its own recommended option ([#3318](https://github.com/openlinker-project/openlinker/issues/3318)) ([81333c9](https://github.com/openlinker-project/openlinker/commit/81333c9adac197fd129be2cffb28db8d0231d586))
+* **woocommerce:** resolve store currency for ProductMaster reads ([#3317](https://github.com/openlinker-project/openlinker/issues/3317)) ([3868e0f](https://github.com/openlinker-project/openlinker/commit/3868e0fc39c2e37c78ec36358b68b7830dec8e67))
+
+## [0.12.0](https://github.com/openlinker-project/openlinker/compare/v0.11.0...v0.12.0) (2026-09-21)
+
+
+### Features
+
+* **eparagony:** eparagony issues invoices through the Invoicing capability ([#3304](https://github.com/openlinker-project/openlinker/issues/3304)) ([0281245](https://github.com/openlinker-project/openlinker/commit/028124508803bd1224b3a12550933f5050c0342c))
+* **inventory:** close mockup-parity gaps on the duplicate-positions page ([#3264](https://github.com/openlinker-project/openlinker/issues/3264)) ([a0d1997](https://github.com/openlinker-project/openlinker/commit/a0d199702929bc682ab9a16f167eff60a395273a))
+* **inventory:** duplicate-positions API client + query hook ([#3251](https://github.com/openlinker-project/openlinker/issues/3251)) ([df940b6](https://github.com/openlinker-project/openlinker/commit/df940b6414e4cfdbab38b083e8fd03cbbe31ec8b))
+* **inventory:** duplicate-positions page with readiness KPI strip ([#3252](https://github.com/openlinker-project/openlinker/issues/3252)) ([4ffb39d](https://github.com/openlinker-project/openlinker/commit/4ffb39d7df1408f71037b13935684e627d02e0e8))
+* **inventory:** enrich duplicate-positions response with product/variant/connection/location display names ([#3249](https://github.com/openlinker-project/openlinker/issues/3249)) ([9f0e02f](https://github.com/openlinker-project/openlinker/commit/9f0e02f04c9f7f0ac6a6adb3107de13ce5abc80b))
+* **inventory:** expandable grouped table (per-row inventory_items detail) ([#3255](https://github.com/openlinker-project/openlinker/issues/3255)) ([c36ee2b](https://github.com/openlinker-project/openlinker/commit/c36ee2ba253b559b16286df72db51a79b5701cc7))
+* **inventory:** expose [#2317](https://github.com/openlinker-project/openlinker/issues/2317) provenance-backfill completion state for the duplicate-positions readiness gate ([#3250](https://github.com/openlinker-project/openlinker/issues/3250)) ([fc9ddd4](https://github.com/openlinker-project/openlinker/commit/fc9ddd42d83ca17ea8c6d79e0bf2e3f7b9d361d1))
+* **inventory:** nav entry under Diagnostics ([#3261](https://github.com/openlinker-project/openlinker/issues/3261)) ([9b7f2a5](https://github.com/openlinker-project/openlinker/commit/9b7f2a5606a8d63f222cf27e93a7bbcba5e9984a))
+* **inventory:** truncated-report banner state ([#3256](https://github.com/openlinker-project/openlinker/issues/3256)) ([ddeb4ef](https://github.com/openlinker-project/openlinker/commit/ddeb4efb4724840ecc7ca4c7d722312ce42712aa))
+* **orders,api:** merge invoices and fiscal receipts into GET /sales-documents ([#3308](https://github.com/openlinker-project/openlinker/issues/3308)) ([a7500ba](https://github.com/openlinker-project/openlinker/commit/a7500ba63d5b85104f8585a1d3bed8f095e34528))
+* **returns:** approve dialog for operator-authored returns ([#3283](https://github.com/openlinker-project/openlinker/issues/3283)) ([86e3657](https://github.com/openlinker-project/openlinker/commit/86e3657d3e6b7ccaa4f0f7be895168f816417b36))
+* **returns:** entry point from the returns list/detail ([#3285](https://github.com/openlinker-project/openlinker/issues/3285)) ([9c90a33](https://github.com/openlinker-project/openlinker/commit/9c90a33b71c3c0771304e30b7905cf42cbf8e84d))
+* **returns:** match-to-order dialog + unknown-order/already-attributed handling ([#3281](https://github.com/openlinker-project/openlinker/issues/3281)) ([476c705](https://github.com/openlinker-project/openlinker/commit/476c7057eca7b8db6dbb2dbd3265a0f3ae461b53))
+* **returns:** mutation hooks + cache invalidation ([#3080](https://github.com/openlinker-project/openlinker/issues/3080)) ([#3279](https://github.com/openlinker-project/openlinker/issues/3279)) ([26635f2](https://github.com/openlinker-project/openlinker/commit/26635f29389ca5ffe546f6e5c8b9f7f7abb72d30))
+* **returns:** orphan-returns worklist (needs-order / needs-approval groups) ([#3280](https://github.com/openlinker-project/openlinker/issues/3280)) ([a89a59f](https://github.com/openlinker-project/openlinker/commit/a89a59fbfe41bf9dbcb78f8f98c229a08722b189))
+* **returns:** record-a-return-by-hand dialog ([#3284](https://github.com/openlinker-project/openlinker/issues/3284)) ([978a621](https://github.com/openlinker-project/openlinker/commit/978a621675cbbb9e8271f6031ce100552cca815a))
+* **returns:** write API client (record, authorize, match-order) ([#3278](https://github.com/openlinker-project/openlinker/issues/3278)) ([366d302](https://github.com/openlinker-project/openlinker/commit/366d302a28e44629dc2827d8a245840a76207759))
+* **sales-documents:** merge invoices and fiscal receipts into one operator list ([#3309](https://github.com/openlinker-project/openlinker/issues/3309)) ([f226976](https://github.com/openlinker-project/openlinker/commit/f226976903ab7a2a0bc516f58526359d21c54c3b))
+* **sales-documents:** refuse a colliding rule in the composer, before the save ([#3253](https://github.com/openlinker-project/openlinker/issues/3253)) ([3da1c3a](https://github.com/openlinker-project/openlinker/commit/3da1c3afe99cb537273c6db14753f962b51276e1))
+* **web:** give the eparagony.pl connection config real form fields ([#3268](https://github.com/openlinker-project/openlinker/issues/3268)) ([f81d746](https://github.com/openlinker-project/openlinker/commit/f81d7464f383639e522606052b73b8765ce8c2db))
+* **web:** show release version instead of static "DEV" text in top-left badge ([#3288](https://github.com/openlinker-project/openlinker/issues/3288)) ([e1ae0ae](https://github.com/openlinker-project/openlinker/commit/e1ae0aecece5b6e0105b91be52b8cb0706c7bcc8))
+
+
+### Bug Fixes
+
+* **invariants:** floor the scanned-file/root/phrase count on six check-* guards so a path or wording change fails loudly ([#3303](https://github.com/openlinker-project/openlinker/issues/3303)) ([1e4e628](https://github.com/openlinker-project/openlinker/commit/1e4e628de86d2e230b2e1d3e631f8c04db0f5134))
+* **invariants:** stop the mirror-guard array parser truncating on a bracket inside a comment ([#3305](https://github.com/openlinker-project/openlinker/issues/3305)) ([4486f3e](https://github.com/openlinker-project/openlinker/commit/4486f3e3e34295d35f60376709905a2de10d7217)), closes [#3002](https://github.com/openlinker-project/openlinker/issues/3002)
+
+
+### Performance Improvements
+
+* **ci:** three fixes for the Integration Tests job - per-worker databases, duplicate type-checking, and an oversized worker count (about 3x faster) ([#3276](https://github.com/openlinker-project/openlinker/issues/3276)) ([c3db337](https://github.com/openlinker-project/openlinker/commit/c3db3378a0b0e8292a689ac22366575dbeeef9b0))
+* **ci:** three fixes for the Test job (unit tests) - cache, queueing, and a starved frontend (about 4x faster) ([#3275](https://github.com/openlinker-project/openlinker/issues/3275)) ([b89bf7c](https://github.com/openlinker-project/openlinker/commit/b89bf7c06d6a4cbb37ba18b5a58552c3cd0f4550))
+
+## [0.11.0](https://github.com/openlinker-project/openlinker/compare/v0.10.0...v0.11.0) (2026-09-15)
+
+
+### Features
+
+* **api:** connection pricing & sync settings endpoints ([#3163](https://github.com/openlinker-project/openlinker/issues/3163)) ([b700499](https://github.com/openlinker-project/openlinker/commit/b7004996ff569dd15cff5b45596de8979b1ca3c1))
+* **api:** price-changes queue endpoints (list, accept, ignore, edit) ([#3162](https://github.com/openlinker-project/openlinker/issues/3162)) ([6d0d7f3](https://github.com/openlinker-project/openlinker/commit/6d0d7f313b7f5f3fe8510b97961b341024d773d4))
+* **dx:** enforce unique ADR numbers via check:invariants ([#3036](https://github.com/openlinker-project/openlinker/issues/3036)) ([93432c8](https://github.com/openlinker-project/openlinker/commit/93432c80641cc0d9bc131016e17c9e8c7e6844b2))
+* **fiscalization:** send the buyer tax number on a fiscal receipt ([#3220](https://github.com/openlinker-project/openlinker/issues/3220)) ([05acf27](https://github.com/openlinker-project/openlinker/commit/05acf279b253173e750f50b7971c24f284990ede))
+* **fulfillment:** reap dispatches whose holder never answered ([#2712](https://github.com/openlinker-project/openlinker/issues/2712)) ([#3012](https://github.com/openlinker-project/openlinker/issues/3012)) ([6e0f8f0](https://github.com/openlinker-project/openlinker/commit/6e0f8f0c693e657204f80cc5174d35a9924b3aa9))
+* **fulfillment:** reconcile a shipped work whose dispatch relay never landed ([#2728](https://github.com/openlinker-project/openlinker/issues/2728)) ([#3018](https://github.com/openlinker-project/openlinker/issues/3018)) ([42cc86d](https://github.com/openlinker-project/openlinker/commit/42cc86dded9e75d0edec4a1340cba11356c805c8))
+* **infakt:** add per-connection defaultSaleType for non-PL invoice issuance, with a diagnosis hint for the missing-config case ([#2995](https://github.com/openlinker-project/openlinker/issues/2995)) ([a5a6ef4](https://github.com/openlinker-project/openlinker/commit/a5a6ef4047f4a98f2835a92dad221283f4ec3f89))
+* **inventory:** locations CRUD UI — full operator-facing management for inventory_locations ([#3198](https://github.com/openlinker-project/openlinker/issues/3198)) ([de638ea](https://github.com/openlinker-project/openlinker/commit/de638ea06b1edda8bb184f72f2a0f4c9ba18f579))
+* **inventory:** per-connection stock-location override for masters that never report one ([#3208](https://github.com/openlinker-project/openlinker/issues/3208)) ([8f7c2d4](https://github.com/openlinker-project/openlinker/commit/8f7c2d41e2d894cd45588ce877ef4cc76c62198f))
+* **listings:** price-change detection + currency-mismatch blocking ([#3159](https://github.com/openlinker-project/openlinker/issues/3159)) ([de04cf0](https://github.com/openlinker-project/openlinker/commit/de04cf0114d871fe77351e3fd3ab5a4e7c8c5ff1))
+* **listings:** price-change episode schema + per-source pricing rule model ([#3158](https://github.com/openlinker-project/openlinker/issues/3158)) ([846fcd1](https://github.com/openlinker-project/openlinker/commit/846fcd1f9c74ae57aa93555fd90dd014e6a7a575))
+* **listings:** refuse a disproportionate manual price override server-side ([#3236](https://github.com/openlinker-project/openlinker/issues/3236)) ([667310c](https://github.com/openlinker-project/openlinker/commit/667310c67a872abe660b731364737385b6a28f97)), closes [#3222](https://github.com/openlinker-project/openlinker/issues/3222)
+* **oms:** sourcing rules admin UI - view, author and order the router's ruleset ([#3243](https://github.com/openlinker-project/openlinker/issues/3243)) ([9788f1d](https://github.com/openlinker-project/openlinker/commit/9788f1d71ec62b666465c6c900e00c6baf52351d))
+* **returns:** resolve a return line to its order line at ingestion ([#3172](https://github.com/openlinker-project/openlinker/issues/3172)) ([84870ac](https://github.com/openlinker-project/openlinker/commit/84870ac95921f7fde81b9d548bfd5bb700be2b38))
+* **sales-documents:** inline amount and currency on a rule condition ([#3241](https://github.com/openlinker-project/openlinker/issues/3241)) ([e3a8a66](https://github.com/openlinker-project/openlinker/commit/e3a8a661a87b09875e2e8b3a7d45f9d0e910dc88)), closes [#3189](https://github.com/openlinker-project/openlinker/issues/3189)
+* **sales-documents:** record and surface the matched routing rule ([#3219](https://github.com/openlinker-project/openlinker/issues/3219)) ([542b551](https://github.com/openlinker-project/openlinker/commit/542b55164cb0ce95be7c922d9c9dde970554b063))
+* **shipping:** surface a repeatedly-failing waybill relay instead of logging it forever ([#3013](https://github.com/openlinker-project/openlinker/issues/3013)) ([3af5833](https://github.com/openlinker-project/openlinker/commit/3af583340f861c636c598641652ffe972cea62f3)), closes [#2073](https://github.com/openlinker-project/openlinker/issues/2073)
+* **web:** accept/edit dialogs + bulk apply with live progress ([#3165](https://github.com/openlinker-project/openlinker/issues/3165)) ([4146290](https://github.com/openlinker-project/openlinker/commit/41462906dd1778724aa7bee9e581927701426671)), closes [#3148](https://github.com/openlinker-project/openlinker/issues/3148)
+* **web:** connection Pricing & sync settings page ([#3166](https://github.com/openlinker-project/openlinker/issues/3166)) ([69bd74b](https://github.com/openlinker-project/openlinker/commit/69bd74bcab3213eb31f15418ec840d7c8dc1d762)), closes [#3149](https://github.com/openlinker-project/openlinker/issues/3149)
+* **web:** mobile card view for the price-changes queue ([#3238](https://github.com/openlinker-project/openlinker/issues/3238)) ([b801853](https://github.com/openlinker-project/openlinker/commit/b8018538c2dc3cc17bd0296619bad9c0ea081ef1)), closes [#3223](https://github.com/openlinker-project/openlinker/issues/3223)
+* **web:** Price changes tab + review queue table ([#3164](https://github.com/openlinker-project/openlinker/issues/3164)) ([558ed8c](https://github.com/openlinker-project/openlinker/commit/558ed8cb0c11c2c3f27698462c3c8ae04b5c80d1))
+* **web:** recently-applied-automatically note + dialog ([#3168](https://github.com/openlinker-project/openlinker/issues/3168)) ([6d72276](https://github.com/openlinker-project/openlinker/commit/6d722764d713332f3d4ccc41656d81c696e1bc54)), closes [#3151](https://github.com/openlinker-project/openlinker/issues/3151)
+* **web:** show the buyer tax ID on the order ([#3211](https://github.com/openlinker-project/openlinker/issues/3211)) ([b334376](https://github.com/openlinker-project/openlinker/commit/b3343761b762810c5474987596e8c792ecee919b))
+* **web:** source connection pricing rollup + pricing-rules picker ([#3167](https://github.com/openlinker-project/openlinker/issues/3167)) ([45fd98d](https://github.com/openlinker-project/openlinker/commit/45fd98db7a562c2243afb8e6c2d9ec53009e0d72)), closes [#3150](https://github.com/openlinker-project/openlinker/issues/3150)
+* **web:** warn when a sales-document rule's destination issues nothing ([#3209](https://github.com/openlinker-project/openlinker/issues/3209)) ([de3bea7](https://github.com/openlinker-project/openlinker/commit/de3bea7b2b7b14a32cac752aa493a79c707b50fa))
+
+
+### Bug Fixes
+
+* **auth:** stop leaking username/email existence via registration errors ([#3157](https://github.com/openlinker-project/openlinker/issues/3157)) ([63048bd](https://github.com/openlinker-project/openlinker/commit/63048bd32ffa6ce7308132052b71c0b34345c56b))
+* **connections:** count document registrations in connection health ([#3212](https://github.com/openlinker-project/openlinker/issues/3212)) ([5430f09](https://github.com/openlinker-project/openlinker/commit/5430f09a97ff97132edac0d576854193d01d1f9d))
+* **infakt:** normalize baseUrl override to include /api/v3 and log probe failures ([#2994](https://github.com/openlinker-project/openlinker/issues/2994)) ([2f2875e](https://github.com/openlinker-project/openlinker/commit/2f2875e4aaaf678a15a585e56886d63ceda778de))
+* **infakt:** refuse a bare-host baseUrl override missing /api/v3 at save time ([#3128](https://github.com/openlinker-project/openlinker/issues/3128)) ([2d43176](https://github.com/openlinker-project/openlinker/commit/2d431761112e64e7b41c50461810cbe1c9a8aa0b))
+* **inventory:** take the position lock FOR NO KEY UPDATE and re-script the reservation repository spec ([#3245](https://github.com/openlinker-project/openlinker/issues/3245)) ([#3246](https://github.com/openlinker-project/openlinker/issues/3246)) ([edfd601](https://github.com/openlinker-project/openlinker/commit/edfd601dd358993f4483b1ca564ebfb9a7b91a40))
+* **listings:** taxonomy reads report connection-not-found/disabled as 404/409, not 422 ([#3038](https://github.com/openlinker-project/openlinker/issues/3038)) ([7892923](https://github.com/openlinker-project/openlinker/commit/78929235151ade0b0f26cf99967e1a4f2fe27ea9))
+* **migrations:** renumber price-change-apply migration to 1881000000000 ([6d0d7f3](https://github.com/openlinker-project/openlinker/commit/6d0d7f313b7f5f3fe8510b97961b341024d773d4))
+* **migrations:** renumber price-change-apply migration to 1881000000000 ([de04cf0](https://github.com/openlinker-project/openlinker/commit/de04cf0114d871fe77351e3fd3ab5a4e7c8c5ff1))
+* **orders:** persist a durable early-cancellation signal ([#2069](https://github.com/openlinker-project/openlinker/issues/2069)) ([#3035](https://github.com/openlinker-project/openlinker/issues/3035)) ([8703bd9](https://github.com/openlinker-project/openlinker/commit/8703bd92d78576cd565c5e33171e427a32acc8c8))
+* **sales-documents:** unify country default to one row per country ([#3210](https://github.com/openlinker-project/openlinker/issues/3210)) ([d3db650](https://github.com/openlinker-project/openlinker/commit/d3db6502ed2b03f7de0d306f8889430e4ba8aa1a))
+* **web/analytics:** confirm before turning on tax-rate-inclusion toggle ([#2993](https://github.com/openlinker-project/openlinker/issues/2993)) ([84300dd](https://github.com/openlinker-project/openlinker/commit/84300dd4573274c4218ff6ef12dae56ae0eabb67))
+* **worker:** resolve AI suggestion channel from the connection, not the literal 'allegro' ([#3027](https://github.com/openlinker-project/openlinker/issues/3027)) ([5b6dc70](https://github.com/openlinker-project/openlinker/commit/5b6dc70eb4f60e4dfceb42e0a568d9fbd73d3aa3))
+
+
+### Performance Improvements
+
+* **orders:** bound tax coverage candidate fetch ([#3000](https://github.com/openlinker-project/openlinker/issues/3000)) ([b9d7847](https://github.com/openlinker-project/openlinker/commit/b9d78474ffc39e26d75bb6587b887ad7dfcc3ed4))
+* the paginated total becomes a second stage ([#2943](https://github.com/openlinker-project/openlinker/issues/2943)) ([#2957](https://github.com/openlinker-project/openlinker/issues/2957)) ([9c6440f](https://github.com/openlinker-project/openlinker/commit/9c6440f1ba2b88ce4ffd726ac46e161a066d2c21))
+
 ## [0.10.0](https://github.com/openlinker-project/openlinker/compare/v0.9.0...v0.10.0) (2026-09-07)
 
 

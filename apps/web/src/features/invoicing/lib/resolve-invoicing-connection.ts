@@ -44,7 +44,7 @@ export interface InvoicingConnectionLike {
 /**
  * Is this connection the operator-designated primary
  * (`config.invoicing.isPrimary`)? Mirrors the backend's
- * `parseIsPrimaryInvoicing` coercion: only a real `true` (or the string
+ * `readSalesDocumentRouting` coercion: only a real `true` (or the string
  * `'true'`, how a hand-edited JSON config arrives) counts. The backend is
  * authoritative — this read only drives preselection and the "primary" label.
  */

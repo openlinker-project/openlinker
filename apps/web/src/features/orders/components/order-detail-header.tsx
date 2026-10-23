@@ -10,7 +10,7 @@
  *
  * @module apps/web/src/features/orders/components
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ConnectionEntityLabel } from '../../connections';
@@ -20,6 +20,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { OrderRecord } from '../api/orders.types';
+import { paymentMethodChipLabel } from '../lib/payment-method-copy';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
 import { deriveHealthLevel, healthLabel, rollupSyncStatus, totalUnits, type OrderHealthLevel } from '../lib/order-health';
 import { ORDER_LIFECYCLE_PHASE_WAITING_ON, isOrderLifecyclePhase } from '../lib/order-lifecycle-phase';
@@ -28,6 +29,12 @@ import { OrderPhaseBadge } from './order-phase-badge';
 interface OrderDetailHeaderProps {
   order: OrderRecord;
   snapshot: ParsedOrderSnapshot;
+  /**
+   * The tags line (#3533, mockup M3) — a slot, not a dependency, so the
+   * header stays display-only and the page decides what fills it. Rendered
+   * between the id/route line and the contents summary.
+   */
+  tags?: ReactNode;
 }
 
 const HEALTH_TONE: Record<OrderHealthLevel, StatusBadgeTone> = {
@@ -52,9 +59,10 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
   refunded: 'Refunded',
 };
 
-export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): ReactElement {
+export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderProps): ReactElement {
   const rollup = rollupSyncStatus(order.syncStatus);
   const healthLevel = deriveHealthLevel(rollup);
+  const methodLabel = paymentMethodChipLabel(snapshot.paymentMethod, snapshot.paymentStatus);
 
   const title = snapshot.orderNumber ? `Order ${snapshot.orderNumber}` : `Order ${order.internalOrderId}`;
 
@@ -83,6 +91,7 @@ export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): 
             {PAYMENT_LABEL[snapshot.paymentStatus]}
           </StatusBadge>
         ) : null}
+        {methodLabel ? <StatusBadge tone="neutral">{methodLabel}</StatusBadge> : null}
       </div>
 
       {/* One line answering the operator's actual question — what is this order
@@ -142,6 +151,8 @@ export function OrderDetailHeader({ order, snapshot }: OrderDetailHeaderProps): 
           )}
         </span>
       </div>
+
+      {tags}
 
       {itemCount > 0 ? (
         <div className="order-header__summary-line">

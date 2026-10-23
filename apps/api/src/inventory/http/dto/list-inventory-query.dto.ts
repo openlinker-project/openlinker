@@ -5,8 +5,8 @@
  *
  * @module apps/api/src/inventory/http/dto
  */
-import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsBoolean, IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ListInventoryQueryDto {
@@ -24,6 +24,15 @@ export class ListInventoryQueryDto {
   @IsOptional()
   @IsString()
   locationId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'When true, leave out stale rows (products the master no longer reports). Omitted keeps every row.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  excludeStale?: boolean;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()

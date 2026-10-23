@@ -18,20 +18,41 @@
  * So it sits in `standaloneRoutes`, beside `/consent` — no `AppShell`, no
  * sidebar, and no authenticated-layout gate. The bench renders its own
  * sign-in, so an anonymous session is a state it handles rather than a state it
- * must be rescued from. A full-screen terminal wants no application chrome
- * anyway.
+ * must be rescued from. It DOES carry the application's topbar, through
+ * `BenchAppLayout`, which never redirects on its own.
  *
- * It carries a crumb because the shell's crumb contract is cheap to satisfy and
- * the surface may later be reachable from one; nothing renders it today.
+ * The crumb below is what that topbar renders.
  *
- * ## No nav entry
+ * ## There IS a nav entry now, and it points one way only
  *
- * A packer opens this at a terminal by URL. #2416 revisits that when the bench
- * has work to show — a nav entry would also need `RoleValues` widened, since it
- * is `['admin','operator']` today.
+ * `Pack bench` sits in the Operations group (#3108), gated
+ * `requiresRole: ['admin', 'operator', 'packer']` — the same three roles every
+ * `@Roles(...)` on the bench controllers admits. A packer no longer has to be
+ * handed a URL, and does not need the entry either: since #3096 the guest and
+ * app layouts send every bench-only session here, so a packer who types any
+ * app address lands on the bench.
+ *
+ * What has NOT changed is the direction: the entry points AT the bench and the
+ * bench still links nowhere. The sidebar is not rendered here (this route is
+ * outside `AppShell`, for the reason above), so there is nothing to click back
+ * through — and that is deliberate rather than incidental, because the idle
+ * lock clears the session and any link into the rest of the app would answer
+ * that by bouncing a half-verified parcel to `/login`.
+ *
+ * This section previously read "No nav entry … #2416 revisits that … a nav
+ * entry would also need `RoleValues` widened, since it is `['admin','operator']`
+ * today." All three clauses are now false: there is an entry, #2416 closed
+ * (2026-09-05) without adding one — its ACs were about the bench SURFACE
+ * carrying no global nav, not about pointing at it, which is a distinction a
+ * reader would not recover from a closed issue — and `RoleValues` was widened
+ * by #3107. Corrected here rather than left for a future reader to chase,
+ * because this is the file someone opens to ask why the bench is not in the
+ * nav (`docs/frontend-architecture.md` § UX Mockups: a stale note is worse than
+ * none, because it actively misleads).
  *
  * @module app/routes
  */
+import type { ReactElement } from 'react';
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
@@ -43,7 +64,18 @@ export const benchRoute: RouteObject = {
   path: '/bench',
   handle: benchCrumb,
   lazy: async () => {
-    const { BenchPage } = await import('../../pages/bench/bench-page');
-    return { Component: BenchPage };
+    const [{ BenchPage }, { BenchAppLayout }] = await Promise.all([
+      import('../../pages/bench/bench-page'),
+      import('../layouts/bench-app-layout'),
+    ]);
+    // The app's own topbar, no sidebar - see `bench-app-layout.tsx`.
+    function BenchRouteComponent(): ReactElement {
+      return (
+        <BenchAppLayout>
+          <BenchPage />
+        </BenchAppLayout>
+      );
+    }
+    return { Component: BenchRouteComponent };
   },
 };

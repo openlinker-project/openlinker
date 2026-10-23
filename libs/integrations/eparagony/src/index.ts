@@ -3,7 +3,8 @@
  *
  * Barrel for `@openlinker/integrations-eparagony`. Exports the plugin descriptor
  * factory, the static manifest (#575), the NestJS module the host imports, and
- * the pieces host-side tests need to register the real adapters.
+ * the pieces host-side tests need to register the real adapters - BOTH of them
+ * since #3192: one connection carries the receipt lane and the invoice lane.
  *
  * The HTTP client stays package-private (siblings keep theirs private too): it
  * closes over one connection's client secret and token cache, and nothing
@@ -22,6 +23,7 @@ export {
 } from './eparagony.constants';
 
 export { EparagonyFiscalizationAdapter } from './infrastructure/adapters/eparagony-fiscalization.adapter';
+export { EparagonyInvoicingAdapter } from './infrastructure/adapters/eparagony-invoicing.adapter';
 
 // Shape validators + classifiers - exported so host-side tests can register the
 // real adapters (mirrors the Infakt/KSeF precedent).
@@ -41,6 +43,7 @@ export {
   deriveTransactionToken,
 } from './domain/policies/document-token.policy';
 export { EPARAGONY_DEFAULT_TAX_RATES } from './domain/policies/tax-rate.policy';
+export { resolveInvoiceTaxRateCode } from './domain/policies/invoice-tax-rate.policy';
 
 export {
   EparagonyEnvironmentValues,
@@ -51,7 +54,10 @@ export type {
   EparagonyConnectionConfig,
   EparagonyEnvironment,
   EparagonyPaymentForm,
+  EparagonySellerAddress,
   EparagonyTaxRateCode,
   EparagonyTaxRateTable,
 } from './domain/types/eparagony-config.types';
+export { EparagonyInvoiceTaxRateValues } from './domain/types/eparagony-api.types';
+export type { EparagonyInvoiceTaxRate } from './domain/types/eparagony-api.types';
 export type { EparagonyCredentials } from './domain/types/eparagony-credentials.types';

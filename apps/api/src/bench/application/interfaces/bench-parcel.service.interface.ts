@@ -15,8 +15,13 @@
 import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 
 import type {
+  BenchActivityEntryView,
+  BenchClaimResultView,
+  BenchCompleteResultView,
+  BenchUndoCompletionResultView,
   BenchParcelView,
   BenchReopenResultView,
+  BenchUndoResultView,
   BenchVerificationResultView,
 } from '../types/bench-parcel.types';
 
@@ -50,6 +55,46 @@ export interface BenchReopenInput {
   readonly expectedVersion?: number;
 }
 
+/** Undo the single most recent scan (#3405). No line, no gesture id — the packer is undoing the action they just took, not correcting one specific line's count. */
+export interface BenchUndoInput {
+  readonly workId: string;
+  readonly actorUserId: string;
+}
+
+/**
+ * Declare a parcel finished and off the bench (pack-bench completion) — everything after the
+ * last scan (label applied, invoice inside, box on the trolley), made an
+ * explicit act rather than left invisible.
+ */
+export interface BenchCompleteInput {
+  readonly workId: string;
+  readonly completedByUserId: string;
+  readonly expectedVersion: number;
+}
+
+/**
+ * Take back a completion, and keep every scan (#3415).
+ *
+ * The counterpart to `BenchCompleteInput`, and deliberately NOT a reopen: a
+ * reopen unpacks the box, voiding nothing but putting the parcel back into a
+ * state where units can be scanned again. This undoes the SECOND act alone -
+ * the packer said "done" and meant a different box - so the contents stay
+ * exactly as verified and only `completedAt` is cleared.
+ *
+ * Without it, a completion is a one-way door: `reopenParcel` is the only way
+ * back, and it makes a packer re-do a box that was correctly packed.
+ *
+ * `undoneByUserId` is the verified token's user rather than the original
+ * completer's, and it is not compared against it: any packer who may claim
+ * this parcel may take back its completion, exactly as any of them may make
+ * it. It is here so the act can be attributed, never to gate on.
+ */
+export interface BenchUndoCompletionInput {
+  readonly workId: string;
+  readonly undoneByUserId: string;
+  readonly expectedVersion: number;
+}
+
 export interface IBenchParcelService {
   /**
    * Open the parcel — what must go in the box, and whether it may be packed.
@@ -80,4 +125,49 @@ export interface IBenchParcelService {
 
   /** Open a box shut by mistake (E6). Refused once the goods have gone (D19). */
   reopenParcel(input: BenchReopenInput): Promise<BenchReopenResultView>;
+
+  /**
+   * Undo the single most recent scan on an OPEN parcel (#3405) — a lighter,
+   * inline correction distinct from `reopenParcel`. Refused `parcel-closed`
+   * rather than reopening the box as a side effect.
+   */
+  undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView>;
+
+  /**
+   * Recent activity for this parcel (#3411), newest first — the verification
+   * ledger projected with each line's product name.
+   */
+  listActivity(workId: string): Promise<BenchActivityEntryView[]>;
+
+  /**
+   * "Claim this parcel" (#3412) — a packer self-assigns a SPECIFIC parcel
+   * they chose. `viewerId` is always the write's own target: this route can
+   * never assign a parcel to anyone but the caller, which is the whole
+   * difference from `PATCH :workId/assignment` (a supervisor's decision,
+   * `@Roles('admin','operator')`, able to name anyone). Refused exactly as
+   * `verifyUnit` would refuse a scan at this parcel, plus the ADR-074 lock.
+   */
+  claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView>;
+
+  /**
+   * Declare this parcel finished and off the bench (pack-bench completion) — the ONE
+   * explicit completion act, distinct from D18's silent auto-close on the
+   * last verification. Refused `not-closed` before it is packed,
+   * `already-completed` on a repeat, `version-conflict` on a stale token,
+   * and `not-claimable-by-viewer` under the identical ADR-074 lock
+   * `verifyUnit` enforces.
+   */
+  completeParcel(input: BenchCompleteInput): Promise<BenchCompleteResultView>;
+
+  /**
+   * Take back a completion without unpacking the box (#3415).
+   *
+   * Refused `not-completed` when the parcel was never marked done,
+   * `version-conflict` on a stale token, and `not-claimable-by-viewer` under
+   * the SAME ADR-074 lock `completeParcel` enforces - undoing a completion is
+   * a legality-gated act on the very column completing it wrote, so the two
+   * must answer the lock identically or a packer locked out of finishing a box
+   * could still un-finish it.
+   */
+  undoCompletion(input: BenchUndoCompletionInput): Promise<BenchUndoCompletionResultView>;
 }

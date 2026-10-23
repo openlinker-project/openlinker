@@ -4,11 +4,12 @@
  * Owns the write-path conflict guard, threshold-ref validation, and the
  * read-side assembly that feeds the pure `evaluateSalesDocumentRules`. Injects
  * ONLY this concern's own four repository ports — no `IIntegrationsService`,
- * no connection lookup, no capability check. That check (a rule pointing
- * `Invoice → eparagony.pl` must be rejected because eparagony.pl carries no
- * `Invoicing` capability) is deliberately NOT done here: doing so would inject
- * a cross-context token into a concern this repo's architecture doc pins as a
- * zero-outbound-CORE-context-edge leaf. It is done at the API layer instead
+ * no connection lookup, no capability check. That check (a rule pointing an
+ * invoice-kind document at a connection must be rejected when that
+ * connection's adapter carries no `Invoicing` capability) is deliberately NOT
+ * done here: doing so would inject a cross-context token into a concern this
+ * repo's architecture doc pins as a zero-outbound-CORE-context-edge leaf. It
+ * is done at the API layer instead
  * (`apps/api/src/sales-documents/`), which already has `IIntegrationsService`
  * in scope and wraps this service's `createRule` / `upsertCountryDefault`.
  *
@@ -34,20 +35,31 @@ import type { SalesDocumentCountryAcknowledgment } from '../../domain/entities/s
 import type {
   SalesDocumentCountryDefaultInput,
   SalesDocumentRuleInput,
+  SalesDocumentRuleOverlapCheckInput,
 } from '../../domain/types/sales-document-rule-write.types';
 import {
   computeSalesDocumentConditionsHash,
   isSalesDocumentCondition,
+  type SalesDocumentCondition,
 } from '../../domain/types/sales-document-condition.types';
 import {
   SALES_DOCUMENT_REST_OF_WORLD_COUNTRY,
   type SalesDocumentOrderFacts,
+  type SalesDocumentRuleFact,
 } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
+import {
+  SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+  type SalesDocumentDryRunCandidate,
+} from '../../domain/types/sales-document-dry-run.types';
 import { evaluateSalesDocumentRules } from '../../domain/domain-services/evaluate-sales-document-rules';
+import {
+  detectSalesDocumentRuleOverlap,
+  salesDocumentRuleWindowsOverlap,
+} from '../../domain/domain-services/detect-sales-document-rule-overlap';
+import type { SalesDocumentRuleOverlapVerdict } from '../../domain/domain-services/detect-sales-document-rule-overlap';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
-import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
 import { SalesDocumentInvalidConditionException } from '../../domain/exceptions/sales-document-invalid-condition.exception';
 import {
   SalesDocumentCountryDefaultNotFoundException,
@@ -61,17 +73,6 @@ interface CountryDefaultSlots {
   receiptDefaultConnectionId: string | null;
 }
 
-function rangesOverlap(
-  aFrom: Date,
-  aTo: Date | null,
-  bFrom: Date,
-  bTo: Date | null,
-): boolean {
-  const aEnd = aTo ?? new Date(8640000000000000); // open-ended = effectively +infinity
-  const bEnd = bTo ?? new Date(8640000000000000);
-  return aFrom.getTime() <= bEnd.getTime() && bFrom.getTime() <= aEnd.getTime();
-}
-
 @Injectable()
 export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   constructor(
@@ -82,19 +83,124 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     @Inject(SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN)
     private readonly thresholdRepository: SalesDocumentThresholdRepositoryPort,
     @Inject(SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN)
-    private readonly acknowledgmentRepository: SalesDocumentCountryAcknowledgmentRepositoryPort,
+    private readonly acknowledgmentRepository: SalesDocumentCountryAcknowledgmentRepositoryPort
   ) {}
 
-  async listRules(country: string): Promise<SalesDocumentRule[]> {
-    return this.ruleRepository.findByCountry(country);
+  /**
+   * ISO-3166-1 alpha-2 is uppercase by definition, and `'*'` (`★ Rest of
+   * world`) is unaffected by either operation — the single normalisation
+   * point for every country string this service reads or writes (#3176).
+   * Without it, a rule authored as `PL` and an order whose delivery address
+   * carries `pl` never compare equal: two markets exist for one country, one
+   * of them permanently unconfigured and silently holding every order that
+   * lands there.
+   *
+   * Sibling copies of this two-line rule, named so a fifth author finds them
+   * rather than writing a sixth (review finding 5): `LocationService`'s own
+   * `normaliseCountry` (`libs/core/src/inventory/application/services/`),
+   * `normalizeCountryCode`
+   * (`libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-provisioner.helpers.ts`)
+   * and `normalizeCountryIso2`, in the seller-config module of a provider
+   * plugin under `apps/web/src/plugins/`. That last one is cited by role
+   * rather than by path because this context's neutral-vocabulary sweep is
+   * prose-inclusive, so spelling the provider's directory here would make the
+   * comment an offender under the very rule it explains. Deliberately NOT
+   * a shared helper or a `check-*-mirror.mjs`: the browser bundle cannot
+   * import `@openlinker/core` (#591) and a plugin helper must not import a
+   * sibling core context, so three of the four could not consume one
+   * definition anyway.
+   */
+  private normaliseCountry(country: string): string {
+    return country.trim().toUpperCase();
   }
 
-  async createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule> {
+  /**
+   * Fold every `orderCountry` condition's own comparison value to the casing
+   * {@link normaliseCountry} writes (#3176, review finding 2).
+   *
+   * Without this the scope normalisation above INVERTS the defect it fixes
+   * rather than closing it: `evaluateSalesDocumentRules` compares
+   * `order.country === condition.value` strictly, and `resolveRouting` now
+   * always hands it an uppercased `order.country`, so a condition authored as
+   * `orderCountry eq 'pl'` could never match anything again.
+   *
+   * Ordering is load-bearing: this must run BEFORE
+   * `computeSalesDocumentConditionsHash`, because the hash is a column of
+   * `UQ_sales_document_rules_country_hash_from` — hashing the un-normalised
+   * value would let `pl` and `PL` occupy two different uniqueness scopes for
+   * one semantically identical rule, and would leave the conflict guard's
+   * `findByCountryAndConditionsHash` candidate pool split across the two.
+   *
+   * Conditions are validated before they reach here, so every `orderCountry`
+   * entry is known to carry a string `value`.
+   */
+  private normaliseConditionCountries(
+    conditions: readonly SalesDocumentCondition[]
+  ): readonly SalesDocumentCondition[] {
+    return conditions.map((condition) =>
+      condition.field === 'orderCountry'
+        ? { ...condition, value: this.normaliseCountry(condition.value) }
+        : condition
+    );
+  }
+
+  /**
+   * The {@link normaliseConditionCountries} twin for a DRAFT, whose conditions
+   * are `unknown[]` rather than a validated array.
+   *
+   * It must stay that way. The detector reports an unrecognised entry as
+   * `unreadable-condition`, which is one of its three outcomes; narrowing or
+   * filtering here would silently drop that entry and turn "could not decide"
+   * into a clean answer about a rule the operator did not write. So anything
+   * this does not recognise is passed through UNTOUCHED, and only a
+   * well-formed `orderCountry` value is folded to the casing the repository
+   * and the persisted rules use.
+   */
+  private normaliseDraftConditionCountries(conditions: readonly unknown[]): readonly unknown[] {
+    return conditions.map((condition) =>
+      isSalesDocumentCondition(condition) && condition.field === 'orderCountry'
+        ? { ...condition, value: this.normaliseCountry(condition.value) }
+        : condition
+    );
+  }
+
+  async listRules(country: string): Promise<SalesDocumentRule[]> {
+    return this.ruleRepository.findByCountry(this.normaliseCountry(country));
+  }
+
+  async createRule(rawInput: SalesDocumentRuleInput): Promise<SalesDocumentRule> {
+    // Validation runs on the RAW conditions, before normalisation, so a
+    // malformed entry is still rejected by the defense-in-depth guard rather
+    // than reaching `normaliseConditionCountries` with a non-string value.
+    this.assertConditionsWellFormed(rawInput.conditions);
+    const input = {
+      ...rawInput,
+      country: this.normaliseCountry(rawInput.country),
+      conditions: this.normaliseConditionCountries(rawInput.conditions),
+    };
+    // ...and AGAIN, on the normalised array, before anything downstream reads
+    // it (#3190 review). Normalisation can invalidate a condition the raw
+    // check passed: `orderCountry eq '   '` satisfies `isSalesDocumentCondition`
+    // (length 3 > 0) and trims to `''`, which the repository's own
+    // `toDomain` then FILTERS OUT on read - leaving a rule with `conditions:
+    // []`, which `evaluateScope` treats as vacuously true and so matches EVERY
+    // order in the market. On a market carrying any other rule that is a
+    // permanent `conflicting-rules-equal-priority` hold, with nothing said to
+    // anyone. The invariant this line buys is that no normaliser can invalidate
+    // a condition on its way to the column, whatever normalisers are added
+    // later.
     this.assertConditionsWellFormed(input.conditions);
-    await this.assertThresholdRefsResolve(input);
+    // `assertThresholdRefsResolve` is gone with #3189 - a condition carries its
+    // own amount now, so there is no ref left to resolve.
 
     const conditionsHash = computeSalesDocumentConditionsHash(input.conditions);
-    await this.assertNoConflict(input.country, conditionsHash, input.effectiveFrom, input.effectiveTo, input.connectionId);
+    await this.assertNoConflict(
+      input.country,
+      conditionsHash,
+      input.effectiveFrom,
+      input.effectiveTo,
+      input.connectionId
+    );
 
     const rule = await this.ruleRepository.create({ ...input, conditionsHash });
     // A real configuration and a "no document, by design" acknowledgment can
@@ -114,13 +220,18 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     await this.ruleRepository.delete(id);
   }
 
+  async getRulesByIds(ids: readonly string[]): Promise<SalesDocumentRule[]> {
+    return this.ruleRepository.findByIds(ids);
+  }
+
   async listCountryDefaults(country: string): Promise<SalesDocumentCountryDefault[]> {
-    return this.countryDefaultRepository.findByCountry(country);
+    return this.countryDefaultRepository.findByCountry(this.normaliseCountry(country));
   }
 
   async upsertCountryDefault(
-    input: SalesDocumentCountryDefaultInput,
+    rawInput: SalesDocumentCountryDefaultInput
   ): Promise<SalesDocumentCountryDefault> {
+    const input = { ...rawInput, country: this.normaliseCountry(rawInput.country) };
     const countryDefault = await this.countryDefaultRepository.upsert(input);
     // Same auto-clear rule as `createRule` (#2186) — see its own comment.
     await this.clearAcknowledgment(input.country);
@@ -139,14 +250,25 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     return this.thresholdRepository.findAll();
   }
 
-  async resolveRouting(order: SalesDocumentOrderFacts, now: Date = new Date()): Promise<SalesDocumentDecision> {
-    const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults, thresholds] =
+  async resolveRouting(
+    rawOrder: SalesDocumentOrderFacts,
+    now: Date = new Date()
+  ): Promise<SalesDocumentDecision> {
+    // Normalised once, here, and threaded through both the lookup and the
+    // evaluator (#3176) — `order.country` otherwise reaches a case-sensitive
+    // `country = :country` match against rows written under a normalised
+    // scope (`createRule` / `upsertCountryDefault`, above), and a lowercase
+    // delivery-address country from the source would silently resolve to
+    // "no configuration for this country" instead of the real market.
+    const order = { ...rawOrder, country: this.normaliseCountry(rawOrder.country) };
+    // No threshold read since #3189: an `orderTotalGross` condition carries its
+    // own amount and currency, so the engine needs nothing beyond the rules.
+    const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults] =
       await Promise.all([
         this.ruleRepository.findByCountry(order.country),
         this.countryDefaultRepository.findByCountry(order.country),
         this.ruleRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
         this.countryDefaultRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
-        this.thresholdRepository.findAll(),
       ]);
 
     return evaluateSalesDocumentRules({
@@ -155,7 +277,6 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
       countryDefaults,
       restOfWorldRules,
       restOfWorldDefaults,
-      thresholds,
       now,
     });
   }
@@ -171,13 +292,19 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * round trip per row.
    */
   async resolveRoutingBatch(
-    orders: readonly SalesDocumentOrderFacts[],
-    now: Date = new Date(),
+    rawOrders: readonly SalesDocumentOrderFacts[],
+    now: Date = new Date()
   ): Promise<SalesDocumentDecision[]> {
-    if (orders.length === 0) {
+    if (rawOrders.length === 0) {
       return [];
     }
 
+    // Same normalisation `resolveRouting` applies, and for the same reason
+    // (#3176) — done once per order here rather than at each lookup site.
+    const orders = rawOrders.map((order) => ({
+      ...order,
+      country: this.normaliseCountry(order.country),
+    }));
     const countries = new Set<string>(orders.map((order) => order.country));
     // `★ Rest of world` is always loaded: tier 3 applies to every order whose
     // own country carries no configuration, so leaving it out would answer
@@ -186,10 +313,9 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     countries.add(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY);
     const countryList = [...countries];
 
-    const [rules, defaults, thresholds] = await Promise.all([
+    const [rules, defaults] = await Promise.all([
       this.ruleRepository.findByCountries(countryList),
       this.countryDefaultRepository.findByCountries(countryList),
-      this.thresholdRepository.findAll(),
     ]);
 
     const rulesByCountry = groupByCountry(rules);
@@ -204,40 +330,129 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
         countryDefaults: defaultsByCountry.get(order.country) ?? [],
         restOfWorldRules,
         restOfWorldDefaults,
-        thresholds,
         now,
-      }),
+      })
     );
+  }
+
+  /**
+   * Dry-run an in-progress rule candidate against a sample order (#3191) —
+   * see the interface's own doc comment for the full contract. PERSISTS
+   * NOTHING: every step below is a read, and no repository `create` /
+   * `upsert` / `delete` is ever reached from this method.
+   */
+  async dryRunRule(
+    rawCandidate: SalesDocumentDryRunCandidate,
+    rawSampleOrder: SalesDocumentOrderFacts,
+    now: Date = new Date(),
+  ): Promise<SalesDocumentDecision> {
+    // Same defense-in-depth guard `createRule` runs, on the same raw
+    // (pre-normalisation) conditions, for the same reason: a condition this
+    // build cannot narrow through `isSalesDocumentCondition` must be refused
+    // rather than silently evaluated as "never matches".
+    this.assertConditionsWellFormed(rawCandidate.conditions);
+
+    const candidateCountry = this.normaliseCountry(rawCandidate.country);
+    const candidateConditions = this.normaliseConditionCountries(rawCandidate.conditions);
+    // Same normalisation `resolveRouting` applies to the order and for the
+    // same reason (#3176) — a lowercase sample-order country must compare
+    // equal to an uppercase-scoped candidate/persisted rule.
+    const order = { ...rawSampleOrder, country: this.normaliseCountry(rawSampleOrder.country) };
+
+    // The candidate is evaluated as ALWAYS effective — a dry run tests
+    // conditions, not a calendar the composer has not necessarily filled in
+    // yet — and carries the reserved sentinel id rather than a real one.
+    const candidateRule: SalesDocumentRuleFact = {
+      id: SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+      conditions: candidateConditions,
+      documentKind: rawCandidate.documentKind,
+      connectionId: rawCandidate.connectionId,
+      effectiveFrom: new Date(0),
+      effectiveTo: null,
+    };
+
+    // The SAME four reads `resolveRouting` performs for a real order — no
+    // repository method is duplicated or reimplemented for this path.
+    const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults] =
+      await Promise.all([
+        this.ruleRepository.findByCountry(order.country),
+        this.countryDefaultRepository.findByCountry(order.country),
+        this.ruleRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
+        this.countryDefaultRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
+      ]);
+
+    // Fold the candidate into whichever scope it would actually occupy once
+    // saved — never both, and never unconditionally: a candidate scoped to a
+    // country the sample order is not delivering to would not be considered
+    // for that order once saved either, so it must not be considered here.
+    const candidateCountryRules =
+      candidateCountry === order.country ? [...countryRules, candidateRule] : countryRules;
+    const candidateRestOfWorldRules =
+      candidateCountry === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY
+        ? [...restOfWorldRules, candidateRule]
+        : restOfWorldRules;
+
+    return evaluateSalesDocumentRules({
+      order,
+      countryRules: candidateCountryRules,
+      countryDefaults,
+      restOfWorldRules: candidateRestOfWorldRules,
+      restOfWorldDefaults,
+      now,
+    });
   }
 
   /**
    * Merges rule counts + country defaults + acknowledgments by country
    * (#2186) — a country appearing in ANY of the three sources gets a row; a
    * missing side defaults to `0` / `null` rather than the row being dropped.
+   *
+   * Every grouping key is normalised on READ (#3176, review finding 3). The
+   * write path uppercases going forward and the migration rewrites what it
+   * safely can, but the migration deliberately SKIPS a stray-case row that
+   * would collide with an uppercase sibling — leaving that row for a human
+   * rather than guessing which of two fiscal-routing rows to keep. Grouping by
+   * the raw stored value would render that surviving row as a SECOND market
+   * card for one country, which is the exact defect this issue reports. Rule
+   * counts are SUMMED across the folding set rather than overwritten, so a
+   * country holding rules under both casings reports the real total.
    */
   async listConfiguredCountries(): Promise<SalesDocumentCountrySummary[]> {
-    const [ruleCounts, defaults, acknowledgments] = await Promise.all([
+    const [rawRuleCounts, defaults, acknowledgments] = await Promise.all([
       this.ruleRepository.countRulesByCountry(),
       this.countryDefaultRepository.findAll(),
       this.acknowledgmentRepository.findAll(),
     ]);
 
+    const ruleCounts = new Map<string, number>();
+    for (const [country, count] of rawRuleCounts) {
+      const key = this.normaliseCountry(country);
+      ruleCounts.set(key, (ruleCounts.get(key) ?? 0) + count);
+    }
+
     const defaultSlotsByCountry = new Map<string, CountryDefaultSlots>();
     for (const countryDefault of defaults) {
+      const key = this.normaliseCountry(countryDefault.country);
       const slots =
-        defaultSlotsByCountry.get(countryDefault.country) ??
-        ({ invoiceDefaultConnectionId: null, receiptDefaultConnectionId: null } satisfies CountryDefaultSlots);
+        defaultSlotsByCountry.get(key) ??
+        ({
+          invoiceDefaultConnectionId: null,
+          receiptDefaultConnectionId: null,
+        } satisfies CountryDefaultSlots);
       if (countryDefault.documentKind === 'invoice') {
         slots.invoiceDefaultConnectionId = countryDefault.connectionId;
       } else if (countryDefault.documentKind === 'fiscal-receipt') {
         slots.receiptDefaultConnectionId = countryDefault.connectionId;
       }
-      defaultSlotsByCountry.set(countryDefault.country, slots);
+      defaultSlotsByCountry.set(key, slots);
     }
 
     const acknowledgedAtByCountry = new Map<string, Date>();
     for (const acknowledgment of acknowledgments) {
-      acknowledgedAtByCountry.set(acknowledgment.country, acknowledgment.acknowledgedAt);
+      acknowledgedAtByCountry.set(
+        this.normaliseCountry(acknowledgment.country),
+        acknowledgment.acknowledgedAt
+      );
     }
 
     const countries = new Set<string>([
@@ -260,16 +475,17 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   async acknowledgeNoDocument(country: string): Promise<SalesDocumentCountryAcknowledgment> {
+    const normalisedCountry = this.normaliseCountry(country);
     // Mirror-image of the `createRule` / `upsertCountryDefault` auto-clear
     // (#2186): a real configuration and an acknowledgment can never coexist,
     // so this write is rejected outright rather than silently producing that
     // contradictory state when the acknowledgment lands SECOND.
-    await this.assertCountryUnconfigured(country);
-    return this.acknowledgmentRepository.upsert(country);
+    await this.assertCountryUnconfigured(normalisedCountry);
+    return this.acknowledgmentRepository.upsert(normalisedCountry);
   }
 
   async clearAcknowledgment(country: string): Promise<void> {
-    await this.acknowledgmentRepository.delete(country);
+    await this.acknowledgmentRepository.delete(this.normaliseCountry(country));
   }
 
   /**
@@ -277,6 +493,9 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * already carries any active rule or country default — the guard that
    * keeps `acknowledgeNoDocument` from ever coexisting with a real
    * configuration (#2186).
+   *
+   * `country` is expected already-normalised (#3176) — every public caller
+   * normalises before reaching here.
    */
   private async assertCountryUnconfigured(country: string): Promise<void> {
     const [rules, defaults] = await Promise.all([
@@ -306,27 +525,54 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   /**
-   * Validate every `orderTotalGross` condition's `thresholdRef` resolves
-   * BEFORE persisting the rule — an unresolvable ref at evaluation time would
-   * silently make the condition unevaluable rather than loudly wrong at
-   * authoring time.
+   * #3190. Reads the country's live rules and asks the pure detector whether
+   * the draft could match the same order as any of them.
+   *
+   * Scoped to the draft's own country ONLY, which is what `findByCountry`
+   * gives: two rules in different markets are already disjoint by the engine's
+   * own country tiering, so widening the read would spend a scan to rediscover
+   * that. `'*'` (Rest of world) is a country value like any other here - a
+   * `*` rule and a `PL` rule are separate tiers and never compete.
    */
-  private async assertThresholdRefsResolve(input: SalesDocumentRuleInput): Promise<void> {
-    const refs: string[] = [];
-    for (const condition of input.conditions) {
-      if (condition.field === 'orderTotalGross') {
-        refs.push(condition.thresholdRef);
-      }
-    }
-    if (refs.length === 0) return;
-
-    const found = await this.thresholdRepository.findByRefs(refs);
-    const foundRefs = new Set(found.map((t) => t.ref));
-    for (const ref of refs) {
-      if (!foundRefs.has(ref)) {
-        throw new SalesDocumentThresholdNotFoundException(ref);
-      }
-    }
+  async detectRuleOverlap(
+    input: SalesDocumentRuleOverlapCheckInput
+  ): Promise<SalesDocumentRuleOverlapVerdict> {
+    // Normalised on BOTH axes, exactly as `createRule` normalises what it
+    // writes (#3176). The repository matches `country` case-sensitively and the
+    // detector compares `orderCountry` condition values verbatim, so a draft
+    // arriving lowercase from the direct API would read zero rivals and answer
+    // an empty verdict - a FALSE "no conflict", which is the one answer this
+    // check exists to make impossible. The browser never sends an unnormalised
+    // country; the admin API can.
+    //
+    // Dates are passed through UNTRUNCATED, deliberately. `SalesDocumentRule`
+    // persists `effectiveFrom` / `effectiveTo` as date-only strings, so the
+    // check answers about a draft whose window can carry a time-of-day the
+    // stored row will not - but `assertNoConflict`, the WRITE-path guard,
+    // compares the same untruncated values through the same
+    // `salesDocumentRuleWindowsOverlap`. Truncating only here would make the
+    // advisory check and the guard disagree about one pair, which is a worse
+    // defect than a residual of at most one midnight instant in a direction
+    // that can only ever over-report.
+    const country = this.normaliseCountry(input.country);
+    const conditions = this.normaliseDraftConditionCountries(input.conditions);
+    const existing = await this.ruleRepository.findByCountry(country);
+    return detectSalesDocumentRuleOverlap(
+      {
+        conditions,
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: input.effectiveTo,
+        excludeRuleId: input.excludeRuleId,
+      },
+      existing.map((rule) => ({
+        id: rule.id,
+        connectionId: rule.connectionId,
+        documentKind: rule.documentKind,
+        conditions: rule.conditions,
+        effectiveFrom: rule.effectiveFrom,
+        effectiveTo: rule.effectiveTo,
+      }))
+    );
   }
 
   /**
@@ -358,12 +604,22 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     conditionsHash: string,
     effectiveFrom: Date,
     effectiveTo: Date | null,
-    connectionId: string,
+    connectionId: string
   ): Promise<void> {
-    const candidates = await this.ruleRepository.findByCountryAndConditionsHash(country, conditionsHash);
+    const candidates = await this.ruleRepository.findByCountryAndConditionsHash(
+      country,
+      conditionsHash
+    );
     for (const candidate of candidates) {
       if (candidate.connectionId === connectionId) continue;
-      if (rangesOverlap(effectiveFrom, effectiveTo, candidate.effectiveFrom, candidate.effectiveTo)) {
+      if (
+        salesDocumentRuleWindowsOverlap(
+          effectiveFrom,
+          effectiveTo,
+          candidate.effectiveFrom,
+          candidate.effectiveTo
+        )
+      ) {
         throw new SalesDocumentRuleConflictException(candidate.id, candidate.connectionId);
       }
     }
@@ -374,7 +630,9 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
  * Index country-scoped rows by their own `country`, so the batched resolve
  * can slice one shared read per order without re-filtering the whole list.
  */
-function groupByCountry<T extends { readonly country: string }>(rows: readonly T[]): Map<string, T[]> {
+function groupByCountry<T extends { readonly country: string }>(
+  rows: readonly T[]
+): Map<string, T[]> {
   const byCountry = new Map<string, T[]>();
   for (const row of rows) {
     const existing = byCountry.get(row.country);

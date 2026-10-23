@@ -40,3 +40,4 @@ export { BulkShopPublishRetryService } from '../application/services/bulk-shop-p
 export { ShopStatusSyncService } from '../application/services/shop-status-sync.service';
 export { StaleOfferPauseService } from '../application/services/stale-offer-pause.service';
 export { DestinationTaxonomyService } from '../application/services/destination-taxonomy.service';
+export { PriceChangeDetectionService } from '../application/services/price-change-detection.service';

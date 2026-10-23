@@ -20,7 +20,13 @@ import { PlatformType } from '../../../src/world/world';
 import { assertProductFieldParity } from '../../../src/support/parity';
 import { state } from './flow-state';
 import { fullFlowSegment } from './segment';
-import { requireProduct, skipWhenResuming, buildWooClient, publishToShop } from './helpers';
+import {
+  requireProduct,
+  skipWhenResuming,
+  buildWooClient,
+  publishToShop,
+  expectedBuyerPrice,
+} from './helpers';
 
 fullFlowSegment(() => {
   test('S2 — WooCommerce publish + REST parity', async ({ api, world, pages, poll, env }) => {
@@ -117,10 +123,26 @@ fullFlowSegment(() => {
         timeoutMs: 60_000,
       },
     );
+    // WooCommerce stores the price in the basis its own tax settings name
+    // (ADR-077): a store that enters prices WITHOUT tax holds the net figure,
+    // so turn it back into what a buyer pays before comparing it with the
+    // PrestaShop buyer price from S1.
+    const wcBasis = await wc.getStorePriceBasis();
+    let wcBuyerPrice: number | string = wcPrice!;
+    if (wcBasis.taxesEnabled && !wcBasis.pricesIncludeTax) {
+      const rate = wcBasis.storeCountry
+        ? await wc.getStandardTaxRatePercent(wcBasis.storeCountry)
+        : null;
+      expect(
+        rate,
+        `the tax-exclusive WooCommerce store has one standard rate for ${wcBasis.storeCountry ?? '(no base country)'}`,
+      ).not.toBeNull();
+      wcBuyerPrice = Math.round((Number(wcPrice) * (1 + rate! / 100) + Number.EPSILON) * 100) / 100;
+    }
     assertProductFieldParity({
-      label: 'OL↔WC product',
-      expected: { name: state.product!.name, price: state.product!.price ?? undefined },
-      actual: { name: wcProduct!.name, price: wcPrice },
+      label: 'PS buyer price↔WC product',
+      expected: { name: state.product!.name, price: expectedBuyerPrice(testInfo) },
+      actual: { name: wcProduct!.name, price: wcBuyerPrice },
       // `required: ['price']` - `assertProductFieldParity` skips any field the
       // EXPECTED side does not carry, so a null `state.product.price` silently
       // reduced this parity check to a currency-string comparison. S1 already

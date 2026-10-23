@@ -51,10 +51,18 @@ function makeOrderCarrier(
 }
 
 describe('mapToFulfillmentStatusSnapshot', () => {
+  /**
+   * The real PrestaShop 9.0.2 rows (#3506, G02-7): "Shipped" (4) and
+   * "Delivered" (5) carry IDENTICAL flags — `delivery` is `'1'` on both, and
+   * on "Processing in progress" (3) too — so only the label tells them apart.
+   */
+  const PS9_SHIPPED = { id: '4', name: 'Shipped', paid: '1', shipped: '1', delivery: '1' };
+  const PS9_DELIVERED = { id: '5', name: 'Delivered', paid: '1', shipped: '1', delivery: '1' };
+
   describe('delivered branch', () => {
-    it('should return Delivered with deliveredAt = date_upd when state.delivered = 1', () => {
+    it('should return Delivered with deliveredAt = date_upd when the state is the PS 9 "Delivered" row', () => {
       const order = makeOrder({ date_upd: '2026-05-28 14:00:00' });
-      const state = makeState({ delivered: '1' });
+      const state = makeState(PS9_DELIVERED);
 
       const snapshot = mapToFulfillmentStatusSnapshot(order, state, null);
 
@@ -62,17 +70,24 @@ describe('mapToFulfillmentStatusSnapshot', () => {
       expect(snapshot.deliveredAt).toEqual(new Date('2026-05-28 14:00:00'));
     });
 
-    it('should prefer delivered over shipped when both flags are set', () => {
-      const state = makeState({ delivered: '1', shipped: '1' });
+    it('should return Dispatched, not Delivered, when the state is the PS 9 "Shipped" row despite delivery = 1', () => {
+      const snapshot = mapToFulfillmentStatusSnapshot(makeOrder(), makeState(PS9_SHIPPED), null);
+
+      expect(snapshot.status).toBe(FULFILLMENT_STATUS.Dispatched);
+      expect(snapshot.deliveredAt).toBeNull();
+    });
+
+    it('should not return Delivered when a delivered label sits on a state that never shipped', () => {
+      const state = makeState({ name: 'Delivered', shipped: '0', delivery: '1' });
 
       const snapshot = mapToFulfillmentStatusSnapshot(makeOrder(), state, null);
 
-      expect(snapshot.status).toBe(FULFILLMENT_STATUS.Delivered);
+      expect(snapshot.status).not.toBe(FULFILLMENT_STATUS.Delivered);
     });
   });
 
   describe('dispatched branch', () => {
-    it('should return Dispatched when shipped = 1 and delivered != 1', () => {
+    it('should return Dispatched when shipped = 1 and the label does not read as delivered', () => {
       const state = makeState({ shipped: '1' });
 
       const snapshot = mapToFulfillmentStatusSnapshot(makeOrder(), state, null);
@@ -159,7 +174,7 @@ describe('mapToFulfillmentStatusSnapshot', () => {
     it('should thread the pre-resolved trackingNumber onto the snapshot verbatim', () => {
       const snapshot = mapToFulfillmentStatusSnapshot(
         makeOrder(),
-        makeState({ delivered: '1' }),
+        makeState(PS9_DELIVERED),
         'PS-TRK-1',
       );
 
@@ -179,13 +194,13 @@ describe('mapToFulfillmentStatusSnapshot', () => {
 
   describe('boolean-flag parsing', () => {
     it.each(['1', 1, 'true'])(
-      'should treat value %p as truthy on delivered',
+      'should treat value %p as truthy on shipped',
       (truthyValue) => {
-        const state = makeState({ delivered: truthyValue });
+        const state = makeState({ shipped: truthyValue });
 
         const snapshot = mapToFulfillmentStatusSnapshot(makeOrder(), state, null);
 
-        expect(snapshot.status).toBe(FULFILLMENT_STATUS.Delivered);
+        expect(snapshot.status).toBe(FULFILLMENT_STATUS.Dispatched);
       },
     );
 

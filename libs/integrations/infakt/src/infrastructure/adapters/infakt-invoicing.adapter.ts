@@ -146,6 +146,46 @@ function toInfaktCurrency(currency: string | null | undefined, context: string):
 }
 
 /**
+ * The `reason` this adapter stamps on the re-thrown `InfaktApiError` when it
+ * recognises the `errors.sale_type` 422 shape (#3031). Matches one of core's
+ * published `SALE_CLASSIFICATION_REJECTION_MARKERS`
+ * (`@openlinker/core/invoicing`) by construction — spec-asserted below, so a
+ * reword on either side breaks the build rather than silently losing the
+ * routing to the specific `sale-classification-required` failure code.
+ */
+const SALE_TYPE_HINT_REASON =
+  'Infakt requires a sale classification to be configured for this connection';
+
+/**
+ * Detects Infakt's field-level validation shape for a missing/required
+ * `sale_type` on `POST invoices.json` — `{"errors":{"sale_type":[...]}}`,
+ * live-verified against the sandbox for a non-PL buyer with no
+ * `defaultSaleType` configured (#3031, #2177 review).
+ *
+ * Structural only: checks that `errors.sale_type` is PRESENT, never the array
+ * contents (Infakt's message text is Polish and locale-dependent, so matching
+ * on it would silently stop working under a locale change) and never the
+ * emptiness of the array (a present-but-empty array would still be Infakt
+ * naming the field as the cause). Any other 422 shape — a different field, a
+ * non-object body, no `errors` key — reports `false` so it keeps propagating
+ * as the generic provider rejection it is.
+ */
+function isMissingSaleTypeRejection(error: unknown): error is InfaktApiError {
+  if (!(error instanceof InfaktApiError) || error.statusCode !== 422) {
+    return false;
+  }
+  const body = error.responseBody;
+  if (typeof body !== 'object' || body === null) {
+    return false;
+  }
+  const errors = (body as { errors?: unknown }).errors;
+  if (typeof errors !== 'object' || errors === null) {
+    return false;
+  }
+  return 'sale_type' in errors;
+}
+
+/**
  * Maps Infakt ksef_data.status → neutral RegulatoryStatus.
  *
  * `success` is the TERMINAL accepted state — it must map to `accepted`, not
@@ -468,6 +508,15 @@ export class InfaktInvoicingAdapter
    */
   private readonly bankAccount: InfaktConnectionConfig['bankAccount'];
 
+  /**
+   * Sale-type sent on every issued invoice/correction (#2177) — see
+   * `InfaktConnectionConfig.defaultSaleType`. Stays `undefined` unless the
+   * operator explicitly configured it; there is NO fallback here, since a
+   * silently-guessed sale type would misstate the invoice's VAT
+   * classification for a real fiscal document.
+   */
+  private readonly saleType: InfaktConnectionConfig['defaultSaleType'];
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IInfaktHttpClient,
@@ -476,6 +525,7 @@ export class InfaktInvoicingAdapter
   ) {
     this.paymentMethod = config.defaultPaymentMethod ?? 'cash';
     this.bankAccount = config.bankAccount;
+    this.saleType = config.defaultSaleType;
   }
 
   /**
@@ -514,6 +564,26 @@ export class InfaktInvoicingAdapter
     return [...SUPPORTED_DOCUMENT_TYPES];
   }
 
+  /**
+   * The inFakt payment method for one document (#3294): the order's own method
+   * when the source positively identified one, else the connection default.
+   * A transfer needs a bank account on the connection - without one inFakt
+   * rejects the invoice (#1303) - so a transfer order on an account-less
+   * connection keeps the default rather than failing a document the operator
+   * never asked to be stricter.
+   */
+  private resolvePaymentMethod(
+    method: IssueInvoiceCommand['paymentMethod'],
+  ): NonNullable<InfaktConnectionConfig['defaultPaymentMethod']> {
+    if (method === 'cash_on_delivery') {
+      return 'cash';
+    }
+    if (method === 'bank_transfer' && this.bankAccount !== undefined) {
+      return 'transfer';
+    }
+    return this.paymentMethod;
+  }
+
   async upsertCustomer(cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
     const { buyer } = cmd;
     // Infakt uses NIP (pl-nip scheme) for B2B client dedup. Persisted in the
@@ -521,7 +591,20 @@ export class InfaktInvoicingAdapter
     // writing a prefixed or separator-formatted NIP would leave the seller's own
     // records carrying three spellings of one tax id, and would depend on the
     // filter's normalisation to stay findable at all.
-    const rawNip = buyer.taxId?.scheme === 'pl-nip' ? buyer.taxId.value : null;
+    //
+    // An UNTAGGED tax id counts (#3224). ADR-073 decision 1 forbids core minting
+    // a `scheme` - an `Order` stores a bare number - so an untagged value now
+    // reaches every invoicing adapter and *"an adapter needing a tag supplies
+    // it"*. inFakt is a Polish accounting system with one tax-number field, so
+    // the domestic reading is the only placement there is; requiring the tag
+    // would silently drop the buyer's NIP from every auto-issued invoice and
+    // create a duplicate client on every order. A value that is not a valid NIP
+    // is sent and refused BY inFakt (ADR-073 decision 5), not pre-judged here.
+    const rawNip =
+      buyer.taxId !== null &&
+      (buyer.taxId.scheme === undefined || buyer.taxId.scheme === 'pl-nip')
+        ? buyer.taxId.value
+        : null;
     const nip = rawNip === null ? null : normalizeNip(rawNip) || null;
 
     // Search for existing client by NIP first
@@ -598,21 +681,27 @@ export class InfaktInvoicingAdapter
         // KSeF-cleared) as PLN. See `toInfaktCurrency` / `InfaktInvoice.currency`.
         currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
-        payment_method: this.paymentMethod,
+        payment_method: this.resolvePaymentMethod(cmd.paymentMethod),
         // Infakt's invoices.json wants the NUMERIC client id, not the client
         // uuid — verified live (2026-07-01): `client_uuid` is silently
         // ignored and the request 422s with "client_id required".
         client_id: clientId,
         services,
         ...this.bankAccountFields(),
+        // Per-connection setting (#2177) — see `this.saleType` doc. Omitted
+        // entirely when unconfigured so a PL client keeps relying on inFakt's
+        // own silent default and a non-PL client keeps 422ing exactly as
+        // before, unchanged from pre-#2177 behaviour.
+        ...(this.saleType ? { sale_type: this.saleType } : {}),
         ...(idempotencyKey ? { external_id: idempotencyKey } : {}),
       },
     };
 
     // InfaktApiError carries the neutral `failureMode` discriminator core's
-    // InvoiceService reads structurally (#1200) — propagate as-is rather
-    // than wrapping into a plain Error, which would erase that signal.
-    const invoice = await this.http.post<InfaktInvoice>('invoices.json', payload);
+    // InvoiceService reads structurally (#1200) — propagate as-is, EXCEPT for
+    // the specific `errors.sale_type` 422 shape (#3031), which is re-thrown
+    // with a `reason` core can route to a more actionable failure code.
+    const invoice = await this.postInvoiceWithSaleTypeHint(payload);
 
     this.logger.log(`Infakt invoice created: ${invoice.uuid} (${invoice.number ?? 'draft'})`);
 
@@ -670,6 +759,43 @@ export class InfaktInvoicingAdapter
     // leave the record disagreeing with the document by a grosz here and there,
     // with no way for a reader to tell which is right.
     return { record, documentLines: toDocumentLineAmounts(invoice.services) };
+  }
+
+  /**
+   * Wraps the `invoices.json` create call to detect Infakt's field-level
+   * validation shape for a missing `sale_type` (#3031) —
+   * `{"errors":{"sale_type":["Proszę określić rodzaj sprzedaży."]}}`, live-
+   * verified against the sandbox for a non-PL buyer with no `defaultSaleType`
+   * configured — and re-throw with a `reason` core's `InvoiceService` can
+   * route to the specific `sale-classification-required` failure code instead
+   * of the generic `provider-rejected` (#2177 review).
+   *
+   * Only the DIRECT `invoices.json` POST goes through this: a correction's
+   * failure surfaces through `awaitCorrectionTask`'s async-task envelope
+   * (`{processing_code, processing_description}`, live-verified #1763), which
+   * carries no field-level `errors` object at all — there is no
+   * `errors.sale_type` shape for a correction to be detected against.
+   *
+   * `isMissingSaleTypeRejection` reads only the STRUCTURE of the parsed body
+   * (key presence), never its text — the Polish message it carries is not
+   * matched against, since a locale change would silently stop the detection.
+   */
+  private async postInvoiceWithSaleTypeHint(
+    payload: InfaktInvoiceRequest,
+  ): Promise<InfaktInvoice> {
+    try {
+      return await this.http.post<InfaktInvoice>('invoices.json', payload);
+    } catch (err) {
+      if (isMissingSaleTypeRejection(err)) {
+        throw new InfaktApiError(
+          err.message,
+          err.statusCode,
+          err.responseBody,
+          SALE_TYPE_HINT_REASON,
+        );
+      }
+      throw err;
+    }
   }
 
   async getInvoice(query: GetInvoiceQuery): Promise<InvoiceRecord | null> {
@@ -963,6 +1089,10 @@ export class InfaktInvoicingAdapter
         // different currency than the document it corrects.
         currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        // Deliberately NOT the order's method (#3294): a correction carries no
+        // order context, so it keeps the connection default even when the
+        // original was issued as cash on delivery. Known gap, tracked with the
+        // returns correction flow rather than guessed here.
         payment_method: this.paymentMethod,
         // Required by Infakt on every invoice, corrective included — verified
         // live (2026-07-01): omitting it 422s with "client_id required". The
@@ -970,6 +1100,16 @@ export class InfaktInvoicingAdapter
         // upsertCustomer round-trip is needed for a correction.
         client_id: original.client_id,
         ...this.bankAccountFields(),
+        // Per-connection setting (#2177) — see `this.saleType` doc. A
+        // correction should not disagree with the original invoice's sale
+        // classification, so the same conditional-spread pattern applies.
+        // NOTE (shared with bankAccountFields() above): this reads the LIVE
+        // connection config, not a snapshot of what was stamped on the
+        // original invoice — if an operator changes `defaultSaleType` between
+        // issuing and correcting, the correction can disagree with the
+        // original after all. Pre-existing adapter precedent, not a
+        // regression introduced here (#2995 review).
+        ...(this.saleType ? { sale_type: this.saleType } : {}),
         corrected_invoice_number: original.number,
         corrected_invoice_date: original.invoice_date ?? new Date().toISOString().slice(0, 10),
         // Documented alongside corrected_invoice_number/_date as a third,

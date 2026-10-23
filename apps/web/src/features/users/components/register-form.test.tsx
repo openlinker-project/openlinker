@@ -73,10 +73,18 @@ describe('RegisterForm', () => {
     expect(await screen.findByText('Username already taken')).toBeInTheDocument();
   });
 
-  it('should show a dedicated message when registration fails with a 409 (#1625)', async () => {
+  it("should render the server's own 409 message rather than naming a field (#1625, #3156)", async () => {
+    // The form used to hardcode 'This email is already registered.' for every
+    // 409. That asserted a specific email exists — the enumeration claim the
+    // server just stopped making — and was simply false for a username-only
+    // collision, which returns the same 409 and left the user editing the
+    // wrong field forever. The server's message names neither field, so it is
+    // rendered verbatim.
     const mockApi = createMockApiClient({
       auth: {
-        register: vi.fn().mockRejectedValue(new ApiError('Email already registered', 409, null)),
+        register: vi
+          .fn()
+          .mockRejectedValue(new ApiError('Username or email is already in use', 409, null)),
       },
     });
     renderWithProviders(<RegisterForm />, { apiClient: mockApi });
@@ -87,7 +95,8 @@ describe('RegisterForm', () => {
     await userEvent.type(screen.getByLabelText('Confirm password'), 'password123');
     await userEvent.click(screen.getByRole('button', { name: /request access/i }));
 
-    expect(await screen.findByText('This email is already registered.')).toBeInTheDocument();
+    expect(await screen.findByText('Username or email is already in use')).toBeInTheDocument();
+    expect(screen.queryByText(/this email is already registered/i)).not.toBeInTheDocument();
   });
 
   describe('demo mode', () => {

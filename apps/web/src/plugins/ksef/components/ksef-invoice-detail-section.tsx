@@ -8,7 +8,9 @@
  * `platformType` literals here.
  *
  * Displays the KSeF-specific regulatory region using the mockup's `.slot-row` layout:
- *   - Clearance status badge (via neutral `RegulatoryStatusBadge`)
+ *   - Clearance status badge (the shared, regulator-neutral
+ *     `RegulatoryStatusBadge`, branded with the KSeF-specific
+ *     `labelOverrides` — #3181, since this surface is KSeF's own)
  *   - KSeF number (`clearanceReference` → fallback `providerInvoiceNumber`)
  *   - Official receipt (UPO): download + inline preview (#1234, B3), gated on
  *     `regulatoryStatus === 'accepted'`
@@ -24,11 +26,12 @@ import type { InvoiceDetailSectionProps } from '../../../shared/plugins';
 import {
   RegulatoryStatusBadge,
   regCardToneFor,
-  useKsefUpoDownload,
-  useKsefUpoPreview,
-  useKsefFa3,
+  useRegulatoryConfirmationDownload,
+  useRegulatoryConfirmationPreview,
+  useInvoiceSourceDocument,
 } from '../../../features/invoicing';
 import { KsefFa3View } from './ksef-fa3-view';
+import { KSEF_REGULATORY_STATUS_LABELS } from '../lib/ksef-regulatory-status-labels';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -57,9 +60,9 @@ export function KsefInvoiceDetailSection({
   invoice,
 }: InvoiceDetailSectionProps): ReactElement | null {
   const { t } = useTranslation();
-  const upoDownload = useKsefUpoDownload();
-  const upoPreview = useKsefUpoPreview();
-  const fa3 = useKsefFa3();
+  const upoDownload = useRegulatoryConfirmationDownload();
+  const upoPreview = useRegulatoryConfirmationPreview();
+  const fa3 = useInvoiceSourceDocument();
   const { showToast } = useToast();
   // Tracks a fetched-but-unparseable FA(3) document so the preview area falls
   // through to placeholder/error copy instead of rendering nothing (KsefFa3View
@@ -152,7 +155,10 @@ export function KsefInvoiceDetailSection({
                 {t('invoice.ksef.clearanceStatus', 'Clearance status')}
               </div>
             </div>
-            <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
+            <RegulatoryStatusBadge
+              status={invoice.regulatoryStatus}
+              labelOverrides={KSEF_REGULATORY_STATUS_LABELS}
+            />
           </div>
         ) : null}
 

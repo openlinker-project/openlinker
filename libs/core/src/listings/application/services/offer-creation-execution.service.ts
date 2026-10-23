@@ -61,7 +61,10 @@ import { OfferBuilderValidationException } from '../../domain/exceptions/offer-b
 import { OfferCreationInvariantException } from '../../domain/exceptions/offer-creation-invariant.exception';
 import { OfferCreationRecordNotFoundException } from '../../domain/exceptions/offer-creation-record-not-found.exception';
 import { OfferCreationRecordRepositoryPort } from '../../domain/ports/offer-creation-record-repository.port';
-import type { OfferCreationError } from '../../domain/types/offer-creation-record.types';
+import {
+  OFFER_CREATION_JOB_DEAD_ERROR_CODE,
+  type OfferCreationError,
+} from '../../domain/types/offer-creation-record.types';
 import type {
   ExecuteOfferCreationInput,
   ExecuteOfferCreationResult,
@@ -255,6 +258,30 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     }
 
     return this.buildResult(finalRecord, input.connectionId);
+  }
+
+  async abandonCreation(recordId: string, reason: string): Promise<OfferCreationRecord | null> {
+    // The message names the uncertainty on purpose: a job that died on an
+    // ambiguous write (a lost POST response) cannot know whether the offer
+    // exists, and "failed" alone would invite a blind retry that duplicates it.
+    const abandoned = await this.offerCreationRecords.markFailedIfPending(recordId, [
+      {
+        code: OFFER_CREATION_JOB_DEAD_ERROR_CODE,
+        message:
+          `Offer creation job died: ${reason}. The marketplace may already have received ` +
+          `the request — check the listing before retrying.`,
+      },
+    ]);
+    if (abandoned) {
+      this.logger.warn(
+        `Offer creation record ${recordId} abandoned after its job died: ${reason}`
+      );
+    } else {
+      this.logger.debug(
+        `Offer creation record ${recordId} not abandoned — unknown or no longer pending`
+      );
+    }
+    return abandoned;
   }
 
   /**

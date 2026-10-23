@@ -3,9 +3,10 @@
  *
  * Covers `publishProduct` (create vs upsert, status mapping, multi-category,
  * platformParams passthrough, 4xx → rejection, 5xx propagation, 401 propagation,
- * image upload best-effort, feature/parameter provisioning)
+ * image upload best-effort, feature/parameter provisioning, gross-to-net
+ * pricing with the matching tax-rule group and its terminal refusals, ADR-077)
  * and `provisionCategory` (find-vs-create, hierarchical parent threading, mixed
- * found/created path). WebService client is mocked.
+ * found/created path). WebService client and tax resolvers are mocked.
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/product-publisher/__tests__
  */
@@ -18,9 +19,45 @@ import { PrestashopApiException, PrestashopAuthenticationException } from '@open
 
 import { PrestashopTruncatedReadException } from '../../../../domain/exceptions/prestashop-truncated-read.exception';
 import type { IPrestashopWebserviceClient } from '../../../http/prestashop-webservice.client.interface';
+import type { PrestashopTaxRateResolver } from '../../../provisioners/prestashop-tax-rate.resolver';
+import type { PrestashopSalesCountryResolver } from '../../../provisioners/prestashop-sales-country.resolver';
+import type { PrestashopSalesCountry } from '../../../provisioners/prestashop-sales-country.types';
 import { PrestashopProductPublisherAdapter } from '../prestashop-product-publisher.adapter';
 
 const CONNECTION_ID = 'conn-ps-1';
+
+/** Poland as the shop's sales country (ADR-077). */
+const SALES_COUNTRY_PL: PrestashopSalesCountry = {
+  countryId: 14,
+  iso2: 'PL',
+  source: 'setting',
+  taxesEnabled: true,
+};
+
+/** The shop's active tax-rule group charging 23% in Poland. */
+const PL_23_TAX_GROUP_ID = 1;
+
+type PublisherTaxRateResolverMock = jest.Mocked<
+  Pick<PrestashopTaxRateResolver, 'resolveTaxRulesGroupRate' | 'findTaxRulesGroupForRate'>
+>;
+type SalesCountryResolverMock = jest.Mocked<Pick<PrestashopSalesCountryResolver, 'resolve'>>;
+
+function makeTaxRateResolver(): PublisherTaxRateResolverMock {
+  const resolver: PublisherTaxRateResolverMock = {
+    resolveTaxRulesGroupRate: jest.fn(),
+    findTaxRulesGroupForRate: jest.fn(),
+  };
+  resolver.findTaxRulesGroupForRate.mockResolvedValue(PL_23_TAX_GROUP_ID);
+  return resolver;
+}
+
+function makeSalesCountryResolver(
+  country: PrestashopSalesCountry | null = SALES_COUNTRY_PL
+): SalesCountryResolverMock {
+  const resolver: SalesCountryResolverMock = { resolve: jest.fn() };
+  resolver.resolve.mockResolvedValue(country);
+  return resolver;
+}
 
 function makeClient(): jest.Mocked<IPrestashopWebserviceClient> {
   return {
@@ -51,7 +88,9 @@ function baseCommand(overrides: Partial<PublishProductCommand> = {}): PublishPro
     internalVariantId: 'ol_variant_aaaa',
     connectionId: CONNECTION_ID,
     destinationCategoryIds: ['12'],
-    price: { amount: 19.99, currency: 'PLN' },
+    // Gross, what the buyer pays (ADR-077): 100.00 net at 23%.
+    price: { amount: 123, currency: 'PLN' },
+    taxRate: '23',
     stock: 5,
     status: 'published',
     content: { title: 'Widget', description: 'A widget' },
@@ -72,15 +111,36 @@ function withDefaultStockMock(client: jest.Mocked<IPrestashopWebserviceClient>):
 
 describe('PrestashopProductPublisherAdapter', () => {
   let client: jest.Mocked<IPrestashopWebserviceClient>;
+  let taxRateResolver: PublisherTaxRateResolverMock;
+  let salesCountryResolver: SalesCountryResolverMock;
   let adapter: PrestashopProductPublisherAdapter;
+
+  /**
+   * The publisher as the factory wires it: `cmd.price` is gross (ADR-077), so
+   * it needs the shop's tax setup to write PrestaShop's net `price` field.
+   */
+  function createAdapter(
+    connectionUnderTest: Connection = connection,
+    fetchImpl?: jest.Mock,
+  ): PrestashopProductPublisherAdapter {
+    return new PrestashopProductPublisherAdapter(
+      client,
+      connectionUnderTest,
+      fetchImpl,
+      taxRateResolver as unknown as PrestashopTaxRateResolver,
+      salesCountryResolver as unknown as PrestashopSalesCountryResolver,
+    );
+  }
 
   beforeEach(() => {
     client = makeClient();
-    adapter = new PrestashopProductPublisherAdapter(client, connection);
+    taxRateResolver = makeTaxRateResolver();
+    salesCountryResolver = makeSalesCountryResolver();
+    adapter = createAdapter();
   });
 
   describe('publishProduct', () => {
-    it('should POST a new product and return externalProductId', async () => {
+    it('should POST a new product with the net price and its tax-rule group and return externalProductId', async () => {
       client.createResource.mockResolvedValue({ id: '100', active: '1' });
       withDefaultStockMock(client);
 
@@ -90,7 +150,10 @@ describe('PrestashopProductPublisherAdapter', () => {
       const [resource, body] = client.createResource.mock.calls[0];
       expect(resource).toBe('products');
       expect(body).toMatchObject({
-        price: '19.99',
+        // 123.00 gross at 23%: PrestaShop stores the tax-excluded price and
+        // adds the group's rate back on top.
+        price: '100.000000',
+        id_tax_rules_group: String(PL_23_TAX_GROUP_ID),
         active: '1',
         id_category_default: '12',
       });
@@ -112,7 +175,12 @@ describe('PrestashopProductPublisherAdapter', () => {
         1,
         'products',
         '100',
-        expect.objectContaining({ id: '100', active: '0' }),
+        expect.objectContaining({
+          id: '100',
+          active: '0',
+          price: '100.000000',
+          id_tax_rules_group: String(PL_23_TAX_GROUP_ID),
+        }),
       );
       expect(result).toEqual({ externalProductId: '100', status: 'draft' });
     });
@@ -382,11 +450,7 @@ describe('PrestashopProductPublisherAdapter', () => {
         arrayBuffer: () => Promise.resolve(new ArrayBuffer(3)),
         headers: { get: (_h: string) => 'image/jpeg' },
       } as unknown as Response);
-      const adapterWithFetch = new PrestashopProductPublisherAdapter(
-        client,
-        connection,
-        injectedFetch,
-      );
+      const adapterWithFetch = createAdapter(connection, injectedFetch);
       client.createResource.mockResolvedValue({ id: '1', active: '1' });
       withDefaultStockMock(client);
       client.uploadImage.mockResolvedValue({ id: 'img-1' });
@@ -453,6 +517,265 @@ describe('PrestashopProductPublisherAdapter', () => {
       // '0' is not a valid PS parent; Home (id 2) is the first visible level
       expect(body.id_category_default).toBe('2');
     });
+  });
+
+  /**
+   * ADR-077: `cmd.price` is what a buyer pays, PrestaShop's `price` is
+   * tax-excluded. The publisher writes `gross / (1 + rate)` to 6 decimals plus
+   * the group whose rate that was, and refuses terminally (status 0) whenever
+   * it cannot name both - a guess taxes the buyer twice or not at all.
+   */
+  describe('gross to net pricing (ADR-077)', () => {
+    /** The product body written, from whichever write the publish made. */
+    function writtenProductBody(): Record<string, unknown> | undefined {
+      return client.createResource.mock.calls.find((c) => c[0] === 'products')?.[1];
+    }
+
+    /** Publish, expecting the terminal refusal with the given code. */
+    async function expectRefusal(cmd: PublishProductCommand, code: string): Promise<void> {
+      const error = await adapter.publishProduct(cmd).then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(ProductPublishRejectedException);
+      expect(error).toMatchObject({
+        adapterKey: 'prestashop.webservice.v1',
+        // Preflight refusal, not an HTTP answer: never retried.
+        statusCode: 0,
+        errors: [expect.objectContaining({ code, message: expect.any(String) })],
+      });
+      // Refused before anything was written or even looked up in the shop.
+      expect(client.createResource).not.toHaveBeenCalled();
+      expect(client.updateResource).not.toHaveBeenCalled();
+      expect(client.listResources).not.toHaveBeenCalled();
+    }
+
+    beforeEach(() => {
+      client.createResource.mockResolvedValue({ id: '100', active: '1' });
+      withDefaultStockMock(client);
+    });
+
+    it("should find the shop's group for the catalogue rate and write the net price to 6 decimals", async () => {
+      await adapter.publishProduct(baseCommand({ price: { amount: 19.99, currency: 'PLN' } }));
+
+      // 19.99 / 1.23 = 16.2520325..., kept to the precision the order path pins with.
+      expect(writtenProductBody()).toMatchObject({
+        price: '16.252033',
+        id_tax_rules_group: String(PL_23_TAX_GROUP_ID),
+      });
+      expect(salesCountryResolver.resolve).toHaveBeenCalledWith(CONNECTION_ID, undefined, client);
+      expect(taxRateResolver.findTaxRulesGroupForRate).toHaveBeenCalledWith(
+        expect.closeTo(23, 6),
+        14,
+        CONNECTION_ID,
+        client,
+      );
+      expect(taxRateResolver.resolveTaxRulesGroupRate).not.toHaveBeenCalled();
+    });
+
+    it('should resolve the sales country the connection names when salesCountryIso2 is set', async () => {
+      const configured = {
+        ...connection,
+        config: { ...connection.config, salesCountryIso2: 'PL' },
+      } as Connection;
+
+      await createAdapter(configured).publishProduct(baseCommand());
+
+      expect(salesCountryResolver.resolve).toHaveBeenCalledWith(CONNECTION_ID, 'PL', client);
+    });
+
+    it("should write the operator's tax-rule group when it charges the catalogue rate", async () => {
+      taxRateResolver.resolveTaxRulesGroupRate.mockResolvedValue({
+        kind: 'resolved',
+        rate: 0.23,
+        matchedBy: 'country',
+      });
+
+      await adapter.publishProduct(baseCommand({ platformParams: { id_tax_rules_group: '7' } }));
+
+      expect(writtenProductBody()).toMatchObject({
+        price: '100.000000',
+        id_tax_rules_group: '7',
+      });
+      expect(taxRateResolver.resolveTaxRulesGroupRate).toHaveBeenCalledWith(
+        7,
+        14,
+        CONNECTION_ID,
+        client,
+      );
+      expect(taxRateResolver.findTaxRulesGroupForRate).not.toHaveBeenCalled();
+    });
+
+    it("should take the net from the operator's group rate when the catalogue holds no rate", async () => {
+      taxRateResolver.resolveTaxRulesGroupRate.mockResolvedValue({
+        kind: 'resolved',
+        rate: 0.08,
+        matchedBy: 'country',
+      });
+
+      await adapter.publishProduct(
+        baseCommand({
+          price: { amount: 108, currency: 'PLN' },
+          taxRate: undefined,
+          platformParams: { id_tax_rules_group: '7' },
+        }),
+      );
+
+      expect(writtenProductBody()).toMatchObject({
+        price: '100.000000',
+        id_tax_rules_group: '7',
+      });
+    });
+
+    it("should refuse with TAX_RATE_CONFLICT when the operator's group charges a different rate than the catalogue", async () => {
+      taxRateResolver.resolveTaxRulesGroupRate.mockResolvedValue({
+        kind: 'resolved',
+        rate: 0.08,
+        matchedBy: 'country',
+      });
+
+      await expectRefusal(
+        baseCommand({ platformParams: { id_tax_rules_group: '7' } }),
+        'TAX_RATE_CONFLICT',
+      );
+    });
+
+    it("should refuse with TAX_GROUP_UNRESOLVED when the operator's group names no usable rate for the sales country", async () => {
+      taxRateResolver.resolveTaxRulesGroupRate.mockResolvedValue({
+        kind: 'unknown',
+        reason: 'configuration',
+        evidence: 'tax rules group 7 has no rule for PL',
+      });
+
+      await expectRefusal(
+        baseCommand({ platformParams: { id_tax_rules_group: '7' } }),
+        'TAX_GROUP_UNRESOLVED',
+      );
+    });
+
+    it("should propagate a retryable PrestashopApiException, not a refusal, when the operator's group could not be read", async () => {
+      taxRateResolver.resolveTaxRulesGroupRate.mockResolvedValue({
+        kind: 'unknown',
+        reason: 'transport',
+        evidence: 'GET tax_rule_groups/7 returned 503',
+        statusCode: 503,
+      });
+
+      const error = await adapter
+        .publishProduct(baseCommand({ platformParams: { id_tax_rules_group: '7' } }))
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+
+      expect(error).toBeInstanceOf(PrestashopApiException);
+      expect(error).not.toBeInstanceOf(ProductPublishRejectedException);
+      expect((error as PrestashopApiException).statusCode).toBe(503);
+      expect(client.createResource).not.toHaveBeenCalled();
+    });
+
+    it.each(['zw', 'np', 'oo', 'ZW', '0'])(
+      'should write the gross as the net under the "No tax" group when the catalogue rate is %s',
+      async (taxRate) => {
+        await adapter.publishProduct(baseCommand({ taxRate }));
+
+        expect(writtenProductBody()).toMatchObject({
+          price: '123.000000',
+          id_tax_rules_group: '0',
+        });
+        expect(taxRateResolver.findTaxRulesGroupForRate).not.toHaveBeenCalled();
+        expect(taxRateResolver.resolveTaxRulesGroupRate).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should refuse with TAX_GROUP_NOT_FOUND when no active group charges the catalogue rate in the sales country', async () => {
+      taxRateResolver.findTaxRulesGroupForRate.mockResolvedValue(null);
+
+      await expectRefusal(baseCommand(), 'TAX_GROUP_NOT_FOUND');
+    });
+
+    it("should propagate a retryable PrestashopApiException, not a refusal, when the shop's groups could not be read", async () => {
+      taxRateResolver.findTaxRulesGroupForRate.mockResolvedValue({
+        kind: 'unknown',
+        reason: 'transport',
+        evidence: 'GET tax_rule_groups returned 502',
+        statusCode: 502,
+      });
+
+      const error = await adapter.publishProduct(baseCommand()).then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(PrestashopApiException);
+      expect(error).not.toBeInstanceOf(ProductPublishRejectedException);
+      expect((error as PrestashopApiException).statusCode).toBe(502);
+      expect(client.createResource).not.toHaveBeenCalled();
+    });
+
+    it('should write the gross as it stands, with no tax group, when the shop has taxes switched off', async () => {
+      salesCountryResolver.resolve.mockResolvedValue({ ...SALES_COUNTRY_PL, taxesEnabled: false });
+
+      await adapter.publishProduct(baseCommand());
+
+      const body = writtenProductBody();
+      expect(body).toMatchObject({ price: '123.000000' });
+      expect(body).not.toHaveProperty('id_tax_rules_group');
+      expect(taxRateResolver.findTaxRulesGroupForRate).not.toHaveBeenCalled();
+      expect(taxRateResolver.resolveTaxRulesGroupRate).not.toHaveBeenCalled();
+    });
+
+    it("should keep the operator's tax-rule group without reading it when the shop has taxes switched off", async () => {
+      salesCountryResolver.resolve.mockResolvedValue({ ...SALES_COUNTRY_PL, taxesEnabled: false });
+
+      await adapter.publishProduct(baseCommand({ platformParams: { id_tax_rules_group: '7' } }));
+
+      expect(writtenProductBody()).toMatchObject({
+        price: '123.000000',
+        id_tax_rules_group: '7',
+      });
+      expect(taxRateResolver.resolveTaxRulesGroupRate).not.toHaveBeenCalled();
+    });
+
+    it('should refuse with TAX_RATE_MISSING when neither the catalogue nor platformParams names a rate', async () => {
+      await expectRefusal(baseCommand({ taxRate: undefined }), 'TAX_RATE_MISSING');
+    });
+
+    it('should refuse with SALES_COUNTRY_UNRESOLVED when the shop cannot name a sales country', async () => {
+      salesCountryResolver.resolve.mockResolvedValue(null);
+
+      await expectRefusal(baseCommand(), 'SALES_COUNTRY_UNRESOLVED');
+      expect(taxRateResolver.findTaxRulesGroupForRate).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a failed sales-country read unchanged so the job retries', async () => {
+      const readError = new PrestashopApiException('GET configurations returned 503', 503);
+      salesCountryResolver.resolve.mockRejectedValue(readError);
+
+      await expect(adapter.publishProduct(baseCommand())).rejects.toBe(readError);
+      expect(client.createResource).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the tax-rate resolver', 'tax'],
+      ['the sales-country resolver', 'country'],
+    ])(
+      'should refuse with TAX_SETUP_UNAVAILABLE when %s is not wired',
+      async (_label, missing) => {
+        adapter = new PrestashopProductPublisherAdapter(
+          client,
+          connection,
+          undefined,
+          missing === 'tax' ? undefined : (taxRateResolver as unknown as PrestashopTaxRateResolver),
+          missing === 'country'
+            ? undefined
+            : (salesCountryResolver as unknown as PrestashopSalesCountryResolver),
+        );
+
+        await expectRefusal(baseCommand(), 'TAX_SETUP_UNAVAILABLE');
+      },
+    );
   });
 
   describe('provisionCategory', () => {

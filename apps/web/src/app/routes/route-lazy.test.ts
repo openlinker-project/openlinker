@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import { plugins } from '../../plugins';
 import { guestRoutes, standaloneRoutes } from '../router';
-import { coreChildren } from './root.route';
+import { buildCoreChildren } from './root.route';
 
 /**
  * Walk the route tree depth-first and collect every node that defines a
@@ -37,7 +37,9 @@ function collectLazyRoutes(routes: RouteObject[]): RouteObject[] {
 }
 
 const lazyRoutes = collectLazyRoutes([
-  ...coreChildren,
+  // Flag ON (#3634): the contract covers every route the build can register,
+  // including the OMS routing pages the default build withholds.
+  ...buildCoreChildren(true),
   ...guestRoutes,
   // #2413: `/bench` renders outside `AuthenticatedAppLayout` (its idle lock
   // clears the session, which that layout answers with a redirect), so it is
@@ -55,8 +57,12 @@ const lazyRoutes = collectLazyRoutes([
  * route reverted to eager `element:` form, which is exactly the regression
  * the parameterized test below is meant to catch.
  *
- * Today's breakdown (62 total = 46 authenticated + 4 guest + 12 plugin):
- *   - 46 authenticated children (under `coreChildren`, counting per-children-node
+ * Today's breakdown (64 total = 47 authenticated + 4 guest + 1 standalone +
+ * 12 plugin — the arithmetic below previously didn't sum to the constant
+ * because `/bench` was described inline as part of the 47 while actually
+ * living in the separate `standaloneRoutes` array; it now gets its own
+ * bucket):
+ *   - 47 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     `/users` user-management page (#1125), `/invoices/:invoiceId` detail (#1240),
@@ -64,7 +70,11 @@ const lazyRoutes = collectLazyRoutes([
  *     `/dashboard` (#2740), `/settings/mcp-tokens` MCP token management
  *     (#1486/#1932), `/settings/sales-documents` (#2159), `/orders/dispatch-risk`
  *     (#2306), the two returns routes `/returns` (#2335) + `/returns/:returnId`
- *     (#2336), and `/settings/who-decides` (#2354), plus `/bench` — the pack-bench identity
+ *     (#2336), `/settings/who-decides` (#2354),
+ *     `/settings/inventory-locations` (#3064), `/settings/sourcing-rules` (#3060),
+ *     and `/connections/:connectionId/pricing-sync` (#3150 — the destination
+ *     Pricing & sync settings page and the source connection rollup, dual-mode
+ *     resolved by capability), plus `/bench` — the pack-bench identity
  *     surface (#2413), which carries no nav entry and is reached by URL at a
  *     terminal;
  *     the former `/inventory/:id` detail route was removed (#1305/#1609) once
@@ -73,17 +83,52 @@ const lazyRoutes = collectLazyRoutes([
  *     absorbed cross-catalog stock browsing)
  *   - 4 guest routes (forgot-password, reset-password, register, confirm-email (#1624)
  *     — login stays eager)
- *   - 12 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
- *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, ksef
- *     invoice numbering (#1577), inpost setup, infakt setup (#1282), eparagony
- *     setup (#1909))
+ *   - 1 standalone route: `/bench` — the pack-bench identity surface
+ *     (#2413), which carries no nav entry and is reached by URL at a
+ *     terminal, and renders outside `AuthenticatedAppLayout` (see the
+ *     `standaloneRoutes` comment above)
+ *   - 13 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
+ *     woocommerce setup, erli setup, subiekt GT setup and subiekt nexo setup
+ *     (#1199, split into two by #3464), ksef setup, ksef invoice numbering
+ *     (#1577), inpost setup, infakt setup (#1282), eparagony setup (#1909))
  *
  * Routes that are intentionally eager (no page module to defer):
  *   - login (first-paint optimization — see `login.route.tsx`)
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  *   - `/analytics` legacy alias (inline `<Navigate>` to `/`, #2740)
+ *
+ * #3307 (review fix): `/invoices` (the list) was briefly an inline
+ * `<Navigate>` to `/sales-documents`; it is lazy again (`InvoicesListPage`
+ * stays mounted, see `invoices.route.tsx`), and `/sales-documents` +
+ * `/sales-documents/fiscal-receipt/:recordId` are two NEW lazy routes —
+ * net +2 over the pre-#3307 baseline of 66.
+ *
+ * Merged with main (#3261): `/inventory/duplicate-positions` diagnostics
+ * page added one more authenticated lazy route, bumping the baseline this
+ * branch merges onto from 66 to 67 — net +2 over that gives 69.
+ *
+ * The fulfilment screen merge: `/fulfillment` and `/fulfillment/assign` were
+ * two lazy routes over two pages and are now one lazy route plus an inline
+ * `<Navigate>` shim on the old path. A redirect loads nothing, so it joins
+ * the eager list above rather than this count — net −1, from 70 to 69.
+ *
+ * #3464 split the single Subiekt wizard into two, one per product: Subiekt GT
+ * and Subiekt nexo speak different bridges, so a connection created under the
+ * wrong identity points at an adapter that cannot talk to it. That is one more
+ * plugin route (12 -> 13), giving 70.
+ * #3457: `/settings/packing` (the OMS onboarding wizard) adds one lazy
+ * route - from 70 to 71.
+ *
+ * The task detail page (#3098): `/fulfillment` became an INDEX child so
+ * `/fulfillment/works/:workId` could sit beside it — one node became two,
+ * net +1, from 71 to 72.
+ *
+ * #3533 (G03, epic #3507): `/settings/order-tags` — the workspace tag
+ * manager — is one more authenticated lazy route, from 72 to 73.
+ *
+ * #3702 adds the guided Shoper setup route (`connections/new/shoper`), from 73 to 74.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 63;
+const EXPECTED_LAZY_ROUTE_COUNT = 74;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

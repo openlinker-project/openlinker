@@ -41,6 +41,8 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
   updateAnalyticsConsent: jest.fn(),
   deleteAdminAtomically: jest.fn(),
   findStaleViewerAccounts: jest.fn(),
+  updatePackStationLabel: jest.fn(),
+  touchLastActive: jest.fn(),
 });
 
 describe('BootstrapAdminService', () => {

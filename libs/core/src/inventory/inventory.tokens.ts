@@ -38,3 +38,16 @@ export const RESERVATION_SERVICE_TOKEN = Symbol('IReservationService');
 export const INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN = Symbol(
   'IInventoryProvenanceBackfillService'
 );
+// Post-sale master stock re-read, shared by the order-sync and post-document
+// callers so the two cannot build a different dedupe key (Z3)
+export const POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN = Symbol(
+  'IPostSaleInventoryRefreshService'
+);
+
+// #3453 — the routed-order sale decrement.
+export const INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN = Symbol(
+  'InventorySaleDecrementRepositoryPort'
+);
+export const INVENTORY_SALE_DECREMENT_SERVICE_TOKEN = Symbol('IInventorySaleDecrementService');
+// #3479 — the inverse: raising a cancelled routed order's decrements back.
+export const INVENTORY_SALE_REVERSAL_SERVICE_TOKEN = Symbol('IInventorySaleReversalService');

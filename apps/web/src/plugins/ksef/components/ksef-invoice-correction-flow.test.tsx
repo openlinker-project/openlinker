@@ -230,10 +230,12 @@ describe('KsefInvoiceCorrectionFlow', () => {
     });
   });
 
-  it('#2076: submits the picked lines 1-based position as originalLineNumber', async () => {
+  it('#3090: renders the grid — one row per invoice line, submitted against its 1-based position', async () => {
     const issueCorrection = vi.fn().mockResolvedValue(makeInvoice({ id: 'ol_invoice_picked' }));
-    // Two lines of the SAME product at different prices — unresolvable when the
-    // operator types a number blind, which is the #2076 defect.
+    // Two lines of the SAME product at different prices — the #2076 defect
+    // this used to exercise (an operator typing a number blind can't tell them
+    // apart) cannot occur here: the grid renders each as its OWN row, by
+    // position, so there is nothing to type or disambiguate.
     const getContent = vi.fn().mockResolvedValue({
       linesIndexedByCorrection: true,
       lines: [
@@ -252,22 +254,22 @@ describe('KsefInvoiceCorrectionFlow', () => {
       { apiClient: createMockApiClient({ invoicing: { issueCorrection, getContent } }) },
     );
 
-    // Await the options: while loading, the control is a live number input
-    // under the same accessible name.
-    await screen.findByRole('option', { name: /2\. Widget/ });
-    fireEvent.change(screen.getByLabelText(/Line number 1/i), { target: { value: '2' } });
-    // A delta is required per line, so give it one.
-    fireEvent.change(await screen.findByLabelText(/New qty, line 1/i), { target: { value: '0' } });
+    const qtyInputs = await screen.findAllByLabelText(/Quantity after correction, line/i);
+    expect(qtyInputs).toHaveLength(2);
+    // Edit the SECOND row only — the first stays at its invoiced quantity and
+    // must not appear in the submitted delta.
+    fireEvent.change(qtyInputs[1], { target: { value: '0' } });
 
     fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
 
     await waitFor(() => {
       const call = issueCorrection.mock.calls[0] as [
         string,
-        { lines: { originalLineNumber: number }[] },
+        { lines: { originalLineNumber: number; newQuantity?: number }[] },
       ];
-      // The position the operator saw and chose — not a number they had to know.
+      expect(call[1].lines).toHaveLength(1);
       expect(call[1].lines[0].originalLineNumber).toBe(2);
+      expect(call[1].lines[0].newQuantity).toBe(0);
     });
   });
 

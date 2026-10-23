@@ -2,7 +2,9 @@ import { useMemo, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import type { Connection, ConnectionFilters, ConnectionStatus } from '../../features/connections/api/connections.types';
+import { canArchive } from '../../features/connections/api/connections.types';
 import { usePlatforms } from '../../shared/plugins';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, LoadingState, EmptyState } from '../../shared/ui/feedback-state';
@@ -14,8 +16,11 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { OmsAttentionBadges, useOmsAttentionQuery } from '../../features/fulfillment-authority';
+import { ArchiveConnectionButton } from '../../features/connections/components/archive-connection-button';
+import { RestoreConnectionButton } from '../../features/connections/components/restore-connection-button';
+import { describeConnectionStatus } from '../oms/oms-connection';
 
-const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth'] as const;
+const CONNECTION_STATUSES = ['active', 'disabled', 'error', 'needs_reauth', 'archived'] as const;
 
 function isValidStatus(value: string): value is ConnectionStatus {
   return CONNECTION_STATUSES.includes(value as ConnectionStatus);
@@ -31,7 +36,35 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
       return 'error';
     case 'needs_reauth':
       return 'warning';
+    case 'archived':
+      return 'neutral';
   }
+}
+
+function renderStatusBadge(connection: Connection, compact: boolean): ReactElement {
+  const view = describeConnectionStatus(connection, toStatusTone(connection.status));
+  return (
+    <StatusBadge tone={view.tone} compact={compact}>
+      {view.label}
+    </StatusBadge>
+  );
+}
+
+/**
+ * #3657 — the only row-level write on this page. Archive is offered on a
+ * DISABLED connection alone, and never on an adapter that declares itself
+ * non-archivable (the OMS, which is disabled only) (the API refuses any other status, and a two-step
+ * disable-then-archive keeps a live integration from being hidden by one
+ * click); Restore on an archived one. Every other status gets no action.
+ */
+function ConnectionRowAction({ connection }: { connection: Connection }): ReactElement | null {
+  if (canArchive(connection)) {
+    return <ArchiveConnectionButton connection={connection} />;
+  }
+  if (connection.status === 'archived') {
+    return <RestoreConnectionButton connection={connection} />;
+  }
+  return null;
 }
 
 /**
@@ -43,8 +76,23 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
  * projection for every connection on the page.
  */
 function buildColumns(
-  attentionFor: (connectionId: string) => readonly { reason: string }[]
+  attentionFor: (connectionId: string) => readonly { reason: string }[],
+  // Passed in for the same reason `attentionFor` is: a module-level const
+  // cannot call a hook. `platforms` turns the `platformType` slug into the
+  // product name an operator recognises - load-bearing now that two products
+  // can share a slug prefix (`subiekt-gt` vs `subiekt-nexo`).
+  platforms: readonly { platformType: string; displayName: string }[],
+  canWrite: boolean
 ): DataTableColumn<Connection>[] {
+  const actionColumn: DataTableColumn<Connection>[] = canWrite
+    ? [
+        {
+          id: 'actions',
+          header: <span className="sr-only">Actions</span>,
+          cell: (connection) => <ConnectionRowAction connection={connection} />,
+        },
+      ]
+    : [];
   return [
   {
     id: 'name',
@@ -53,7 +101,8 @@ function buildColumns(
       <div className="data-table__stack">
         <strong>{connection.name}</strong>
         <span className="muted-text">
-          {connection.platformType} · {connection.adapterKey ?? 'default adapter'}
+          {resolvePlatformLabel(platforms, connection)} ·{' '}
+          {connection.adapterKey ?? 'default adapter'}
         </span>
       </div>
     ),
@@ -75,7 +124,7 @@ function buildColumns(
     header: 'Status',
     cell: (connection) => (
       <span className="data-table__badge-row">
-        <StatusBadge tone={toStatusTone(connection.status)}>{connection.status}</StatusBadge>
+        {renderStatusBadge(connection, false)}
         {/* An inert state derived from THIS connection's config (#2356). Beside
             the connection's own status, never instead of it: a connection can be
             perfectly `active` and still be one of two systems claiming the same
@@ -86,6 +135,7 @@ function buildColumns(
     accessor: (connection) => connection.status,
     sortable: true,
   },
+  ...actionColumn,
   ];
 }
 
@@ -106,7 +156,10 @@ export function ConnectionsListPage(): ReactElement {
     () => (connectionId: string) => attention.byConnectionId.get(connectionId) ?? [],
     [attention.byConnectionId]
   );
-  const columns = useMemo(() => buildColumns(attentionFor), [attentionFor]);
+  const columns = useMemo(
+    () => buildColumns(attentionFor, plugins, write.visible),
+    [attentionFor, plugins, write.visible]
+  );
 
   const platformType = searchParams.get('platformType') ?? '';
   const status = searchParams.get('status') ?? '';
@@ -226,15 +279,18 @@ export function ConnectionsListPage(): ReactElement {
           cardView={{
             title: (connection) => connection.name,
             subtitle: (connection) =>
-              `${connection.platformType} · ${connection.adapterKey ?? 'default adapter'}`,
+              `${resolvePlatformLabel(plugins, connection)} · ${connection.adapterKey ?? 'default adapter'}`,
             meta: (connection) => (
               <span className="data-table__badge-row">
-                <StatusBadge tone={toStatusTone(connection.status)} compact>
-                  {connection.status}
-                </StatusBadge>
+                {renderStatusBadge(connection, true)}
                 <OmsAttentionBadges entries={attentionFor(connection.id)} compact />
               </span>
             ),
+            // Outside the card's navigation link (data-table.tsx), which is
+            // the only legal home for a button on a card that sets rowHref.
+            actions: write.visible
+              ? (connection) => <ConnectionRowAction connection={connection} />
+              : undefined,
           }}
         />
       )}

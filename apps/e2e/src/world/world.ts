@@ -20,6 +20,11 @@ export const PlatformType = {
   inpost: 'inpost',
   ksef: 'ksef',
   infakt: 'infakt',
+  // Subiekt GT and Subiekt nexo are two different InsERT products behind two
+  // different bridges (#3464) - a connection created under the wrong identity
+  // points at an adapter that cannot talk to it, so they are never one value.
+  subiektGt: 'subiekt-gt',
+  subiektNexo: 'subiekt-nexo',
 } as const;
 
 export type KnownPlatformType = (typeof PlatformType)[keyof typeof PlatformType];

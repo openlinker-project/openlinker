@@ -4,7 +4,7 @@
  * Maps a neutral `BuyerProfile` to the bridge-native TOP-LEVEL upsert-customer
  * request (the bridge's `CreateFirmaRequestDto` — NOT wrapped in a `buyer`):
  *   - `nazwaSkrocona` <- `name`
- *   - `nip`           <- `taxId.value` ONLY when `taxId.scheme === 'pl-nip'`, else `null`
+ *   - `nip`           <- `taxId.value` when the tax id is domestic or UNTAGGED (#3224), else `null`
  *   - `typ`           <- `'firma'` when `buyer.type === 'company'`, else `'osoba'`
  *   - `address`       <- neutral `BuyerAddress` mapped onto the bridge's Polish
  *                        `AddressDto` (shared with the buyer mapper).

@@ -42,6 +42,8 @@ describe('invoicing.types', () => {
     expect([...InvoiceFailureCodeValues]).toEqual([
       'buyer-tax-id-invalid',
       'invalid-currency',
+      'sale-classification-required',
+      'connection-setup-incomplete',
       'provider-rejected',
       'transport-timeout',
       'provider-error',

@@ -1,12 +1,11 @@
 /**
- * Bench surface behaviour (#2413, stories A2 / A3 / A4)
+ * Bench surface behaviour (#2413, story A3)
  *
- * The three acceptance criteria that are properties of a MOUNTED surface, each
+ * The acceptance criteria that are properties of a MOUNTED surface, each
  * asserted against a real render rather than against a decorator or a comment:
- *
- *  - **A4** the signed-in name is visible with no interaction;
- *  - **A3** the idle lock reveals nothing about the order, and discards nothing;
- *  - **A2** a handover clears the outgoing session and keeps progress.
+ * the idle lock reveals nothing about the order, discards nothing, and a fresh
+ * sign-in reopens the same bench. Who is signed in (A4) is the application
+ * topbar's job since #3653 and is asserted in `bench-app-layout.test.tsx`.
  *
  * The progress assertions use a STATEFUL child. A test that only checked the
  * overlay rendered would pass against an implementation that unmounts the bench
@@ -17,17 +16,20 @@
  * @module apps/web/src/features/bench/components
  */
 import { useState, type ReactElement } from 'react';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders, createAuthenticatedSessionAdapter } from '../../../test/test-utils';
 import type { SessionAdapter } from '../../../shared/auth/session-adapter';
+import { ThemeProvider } from '../../../shared/theme/theme-provider';
 import type { Session } from '../../../shared/auth/session.types';
 import { useSession } from '../../../shared/auth/use-session';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useScannerInput } from '../hooks/use-scanner-input';
+import { benchIdentityCopy } from '../lib/bench-identity.copy';
 import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
+import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchSurface } from './bench-surface';
 
 /**
@@ -59,7 +61,7 @@ function SignInTrigger({ onSignIn }: { onSignIn: () => void }): ReactElement {
  * A session that really goes anonymous when cleared.
  *
  * `createAuthenticatedSessionAdapter`'s `clearSession` is a no-op, which is
- * fine for the lock/handover legs (they assert the STATE machine and the
+ * fine for the lock legs (they assert the STATE machine and the
  * adapter call) but useless for the SIGN-IN leg — the one that exercises
  * `wasSignedIn`, the most delicate logic in the hook. Without a switchable
  * adapter that test would assert nothing.
@@ -145,31 +147,20 @@ async function advanceIdlePeriod(timeoutMs: number = IDLE_TIMEOUT_MS): Promise<v
  * Wait until a packer is really signed in — the precondition every idle-lock
  * assertion in this file rests on.
  *
- * `BenchIdentityBar` is rendered UNCONDITIONALLY by `BenchSurface`, so
- * `findByTestId('bench-identity-bar')` resolves on the very FIRST render, while
- * the session adapter's promise is still pending. At that moment `signedIn` is
- * false, `useIdleTimeout` is `enabled: false` and no timer exists — so an
- * advance placed after it can be a silent no-op, and the bench then never
- * locks however long the test waits.
+ * While the session adapter's promise is still pending, `signedIn` is false,
+ * so the surface presents as LOCKED and `useIdleTimeout` is `enabled: false`
+ * with no timer armed - an advance placed then is a silent no-op, and the
+ * bench never locks however long the test waits. The locked overlay leaving
+ * the DOM IS the session having resolved.
  *
- * "Switch packer" is `disabled` exactly while `signedInName === null`, so its
- * becoming enabled IS the session having resolved. (The bar's own text cannot
- * serve as the signal: the signed-OUT copy, "Nobody is signed in", contains
- * "signed in".)
- *
- * The trailing flush is the other half, and it is not decoration. The button
- * turns enabled in the COMMIT that renders the new session, while the hook's
- * `wasSignedIn` transition effect — the one that calls `setState('open')` and
- * re-arms the clock — is a passive effect of that same commit. Return on the
- * rendered attribute alone and a test can click "Switch packer" in the window
- * between the two, and have its `handover` snapped straight back to `open` by
- * an effect that was already queued. So: wait for the render, then let the
+ * The trailing flush is the other half, and it is not decoration. The overlay
+ * leaves in the COMMIT that renders the new session, while the hook's
+ * `wasSignedIn` transition effect - the one that re-arms the clock - is a
+ * passive effect of that same commit. So: wait for the render, then let the
  * effects it scheduled run, and only then hand back a settled bench.
  */
 async function awaitSignedIn(): Promise<void> {
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /switch packer/i })).toBeEnabled()
-  );
+  await waitFor(() => expect(screen.queryByTestId('bench-locked')).not.toBeInTheDocument());
   await act(async () => {
     await Promise.resolve();
   });
@@ -198,10 +189,7 @@ function ScannerStub({ seen }: { seen: string[] }): ReactElement {
 /** One completed scanner gesture, dispatched at the document as a real one is. */
 function scan(value: string): void {
   act(() => {
-    for (const char of value) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    dispatchScannerBurst(value);
   });
 }
 
@@ -224,6 +212,16 @@ function scan(value: string): void {
  */
 const IDLE_TIMEOUT_MS = 30_000;
 
+/**
+ * The bench body may render theme-aware primitives, and `renderWithProviders`
+ * deliberately does not mount a `ThemeProvider` globally (the
+ * `theme-toggle.test.tsx` precedent), so every render in this file wraps its
+ * tree with one here.
+ */
+function withTheme(node: ReactElement): ReactElement {
+  return <ThemeProvider>{node}</ThemeProvider>;
+}
+
 describe('BenchSurface (#2413)', () => {
   beforeEach(() => {
     // `shouldAdvanceTime: true` is load-bearing, not incidental: RTL does not
@@ -239,18 +237,14 @@ describe('BenchSurface (#2413)', () => {
 
   function render(): ReturnType<typeof renderWithProviders> {
     return renderWithProviders(
-      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-        <ProgressStub />
-      </BenchSurface>,
+      withTheme(
+        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+          <ProgressStub />
+        </BenchSurface>
+      ),
       { sessionAdapter: createAuthenticatedSessionAdapter() }
     );
   }
-
-  it('A4 — shows the signed-in name without any interaction', async () => {
-    render();
-    const bar = await screen.findByTestId('bench-identity-bar');
-    expect(bar).toHaveTextContent(/Signed in/i);
-  });
 
   it('A3 — locks after the idle period', async () => {
     render();
@@ -275,6 +269,22 @@ describe('BenchSurface (#2413)', () => {
     expect(body).toHaveAttribute('aria-hidden', 'true');
     expect(body).toHaveAttribute('inert');
     expect(body.className).toContain('bench-body--concealed');
+  });
+
+  it('should tell the incoming packer they become the recorded packer of an open box when the bench asks them to sign in (D13)', async () => {
+    // The retired two-step handover was the only place this was said (#3653
+    // review). The sign-in overlay is now where the next packer reads it, so
+    // the line must be in the OVERLAY - not in the concealed body behind it.
+    render();
+    await awaitSignedIn();
+
+    await advanceIdlePeriod();
+    const overlay = await screen.findByTestId('bench-locked');
+
+    expect(within(overlay).getByTestId('bench-attribution-notice')).toHaveTextContent(
+      benchIdentityCopy.signIn.attribution
+    );
+    expect(benchIdentityCopy.signIn.attribution).toMatch(/recorded as having packed it/);
   });
 
   it('A3 — locking discards no progress', async () => {
@@ -302,9 +312,11 @@ describe('BenchSurface (#2413)', () => {
     resetGestureLogForTests();
     const seen: string[] = [];
     renderWithProviders(
-      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-        <ScannerStub seen={seen} />
-      </BenchSurface>,
+      withTheme(
+        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+          <ScannerStub seen={seen} />
+        </BenchSurface>
+      ),
       { sessionAdapter: createAuthenticatedSessionAdapter() }
     );
     await awaitSignedIn();
@@ -320,53 +332,6 @@ describe('BenchSurface (#2413)', () => {
 
     scan('4006381333931');
     expect(seen).toEqual(['5901234123457']);
-  });
-
-  it('A2 — a handover asks first, and shows what is already verified', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render();
-    await awaitSignedIn();
-
-    await user.click(screen.getByRole('button', { name: /verify one/i }));
-    await user.click(screen.getByRole('button', { name: /switch packer/i }));
-
-    const handover = await screen.findByTestId('bench-handover');
-    expect(handover).toBeInTheDocument();
-    // Unlike the locked state, the handover deliberately leaves the body
-    // VISIBLE — spec D13 makes whoever finishes the box the packer of record,
-    // so the incoming person must see what they are taking on.
-    expect(screen.getByTestId('bench-body')).not.toHaveAttribute('aria-hidden');
-    expect(screen.getByTestId('verified-count')).toHaveTextContent('1');
-  });
-
-  it('A2 — cancelling a handover leaves the packer signed in', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render();
-    await awaitSignedIn();
-
-    await user.click(screen.getByRole('button', { name: /switch packer/i }));
-    await screen.findByTestId('bench-handover');
-    await user.click(screen.getByRole('button', { name: /stay signed in/i }));
-
-    await waitFor(() => expect(screen.queryByTestId('bench-handover')).not.toBeInTheDocument());
-    expect(screen.queryByTestId('bench-locked')).not.toBeInTheDocument();
-  });
-
-  it('A3 — a bench abandoned mid-HANDOVER still locks', async () => {
-    // One tap of "switch packer" and the incoming person is called away. The
-    // outgoing packer is still signed in with a live token, so disarming the
-    // idle clock in `handover` would leave an unattended shared terminal signed
-    // in indefinitely — the leak A3 exists to close, reachable in one tap.
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render();
-    await awaitSignedIn();
-
-    await user.click(screen.getByRole('button', { name: /switch packer/i }));
-    await screen.findByTestId('bench-handover');
-
-    await advanceIdlePeriod();
-
-    await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
   });
 
   it('A2 — a fresh sign-in reopens the bench and RE-ARMS the idle clock', async () => {
@@ -385,12 +350,14 @@ describe('BenchSurface (#2413)', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const adapter = createSwitchableSessionAdapter(true);
     renderWithProviders(
-      <>
-        <SignInTrigger onSignIn={() => adapter.signIn()} />
-        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-          <ProgressStub />
-        </BenchSurface>
-      </>,
+      withTheme(
+        <>
+          <SignInTrigger onSignIn={() => adapter.signIn()} />
+          <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+            <ProgressStub />
+          </BenchSurface>
+        </>
+      ),
       { sessionAdapter: adapter }
     );
     await awaitSignedIn();
@@ -413,29 +380,125 @@ describe('BenchSurface (#2413)', () => {
     await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
   });
 
-  it('A2 — confirming a handover clears the outgoing session and keeps progress', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    const adapter = createAuthenticatedSessionAdapter();
-    const clearSpy = vi.spyOn(adapter, 'clearSession');
+  // ── #3408 — idle-lock countdown warning + resume-to-prior-state ─────────
+  describe('the idle-lock countdown warning', () => {
+    // BENCH_WARNING_LEAD_MS is 30s, so a 30s timeout (this file's default)
+    // never produces a warning window at all — needs a longer budget.
+    const WARNING_IDLE_TIMEOUT_MS = 60_000;
 
-    renderWithProviders(
-      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-        <ProgressStub />
-      </BenchSurface>,
-      { sessionAdapter: adapter }
-    );
-    await awaitSignedIn();
+    it('shows the countdown before the terminal lock, and NOT before it', async () => {
+      renderWithProviders(
+        withTheme(
+          <BenchSurface idleTimeoutMs={WARNING_IDLE_TIMEOUT_MS}>
+            <ProgressStub />
+          </BenchSurface>
+        ),
+        { sessionAdapter: createAuthenticatedSessionAdapter() }
+      );
+      await awaitSignedIn();
 
-    await user.click(screen.getByRole('button', { name: /verify one/i }));
-    await user.click(screen.getByRole('button', { name: /switch packer/i }));
-    await screen.findByTestId('bench-handover');
-    await user.click(screen.getByRole('button', { name: /sign in as someone else/i }));
+      expect(screen.queryByTestId('bench-idle-warning')).not.toBeInTheDocument();
 
-    // A "switch packer" that only re-rendered would leave the outgoing token
-    // live on a shared browser profile — a real mis-attribution path, and the
-    // reason this is asserted on the adapter rather than on the DOM.
-    await waitFor(() => expect(clearSpy).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
-    expect(screen.getByTestId('verified-count')).toHaveTextContent('1');
+      await act(async () => {
+        vi.advanceTimersByTime(WARNING_IDLE_TIMEOUT_MS - 30_000 + 100);
+        await Promise.resolve();
+      });
+
+      const warning = await screen.findByTestId('bench-idle-warning');
+      expect(warning).toHaveTextContent(/signed out in 30s/i);
+      expect(warning).toHaveTextContent(/tap anywhere/i);
+      // Advisory, not a fourth screen — the body stays fully visible.
+      expect(screen.getByTestId('secret-order-ref')).toBeVisible();
+      expect(screen.queryByTestId('bench-locked')).not.toBeInTheDocument();
+    });
+
+    it('is dismissed by activity, which also pushes the lock back out', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderWithProviders(
+        withTheme(
+          <BenchSurface idleTimeoutMs={WARNING_IDLE_TIMEOUT_MS}>
+            <ProgressStub />
+          </BenchSurface>
+        ),
+        { sessionAdapter: createAuthenticatedSessionAdapter() }
+      );
+      await awaitSignedIn();
+
+      await act(async () => {
+        vi.advanceTimersByTime(WARNING_IDLE_TIMEOUT_MS - 30_000 + 100);
+        await Promise.resolve();
+      });
+      await screen.findByTestId('bench-idle-warning');
+
+      // A real click is activity — the same "tap anywhere" the copy promises.
+      await user.click(screen.getByRole('button', { name: /verify one/i }));
+
+      await waitFor(() =>
+        expect(screen.queryByTestId('bench-idle-warning')).not.toBeInTheDocument()
+      );
+
+      // And the lock itself was pushed back — the ORIGINAL deadline (a further
+      // ~29.9s from here) must not still fire the terminal lock.
+      await act(async () => {
+        vi.advanceTimersByTime(29_000);
+        await Promise.resolve();
+      });
+      expect(screen.queryByTestId('bench-locked')).not.toBeInTheDocument();
+    });
+
+    it('clears once the terminal lock actually fires', async () => {
+      renderWithProviders(
+        withTheme(
+          <BenchSurface idleTimeoutMs={WARNING_IDLE_TIMEOUT_MS}>
+            <ProgressStub />
+          </BenchSurface>
+        ),
+        { sessionAdapter: createAuthenticatedSessionAdapter() }
+      );
+      await awaitSignedIn();
+
+      await advanceIdlePeriod(WARNING_IDLE_TIMEOUT_MS);
+
+      await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
+      expect(screen.queryByTestId('bench-idle-warning')).not.toBeInTheDocument();
+    });
+
+    it('resumes to the EXACT prior parcel/state on sign-in, never the worklist', async () => {
+      // BenchPage keeps "which parcel is open" as its own state, outside
+      // BenchSurface's remit — this proves the piece BenchSurface IS
+      // responsible for: the body (whatever it is) is never unmounted by a
+      // lock, so whatever a caller had open stays open underneath, and its
+      // own state (ProgressStub's counter here) is exactly as it was left.
+      renderWithProviders(
+        withTheme(
+          <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+            <ProgressStub />
+          </BenchSurface>
+        ),
+        { sessionAdapter: createAuthenticatedSessionAdapter() }
+      );
+      await awaitSignedIn();
+
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(screen.getByRole('button', { name: /verify one/i }));
+      await user.click(screen.getByRole('button', { name: /verify one/i }));
+      expect(screen.getByTestId('verified-count')).toHaveTextContent('2');
+
+      await advanceIdlePeriod();
+      await waitFor(() => expect(screen.getByTestId('bench-locked')).toBeInTheDocument());
+
+      // The SAME packer signs back in, so this is a resume of their own box.
+      await user.type(screen.getByLabelText(/username/i), 'marta');
+      await user.type(screen.getByLabelText(/password/i), 'whatever-the-mock-accepts');
+      await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+      await waitFor(() =>
+        expect(screen.queryByTestId('bench-locked')).not.toBeInTheDocument()
+      );
+      // Landed back on exactly the same body, in exactly the same state —
+      // never reset to a fresh worklist or a zeroed counter.
+      expect(screen.getByTestId('secret-order-ref')).toBeInTheDocument();
+      expect(screen.getByTestId('verified-count')).toHaveTextContent('2');
+    });
   });
 });

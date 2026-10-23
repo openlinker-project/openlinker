@@ -1,9 +1,9 @@
 /**
  * Bench identity state (#2413, stories A2–A4, ADR-071)
  *
- * Owns the three designed states of the bench identity surface — `open`,
- * `locked`, `handover` — plus the idle clock and the two session transitions
- * that make them true rather than cosmetic.
+ * Owns the two designed states of the bench identity surface — `open` and
+ * `locked` — plus the idle clock and the session transitions that make them
+ * true rather than cosmetic.
  *
  * ## Locking CLEARS the session, and that is the point
  *
@@ -20,17 +20,25 @@
  * *"Locking never discards progress."* That is not achieved by keeping the
  * session — it is achieved by never unmounting the bench body. The overlay is
  * rendered ABOVE the children, never as a route change and never in place of
- * them, so component state under it is untouched by a lock, a handover, or a
- * sign-in. `bench-surface.test.tsx` proves it with a stateful child
- * across lock, handover and a fresh sign-in.
+ * them, so component state under it is untouched by a lock or a sign-in.
+ * `bench-surface.test.tsx` proves it with a stateful child across a lock and a
+ * fresh sign-in.
  *
- * ## Handover is two steps on purpose
+ * ## There is no in-bench handover any more (#3653)
  *
- * `requestHandover()` shows what the outgoing packer already verified BEFORE
- * the switch, because whoever finishes the box is the one recorded as having
- * packed it (spec D13). Only `confirmHandover()` clears the session. A
- * one-tap switch would take the parcel off the outgoing packer without the
- * incoming one seeing what they were inheriting.
+ * The bench used to offer a two-step "Switch packer" handover. It now carries
+ * the application's own topbar, whose user menu signs out to `/login` like
+ * every other page, so the next packer signs in there. The idle lock below is
+ * the only state change the bench makes on its own.
+ *
+ * ## A warning does not add a fourth STATE (#3408)
+ *
+ * `warningSecondsRemaining` is a SIBLING field, never a value of
+ * `BenchIdentityState` — the bench stays `open` and fully interactive while
+ * the countdown shows, because the mockup's own warning is advisory ("tap
+ * anywhere to stay signed in"), not a fourth screen a packer must respond to
+ * before continuing. Only the terminal `lock()` — unchanged — actually
+ * conceals anything.
  *
  * @module apps/web/src/features/bench/hooks
  */
@@ -40,7 +48,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSession } from '../../../shared/auth/use-session';
 import { useIdleTimeout } from '../../../shared/hooks/use-idle-timeout';
 
-export type BenchIdentityState = 'open' | 'locked' | 'handover';
+export type BenchIdentityState = 'open' | 'locked';
 
 /**
  * Five minutes (spec § 4 open question 1).
@@ -53,6 +61,17 @@ export type BenchIdentityState = 'open' | 'locked' | 'handover';
  * it.
  */
 export const BENCH_IDLE_TIMEOUT_DEFAULT_MS = 5 * 60 * 1000;
+
+/**
+ * #3408 — how long before the terminal lock the countdown warning appears.
+ *
+ * The mockup's own legend flags this feature "new" — not yet backed by real
+ * data — so this is a fixed lead time rather than a tuned product constant.
+ * 30s is long enough to notice and long enough to act (walk back to the
+ * bench, tap the screen) without being so long it starts firing during
+ * ordinary pauses between parcels.
+ */
+export const BENCH_WARNING_LEAD_MS = 30 * 1000;
 
 /**
  * Build-time, not runtime (`docs/frontend-architecture.md § Runtime
@@ -69,14 +88,17 @@ export function resolveBenchIdleTimeoutMs(raw: string | undefined): number {
 export interface UseBenchIdentityResult {
   readonly state: BenchIdentityState;
   readonly signedInName: string | null;
+  /**
+   * #3408 — the countdown seconds remaining before the terminal lock, once
+   * the warning has fired; `null` before it fires and once it is dismissed
+   * by activity or superseded by the lock itself. A FIXED number computed
+   * once at fire time (`BENCH_WARNING_LEAD_MS / 1000`) — not a live ticking
+   * clock — so the surface never depends on second-granularity timer
+   * precision to stay correct.
+   */
+  readonly warningSecondsRemaining: number | null;
   /** Lock now, without waiting for the idle clock. */
   readonly lock: () => void;
-  /** Step one of a handover: show the incoming packer what is already done. */
-  readonly requestHandover: () => void;
-  /** Step two: actually clear the outgoing session. */
-  readonly confirmHandover: () => Promise<void>;
-  /** Back out of a handover without switching. */
-  readonly cancelHandover: () => void;
 }
 
 export interface UseBenchIdentityOptions {
@@ -87,9 +109,15 @@ export function useBenchIdentity(options: UseBenchIdentityOptions = {}): UseBenc
   const { session, clearSession } = useSession();
   const queryClient = useQueryClient();
   const [state, setState] = useState<BenchIdentityState>('open');
+  const [warningSecondsRemaining, setWarningSecondsRemaining] = useState<number | null>(null);
 
   const idleTimeoutMs = options.idleTimeoutMs ?? BENCH_IDLE_TIMEOUT_DEFAULT_MS;
   const signedIn = session.user !== null && session.user !== undefined;
+  // A warning that would fire the instant the clock re-arms is meaningless —
+  // skip it entirely on a timeout shorter than its own lead time, rather than
+  // clamp to a near-zero window nobody could act on.
+  const warningMs =
+    idleTimeoutMs > BENCH_WARNING_LEAD_MS ? idleTimeoutMs - BENCH_WARNING_LEAD_MS : undefined;
 
   /**
    * Clear the outgoing principal for real.
@@ -115,6 +143,10 @@ export function useBenchIdentity(options: UseBenchIdentityOptions = {}): UseBenc
 
   const lock = useCallback((): void => {
     setState('locked');
+    // The warning's job ends the moment the terminal lock does; a stale
+    // countdown number is otherwise dead state nothing ever reads again but
+    // nothing ever cleans up either.
+    setWarningSecondsRemaining(null);
     // The state flips FIRST and unconditionally: a lock that reported success
     // only when the logout POST returned would leave a failed request looking
     // like an unlocked bench. The catch is not optional — an unhandled
@@ -128,14 +160,16 @@ export function useBenchIdentity(options: UseBenchIdentityOptions = {}): UseBenc
   const { reset } = useIdleTimeout({
     timeoutMs: idleTimeoutMs,
     onIdle: lock,
-    // `!== 'locked'`, NOT `=== 'open'`. A bench abandoned mid-HANDOVER still
-    // holds a live token — somebody taps "switch packer" and is called away —
-    // so disarming the clock there leaves the unattended shared terminal signed
-    // in indefinitely, which is the leak A3 exists to close, reachable in one
-    // tap. Firing `lock()` from `handover` is correct: it sets `'locked'` and
-    // clears the principal, and `useIdleTimeout`'s fire-once guard stops a
-    // re-fire. Nobody signed in means nothing to lock.
+    // Nobody signed in means nothing to lock, and a locked bench is already
+    // locked; `useIdleTimeout`'s fire-once guard stops a re-fire.
     enabled: signedIn && state !== 'locked',
+    warningMs,
+    onWarning: () => {
+      setWarningSecondsRemaining(Math.ceil(BENCH_WARNING_LEAD_MS / 1000));
+    },
+    onWarningDismissed: () => {
+      setWarningSecondsRemaining(null);
+    },
   });
 
   /**
@@ -143,47 +177,28 @@ export function useBenchIdentity(options: UseBenchIdentityOptions = {}): UseBenc
    * packer — without this the idle hook stays fired and the bench never locks
    * again.
    *
-   * Keyed on the TRANSITION into signed-in, not on `signedIn` being true: a
-   * plain truth test also fires mid-handover, where the outgoing packer is
-   * still signed in, and would snap `handover` back to `open` before they could
-   * confirm — i.e. delete step one of the two-step handover D13 requires.
+   * Keyed on the TRANSITION into signed-in, not on `signedIn` being true, so
+   * an ordinary re-render of a signed-in bench does not reset the idle clock.
    */
   const wasSignedIn = useRef(signedIn);
   useEffect(() => {
     if (signedIn && !wasSignedIn.current) {
       setState('open');
+      setWarningSecondsRemaining(null);
       reset();
     }
     wasSignedIn.current = signedIn;
   }, [signedIn, reset]);
-
-  const requestHandover = useCallback((): void => {
-    setState('handover');
-  }, []);
-
-  const confirmHandover = useCallback(async (): Promise<void> => {
-    // `finally`, for `lock()`'s reason: a failed logout POST must not strand
-    // the bench in `handover` with a live-looking session. The local principal
-    // is cleared either way by `clearPrincipal`'s own `finally`.
-    try {
-      await clearPrincipal();
-    } finally {
-      setState('locked');
-    }
-  }, [clearPrincipal]);
-
-  const cancelHandover = useCallback((): void => {
-    setState('open');
-  }, []);
 
   return {
     // Signed out for any reason presents as locked: there is no fourth state,
     // and a signed-out bench showing its body would be the leak A3 forbids.
     state: signedIn ? state : 'locked',
     signedInName: session.user?.username ?? null,
+    // Signed-out reads as locked above, and a stale countdown number has no
+    // meaning against a state that already conceals everything — the same
+    // "no fourth state" reasoning applies to this field.
+    warningSecondsRemaining: signedIn ? warningSecondsRemaining : null,
     lock,
-    requestHandover,
-    confirmHandover,
-    cancelHandover,
   };
 }

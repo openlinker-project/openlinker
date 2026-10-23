@@ -45,6 +45,13 @@ interface ReturnDisposeFormProps {
   restockTarget: ReturnRestockTarget;
   /** An orphan return restocks nothing — the server refuses it (409). */
   isOrphan: boolean;
+  /**
+   * The line already has an outstanding (`blocked` / `in_doubt`) restock act,
+   * and the server refuses a second restock until it is attested (#3466, 409
+   * `restock-already-blocked`). Scrap is unaffected on the server, so only the
+   * `Restock` option is disabled here, never the whole form.
+   */
+  restockBlocked: boolean;
   pending: boolean;
   error: string | null;
   onSubmit: (input: { quantity: number; disposition: ReturnDisposition; note?: string }) => void;
@@ -69,16 +76,18 @@ export function ReturnDisposeForm({
   line,
   restockTarget,
   isOrphan,
+  restockBlocked,
   pending,
   error,
   onSubmit,
   onCancel,
 }: ReturnDisposeFormProps): ReactElement {
   const outstanding = outstandingToDispose(line);
-  // Two independent reasons a restock cannot land, kept separate because they
+  // Three independent reasons a restock cannot land, kept separate because they
   // are different facts with different remedies: no single master is a
-  // configuration problem, an orphan is a matching problem.
-  const restockPossible = isRestockAvailable(restockTarget) && !isOrphan;
+  // configuration problem, an orphan is a matching problem, and an outstanding
+  // block is waiting on the operator's attestation (#3466).
+  const restockPossible = isRestockAvailable(restockTarget) && !isOrphan && !restockBlocked;
 
   const {
     formState: { errors },
@@ -200,6 +209,9 @@ export function ReturnDisposeForm({
 
           {/* Stated up front, not discovered by submitting into a 409. */}
           {isOrphan ? <Alert tone="warning">{RETURN_DISPOSE_COPY.orphanBlocked}</Alert> : null}
+          {restockBlocked && !isOrphan ? (
+            <Alert tone="warning">{RETURN_DISPOSE_COPY.awaitingAttestation}</Alert>
+          ) : null}
         </div>
 
         <FormField error={errors.note?.message} label={RETURN_DISPOSE_COPY.noteLabel} name="note">

@@ -56,7 +56,13 @@ import {
   Inject,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -81,7 +87,10 @@ import {
   HoldReleaseNotPermittedError,
   deriveSlaState,
   IOrderHoldService,
-  IOrderProvisioningResumeService} from '@openlinker/core/orders';
+  IOrderProvisioningResumeService,
+  ORDER_TEST_FIXTURE_SERVICE_TOKEN,
+  IOrderTestFixtureService,
+  TestFixturesDisabledException} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderRecordFilters,
@@ -121,7 +130,25 @@ import {
   DEFAULT_LIFECYCLE_AUTHORITY,
 } from '@openlinker/core/order-lifecycle';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import {
+  SHIPMENT_QUERY_SERVICE_TOKEN,
+  type IShipmentQueryService,
+} from '@openlinker/core/shipping';
+import {
+  RETURNS_SERVICE_TOKEN,
+  type IReturnsService,
+  type OpenReturnOrderSummary,
+} from '@openlinker/core/returns';
+import { ORDER_TAG_SERVICE_TOKEN, type IOrderTagService } from '@openlinker/core/orders';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import {
+  SourceFulfillmentResponseDto,
+  toSourceFulfillmentDto,
+} from './dto/source-fulfillment-response.dto';
+import {
+  SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,
+  type ISourceFulfillmentStatusService,
+} from '../application/interfaces/source-fulfillment-status.service.interface';
 import { CountOrdersQueryDto } from './dto/count-orders-query.dto';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
@@ -135,6 +162,7 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
+import { MarkPreRolloutEraResponseDto } from './dto/mark-pre-rollout-era-response.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
 import type {
   OrderHoldDto,
@@ -145,11 +173,13 @@ import {
 } from './dto/order-hold-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 import type { OrderReservationShortfallDto } from './dto/order-reservation-shortfall.dto';
+import type { OrderOpenReturnDto } from './dto/order-open-return.dto';
 import {
   SalesDocumentViewResponseDto,
   toSalesDocumentViewDto,
 } from './dto/sales-document-view-response.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
+import { ParcelProfileResponseDto } from '../../mappings/http/dto/routing-rule-response.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
 /**
@@ -170,7 +200,7 @@ import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
  * repository takes them on the same object; `countMany` ignores them, which is
  * why `CountOrdersQueryDto` may accept them harmlessly.
  */
-function toOrderRecordFilters(
+export function toOrderRecordFilters(
   query: CountOrdersQueryDto & Partial<Pick<ListOrdersQueryDto, 'sort' | 'dir'>>
 ): OrderRecordFilters {
   return {
@@ -193,6 +223,10 @@ function toOrderRecordFilters(
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
     activeHoldReason: query.hold,
+    packed: query.packed,
+    search: query.search,
+    tagId: query.tag,
+    untagged: query.untagged,
   };
 }
 
@@ -226,6 +260,65 @@ function assertCancelledPhaseAgree(
   );
 }
 
+/**
+ * Enriches the pure DTO-to-filters mapping with the two cross-context axes
+ * that `orders` cannot resolve on its own (#3528, #2998): both `shipping` and
+ * `returns` already depend on `orders`, so `orders` must not import either
+ * back — the resolution happens HERE, in the interface layer, and the result
+ * is a plain id list handed to `OrderRecordFilters`.
+ *
+ * Shared by `GET /orders` and `GET /orders/count`, for the same reason
+ * `toOrderRecordFilters` is shared: a filter resolved differently between the
+ * page and its count reads as a data bug rather than a query bug.
+ *
+ * Best-effort on both axes: a failed cross-context read must not fail the
+ * whole list — it degrades to "this widening did not apply this time" rather
+ * than a 500 on `/orders`.
+ */
+export async function enrichCrossContextFilters(
+  filters: OrderRecordFilters,
+  query: { search?: string; openReturn?: boolean },
+  shipmentQuery: IShipmentQueryService,
+  returnsService: IReturnsService,
+  logger: Logger
+): Promise<OrderRecordFilters> {
+  const enriched: OrderRecordFilters = { ...filters };
+
+  if (query.search !== undefined && query.search.trim().length > 0) {
+    try {
+      const { items } = await shipmentQuery.list(
+        { trackingNumber: query.search.trim() },
+        { limit: 50, offset: 0 }
+      );
+      const ids = [...new Set(items.map((shipment) => shipment.orderId))];
+      if (ids.length > 0) {
+        enriched.searchTrackingOrderIds = ids;
+      }
+    } catch (error) {
+      logger.warn(
+        `Failed to resolve a tracking-number search widening; continuing with text search only: ${String(
+          (error as Error).message
+        )}`
+      );
+    }
+  }
+
+  if (query.openReturn !== undefined) {
+    enriched.hasOpenReturn = query.openReturn;
+    try {
+      enriched.openReturnOrderIds = await returnsService.listOpenReturnOrderIds();
+    } catch (error) {
+      logger.error(
+        'Failed to resolve open-return order ids for the ?openReturn= filter',
+        (error as Error).stack
+      );
+      enriched.openReturnOrderIds = [];
+    }
+  }
+
+  return enriched;
+}
+
 @ApiBearerAuth()
 @ApiTags('orders')
 @Controller('orders')
@@ -252,6 +345,11 @@ export class OrdersController {
     private readonly fulfillmentRouting: IFulfillmentRoutingService,
     @Inject(DELIVERY_RIDER_SERVICE_TOKEN)
     private readonly deliveryRider: IDeliveryRiderService,
+    // #3365 - the marketplace's own answer about an order's fulfilment. An
+    // app-layer composition (order record + identifier mapping + the source
+    // adapter), the RateLimitStatusService shape.
+    @Inject(SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN)
+    private readonly sourceFulfillment: ISourceFulfillmentStatusService,
     // #2341 — holds are reached ONLY through the service seam. The intra-context
     // `OrderHoldRepositoryPort` is deliberately absent from the barrel (#2338).
     @Inject(ORDER_HOLD_SERVICE_TOKEN)
@@ -259,7 +357,21 @@ export class OrdersController {
     @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
     private readonly provisioningResume: IOrderProvisioningResumeService,
     @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
-    private readonly salesDocumentView: ISalesDocumentViewService
+    private readonly salesDocumentView: ISalesDocumentViewService,
+    // #2855 — test-fixture-only writes, never called against real order data.
+    @Inject(ORDER_TEST_FIXTURE_SERVICE_TOKEN)
+    private readonly testFixtureService: IOrderTestFixtureService,
+    // #3528 — tracking-number search resolves a shipment's owning order
+    // BEFORE `orders` is asked; see `toOrderRecordFilters`'s docblock.
+    @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
+    private readonly shipmentQuery: IShipmentQueryService,
+    // #2998 — the "open return" badge + filter; `returns` may not import
+    // `orders` back, so the composition happens here.
+    @Inject(RETURNS_SERVICE_TOKEN)
+    private readonly returnsService: IReturnsService,
+    // #3532 — the tag ids rendered as the third line of the identity cell.
+    @Inject(ORDER_TAG_SERVICE_TOKEN)
+    private readonly tagService: IOrderTagService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -288,7 +400,13 @@ export class OrdersController {
 
     assertCancelledPhaseAgree(cancelled, phase);
 
-    const filters = toOrderRecordFilters(query);
+    const filters = await enrichCrossContextFilters(
+      toOrderRecordFilters(query),
+      { search: query.search, openReturn: query.openReturn },
+      this.shipmentQuery,
+      this.returnsService,
+      this.logger
+    );
 
     // `?withTotal=false` skips the COUNT entirely and the response OMITS
     // `total` rather than reporting 0 (#2944) - an absent total and a genuine
@@ -352,8 +470,26 @@ export class OrdersController {
     // list row is what lets the `/orders` cell state the routed document kind
     // and the persisted block reason without a second request per row - and
     // it is the SAME shape the detail endpoint serves, so the row and the
-    // panel cannot disagree about one order.
+    // panel cannot disagree about one order. The one field it deliberately
+    // leaves `null` is `matchedRule` (#3186 review): the "Why this kind?"
+    // disclosure is detail-only, so no row carries a conditions array and no
+    // page pays the extra rule read for a sentence it never renders.
     const salesDocumentByOrderId = await this.salesDocumentView.getForOrders(
+      items.map((order) => order.internalOrderId)
+    );
+
+    // Batch the open-return badge for the whole page (#2998), the identical
+    // shape and for the identical reason as the three batched reads above: one
+    // query across the page's order ids, never a per-row lookup. A FAILED read
+    // renders no badge and makes no "no returns" claim — never `{count: 0}` —
+    // matching #2350's rule for the reservation-shortfall projection this
+    // mirrors.
+    const openReturnByOrderId = await this.loadOpenReturnsForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
+    // Batch the tag ids for the whole page (#3532) — same shape, same reason.
+    const tagsByOrderId = await this.tagService.getForOrders(
       items.map((order) => order.internalOrderId)
     );
 
@@ -377,6 +513,11 @@ export class OrdersController {
         if (salesDocument) {
           dto.salesDocument = toSalesDocumentViewDto(salesDocument);
         }
+        const openReturn = openReturnByOrderId.get(order.internalOrderId);
+        if (openReturn) {
+          dto.openReturn = this.toOpenReturnDto(openReturn);
+        }
+        dto.tagIds = tagsByOrderId.get(order.internalOrderId) ?? [];
         return dto;
       }),
       ...(omitTotal ? {} : { total }),
@@ -407,8 +548,17 @@ export class OrdersController {
     // The SAME mapper the list uses. `OmitType` keeps the query surfaces from
     // drifting and `buildFilteredQuery` keeps the SQL from drifting; without
     // this, the DTO-to-filters step in between was a hand-copied second
-    // mapping - the identical drift class, one layer up.
-    const total = await this.orderRecordRepository.countMany(toOrderRecordFilters(query));
+    // mapping - the identical drift class, one layer up. The SAME enrichment
+    // too (#3528/#2998), or the count could disagree with the page it is the
+    // total for.
+    const filters = await enrichCrossContextFilters(
+      toOrderRecordFilters(query),
+      { search: query.search, openReturn: query.openReturn },
+      this.shipmentQuery,
+      this.returnsService,
+      this.logger
+    );
+    const total = await this.orderRecordRepository.countMany(filters);
     return { total };
   }
 
@@ -513,6 +663,19 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     const dto = this.toDto(order);
+    // Buyer tax id (#3180). DETAIL READ ONLY — off the shared `toDto`, so the
+    // paged list never carries it. Unlike `activeHold` below this costs no extra
+    // query (the column is already loaded); it is scoped for DATA MINIMISATION.
+    // It is the first buyer-identifying value on this DTO — `customerId` is an
+    // internal id — it is PII-gated at persistence exactly like `customerEmail`
+    // (#2599: for a sole trader the tax id identifies a natural person), and no
+    // list surface reads it. `GET /orders` is the hottest order read in the
+    // product; a value with no consumer does not belong on every row of it.
+    //
+    // The entity getter is the only intended read of the raw column, decoding it
+    // through `decodeBuyerTaxIdColumn` so this DTO never has to remember that
+    // `''` means "asserted none" rather than absence.
+    dto.buyerTaxId = order.buyerTaxIdState;
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
@@ -556,11 +719,24 @@ export class OrdersController {
     dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
     dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
     // Same projection the list carries (#2517) - one shape, so the panel never
-    // interprets a field differently from the row it was opened from.
+    // interprets a field differently from the row it was opened from. This read
+    // additionally resolves `matchedRule`, which the list path leaves `null`
+    // (#3186 review) because only this panel renders it.
     const salesDocument = await this.salesDocumentView.getForOrder(order.internalOrderId);
     if (salesDocument) {
       dto.salesDocument = toSalesDocumentViewDto(salesDocument);
     }
+    // Open-return badge (#2998) — the same projection the list carries, one
+    // query for this one order. The dedicated returns panel (#2640/#2646)
+    // remains the detailed answer; this is the header-badge parity the list
+    // row and the detail header share.
+    const openReturn = (await this.loadOpenReturnsForPage([order.internalOrderId])).get(
+      order.internalOrderId
+    );
+    if (openReturn) {
+      dto.openReturn = this.toOpenReturnDto(openReturn);
+    }
+    dto.tagIds = await this.tagService.listForOrder(order.internalOrderId);
     return dto;
   }
 
@@ -574,7 +750,9 @@ export class OrdersController {
       'axis belonging to that kind (both invoice axes, or the single fiscal one), the persisted block ' +
       'and unresolved reasons VERBATIM, and any record held on another connection. Read-only - it ' +
       'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
-      'GET /orders, so the detail panel needs this endpoint only when it is opened directly.',
+      'GET /orders, so the detail panel needs this endpoint only when it is opened directly - with ' +
+      'one exception: `matchedRule` is resolved HERE only and is always `null` on the list, so a ' +
+      'client must read this endpoint before concluding no rule decided an order\'s kind.',
   })
   @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -587,6 +765,44 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     return toSalesDocumentViewDto(view);
+  }
+
+  // #3365 review: NOT `viewer`, unlike its sales-document neighbour above.
+  //
+  // That one reads OpenLinker's own persisted projection. This one resolves the
+  // source adapter and issues a live GET against the marketplace on every call.
+  // The call is paced - the Allegro client goes through the shared per-connection
+  // limiter - so it is not unbounded, but a viewer refreshing a detail page still
+  // CONSUMES the operator's own budget, and what queues behind it is the order
+  // sync. A role defined as look-but-do-not-touch should not be able to starve
+  // the ingestion of the orders it is looking at.
+  @Roles('admin', 'operator')
+  @Get(':internalOrderId/source-fulfillment')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Ask the SOURCE marketplace what it says about this order',
+    description:
+      "What the marketplace itself reports, as opposed to what OpenLinker recorded (#3365). " +
+      'OpenLinker relays a dispatch mark and, where it has one, a waybill INTO the marketplace ' +
+      'through a relay that reads nothing back (ADR-027), so this is the only way to confirm the ' +
+      'write landed. Read-only: it resolves the source adapter and issues one GET, writes nothing, ' +
+      'and never changes the order. An unreachable source, a source with no readback, and an order ' +
+      'carrying no external id are three DIFFERENT states on the response, never a 5xx.',
+  })
+  @ApiResponse({ status: 200, description: "The source's answer", type: SourceFulfillmentResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async getSourceFulfillment(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<SourceFulfillmentResponseDto> {
+    try {
+      return toSourceFulfillmentDto(await this.sourceFulfillment.read(internalOrderId));
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      }
+      throw error;
+    }
   }
 
   @Roles('admin', 'operator')
@@ -645,7 +861,11 @@ export class OrdersController {
     description:
       'Records the plain operator fact that this order is packed, stamping the instant (server-side) and the acting user. ' +
       'It is a fact, not a state: recordStatus, fulfillmentState, slaState and the order-health buckets are untouched, and nothing is gated on it. ' +
-      'Idempotent — a repeat call returns the EXISTING stamp and actor rather than re-stamping, which is why it answers 200 and not 201.',
+      'Idempotent — a repeat call returns the EXISTING stamp and actor rather than re-stamping, which is why it answers 200 and not 201. ' +
+      'Callable by a WMS or any other system, not just the UI: this is the same endpoint a person uses, so a warehouse system that does its own picking and packing can assert the fact here. ' +
+      'Authenticate as a service-account USER — an ordinary user with the `operator` role (or `admin`) — using the usual JWT login; there is no separate machine principal, ' +
+      'so the token inherits that user’s role and `packedByUserId` records that account. ' +
+      'Packing is independent of fulfilment routing: it applies identically to every order, including one the destination shop ships itself (`omp_fulfilled`, the default).',
   })
   @ApiResponse({ status: 200, description: 'Order is packed', type: OrderRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -670,7 +890,8 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Clear an order’s packed mark',
     description:
-      'Clears both packed fields together. Clearing an order that is not packed is a no-op that returns the record unchanged.',
+      'Clears both packed fields together. Clearing an order that is not packed is a no-op that returns the record unchanged. ' +
+      'Like marking packed, it is callable by a WMS authenticating as a service-account user with the `operator` or `admin` role.',
   })
   @ApiResponse({ status: 200, description: 'Order is not packed', type: OrderRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -696,6 +917,29 @@ export class OrdersController {
    * render an absent entry as "no shortfalls" — absence and failure look the
    * same here by design, so only the presence of an episode is a claim.
    */
+  /**
+   * Open-return summary for a page of order ids (#2998) — the Status-group
+   * badge. ONE query for the whole page, never a per-row lookup; a FAILED read
+   * returns an empty map rather than throwing, so a returns-context hiccup
+   * degrades to "no badge rendered" rather than taking `/orders` down.
+   */
+  private async loadOpenReturnsForPage(
+    internalOrderIds: string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.returnsService.getOpenReturnSummariesForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project open returns for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
   private async loadReservationShortfallsForPage(
     internalOrderIds: string[]
   ): Promise<Map<string, OrderReservationShortfallDto[]>> {
@@ -734,6 +978,10 @@ export class OrdersController {
       );
       return [];
     }
+  }
+
+  private toOpenReturnDto(summary: OpenReturnOrderSummary): OrderOpenReturnDto {
+    return { count: summary.openCount, stage: summary.latestStage };
   }
 
   private toReservationShortfallDto(
@@ -900,6 +1148,75 @@ export class OrdersController {
     };
   }
 
+  @Roles('admin')
+  @Post(':internalOrderId/test-fixtures/mark-pre-rollout-era')
+  @HttpCode(HttpStatus.OK)
+  // Kept out of the published OpenAPI document (#3127 review). The route is
+  // inert on any production install — it refuses unconditionally under
+  // NODE_ENV=production — so advertising a "MUST NEVER be called against real
+  // order data" endpoint that always 403s there is disclosure with no reader
+  // it could serve. The @ApiOperation below is retained deliberately: it is
+  // the description a developer reads in source, and it comes back the moment
+  // this line is removed for a local Swagger run.
+  @ApiExcludeEndpoint()
+  @ApiOperation({
+    summary: 'TEST-FIXTURE-ONLY: stamp taxRateEra=pre-rollout on an order',
+    description:
+      'Exists ONLY to let a non-production install reach the tax-a / tax-c analytics coverage ' +
+      'states (#2482) with a fresh, flow-seeded order — no real ingestion path ever writes ' +
+      'taxRateEra (it was set exactly once, by a historical backfill migration), so those states ' +
+      'are otherwise unreachable. Triple-gated: @Roles(admin) here, OL_ALLOW_TEST_FIXTURES must ' +
+      'be true in the process env, and NODE_ENV must not be production (refused unconditionally, ' +
+      'even with the env var set). The acting admin is recorded in the audit log. MUST NEVER be ' +
+      'called against real order data — it silently excludes the order from Net Sales figures via ' +
+      'the pre-rollout tax-rate-era rule.',
+  })
+  @ApiResponse({ status: 200, description: 'Stamp applied (or already present)', type: MarkPreRolloutEraResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions, or TEST_FIXTURES_DISABLED' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async markPreRolloutEra(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<MarkPreRolloutEraResponseDto> {
+    // The feature-flag gate is checked BEFORE the DB pre-read: on a production
+    // deployment (the default — the flag defaults off) this route is entirely
+    // inert, and it should cost no read before that is established.
+    try {
+      this.testFixtureService.assertTestFixturesAllowed();
+    } catch (error) {
+      if (error instanceof TestFixturesDisabledException) {
+        throw new ForbiddenException({
+          statusCode: HttpStatus.FORBIDDEN,
+          error: 'TEST_FIXTURES_DISABLED',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+
+    try {
+      const applied = await this.testFixtureService.markPreRolloutEraForTesting(
+        internalOrderId,
+        user.id
+      );
+      return { applied };
+    } catch (error) {
+      if (error instanceof TestFixturesDisabledException) {
+        throw new ForbiddenException({
+          statusCode: HttpStatus.FORBIDDEN,
+          error: 'TEST_FIXTURES_DISABLED',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+  }
+
   /** TypeORM may hand back a string for a timestamptz; `toDto` guards the same way. */
   private toIsoOrPassThrough(value: Date | string): string {
     return value instanceof Date ? value.toISOString() : value;
@@ -949,6 +1266,8 @@ export class OrdersController {
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
       mappingFailureReason: order.mappingFailureReason,
+      // `buyerTaxId` is deliberately NOT here (#3180) - it is set by `getOrder`
+      // alone. See the assignment there for why.
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
@@ -1017,6 +1336,15 @@ export class OrdersController {
       // `holdHistory` stay detail-only because those ARE a query per row.
       // #2340's display cache: a badge may render it, no gate may read it.
       activeHoldReason: order.activeHoldReason,
+      // #3455 — free for the same reason: the column is already loaded, and the
+      // entity has already coerced it through core's guard.
+      fulfillmentRoutingSkipReason: order.fulfillmentRoutingSkipReason,
+      // #3485 — free for the same reason; the entity coerced the reason already.
+      fulfillmentBlockReason: order.fulfillmentBlock?.reason ?? null,
+      fulfillmentBlockDetail: order.fulfillmentBlock?.detail ?? null,
+      // #3294 - free: the column is already loaded and the entity folds an
+      // unreported value into `unknown`, so a consumer never sees null here.
+      paymentMethod: order.paymentMethodOrUnknown,
     };
   }
 
@@ -1037,6 +1365,9 @@ export class OrdersController {
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,
       blocksIssuanceElsewhere: record.blocksIssuanceElsewhere,
+      unlinkedCatalogueLines: record.unlinkedCatalogueLines,
+      warehouseReleaseOutcome: record.warehouseReleaseOutcome,
+      warehouseReleaseNumber: record.warehouseReleaseNumber,
     };
   }
 
@@ -1092,6 +1423,9 @@ export class OrdersController {
       processorKind: resolution.processorKind,
       processorConnectionId: resolution.processorConnectionId,
       processorAvailable: resolution.processorAvailable,
+      parcelProfile: resolution.parcelProfile
+        ? ParcelProfileResponseDto.fromDomain(resolution.parcelProfile)
+        : null,
     };
   }
 

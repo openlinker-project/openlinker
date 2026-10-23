@@ -4,9 +4,14 @@
  * Covers the acceptance criteria the issue calls out specifically: ★ Rest of
  * world's own dialog renders exactly 3 sequentially-numbered tiers (never a
  * 4th, never a duplicate number), every other country renders exactly 4, the
- * tier-3 cross-link opens ★ Rest of world's dialog, the "← Back to {country}"
- * affordance appears only when arrived via that link, and the dual-default
- * warning renders only when both an Invoice and a Receipt default are set.
+ * tier-3 cross-link opens ★ Rest of world's dialog, and the "← Back to
+ * {country}" affordance appears only when arrived via that link.
+ *
+ * #3177 replaced the "country default" tier's two independent selects with
+ * one — the dual-default contradiction those selects used to warn about is
+ * unexpressible now that `sales_document_country_defaults` is unique on
+ * `country` alone, so this dialog no longer renders that warning at all
+ * (covered directly by `sales-document-country-defaults.test.tsx`).
  *
  * A prior design-review round of the source mockup shipped a real bug here —
  * two tiers both labeled "Tier 2" — which is why the numbering assertions
@@ -204,37 +209,10 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     expect(screen.queryByRole('button', { name: /Back to/i })).toBeNull();
   });
 
-  it('should show the dual-default warning when both an Invoice and a Receipt default are set', async () => {
-    const defaults: SalesDocumentCountryDefault[] = [
-      { id: 'd1', country: 'PL', documentKind: 'invoice', connectionId: 'conn_1' },
-      { id: 'd2', country: 'PL', documentKind: 'fiscal-receipt', connectionId: 'conn_2' },
-    ];
-    const apiClient = createMockApiClient({
-      salesDocumentRules: {
-        listRules: vi.fn().mockResolvedValue([]),
-        listCountryDefaults: vi.fn().mockResolvedValue(defaults),
-      },
-    });
-    renderWithProviders(
-      <SalesDocumentCountryRoutingDialog
-        open
-        country="PL"
-        cameFrom={null}
-        onOpenChange={vi.fn()}
-        onNavigate={vi.fn()}
-      />,
-      { apiClient },
-    );
-
-    expect(
-      await screen.findByText(/Both an Invoice and a Receipt default are set/i),
-    ).toBeInTheDocument();
-    // The consequence is stated, never reassurance that something resolves it.
-    expect(screen.getByText(/that step is disabled entirely/i)).toBeInTheDocument();
-    expect(screen.getByText(/an order that matches no rule is\s*held/i)).toBeInTheDocument();
-  });
-
-  it('should not show the dual-default warning when only one default is set, and should show the single-default hint instead', async () => {
+  it('should never render a dual-default warning — the state is unexpressible since #3177', async () => {
+    // At most one row per country can exist post-#3177 (unique on `country`
+    // alone), but this guards against the copy or the warning ever coming
+    // back if that invariant is ever loosened again.
     const defaults: SalesDocumentCountryDefault[] = [
       { id: 'd1', country: 'PL', documentKind: 'invoice', connectionId: 'conn_1' },
     ];
@@ -257,32 +235,7 @@ describe('SalesDocumentCountryRoutingDialog', () => {
 
     await screen.findByText(/Rules for PL/i);
     expect(screen.queryByText(/Both an Invoice and a Receipt default are set/i)).toBeNull();
-    expect(
-      await screen.findByText(/applies only when no rule above matches/i),
-    ).toBeInTheDocument();
-  });
-
-  it('should not show the dual-default warning when neither default is set', async () => {
-    const apiClient = createMockApiClient({
-      salesDocumentRules: {
-        listRules: vi.fn().mockResolvedValue([]),
-        listCountryDefaults: vi.fn().mockResolvedValue([]),
-      },
-    });
-    renderWithProviders(
-      <SalesDocumentCountryRoutingDialog
-        open
-        country="PL"
-        cameFrom={null}
-        onOpenChange={vi.fn()}
-        onNavigate={vi.fn()}
-      />,
-      { apiClient },
-    );
-
-    await screen.findByText(/Rules for PL/i);
-    expect(screen.queryByText(/Both an Invoice and a Receipt default are set/i)).toBeNull();
-    expect(screen.queryByText(/applies only when no rule above matches/i)).toBeNull();
+    expect(screen.getByTestId('country-default')).toBeInTheDocument();
   });
 
   it('should render the "+ Add rule" composer with the elevated dialog tier when opened from within this dialog', async () => {

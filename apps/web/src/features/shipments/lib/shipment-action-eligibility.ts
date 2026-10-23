@@ -67,7 +67,19 @@ export function canRegenerateLabel(
   return true;
 }
 
-export const CAN_CANCEL: ReadonlySet<ShipmentStatus> = new Set(['generated']);
+// `dispatched` is cancellable since #3365. It is not a relaxation of the
+// old rule so much as a correction of what that rule cost: the automatic
+// dispatch notification advances a shipment within seconds of the label being
+// bought, so `generated` alone meant an operator who bought the wrong label
+// could not void it at all - they paid for a parcel they would not send, and
+// the channel believed it shipped either way. Cancelling afterwards leaves the
+// channel notification outstanding, which `cancelShipmentCopy` warns about
+// before the operator confirms.
+//
+// `in-transit` is deliberately NOT here: at `dispatched` the label exists and
+// the carrier has moved nothing, while `in-transit` is the carrier reporting
+// that it has.
+export const CAN_CANCEL: ReadonlySet<ShipmentStatus> = new Set(['generated', 'dispatched']);
 export const CAN_NOTIFY_DISPATCHED: ReadonlySet<ShipmentStatus> = new Set(['generated']);
 // A label document exists once the shipment is generated and stays retrievable
 // through the carrier-tracked lifecycle; cancelled/failed/draft have none.

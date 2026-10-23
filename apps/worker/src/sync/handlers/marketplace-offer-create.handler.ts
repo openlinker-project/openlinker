@@ -8,13 +8,20 @@
  * V2 payloads (#737, bulk-flow) layer two orthogonal side-effects:
  *
  *   1. **Before** `executeCreation`: if `generateDescription === true`,
- *      call `ContentSuggestionService.suggestDescription({ channel:'allegro' })`
- *      and thread the result into `overrides.description`. AI failure falls
- *      through — operator override or builder default takes over (AC-9).
+ *      call `ContentSuggestionService.suggestDescription({ channel })` with
+ *      the channel resolved from the job's own connection `platformType`
+ *      (#2202 — never a hardcoded `'allegro'`, since this handler serves
+ *      every marketplace offer create, not only Allegro) and thread the
+ *      result into `overrides.description`. AI failure falls through —
+ *      operator override or builder default takes over (AC-9).
  *   2. **After** `executeCreation`, terminal outcome: advance the parent
  *      batch's counters via `BulkListingProgressService` — which
  *      gates on the `bulk_batch_advancements` table to give at-most-once
  *      counter semantics across retries + concurrent workers.
+ *
+ * `onDead` (#3505, G01-2): once the runner marks the job dead, a record still
+ * `pending` is settled as `failed` and a bulk child is counted as failed —
+ * otherwise both stayed "in progress" for ever.
  *
  * Smart classification readback lives inside `OfferCreationExecutionService`
  * (active-on-create branch) and `OfferStatusPollService` (validating→active
@@ -33,6 +40,10 @@ import {
   type IContentSuggestionService,
 } from '@openlinker/core/content';
 import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
+import {
   BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   type BulkChildOutcome,
   type CreateOfferOverrides,
@@ -49,6 +60,7 @@ import type {
   MarketplaceOfferCreatePayloadV1,
   MarketplaceOfferCreatePayloadV2,
   SyncJob as SyncJobEntity,
+  SyncJobDeadFailure,
   SyncJobHandler,
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
@@ -70,7 +82,9 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
     @Inject(BULK_LISTING_PROGRESS_SERVICE_TOKEN)
-    private readonly bulkProgress: IBulkListingProgressService
+    private readonly bulkProgress: IBulkListingProgressService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -81,7 +95,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     );
 
     try {
-      const overrides = await this.maybeRunAiDescription(payload);
+      const overrides = await this.maybeRunAiDescription(payload, job.connectionId);
 
       const { offerCreationRecord, outcome } = await this.offerCreation.executeCreation({
         internalVariantId: payload.internalVariantId,
@@ -133,6 +147,38 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     }
   }
 
+  /**
+   * The job is dead (#3505, G01-2): settle the record it was creating so it
+   * stops reading as "in progress", and — for a bulk child — count it as a
+   * failed child so the batch can still reach a terminal state.
+   *
+   * The batch is advanced only when THIS call moved the record out of
+   * `pending`: a record a previous attempt already settled has been (or will
+   * be) counted by `execute`, and `bulk_batch_advancements` would dedupe a
+   * second advance anyway. A payload carrying no record id (a legacy V1 job
+   * whose record `executeCreation` creates itself) has nothing to settle.
+   */
+  async onDead(job: SyncJob, failure: SyncJobDeadFailure): Promise<void> {
+    let payload: Payload;
+    try {
+      payload = this.getPayload(job);
+    } catch {
+      // An unparseable payload is why some jobs die; there is no record to name.
+      return;
+    }
+    if (!payload.offerCreationRecordId) {
+      return;
+    }
+
+    const abandoned = await this.offerCreation.abandonCreation(
+      payload.offerCreationRecordId,
+      failure.message
+    );
+    if (abandoned && this.isV2(payload)) {
+      await this.bulkProgress.advanceBatchStatus(payload.bulkBatchId, abandoned.id, 'failed');
+    }
+  }
+
   private isV2(p: Payload): p is MarketplaceOfferCreatePayloadV2 {
     return p.schemaVersion === 2;
   }
@@ -145,7 +191,10 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
    * V1 (or V2 with `generateDescription: false`) returns payload.overrides
    * unchanged.
    */
-  private async maybeRunAiDescription(payload: Payload): Promise<CreateOfferOverrides | undefined> {
+  private async maybeRunAiDescription(
+    payload: Payload,
+    connectionId: string
+  ): Promise<CreateOfferOverrides | undefined> {
     if (!this.isV2(payload) || payload.generateDescription !== true) {
       return payload.overrides;
     }
@@ -167,10 +216,35 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
       return payload.overrides;
     }
 
+    // Channel resolves from the connection's own platformType (#2202) —
+    // never a hardcoded literal — matching ContentEditor's approach.
+    // `PromptTemplateService.render` does an EXACT (key, channel) match and
+    // throws `PromptTemplateNotFoundException` when nothing is published for
+    // it — there is no channel→master fallback. A platform with no seeded
+    // template (or an unresolved connection, below) therefore produces no AI
+    // description at all; the `catch` around `suggestDescription` below is
+    // what keeps that non-fatal (AC-9), not a backend fallback.
+    //
+    // This is a metadata-only lookup (`getAdapter`, never
+    // `getCapabilityAdapter`) and deliberately re-fetches the same
+    // connection `executeCreation` resolves moments later for the actual
+    // destination adapter — accepted per the issue's own assumption that a
+    // second read is cheap on a path already making an LLM call.
+    let channel: string;
+    try {
+      const { connection } = await this.integrationsService.getAdapter(connectionId);
+      channel = connection.platformType;
+    } catch (err) {
+      this.logger.warn(
+        `AI description skipped — connection lookup failed: ${(err as Error).message}`
+      );
+      return payload.overrides;
+    }
+
     try {
       const result = await this.contentSuggestion.suggestDescription({
         productId,
-        channel: 'allegro',
+        channel,
         tone: payload.descriptionTone,
       });
       return {

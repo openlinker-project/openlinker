@@ -45,6 +45,7 @@ import {
   teardownTestHarness,
 } from './setup';
 import { loginAsAdmin } from './helpers/test-auth.helper';
+import { createTestConnection } from './helpers/test-connection.helper';
 
 /** Every index definition on `inventory_items`, sorted (mirrors the #2314 spec). */
 async function readIndexDefs(dataSource: DataSource): Promise<string[]> {
@@ -263,6 +264,57 @@ describe('Inventory duplicate-position detection (#2319)', () => {
     expect(report.groups[0].sourceConnectionId).toBe('connection-alpha');
     expect(report.groups[0].locationId).toBeNull();
     expect(report.groups[0].rowCount).toBe(2);
+  });
+
+  it('resolves connectionName for a real connection, and leaves it null on the #2317 legacy sentinel (#3239)', async () => {
+    const real = await createTestConnection(dataSource, { name: 'Real Connection Alpha' });
+
+    const { productId: productIdReal, variantId: variantIdReal, suffix: suffixReal } =
+      await seedProductAndVariant();
+    await insertRow({
+      id: `ol_inventory_conn_real_a_${suffixReal}`,
+      productId: productIdReal,
+      productVariantId: variantIdReal,
+      locationId: null,
+      sourceConnectionId: real.id,
+      availableQuantity: 5,
+    });
+    await insertRow({
+      id: `ol_inventory_conn_real_b_${suffixReal}`,
+      productId: productIdReal,
+      productVariantId: variantIdReal,
+      locationId: null,
+      sourceConnectionId: real.id,
+      availableQuantity: 7,
+    });
+
+    const { productId: productIdLegacy, variantId: variantIdLegacy, suffix: suffixLegacy } =
+      await seedProductAndVariant();
+    await insertRow({
+      id: `ol_inventory_conn_legacy_a_${suffixLegacy}`,
+      productId: productIdLegacy,
+      productVariantId: variantIdLegacy,
+      locationId: null,
+      sourceConnectionId: 'legacy',
+      availableQuantity: 3,
+    });
+    await insertRow({
+      id: `ol_inventory_conn_legacy_b_${suffixLegacy}`,
+      productId: productIdLegacy,
+      productVariantId: variantIdLegacy,
+      locationId: null,
+      sourceConnectionId: 'legacy',
+      availableQuantity: 4,
+    });
+
+    const report = await queryService.getDuplicatePositionReport();
+
+    expect(report.groups).toHaveLength(2);
+    const realGroup = report.groups.find((g) => g.sourceConnectionId === real.id);
+    const legacyGroup = report.groups.find((g) => g.sourceConnectionId === 'legacy');
+
+    expect(realGroup?.connectionName).toBe('Real Connection Alpha');
+    expect(legacyGroup?.connectionName).toBeNull();
   });
 
   it('cannot produce a duplicate when every index-key column is non-null', async () => {

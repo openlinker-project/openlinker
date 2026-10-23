@@ -40,7 +40,7 @@ import {
   type NetGrossBasis,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
-import { Button, EmptyState, ErrorState, LoadingState, PageLayout } from '../../shared/ui';
+import { Button, EmptyState, LoadingState, PageLayout, QueryErrorState } from '../../shared/ui';
 
 export function AnalyticsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -227,14 +227,22 @@ export function AnalyticsPage(): ReactElement {
       {trustQuery.isLoading ? (
         <LoadingState title="Loading data coverage" message="Checking ingestion status…" />
       ) : trustQuery.error ? (
-        <ErrorState
-          title="Unable to load data coverage"
-          message={trustQuery.error.message}
-          action={
-            <Button type="button" onClick={() => void trustQuery.refetch()}>
-              Retry
-            </Button>
-          }
+        // #3096: a 403 here is a role fact, not an outage, so it renders the
+        // denied state with no Retry rather than "Unable to load … [Retry]".
+        <QueryErrorState
+          error={trustQuery.error}
+          onRetry={() => void trustQuery.refetch()}
+          copy={{
+            error: {
+              title: 'Unable to load data coverage',
+              message: trustQuery.error.message,
+              retry: 'Retry',
+            },
+            denied: {
+              title: 'Data coverage is not available to your role',
+              message: 'Ask an administrator if you need to see ingestion coverage.',
+            },
+          }}
         />
       ) : trustQuery.data && trustQuery.data.connections.length === 0 ? (
         <EmptyState

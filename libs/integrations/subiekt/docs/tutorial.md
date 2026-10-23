@@ -1,6 +1,6 @@
-# Subiekt nexo — Operator Tutorial
+# Subiekt GT — Operator Tutorial
 
-Issue faktura (FS) and paragon (PA) documents in Subiekt nexo for OpenLinker orders —
+Issue faktura (FS) and paragon (PA) documents in Subiekt GT for OpenLinker orders —
 complete A-to-Z guide covering the bridge, the OpenLinker wizard, and the full
 order → invoice flow.
 
@@ -11,11 +11,15 @@ order → invoice flow.
 
 ## What you need before you start
 
-- **Windows machine** with Subiekt nexo PRO + Sfera (the SDK ships with the
-  demo/trial database; a production nexo requires the paid Sfera add-on).
+- **Windows machine** with Subiekt GT (InsERT GT product line) and Sfera GT —
+  the classic COM automation layer for Subiekt GT (ProgID `InsERT.GT`). This is
+  a different product/API from the .NET Sfera SDK (`InsERT.Moria.Sfera`) used
+  by Subiekt nexo — the bridge does not use that SDK at all.
 - **.NET 8 runtime** on the Windows machine.
 - The [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
-  repository cloned (not yet published).
+  repository cloned. It is public; the GT bridge lives in `bridge-gt/` and is run from
+  source with `dotnet run`, so the machine also needs the **.NET 8 SDK**, not just the
+  runtime. There is no installer and no packaged `.exe` to download.
 - OpenLinker running (API + worker + web) and reachable from the Windows machine.
 - A **source connection** (e.g. PrestaShop or Allegro) already set up in OpenLinker
   so that orders flow in.
@@ -24,94 +28,109 @@ order → invoice flow.
 
 ## Part 1 — Configure and run the bridge
 
-The bridge translates OpenLinker's neutral invoice command into Sfera SDK operations
-that Subiekt nexo executes. It runs as a console app on Windows (started via
-PowerShell — **not** a compiled exe).
+The bridge translates OpenLinker's neutral invoice command into Sfera GT COM
+automation calls that Subiekt GT executes. It runs as a console app on Windows,
+started via a `.bat` launcher script.
 
 ### 1a — Configure `appsettings.json`
 
-Open `bridge/Subiekt.Bridge.Api/appsettings.json` and fill in the Sfera paths
-and SQL connection. Secrets go in **environment variables only** — never in the file.
+Copy the template that ships beside the bridge and edit your copy:
+
+```powershell
+cd openlinker-subiekt-bridge\bridge-gt
+copy appsettings.example.json appsettings.json
+notepad appsettings.json
+```
+
+The file lives **next to the executable**, and it is flat — one level of keys, no
+sections:
 
 ```json
 {
-  "Port": 5005,
-  "Auth": { "Enabled": true, "ApiKey": "" },
-  "Sfera": {
-    "BinariesDir": "%LOCALAPPDATA%\\InsERT\\Deployments\\Nexo\\<deployment>\\Binaries",
-    "SqlServer":   "localhost\\INSERTNEXO",
-    "SqlDatabase": "Nexo_Demo_1",
-    "SqlUseWindowsAuth": true,
-    "NexoUser":    "Szef"
-  }
+  "SqlServer": "YOUR-HOST\\INSERTGT",
+  "SqlDatabase": "YOUR-DB",
+  "SferaOperator": "Szef",
+  "SferaPassword": "",
+  "InvoiceToken": "pick-a-long-random-string",
+  "HttpPort": 5056,
+  "HttpsPort": 5055
 }
 ```
 
-> **Auth is header-fixed, not configurable.** The bridge only accepts
-> `Authorization: Bearer <token>` — there is no `HeaderName` option to change
-> it. OpenLinker's client also sends a redundant `x-bridge-token: <token>`
-> header alongside `Authorization`, but the bridge ignores it; only the
-> `Authorization: Bearer` value is checked.
+Every key also resolves from an environment variable named
+`OL_BRIDGE_<KEY_UPPER_SNAKE_CASE>` — `SqlServer` is `OL_BRIDGE_SQL_SERVER`,
+`InvoiceToken` is `OL_BRIDGE_INVOICE_TOKEN` — which takes precedence over the file.
+Anything you leave out falls back to a built-in default, except the three credentials,
+which have none.
 
-Replace `<deployment>` with the folder name visible under
-`%LOCALAPPDATA%\InsERT\Deployments\Nexo\`.
+> **`SqlConnectionString`** overrides `SqlServer` / `SqlDatabase` entirely. Use it when
+> the installation needs SQL authentication rather than the integrated security the other
+> two compose.
 
-> **Windows auth:** `SqlUseWindowsAuth: true` uses the current Windows session —
-> no SQL password needed. Set `false` and supply `Sfera__SqlPassword` if you use
-> SQL Server auth instead.
+### 1a-bis — Choose the bridge token
 
-### 1b — Set secrets in PowerShell
+`InvoiceToken` is a shared secret **you invent**. Nobody issues it, it is not printed
+anywhere, and it is not compiled into the binary. Pick a long random string, put it here,
+and paste **the same value** into the *Bridge token* field in Part 2.
 
-Open **PowerShell** and navigate to the repository root. Set the secret
-environment variables for the current session:
+Until you set it, every `/api/*` request answers `401` with
+`bridge token is not configured`. An unset token is not a "no security" mode — it is a
+bridge that serves OpenLinker nothing.
 
-```powershell
-cd C:\Users\<user>\repos\openlinker-subiekt-bridge
+> An earlier version of this tutorial said auth was "two fixed credential pairs, not
+> user-configurable" and told you to consult your bridge operator. That was wrong, and
+> wrong in the direction that leaves you stuck: there is nobody to consult.
 
-$env:Auth__ApiKey       = "a-strong-random-token"   # copy this — it's your bridgeToken
-$env:Sfera__NexoPassword = "your-nexo-operator-password"
-# Only needed when SqlUseWindowsAuth = false:
-# $env:Sfera__SqlPassword = "your-sql-password"
+### 1b — Configure the public base URL (optional)
+
+If OpenLinker or Allegro need to fetch images that the bridge returns (e.g.
+product photos referenced from a generated document), those URLs must resolve
+from *outside* the bridge machine — the bridge's own loopback address won't
+work for a remote caller. Set:
+
+```
+OL_BRIDGE_PUBLIC_BASE = http://<this-machine-host-or-ip>:5056
 ```
 
-> If OpenLinker runs on the same machine as the bridge, `http://127.0.0.1:5005`
-> works as the **Bridge URL** in Part 2. If OpenLinker runs elsewhere on your
-> network, use this machine's LAN IP (`ipconfig` → IPv4 Address) instead.
+If unset, it defaults to `http://host.docker.internal:5056`, which is correct
+when OpenLinker runs in Docker on the same machine as the bridge.
 
 ### 1c — Start the bridge
 
-```powershell
-dotnet run -c Release --project bridge/Subiekt.Bridge.Api
-```
+Run `start-bridge.bat` (double-click it, or run it from a `cmd` window). This
+keeps a console window open for as long as the bridge runs — **closing the
+window stops the bridge process.** There is no Windows Service wrapper and no
+automatic restart on crash or reboot; if the bridge needs to stay up
+unattended, you're responsible for supervising the process yourself (e.g. a
+scheduled task, NSSM, or similar).
 
-The console should print:
+The console should print that the bridge is listening and that a Sfera GT
+session opened successfully.
 
-```
-Now listening on: http://127.0.0.1:5005
-...
-Sfera session opened — zalogowano
-```
+The bridge listens on two ports:
 
-> **Non-loopback binding (remote):** if OpenLinker runs on a different machine,
-> the bridge must listen on a non-loopback address with TLS. Generate a dev cert:
-> ```powershell
-> dotnet dev-certs https -ep dev-cert.pfx -p your-cert-password
-> $env:Tls__CertPassword = "your-cert-password"
-> $env:ASPNETCORE_URLS = "https://0.0.0.0:5005"
-> dotnet run -c Release --project bridge/Subiekt.Bridge.Api
-> ```
+- **5056** — plain HTTP, always open. With no certificate configured this is the port
+  OpenLinker reaches the bridge on, and the one images are served from.
+- **5055** — HTTPS, opens only when `CertificatePath` / `CertificatePassword` are set.
 
 ### 1d — Smoke-test the bridge
 
-From another PowerShell window:
+Run both checks **from the machine OpenLinker runs on**, not from the Windows box:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:5005/health
-# → {"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}
+# Is it up? /health is anonymous by design.
+Invoke-RestMethod http://<bridge-host>:5056/health
+
+# Does the token work? /health cannot tell you - it is exempt from auth.
+Invoke-RestMethod http://<bridge-host>:5056/api/bank-accounts `
+  -Headers @{ Authorization = "Bearer <your-token>" }
 ```
 
-A `"sferaSession":"valid"` confirms the bridge authenticated with Sfera and
-Subiekt nexo is reachable.
+The first reports whether the Sfera GT session is valid and Subiekt GT is reachable.
+The second is the one that proves your token works — a `200` with a
+`{ success: true, ... }` envelope. A `401` names which problem you have.
+
+This tutorial was verified live against **InsERT GT 1.89 SP1**.
 
 ---
 
@@ -121,9 +140,9 @@ In OpenLinker, go to **Connections** and click **Add connection**.
 
 ![Connections page — Add connection button highlighted](./assets/06-ol-connections-list.png)
 
-On the platform picker, find and select **Subiekt nexo**.
+On the platform picker, find and select **Subiekt GT**.
 
-![Platform picker — Subiekt nexo card](./assets/07-ol-platform-picker.png)
+![Platform picker — Subiekt GT card](./assets/07-ol-platform-picker.png)
 
 The guided setup wizard opens. Fill in the fields:
 
@@ -133,8 +152,8 @@ The guided setup wizard opens. Fill in the fields:
 - **Bridge URL** — the bridge base URL **without** a path suffix, e.g.
   `http://127.0.0.1:5005` (same machine) or `http://192.168.1.50:5005` (bridge
   on a different machine). The adapter appends `/api/…` paths automatically.
-- **Bridge token** — paste the value you set as `Auth__ApiKey` in Part 1b.
-  Stored encrypted; never shown again after save.
+- **Bridge token** — paste the bearer token your bridge operator configured
+  for the invoicing endpoints. Stored encrypted; never shown again after save.
 
 ![Wizard — all fields filled in](./assets/09-ol-wizard-filled.png)
 
@@ -156,7 +175,7 @@ Click the connection to view its detail page:
 ![Subiekt connection detail — capabilities, status, edit surface](./assets/15-ol-subiekt-detail.png)
 
 > **Advanced mode (alternative):** Add connection → Use advanced mode:
-> `Platform type = subiekt`, `Adapter key = subiekt.invoicing.v1`,
+> `Platform type = subiekt-gt`, `Adapter key = subiekt.gt.v1`,
 > `Enabled capabilities = Invoicing`,
 > `Credentials JSON = { "bridgeToken": "<token>" }`,
 > `Config JSON = { "bridgeBaseUrl": "http://<host>:5005" }`.
@@ -208,7 +227,7 @@ with a NIP, Receipt for B2C) before issuing.
 ![Invoice panel — connection selected, "Issue invoice" button ready](./assets/23-ol-invoice-panel-ready-to-issue.png)
 
 Click **Issue invoice**. OpenLinker sends the command to the bridge → bridge calls
-Sfera → Subiekt nexo creates the document. The panel briefly shows **Issuing…**
+Sfera GT → Subiekt GT creates the document. The panel briefly shows **Issuing…**
 then flips to **Issued**.
 
 The **Issued** state shows the Subiekt document number (e.g. `FS 175/CENTRALA/2026`)
@@ -218,14 +237,14 @@ and, if KSeF submission is configured, the regulatory status badge.
 
 ---
 
-## Part 5 — Verify in Subiekt nexo
+## Part 5 — Verify in Subiekt GT
 
-Open Subiekt nexo and go to **Dokumenty → Sprzedaży** (Sales documents). The
+Open Subiekt GT and go to **Dokumenty → Sprzedaży** (Sales documents). The
 new FS document appears at the top of the list. Open it to verify the line items,
 VAT breakdown, and buyer NIP — the document number matches the one shown in
 OpenLinker's Invoice panel.
 
-![Subiekt nexo — FS document detail, line items, NIP, VAT breakdown](./assets/27-subiekt-nexo-fs-detail.png)
+![Subiekt GT — FS document detail, line items, NIP, VAT breakdown](./assets/27-subiekt-nexo-fs-detail.png)
 
 ---
 
@@ -247,7 +266,7 @@ as a **paragon** (PA). Create an order for a customer without a VAT number.
 In the Invoice panel, manually select **Receipt (paragon)** in the document-type
 dropdown - the dropdown defaults to Invoice (faktura) and OpenLinker does NOT
 switch it for you based on the missing NIP. Then click **Issue invoice** - the
-bridge routes the command to Sfera as a paragon issuance.
+bridge routes the command to Sfera GT as a paragon issuance.
 
 The Issued state shows a `PA …` document number instead of `FS …`.
 
@@ -266,7 +285,7 @@ a manual issue does.
 **Idempotency:** a repeated trigger or a double-click never creates a second
 document. OpenLinker keys each issuance attempt by
 `invoice:{connectionId}:{orderId}`. Re-triggering an already-issued order returns
-the existing document silently (no duplicate in Subiekt nexo).
+the existing document silently (no duplicate in Subiekt GT).
 
 ---
 

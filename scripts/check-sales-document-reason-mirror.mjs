@@ -81,9 +81,54 @@ const COPY_DECLARATIONS = {
 const DOCS_REF = 'docs/architecture/adrs/041-sales-document-routing-policy.md';
 
 /**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for a declaration's real
+ * closing bracket. Length-preserving: any index found in the blanked string is
+ * a valid index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * Extract the string literals of `export const <name> = [...] as const;`, with
  * the 1-based line number the declaration starts on. Returns `{ line, values }`,
  * or `null` when the declaration is absent.
+ *
+ * The closing bracket is located on a COMMENT-BLANKED copy of the content, or a
+ * `]` written inside a comment between the real brackets (e.g. a docblock
+ * mentioning `foo: []`) is mistaken for the declaration's own close and
+ * truncates everything after it - possibly the whole array. Blanking is
+ * length-preserving, so the index found there is valid on the original text.
+ *
+ * A parse that yields zero values is treated as a BROKEN PARSER, not a
+ * legitimately empty union - none of the vocabularies this script compares are
+ * ever meant to be empty, and reporting "0 differences" over two empty arrays
+ * would silently pass while comparing nothing.
  */
 export function parseReasonValues(content, name) {
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
@@ -91,7 +136,8 @@ export function parseReasonValues(content, name) {
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+  const blanked = blankComments(content);
+  const closeBracket = blanked.indexOf(']', openBracket);
   if (closeBracket === -1) return null;
 
   const body = content
@@ -108,6 +154,14 @@ export function parseReasonValues(content, name) {
   }
 
   const line = content.slice(0, declMatch.index).split('\n').length;
+
+  if (values.length === 0) {
+    throw new Error(
+      `parseReasonValues: parsed ZERO string literals for '${name}' - the PARSER is broken ` +
+        `(a bracket inside a comment likely truncated the array), not the union legitimately empty.`,
+    );
+  }
+
   return { line, values };
 }
 
@@ -385,6 +439,57 @@ function selfCheck() {
 
   const blockCommented = parseReasonValues(file(name, "  'a-x',\n  /* 'ghost' */\n  'b-y',"), name);
   expect('strips block comments', blockCommented?.values.join(','), 'a-x,b-y');
+
+  // #3002: a `]` written inside a comment between the array's real brackets
+  // must never be mistaken for the declaration's own close - that truncated
+  // everything after it (possibly the whole array) before the fix.
+  const lineCommentWithBracket = parseReasonValues(
+    file(name, "  'a-x',\n  // e.g. destinationConnectionIds: []\n  'b-y',"),
+    name,
+  );
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    lineCommentWithBracket?.values.join(','),
+    'a-x,b-y',
+  );
+
+  const blockCommentWithBracket = parseReasonValues(
+    file(name, "  'a-x',\n  /* e.g. destinationConnectionIds: [] */\n  'b-y',"),
+    name,
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    blockCommentWithBracket?.values.join(','),
+    'a-x,b-y',
+  );
+
+  // Comment-blanking must never move where the declaration is reported - it
+  // rewrites the array BODY only, and the reported line is derived from the
+  // declaration's own start index, computed against the ORIGINAL content.
+  const commentedBeforeDecl = `// a comment mentioning a bracket like foo(): []\nexport const ${name} = [\n  'a-x',\n] as const;\n`;
+  expect(
+    'a "]" inside a comment BEFORE the declaration does not shift the reported line',
+    parseReasonValues(commentedBeforeDecl, name)?.line,
+    2,
+  );
+
+  // #3002: an array whose every entry is commented out parses to zero values -
+  // that is a BROKEN PARSER (or a broken declaration), never a legitimately
+  // empty union, and must fail loudly rather than let the differ report "0
+  // differences" while having compared nothing.
+  let zeroValuesOutcome = 'did-not-throw';
+  try {
+    parseReasonValues(file(name, "  // 'a-x', -- commented out\n"), name);
+  } catch (err) {
+    zeroValuesOutcome = err instanceof Error && /parser is broken/i.test(err.message)
+      ? 'threw-with-broken-parser-message'
+      : `threw-wrong-message: ${String(err)}`;
+  }
+  expect(
+    'a zero-value parse throws, naming the parser as broken',
+    zeroValuesOutcome,
+    'threw-with-broken-parser-message',
+  );
 
   // The two unions live in the same file, so the parser must key on the NAME and
   // not simply grab the first `as const` array it finds.

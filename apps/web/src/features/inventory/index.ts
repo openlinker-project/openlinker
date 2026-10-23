@@ -24,16 +24,46 @@ export type {
 } from './api/inventory.types';
 
 export type {
+  CreateInventoryLocationInput,
+  InventoryLocation,
+  InventoryLocationFilters,
+  InventoryLocationKind,
+  InventoryLocationListPagination,
+  InventoryLocationStatus,
   InventoryLocationSummary,
   LocationBootstrapResult,
   PaginatedInventoryLocations,
+  UpdateInventoryLocationInput,
 } from './api/inventory-locations.types';
+export { InventoryLocationKindValues, InventoryLocationStatusValues } from './api/inventory-locations.types';
 
 // #2407 — consumed by the connection detail page's routing-readiness panel,
 // which lives in `features/connections` and so must reach these through the
 // barrel rather than by a deep path.
 export { useActiveLocationCountQuery } from './hooks/use-active-location-count-query';
 export { useBootstrapLocationsMutation } from './hooks/use-bootstrap-locations-mutation';
+
+// #2316 / #3065 — the full CRUD surface, consumed by the (upcoming) locations
+// list page in `pages/inventory/`, which is a page rather than a feature and
+// so must reach these through the barrel per the dependency rule.
+export { useInventoryLocationsQuery } from './hooks/use-inventory-locations-query';
+export { useInventoryLocationQuery } from './hooks/use-inventory-location-query';
+export { useCreateInventoryLocationMutation } from './hooks/use-create-inventory-location-mutation';
+export {
+  useUpdateInventoryLocationMutation,
+  type UpdateInventoryLocationMutationInput,
+} from './hooks/use-update-inventory-location-mutation';
+export { useDeleteInventoryLocationMutation } from './hooks/use-delete-inventory-location-mutation';
+
+// #3067 / #3068 — the create/edit and delete/retire dialogs, consumed by the
+// (upcoming) locations list page in `pages/inventory/`.
+export { LocationDialog, type LocationDialogTarget } from './components/location-dialog';
+export { LocationDeleteDialog } from './components/location-delete-dialog';
+export { KIND_LABEL } from './components/location-dialog.schema';
+
+// Consumed by `pages/settings/settings-page.tsx` — a link-out tile, not a
+// full settings section (#2316 / #3066 follow-up).
+export { InventoryLocationsTile } from './components/inventory-locations-tile';
 
 export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availability-batch-query';
 // Query-key factory re-exported so the bulk wizard's chunked per-variant

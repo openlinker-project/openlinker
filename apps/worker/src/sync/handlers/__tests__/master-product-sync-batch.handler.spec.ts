@@ -16,6 +16,7 @@ const syncedProduct = (overrides: Partial<MasterProductSyncResult> = {}): Master
   pruneSkipped: false,
   pruneSkippedReason: null,
   taxRateChanges: [],
+  priceChangeObserverFailures: 0,
   ...overrides,
 });
 

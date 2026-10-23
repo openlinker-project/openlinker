@@ -154,6 +154,11 @@
       "require": "./dist/events/index.js",
       "default": "./dist/events/index.js"
     },
+    "./events/orm-entities": {
+      "types": "./dist/events/orm-entities.d.ts",
+      "require": "./dist/events/orm-entities.js",
+      "default": "./dist/events/orm-entities.js"
+    },
     "./events/testing": {
       "types": "./dist/events/testing/index.d.ts",
       "require": "./dist/events/testing/index.js",
@@ -178,6 +183,11 @@
       "types": "./dist/listings/services/index.d.ts",
       "require": "./dist/listings/services/index.js",
       "default": "./dist/listings/services/index.js"
+    },
+    "./listings/testing": {
+      "types": "./dist/listings/testing/index.d.ts",
+      "require": "./dist/listings/testing/index.js",
+      "default": "./dist/listings/testing/index.js"
     },
     "./customers": {
       "types": "./dist/customers/index.d.ts",

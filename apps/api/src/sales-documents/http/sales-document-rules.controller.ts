@@ -44,6 +44,12 @@ import {
   SalesDocumentThresholdNotFoundException,
 } from '@openlinker/core/sales-documents';
 import { CreateSalesDocumentRuleDto } from './dto/create-sales-document-rule.dto';
+import {
+  CheckSalesDocumentRuleOverlapDto,
+  SalesDocumentRuleOverlapResponseDto,
+} from './dto/check-sales-document-rule-overlap.dto';
+import { DryRunSalesDocumentRuleDto } from './dto/dry-run-sales-document-rule.dto';
+import { SalesDocumentDryRunResultDto } from './dto/sales-document-dry-run-result-response.dto';
 import { SalesDocumentConditionDto } from './dto/sales-document-condition.dto';
 import { SalesDocumentRuleResponseDto } from './dto/sales-document-rule-response.dto';
 import { UpsertSalesDocumentCountryDefaultDto } from './dto/upsert-sales-document-country-default.dto';
@@ -92,6 +98,73 @@ export class SalesDocumentRulesController {
         provenance: dto.provenance ?? null,
       });
       return SalesDocumentRuleResponseDto.fromDomain(rule);
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
+  }
+
+  @Post('rules/overlap-check')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Would this draft rule match the same order as one already saved?',
+    description:
+      'A READ despite the verb - it carries a draft body and persists nothing. The engine has no ' +
+      'priorities, so two matching rules HOLD the order rather than one winning; this answers that ' +
+      'question while there is still somebody to tell. Three outcomes, never two: a pair provably ' +
+      'can both match, provably cannot, or this build could not decide - the last is reported rather ' +
+      'than folded into "no conflict".',
+  })
+  @ApiResponse({ status: 200, type: SalesDocumentRuleOverlapResponseDto })
+  async checkRuleOverlap(
+    @Body() dto: CheckSalesDocumentRuleOverlapDto,
+  ): Promise<SalesDocumentRuleOverlapResponseDto> {
+    this.assertValidCountryParam(dto.country);
+    const verdict = await this.service.detectRuleOverlap({
+      country: dto.country,
+      conditions: dto.conditions.map((c) => SalesDocumentConditionDto.toDomain(c)),
+      effectiveFrom: new Date(dto.effectiveFrom),
+      effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null,
+      excludeRuleId: dto.excludeRuleId,
+    });
+    return SalesDocumentRuleOverlapResponseDto.fromDomain(verdict);
+  }
+
+  /**
+   * Dry-run an in-progress rule candidate against a sample order (#3191) —
+   * "what would this order get?". PERSISTS NOTHING: no `sales_document_rules`
+   * row, no country-default change, no acknowledgment write. Safe to call
+   * repeatedly with the same or a different candidate — see
+   * `ISalesDocumentRulesService.dryRunRule`'s own doc comment for the full
+   * evaluation contract.
+   *
+   * Deliberately skips `SalesDocumentCapabilityGuardService` — that guard
+   * exists to keep a SAVED rule from pointing at a connection that cannot
+   * issue its document kind, and a dry run persists nothing for it to protect.
+   */
+  @Post('rules/dry-run')
+  @ApiOperation({
+    summary: 'Dry-run a candidate rule against a sample order — answers "what would this order get" and persists nothing',
+  })
+  @ApiResponse({ status: 200, type: SalesDocumentDryRunResultDto })
+  @ApiResponse({ status: 400, description: 'A condition in the candidate is malformed' })
+  async dryRunRule(@Body() dto: DryRunSalesDocumentRuleDto): Promise<SalesDocumentDryRunResultDto> {
+    try {
+      const decision = await this.service.dryRunRule(
+        {
+          country: dto.country,
+          conditions: dto.conditions.map((c) => SalesDocumentConditionDto.toDomain(c)),
+          documentKind: dto.documentKind,
+          connectionId: dto.connectionId,
+        },
+        {
+          country: dto.sampleOrder.country,
+          totalGross: dto.sampleOrder.totalGross,
+          currency: dto.sampleOrder.currency,
+          taxTreatment: dto.sampleOrder.taxTreatment,
+          buyerHasTaxId: dto.sampleOrder.buyerHasTaxId,
+        },
+      );
+      return SalesDocumentDryRunResultDto.fromDecision(decision);
     } catch (error) {
       throw this.toHttpException(error);
     }

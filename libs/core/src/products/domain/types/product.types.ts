@@ -100,6 +100,20 @@ export interface ProductVariantCreate {
   [key: string]: unknown;
 }
 
+/**
+ * One variant's master-reported physical data for the fill-when-NULL writer
+ * (#3650). Neutral units (grams, millimetres), already converted by the
+ * adapter. An absent or `null` field means "the master did not say", so it
+ * is skipped rather than written as NULL.
+ */
+export interface VariantPhysicalDimensionsFill {
+  readonly variantId: string;
+  readonly weightGrams?: number | null;
+  readonly lengthMm?: number | null;
+  readonly widthMm?: number | null;
+  readonly heightMm?: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // Read API types (used by repository ports and application services)
 // ---------------------------------------------------------------------------

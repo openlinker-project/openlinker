@@ -348,11 +348,14 @@ export function createMockApiClient(
       resetPassword: vi.fn().mockResolvedValue({ ok: true }),
       confirmEmail: vi.fn().mockResolvedValue({ ok: true }),
       updateAnalyticsConsent: vi.fn().mockResolvedValue({ ...DEFAULT_TEST_USER }),
+      changePassword: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.auth,
     } as ApiClient['auth'],
     connections: {
       create: vi.fn().mockResolvedValue(sampleConnection),
       disable: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled' }),
+      archive: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'archived', credentialsBacked: true, credentialsStored: false }),
+      restore: vi.fn().mockResolvedValue({ ...sampleConnection, status: 'disabled', credentialsBacked: true, credentialsStored: false }),
       getBankAccounts: vi.fn().mockResolvedValue([]),
       setDefaultBankAccount: vi.fn().mockResolvedValue(undefined),
       getDiagnostics: vi.fn().mockResolvedValue({
@@ -497,6 +500,15 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
+      // #3060. The default is an install with no locations, which is the
+      // honest zero-config state — a test that needs one opts in, rather than
+      // inheriting a warehouse it never declared. `listActiveLocations` is the
+      // separate probe the sourcing-rules gate reads (`total` only), so the two
+      // are defaulted together or a test would set one and silently keep the
+      // other's stale answer.
+      listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 }),
+      listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
+      bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {
@@ -540,7 +552,7 @@ export function createMockApiClient(
         ),
       // #2558 — default so a rejected-clearance resend affordance doesn't hit
       // `undefined` in a test that doesn't override it.
-      resendToKsef: vi.fn().mockResolvedValue(null),
+      resendToAuthority: vi.fn().mockResolvedValue(null),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {
@@ -755,6 +767,30 @@ export function createMockApiClient(
       resolveCategoriesStream: vi.fn(() => emptyResolveCategoryStream()),
       ...overrides.listings,
     }) as ApiClient['listings'],
+    priceChanges: {
+      list: vi.fn().mockResolvedValue({ items: [], hiddenStaleCount: 0, total: 0 }),
+      counts: vi.fn().mockResolvedValue({ total: 0, byConnection: [] }),
+      accept: vi.fn().mockResolvedValue(undefined),
+      ignore: vi.fn().mockResolvedValue(undefined),
+      unresolve: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(null),
+      edit: vi.fn().mockResolvedValue(undefined),
+      bulkAccept: vi.fn().mockResolvedValue({ batchId: 'batch-1', totalCount: 0 }),
+      autoApplied: vi.fn().mockResolvedValue([]),
+      ...overrides.priceChanges,
+    } as ApiClient['priceChanges'],
+    pricingSync: {
+      get: vi.fn().mockResolvedValue({
+        default: { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
+        sources: [],
+      }),
+      update: vi.fn().mockResolvedValue({
+        default: { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
+        sources: [],
+      }),
+      asSource: vi.fn().mockResolvedValue([]),
+      ...overrides.pricingSync,
+    } as ApiClient['pricingSync'],
     mailerSettings: {
       get: vi.fn().mockResolvedValue({
         transport: 'console',
@@ -894,6 +930,12 @@ export function createMockApiClient(
       reopenParcel: vi
         .fn<BenchApi['reopenParcel']>()
         .mockRejectedValue(new Error('bench.reopenParcel not stubbed')),
+      completeParcel: vi
+        .fn<BenchApi['completeParcel']>()
+        .mockRejectedValue(new Error('bench.completeParcel not stubbed')),
+      undoCompletion: vi
+        .fn<BenchApi['undoCompletion']>()
+        .mockRejectedValue(new Error('bench.undoCompletion not stubbed')),
       // The neutral "no paper exists yet" answer: an unissued invoice and a
       // box no label was ever bought for. Every nullable field is spelled out
       // rather than omitted, so a surface reading one gets `null` — the value
@@ -905,9 +947,15 @@ export function createMockApiClient(
           invoiceId: null,
           documentNumber: null,
           issuedAt: null,
+          verificationUrl: null,
           blockReason: null,
           unresolvedReason: null,
         },
+        // #3646: no sales document of any kind, and no reason recorded.
+        document: null,
+        documentKind: null,
+        blockReason: null,
+        unresolvedReason: null,
         label: {
           state: 'none',
           shipmentId: null,
@@ -922,9 +970,47 @@ export function createMockApiClient(
       downloadInvoice: vi
         .fn<BenchApi['downloadInvoice']>()
         .mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
+      getReceiptLink: vi
+        .fn<BenchApi['getReceiptLink']>()
+        .mockRejectedValue(new Error('bench.getReceiptLink not stubbed')),
+      downloadReceipt: vi
+        .fn<BenchApi['downloadReceipt']>()
+        .mockRejectedValue(new Error('bench.downloadReceipt not stubbed')),
+      // #3340 — the ONLY print call that stamps `labelPrintedAt`. Reachable
+      // through the work, never the shipment id.
+      downloadLabel: vi
+        .fn<BenchApi['downloadLabel']>()
+        .mockRejectedValue(new Error('bench.downloadLabel not stubbed')),
+      replaceLabel: vi
+        .fn<BenchApi['replaceLabel']>()
+        .mockRejectedValue(new Error('bench.replaceLabel not stubbed')),
       listUnlabelledParcels: vi
         .fn<BenchApi['listUnlabelledParcels']>()
         .mockResolvedValue({ parcels: [], total: 0, truncated: false }),
+      // #3401 mockup-parity epic. Empty-safe defaults — the same reasoning as
+      // `listWork` above: an unstubbed member must not crash a render with
+      // "is not a function", it must render the surface's own honest empty
+      // state, which every one of `BenchActivityPanel`/`BenchMetricRow`/the
+      // rail's claim controls already degrades to on an empty or failed read.
+      undoLastScan: vi
+        .fn<BenchApi['undoLastScan']>()
+        .mockRejectedValue(new Error('bench.undoLastScan not stubbed')),
+      pingPresence: vi
+        .fn<BenchApi['pingPresence']>()
+        .mockRejectedValue(new Error('bench.pingPresence not stubbed')),
+      claimParcel: vi
+        .fn<BenchApi['claimParcel']>()
+        .mockRejectedValue(new Error('bench.claimParcel not stubbed')),
+      claimNext: vi
+        .fn<BenchApi['claimNext']>()
+        .mockRejectedValue(new Error('bench.claimNext not stubbed')),
+      listActivity: vi.fn<BenchApi['listActivity']>().mockResolvedValue([]),
+      listPackedToday: vi
+        .fn<BenchApi['listPackedToday']>()
+        .mockResolvedValue({ works: [], total: 0 }),
+      getMetrics: vi
+        .fn<BenchApi['getMetrics']>()
+        .mockResolvedValue({ packedToday: 0, packedYesterday: 0, toPackAllBenches: 0 }),
       ...overrides.bench,
     },
     fulfillment: {
@@ -937,12 +1023,29 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 }),
       get: vi.fn().mockResolvedValue(null),
       applyAction: vi.fn().mockResolvedValue(null),
+      updateAssignment: vi.fn().mockResolvedValue(null),
       ...overrides.fulfillment,
     } as ApiClient['fulfillment'],
+    // #3307 — the merged /sales-documents list. Default is an exhausted
+    // first page (both cursors `null`), the honest empty state.
+    salesDocumentList: {
+      list: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      ...overrides.salesDocumentList,
+    } as ApiClient['salesDocumentList'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),
+      dryRunRule: vi
+        .fn()
+        .mockResolvedValue({ kind: 'unresolved', reason: 'no-configuration-for-country' }),
       deleteRule: vi.fn().mockResolvedValue(undefined),
+      // #3190. The empty verdict is the DEFAULT so a composer test that does
+      // not opt in renders neither banner: an "overlapping" default would put
+      // a conflict warning on every unrelated test, and a "disjoint" one would
+      // claim a non-collision nothing checked.
+      checkRuleOverlap: vi
+        .fn()
+        .mockResolvedValue({ overlapping: [], disjoint: [], undecided: [] }),
       listCountryDefaults: vi.fn().mockResolvedValue([]),
       upsertCountryDefault: vi.fn().mockResolvedValue(null),
       deleteCountryDefault: vi.fn().mockResolvedValue(undefined),
@@ -962,6 +1065,18 @@ export function createMockApiClient(
       }),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
+    // #3056. The default is a connection with no sourcing rules — the honest
+    // empty ruleset, so a test that renders the table without opting in gets
+    // the "no rules yet" branch rather than rows it never declared.
+    sourcingRules: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue(null),
+      reorder: vi.fn().mockResolvedValue([]),
+      remove: vi.fn().mockResolvedValue(undefined),
+      ...overrides.sourcingRules,
+    } as ApiClient['sourcingRules'],
     // The default is the healthy-but-empty deployment: no returns, and returns
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the
@@ -1035,6 +1150,16 @@ export function createMockApiClient(
       }),
       ...overrides.syncJobs,
     } as ApiClient['syncJobs'],
+    streamDeadLetters: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+      }),
+      count: vi.fn().mockResolvedValue({ count: 0 }),
+      ...overrides.streamDeadLetters,
+    } as ApiClient['streamDeadLetters'],
     webhookDeliveries: {
       list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       getById: vi.fn().mockResolvedValue(null),
@@ -1042,9 +1167,11 @@ export function createMockApiClient(
     } as ApiClient['webhookDeliveries'],
     users: {
       list: vi.fn().mockResolvedValue({ users: [], total: 0 }),
+      listPackers: vi.fn().mockResolvedValue({ packers: [] }),
       approve: vi.fn().mockResolvedValue(undefined),
       reject: vi.fn().mockResolvedValue(undefined),
       updateRole: vi.fn().mockResolvedValue(undefined),
+      updatePackStationLabel: vi.fn().mockResolvedValue(undefined),
       deactivate: vi.fn().mockResolvedValue(undefined),
       reactivate: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),

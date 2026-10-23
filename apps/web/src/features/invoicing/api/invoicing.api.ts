@@ -60,7 +60,7 @@ export interface InvoicingApi {
    * to `regulatoryStatus === 'rejected'` (409 otherwise) and to adapters that
    * implement the neutral RegulatoryResubmitter capability (501 otherwise).
    */
-  resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>;
+  resendToAuthority: (invoiceId: string) => Promise<InvoiceRecord>;
   /**
    * `POST /invoices/:invoiceId/send-email` (#1353) — trigger the provider to
    * render + email the issued invoice to the buyer. 501 when the connection's
@@ -174,7 +174,7 @@ export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequ
         body: JSON.stringify(input),
       });
     },
-    resendToKsef(invoiceId): Promise<InvoiceRecord> {
+    resendToAuthority(invoiceId): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/resend-to-ksef`, {
         method: 'POST',
         headers: JSON_HEADERS,

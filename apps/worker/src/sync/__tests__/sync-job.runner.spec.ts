@@ -432,6 +432,77 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
     });
 
+    // #3505 (G01-2) — a handler owning a record outside `sync_jobs` must learn
+    // the job is dead, or that record stays "in progress" for ever.
+    describe('onDead hook', () => {
+      let deadAwareHandler: jest.Mocked<SyncJobHandler> & { onDead: jest.Mock };
+
+      beforeEach(() => {
+        deadAwareHandler = {
+          execute: jest.fn(),
+          onDead: jest.fn().mockResolvedValue(undefined),
+        } as unknown as jest.Mocked<SyncJobHandler> & { onDead: jest.Mock };
+        handlerRegistry.getHandler.mockReturnValue(deadAwareHandler);
+        jobRepository.markDead.mockResolvedValue(undefined);
+      });
+
+      it('should call onDead after markDead when attempts run out', async () => {
+        const job = createMockJob(9, 10);
+
+        await (runner as any).handleJobFailure(job, new Error('Test error'), ATTEMPT_MS);
+
+        expect(deadAwareHandler.onDead).toHaveBeenCalledWith(job, {
+          message: 'Test error',
+          nonRetryable: false,
+        });
+        expect(jobRepository.markDead.mock.invocationCallOrder[0]).toBeLessThan(
+          deadAwareHandler.onDead.mock.invocationCallOrder[0]
+        );
+      });
+
+      it('should call onDead with nonRetryable when the job dies on a non-retryable error', async () => {
+        const job = createMockJob(0, 10);
+        const error = new OfferCreationInvariantException('rec_test_1', 'pending');
+
+        await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
+
+        expect(jobRepository.markDead).toHaveBeenCalled();
+        expect(deadAwareHandler.onDead).toHaveBeenCalledWith(
+          job,
+          expect.objectContaining({ nonRetryable: true })
+        );
+      });
+
+      it('should not call onDead when the job is scheduled for a retry', async () => {
+        const job = createMockJob(2, 10);
+        jobRepository.markFailed.mockResolvedValueOnce(undefined);
+
+        await (runner as any).handleJobFailure(job, new Error('Test error'), ATTEMPT_MS);
+
+        expect(deadAwareHandler.onDead).not.toHaveBeenCalled();
+      });
+
+      it('should keep the job dead and not throw when onDead itself fails', async () => {
+        const job = createMockJob(9, 10);
+        deadAwareHandler.onDead.mockRejectedValueOnce(new Error('db down'));
+
+        await expect(
+          (runner as any).handleJobFailure(job, new Error('Test error'), ATTEMPT_MS)
+        ).resolves.toBeUndefined();
+        expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, 'Test error', ATTEMPT_MS);
+        expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      });
+
+      it('should mark dead normally when the handler has no onDead hook', async () => {
+        const job = createMockJob(9, 10);
+        handlerRegistry.getHandler.mockReturnValue(mockHandler);
+
+        await (runner as any).handleJobFailure(job, new Error('Test error'), ATTEMPT_MS);
+
+        expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, 'Test error', ATTEMPT_MS);
+      });
+    });
+
     it('should mark job as failed and schedule retry when attempts < maxAttempts', async () => {
       const job = createMockJob(2, 10); // 2 attempts, max 10 (next attempt = 3, which is < max)
       const error = new Error('Test error');

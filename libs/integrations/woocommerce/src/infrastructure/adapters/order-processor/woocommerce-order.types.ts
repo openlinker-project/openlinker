@@ -46,11 +46,29 @@ export interface WooCommerceLineItemRequest {
   subtotal?: string;
   total?: string;
   name?: string;
+  /**
+   * The store tax class WooCommerce computes this line's tax with (#3505).
+   * Sent only when the store calculates taxes; `''` is the standard class.
+   * Absent → WooCommerce uses the product's own class.
+   */
+  tax_class?: string;
 }
 
 export interface WooCommerceShippingLineRequest {
   method_id: string;
   method_title: string;
+  total: string;
+}
+
+/**
+ * A fee line (#3505, DEC-9). WC REST accepts `tax_class` on fee lines but NOT
+ * on shipping lines, so a mixed-rate shipping charge on a store that
+ * calculates taxes is booked as one taxable fee line per rate instead.
+ */
+export interface WooCommerceFeeLineRequest {
+  name: string;
+  tax_class: string;
+  tax_status: 'taxable';
   total: string;
 }
 
@@ -61,10 +79,17 @@ export interface WooCommerceOrderCreateRequest {
   shipping?: WooCommerceOrderAddress;
   line_items: WooCommerceLineItemRequest[];
   shipping_lines?: WooCommerceShippingLineRequest[];
+  fee_lines?: WooCommerceFeeLineRequest[];
   payment_method?: string;
   payment_method_title?: string;
   set_paid?: boolean;
   meta_data?: Array<{ key: string; value: string }>;
+  /**
+   * ISO 4217 currency code (#3470). Omitting it stamps the order with the
+   * store's own default currency regardless of what the buyer actually paid
+   * in — a EUR/CZK order silently books as e.g. PLN with the same numerals.
+   */
+  currency?: string;
 }
 
 export interface WooCommerceOrderUpdateRequest {
@@ -79,6 +104,12 @@ export interface WooCommerceOrderResponse {
   date_completed_gmt?: string;
   /** GMT timestamp of the order's last modification — `deliveredAt` fallback. */
   date_modified_gmt?: string;
+  /**
+   * The order's booked total, as a decimal string (WC REST convention).
+   * Read back after create to reconcile against `order.totals.total` (#3470)
+   * — never written by this adapter.
+   */
+  total?: string;
 }
 
 // ─── Customer shapes ──────────────────────────────────────────────────────────

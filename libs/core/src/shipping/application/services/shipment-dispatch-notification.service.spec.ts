@@ -59,6 +59,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.fulfillmentWorkId ?? null,
     // #2073 waybill-relay failure history — none by default.
     overrides.waybillRelayFailure ?? null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
@@ -94,11 +96,15 @@ describe('ShipmentDispatchNotificationService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      giveUpWaybillRelay: jest.fn(),
       clearWaybillRelayFailures: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),
       findByFulfillmentWorkIds: jest.fn(),
+      findDeliveredRelayPending: jest.fn(),
+      markDeliveredRelayed: jest.fn(),
+      recordDeliveredRelayFailure: jest.fn(),
     };
     orderRecords = {
       persistOrder: jest.fn(),
@@ -111,9 +117,12 @@ describe('ShipmentDispatchNotificationService', () => {
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
+      recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
       markDestinationRoutingBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -160,6 +169,18 @@ describe('ShipmentDispatchNotificationService', () => {
     const result = await service.notifyDispatched({ shipmentId: 'missing' });
     expect(result.outcome).toBe('shipment-not-found');
     expect(relay.relay).not.toHaveBeenCalled();
+  });
+
+  it('should skip an inbound shipment without relaying, even when it is otherwise notifiable', async () => {
+    // The shipment is `generated` and carries a waybill — i.e. it clears every
+    // OTHER gate — so a pass here proves the direction check, not the status one.
+    shipments.findById.mockResolvedValue(makeShipment({ direction: 'return' }));
+
+    const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
+
+    expect(result.outcome).toBe('skipped-inbound');
+    expect(relay.relay).not.toHaveBeenCalled();
+    expect(shipments.update).not.toHaveBeenCalled();
   });
 
   it('should skip (status-gate) when the shipment is not generated — relay not called', async () => {

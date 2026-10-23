@@ -182,6 +182,18 @@ const SCAN_ROOTS = [
     pending: false,
   },
   {
+    // #3057's sourcing-rules table ships this folder's first operator copy
+    // (`lib/sourcing-rule.copy.ts`). Added with the copy, not after it - the
+    // same rule `features/fulfillment` and `features/bench` record above. The
+    // banned list is not fulfilment-work-specific: `authority`, `holder` and
+    // `phase` are all live traps on a SOURCING-authority surface, which is the
+    // one place an operator-facing "A2 authority holder" is most tempting.
+    // Added after a trial run proved the folder is already clean.
+    dir: join('apps', 'web', 'src', 'features', 'oms'),
+    owner: 'OMS-3 (#3057)',
+    pending: false,
+  },
+  {
     // #2413's pack-bench identity surface (locked / sign-in / handover). Added
     // with the folder, not after it — the same rule `features/fulfillment`
     // records above: the epic's UI naming rule is binding on every FE child,
@@ -199,6 +211,15 @@ const SCAN_ROOTS = [
     // violations would be a wave-scoped decision, not a body-scoped one.
     dir: join('apps', 'web', 'src', 'features', 'orders'),
     owner: 'W2-A (#2342)',
+    pending: false,
+  },
+  {
+    // #3457's packing onboarding wizard. Added with the folder, not after it:
+    // the wizard explains who decides where an order is packed, which is the
+    // single most tempting place for an operator-facing "authority" or
+    // "holder" to appear.
+    dir: join('apps', 'web', 'src', 'features', 'oms-onboarding'),
+    owner: 'W-07 (#3457)',
     pending: false,
   },
 ];

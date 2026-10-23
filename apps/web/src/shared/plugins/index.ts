@@ -36,6 +36,8 @@ export type {
   CategoryParameterLike,
   SuppliedParameterLike,
   OfferValidationContribution,
+  BenchReceiptArtefactLike,
+  BenchReceiptSectionProps,
   InvoiceDetailSectionProps,
   InvoiceCorrectionFlowProps,
 } from './plugin.types';

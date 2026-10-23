@@ -5,9 +5,14 @@
  * Checked = enabled on this connection, unchecked = supported but disabled.
  * Toggling fires the update-connection mutation with the new set.
  *
+ * Carries the sales-document routing note (#3192) - see
+ * `SALES_DOCUMENT_CAPABILITIES` below for why it lives in this shared panel
+ * rather than in a provider plugin.
+ *
  * @module apps/web/src/features/connections/components
  */
 import { useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import type { Connection, CoreCapability } from '../api/connections.types';
 import { CORE_CAPABILITY_VALUES } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
@@ -24,6 +29,8 @@ import { useToast } from '../../../shared/ui/toast-provider';
 
 interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
+  /** Shows the roles without letting them be toggled (a connection managed from its own settings page). */
+  readOnly?: boolean;
 }
 
 const CORE_CAPABILITY_SET = new Set<string>(CORE_CAPABILITY_VALUES);
@@ -32,8 +39,57 @@ function isCoreCapability(value: string): value is CoreCapability {
   return CORE_CAPABILITY_SET.has(value);
 }
 
+/**
+ * The two capabilities that make a connection a candidate to produce a sales
+ * document (ADR-041). The routing note below is keyed on them and on nothing
+ * else - it is a statement about how routing works, true of ANY connection
+ * holding one of these, so it belongs in this shared panel rather than in a
+ * provider plugin's own surface.
+ */
+const SALES_DOCUMENT_CAPABILITIES = ['Invoicing', 'Fiscalization'] as const;
+
+/**
+ * The stable test hook for one toggle: the capability name lowercased, so a
+ * spec derives it from the wire value with no per-capability table to keep in
+ * step (`Invoicing` -> `capability-toggle-invoicing`). Deliberately not
+ * kebab-cased: a transform that has to guess word boundaries inside
+ * `OrderProcessorManager` is a second rule nobody would be able to predict.
+ */
+export function capabilityToggleTestId(capability: string): string {
+  return `capability-toggle-${capability.toLowerCase()}`;
+}
+
+/**
+ * The stable test hook for one capability ROW — the mockup's own
+ * `capability-invoicing` / `capability-fiscalization`
+ * (`docs/plans/mockups/sales-document-eparagony-invoicing.html`), which is how
+ * a spec asserts that ONE connection carries BOTH sales-document lanes
+ * (ADR-073 decision 3, #3192) rather than only that a checkbox exists.
+ *
+ * Derived from the wire value by the same lowercase rule as the toggle above,
+ * for the same reason: one transform, no per-capability table to keep in step.
+ */
+export function capabilityRowTestId(capability: string): string {
+  return `capability-${capability.toLowerCase()}`;
+}
+
+/**
+ * What this connection would become eligible to produce. Named from what the
+ * adapter SUPPORTS rather than from a fixed word, because "issue invoices" is
+ * plainly false on a connection that only registers receipts, and half true
+ * on one that does both.
+ */
+function salesDocumentNoun(
+  supportsInvoicing: boolean,
+  supportsFiscalization: boolean,
+): string {
+  if (supportsInvoicing && supportsFiscalization) return 'sales documents';
+  return supportsInvoicing ? 'invoices' : 'fiscal receipts';
+}
+
 export function ConnectionCapabilitiesPanel({
   connection,
+  readOnly = false,
 }: ConnectionCapabilitiesPanelProps): ReactElement {
   const updateMutation = useUpdateConnectionMutation();
   const { showToast } = useToast();
@@ -70,6 +126,16 @@ export function ConnectionCapabilitiesPanel({
     supported.includes(capability),
   );
 
+  // Keyed on SUPPORTED, not ENABLED, for the same reason the MCP hint above
+  // is: the note explains what enabling a role does and does NOT do, so it has
+  // to be readable BEFORE the operator enables one. Gating it on `enabled`
+  // would hide it at exactly the moment it answers the question being asked.
+  const supportsInvoicing = supported.includes('Invoicing');
+  const supportsFiscalization = supported.includes('Fiscalization');
+  const supportsSalesDocument = SALES_DOCUMENT_CAPABILITIES.some((capability) =>
+    supported.includes(capability),
+  );
+
   async function handleToggle(capability: CoreCapability, checked: boolean): Promise<void> {
     const next = new Set(enabled);
     if (checked) {
@@ -102,7 +168,7 @@ export function ConnectionCapabilitiesPanel({
           <p className="eyebrow">Capabilities</p>
           <h3 className="section-title">Enabled roles</h3>
         </div>
-        <span className="panel__meta">
+        <span className="panel__meta" data-testid="capability-count">
           {/* Counter reflects the well-known core caps only — both sides
            * were narrowed via `isCoreCapability` above. If a connection
            * ever stores plugin-registered capabilities, those are
@@ -156,13 +222,20 @@ export function ConnectionCapabilitiesPanel({
             const conflict = getCapabilityConflict(enabled, capability);
             const isBlocked = conflict !== null && !isChecked;
             return (
-              <li key={capability} className="capability-list__item">
+              <li
+                key={capability}
+                className="capability-list__item"
+                data-testid={capabilityRowTestId(capability)}
+              >
                 <label htmlFor={id} className="capability-list__label">
                   <input
                     id={id}
                     type="checkbox"
+                    data-testid={capabilityToggleTestId(capability)}
                     checked={isChecked}
-                    disabled={isBlocked || pending === capability || updateMutation.isPending}
+                    disabled={
+                      readOnly || isBlocked || pending === capability || updateMutation.isPending
+                    }
                     onChange={(e) => void handleToggle(capability, e.target.checked)}
                   />
                   <span className="capability-list__name mono-text">{capability}</span>
@@ -177,6 +250,24 @@ export function ConnectionCapabilitiesPanel({
           })}
         </ul>
       )}
+
+      {/* #3192 - the consequence an operator otherwise discovers by waiting:
+       * a role makes the connection ELIGIBLE, it routes nothing to it. Not
+       * gated on a permission, unlike the MCP hint above: that one instructs
+       * the reader to go and reconnect an agent, whereas this states how the
+       * system decides, which is as true for a viewer as for an admin. */}
+      {supportsSalesDocument ? (
+        <Alert
+          tone="info"
+          data-testid="capability-routing-note"
+          title="Enabling a role does not route anything to it"
+        >
+          This connection becomes <em>eligible</em> to issue{' '}
+          {salesDocumentNoun(supportsInvoicing, supportsFiscalization)}. Which orders
+          actually get one is decided under{' '}
+          <Link to="/settings/sales-documents">Sales documents routing</Link>, per country.
+        </Alert>
+      ) : null}
 
       {enabled.size === 0 && supported.length > 0 ? (
         <Alert tone="warning" title="No capabilities enabled">

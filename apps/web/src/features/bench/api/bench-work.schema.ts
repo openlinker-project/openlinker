@@ -31,6 +31,19 @@ export const benchWorkSchema = z.object({
   parcelIndex: z.number(),
   parcelTotal: z.number(),
   lineCount: z.number(),
+  // Defaulted, like every other additive field on this read: a response from
+  // an API that predates the item list renders a row with no products rather
+  // than failing the whole rail.
+  items: z
+    .array(
+      z.object({
+        name: z.string().nullish().transform((value) => value ?? null),
+        quantity: z.number(),
+        imageUrl: z.string().nullish().transform((value) => value ?? null),
+      })
+    )
+    .nullish()
+    .transform((value) => value ?? []),
   unitsToVerify: z.number(),
   // See the types module: never `z.enum`.
   state: z.string(),
@@ -41,6 +54,12 @@ export const benchWorkSchema = z.object({
     .array(z.string())
     .nullish()
     .transform((value) => value ?? []),
+  // #3341 — a server-owned, viewer-relative vocabulary. Plain string, never
+  // `z.enum`, for the same reason `state` is: an unrecognised value degrades in
+  // the copy layer rather than failing the whole row's parse.
+  assignmentState: z.string(),
+  claimable: z.boolean(),
+  completedAt: nullableString,
 });
 
 export const benchRoutingReadinessSchema = z.object({

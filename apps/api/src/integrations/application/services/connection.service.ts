@@ -10,7 +10,12 @@
  * @see {@link IConnectionService} for the interface
  * @see {@link ConnectionPort} for the core port
  */
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
@@ -18,13 +23,18 @@ import type {
   Connection,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
 import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
   ConnectionNotFoundException,
+  FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
+  isPresentButInvalidFulfilmentOwnedByDestination,
+  ConnectionInUseException,
 } from '@openlinker/core/identifier-mapping';
 import type {
+  AdapterMetadata,
   ConnectionTestResult,
   WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
@@ -49,6 +59,7 @@ import {
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
   resolveRequiresCredentials,
+  resolveArchivable,
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
@@ -64,6 +75,26 @@ import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
 // `emitDecoratorMetadata` requires a non-erased reference (mirrors the
 // RateLimitStatusService convention).
 import { HttpTransportFactoryPort } from '@openlinker/shared/http';
+
+/**
+ * Machine-readable code for a `config.stockLocationOverride` 400 (#3206/#3207
+ * review). The message is prose the backend is free to reword; the FE mapping
+ * in `EditConnectionForm.onSubmit` must branch on THIS, not on
+ * `error.message.includes(...)`, or a rewording silently reverts the
+ * field-level error to the generic banner. Mirrored verbatim in
+ * `apps/web/src/features/connections/lib/stock-location-override-error.ts` —
+ * the `ORDER_ALREADY_ON_HOLD` / `HOLD_ALREADY_RELEASED` precedent (#2341).
+ */
+export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
+
+/**
+ * Machine-readable code for the #2407 refusal to enable routing with no active
+ * inventory location (#3457). Same shape and same reason as
+ * `STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE`: the OMS onboarding wizard maps
+ * this 400 to an inline remedy and must not match on the message. Mirrored in
+ * `apps/web/src/features/oms-onboarding/lib/routing-requires-location-error.ts`.
+ */
+export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE = 'ROUTING_REQUIRES_ACTIVE_LOCATION';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
@@ -148,11 +179,14 @@ export class ConnectionService implements IConnectionService {
     }
 
     if ((await this.locations.countActiveLocations()) === 0) {
-      throw new BadRequestException(
-        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+      throw new BadRequestException({
+        statusCode: 400,
+        error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+        message:
+          'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
           "Create one first — the connection's routing readiness panel offers a default, " +
-          'or POST /inventory/locations.'
-      );
+          'or POST /inventory/locations.',
+      });
     }
   }
 
@@ -241,10 +275,29 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
-   * Core-owned bounds check for the three platform-neutral stock and pricing
-   * keys (#2610): `config.stockSafetyBuffer`, `config.stockZeroThreshold` and
-   * `config.pricingRule`. Neutral, like `validateRateLimitConfig` - every
-   * adapter shares it, so no per-plugin config-shape validator knows about it.
+   * Refuse a non-boolean `config.fulfilmentOwnedByDestination` (#2118).
+   *
+   * Display-only flag, so a wrong type changes nothing on the server - but the
+   * readers coerce it to `false`, and an operator who typed `"true"` would see
+   * a saved setting that never hides a packing affordance. Refused here rather
+   * than coerced silently, the same reported-not-enforced reasoning as
+   * `validateStockAndPricingConfig`. Never defaults a value in; an absent key
+   * stays absent, and `null` (a cleared knob) is accepted.
+   */
+  private validateFulfilmentOwnedByDestinationConfig(config: Record<string, unknown>): void {
+    if (isPresentButInvalidFulfilmentOwnedByDestination(config)) {
+      throw new BadRequestException(
+        `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY} must be true or false`
+      );
+    }
+  }
+
+  /**
+   * Core-owned bounds check for the four platform-neutral stock, pricing and
+   * price-sync keys (#2610, widened by #3142/ADR-072): `config.stockSafetyBuffer`,
+   * `config.stockZeroThreshold`, `config.pricingRule` and `config.priceSyncMode`.
+   * Neutral, like `validateRateLimitConfig` - every adapter shares it, so no
+   * per-plugin config-shape validator knows about it.
    *
    * The connection form refuses a bad value already, but the form is not the
    * only way in: the raw JSON editor sits on the same page and bypasses the
@@ -252,6 +305,27 @@ export class ConnectionService implements IConnectionService {
    * margin bound matters most - core degrades a margin of 100% or more back to
    * the catalogue price, so without this the operator saves happily and then
    * quietly publishes an unchanged price.
+   *
+   * `config.pricingRule` accepts BOTH shapes `readPricingRuleConfig`
+   * (`@openlinker/core/identifier-mapping`) reads: the pre-#3142 flat
+   * `{type, percent, rounding}` rule, and the #3142
+   * `{default, sourceOverrides}` per-source shape. Validating only the flat
+   * shape here (as before #3142) would leave every field of the nested shape
+   * unchecked and every one of the checks below silently short-circuiting on
+   * `undefined` - which is exactly the margin-refusal gap this method exists
+   * to close, reopened by the widened type. `validateOnePricingRule` is
+   * applied to `default` and to every `sourceOverrides` entry so neither can
+   * drift from the flat-shape rule.
+   *
+   * `config.priceSyncMode` has no legacy flat shape to accept - it is a new
+   * key (#3142) - so a malformed value (including the flat string an operator
+   * might reasonably type, e.g. `"priceSyncMode": "automatic"`) is refused
+   * rather than silently read back as the safe default by
+   * `readPriceSyncModeConfig`. Read-time already fails CLOSED (an unreadable
+   * config coerces to `manual` everywhere), which is the right direction, but
+   * failing closed with no operator feedback is the reported-≠-enforced gap
+   * #2610's docblock is about - the operator believes automatic sync is on
+   * and it silently never is.
    *
    * Never defaults a value in; an absent key stays absent.
    */
@@ -264,37 +338,329 @@ export class ConnectionService implements IConnectionService {
       }
     }
 
-    const pricingRule = config.pricingRule;
+    this.validatePricingRuleConfig(config.pricingRule);
+    this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  private validatePricingRuleConfig(pricingRule: unknown): void {
     if (pricingRule === undefined || pricingRule === null) return;
     if (typeof pricingRule !== 'object' || Array.isArray(pricingRule)) {
       throw new BadRequestException('config.pricingRule must be an object');
     }
 
-    const { type, percent, rounding } = pricingRule as Record<string, unknown>;
+    const candidate = pricingRule as Record<string, unknown>;
+
+    // The #3142 nested shape: `{ default, sourceOverrides }`. Validate the
+    // default rule plus every per-source override with the identical rule the
+    // legacy flat shape uses below - `readPricingRuleConfig` treats
+    // `'default' in candidate || 'sourceOverrides' in candidate` as the
+    // discriminator between the two shapes (a legacy flat rule can never
+    // carry either key), and this mirrors that exactly so validation can
+    // never disagree with what gets read back. Testing `'default' in
+    // candidate` alone let a headless `{ sourceOverrides: {...} }` container
+    // (no `default` key) fall through to the legacy branch below, which
+    // validates the *container* object as if it were a flat rule - every
+    // field on it is `undefined`, so every check short-circuited and a 150%
+    // margin override was accepted with a 200 while being silently discarded
+    // on read.
+    if ('default' in candidate || 'sourceOverrides' in candidate) {
+      if (candidate['default'] !== undefined && candidate['default'] !== null) {
+        this.validateOnePricingRule(candidate['default'], 'config.pricingRule.default');
+      }
+      const sourceOverrides = candidate['sourceOverrides'];
+      if (sourceOverrides !== undefined && sourceOverrides !== null) {
+        if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
+          throw new BadRequestException('config.pricingRule.sourceOverrides must be an object');
+        }
+        for (const [sourceConnectionId, rule] of Object.entries(
+          sourceOverrides as Record<string, unknown>
+        )) {
+          this.validateOnePricingRule(
+            rule,
+            `config.pricingRule.sourceOverrides.${sourceConnectionId}`
+          );
+        }
+      }
+      return;
+    }
+
+    // Legacy flat shape (pre-#3142) — the whole value IS the rule.
+    this.validateOnePricingRule(candidate, 'config.pricingRule');
+  }
+
+  private validateOnePricingRule(rule: unknown, path: string): void {
+    if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) {
+      throw new BadRequestException(`${path} must be an object`);
+    }
+
+    const { type, percent, rounding } = rule as Record<string, unknown>;
     const types = ['passthrough', 'markup', 'margin'];
     if (type !== undefined && (typeof type !== 'string' || !types.includes(type))) {
+      throw new BadRequestException(`${path}.type must be one of ${types.join(', ')}`);
+    }
+    // A rule carrying `percent`/`rounding` but no `type` is accepted here and
+    // then silently dropped by `coercePricingRule` on read (it requires a
+    // recognised `type` before returning anything) — so "accepted" would stop
+    // implying "will actually take effect" for exactly the shape an operator
+    // is most likely to type by hand (a percent with the type field omitted
+    // or mistyped past the `type` check above). Refuse it instead (PR #3158
+    // review, SUGGESTION 1); an entirely empty `{}` is left alone — it
+    // configures nothing either way and isn't the shape this guards against.
+    if (type === undefined && (percent !== undefined || rounding !== undefined)) {
       throw new BadRequestException(
-        `config.pricingRule.type must be one of ${types.join(', ')}`
+        `${path}.type is required (one of ${types.join(', ')}) when percent or rounding is set`
       );
     }
     const roundings = ['none', 'nearestWhole', 'endingIn99'];
-    if (
-      rounding !== undefined &&
-      (typeof rounding !== 'string' || !roundings.includes(rounding))
-    ) {
-      throw new BadRequestException(
-        `config.pricingRule.rounding must be one of ${roundings.join(', ')}`
-      );
+    if (rounding !== undefined && (typeof rounding !== 'string' || !roundings.includes(rounding))) {
+      throw new BadRequestException(`${path}.rounding must be one of ${roundings.join(', ')}`);
     }
     if (percent !== undefined && percent !== null) {
       if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
-        throw new BadRequestException('config.pricingRule.percent must be a number of 0 or more');
+        throw new BadRequestException(`${path}.percent must be a number of 0 or more`);
       }
       if (type === 'margin' && percent >= 100) {
         throw new BadRequestException(
-          'config.pricingRule.percent must be below 100 for a margin rule. To add more than ' +
-            'the catalogue price, use a markup instead.'
+          `${path}.percent must be below 100 for a margin rule. To add more than the catalogue ` +
+            'price, use a markup instead.'
         );
+      }
+    }
+  }
+
+  private validatePriceSyncModeConfig(priceSyncMode: unknown): void {
+    if (priceSyncMode === undefined || priceSyncMode === null) return;
+    if (typeof priceSyncMode !== 'object' || Array.isArray(priceSyncMode)) {
+      throw new BadRequestException(
+        'config.priceSyncMode must be an object of the shape { default, sourceOverrides }'
+      );
+    }
+
+    const candidate = priceSyncMode as Record<string, unknown>;
+    const modes = ['manual', 'automatic'];
+
+    if (
+      candidate['default'] !== undefined &&
+      (typeof candidate['default'] !== 'string' || !modes.includes(candidate['default']))
+    ) {
+      throw new BadRequestException(
+        `config.priceSyncMode.default must be one of ${modes.join(', ')}`
+      );
+    }
+
+    const sourceOverrides = candidate['sourceOverrides'];
+    if (sourceOverrides === undefined || sourceOverrides === null) return;
+    if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
+      throw new BadRequestException('config.priceSyncMode.sourceOverrides must be an object');
+    }
+    for (const [sourceConnectionId, mode] of Object.entries(
+      sourceOverrides as Record<string, unknown>
+    )) {
+      if (typeof mode !== 'string' || !modes.includes(mode)) {
+        throw new BadRequestException(
+          `config.priceSyncMode.sourceOverrides.${sourceConnectionId} must be one of ${modes.join(', ')}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Core-owned bounds check for `config.autoDispatch` (#3340/#2729) — the
+   * per-connection opt-in to buy a shipping label the moment a routed
+   * `FulfillmentWork` is accepted. Neutral, like the checks above it: every
+   * adapter shares this validation, and the raw JSON editor + curl + MCP all
+   * bypass the connection form's own rules, so a malformed value must be
+   * refused here rather than silently coerced to "off" by
+   * `readAutoDispatchConfig` with no operator feedback — the same
+   * reported-≠-enforced gap `validateStockAndPricingConfig`'s docblock names.
+   *
+   * Never defaults a value in; an absent `autoDispatch` key stays absent.
+   */
+  private validateAutoDispatchConfig(config: Record<string, unknown>): void {
+    const autoDispatch = config.autoDispatch;
+    if (autoDispatch === undefined || autoDispatch === null) return;
+    if (typeof autoDispatch !== 'object' || Array.isArray(autoDispatch)) {
+      throw new BadRequestException('config.autoDispatch must be an object');
+    }
+
+    const { enabled, parcelTemplate, defaultWeightGrams, lengthMm, widthMm, heightMm } =
+      autoDispatch as Record<string, unknown>;
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
+    }
+    if (parcelTemplate !== undefined && typeof parcelTemplate !== 'string') {
+      throw new BadRequestException('config.autoDispatch.parcelTemplate must be a string');
+    }
+    if (
+      defaultWeightGrams !== undefined &&
+      (typeof defaultWeightGrams !== 'number' ||
+        !Number.isFinite(defaultWeightGrams) ||
+        defaultWeightGrams <= 0)
+    ) {
+      throw new BadRequestException(
+        'config.autoDispatch.defaultWeightGrams must be a number greater than 0'
+      );
+    }
+    const dimensions = { lengthMm, widthMm, heightMm };
+    for (const [field, value] of Object.entries(dimensions)) {
+      if (
+        value !== undefined &&
+        (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+      ) {
+        throw new BadRequestException(
+          `config.autoDispatch.${field} must be a number greater than 0`
+        );
+      }
+    }
+    const setCount = Object.values(dimensions).filter((value) => value !== undefined).length;
+    if (setCount !== 0 && setCount !== 3) {
+      throw new BadRequestException(
+        'config.autoDispatch.lengthMm, widthMm and heightMm must be set together'
+      );
+    }
+  }
+
+  /**
+   * Core-owned validation for `config.stockLocationOverride` (#3206): the id
+   * must resolve to a location this install actually has, AND that location
+   * must be ACTIVE. Rejecting here — rather than letting the sync silently
+   * write against a location that does not exist or that every downstream
+   * reader filters out — is what keeps the value an operator assertion rather
+   * than a typo nobody notices until stock looks wrong.
+   *
+   * **Why `inactive` is refused.** `status: 'inactive'` means "retired, keep
+   * historical positions pointing at a row that exists" (#2316) — the
+   * fulfilment router filters `status: 'active'`, and
+   * `assertRouterEnablementPreconditions` a few methods above already counts
+   * only active locations for exactly that reason. An override naming a
+   * retired location writes a config that names a row the rest of the system
+   * treats as absent: the #2407 shape of a configuration that persists happily
+   * and then decides nothing.
+   *
+   * **Fires only when the VALUE CHANGES, compared against the PERSISTED
+   * config** — the `assertRouterEnablementPreconditions` rule, and load-bearing
+   * for the same reason. `ConnectionRepository.update` replaces `config`
+   * wholesale, so every unrelated config patch (a rate-limit edit, and
+   * `AuthorityStatusService`'s who-decides preset apply, which writes the
+   * connection's whole config back) re-asserts whatever override is already
+   * stored. Refusing those would let a location retired AFTER the override was
+   * set make the connection un-editable — punishing an operator for a state
+   * this guard already let through, and for a state whose remedy lives on a
+   * different page.
+   *
+   * The standing degraded state (an override whose location was retired or
+   * deleted later) is therefore NOT enforced here. `deleteLocation`'s
+   * referential refusal counts `inventory_items` rows only and cannot see a
+   * config key, so a location referenced solely by an override still deletes
+   * cleanly: the config keeps naming a row that no longer exists, and nothing
+   * re-checks it. Closing that needs either a widened refusal there or an
+   * observable degradation at resolve time.
+   *
+   * That is DEFERRED AND UNTRACKED - there is no issue for it, deliberately
+   * said here rather than left as a claim a reader would verify with an empty
+   * search. #3207 covers the frontend field only. Whoever takes the next slice
+   * of this area owns the decision; do not read this paragraph as work already
+   * queued somewhere.
+   *
+   * Never defaults a value in; an absent key stays absent (byte-identical to
+   * pre-#3206 behaviour for every connection that never sets it).
+   */
+  private async validateStockLocationOverride(
+    config: Record<string, unknown>,
+    previousConfig: unknown
+  ): Promise<void> {
+    const value = config.stockLocationOverride;
+    if (value === undefined || value === null) return;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+        message: 'config.stockLocationOverride must be a non-empty string',
+      });
+    }
+
+    // Shape-only read of the persisted value: `Connection.config` is JSONB, so
+    // anything may be in there. A previous value that is not a string can never
+    // equal this one, which correctly reads as a change.
+    const previous =
+      previousConfig && typeof previousConfig === 'object'
+        ? (previousConfig as Record<string, unknown>).stockLocationOverride
+        : undefined;
+    // Trimmed on both sides, because `readStockLocationOverride` trims before
+    // the sync uses the value — validating the untrimmed string would check a
+    // location id the sync never asks for.
+    const locationId = value.trim();
+    if (typeof previous === 'string' && previous.trim() === locationId) {
+      return;
+    }
+
+    const location = await this.locations.getLocation(locationId);
+    if (!location) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+        message: `config.stockLocationOverride names an unknown location: ${locationId}`,
+      });
+    }
+    if (location.status !== 'active') {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+        message:
+          `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
+          'Stock written to an inactive location is filtered out by fulfilment routing, so the ' +
+          'override would decide nothing. Name an active location, or reactivate this one.',
+      });
+    }
+  }
+
+  /**
+   * Enforce `metadata.uniqueConfigKeys` (#3391): no ACTIVE connection on this
+   * PLATFORM may claim the identical value for one of the adapter's declared
+   * unique config keys as another active connection already does — the
+   * config-value counterpart of a database unique index, for a JSONB blob no
+   * database constraint can reach. Scoped by `platformType`, never
+   * `adapterKey` — `existing.adapterKey` may be `undefined` for a connection
+   * created without an explicit override (it then falls back to the platform
+   * default), and excluding such a connection from the collision check would
+   * silently reopen the exact gap this guard exists to close.
+   *
+   * Read-then-act against a snapshot list: a benign TOCTOU window exists (two
+   * concurrent creates could both pass and collide) — acceptable here, since
+   * the failure mode this guards against is a same-machine misconfiguration
+   * (an operator pointing two connections at one physical bridge process),
+   * not a fiscal or security boundary.
+   */
+  private async assertUniqueConfigKeys(
+    metadata: Pick<AdapterMetadata, 'platformType' | 'uniqueConfigKeys'>,
+    config: Record<string, unknown>,
+    connectionIdToExclude: string | undefined
+  ): Promise<void> {
+    const keys = metadata.uniqueConfigKeys;
+    if (!keys || keys.length === 0) return;
+
+    const relevantKeys = keys.filter((key) => {
+      const value = config[key];
+      return typeof value === 'string' && value.trim().length > 0;
+    });
+    if (relevantKeys.length === 0) return;
+
+    const siblings = await this.connectionPort.list({
+      platformType: metadata.platformType,
+      status: 'active',
+    });
+    for (const sibling of siblings) {
+      if (sibling.id === connectionIdToExclude) continue;
+      const siblingConfig = (sibling.config ?? {}) as Record<string, unknown>;
+      for (const key of relevantKeys) {
+        const value = (config[key] as string).trim();
+        const siblingValue = siblingConfig[key];
+        if (typeof siblingValue === 'string' && siblingValue.trim() === value) {
+          throw new BadRequestException(
+            `config.${key} must be unique across active ${metadata.platformType} connections — ` +
+              `"${value}" is already used by connection "${sibling.name}" (${sibling.id}).`
+          );
+        }
       }
     }
   }
@@ -446,9 +812,25 @@ export class ConnectionService implements IConnectionService {
       // InventoryMaster first — see the mutual-exclusion guard below), which
       // preserves the "publish-only unless the operator asks" posture.
       // Marketplace manifests (no InventoryMaster) keep the full default set.
-      const defaultCapabilities = metadata.supportedCapabilities.includes('InventoryMaster')
-        ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
-        : [...metadata.supportedCapabilities];
+      //
+      // A dual-lane manifest (declaring BOTH `Invoicing` and `Fiscalization`)
+      // gets its own default via `AdapterMetadata.defaultEnabledCapabilities`
+      // (#3350) rather than a generic "strip Invoicing" rule — that rule was
+      // built for eparagony's dual-lane wizard, which collects only the
+      // receipts-lane config, but fired for every OTHER dual-lane manifest
+      // too (live-reproduced for Subiekt, whose guided wizard is
+      // Invoicing-only and silently lost Invoicing from a fresh connection
+      // with no error anywhere). An adapter that wants a narrower default
+      // than "everything it supports minus the OfferManager carve-out"
+      // declares it explicitly; one that doesn't gets the sane fallback.
+      const defaultCapabilities =
+        metadata.defaultEnabledCapabilities !== undefined
+          ? metadata.defaultEnabledCapabilities.filter((c) =>
+              metadata.supportedCapabilities.includes(c)
+            )
+          : metadata.supportedCapabilities.includes('InventoryMaster')
+            ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
+            : [...metadata.supportedCapabilities];
       const enabledCapabilities = rest.enabledCapabilities ?? defaultCapabilities;
 
       const invalid = enabledCapabilities.filter(
@@ -470,11 +852,16 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateFulfilmentOwnedByDestinationConfig(rest.config);
+        this.validateAutoDispatchConfig(rest.config);
+        await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
         // that a 400 from validation never leaves an orphan credential row.
         // No previous config exists on create, so every claim is a transition.
         await this.assertRouterEnablementPreconditions(rest.config, undefined);
+        // #3391 — no existing connection id to exclude on create.
+        await this.assertUniqueConfigKeys(metadata, rest.config, undefined);
       }
 
       // Persist credentials if the caller supplied raw values. We write the
@@ -684,6 +1071,22 @@ export class ConnectionService implements IConnectionService {
 
       const existing = await this.connectionPort.get(connectionId);
 
+      // #3657 — `archived` is reachable only through archive(), which also
+      // removes the credential; a plain PATCH must not produce an archived row
+      // that still holds one. And an archived row leaves only through
+      // restore(), so it cannot be re-enabled around the step that makes an
+      // operator re-enter its credentials.
+      if (patch.status === 'archived') {
+        throw new BadRequestException(
+          'A connection is archived with PATCH /connections/:id/archive, not by setting its status'
+        );
+      }
+      if (existing.status === 'archived' && patch.status !== undefined) {
+        throw new ConflictException(
+          `Connection ${connectionId} is archived; restore it with PATCH /connections/:id/restore first`
+        );
+      }
+
       if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
         throw new BadRequestException(
           `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`
@@ -729,6 +1132,9 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateFulfilmentOwnedByDestinationConfig(patch.config);
+        this.validateAutoDispatchConfig(patch.config);
+        await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
         // #2407 — inside this branch, which is correct ONLY because
         // `ConnectionRepository.update` REPLACES `config` wholesale rather than
@@ -736,6 +1142,8 @@ export class ConnectionService implements IConnectionService {
         // `config` therefore cannot move the A2 claim. If that write ever
         // starts merging, this placement becomes a hole.
         await this.assertRouterEnablementPreconditions(patch.config, existing.config);
+        // #3391 — exclude this connection's own row from the collision check.
+        await this.assertUniqueConfigKeys(metadata, patch.config, connectionId);
       }
 
       const connection = await this.connectionPort.update(connectionId, patch);
@@ -767,6 +1175,17 @@ export class ConnectionService implements IConnectionService {
     credentials: Record<string, unknown>
   ): Promise<void> {
     const connection = await this.get(connectionId);
+    // #3657 — archiving deleted the credential on purpose; storing a new one
+    // on a row that is still archived would re-arm a connection nobody can see.
+    if (connection.status === 'archived') {
+      throw new ConflictException(
+        `Connection ${connectionId} is archived; restore it before entering credentials`
+      );
+    }
+    if (connection.credentialsRef === '') {
+      await this.storeFirstCredentials(connection, credentials);
+      return;
+    }
     if (!connection.credentialsRef.startsWith('db:')) {
       throw new BadRequestException(
         `Connection ${connectionId} does not have a db-backed credentials reference ` +
@@ -789,6 +1208,125 @@ export class ConnectionService implements IConnectionService {
     await this.validateCredentialsShape(metadata.adapterKey, mergedCredentials);
     await this.credentials.update(ref, { credentialsJson: mergedCredentials });
     this.logger.log(`Rotated credentials for connection ${connectionId}`);
+  }
+
+  /**
+   * #3657 — a connection whose credential was removed by archive() gets one
+   * back here, once it has been restored. Nothing to merge onto, so the shape
+   * is validated against the payload alone (the same order `create()` uses).
+   * A credential-less adapter (ADR-055, e.g. the OMS) is refused: a row nothing
+   * ever reads would be encrypted and stored for no reason.
+   */
+  private async storeFirstCredentials(
+    connection: Connection,
+    credentials: Record<string, unknown>
+  ): Promise<void> {
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    if (!resolveRequiresCredentials(metadata)) {
+      throw new BadRequestException(
+        `Connection ${connection.id} uses an adapter that takes no credentials`
+      );
+    }
+    const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
+    await this.validateCredentialsShape(metadata.adapterKey, resolvedCredentials);
+    const ref = randomUUID();
+    await this.credentials.create({
+      ref,
+      platformType: connection.platformType,
+      credentialsJson: resolvedCredentials,
+    });
+    try {
+      await this.connectionPort.update(connection.id, { credentialsRef: `db:${ref}` });
+    } catch (error) {
+      // Same best-effort cleanup as create(): never leave an unreferenced
+      // encrypted row behind.
+      await this.credentials.delete(ref).catch(() => undefined);
+      throw error;
+    }
+    this.logger.log(`Stored credentials for connection ${connection.id} (ref: db:${ref})`);
+  }
+
+  async archive(connectionId: string): Promise<Connection> {
+    const existing = await this.get(connectionId);
+    if (existing.status === 'archived') {
+      return existing;
+    }
+    if (existing.status !== 'disabled') {
+      throw new ConflictException(
+        `Connection ${connectionId} is ${existing.status}; disable it before archiving`
+      );
+    }
+    // Declared by the adapter, never inferred from platformType (ADR-055):
+    // the OL-OMS connection holds routing authority claims and is disabled,
+    // never archived. See AdapterMetadata.archivable.
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: existing.platformType,
+      adapterKey: existing.adapterKey,
+    });
+    if (!resolveArchivable(metadata)) {
+      throw new ConflictException(
+        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`
+      );
+    }
+    // The pairing is a JSONB value with no FK, so only this service can refuse
+    // (the LocationInUseError precedent, #2316). Archiving the target would
+    // drop it from list(), and the referrers' mapping pages resolve their
+    // catalog through that list - they would report a pairing that is correct
+    // as "could not be found".
+    const referrers = await this.findMasterCatalogReferrers(connectionId);
+    if (referrers.length > 0) {
+      throw new ConnectionInUseException(connectionId, 'master-catalog-referenced', referrers);
+    }
+    // Credential first, row second. A crash between the two leaves a disabled
+    // connection pointing at a missing credential - it fails loudly on enable
+    // and archiving again finishes the job. The reverse order could leave an
+    // archived row still holding a live credential.
+    if (existing.credentialsRef.startsWith('db:')) {
+      const removed = await this.credentials.delete(existing.credentialsRef.slice('db:'.length));
+      if (!removed) {
+        this.logger.warn(
+          `Credential row for connection ${connectionId} was already gone while archiving`
+        );
+      }
+    }
+    const connection = await this.connectionPort.update(connectionId, {
+      status: 'archived',
+      credentialsRef: '',
+    });
+    this.httpTransportFactory.evict(connectionId);
+    this.logger.log(`Connection archived: ${connection.id} (${connection.name})`);
+    return connection;
+  }
+
+  /**
+   * Non-archived connections whose `config.masterCatalogConnectionId` names
+   * `connectionId`. `list()` already leaves archived rows out, which is the
+   * point: an archived referrer is invisible too, so it blocks nothing.
+   */
+  private async findMasterCatalogReferrers(connectionId: string): Promise<ConnectionReferrer[]> {
+    const connections = await this.connectionPort.list();
+    return connections
+      .filter(
+        (candidate) =>
+          candidate.id !== connectionId &&
+          candidate.config?.['masterCatalogConnectionId'] === connectionId
+      )
+      .map((candidate) => ({ id: candidate.id, name: candidate.name }));
+  }
+
+  async restore(connectionId: string): Promise<Connection> {
+    const existing = await this.get(connectionId);
+    if (existing.status !== 'archived') {
+      throw new ConflictException(
+        `Connection ${connectionId} is ${existing.status}; only an archived connection can be restored`
+      );
+    }
+    const connection = await this.connectionPort.update(connectionId, { status: 'disabled' });
+    this.logger.log(`Connection restored: ${connection.id} (${connection.name})`);
+    return connection;
   }
 
   async disable(connectionId: string): Promise<Connection> {

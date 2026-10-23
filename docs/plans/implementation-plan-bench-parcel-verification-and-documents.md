@@ -232,13 +232,26 @@ The same read answers, for the label:
   `Shipment.errorMessage`;
 - `{ state: 'none' }` when no shipment exists for the parcel yet.
 
-**Nothing here buys a label.** D14 puts the label upstream; the bench prints it through the existing
-`GET /shipments/:id/label`, which is already packer-reachable
+**Nothing here buys a label, with ONE amended exception (#3654).** D14 puts the label upstream; the
+bench prints it through the existing `GET /shipments/:id/label`, which is already packer-reachable
 (`ShipmentController.downloadLabel`). "Try the label again" re-fetches, which is why the mockup can
 promise *"Trying again does not reopen the box and does not ask you to scan anything twice"* — the
-retry touches no verification state at all. Buying a label needs `recipient` and operator-typed
-`parcel` weight and dimensions, so a bench-side purchase would have to hold recipient PII: exactly
-what this issue's route review exists to prevent. That is a stated boundary, not a gap.
+retry touches no verification state at all. Buying a label from scratch still needs `recipient` and
+operator-typed `parcel` data, and a bench-side purchase that took a recipient from the request would
+hold exactly the PII this issue's route review exists to prevent; that remains a stated boundary.
+
+The exception is `POST /bench/work/:workId/label/replace` (`BenchLabelController.replaceLabel`): a
+packer holding the box knows the parcel is the wrong size, and the alternative was finding an admin
+to cancel and re-buy by hand. It does not reopen the boundary above, and does not conflict with
+ADR-071 (no new principal), because it is strictly narrower than the `/shipments/*` routes: the body
+is **parcel data only** (global `ValidationPipe` whitelist + `forbidNonWhitelisted`; an address or
+shipment id is a 400), the **recipient is derived server-side** from the order by the same pure rule
+auto-dispatch uses (`resolveOrderDispatchTarget`), the route is **work-scoped with no shipment id**,
+and it can only void-and-re-buy the label of a work this bench may pack. It never issues an invoice
+or fiscal document (`bench-never-issues.spec.ts`). Every refusal (`cannot-cancel`,
+`already-handed-over`, `parcel-completed`, `no-label`, `recipient-unavailable`,
+`parcel-size-unknown`, `replace-in-progress`) is decided before the old label is cancelled; a re-buy
+that fails after the cancel answers `cancelled-not-replaced`. It is serialised per work.
 
 **Visible to dispatch**: `GET /bench/unlabelled-parcels` returns every parcel that is closed and
 packed but has no ready label, with a count. The bench renders the count (mockup: *"1 box waiting

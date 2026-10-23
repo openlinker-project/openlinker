@@ -87,6 +87,29 @@ export interface FulfillmentWorkDispatchPayloadV1 {
 }
 
 /**
+ * Buy a shipping label automatically for ONE accepted work (#3340, closing
+ * #2729).
+ *
+ * Carries the work and order ids and nothing else. `connectionId`
+ * (`SyncJob.connectionId`) is the work's own `assignedConnectionId` — the
+ * same executor connection `FulfillmentWorkDispatchPayloadV1` uses, and read
+ * again by the handler ONLY to re-check `Connection.config.autoDispatch` at
+ * execution time, in case it changed between enqueue and run. Everything else
+ * the label needs (the work's lines, the order's recipient/delivery-method
+ * facts) is resolved by the HANDLER from OpenLinker's own store — never from
+ * the payload, for the identical reason `FulfillmentWorkRoutePayloadV1` gives:
+ * a payload-carried address would put a buyer's data into durable,
+ * operator-visible `sync_jobs.payload` outside every PII control the ADR-062
+ * ship-to projection exists to apply, and a payload-carried line list would
+ * be a snapshot a later re-ingestion could silently make stale.
+ */
+export interface FulfillmentWorkAutoDispatchPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly workId: string;
+  readonly orderId: string;
+}
+
+/**
  * Route ONE order (#2395, `W3a-6`).
  *
  * Carries the order id and nothing else. Everything the router is told — the
@@ -149,6 +172,23 @@ export interface FulfillmentWorkTimeoutSweepPayloadV1 {
  * produced - the reported-versus-enforced gap #2229 exists to close.
  */
 export interface FulfillmentWorkRelaySweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}
+
+/**
+ * `fulfillment.work.rerouteSweep` (#3485).
+ *
+ * A scheduler tick carries only `schemaVersion`; `pageLimit` exists so an
+ * operator draining a backlog can widen ONE run without moving the default.
+ *
+ * Unlike its timeout- and relay-sweep siblings this pass is NOT
+ * frontier-as-query, and the cursor lives in `connection_cursors`, never on the
+ * payload: a re-refused order rewrites an identical block, so an oldest-first
+ * frontier would re-read the same head page for ever. It pages by keyset on
+ * `internalOrderId` instead, from a cursor the handler owns.
+ */
+export interface FulfillmentWorkRerouteSweepPayloadV1 {
   readonly schemaVersion: 1;
   readonly pageLimit?: number;
 }

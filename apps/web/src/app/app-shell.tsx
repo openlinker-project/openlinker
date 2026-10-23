@@ -24,7 +24,8 @@ import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
 import { useNumberFormat } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
-import { buildNavGroups } from './nav-registry';
+import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
+import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
@@ -140,7 +141,7 @@ function SidebarBrand(): ReactElement {
         height={26}
       />
       <span className="shell-brand__name">OpenLinker</span>
-      <EnvironmentBadge compact />
+      <EnvironmentBadge />
     </div>
   );
 }
@@ -233,6 +234,85 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   );
 }
 
+export interface ShellTopbarProps {
+  /**
+   * Opens the mobile navigation drawer. Omitted by a layout with no sidebar
+   * (the pack bench, #3401 follow-up) - a menu button that opens nothing is a
+   * control shaped like one that is not.
+   */
+  readonly onOpenMenu?: () => void;
+  /**
+   * Renders the brand mark at the start of the bar. Only a layout with no
+   * sidebar needs it: everywhere else the sidebar carries the logo.
+   */
+  readonly showBrand?: boolean;
+  /**
+   * Renders the command-palette trigger. A layout that does not mount a
+   * `CommandPaletteProvider` must pass `false`, since the trigger reads that
+   * context.
+   */
+  readonly showSearch?: boolean;
+  readonly onLogout: () => void;
+}
+
+/**
+ * The application's one topbar. Exported so a layout that deliberately has no
+ * sidebar (`BenchAppLayout`) renders the SAME bar rather than a look-alike that
+ * drifts. Must sit inside a `CommandPaletteProvider` unless `showSearch` is
+ * `false`.
+ */
+export function ShellTopbar({
+  onOpenMenu,
+  showBrand = false,
+  showSearch = true,
+  onLogout,
+}: ShellTopbarProps): ReactElement {
+  const { session } = useSession();
+  const username = session.user?.username;
+  const email = session.user?.email ?? null;
+  const crumbs = resolveCrumbFromMatches(useMatches());
+
+  return (
+    <header className="shell-topbar">
+      {onOpenMenu ? (
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          aria-label="Open menu"
+          className="shell-topbar__hamburger"
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+      ) : null}
+
+      {showBrand ? <SidebarBrand /> : null}
+
+      <nav aria-label="Breadcrumb" className="shell-crumbs">
+        <span className="shell-crumbs__group">{crumbs.group}</span>
+        {crumbs.title ? (
+          <>
+            <span className="shell-crumbs__sep" aria-hidden="true">
+              /
+            </span>
+            <span className="shell-crumbs__current">{crumbs.title}</span>
+          </>
+        ) : null}
+      </nav>
+
+      {showSearch ? <TopbarSearchTrigger /> : null}
+
+      <div className="shell-topbar__spacer" />
+
+      <Button tone="ghost" className="shell-topbar__alerts">
+        Alerts <span aria-hidden="true">0</span>
+        <span className="sr-only">(0 new)</span>
+      </Button>
+
+      {username ? <UserChip username={username} email={email} onLogout={onLogout} /> : null}
+    </header>
+  );
+}
+
 export function AppShell({ children }: PropsWithChildren): ReactElement {
   const { isReady, session, clearSession } = useSession();
   const { showToast } = useToast();
@@ -247,24 +327,42 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // shell itself — we only call it to drive its useEffect.
   useDensity();
   const username = session.user?.username;
-  const email = session.user?.email ?? null;
   const counts = useNavCounts();
-  const isAdmin =
-    isReady && session.status === 'authenticated' && session.user?.role === 'admin';
+  // The session's own role string, and the ONLY place this file reads it.
+  //
+  // Role-gated nav items (#3108) — e.g. "Pack bench" — need the raw string,
+  // since `packer`'s ROLE_PERMISSIONS grant is deliberately empty (ADR-071)
+  // and so carries no permission a `requiresPermission` gate could check
+  // instead. `navRoleOf` is shared with ⌘K (#3108 review) so the two cannot
+  // drift, and its docblock records why it needs no `isReady`: the provider
+  // sets session and readiness in one batched callback, so no render observes
+  // `authenticated` with `isReady` false and an unresolved session already
+  // yields `undefined`.
+  //
+  // The two booleans below derive from it rather than re-spelling the same
+  // expression a third and fourth time (#3204 review). They are a different
+  // QUESTION from the nav gate — shell behaviour, not item visibility — but
+  // they were the same DERIVATION, which is what the extraction was for. Note
+  // the return type is `string | undefined`, not `Role | undefined`: `viewer`
+  // is deliberately absent from the FE `Role` union (see `nav-registry.types`),
+  // so `isViewerOnly` can only be expressed against the raw string.
+  const role = navRoleOf(session);
+  const isAdmin = role === 'admin';
   // Demo mode's "write actions are disabled" claim is only true for a
   // viewer-role session — RolesGuard lets admin/operator write fine, so
   // showing the banner to them is actively misleading during a live
   // walkthrough (#1468).
-  const isViewerOnly =
-    isReady && session.status === 'authenticated' && session.user?.role === 'viewer';
+  const isViewerOnly = role === 'viewer';
   // Permission-gated nav items (#2358 review I5) need the session's permission
   // list, not just the admin flag — `/automations` is admin + operator.
   const permissions = session.user?.permissions;
+  // `requiresOms` entries (#3505) follow the routing state; the read is only
+  // issued for a session that could see one of them.
+  const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
-    () => buildNavGroups({ isAdmin, demoMode, permissions }),
-    [isAdmin, demoMode, permissions],
+    () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting }),
+    [isAdmin, demoMode, permissions, role, omsRouting],
   );
-  const matches = useMatches();
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
@@ -304,8 +402,6 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     hasInitializedAnalyticsRef.current = true;
     void initDemoIntegrations(systemConfigQuery.data, true);
   }, [systemConfigQuery.isSuccess, systemConfigQuery.data, isReady, session]);
-
-  const crumbs = resolveCrumbFromMatches(matches);
 
   return (
     <CommandPaletteProvider>
@@ -350,41 +446,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
       </dialog>
 
       <div className="shell-main">
-        <header className="shell-topbar">
-          <button
-            type="button"
-            onClick={openDrawer}
-            aria-label="Open menu"
-            className="shell-topbar__hamburger"
-          >
-            <span aria-hidden="true">☰</span>
-          </button>
-
-          <nav aria-label="Breadcrumb" className="shell-crumbs">
-            <span className="shell-crumbs__group">{crumbs.group}</span>
-            {crumbs.title ? (
-              <>
-                <span className="shell-crumbs__sep" aria-hidden="true">
-                  /
-                </span>
-                <span className="shell-crumbs__current">{crumbs.title}</span>
-              </>
-            ) : null}
-          </nav>
-
-          <TopbarSearchTrigger />
-
-          <div className="shell-topbar__spacer" />
-
-          <Button tone="ghost" className="shell-topbar__alerts">
-            Alerts <span aria-hidden="true">0</span>
-            <span className="sr-only">(0 new)</span>
-          </Button>
-
-          {username ? (
-            <UserChip username={username} email={email} onLogout={handleLogout} />
-          ) : null}
-        </header>
+        <ShellTopbar onOpenMenu={openDrawer} onLogout={handleLogout} />
 
         {demoMode && isViewerOnly ? <DemoBanner /> : null}
 

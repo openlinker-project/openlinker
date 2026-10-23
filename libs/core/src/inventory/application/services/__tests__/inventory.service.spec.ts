@@ -47,6 +47,7 @@ describe('InventoryService', () => {
       upsert: jest.fn(),
       markStaleExceptVariants: jest.fn().mockResolvedValue(0),
       markLocationlessStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
+      markLocatedStaleForSource: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<InventoryRepositoryPort>;
 
     jobQueue = {

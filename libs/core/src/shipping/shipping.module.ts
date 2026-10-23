@@ -51,9 +51,11 @@ import { ShipmentLabelService } from './application/services/shipment-label.serv
 import { OrderFulfillmentProjectionService } from './application/services/order-fulfillment-projection.service';
 import { ShipmentLineService } from './application/services/shipment-line.service';
 import { ShipmentReservationConsumeService } from './application/services/shipment-reservation-consume.service';
+import { FulfillmentWorkDispatchRouterService } from './application/services/fulfillment-work-dispatch-router.service';
 import {
   BULK_SHIPMENT_DISPATCH_SERVICE_TOKEN,
   FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
+  FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
   ORDER_FULFILLMENT_PROJECTION_SERVICE_TOKEN,
   PICKUP_POINT_CACHE_TOKEN,
   PICKUP_POINT_LOOKUP_SERVICE_TOKEN,
@@ -217,6 +219,15 @@ import {
       provide: SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN,
       useExisting: ShipmentReservationConsumeService,
     },
+    // #3506 (G02-4) shipment-first dispatch routing for a fulfilment work,
+    // shared by the API's parcel-closure notifier and the worker's relay
+    // sweep. Composes the work-grain relay (OrdersModule) and the relay gate
+    // (FulfillmentModule) — both already imported above, so no new edge.
+    FulfillmentWorkDispatchRouterService,
+    {
+      provide: FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
+      useExisting: FulfillmentWorkDispatchRouterService,
+    },
   ],
   exports: [
     SHIPMENT_REPOSITORY_TOKEN,
@@ -234,6 +245,7 @@ import {
     SHIPMENT_STATUS_SYNC_SERVICE_TOKEN,
     FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN,
     SHIPMENT_LABEL_SERVICE_TOKEN,
+    FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN,
   ],
 })
 export class ShippingModule {}

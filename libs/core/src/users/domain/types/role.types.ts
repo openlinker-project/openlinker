@@ -57,6 +57,29 @@ export const PermissionValues = [
   'users:read',
   'users:write',
   'customers:read',
+  // The pack bench's own write affordances (#3412/#3424): claiming a parcel
+  // and taking the next task. Its own value rather than `orders:write`
+  // because ADR-071 keeps a packer deliberately narrow - "every temp packer
+  // can read the customer database" is the posture that role exists to
+  // refuse, and `orders:write` is the operator's whole order-mutation grant.
+  //
+  // The roles holding it MUST stay identical to the `@Roles` lists on
+  // `BenchWorkController` and `BenchParcelController`, which are already
+  // `admin` + `operator` + `packer`: this permission gates the UI, the
+  // decorators gate the route, and a UI that offers what the route refuses
+  // (or hides what it allows, which is what happened here) is the defect.
+  'bench:write',
+  // Read-only Fulfilment board + task detail (#3736). Held by admin, operator
+  // and viewer - never packer, whose work is the bench. Must stay identical to
+  // the `@Roles` lists on the GET routes of `FulfillmentWorkController` and
+  // `GET /users/packers` (the roster the board names packers with).
+  'fulfillment:read',
+  // The pack bench's read-only view (#3734): opening `/bench` and seeing the
+  // work list, a parcel and its activity. Held by every role the bench's GET
+  // routes admit - admin, operator, packer and viewer - and by none that they
+  // refuse. A holder without `bench:write` gets a preview: no scan, no claim,
+  // no presence ping (a viewer must never appear as someone standing at a box).
+  'bench:read',
   'shipments:read',
   // DISPLAY-ONLY (#1826): gates carrier-message disclosure on the shipments
   // read paths plus the FE's write affordances. It authorizes no mutation — the
@@ -77,6 +100,16 @@ export const PermissionValues = [
   // own reasoning. Same discipline as `shipments:write` above.
   'automations:read',
   'automations:write',
+  // DISPLAY-ONLY (#3066): gates the FE's inventory-locations write
+  // affordances (Add/Edit/Delete/Retire on the locations list, #2316). It is
+  // deliberately NOT `inventory:write` — that permission is held by `operator`
+  // too, but `InventoryLocationsController`'s three write routes are
+  // `@Roles('admin')` only, so granting `inventory:write` here would show an
+  // operator an enabled button that then 403s. The roles holding this
+  // permission MUST stay identical to that controller's `@Roles` list (asserted
+  // in `inventory-locations.controller.spec.ts`), the `shipments:write` /
+  // `automations:write` discipline.
+  'inventory-locations:write',
   // DISPLAY-ONLY (#2473): gates the FE's analytics-settings write affordances
   // (tax-rate opt-in toggle, currency-recalculation trigger). It authorizes no
   // mutation — those endpoints are `@Roles('admin')`-gated directly and no
@@ -84,6 +117,13 @@ export const PermissionValues = [
   // `viewer` so only `admin` (which holds the full `PermissionValues` set)
   // carries it, matching those admin-only `@Roles` guards.
   'analytics:write',
+  // D35 (#3534/#3535): admin and operator only, deliberately excluding
+  // `viewer` — an export takes buyer data out of the system, so read access
+  // to `/orders` does not imply the right to remove it in bulk. Backend
+  // authorization is enforced separately via `@Roles('admin', 'operator')`
+  // on `OrderExportsController`; this permission is what the FE's Export
+  // button and row checkboxes on the export dialog key on.
+  'orders:export',
 ] as const;
 
 /**
@@ -115,12 +155,17 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'listings:read',
     'listings:write',
     'customers:read',
+    'bench:write',
+    'fulfillment:read',
+    'bench:read',
     'shipments:read',
     'shipments:write',
     'invoices:read',
     'webhooks:read',
     'content:write',
     'automations:read',
+    // D35: admin and operator only — see `PermissionValues`'s own comment.
+    'orders:export',
   ],
   viewer: [
     'connections:read',
@@ -132,6 +177,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'inventory:read',
     'listings:read',
     'customers:read',
+    'fulfillment:read',
+    'bench:read',
     'shipments:read',
     'invoices:read',
     'webhooks:read',
@@ -152,5 +199,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
    * it can be named for something that exists — ADR-048 decision 1's "no
    * interface without an implementer", applied to a permission.
    */
-  packer: [],
+  // Exactly one permission, and it is the bench's own (#3424). Everything
+  // else a packer may do is gated by a `@Roles(...)` decorator naming the
+  // role directly, which is ADR-071's model: the bench has no principal, so a
+  // packer is an ordinary user and the routes are what narrow them.
+  //
+  // This one exists because the bench's two write CONTROLS are rendered
+  // client-side, and a client-side gate needs a permission to read. Without
+  // it "Claim this parcel" and "Take next task" never rendered at all, while
+  // the API behind them accepted a packer perfectly well.
+  packer: ['bench:write', 'bench:read'],
 } as const;

@@ -17,21 +17,21 @@ const DEFAULT_INSTALL = [
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
   },
-  { id: '2', name: 'Payment accepted', deleted: '0', paid: '1', shipped: '0', delivered: '0' },
+  { id: '2', name: 'Payment accepted', deleted: '0', paid: '1', shipped: '0', delivery: '0' },
   {
     id: '3',
     name: 'Processing in progress',
     deleted: '0',
     paid: '1',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
   },
-  { id: '4', name: 'Shipped', deleted: '0', paid: '1', shipped: '1', delivered: '0' },
-  { id: '5', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivered: '1' },
-  { id: '6', name: 'Canceled', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
-  { id: '7', name: 'Refunded', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
+  { id: '4', name: 'Shipped', deleted: '0', paid: '1', shipped: '1', delivery: '0' },
+  { id: '5', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivery: '1' },
+  { id: '6', name: 'Canceled', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
+  { id: '7', name: 'Refunded', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
 ];
 
 function clientReturning(rows: unknown[]): {
@@ -77,14 +77,14 @@ describe('PrestashopOrderStateCatalog', () => {
 
     it("should resolve a renumbered shop's own state id rather than the default one", async () => {
       const { client } = clientReturning([
-        { id: '18', name: 'Order received', deleted: '0', paid: '0', shipped: '0', delivered: '0' },
+        { id: '18', name: 'Order received', deleted: '0', paid: '0', shipped: '0', delivery: '0' },
         {
           id: '21',
           name: 'Handed to courier',
           deleted: '0',
           paid: '1',
           shipped: '1',
-          delivered: '0',
+          delivery: '0',
         },
         {
           id: '22',
@@ -92,7 +92,7 @@ describe('PrestashopOrderStateCatalog', () => {
           deleted: '0',
           paid: '0',
           shipped: '0',
-          delivered: '0',
+          delivery: '0',
         },
       ]);
       const states = await new PrestashopOrderStateCatalog(client, 'conn-1').load();
@@ -110,7 +110,7 @@ describe('PrestashopOrderStateCatalog', () => {
           deleted: '0',
           paid: '0',
           shipped: '0',
-          delivered: '0',
+          delivery: '0',
         },
       ]);
       const states = await new PrestashopOrderStateCatalog(client, 'conn-1').load();
@@ -129,7 +129,7 @@ describe('PrestashopOrderStateCatalog', () => {
           deleted: '0',
           paid: '1',
           shipped: '1',
-          delivered: '0',
+          delivery: '0',
         },
       ]);
       const states = await new PrestashopOrderStateCatalog(client, 'conn-1').load();
@@ -145,7 +145,7 @@ describe('PrestashopOrderStateCatalog', () => {
           deleted: '0',
           paid: '0',
           shipped: '0',
-          delivered: '0',
+          delivery: '0',
         },
       ]);
       const states = await new PrestashopOrderStateCatalog(client, 'conn-1').load();

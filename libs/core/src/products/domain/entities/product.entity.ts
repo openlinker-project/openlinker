@@ -21,6 +21,15 @@ export interface Product {
   id: string;
   name: string;
   sku: string | null;
+  /**
+   * GROSS catalogue price: what a buyer pays in the master connection's sales
+   * country, in `currency`, excluding promotions (ADR-077). A master whose
+   * platform stores net converts inside its own adapter, with its own rate and
+   * rounding; core never applies a rate. `null` means the master could not state
+   * a gross figure - never a net one standing in for it, because every consumer
+   * (marketplace offers, shop publishers, price-change detection) reads it as
+   * gross.
+   */
   price: number | null;
   description: string | null;
   images: string[] | null;

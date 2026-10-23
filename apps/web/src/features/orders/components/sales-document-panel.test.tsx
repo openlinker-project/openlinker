@@ -74,7 +74,7 @@ function makeInvoice(over: Partial<InvoiceRecord> = {}): InvoiceRecord {
     id: 'inv_1',
     connectionId: INVOICE_CONN_ID,
     orderId: ORDER_ID,
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'pi_1',
@@ -173,6 +173,76 @@ describe('SalesDocumentPanel — state 1: filled (fiscal receipt)', () => {
   });
 });
 
+describe('SalesDocumentPanel — "Why this kind?" (#3186)', () => {
+  it('renders the disclosure, closed by default, naming the rule and the connection, on a fiscal receipt', async () => {
+    renderWithProviders(
+      <SalesDocumentPanel
+        order={{
+          ...order,
+          salesDocument: {
+            orderId: ORDER_ID,
+            documentKind: 'fiscal-receipt',
+            document: null,
+            blockReason: null,
+            unresolvedReason: null,
+            blockDetail: null,
+            otherRecords: [],
+            matchedRule: {
+              id: 'rule-1',
+              country: 'PL',
+              conditions: [
+                { field: 'buyerHasTaxId', op: 'eq', boolValue: true },
+                { field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' },
+              ],
+              documentKind: 'fiscal-receipt',
+              connectionId: FISCAL_CONN_ID,
+            },
+          },
+        }}
+      />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+          fiscalization: { listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord()]) },
+        }),
+        ...adminSession,
+      },
+    );
+
+    await screen.findByText('1/2026/08/14');
+
+    const summary = screen.getByText('Why this kind?');
+    // Native <details>: closed-by-default is the `open` attribute's absence,
+    // not the content leaving the DOM (its content stays in the tree either
+    // way — only its rendering is gated by the browser's UA stylesheet).
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+
+    const user = userEvent.setup();
+    await user.click(summary);
+    expect(summary.closest('details')).toHaveAttribute('open');
+
+    const sentence = screen.getByTestId('sales-document-matched-rule');
+    expect(sentence.textContent).toMatch(/Matched the PL rule/i);
+    expect(sentence.textContent).toMatch(/has a tax ID/i);
+    expect(sentence.textContent).toMatch(/fiscal receipt/i);
+    expect(sentence.textContent).toContain(fiscalConnection.name);
+  });
+
+  it('is absent when no rule decided the order\'s kind (e.g. a manually issued document)', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord()]) },
+      }),
+      ...adminSession,
+    });
+
+    await screen.findByText('1/2026/08/14');
+
+    expect(screen.queryByText('Why this kind?')).toBeNull();
+  });
+});
+
 describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
   it('shows the ambiguous-no-primary reason, distinct from a write-path refusal', async () => {
     const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
@@ -235,7 +305,7 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
 });
 
 describe('SalesDocumentPanel — state 3: register-receipt blocked by an existing invoice', () => {
-  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
+  it('offers no receipt action and no separate warning box (#2561, #3766)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -244,11 +314,32 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
       ...adminSession,
     });
     expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
-    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
-    expect(screen.getByText(/already has an invoice from Subiekt GT/i)).toBeInTheDocument();
+    // #3766 — the "This order already has a document" warning is gone: the
+    // filled slot offers no receipt action, so it described a refusal of a
+    // control the operator could not reach.
+    expect(screen.queryByTestId('one-document-guard')).toBeNull();
+    expect(screen.queryByText(/This order already has a document/i)).toBeNull();
     // #2561 — the override is unreachable from a state that already carries a
     // document, so there is no disabled "Register receipt" button here at all.
     expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
+
+  it('keeps the issuing connection and the one-document rule in the bottom disclosure, with no box (#3766)', async () => {
+    const { container } = renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice()) },
+      }),
+      ...adminSession,
+    });
+    expect(await screen.findByText('FV/2026/06/001')).toBeInTheDocument();
+
+    expect(container.querySelector('.invoice-connection-lock')).toBeNull();
+    const disclosure = screen.getByTestId('invoice-why-this-document');
+    expect(disclosure).toHaveTextContent(/Issued by Subiekt GT\./);
+    expect(disclosure).toHaveTextContent(/One sale gets one document/);
+    const slot = disclosure.closest('.doc-slot');
+    expect(slot?.lastElementChild).toBe(disclosure);
   });
 
   it('does NOT block when the existing invoice is a retryable rejected failure', async () => {
@@ -270,7 +361,7 @@ describe('SalesDocumentPanel — state 3: register-receipt blocked by an existin
 });
 
 describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing receipt', () => {
-  it('states the fact with no dead action, distinct from state 2 (#2561)', async () => {
+  it('offers no invoice action and no separate warning box (#2561, #3766)', async () => {
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]) },
@@ -280,7 +371,8 @@ describe('SalesDocumentPanel — state 4: issue-invoice blocked by an existing r
       ...adminSession,
     });
     expect(await screen.findByText('1/2026/08/14')).toBeInTheDocument();
-    expect(screen.getByText(/This order already has a document/i)).toBeInTheDocument();
+    // #3766 — no separate warning box; the slot simply offers no invoice action.
+    expect(screen.queryByTestId('one-document-guard')).toBeNull();
     // #2561 — no disabled "Issue invoice" button when a document already exists.
     expect(screen.queryByRole('button', { name: 'Issue invoice' })).toBeNull();
   });
@@ -324,14 +416,91 @@ describe('SalesDocumentPanel — manual actions when nothing is blocked', () => 
   });
 });
 
-describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
-  const rejected = makeInvoice({ regulatoryStatus: 'rejected' });
+describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
+  const SETUP_REASON =
+    'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.';
+  const setupRefusal = (): ApiError =>
+    new ApiError(SETUP_REASON, 422, {
+      message: SETUP_REASON,
+      error: 'InvoiceIssueRejected',
+      failureCode: 'connection-setup-incomplete',
+      failureReason: SETUP_REASON,
+    });
+  const failedRecord = makeInvoice({
+    status: 'failed',
+    failureMode: 'rejected',
+    failureCode: 'connection-setup-incomplete',
+    failureReason: SETUP_REASON,
+    providerInvoiceNumber: null,
+  });
 
-  function renderRejected(resendToKsef: (invoiceId: string) => Promise<InvoiceRecord>): void {
+  it('answers in place, without a toast, by re-reading the failed attempt', async () => {
+    const getForOrder = vi.fn().mockRejectedValueOnce(notFound()).mockResolvedValue(failedRecord);
+    const issue = vi.fn().mockRejectedValue(setupRefusal());
+    const user = userEvent.setup();
     renderWithProviders(<SalesDocumentPanel order={order} />, {
       apiClient: createMockApiClient({
         connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
-        invoicing: { getForOrder: vi.fn().mockResolvedValue(rejected), resendToKsef },
+        invoicing: { getForOrder, issue },
+      }),
+      ...adminSession,
+    });
+    await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
+
+    const alert = await screen.findByTestId('invoice-setup-incomplete');
+    expect(alert).toHaveTextContent('Subiekt GT is not set up to issue invoices');
+    expect(alert).toHaveTextContent(SETUP_REASON);
+    expect(screen.getByRole('link', { name: 'Open connection settings' })).toHaveAttribute(
+      'href',
+      `/connections/${INVOICE_CONN_ID}/edit`,
+    );
+    expect(document.querySelector('.document-headline__word')?.textContent).toContain('Not issued');
+    expect(document.querySelector('.toast__title')).toBeNull();
+  });
+
+  it('still names the setting after a reload, from the stored record alone', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(failedRecord) },
+      }),
+      ...adminSession,
+    });
+    expect(await screen.findByTestId('invoice-setup-incomplete')).toHaveTextContent(SETUP_REASON);
+    expect(screen.getByText(/Retry once the connection is saved/)).toBeInTheDocument();
+  });
+
+  it('keeps the toast for any other failure, and re-reads the record as well', async () => {
+    const getForOrder = vi.fn().mockRejectedValue(notFound());
+    const issue = vi.fn().mockRejectedValue(
+      new ApiError('The invoicing provider rejected the request.', 422, {
+        message: 'The invoicing provider rejected the request.',
+        error: 'InvoiceIssueRejected',
+        failureCode: 'provider-rejected',
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder, issue },
+      }),
+      ...adminSession,
+    });
+    await user.click(await screen.findByRole('button', { name: /issue invoice/i }));
+    expect(await findToastTitle('Could not issue invoice')).toBeInTheDocument();
+    await waitFor(() => expect(getForOrder.mock.calls.length).toBeGreaterThan(1));
+  });
+});
+
+describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
+  const rejected = makeInvoice({ regulatoryStatus: 'rejected' });
+
+  function renderRejected(resendToAuthority: (invoiceId: string) => Promise<InvoiceRecord>): void {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(rejected), resendToAuthority },
       }),
       ...adminSession,
     });
@@ -339,10 +508,10 @@ describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
 
   it('reports a 501 as a structural refusal, not a transient failure worth retrying', async () => {
     const user = userEvent.setup();
-    const resendToKsef = vi
+    const resendToAuthority = vi
       .fn()
       .mockRejectedValue(new ApiError('Not Implemented', 501, { message: 'Not Implemented' }));
-    renderRejected(resendToKsef);
+    renderRejected(resendToAuthority);
 
     await user.click(await screen.findByRole('button', { name: 'Resend' }));
     // The structural-refusal distinction must reach a visible surface, not
@@ -355,10 +524,10 @@ describe('SalesDocumentPanel — resend to KSeF (#2763 review)', () => {
 
   it('keeps the generic message for any other failure', async () => {
     const user = userEvent.setup();
-    const resendToKsef = vi
+    const resendToAuthority = vi
       .fn()
       .mockRejectedValue(new ApiError('Service Unavailable', 503, { message: 'Service Unavailable' }));
-    renderRejected(resendToKsef);
+    renderRejected(resendToAuthority);
 
     await user.click(await screen.findByRole('button', { name: 'Resend' }));
     expect(await findToastTitle('Resend failed')).toBeInTheDocument();
@@ -390,6 +559,17 @@ describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
       ...adminSession,
     });
   }
+
+  it('never renders a retry control beside an in-doubt registration (#3187 acceptance)', async () => {
+    // A fiscal registration is a legal event; retrying one OpenLinker cannot
+    // account for is how a sale gets registered twice. "Look it up" is the
+    // only action offered here — "Register receipt" (the rejected-state
+    // retry) must not coexist with it.
+    renderInDoubt(vi.fn());
+
+    await screen.findByRole('button', { name: 'Look it up' });
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
 
   it('reports still-unknown as an unsettled check, naming no cause for it', async () => {
     // Two things must both hold. It must not fall through to the "cannot be
@@ -963,5 +1143,34 @@ describe('SalesDocumentPanel — the gates that decide whether a write control r
     );
 
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
+  });
+});
+
+describe('SalesDocumentPanel — invoice in-doubt (#3766)', () => {
+  it('renders one notice and no connection lock box', async () => {
+    const { container } = renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: {
+          getForOrder: vi.fn().mockResolvedValue(
+            makeInvoice({
+              status: 'failed',
+              failureMode: 'in-doubt',
+              failureCode: 'transport-timeout',
+              providerInvoiceNumber: null,
+              issuedAt: null,
+            }),
+          ),
+        },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+      }),
+      ...adminSession,
+    });
+
+    const notice = await screen.findByTestId('invoice-unconfirmed');
+    expect(notice).toHaveTextContent(/Subiekt GT did not answer in time\./);
+    expect(screen.getAllByTestId('invoice-unconfirmed')).toHaveLength(1);
+    expect(container.querySelector('.invoice-connection-lock')).toBeNull();
+    expect(screen.queryByText('Still assigned to')).toBeNull();
   });
 });

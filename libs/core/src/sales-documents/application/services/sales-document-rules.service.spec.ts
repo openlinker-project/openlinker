@@ -15,20 +15,25 @@ import type { SalesDocumentCountryDefaultRepositoryPort } from '../../domain/por
 import type { SalesDocumentThresholdRepositoryPort } from '../../domain/ports/sales-document-threshold-repository.port';
 import type { SalesDocumentCountryAcknowledgmentRepositoryPort } from '../../domain/ports/sales-document-country-acknowledgment-repository.port';
 import { SalesDocumentRule } from '../../domain/entities/sales-document-rule.entity';
-import { SalesDocumentThreshold } from '../../domain/entities/sales-document-threshold.entity';
 import { SalesDocumentCountryDefault } from '../../domain/entities/sales-document-country-default.entity';
 import { SalesDocumentCountryAcknowledgment } from '../../domain/entities/sales-document-country-acknowledgment.entity';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
-import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
+import { SalesDocumentInvalidConditionException } from '../../domain/exceptions/sales-document-invalid-condition.exception';
 import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exceptions/sales-document-country-already-configured.exception';
+import { computeSalesDocumentConditionsHash } from '../../domain/types/sales-document-condition.types';
 import type { SalesDocumentRuleInput } from '../../domain/types/sales-document-rule-write.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
+import {
+  SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+  type SalesDocumentDryRunCandidate,
+} from '../../domain/types/sales-document-dry-run.types';
 
 function makeRuleRepo(): jest.Mocked<SalesDocumentRuleRepositoryPort> {
   return {
     findById: jest.fn(),
     findByCountry: jest.fn(),
     findByCountries: jest.fn(),
+    findByIds: jest.fn(),
     findByCountryAndConditionsHash: jest.fn(),
     create: jest.fn(),
     delete: jest.fn(),
@@ -42,7 +47,6 @@ function makeCountryDefaultRepo(): jest.Mocked<SalesDocumentCountryDefaultReposi
     findByCountry: jest.fn(),
     findByCountries: jest.fn(),
     findAll: jest.fn(),
-    findByCountryAndKind: jest.fn(),
     upsert: jest.fn(),
     delete: jest.fn(),
   };
@@ -76,7 +80,7 @@ function countryDefault(overrides: {
     overrides.documentKind,
     overrides.connectionId,
     new Date(),
-    new Date(),
+    new Date()
   );
 }
 
@@ -87,12 +91,12 @@ function existingRule(): SalesDocumentRule {
     [{ field: 'buyerHasTaxId', op: 'eq', value: false }],
     'hash-abc',
     'fiscal-receipt',
-    'conn-eparagony',
+    'conn-receipt-only',
     new Date('2020-01-01'),
     null,
     null,
     new Date(),
-    new Date(),
+    new Date()
   );
 }
 
@@ -121,7 +125,12 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
     countryDefaultRepo = makeCountryDefaultRepo();
     thresholdRepo = makeThresholdRepo();
     acknowledgmentRepo = makeAcknowledgmentRepo();
-    service = new SalesDocumentRulesService(ruleRepo, countryDefaultRepo, thresholdRepo, acknowledgmentRepo);
+    service = new SalesDocumentRulesService(
+      ruleRepo,
+      countryDefaultRepo,
+      thresholdRepo,
+      acknowledgmentRepo
+    );
   });
 
   describe('createRule — conflict guard', () => {
@@ -129,7 +138,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([existingRule()]);
 
       await expect(service.createRule(baseInput())).rejects.toBeInstanceOf(
-        SalesDocumentRuleConflictException,
+        SalesDocumentRuleConflictException
       );
       expect(ruleRepo.create).not.toHaveBeenCalled();
     });
@@ -139,7 +148,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.create.mockResolvedValue(existingRule());
 
       await expect(
-        service.createRule(baseInput({ connectionId: 'conn-eparagony' })),
+        service.createRule(baseInput({ connectionId: 'conn-receipt-only' }))
       ).resolves.toBeDefined();
     });
 
@@ -158,44 +167,76 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
         new Date('2025-12-31'),
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([closedExisting]);
       ruleRepo.create.mockResolvedValue(closedExisting);
 
       await expect(
-        service.createRule(baseInput({ effectiveFrom: new Date('2026-01-01') })),
+        service.createRule(baseInput({ effectiveFrom: new Date('2026-01-01') }))
       ).resolves.toBeDefined();
     });
   });
 
-  describe('createRule — threshold-ref validation', () => {
-    it('should reject an orderTotalGross condition whose thresholdRef does not resolve', async () => {
-      thresholdRepo.findByRefs.mockResolvedValue([]);
-
+  // #3189 replaced threshold-ref validation: an `orderTotalGross` condition
+  // carries its own amount and currency now, so there is no ref to resolve and
+  // the guard that matters is the SHAPE check. It matters for the same reason
+  // the ref check did - a condition the engine cannot narrow reads as "this
+  // rule never matches", with nothing said to the operator, so it has to be
+  // refused at authoring time.
+  describe('createRule — inline amount validation (#3189)', () => {
+    it('should reject an orderTotalGross condition whose amount is not a decimal string', async () => {
       const input = baseInput({
-        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'unknown-ref' }],
+        conditions: [
+          { field: 'orderTotalGross', op: 'lt', amount: '450 PLN', currency: 'PLN' } as never,
+        ],
       });
 
       await expect(service.createRule(input)).rejects.toBeInstanceOf(
-        SalesDocumentThresholdNotFoundException,
+        SalesDocumentInvalidConditionException
       );
       expect(ruleRepo.findByCountryAndConditionsHash).not.toHaveBeenCalled();
       expect(ruleRepo.create).not.toHaveBeenCalled();
     });
 
-    it('should proceed when the referenced threshold resolves', async () => {
-      thresholdRepo.findByRefs.mockResolvedValue([
-        new SalesDocumentThreshold('pl-simplified-invoice-2026', 450, 'PLN', 'lt', new Date(), null, new Date(), new Date()),
-      ]);
+    it('should reject an orderTotalGross condition whose currency is not an ISO code', async () => {
+      const input = baseInput({
+        conditions: [
+          { field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'zloty' } as never,
+        ],
+      });
+
+      await expect(service.createRule(input)).rejects.toBeInstanceOf(
+        SalesDocumentInvalidConditionException
+      );
+      expect(ruleRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('should proceed on a well-formed inline amount', async () => {
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
       ruleRepo.create.mockResolvedValue(existingRule());
 
       const input = baseInput({
-        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+        conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
       });
 
       await expect(service.createRule(input)).resolves.toBeDefined();
+    });
+
+    // The threshold table is no longer read on the evaluation or the write
+    // path; asserted so a re-introduced lookup is a failing test rather than a
+    // quiet re-coupling.
+    it('should not consult the threshold repository at all', async () => {
+      ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
+      ruleRepo.create.mockResolvedValue(existingRule());
+
+      await service.createRule(
+        baseInput({
+          conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
+        })
+      );
+
+      expect(thresholdRepo.findByRefs).not.toHaveBeenCalled();
     });
   });
 
@@ -210,6 +251,16 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findById.mockResolvedValue(null);
       await expect(service.deleteRule('missing')).rejects.toThrow();
       expect(ruleRepo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getRulesByIds (#3186)', () => {
+    it('should pass through to the repository unchanged', async () => {
+      const rule = existingRule();
+      ruleRepo.findByIds.mockResolvedValue([rule]);
+
+      await expect(service.getRulesByIds(['existing-rule-id'])).resolves.toEqual([rule]);
+      expect(ruleRepo.findByIds).toHaveBeenCalledWith(['existing-rule-id']);
     });
   });
 
@@ -239,7 +290,11 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       expect(decisions).toHaveLength(40);
       expect(ruleRepo.findByCountries).toHaveBeenCalledTimes(1);
       expect(countryDefaultRepo.findByCountries).toHaveBeenCalledTimes(1);
-      expect(thresholdRepo.findAll).toHaveBeenCalledTimes(1);
+      // #3189: the batch reads rules and defaults only - an `orderTotalGross`
+      // condition carries its own amount, so the threshold store is not on the
+      // evaluation path at all. Asserted as an absence so a re-introduced read
+      // fails here rather than quietly adding a query per batch.
+      expect(thresholdRepo.findAll).not.toHaveBeenCalled();
     });
 
     it('should load the distinct countries plus Rest of world', async () => {
@@ -290,6 +345,115 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
     });
   });
 
+  describe('dryRunRule (#3191)', () => {
+    const sampleOrder = (overrides: Partial<SalesDocumentOrderFacts> = {}): SalesDocumentOrderFacts => ({
+      country: 'PL',
+      totalGross: 100,
+      currency: 'PLN',
+      buyerHasTaxId: undefined,
+      ...overrides,
+    });
+
+    const candidate = (
+      overrides: Partial<SalesDocumentDryRunCandidate> = {},
+    ): SalesDocumentDryRunCandidate => ({
+      country: 'PL',
+      conditions: [{ field: 'orderCountry', op: 'eq', value: 'PL' }],
+      documentKind: 'fiscal-receipt',
+      connectionId: 'conn-candidate',
+      ...overrides,
+    });
+
+    it('should fold the candidate into the order`s own country scope and report it matched via the sentinel ruleId', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      const decision = await service.dryRunRule(candidate(), sampleOrder());
+
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-candidate',
+        ruleId: SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+      });
+    });
+
+    it('should NOT fold the candidate into evaluation when its scope differs from the sample order`s own country', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      // Candidate is scoped to PL, sample order delivers to DE — once saved
+      // this candidate would never be considered for a DE order either.
+      const decision = await service.dryRunRule(candidate({ country: 'PL' }), sampleOrder({ country: 'DE' }));
+
+      expect(decision).toEqual({ kind: 'unresolved', reason: 'no-configuration-for-country' });
+    });
+
+    it('should fold a `★ Rest of world`-scoped candidate into the rest-of-world tier', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      const decision = await service.dryRunRule(
+        candidate({ country: '*', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }] }),
+        sampleOrder({ country: 'DE', buyerHasTaxId: true }),
+      );
+
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-candidate',
+        ruleId: SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+      });
+    });
+
+    it('should evaluate the SAME persisted rules a real order would (existing rule for the country plus Rest of world)', async () => {
+      ruleRepo.findByCountry.mockImplementation((country) =>
+        Promise.resolve(country === 'PL' ? [existingRule()] : []),
+      );
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      // A candidate that could never match this sample order (wrong tax-id
+      // assertion) leaves the already-saved PL rule free to win on its own.
+      const decision = await service.dryRunRule(
+        candidate({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'DE' }] }),
+        sampleOrder({ buyerHasTaxId: false }),
+      );
+
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: existingRule().documentKind,
+        connectionId: existingRule().connectionId,
+        ruleId: existingRule().id,
+      });
+    });
+
+    it('should reject a malformed condition before ever reading a repository', async () => {
+      await expect(
+        service.dryRunRule(
+          candidate({ conditions: [{ field: 'orderTotalGross', op: 'lt', amount: 'not-a-number', currency: 'PLN' }] }),
+          sampleOrder(),
+        ),
+      ).rejects.toBeInstanceOf(SalesDocumentInvalidConditionException);
+      expect(ruleRepo.findByCountry).not.toHaveBeenCalled();
+    });
+
+    it('should persist NOTHING, however the candidate resolves, even across repeated calls', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      await service.dryRunRule(candidate(), sampleOrder());
+      await service.dryRunRule(candidate(), sampleOrder());
+      await service.dryRunRule(candidate({ country: 'DE' }), sampleOrder({ country: 'DE' }));
+
+      expect(ruleRepo.create).not.toHaveBeenCalled();
+      expect(ruleRepo.delete).not.toHaveBeenCalled();
+      expect(countryDefaultRepo.upsert).not.toHaveBeenCalled();
+      expect(countryDefaultRepo.delete).not.toHaveBeenCalled();
+      expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
+      expect(acknowledgmentRepo.delete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listConfiguredCountries (#2186)', () => {
     it('should return a country with a rule count only (no defaults, no acknowledgment)', async () => {
       ruleRepo.countRulesByCountry.mockResolvedValue(new Map([['PL', 3]]));
@@ -313,7 +477,11 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.countRulesByCountry.mockResolvedValue(new Map());
       countryDefaultRepo.findAll.mockResolvedValue([
         countryDefault({ country: 'DE', documentKind: 'invoice', connectionId: 'conn-invoice' }),
-        countryDefault({ country: 'DE', documentKind: 'fiscal-receipt', connectionId: 'conn-receipt' }),
+        countryDefault({
+          country: 'DE',
+          documentKind: 'fiscal-receipt',
+          connectionId: 'conn-receipt',
+        }),
       ]);
       acknowledgmentRepo.findAll.mockResolvedValue([]);
 
@@ -396,7 +564,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findByCountry.mockResolvedValue([]);
       countryDefaultRepo.findByCountry.mockResolvedValue([]);
       acknowledgmentRepo.upsert.mockResolvedValue(
-        new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt),
+        new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt)
       );
 
       const result = await service.acknowledgeNoDocument('IT');
@@ -410,7 +578,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       countryDefaultRepo.findByCountry.mockResolvedValue([]);
 
       await expect(service.acknowledgeNoDocument('PL')).rejects.toBeInstanceOf(
-        SalesDocumentCountryAlreadyConfiguredException,
+        SalesDocumentCountryAlreadyConfiguredException
       );
       expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
     });
@@ -422,7 +590,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ]);
 
       await expect(service.acknowledgeNoDocument('DE')).rejects.toBeInstanceOf(
-        SalesDocumentCountryAlreadyConfiguredException,
+        SalesDocumentCountryAlreadyConfiguredException
       );
       expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
     });
@@ -445,7 +613,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([existingRule()]);
 
       await expect(service.createRule(baseInput({ country: 'PL' }))).rejects.toBeInstanceOf(
-        SalesDocumentRuleConflictException,
+        SalesDocumentRuleConflictException
       );
 
       expect(acknowledgmentRepo.delete).not.toHaveBeenCalled();
@@ -453,7 +621,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
 
     it('should auto-clear the acknowledgment when a country default is upserted for that country', async () => {
       countryDefaultRepo.upsert.mockResolvedValue(
-        countryDefault({ country: 'NL', documentKind: 'invoice', connectionId: 'conn-nl' }),
+        countryDefault({ country: 'NL', documentKind: 'invoice', connectionId: 'conn-nl' })
       );
 
       await service.upsertCountryDefault({
@@ -463,6 +631,220 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       });
 
       expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('NL');
+    });
+  });
+
+  describe('country normalisation (#3176)', () => {
+    it('should uppercase a mixed-case country before every rule lookup and write', async () => {
+      ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
+      ruleRepo.create.mockResolvedValue(existingRule());
+
+      await service.createRule(baseInput({ country: 'pl' }));
+
+      expect(ruleRepo.findByCountryAndConditionsHash).toHaveBeenCalledWith(
+        'PL',
+        expect.any(String)
+      );
+      expect(ruleRepo.create).toHaveBeenCalledWith(expect.objectContaining({ country: 'PL' }));
+      expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('PL');
+
+      await service.listRules('pl');
+      expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+    });
+
+    it('should uppercase a mixed-case country before every country-default lookup and write', async () => {
+      countryDefaultRepo.upsert.mockResolvedValue(
+        countryDefault({ country: 'PL', documentKind: 'invoice', connectionId: 'conn-pl' })
+      );
+
+      await service.upsertCountryDefault({
+        country: 'pl',
+        documentKind: 'invoice',
+        connectionId: 'conn-pl',
+      });
+
+      expect(countryDefaultRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ country: 'PL' })
+      );
+      expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('PL');
+
+      await service.listCountryDefaults('pl');
+      expect(countryDefaultRepo.findByCountry).toHaveBeenCalledWith('PL');
+    });
+
+    it('should trim + uppercase before acknowledging a country', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+      acknowledgmentRepo.upsert.mockResolvedValue(
+        new SalesDocumentCountryAcknowledgment('PL', new Date())
+      );
+
+      await service.acknowledgeNoDocument(' pl ');
+
+      expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+      expect(countryDefaultRepo.findByCountry).toHaveBeenCalledWith('PL');
+      expect(acknowledgmentRepo.upsert).toHaveBeenCalledWith('PL');
+    });
+
+    it('should resolve routing for an order whose delivery-address country is lowercase against an uppercase rule scope', async () => {
+      ruleRepo.findByCountry.mockImplementation((country) =>
+        Promise.resolve(country === 'PL' ? [existingRule()] : [])
+      );
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+      thresholdRepo.findAll.mockResolvedValue([]);
+
+      const decision = await service.resolveRouting({
+        country: 'pl',
+        totalGross: 100,
+        currency: 'PLN',
+        taxTreatment: undefined,
+        buyerHasTaxId: false,
+      });
+
+      expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+      // A tier-1 RULE match carries `ruleId` (#3186); only a country default or
+      // the Rest-of-world tier routes without one.
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: existingRule().documentKind,
+        connectionId: existingRule().connectionId,
+        ruleId: existingRule().id,
+      });
+    });
+
+    it('should uppercase an orderCountry condition VALUE before hashing and persisting it', async () => {
+      ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
+      ruleRepo.create.mockResolvedValue(existingRule());
+
+      await service.createRule(
+        baseInput({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'pl' }] })
+      );
+
+      // The evaluator compares `order.country === condition.value` and
+      // `resolveRouting` always uppercases the order's country, so a stored
+      // `pl` would never match again.
+      expect(ruleRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conditions: [{ field: 'orderCountry', op: 'eq', value: 'PL' }],
+        })
+      );
+
+      // Ordering matters: the hash is a column of
+      // `UQ_sales_document_rules_country_hash_from`, so it must be computed
+      // over the NORMALISED conditions or `pl` and `PL` occupy two scopes.
+      const expectedHash = computeSalesDocumentConditionsHash([
+        { field: 'orderCountry', op: 'eq', value: 'PL' },
+      ]);
+      expect(ruleRepo.findByCountryAndConditionsHash).toHaveBeenCalledWith('PL', expectedHash);
+      expect(ruleRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ conditionsHash: expectedHash })
+      );
+    });
+
+    it('should fold a stray-case row the migration skipped into ONE market card', async () => {
+      // The migration deliberately leaves a colliding stray-case row alone;
+      // without a read-side fold it renders a second card for one country.
+      ruleRepo.countRulesByCountry.mockResolvedValue(
+        new Map([
+          ['PL', 2],
+          ['pl', 1],
+        ])
+      );
+      countryDefaultRepo.findAll.mockResolvedValue([
+        countryDefault({ country: 'pl', documentKind: 'invoice', connectionId: 'conn-infakt' }),
+      ]);
+      acknowledgmentRepo.findAll.mockResolvedValue([
+        new SalesDocumentCountryAcknowledgment('Pl', new Date('2027-01-01T00:00:00.000Z')),
+      ]);
+
+      const summaries = await service.listConfiguredCountries();
+
+      expect(summaries).toEqual([
+        {
+          country: 'PL',
+          ruleCount: 3,
+          invoiceDefaultConnectionId: 'conn-infakt',
+          receiptDefaultConnectionId: null,
+          acknowledgedNoDocumentAt: '2027-01-01T00:00:00.000Z',
+        },
+      ]);
+    });
+
+    it('should resolve a batch keyed by the normalised country, even when two orders differ only in case', async () => {
+      ruleRepo.findByCountries.mockResolvedValue([existingRule()]);
+      countryDefaultRepo.findByCountries.mockResolvedValue([]);
+      thresholdRepo.findAll.mockResolvedValue([]);
+
+      const orderFacts = (country: string): SalesDocumentOrderFacts => ({
+        country,
+        totalGross: 100,
+        currency: 'PLN',
+        taxTreatment: undefined,
+        buyerHasTaxId: false,
+      });
+
+      const [upper, lower] = await service.resolveRoutingBatch([
+        orderFacts('PL'),
+        orderFacts('pl'),
+      ]);
+
+      expect(ruleRepo.findByCountries).toHaveBeenCalledWith(['PL', '*']);
+      expect(upper).toEqual(lower);
+    });
+  });
+  describe('detectRuleOverlap (#3190)', () => {
+    it('asks only about the draft country and reports the rival', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([existingRule()]);
+
+      const verdict = await service.detectRuleOverlap({
+        country: 'PL',
+        conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }],
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        effectiveTo: null,
+      });
+
+      // Country-scoped on purpose: two rules in different markets are already
+      // disjoint by the engine's own tiering, so widening the read would spend
+      // a scan to rediscover that.
+      expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+      expect(verdict.overlapping).toEqual([
+        {
+          ruleId: existingRule().id,
+          connectionId: existingRule().connectionId,
+          documentKind: existingRule().documentKind,
+        },
+      ]);
+    });
+
+    // The repository matches `country` case-sensitively and `createRule`
+    // uppercases what it writes, so an unnormalised country would read zero
+    // rivals and answer an empty verdict - a FALSE "no conflict", which is the
+    // one answer this check exists to make impossible. The browser always
+    // sends a normalised country; the admin API can send anything.
+    it('normalises the country and the condition values before comparing, as createRule does', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+
+      await service.detectRuleOverlap({
+        country: '  pl ',
+        conditions: [{ field: 'orderCountry', op: 'eq', value: 'de' }],
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        effectiveTo: null,
+      });
+
+      expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+    });
+
+    it('never writes - it is a read, and the engine still holds an ambiguous order', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([existingRule()]);
+
+      await service.detectRuleOverlap({
+        country: 'PL',
+        conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        effectiveTo: null,
+      });
+
+      expect(ruleRepo.create).not.toHaveBeenCalled();
     });
   });
 });

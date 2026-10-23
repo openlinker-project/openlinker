@@ -6,14 +6,16 @@
  *
  * @module app
  */
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
+  createMockApiClient,
   renderWithProviders,
   sampleConnection,
 } from '../test/test-utils';
+import type { SessionUser } from '../shared/auth/session.types';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
 
 const captureDemoEvent = vi.fn();
@@ -32,13 +34,23 @@ function OpenButton() {
   );
 }
 
-function renderPalette() {
+function renderPalette(user?: SessionUser) {
   return renderWithProviders(
     <CommandPaletteProvider>
       <OpenButton />
     </CommandPaletteProvider>,
-    { sessionAdapter: createAuthenticatedSessionAdapter() },
+    { sessionAdapter: createAuthenticatedSessionAdapter(user) }
   );
+}
+
+function userWithRole(role: string, permissions: SessionUser['permissions'] = []): SessionUser {
+  return {
+    id: 'user_role_fixture',
+    username: role,
+    email: role + '@example.com',
+    role,
+    permissions,
+  };
 }
 
 describe('CommandPaletteProvider', () => {
@@ -208,6 +220,145 @@ describe('CommandPaletteProvider', () => {
       expect(captureDemoEvent).toHaveBeenCalledWith('demo_command_palette_result_selected', {
         source: 'connections',
       });
+    });
+  });
+
+  // #3505 — ⌘K must not surface the routing-only entries the sidebar hides.
+  describe('routing-gated navigation', () => {
+    const OPERATOR: SessionUser = {
+      id: 'user_op',
+      username: 'operator',
+      email: 'operator@example.com',
+      role: 'operator',
+      permissions: ['orders:read', 'orders:write', 'fulfillment:read', 'bench:write', 'bench:read'],
+    };
+
+    function renderWithRouting(getStatus: ReturnType<typeof vi.fn>): void {
+      renderWithProviders(
+        <CommandPaletteProvider>
+          <OpenButton />
+        </CommandPaletteProvider>,
+        {
+          apiClient: createMockApiClient({ fulfillmentAuthority: { getStatus } as never }),
+          sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR),
+        }
+      );
+    }
+
+    function sourcingStatus(state: 'default' | 'resolved'): unknown {
+      return {
+        rows: [
+          {
+            question: 'sourcing',
+            state,
+            answer: { kind: 'nobody-to-route' },
+            why: { kind: 'default', code: 'a2-single-origin-nothing-to-choose' },
+            source: state === 'default' ? 'default' : 'operator-config',
+            inactiveClaimantConnectionIds: [],
+          },
+        ],
+        attention: { counted: [], routine: [], affectedOrderCount: 0 },
+        presets: [],
+        applied: null,
+      };
+    }
+
+    it('should hide Fulfilment and Pack bench when routing is off', async () => {
+      const getStatus = vi.fn().mockResolvedValue(sourcingStatus('default'));
+      renderWithRouting(getStatus);
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      await waitFor(() => {
+        expect(getStatus).toHaveBeenCalled();
+      });
+      expect((await screen.findAllByText('Shipments')).length).toBeGreaterThan(0);
+      expect(screen.queryByText('Fulfilment')).toBeNull();
+      expect(screen.queryByText('Pack bench')).toBeNull();
+    });
+
+    it('should list Fulfilment and Pack bench when routing is on', async () => {
+      renderWithRouting(vi.fn().mockResolvedValue(sourcingStatus('resolved')));
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+
+      expect(await screen.findByText('Fulfilment')).toBeInTheDocument();
+      expect(screen.getByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('should list them when the routing state cannot be read', async () => {
+      renderWithRouting(vi.fn().mockRejectedValue(new Error('status down')));
+
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+
+      expect(await screen.findByText('Fulfilment')).toBeInTheDocument();
+    });
+  });
+
+  describe('role- and permission-gated nav items (#3108/#3439)', () => {
+    // `SessionProvider` starts at the anonymous session and resolves the real
+    // one asynchronously (`isReady` starts `false`) — nav items gated on
+    // `session.user?.role` are therefore absent on the very first render
+    // regardless of which role is about to load. `findByText` waits for that
+    // resolution; a bare synchronous `getByText`/`queryByText` right after
+    // `keyDown` would read the pre-resolution state and hide every
+    // role-gated item no matter the fixture. For the negative case, first
+    // await the connections source (an existing, independent async signal
+    // this file already uses) to know the whole provider has settled before
+    // asserting an absence — otherwise "not found yet" and "correctly
+    // excluded" are indistinguishable.
+    it('shows "Pack bench" for a packer session holding bench:write', async () => {
+      renderPalette(userWithRole('packer', ['bench:write', 'bench:read']));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('shows "Pack bench" for an operator session holding bench:write', async () => {
+      renderPalette(userWithRole('operator', ['bench:write', 'bench:read']));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('shows "Pack bench" for a viewer session holding bench:read (#3734)', async () => {
+      renderPalette(userWithRole('viewer', ['bench:read']));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('does not show "Pack bench" for a session without bench:read', async () => {
+      renderPalette(userWithRole('viewer'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      await screen.findByText(sampleConnection.name);
+      expect(screen.queryByText('Pack bench')).toBeNull();
+    });
+  });
+
+  // #3221 — the same item-level `requiresRole` gate #3108 built for
+  // "Pack bench" is applied to the five Operations entries whose primary API
+  // read excludes `packer` (Analytics, Insights, Orders, Customers, Sales
+  // documents). Both the sidebar (`nav-registry.test.ts`) and ⌘K read the
+  // shared `isNavItemVisible`, but ⌘K used to have no role check at all — the
+  // issue names this as the "documented bypass" a sidebar-only test would
+  // leave open, so it is asserted here too.
+  describe('packer role-gated Operations entries (#3221)', () => {
+    it('does not show a role-gated entry for a packer session', async () => {
+      // `bench:write` matches a real packer session (`ROLE_PERMISSIONS.packer`)
+      // and is what makes "Pack bench" a reliable settle-signal here — without
+      // it, the item would also be hidden, for the unrelated reason that its
+      // own permission gate (#3439) never received one.
+      renderPalette(userWithRole('packer', ['bench:write', 'bench:read']));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      // A visible, non-gated item confirms the whole provider has settled
+      // (see the #3108 note above) before asserting the gated one's absence.
+      await screen.findByText('Pack bench');
+      expect(screen.queryByText('Orders')).toBeNull();
+      expect(screen.queryByText('Sales documents')).toBeNull();
+    });
+
+    it('shows the role-gated entries for an operator session', async () => {
+      renderPalette(userWithRole('operator'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Orders')).toBeInTheDocument();
+      expect(screen.getByText('Sales documents')).toBeInTheDocument();
     });
   });
 });

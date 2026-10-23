@@ -5,6 +5,8 @@
  * inline `CategoryPicker` in the base scope with a dedicated modal that matches
  * the approved mockup: a search input, a clickable breadcrumb, and a list of
  * child categories with Browse (drill-in) / Select (pick) affordances.
+ * `CategoryPicker` itself was deleted in a later cleanup (#2130) once this
+ * modal had fully superseded it.
  *
  * The category lives in the BASE scope by default (grouping-determining,
  * shared across variants) - and, for a `'catalog-implicit'` destination

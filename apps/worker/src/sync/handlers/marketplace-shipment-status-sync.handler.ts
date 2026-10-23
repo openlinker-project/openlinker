@@ -99,7 +99,7 @@ export class MarketplaceShipmentStatusSyncHandler implements SyncJobHandler {
       });
 
       this.logger.log(
-        `marketplace.shipment.statusSync completed (connection=${job.connectionId}): scanned=${result.scanned}, updated=${result.updated}, propagated=${result.propagated}, failed=${result.failed}, nextOffset=${result.nextOffset}/${result.total}`,
+        `marketplace.shipment.statusSync completed (connection=${job.connectionId}): scanned=${result.scanned}, updated=${result.updated}, propagated=${result.propagated}, failed=${result.failed}, nextOffset=${result.nextOffset}/${result.total}, deliveredRelaysRetried=${result.deliveredRelaysRetried}, deliveredRelaysRecovered=${result.deliveredRelaysRecovered}`,
       );
 
       await this.cursorRepository.set(job.connectionId, cursorKey, String(result.nextOffset));

@@ -151,6 +151,91 @@ commits straight to `sync_jobs` in the same transaction as its
 and the trim-vs-TTL reasoning still governs the stream's remaining non-webhook
 writers (scheduler, cron sweeps, API-triggered enqueues).
 
+## Poison entries — the `stream_dead_letters` table (#2301)
+
+A **poison entry** is a stream entry whose handler keeps throwing, so it stays
+in the consumer group's Pending Entries List and every recovery pass retries it.
+Before #2301 that retry never ended, and the only trace was one log line from a
+counter that reset on every worker restart. It now has a **terminal, queryable
+home in Postgres**.
+
+**What happens.** The two consumers that still own a PEL — `job-intake` (stream
+`jobs.sync`) and `master-deletion-offer-pause` (stream `events.master.deletion`)
+— count failed recovery attempts per entry in Redis
+(`poison:{stream}:{group}:{entryId}`, a 7-day sliding TTL, so a restart no
+longer resets the count). When an entry reaches `MAX_RECOVERY_ATTEMPTS` (10):
+
+1. the worker logs `Stream entry <id> has now failed recovery 10 times (…);
+   writing it to stream_dead_letters and acking it`;
+2. it writes one `stream_dead_letters` row with the entry's **raw stream fields**,
+   exactly as Redis returned them, plus the attempt count and the last error;
+3. **only then** it `XACK`s the entry.
+
+A failed write leaves the entry pending, and the next recovery pass tries again.
+A crash between the write and the `XACK` redelivers the entry, and the row is
+re-written in place (one row per `(stream, consumer_group, entry_id)`;
+`first_seen_at` keeps the first sighting, `attempts` / `last_error` /
+`last_seen_at` track the latest). Recovery passes run at most every 5 minutes
+per worker, so an entry is dead-lettered after at least ~50 minutes of
+continuous failure. A transient fault (a database blip, a marketplace timeout)
+normally clears well before then.
+
+**What it is not.** A *malformed* master-deletion event, one that cannot be
+parsed at all, does **not** land here. It is moved to the
+`events.master.deletion.dead` Redis stream on its first read (see the sizing
+table above), and that stream remains its only record. A *trimmed* entry,
+whose body retention removed before it was processed, is acked and logged
+(`Discarding trimmed stream entry …`), not recorded. If one does reach the
+table, its `raw_fields` is `{}`.
+
+### Finding them
+
+- **UI:** *Diagnostics > Jobs & Logs*, section **Poison stream entries**. The
+  heading shows the total. The list is read-only (most recently seen first,
+  with stream, consumer group, entry id, attempts and last error), and there is
+  no replay action yet.
+- **API:** `GET /sync/stream-dead-letters?stream=jobs.sync&limit=20&offset=0`
+  and `GET /sync/stream-dead-letters/count?stream=…` (admin, operator, viewer).
+  The list returns `rawFields` as stored.
+- **SQL:**
+
+  ```sql
+  SELECT stream, consumer_group, entry_id, attempts, last_error,
+         first_seen_at, last_seen_at, raw_fields
+  FROM stream_dead_letters
+  ORDER BY last_seen_at DESC;
+  ```
+
+### Using them during recovery
+
+A row means the entry has been **acked**: Redis will not redeliver it, and
+nothing replays it automatically. The row is the record of work that did not
+happen. Recovery is operator-driven:
+
+1. **Fix the cause first.** `last_error` is the error from the latest attempt.
+   Ten identical errors over ~50 minutes point to a deterministic fault (a bad
+   payload or a handler bug), not to a flaky dependency.
+2. **`jobs.sync` rows** (`consumer_group = 'job-intake'`): the entry *was* the
+   job, and normally no `sync_jobs` row exists for it. `raw_fields` carries
+   `jobType`, `connectionId`, `payloadJson` and `idempotencyKey`. Look the key
+   up in `sync_jobs` first, since the insert is idempotent on it, and a row
+   there means the job did land and only the `XACK` kept failing. Otherwise,
+   re-trigger the work through the normal path. A re-enqueue that carries the **same**
+   `idempotencyKey` no-ops with `{isExisting: true}` while
+   `jobdedup:<idempotencyKey>` is alive (7 days), so `DEL` that key first.
+   Recurring jobs whose key changes per tick need nothing: the next tick
+   enqueues a fresh job.
+3. **`events.master.deletion` rows** (`consumer_group =
+   'master-deletion-offer-pause'`): `raw_fields` is the event envelope, and
+   `payloadJson` names the deleted master product (`internalProductId`,
+   `variantIds`) whose marketplace offers were due to be paused. Those offers
+   were **not** paused. Check them on the marketplace and pause any that are
+   still live.
+4. **Housekeeping.** Nothing else reads this table and it has no foreign keys,
+   so deleting a row you have dealt with is safe. Nothing prunes it on its own.
+   That is deliberate, and the reasoning is on
+   `StreamDeadLetterRepositoryPort`.
+
 ## Webhook-stream sunset — completed (#2280, #2300)
 
 `events.inbound.webhooks` and `events.inbound.webhooks.dead` are **retired**.

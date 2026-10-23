@@ -20,6 +20,13 @@ export const RETURNS_PAGE_COPY = {
   description:
     'Returns reported by your connected channels, newest first. OpenLinker records what the channel says and does not reinterpret it.',
   tableCaption: 'Returns, newest first',
+  /**
+   * The `ReadOnlyLock` tooltip for a demo viewer with no `orders:write`
+   * permission on the "+ Record a return" page action — the
+   * `return-detail.copy.ts` `readOnly` precedent (tech-lead review on
+   * #3285, IMPORTANT).
+   */
+  recordActionReadOnly: 'You do not have permission to record returns.',
 } as const;
 
 /**

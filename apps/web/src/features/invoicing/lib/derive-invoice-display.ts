@@ -70,6 +70,10 @@ const FAILURE_CODE_FALLBACK: Record<FailureCode, string> = {
     'The provider rejected the buyer’s tax ID. Check the tax ID on the order’s customer, then retry. Nothing was issued.',
   'invalid-currency':
     'The document’s settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the source order, then retry. Nothing was issued.',
+  'sale-classification-required':
+    'This connection needs a sale classification (goods vs. services) configured before it can issue invoices. Set it in the connection’s configuration, then retry. Nothing was issued.',
+  'connection-setup-incomplete':
+    'This connection is missing a setting it needs to issue invoices. Complete the connection’s settings, then retry. Nothing was issued.',
   'provider-rejected':
     'The provider rejected the document. Check the order’s data, then retry. Nothing was issued.',
   'transport-timeout':
@@ -85,6 +89,12 @@ const FAILURE_CODE_FALLBACK: Record<FailureCode, string> = {
  */
 export function resolveFailureCopy(invoice: InvoiceRecord, t: Translate): string {
   const code = invoice.failureCode;
+  // The one code whose stored reason is the adapter's own sentence naming the
+  // missing setting (#3772) - it says more than any fixed copy can, and it is
+  // PII-free by the adapter's opt-in. Other codes keep their fixed copy.
+  if (code === 'connection-setup-incomplete' && invoice.failureReason) {
+    return invoice.failureReason;
+  }
   if (code && code in FAILURE_CODE_FALLBACK) {
     return t(`invoice.failureCode.${code}`, FAILURE_CODE_FALLBACK[code]);
   }

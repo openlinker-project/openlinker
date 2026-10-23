@@ -8,8 +8,16 @@
  * alone would print **Open** across a task that is suspended — which is the
  * single most misleading thing this panel could say, since explaining why work
  * is stopped is the reason it exists. So the held badge leads, and the raw
- * orchestration status is demoted to a secondary label rather than dropped
+ * orchestration status follows it as its own badge rather than being dropped
  * (an operator still needs to see `scheduled` vs `in_progress` under a hold).
+ *
+ * ## The status lives in ONE badge (#3763)
+ *
+ * There is no State row: a badge plus a row repeated the same word. A task
+ * packers cannot see (stuck before acceptance, or not accepted) turns that
+ * badge amber and names why, the amber edge marks the card the way a hold
+ * does, and the explanation sits underneath as a quieter note. Acceptance
+ * says nothing when it is not news.
  *
  * ## The hold's actor is not rendered, because it is not projected
  *
@@ -25,53 +33,153 @@
  * can move under a client holding a valid token. They are stated as such and
  * nothing is gated on one.
  *
+ * ## `rootProps` is a generic passthrough, never drag-specific (#3426)
+ *
+ * Same seam and same reason as the assign board's own card docblock — see
+ * there for why nesting a wrapper `<li>` is not the right shape.
+ *
+ * ## The expedited badge decides nothing (#3247)
+ *
+ * `expeditedAt` says a task was pushed ahead of deadline order (#2416). It is
+ * rendered and never read for a decision: which expedite verb is offered
+ * comes from `supportedActions` alone.
+ *
+ * ## The id is a LINK to the detail page (#3096/#3259)
+ *
+ * This card is only ever mounted inside `order-fulfillment-tasks-panel.tsx`,
+ * which has no worklist position of its own to carry forward — an order page
+ * is not a filtered list — so the link carries no query string, unlike the
+ * assign board's own reference link (`fulfilmentWorkDetailPath`). It renders
+ * only for a session holding `fulfillment:read` (admin, operator and viewer
+ * since #3736), the permission that opens the detail page, so no one follows
+ * it into "you don't have access". Without it the id still renders, as text.
+ *
+ * ## Products, places and carriers by name, never by internal id (#3096)
+ *
+ * Each line is a `FulfillmentLineIdentity` — the order page's product cell
+ * plus the variant's attributes — instead of a bare `ol_variant_…`. The
+ * location renders as its name, and only on a multi-location install; the
+ * delivery renders as the carrier name, never the source's delivery-method id.
+ *
  * @module apps/web/src/features/fulfillment/components
  */
-import type { ReactElement } from 'react';
+import type { LiHTMLAttributes, ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
+import { usePermission } from '../../../shared/auth/use-permission';
+import { distinguishingAttributeKeys, narrowAttributes } from '../../../shared/lib/variant-attributes';
+import { shortenId } from '../../../shared/ui/entity-label';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { holdReasonLabel } from '../../orders';
 import type { FulfillmentTask } from '../api/fulfillment.types';
+import { useHasMultipleLocations } from '../hooks/use-has-multiple-locations';
+import { FulfillmentLineIdentity } from './fulfillment-line-identity';
 import {
-  fulfillmentRequestStatusLabel,
+  FULFILLMENT_EXPEDITED_BADGE,
   fulfillmentStatusLabel,
+  OWN_PACK_BENCH_NAME,
+  TASK_ACCEPTANCE_COPY,
 } from '../lib/fulfillment-task.copy';
+import {
+  describeTaskAcceptance,
+  needsAttention,
+  taskStatusText,
+} from '../lib/fulfillment-task-acceptance';
+import { fulfillmentWorkDetailPath } from '../lib/fulfillment-filters';
 
 export interface FulfillmentTaskCardProps {
   task: FulfillmentTask;
   /** The action controls, composed by the panel (which owns the dialogs). */
   actions?: ReactElement | null;
+  /** Spread onto the root `<li>` — see the module docblock. */
+  rootProps?: LiHTMLAttributes<HTMLLIElement>;
 }
 
-export function FulfillmentTaskCard({ task, actions }: FulfillmentTaskCardProps): ReactElement {
+export function FulfillmentTaskCard({
+  task,
+  actions,
+  rootProps,
+}: FulfillmentTaskCardProps): ReactElement {
   const held = task.activeHolds.length > 0;
+  const canOpenDetail = usePermission('fulfillment:read');
+  const showLocation = useHasMultipleLocations();
+  const distinguishing = distinguishingAttributeKeys(
+    task.lines.map((line) => ({ attributes: line.attributes ?? null }))
+  );
+  const acceptance = describeTaskAcceptance(
+    {
+      requestStatus: task.requestStatus,
+      createdAt: task.createdAt,
+      assigned: task.assignedConnectionId !== null,
+    },
+    new Date()
+  );
+  const attention = needsAttention(acceptance);
+  const pending = acceptance.kind === 'pending';
 
   return (
-    <li className="fulfilment-task" data-held={held ? 'true' : 'false'}>
+    <li
+      {...rootProps}
+      className={['fulfilment-task', rootProps?.className].filter(Boolean).join(' ')}
+      data-held={held ? 'true' : 'false'}
+      data-attention={attention ? 'true' : 'false'}
+    >
       <div className="fulfilment-task__head">
         <div className="fulfilment-task__badges">
-          {held ? (
-            task.activeHolds.map((hold) => (
-              <StatusBadge key={hold.id} tone="warning" withDot compact>
-                {`On hold — ${holdReasonLabel(hold.reason)}`}
-              </StatusBadge>
-            ))
-          ) : (
-            <StatusBadge tone="info" compact>
-              {fulfillmentStatusLabel(task.status)}
+          {task.activeHolds.map((hold) => (
+            <StatusBadge key={hold.id} tone="warning" withDot compact>
+              {`On hold — ${holdReasonLabel(hold.reason)}`}
             </StatusBadge>
-          )}
+          ))}
+          <StatusBadge tone={attention ? 'warning' : 'info'} withDot={attention} compact>
+            {taskStatusText(
+              fulfillmentStatusLabel(task.status),
+              task.status,
+              acceptance,
+              OWN_PACK_BENCH_NAME,
+              true
+            )}
+          </StatusBadge>
+          {/* After the hold/state badge, never before it — the badge above
+              leads. Display only; see the module docblock. */}
+          {(task.expeditedAt ?? null) !== null ? (
+            <StatusBadge tone="warning" withDot compact>
+              {FULFILLMENT_EXPEDITED_BADGE}
+            </StatusBadge>
+          ) : null}
         </div>
-        <span className="fulfilment-task__id mono-text" title={task.id}>
-          {task.id}
-        </span>
+        {/* A link only for a session that may open the detail (#3096): the
+            page is admin + operator, and a viewer given the link would land
+            on "you don't have access". The id still renders for them. */}
+        {canOpenDetail ? (
+          <Link
+            to={fulfillmentWorkDetailPath(task.id, new URLSearchParams())}
+            className="fulfilment-task__id link mono-text"
+            title={task.id}
+          >
+            {shortenId(task.id)}
+          </Link>
+        ) : (
+          <span className="fulfilment-task__id mono-text" title={task.id}>
+            {shortenId(task.id)}
+          </span>
+        )}
       </div>
 
-      {held ? (
-        <ul className="fulfilment-task__holds">
+      {held || attention || pending ? (
+        <ul className="fulfilment-task__holds fulfilment-task__notes">
+          {pending ? <li>{TASK_ACCEPTANCE_COPY.pendingNote(OWN_PACK_BENCH_NAME)}</li> : null}
+          {attention ? (
+            <li>
+              {acceptance.kind === 'refused'
+                ? TASK_ACCEPTANCE_COPY.refusedNote
+                : TASK_ACCEPTANCE_COPY.stuckNote}{' '}
+              <TimeDisplay iso={task.createdAt} format="relative" />
+            </li>
+          ) : null}
           {task.activeHolds.map((hold) => (
-            <li key={hold.id} className="text-muted">
+            <li key={hold.id}>
               {holdReasonLabel(hold.reason)} · since{' '}
               <TimeDisplay iso={hold.placedAt} format="relative" />
               {hold.note ? ` — ${hold.note}` : ''}
@@ -81,26 +189,18 @@ export function FulfillmentTaskCard({ task, actions }: FulfillmentTaskCardProps)
       ) : null}
 
       <dl className="fulfilment-task__facts">
-        {/* Rendered even when a hold leads, so the underlying state is never
-            hidden by the hold badge — "held" and "scheduled" are both true. */}
-        <div>
-          <dt>State</dt>
-          <dd>{fulfillmentStatusLabel(task.status)}</dd>
-        </div>
-        <div>
-          <dt>Handshake</dt>
-          <dd>{fulfillmentRequestStatusLabel(task.requestStatus)}</dd>
-        </div>
-        {task.locationId ? (
+        {/* Named, never an internal id (#3096): the location only where there
+            is more than one to tell apart, the delivery as its carrier name. */}
+        {showLocation && task.locationName ? (
           <div>
             <dt>Location</dt>
-            <dd className="mono-text">{task.locationId}</dd>
+            <dd>{task.locationName}</dd>
           </div>
         ) : null}
-        {task.deliveryMethod ? (
+        {task.carrierName ? (
           <div>
             <dt>Delivery</dt>
-            <dd>{task.deliveryMethod}</dd>
+            <dd>{task.carrierName}</dd>
           </div>
         ) : null}
         {task.externalWorkId ? (
@@ -116,7 +216,11 @@ export function FulfillmentTaskCard({ task, actions }: FulfillmentTaskCardProps)
           <ul className="fulfilment-task__lines">
             {task.lines.map((line) => (
               <li key={line.id}>
-                <span className="mono-text">{line.productVariantId}</span>
+                <FulfillmentLineIdentity
+                  line={line}
+                  attributes={narrowAttributes(line.attributes ?? null, distinguishing)}
+                  thumbnailSize="sm"
+                />
                 <span className="fulfilment-task__count">
                   {line.fulfilledQuantity} / {line.totalQuantity}
                   {line.cancelledQuantity > 0 ? ` (${line.cancelledQuantity} cancelled)` : ''}

@@ -27,6 +27,18 @@ export const ordersQueryKeys = {
   lifecycleSummary: (filters?: OrderHealthSummaryFilters) =>
     ['orders', 'lifecycle-summary', filters ?? {}] as const,
   detail: (internalOrderId: string) => ['orders', 'detail', internalOrderId] as const,
+  /** An order's notes (#3531). */
+  notes: (internalOrderId: string) => ['orders', 'notes', internalOrderId] as const,
+  /** The workspace tag vocabulary (#3532). */
+  tags: () => ['orders', 'tags'] as const,
+  /** Tag ids assigned to one order (#3532). */
+  orderTags: (internalOrderId: string) => ['orders', 'order-tags', internalOrderId] as const,
+  /** The caller's saved column presets (#3530). */
+  columnPresets: () => ['orders', 'column-presets'] as const,
+  /** The workspace-default column preset (#3530, D32). */
+  workspaceDefaultColumnPreset: () => ['orders', 'column-presets', 'workspace-default'] as const,
+  /** One export run's status (#3534). */
+  exportRun: (runId: string) => ['orders', 'export', runId] as const,
 };
 
 /**

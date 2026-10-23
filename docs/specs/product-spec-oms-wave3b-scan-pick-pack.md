@@ -140,6 +140,8 @@ Terminals are **shared and roaming** (D15), but a person changes terminal only a
 - Then switching user is reachable from the packing surface without returning to the application
   shell, and the incoming packer's first scan is attributed to them,
 - And verification progress on an open parcel survives the switch.
+- *(#3653: the in-bench two-step handover is retired. The switch is now sign out → sign in, and D13
+  is stated on the bench's sign-in overlay. See ADR-071 § Amendment (#3653) for what that gives up.)*
 
 **A3 — walking away does not leave my identity on the bench**
 - Given I stop interacting,

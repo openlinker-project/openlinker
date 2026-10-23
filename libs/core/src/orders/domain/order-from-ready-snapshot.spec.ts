@@ -58,6 +58,23 @@ describe('orderFromReadySnapshot', () => {
     expect(OrderSnapshotUnavailableError).toBeInstanceOf(Function);
   });
 
+  describe('payment method (#3294)', () => {
+    it('should carry a recognised paymentMethod from the snapshot onto the order', () => {
+      const order = orderFromReadySnapshot(
+        makeRecord({ ...READY_SNAPSHOT, paymentMethod: 'bank_transfer' }),
+      );
+      expect(order.paymentMethod).toBe('bank_transfer');
+    });
+
+    it('should leave it absent when the snapshot has none or an unrecognised value', () => {
+      expect(orderFromReadySnapshot(makeRecord(READY_SNAPSHOT)).paymentMethod).toBeUndefined();
+      expect(
+        orderFromReadySnapshot(makeRecord({ ...READY_SNAPSHOT, paymentMethod: 'barter' }))
+          .paymentMethod,
+      ).toBeUndefined();
+    });
+  });
+
   it('round-trips a ready snapshot, rehydrating ISO date strings to Date', () => {
     const order = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT));
 
@@ -292,5 +309,53 @@ describe('orderFromReadySnapshot', () => {
     });
 
     expect(orderFromReadySnapshot(record).items[0].taxSource).toBe('backfill');
+  });
+
+  it('rehydrates shipping and pickupPoint from the snapshot when present (#3340/#2729)', () => {
+    const record = makeRecord({
+      ...READY_SNAPSHOT,
+      shipping: { methodId: 'courier-1', methodName: 'DPD' },
+      pickupPoint: { id: 'POZ08A', name: 'Poznań, ul. Testowa', pointType: 'apm' },
+    });
+
+    const order = orderFromReadySnapshot(record);
+
+    expect(order.shipping).toEqual({ methodId: 'courier-1', methodName: 'DPD' });
+    expect(order.pickupPoint).toEqual({
+      id: 'POZ08A',
+      name: 'Poznań, ul. Testowa',
+      pointType: 'apm',
+    });
+  });
+
+  it('leaves shipping and pickupPoint undefined when the snapshot carries neither', () => {
+    const order = orderFromReadySnapshot(makeRecord(READY_SNAPSHOT));
+
+    expect(order.shipping).toBeUndefined();
+    expect(order.pickupPoint).toBeUndefined();
+  });
+
+  it('drops a malformed shipping/pickupPoint rather than throwing', () => {
+    const record = makeRecord({
+      ...READY_SNAPSHOT,
+      shipping: { methodName: 'DPD' }, // no methodId
+      pickupPoint: { name: 'no id' },
+    });
+
+    const order = orderFromReadySnapshot(record);
+
+    expect(order.shipping).toBeUndefined();
+    expect(order.pickupPoint).toBeUndefined();
+  });
+
+  it('drops a pointType outside the union rather than passing it through', () => {
+    const record = makeRecord({
+      ...READY_SNAPSHOT,
+      pickupPoint: { id: 'POZ08A', pointType: 'bogus' },
+    });
+
+    const order = orderFromReadySnapshot(record);
+
+    expect(order.pickupPoint).toEqual({ id: 'POZ08A' });
   });
 });

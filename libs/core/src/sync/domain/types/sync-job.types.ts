@@ -127,6 +127,28 @@ export const JobTypeValues = [
 
   // Shipping (core-owned; capability-scoped, executed by worker)
   'shipping.pickupPoint.refreshFrequent',
+  /**
+   * Tell the order's participants a parcel shipped, without waiting for a
+   * human to press a button (#3365).
+   *
+   * Enqueued by `ShipmentDispatchService` the moment a label is bought, on
+   * BOTH the operator's own dispatch and the automatic one - `dispatch()` is
+   * the single site both reach. Before it, `notifyDispatched` was reachable
+   * only from `POST /shipments/:id/notify-dispatched`, so a marketplace
+   * learned a tracking number only if somebody clicked, and an
+   * auto-dispatched label told nobody at all.
+   *
+   * A JOB rather than an inline call for three reasons: a bulk dispatch of N
+   * parcels would otherwise make N sequential marketplace calls inside one
+   * HTTP request; a marketplace that is momentarily down deserves the retry
+   * ladder rather than a lost notification; and the label purchase must not
+   * fail because a writeback did.
+   *
+   * `realtime` (ADR-050 cost-of-starvation): a buyer is waiting to be told
+   * their parcel is on its way, and the marketplace's own dispatch clock is
+   * running.
+   */
+  'shipping.shipment.notifyDispatched',
 
   // Invoicing (core-owned; capability-scoped, executed by worker)
   // KSeF regulatory-status reconciliation sweep (#1121).
@@ -145,6 +167,43 @@ export const JobTypeValues = [
 
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
+  // Recurring price propagation (#3143/#3144, ADR-072). One accepted/automatic
+  // price change per job — enqueued either directly by the detection service
+  // (an `automatic`-mode connection/source pair) or by the price-changes API's
+  // accept/bulk-accept endpoints (#3145). The `pricing.` namespace (not
+  // `marketplace.`) matches `inventory.propagateToMarketplaces`: this is a
+  // core-owned orchestration job that may target a shop OR a marketplace
+  // destination, not a marketplace-specific one.
+  //
+  // MERGE-ORDER NOTE (#3159 review, BLOCKING): this entry has no registered
+  // handler/lane until #3144's stack registers one, so `assertFullLaneCoverage()`
+  // throws at worker boot on #3143's branch alone — the whole `apps/worker`
+  // integration suite is red until #3144 merges alongside or immediately
+  // after it.
+  //
+  // The entry cannot be relocated to #3144 to make #3143 boot-valid in
+  // isolation: `PriceChangeDetectionService.enqueueAutomaticApply` (#3143,
+  // `libs/core/src/listings`) already enqueues under this literal, and
+  // `JobType` is the closed union derived from `JobTypeValues` — removing
+  // the member here would fail #3143's own type-check at that call site,
+  // not merely its boot assertion. Widening that one call site with an `as
+  // JobType` cast to route around the type error would be worse than the
+  // red CI it replaces: an un-declared job type is invisible to
+  // `assertFullLaneCoverage()` (there is nothing in the array to assert
+  // over) and to every lane's `jobType = ANY(<lane membership>)` claim
+  // query, so the enqueued row would sit `queued` forever with no lane ever
+  // claiming it and no boot-time signal that anything is wrong — the exact
+  // silent-strand failure mode this guard exists to convert into a loud one
+  // (see § Sync Manager in `docs/architecture-overview.md`). So the guard
+  // firing here is correct, not a defect: the producer (this array member +
+  // its enqueue call) and the consumer (the registered handler) are split
+  // across two PRs by design, and `assertFullLaneCoverage()` cannot know
+  // the consumer is coming in a sibling branch. Do not weaken the guard, do
+  // not add a stub handler in #3143 (it would conflict with #3144's real
+  // registration), and do not cast around the type system to silence it —
+  // merge #3143 and #3144 together, or #3144 immediately after #3143, so
+  // the pair is never separated at `main`.
+  'pricing.propagateToMarketplaces',
   // Connection-provenance backfill (#2317, ADR-058 ladder step (ii)). Stamps the
   // `'legacy'` sentinel onto pre-#2314 `inventory_items` rows, one bounded page
   // per tick, until none remain. Deliberately NOT named `master.*`: it makes zero
@@ -162,6 +221,14 @@ export const JobTypeValues = [
   // stock drop puts at risk, as persisted episodes. Reads OL's own tables and
   // repairs nothing; no platform call.
   'inventory.reservations.shortfall',
+  // #3453 — the routed-order SALE DECREMENT. With the OMS on, a routed order is
+  // never created in the product master, so OpenLinker lowers each line's stock
+  // in the master that owns it. One job per routed work; the per-line
+  // at-most-once guarantee is a Postgres claim, not this job's dedupe key.
+  // Unlike its `inventory.*` neighbours it DOES call a platform
+  // (`InventoryMasterPort.adjustInventory`). `connectionId` is the order's
+  // source connection, never a synthetic id (#2609).
+  'inventory.saleDecrement',
   // Repairs the `order_records.activeHoldReason` cache against `order_holds`
   // (#2340). Deliberately NOT named `marketplace.*`: it makes zero platform
   // calls and reads only OL's own tables - `inventory.provenance.backfill` is
@@ -187,6 +254,17 @@ export const JobTypeValues = [
   // synthetic id, which is #2609's defect exactly: a shared scope collapses
   // per-scope lane accounting for the whole installation.
   'fulfillment.work.dispatch',
+
+  // Auto-dispatch (#3340, closing #2729). Enqueued by the dispatch handler
+  // above, ONLY when the accepting holder's connection has opted in
+  // (`Connection.config.autoDispatch.enabled`, off by default), the moment
+  // the executor ACCEPTS the work. Buys the shipping label so a packer only
+  // has to print and pack — an outbound carrier call with its own failure
+  // modes and its own retry ladder, which is exactly why it is a separate job
+  // rather than bought inline inside the handshake. `connectionId` is the
+  // SAME executor connection the sibling job above uses, for the identical
+  // #2609 reason.
+  'fulfillment.work.autoDispatch',
 
   // Routing commit (#2395, `W3a-6`, ADR-054 R1). Decides where ONE order is
   // fulfilled from and commits the decision plus its work rows atomically.
@@ -214,12 +292,59 @@ export const JobTypeValues = [
   // nil-UUID system connection id, like its timeout-sweep sibling.
   'fulfillment.work.relaySweep',
 
+  // The reroute sweep (#3485, epic #3460). With the OMS on, an order the router
+  // refused (a line out of stock) or failed to route is HELD in OpenLinker
+  // rather than created in every product master; this pass re-enters routing
+  // for those orders by enqueueing `fulfillment.work.route`, so they route once
+  // stock arrives. Global scope under the nil-UUID system connection id, like
+  // its timeout- and relay-sweep siblings.
+  'fulfillment.work.rerouteSweep',
+
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is
   // filed under is the scope's own connection when the operator narrowed to
   // one, and otherwise diagnostic only — `SyncJob.connectionId` is
   // non-nullable, pending #1943.
   'analytics.currency.recalculate',
+
+  // Orders CSV/XLSX export (#3534, D35, mockup M5). One-shot: generates the
+  // file from the requesting operator's filters/scope/columns and writes it
+  // onto its own `order_exports` row. `bulk` lane (ADR-050) — a background
+  // export a human is waiting on, but a query-then-write job rather than a
+  // buyer-facing write, the same cost-of-starvation reasoning the catalogue
+  // sweeps use. `SyncJob.connectionId` is the system nil UUID, like
+  // `analytics.currency.recalculate` above, since an export spans every
+  // connection the operator's filters admit.
+  'orders.export',
+
+  // Subiekt bridge reachability sweep (#3358). Before this, an unreachable
+  // bridge produced no operator-facing signal at all — no alerting
+  // infrastructure exists anywhere in the product, and Subiekt registered no
+  // `AuthFailureClassifierPort`, so a bad token OR a dead bridge process
+  // both silently accumulated failed sync_jobs with nothing pointing at
+  // them. Periodically re-probes the connection's own `ConnectionTesterPort`
+  // (the same seam the "Test connection" button uses) and error-logs a
+  // structured, greppable token on failure. Scoped narrowly to what already
+  // exists in the product — no external alert channel is wired here.
+  //
+  // #3365 review: this is the ONLY vendor-named member of this union, and that
+  // is a genuine deviation rather than an oversight. It is KEPT, and the reason
+  // is the cost of changing it rather than a defence of the name.
+  //
+  // A job type is a PERSISTED value. Renaming it strands every queued row
+  // carrying the old string: the boot coverage assertion ranges over this union,
+  // so a type that leaves it has no registered handler and its rows are killed
+  // rather than run. The repo's own answer to that (#2594's split) is to
+  // register BOTH names against one handler - which trades a vendor name for a
+  // permanent second union member plus an alias nobody will ever remove, for a
+  // job whose behaviour does not change either way.
+  //
+  // What a neutral name would genuinely buy is reuse by the next integration
+  // that runs against a local bridge (Subiekt nexo, or any future on-premise
+  // agent). When one of those actually needs this sweep, that is the moment to
+  // mint `connection.reachability.sweep` and register this one as its alias -
+  // with a real second consumer to justify the alias, rather than for tidiness.
+  'subiekt.bridge.reachabilitySweep',
 ] as const;
 
 /**
@@ -245,6 +370,25 @@ export const JobStatusValues = ['queued', 'running', 'succeeded', 'dead'] as con
  * without runtime overhead.
  */
 export type JobStatus = (typeof JobStatusValues)[number];
+
+/**
+ * Sync Job Retention Status Values (#2946)
+ *
+ * A POSITIVE two-value whitelist, never an exclusion list — the
+ * ADR-049/#2604 outbox-retention shape applied to `sync_jobs`. A retention
+ * delete may target ONLY `succeeded` or `dead` rows; `queued`/`running` must
+ * never be reachable through this vocabulary, so a future `JobStatus` member
+ * cannot silently fall through into a prune the way it could if this were
+ * `Exclude<JobStatus, 'queued' | 'running'>`.
+ */
+export const SyncJobRetentionStatusValues = ['succeeded', 'dead'] as const;
+
+/**
+ * Sync Job Retention Status
+ *
+ * Derived union type from SyncJobRetentionStatusValues.
+ */
+export type SyncJobRetentionStatus = (typeof SyncJobRetentionStatusValues)[number];
 
 /**
  * Job Outcome Values
@@ -279,7 +423,28 @@ export type JobOutcome = (typeof JobOutcomeValues)[number];
  *   (#1599) — `master.product.syncByExternalId` returns `business_failure`
  *   with this reason rather than retrying a permanent condition.
  */
-export const JobOutcomeReasonValues = ['master_deleted'] as const;
+export const JobOutcomeReasonValues = [
+  'master_deleted',
+  // Auto-dispatch (#3415). Every one of these is a SETTLED refusal the handler
+  // already named in a log line and in its own header table — the codes exist
+  // so the Jobs surface can say which, rather than rendering six different
+  // terminal states as one undifferentiated "business failure" an operator has
+  // to open the log to tell apart. `already-has-label` is deliberately absent:
+  // it answers `ok`, because buying at most once is the guard working.
+  'auto_dispatch_payload_invalid',
+  'auto_dispatch_not_enabled',
+  'auto_dispatch_no_weight',
+  'auto_dispatch_no_dimensions',
+  'auto_dispatch_no_address',
+  'auto_dispatch_no_delivery_method',
+  'auto_dispatch_work_not_eligible',
+  // #3340 follow-up: a split order's second (and later) work cannot be
+  // attributed a shipment `findActiveByOrderId` resolves by ORDER, not by
+  // work — see `FulfillmentWorkDispatchConflictException`. Terminal: the
+  // ambiguity is a persisted-state fact about the order, and blindly
+  // retrying the same job cannot resolve it.
+  'auto_dispatch_shipment_claimed_by_sibling_work',
+] as const;
 
 /**
  * Job Outcome Reason
@@ -302,6 +467,21 @@ export type JobOutcomeReason = (typeof JobOutcomeReasonValues)[number];
 export interface SyncJobHandlerResult {
   outcome: JobOutcome;
   outcomeReason?: JobOutcomeReason;
+}
+
+/**
+ * Sync Job Dead Failure (#3505, G01-2)
+ *
+ * What the runner hands `SyncJobHandler.onDead` once a job has been marked
+ * `dead`. `nonRetryable` separates "a classifier called the error terminal"
+ * from "the retry ladder ran out" — a handler may word its own record
+ * differently for the two, but must treat both as final.
+ */
+export interface SyncJobDeadFailure {
+  /** The error message the runner persisted on the job. */
+  message: string;
+  /** `true` when the job died on a non-retryable error; `false` when attempts ran out. */
+  nonRetryable: boolean;
 }
 
 /**

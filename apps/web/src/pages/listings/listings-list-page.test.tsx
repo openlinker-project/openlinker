@@ -980,10 +980,14 @@ describe('ListingsListPage', () => {
         },
       });
 
-      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-      expect(screen.getAllByRole('tab')).toHaveLength(5);
-      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+      // Scoped to the lifecycle tablist (#3164 review) — the page also
+      // renders a second, top-level "All listings"/"Price changes" `Tabs`
+      // (#3147), so an unscoped query now finds 7, not 5.
+      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
+      expect(within(lifecycleTablist).getAllByRole('tab')).toHaveLength(5);
+      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
 
     it("keeps every tab's already-known count visible - no skeleton reappears - while a switched-to tab is still loading its own rows", async () => {
@@ -999,7 +1003,7 @@ describe('ListingsListPage', () => {
         .mockResolvedValue({ total: 13, lifecycleCounts: { Active: 7, Invalid: 3, Draft: 2, Ended: 1, Unsynced: 0 } });
       const mockApi = createListingsMockApiClient({ listings: { listRows, count } });
 
-      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
       expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
@@ -1011,7 +1015,8 @@ describe('ListingsListPage', () => {
       // keeps the four unchanged badges on screen, structurally, where a
       // hand-rolled ref and fingerprint used to.
       expect(count).toHaveBeenCalledTimes(1);
-      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
+      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
       expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Draft 2' })).toBeInTheDocument();
@@ -1034,7 +1039,7 @@ describe('ListingsListPage', () => {
         .mockReturnValueOnce(new Promise(() => {}));
       const mockApi = createListingsMockApiClient({ listings: { listRows, count } });
 
-      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
       expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
@@ -1053,7 +1058,8 @@ describe('ListingsListPage', () => {
       // through to the skeleton, the honest state while the real count for
       // the new search term is unknown.
       expect(screen.queryByRole('tab', { name: 'Active 7' })).not.toBeInTheDocument();
-      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
+      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
 
     it("separates a tab's label from its count badge in the accessible name", async () => {
@@ -1278,7 +1284,7 @@ describe('ListingsListPage', () => {
     const shortPage = { items: sampleMappings.items.slice(0, 1), limit: 20, offset: 0 };
 
     it('renders its rows while both aggregates are still in flight', async () => {
-      const { container } = renderWithProviders(<ListingsListPage />, {
+      renderWithProviders(<ListingsListPage />, {
         apiClient: createListingsMockApiClient({
           listings: {
             listRows: vi.fn().mockResolvedValue(fullPage),
@@ -1290,11 +1296,12 @@ describe('ListingsListPage', () => {
       expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
       // The tab bar is unknown, not empty: five skeletons, never five zeroes.
-      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
+      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
+      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(5);
     });
 
     it('renders neither placeholder as 0 when the count FAILS on a FULL page', async () => {
-      const { container } = renderWithProviders(<ListingsListPage />, {
+      renderWithProviders(<ListingsListPage />, {
         apiClient: createListingsMockApiClient({
           listings: {
             listRows: vi.fn().mockResolvedValue(fullPage),
@@ -1307,7 +1314,8 @@ describe('ListingsListPage', () => {
       expect(await screen.findByText(/count unavailable/i)).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
       await screen.findByText('Listing counts unavailable.');
-      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
+      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
     });
 
     it('STOPS loading the tab bar when the count fails and the page implies its own total', async () => {
@@ -1319,7 +1327,7 @@ describe('ListingsListPage', () => {
       // else. `retry` is false and nothing re-drives the count, so a skeleton
       // would spin for the life of the page: a positive claim that content is
       // arriving when nothing is coming.
-      const { container } = renderWithProviders(<ListingsListPage />, {
+      renderWithProviders(<ListingsListPage />, {
         apiClient: createListingsMockApiClient({
           listings: {
             listRows: vi.fn().mockResolvedValue(shortPage),
@@ -1334,7 +1342,8 @@ describe('ListingsListPage', () => {
       // a short page makes `state` `'known'`, and a tab bar reading `state`
       // therefore renders skeletons here while passing every other test.
       await screen.findByText('Listing counts unavailable.');
-      expect(container.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
+      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
     });
 
     it('SUPPRESSES the total while the rows still belong to the previous tab', async () => {

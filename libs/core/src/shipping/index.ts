@@ -32,8 +32,18 @@ export type {
   TerminalShipmentStatus,
 } from './domain/types/shipment-status.types';
 
+export type { ShipmentCancellationResult } from './domain/types/shipment-cancellation.types';
 export { ShipmentDirectionValues } from './domain/types/shipment-direction.types';
 export type { ShipmentDirection } from './domain/types/shipment-direction.types';
+
+// #3365 review - the per-connection opt-in for notifying the marketplace when a
+// label is bought. Exported so the API's connection-config validator and the FE
+// form can both name the key rather than spelling the string twice.
+export {
+  NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY,
+  SHIPPING_CONFIG_KEY,
+  readNotifyOnLabelPurchase,
+} from './domain/types/dispatch-notification.types';
 // #2073 — the waybill-relay failure vocabulary and its two pure rules. The
 // threshold constants are deliberately NOT exported: only
 // `resolveWaybillRelayAlertThreshold` may produce the number a caller compares
@@ -49,6 +59,13 @@ export type {
   WaybillRelayFailure,
   RecordWaybillRelayFailureInput,
 } from './domain/types/waybill-relay-failure.types';
+// #3506 (G02-7) — the delivered-relay bookkeeping `Shipment.deliveredRelay`
+// carries. The re-drive bounds stay private to the status-sync service.
+export { NO_DELIVERED_RELAY_STATE } from './domain/types/delivered-relay.types';
+export type {
+  DeliveredRelayState,
+  FindDeliveredRelayPendingOptions,
+} from './domain/types/delivered-relay.types';
 
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
@@ -90,6 +107,28 @@ export type {
 export type { ShipmentCod } from './domain/types/shipment-cod.types';
 export type { ShipmentInsuredValue } from './domain/types/shipment-insured-value.types';
 
+// Auto-dispatch parcel derivation (#3340, closing #2729) — pure functions the
+// `fulfillment.work.autoDispatch` worker handler composes with a variant
+// weight lookup and an order read. Exported at the barrel because a host app
+// cannot reach a deep `libs/core/src/shipping/domain/*` path (#591).
+export {
+  AutoDispatchRefusalReasonValues,
+  resolveAutoDispatchDeliveryIntent,
+  resolveAutoDispatchParcel,
+  resolveAutoDispatchRecipient,
+  resolveOrderDispatchTarget,
+  mergeAutoDispatchParcelOptions,
+  findMissingParcelRequirement,
+} from './domain/auto-dispatch';
+export type {
+  AutoDispatchRefusalReason,
+  AutoDispatchWorkLine,
+  OrderDispatchTarget,
+  AutoDispatchParcelProfile,
+  AutoDispatchParcelOptions,
+} from './domain/auto-dispatch';
+export { resolveCarrierMethod } from './domain/delivery-intent-resolution';
+
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
 export type { KnownProviderRejectionCode } from './domain/types/shipping-provider-rejection.types';
@@ -123,6 +162,11 @@ export type { PickupPointQueryStatsPort } from './domain/ports/pickup-point-quer
 // engineering-standards §"Port sub-capabilities").
 export type { ShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
 export { isShipmentCanceller } from './domain/ports/capabilities/shipment-canceller.capability';
+export type {
+  ParcelRequirements,
+  ParcelRequirementsReader,
+} from './domain/ports/capabilities/parcel-requirements-reader.capability';
+export { isParcelRequirementsReader } from './domain/ports/capabilities/parcel-requirements-reader.capability';
 export type { PickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export { isPickupPointFinder } from './domain/ports/capabilities/pickup-point-finder.capability';
 export type { LabelDocumentReader } from './domain/ports/capabilities/label-document-reader.capability';
@@ -145,6 +189,7 @@ export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-foun
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
 export { OrderNotDispatchablePaymentStatusException } from './domain/exceptions/order-not-dispatchable-payment-status.exception';
 export { OrderNotDispatchableHeldException } from './domain/exceptions/order-not-dispatchable-held.exception';
+export { FulfillmentWorkDispatchConflictException } from './domain/exceptions/fulfillment-work-dispatch-conflict.exception';
 export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';
@@ -229,6 +274,16 @@ export type {
   FulfillmentStatusSyncResult,
 } from './application/types/fulfillment-status-sync.types';
 export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
+
+// Application — shipment-first dispatch routing for a fulfilment work (#3506,
+// G02-4). Interface + outcome types only; the service is injected via
+// FULFILLMENT_WORK_DISPATCH_ROUTER_SERVICE_TOKEN by the API's parcel-closure
+// notifier and the worker's `fulfillment.work.relaySweep` handler.
+export type { IFulfillmentWorkDispatchRouterService } from './application/interfaces/fulfillment-work-dispatch-router.service.interface';
+export type {
+  WorkDispatchRouteOutcome,
+  WorkDispatchRouteStatus,
+} from './application/types/fulfillment-work-dispatch-router.types';
 
 // Domain + application — line-grain shipment read model (#2727,
 // `DECISION-oms-fulfilment-grain` option C). Contracts and the pure capacity

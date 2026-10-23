@@ -466,6 +466,26 @@ export interface MarketplaceShipmentSyncByExternalIdPayloadV1 {
 }
 
 /**
+ * shipping.shipment.notifyDispatched (#3365)
+ *
+ * Tell the order's source and destinations that a parcel shipped, enqueued by
+ * `ShipmentDispatchService` the moment a label is bought.
+ *
+ * The payload carries an INTERNAL shipment id and nothing else - deliberately
+ * no status, no waybill and no carrier. `notifyDispatched` re-reads the row
+ * and decides from persisted state, which is what makes the job idempotent
+ * against the operator pressing "Mark dispatched" at the same moment: the
+ * service's own `status === 'generated'` gate lets exactly one of them
+ * through. A payload carrying the facts would let a stale retry assert a
+ * waybill that has since changed.
+ */
+export interface ShippingShipmentNotifyDispatchedPayloadV1 {
+  schemaVersion: 1;
+  /** Internal Shipment id (`ol_shipment_*`) that just reached `generated`. */
+  shipmentId: string;
+}
+
+/**
  * marketplace.fulfillment.statusSync (#834)
  *
  * Branch-1 (OMP-fulfilled) shipment status read-back. The handler pages OL

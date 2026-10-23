@@ -37,6 +37,8 @@ function makeMocks() {
     updateAnalyticsConsent: jest.fn(),
     deleteAdminAtomically: jest.fn(),
     findStaleViewerAccounts: jest.fn(),
+    updatePackStationLabel: jest.fn(),
+    touchLastActive: jest.fn(),
   };
   const tokenRepo: jest.Mocked<PasswordResetTokenRepositoryPort> = {
     save: jest.fn(),
@@ -162,6 +164,9 @@ describe('PasswordResetService', () => {
       const [userId, hash] = userRepo.updatePasswordHash.mock.calls[0];
       expect(userId).toBe('u-1');
       expect(await bcrypt.compare('longenough', hash)).toBe(true);
+      expect(userRepo.updatePasswordHash.mock.calls[0][2]).toEqual({
+        mustChangePassword: 'clear',
+      });
       expect(tokenRepo.markUsed).toHaveBeenCalledWith('t-1', expect.any(Date));
     });
   });

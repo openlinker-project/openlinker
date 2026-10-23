@@ -13,6 +13,7 @@
 import type {
   GetInvoiceByOrderQuery,
   InvoiceRecordFilters,
+  InvoiceRecordKeysetCursor,
   InvoiceRecordPagination,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
@@ -22,6 +23,7 @@ import type {
 import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
+import type { InvoiceRecordKeysetPage } from '../../domain/ports/invoice-record-repository.port';
 
 export interface IInvoiceService {
   /**
@@ -202,6 +204,21 @@ export interface IInvoiceService {
   listInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]>;
 
   /**
+   * Recent `InvoiceRecord`s for ONE connection, newest-first, capped at
+   * `limit` (#3179). Projection read - NEVER queries the provider/adapter.
+   * Backs the connection health/diagnostics read alongside
+   * `IFiscalRegistrationService.listRecentByConnectionId`: an issued document
+   * is real activity on that connection even when the `sync_jobs` row that
+   * dispatched it has aged out of that read's own recency window.
+   *
+   * Deliberately NOT {@link listInvoices} with a `{ connectionId }` filter -
+   * see the port docblock for why a discarded `COUNT` is the thing being
+   * avoided, and for the selection-clock caveat the caller inherits. Returns
+   * `[]` for a connection with no records.
+   */
+  listRecentByConnectionId(connectionId: string, limit: number): Promise<InvoiceRecord[]>;
+
+  /**
    * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered
    * + paginated. The cross-context list seam the HTTP layer calls — apps/** reach
    * the invoice projection through this service interface, NEVER the repository
@@ -213,6 +230,20 @@ export interface IInvoiceService {
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,
   ): Promise<PaginatedInvoiceRecords>;
+
+  /**
+   * Cross-order operational list (#3306) - the SAME filter surface as
+   * {@link listInvoices}, keyset-paginated instead of `OFFSET`. Backs the
+   * merged `GET /sales-documents` read alongside
+   * `IFiscalRegistrationService.listRegistrationsKeyset` - see
+   * `libs/core/src/orders/application/services/sales-document-view.service.ts`
+   * for the merge. Delegates to `InvoiceRecordRepositoryPort.findManyKeyset`.
+   * NEVER queries the provider/adapter — this is a projection read.
+   */
+  listInvoicesKeyset(
+    filter: InvoiceRecordFilters,
+    opts: { limit: number; cursor?: InvoiceRecordKeysetCursor },
+  ): Promise<InvoiceRecordKeysetPage>;
 
   /**
    * Persist a refreshed regulatory-clearance outcome onto an existing record

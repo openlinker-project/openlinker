@@ -8,6 +8,7 @@ import {
   DestinationRoutingAttentionReasonValues,
   DestinationRoutingBlockReasonValues,
   buildDestinationRoutingDetail,
+  deriveDestinationRoutingBlock,
   isDestinationRoutingBlockReason,
 } from './destination-routing-block.types';
 
@@ -88,5 +89,75 @@ describe('destination-routing block vocabulary', () => {
 
       expect(detail).toBe('1 unresolved destination(s): conn-a');
     });
+  });
+});
+
+describe('deriveDestinationRoutingBlock', () => {
+  it('should return null when no routing filter was supplied', () => {
+    // Every order on every install without a router: the unfiltered fan-out.
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: undefined,
+        resolvedCount: 3,
+        unresolvedRequestedIds: undefined,
+      })
+    ).toBeNull();
+  });
+
+  it('should report routed-to-no-destination when the router selected nobody', () => {
+    // `[]` is a decision, and must stay distinct from `undefined` above.
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: [],
+        resolvedCount: 0,
+        unresolvedRequestedIds: [],
+      })
+    ).toEqual({ reason: 'routed-to-no-destination', detail: null });
+  });
+
+  it('should report routed-to-source-only when nothing resolved and nothing is unreachable', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: ['source-conn'],
+        resolvedCount: 0,
+        unresolvedRequestedIds: [],
+      })
+    ).toEqual({ reason: 'routed-to-source-only', detail: null });
+  });
+
+  it('should report routed-destinations-unavailable with detail when nothing resolved', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: ['a', 'b'],
+        resolvedCount: 0,
+        unresolvedRequestedIds: ['a', 'b'],
+      })
+    ).toEqual({
+      reason: 'routed-destinations-unavailable',
+      detail: buildDestinationRoutingDetail(['a', 'b']),
+    });
+  });
+
+  it('should report routed-destinations-partially-unavailable when only some resolved', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: ['a', 'b'],
+        resolvedCount: 1,
+        unresolvedRequestedIds: ['a'],
+      })
+    ).toEqual({
+      reason: 'routed-destinations-partially-unavailable',
+      detail: buildDestinationRoutingDetail(['a']),
+    });
+  });
+
+  it('should return null when every requested destination resolved', () => {
+    expect(
+      deriveDestinationRoutingBlock({
+        requestedDestinationIds: ['a', 'b'],
+        resolvedCount: 2,
+        unresolvedRequestedIds: [],
+      })
+    ).toBeNull();
   });
 });

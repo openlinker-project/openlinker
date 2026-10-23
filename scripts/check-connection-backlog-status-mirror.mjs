@@ -39,8 +39,46 @@ const WEB_FILE = 'apps/web/src/features/connections/api/connections.types.ts';
 const WEB_NAME = 'CONNECTION_BACKLOG_STATUS_VALUES';
 
 /**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for the array's real closing
+ * bracket. Length-preserving: any index found in the blanked string is a valid
+ * index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * Extract the string literals of `export const <name> = [ ... ] as const;`.
  * Comments inside the array are stripped before the literals are read.
+ *
+ * The closing bracket is located on a comment-BLANKED copy of the source, or a
+ * `]` written inside a comment between the real brackets would be mistaken for
+ * the array's own close and truncate everything after it (#3002).
  */
 export function parseStringArray(source, name) {
   const start = source.indexOf(`const ${name}`);
@@ -48,8 +86,11 @@ export function parseStringArray(source, name) {
     return null;
   }
   const open = source.indexOf('[', start);
-  const close = source.indexOf(']', open);
-  if (open === -1 || close === -1) {
+  if (open === -1) {
+    return null;
+  }
+  const close = blankComments(source).indexOf(']', open);
+  if (close === -1) {
     return null;
   }
   const body = source
@@ -79,6 +120,39 @@ function selfCheck() {
   if (core === null || core.join(',') !== 'a,b') {
     throw new Error(`self-check: parser returned ${JSON.stringify(core)}`);
   }
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array. Red-first against the pre-fix `indexOf(']', open)` on raw
+  // content: that returned only `['a']` here, since the comment's own `]`
+  // closed the search before `'b'` was ever reached.
+  const withBracketInLineComment = parseStringArray(
+    "export const A = [\n  'a', // e.g. destinationConnectionIds: []\n  'b',\n] as const;",
+    'A'
+  );
+  if (withBracketInLineComment === null || withBracketInLineComment.join(',') !== 'a,b') {
+    throw new Error(
+      `self-check: a "]" inside a line comment truncated the array, got ${JSON.stringify(withBracketInLineComment)}`
+    );
+  }
+
+  const withBracketInBlockComment = parseStringArray(
+    "export const A = [\n  'a', /* e.g. destinationConnectionIds: [] */\n  'b',\n] as const;",
+    'A'
+  );
+  if (withBracketInBlockComment === null || withBracketInBlockComment.join(',') !== 'a,b') {
+    throw new Error(
+      `self-check: a "]" inside a block comment truncated the array, got ${JSON.stringify(withBracketInBlockComment)}`
+    );
+  }
+
+  // A declaration whose every entry is commented out parses to zero values -
+  // that must be treated as fatal by the caller (see `main()`), never as a
+  // legitimately empty vocabulary.
+  const zeroValues = parseStringArray("export const A = [\n  // 'a',\n] as const;", 'A');
+  if (zeroValues === null || zeroValues.length !== 0) {
+    throw new Error(`self-check: expected zero parsed values, got ${JSON.stringify(zeroValues)}`);
+  }
+
   if (diff(['a', 'b'], ['a', 'b']) !== null) {
     throw new Error('self-check: identical arrays reported as drifted');
   }
@@ -103,12 +177,24 @@ async function main() {
   const coreValues = parseStringArray(coreSource, CORE_NAME);
   const webValues = parseStringArray(webSource, WEB_NAME);
 
-  if (coreValues === null || coreValues.length === 0) {
-    process.stderr.write(`${CORE_FILE}: could not read ${CORE_NAME}\n`);
+  if (coreValues === null) {
+    process.stderr.write(`${CORE_FILE}: could not find '${CORE_NAME}'\n`);
     process.exit(1);
   }
-  if (webValues === null || webValues.length === 0) {
-    process.stderr.write(`${WEB_FILE}: could not read ${WEB_NAME}\n`);
+  if (coreValues.length === 0) {
+    process.stderr.write(
+      `${CORE_FILE}: '${CORE_NAME}' parsed to ZERO values - the PARSER is broken, not the union legitimately empty\n`
+    );
+    process.exit(1);
+  }
+  if (webValues === null) {
+    process.stderr.write(`${WEB_FILE}: could not find '${WEB_NAME}'\n`);
+    process.exit(1);
+  }
+  if (webValues.length === 0) {
+    process.stderr.write(
+      `${WEB_FILE}: '${WEB_NAME}' parsed to ZERO values - the PARSER is broken, not the union legitimately empty\n`
+    );
     process.exit(1);
   }
 

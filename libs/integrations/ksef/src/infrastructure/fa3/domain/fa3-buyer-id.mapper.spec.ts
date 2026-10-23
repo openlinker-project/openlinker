@@ -38,6 +38,46 @@ describe('resolveBuyerIdentity', () => {
     });
   });
 
+  // #3224 — core may not mint a `scheme` (ADR-073 decision 1), so an untagged
+  // identifier reaches this mapper and it has to place one of three mutually
+  // exclusive FA(3) elements.
+  it('should resolve an UNTAGGED 10-digit value to a domestic NIP identity (#3224)', () => {
+    const taxId: TaxIdentifier = { value: '5213796333' };
+    expect(resolveBuyerIdentity(taxId)).toEqual({ kind: 'nip', nip: '5213796333' });
+  });
+
+  it('should trim an untagged value before resolving it (#3224)', () => {
+    expect(resolveBuyerIdentity({ value: '  5213796333  ' })).toEqual({
+      kind: 'nip',
+      nip: '5213796333',
+    });
+  });
+
+  // <KodUE>+<NrVatUE> and <KodKraju>+<NrID> are structurally identical, so the
+  // scheme is the ONLY thing that tells them apart. Guessing would file the
+  // buyer under the wrong element of a document sent to a tax authority, so an
+  // untagged non-NIP is refused rather than placed by a coin flip.
+  it('should REFUSE an untagged foreign identifier rather than guess its element (#3224)', () => {
+    expect(() => resolveBuyerIdentity({ value: 'DE123456789' })).toThrow(
+      InvalidBuyerIdentificationException,
+    );
+  });
+
+  it('should refuse an untagged value that is neither a NIP nor country-prefixed (#3224)', () => {
+    expect(() => resolveBuyerIdentity({ value: '123' })).toThrow(
+      InvalidBuyerIdentificationException,
+    );
+  });
+
+  // A caller that knows the answer never reaches the inference at all.
+  it('should keep honouring an explicit scheme on a value the inference would refuse (#3224)', () => {
+    expect(resolveBuyerIdentity({ scheme: 'eu-vat', value: 'DE123456789' })).toEqual({
+      kind: 'vat',
+      countryCode: 'DE',
+      vatNumber: '123456789',
+    });
+  });
+
   it('should throw on a malformed NIP (wrong length)', () => {
     const taxId: TaxIdentifier = { scheme: 'pl-nip', value: '123' };
     expect(() => resolveBuyerIdentity(taxId)).toThrow(InvalidBuyerIdentificationException);

@@ -32,6 +32,11 @@ export interface UpdateAnalyticsConsentRequest {
   analyticsConsent: boolean;
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface OkResponse {
   ok: true;
 }

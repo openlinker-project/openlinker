@@ -53,7 +53,7 @@ function row(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordOrmE
     {
       connectionId: CONNECTION_ID,
       orderId: 'ol_order_int1',
-      providerType: 'subiekt',
+      providerType: 'subiekt-gt',
       documentType: 'invoice',
       status: 'pending',
       idempotencyKey: 'idem-int-1',
@@ -100,7 +100,7 @@ describe('invoice_records persistence (integration)', () => {
     const found = await repo.findOne({
       where: { orderId: 'ol_order_int1', connectionId: CONNECTION_ID },
     });
-    expect(found?.providerType).toBe('subiekt');
+    expect(found?.providerType).toBe('subiekt-gt');
     expect(found?.documentType).toBe('invoice');
     // Migration default applied without the app setting it explicitly.
     expect(found?.regulatoryStatus).toBe('not-applicable');
@@ -187,7 +187,7 @@ describe('invoice_records persistence (integration)', () => {
       expect(winner.status).toBe('issuing');
       expect(winner.leaseExpiresAt).not.toBeNull();
       expect(winner.orderId).toBe(saved.orderId);
-      expect(winner.providerType).toBe('subiekt');
+      expect(winner.providerType).toBe('subiekt-gt');
 
       // The DB row is `issuing` exactly once — no double claim landed.
       const reread = await repo.findOneOrFail({ where: { id: saved.id } });

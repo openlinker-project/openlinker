@@ -40,13 +40,14 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
-import type { OrderStatus } from '@openlinker/core/orders';
+import type { OrderStatus, PaymentStatus } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import {
   deriveOrderState,
   deriveOrderStatusFromState,
+  derivePaymentStatusFromState,
   extractOrderStateLabels,
 } from '../mappers/prestashop-order-state-semantics';
 import type { PrestashopOrderState } from '../../domain/types/prestashop-options.types';
@@ -121,6 +122,24 @@ export class PrestashopOrderStateSnapshot {
   statusOf(stateId: string | number | undefined): OrderStatus | null {
     const state = this.find(stateId);
     return state === null ? null : deriveOrderStatusFromState(state);
+  }
+
+  /**
+   * What this state says about the money, or `null` when the id is not a state
+   * on this shop.
+   *
+   * `null` for the same reason `statusOf` returns it: an id the shop does not
+   * have is not evidence that an order is unpaid, and claiming `'awaiting'`
+   * there would state a fact about somebody's money on the strength of a
+   * missing row.
+   */
+  paymentStatusOf(stateId: string | number | undefined): PaymentStatus | null {
+    const state = this.find(stateId);
+    // `?? null` collapses the derivation's two silences into one, deliberately:
+    // an id the shop does not have and a state that says nothing about money
+    // are both "this shop is not telling us", and no caller acts differently on
+    // the difference.
+    return state === null ? null : (derivePaymentStatusFromState(state) ?? null);
   }
 
   /**

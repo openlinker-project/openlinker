@@ -61,8 +61,8 @@ export class BenchExecutorResolver {
    *
    * A connection that is not `active` is excluded: routing cannot dispatch to
    * it, so listing its work at a bench would show parcels nothing will ever
-   * hand over — and opening one would be opening a parcel that cannot be
-   * handed over either.
+   * complete — and opening one would be opening a parcel that cannot be
+   * completed either.
    *
    * An EMPTY result is the "routing is not switched on" fact (story B3), which
    * both callers report in their own words rather than as an empty list.

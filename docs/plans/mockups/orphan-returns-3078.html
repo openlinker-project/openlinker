@@ -1,0 +1,942 @@
+<title>Orphan Returns</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* ── Tokens — copied verbatim from apps/web/src/index.css so this reads as
+   the real design system, not an approximation. ─────────────────────── */
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80); --text-on-primary: oklch(18% 0.012 50);
+  --text-inverse: oklch(20% 0.012 80);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50); --accent-primary-active: oklch(58% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30); --accent-focus: oklch(62% 0.19 50);
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150); --status-success-strong: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80); --status-warning-strong: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25); --status-error-strong: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245); --status-info-strong: oklch(40% 0.12 245);
+  --status-review: oklch(58% 0.16 290); --status-review-soft: oklch(96% 0.04 290); --status-review-border: oklch(85% 0.08 290); --status-review-fg: oklch(42% 0.14 290);
+  --status-disabled: oklch(55% 0.008 80); --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem; --space-6:2rem;
+  --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / .04), 0 12px 28px rgb(15 18 26 / .10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / .16), 0 8px 16px rgb(15 18 26 / .08);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .6);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+  --shell-topbar-height: 52px;
+  --duration-fast: 120ms; --ease-out: cubic-bezier(.16,1,.3,1);
+  --tracking-tight:-0.012em; --tracking-normal:0; --tracking-wide:0.02em; --tracking-caps:0.08em;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40); --accent-focus: oklch(72% 0.18 50);
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150); --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85); --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245); --status-info-strong: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+    --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / .42), 0 12px 32px rgb(0 0 0 / .42);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .04);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40); --accent-focus: oklch(72% 0.18 50);
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150); --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85); --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245); --status-info-strong: oklch(86% 0.12 245);
+  --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+  --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / .42), 0 12px 32px rgb(0 0 0 / .42);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+* { box-sizing: border-box; }
+html, body { margin:0; min-height:100vh; }
+body { background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.55; }
+h1,h2,h3,p { margin:0; }
+a { color: var(--accent-primary-hover); }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+.mono-text { font-family: var(--font-mono); }
+
+/* ── Real shell chrome (apps/web/src/index.css:1130-1660, apps/web/src/app/app-shell.tsx) ── */
+.shell { min-height:100vh; background:var(--bg-canvas); display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto 1fr; grid-template-areas:'main'; }
+.shell-sidebar { display:none; }
+@media (min-width:1024px) {
+  .shell { grid-template-columns:240px minmax(0,1fr); grid-template-areas:'sidebar main'; }
+  .shell-sidebar { grid-area:sidebar; display:flex; flex-direction:column; background:var(--bg-shell); border-right:1px solid var(--border-subtle); padding:12px 0; position:sticky; top:0; height:100vh; overflow:hidden; }
+}
+@media (max-width:1023px) {
+  .shell-sidebar { display:flex; flex-direction:column; position:fixed; inset:0 auto 0 0; width:min(280px,85vw); height:100vh; z-index:70; background:var(--bg-shell); box-shadow:var(--shadow-overlay); transform:translateX(-100%); transition:transform 200ms var(--ease-out); padding:12px 0; }
+  .shell.nav-open .shell-sidebar { transform:translateX(0); }
+  .shell-mobile-backdrop { position:fixed; inset:0; z-index:65; background:var(--overlay-scrim); display:none; }
+  .shell.nav-open .shell-mobile-backdrop { display:block; }
+}
+.shell-brand { display:flex; align-items:center; gap:8px; padding:4px 16px 16px; }
+.shell-brand__mark { width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; background:var(--accent-primary); color:var(--text-on-primary); font-weight:700; font-size:13px; flex-shrink:0; }
+.shell-brand__name { font-weight:600; font-size:14px; color:var(--text-primary); letter-spacing:-0.02em; }
+.shell-brand__env { margin-left:auto; }
+.shell-nav { flex:1; overflow-y:auto; padding:0 12px; scrollbar-width:thin; }
+.shell-nav__group { margin-bottom:16px; }
+.shell-nav__label { margin:0 0 4px; padding:0 8px; font-size:10px; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--text-muted); }
+.shell-nav__list { list-style:none; padding:0; margin:0; display:grid; gap:1px; }
+.shell-nav__link { display:flex; align-items:center; padding:6px 8px; border-radius:6px; color:var(--text-secondary); font-size:13px; font-weight:500; text-decoration:none; cursor:pointer; border:none; background:none; width:100%; text-align:left; font-family:inherit; transition:background 120ms, color 120ms; }
+.shell-nav__link:hover { background:var(--bg-surface-muted); color:var(--text-primary); }
+.shell-nav__link--active { background:var(--bg-surface-muted); color:var(--text-primary); font-weight:600; box-shadow:inset 2px 0 0 var(--accent-primary); }
+.shell-nav__link-label { flex:1; min-width:0; }
+.shell-nav__link-count { font-size:11px; font-weight:500; color:var(--text-muted); padding-left:.5rem; letter-spacing:-.01em; }
+.shell-nav__link--active .shell-nav__link-count { color:var(--text-primary); }
+.shell-workspace { padding:12px 16px 0; border-top:1px solid var(--border-subtle); margin-top:8px; display:grid; gap:10px; }
+.shell-workspace__header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.shell-workspace__name { font-size:12.5px; font-weight:600; color:var(--text-primary); letter-spacing:-.01em; }
+.shell-workspace__user { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:var(--text-muted); }
+.shell-workspace__username { font-weight:500; color:var(--text-secondary); }
+.shell-main { grid-area:main; min-width:0; display:flex; flex-direction:column; }
+.shell-topbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px; height:var(--shell-topbar-height); padding:0 16px; background:var(--bg-shell); border-bottom:1px solid var(--border-subtle); }
+.shell-topbar__hamburger { width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border-default); border-radius:6px; background:var(--bg-surface); color:var(--text-primary); font-size:16px; cursor:pointer; flex-shrink:0; }
+.shell-topbar__hamburger:hover { background:var(--bg-surface-muted); }
+@media (min-width:1024px) { .shell-topbar__hamburger { display:none; } }
+.shell-crumbs { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); min-width:0; }
+.shell-crumbs__sep { color:var(--border-strong); font-size:12px; line-height:1; }
+.shell-crumbs__current { color:var(--text-primary); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.shell-topbar__spacer { flex:1; }
+.shell-topbar__alerts { padding:6px 10px; font-size:12.5px; font-weight:500; border:1px solid var(--border-default); background:var(--bg-surface); color:var(--text-secondary); }
+.shell-topbar__search { display:none; align-items:center; gap:8px; height:32px; min-width:220px; max-width:360px; flex:1; padding:0 10px 0 32px; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface); color:var(--text-muted); font-size:13px; font-weight:400; cursor:text; position:relative; text-align:left; }
+@media (min-width:1024px) { .shell-topbar__search { display:inline-flex; } }
+.shell-topbar__search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:14px; line-height:1; color:var(--text-muted); }
+.shell-topbar__search-placeholder { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); }
+.shell-topbar__search-kbd { font-family:var(--font-mono); font-size:10.5px; padding:1px 6px; border:1px solid var(--border-default); border-bottom-width:2px; border-radius:var(--radius-xs); color:var(--text-muted); background:var(--bg-surface-muted); line-height:1; letter-spacing:.04em; font-weight:500; }
+.shell-user-chip { display:inline-flex; align-items:center; gap:8px; padding:3px 10px 3px 3px; border:none; border-radius:var(--radius-pill); background:transparent; color:var(--text-primary); cursor:pointer; height:32px; }
+.shell-user-chip:hover { background:var(--bg-surface-muted); }
+.shell-user-chip__avatar { width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg, var(--accent-primary), var(--status-review)); color:var(--text-inverse); display:inline-flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:600; letter-spacing:.02em; flex-shrink:0; }
+.shell-user-chip__name { font-size:12.5px; font-weight:500; color:var(--text-primary); }
+@media (max-width:767px) { .shell-user-chip__name { display:none; } }
+.shell-content { flex:1; padding:20px 16px 96px; overflow-x:hidden; max-width:1180px; width:100%; }
+
+/* ── page-layout / segment-strip / metric-card / status-badge / alert /
+   key-value-list / data-table / button — apps/web/src/index.css, verbatim ── */
+.page-section { display:grid; gap:.75rem; grid-template-columns:minmax(0,1fr); }
+.page-header { display:grid; gap:.45rem; }
+.page-header--split { grid-template-columns:minmax(0,1fr) auto; align-items:start; }
+.page-header__actions { display:grid; gap:.75rem; justify-items:end; }
+.back-link { display:inline-flex; align-items:center; gap:.375rem; font-size:.8125rem; color:var(--text-muted); text-decoration:none; padding:.25rem 0; background:none; border:none; cursor:pointer; font-family:inherit; }
+.back-link:hover { color:var(--text-primary); }
+.eyebrow { margin:0; font-size:.76rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
+.page-title { font-size:1.5rem; font-weight:600; letter-spacing:-.02em; color:var(--text-primary); margin:0; }
+.page-description { margin:0; color:var(--text-secondary); font-size:.875rem; max-width:64ch; }
+
+.card-button-reset { display:block; width:100%; min-width:0; height:auto; padding:0; border:none; background:none; box-shadow:none; text-align:left; cursor:pointer; }
+.card-button-reset > .metric-card { height:100%; }
+.metric-card { display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-4); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); height:100%; min-height:5.5rem; }
+.metric-card__label { display:inline-flex; align-items:center; gap:var(--space-2); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; letter-spacing:var(--tracking-caps); text-transform:uppercase; color:var(--text-muted); }
+.metric-card__value { font-size:1.5rem; font-weight:600; letter-spacing:var(--tracking-tight); font-variant-numeric:tabular-nums; color:var(--text-primary); line-height:1.05; }
+.metric-card--interactive { transition:transform 120ms, box-shadow 120ms, border-color 120ms; }
+.metric-card--interactive:hover { border-color:var(--border-strong); box-shadow:var(--shadow-soft-hover); }
+.metric-card--error { background:var(--status-error-soft); border-color:var(--status-error-border); }
+.metric-card--error .metric-card__value { color:var(--status-error-strong); }
+.returns-segments { display:flex; flex-wrap:wrap; gap:var(--space-3); margin-bottom:var(--space-4); }
+.returns-segment { flex:1 1 10.5rem; border-radius:var(--radius-lg); }
+.returns-segment--active { outline:2px solid var(--accent-focus); outline-offset:2px; border-radius:var(--radius-md); }
+
+.status-badge { display:inline-flex; align-items:center; gap:var(--space-2); padding:2px var(--space-2); border:1px solid var(--status-disabled-border); border-radius:var(--radius-sm); background:var(--status-disabled-soft); color:var(--status-disabled-fg); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; line-height:1.5; letter-spacing:var(--tracking-wide); text-transform:uppercase; white-space:nowrap; }
+.status-badge--compact { padding:1px var(--space-2); font-size:.625rem; }
+.status-badge--warning { border-color:var(--status-warning-border); background:var(--status-warning-soft); color:var(--status-warning-fg); }
+.status-badge--error { border-color:var(--status-error-border); background:var(--status-error-soft); color:var(--status-error-fg); }
+.status-badge--info { border-color:var(--status-info-border); background:var(--status-info-soft); color:var(--status-info-fg); }
+
+.alert { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; border:1px solid var(--border-default); border-radius:var(--radius-lg); padding:.875rem 1rem .875rem 1.125rem; background:var(--bg-surface); box-shadow:inset 3px 0 0 var(--border-default); }
+.alert--error { border-color:var(--status-error-border); background:var(--status-error-soft); box-shadow:inset 3px 0 0 var(--status-error); }
+.alert__content { display:grid; gap:.35rem; }
+.alert__title { color:var(--text-primary); font-weight:600; }
+.alert__description { color:var(--text-secondary); }
+.alert__description p { margin:0; }
+.alert__actions { flex-shrink:0; }
+
+.key-value-list { display:grid; grid-template-columns:1fr; gap:0; margin:0; padding:0; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); overflow:hidden; }
+@media (min-width:640px) { .key-value-list { grid-template-columns:minmax(140px,max-content) 1fr; } }
+.key-value-list__label, .key-value-list__value { padding:var(--space-3) var(--space-4); border-top:1px solid var(--border-subtle); margin:0; min-width:0; }
+.key-value-list__label { font-family:var(--font-mono); font-size:.6875rem; font-weight:500; color:var(--text-muted); letter-spacing:var(--tracking-caps); text-transform:uppercase; background:var(--bg-shell); }
+.key-value-list__value { color:var(--text-primary); font-size:.8125rem; word-break:break-word; }
+.key-value-list__label:first-of-type, .key-value-list > :nth-child(-n+2) { border-top:0; }
+
+.data-table__container { overflow-x:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); }
+.data-table { width:100%; min-width:640px; border-collapse:collapse; font-size:.8125rem; }
+.data-table th, .data-table td { padding:var(--space-3) var(--space-4); border-top:1px solid var(--border-subtle); text-align:left; vertical-align:middle; line-height:1.4; }
+.data-table thead th { padding-top:var(--space-3); padding-bottom:var(--space-3); border-top:0; border-bottom:1px solid var(--border-subtle); color:var(--text-muted); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; letter-spacing:var(--tracking-caps); text-transform:uppercase; background:var(--bg-shell); }
+.data-table tbody td { color:var(--text-primary); }
+.data-table tbody tr:last-child td { border-bottom:0; }
+.data-table tbody tr.is-clickable { cursor:pointer; }
+.data-table tbody tr.is-clickable:hover td { background:var(--bg-surface-hover); }
+.returns-stage-cell { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.returns-stage-cell__counters { font-family:var(--font-mono); font-size:.75rem; color:var(--text-muted); }
+
+button, .button { display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2); border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4); height:2rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.8125rem; font-weight:500; cursor:pointer; text-decoration:none; white-space:nowrap; box-shadow:var(--shadow-xs), var(--shadow-inset-top); }
+button:hover, .button:hover { background:var(--button-primary-bg-hover); border-color:var(--button-primary-bg-hover); }
+.button--secondary { border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
+.button--secondary:hover { background:var(--bg-surface-muted); border-color:var(--border-strong); }
+.button:disabled, button:disabled { cursor:not-allowed; opacity:.55; box-shadow:none; }
+.button--sm { height:1.75rem; padding:0 var(--space-3); font-size:.75rem; }
+
+/* ── Mockup-only additions (not part of the real design system) ──────── */
+.card { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); }
+/* Bottom padding clears the fixed QA toolbar (z-index 90, ~110px tall with
+   its wrapped label) so a tall dialog's own action row is never rendered
+   underneath it — the toolbar sits above the dialog in stacking order so a
+   reviewer can always switch state, which means it can otherwise swallow
+   clicks meant for the dialog if the two overlap. */
+.dialog-backdrop { position:fixed; inset:0; display:none; place-items:center; padding:24px 24px 148px; background:var(--overlay-scrim); z-index:80; overflow-y:auto; }
+.dialog-backdrop.is-open { display:grid; }
+.dialog { width:min(100%, 27rem); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:22px; background:var(--bg-surface); box-shadow:var(--shadow-overlay); margin:auto; }
+.dialog__title { font-size:1.125rem; font-weight:600; margin-bottom:4px; }
+.dialog__sub { font-size:.8125rem; color:var(--text-muted); margin-bottom:16px; }
+.dialog__label { font-size:.8125rem; font-weight:600; margin-bottom:6px; display:block; }
+.dialog__field { margin-bottom:14px; }
+.dialog__field:last-of-type { margin-bottom:0; }
+.dialog__row { display:flex; gap:10px; }
+.dialog__row .dialog__field { flex:1; }
+input[type=text], input[type=number], select { width:100%; height:2.375rem; border:1px solid var(--border-default); border-radius:var(--radius-md); padding:0 12px; font-family:inherit; font-size:.9375rem; background:var(--bg-surface); color:var(--text-primary); }
+select { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2352606b' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:30px; }
+input[aria-invalid=true], select[aria-invalid=true] { border-color:var(--status-error); }
+.field-hint { font-size:.75rem; color:var(--text-muted); margin-top:6px; }
+.field-hint--error { color:var(--status-error-fg); }
+.dialog__warn { display:flex; gap:8px; padding:10px 12px; border-radius:var(--radius-md); background:var(--status-warning-soft); border:1px solid var(--status-warning-border); font-size:.75rem; color:var(--status-warning-fg); margin-top:14px; }
+.dialog__note { display:flex; gap:8px; padding:10px 12px; border-radius:var(--radius-md); background:var(--status-info-soft); border:1px solid var(--status-info-border); font-size:.75rem; color:var(--status-info-fg); margin-top:14px; }
+.dialog__actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+.order-search { position:relative; }
+.order-search__results { position:absolute; left:0; right:0; top:calc(100% + 4px); background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-md); box-shadow:var(--shadow-soft); max-height:13rem; overflow-y:auto; z-index:5; display:none; }
+.order-search__results.is-open { display:block; }
+.order-search__result { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; padding:9px 12px; border:none; background:none; font-family:inherit; font-size:.8125rem; color:var(--text-primary); cursor:pointer; }
+.order-search__result:hover, .order-search__result:focus-visible { background:var(--bg-surface-muted); }
+.order-search__result-buyer { color:var(--text-muted); }
+.order-search__empty { padding:10px 12px; font-size:.8125rem; color:var(--text-muted); }
+.order-search__resolved { display:flex; align-items:center; justify-content:space-between; gap:10px; height:2.375rem; border:1px solid var(--status-success-border); border-radius:var(--radius-md); padding:0 12px; background:var(--status-success-soft); }
+.order-search__resolved-label { font-size:.875rem; font-weight:600; color:var(--status-success-fg); }
+.order-search__clear { background:none; border:none; color:var(--text-muted); font-size:.75rem; cursor:pointer; text-decoration:underline; padding:0; }
+.toast { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--radius-md); border:1px solid; margin-bottom:18px; }
+.toast--success { background:var(--status-success-soft); border-color:var(--status-success-border); }
+.toast--success .toast__text b { color:var(--status-success-fg); }
+.toast--info { background:var(--status-info-soft); border-color:var(--status-info-border); }
+.toast--info .toast__text b { color:var(--status-info-fg); }
+.toast__text { font-size:.8125rem; color:var(--text-secondary); }
+.toast__text b { color:var(--text-primary); }
+.age-badge { display:inline-flex; align-items:center; gap:4px; font-size:.6875rem; font-weight:600; line-height:1; padding:3px 9px; border-radius:var(--radius-pill); background:var(--bg-surface-muted); color:var(--text-muted); border:1px solid var(--border-subtle); }
+.age-badge--stale { background:var(--status-warning-soft); border-color:var(--status-warning-border); color:var(--status-warning-fg); }
+.not-modeled { padding:28px 16px; text-align:center; color:var(--text-muted); font-size:.8125rem; }
+.action-callout { border:1px dashed var(--border-strong); border-radius:var(--radius-lg); padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; background:var(--bg-surface-muted); }
+.action-callout__text { font-size:.8125rem; color:var(--text-secondary); max-width:48ch; }
+.chip { display:inline-flex; align-items:center; gap:.25rem; height:1.375rem; padding:0 .55rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.6875rem; font-weight:500; cursor:pointer; }
+.chip.chip--active { background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
+.demo-toolbar { position:fixed; left:0; right:0; bottom:0; z-index:90; display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg-surface-muted); border-top:1px solid var(--border-default); flex-wrap:wrap; box-shadow:0 -2px 8px rgb(15 18 26 / .08); }
+.demo-toolbar__label { font-family:var(--font-mono); font-size:.625rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; flex-basis:100%; }
+</style>
+
+<div class="shell" id="shellRoot">
+  <div class="shell-mobile-backdrop" id="mobileBackdrop"></div>
+  <div class="shell-sidebar">
+    <div class="shell-brand">
+      <span class="shell-brand__mark">OL</span>
+      <span class="shell-brand__name">OpenLinker</span>
+      <span class="status-badge status-badge--compact shell-brand__env">Demo</span>
+    </div>
+    <nav class="shell-nav" aria-label="Primary" id="sidebarNav"></nav>
+    <div class="shell-workspace">
+      <div class="shell-workspace__header"><strong class="shell-workspace__name">Default organization</strong></div>
+      <div class="shell-workspace__user"><span class="shell-workspace__username">reviewer</span></div>
+    </div>
+  </div>
+
+  <div class="shell-main">
+    <header class="shell-topbar">
+      <button type="button" class="shell-topbar__hamburger" aria-label="Open menu" onclick="toggleMobileNav(true)">☰</button>
+      <nav aria-label="Breadcrumb" class="shell-crumbs">
+        <span>Operations</span>
+        <span class="shell-crumbs__sep">/</span>
+        <span class="shell-crumbs__current" id="crumbCurrent">Returns</span>
+      </nav>
+      <button type="button" class="shell-topbar__search" title="Open command palette (⌘K)">
+        <span class="shell-topbar__search-icon">⌕</span>
+        <span class="shell-topbar__search-placeholder">Search orders, products, connections…</span>
+        <kbd class="shell-topbar__search-kbd">⌘K</kbd>
+      </button>
+      <div class="shell-topbar__spacer"></div>
+      <button type="button" class="shell-topbar__alerts">Alerts 0</button>
+      <button type="button" class="shell-user-chip">
+        <span class="shell-user-chip__avatar">R</span>
+        <span class="shell-user-chip__name">reviewer</span>
+      </button>
+    </header>
+
+    <main class="shell-content" id="pageSlot"></main>
+  </div>
+</div>
+
+<!-- MATCH dialog -->
+<div class="dialog-backdrop" id="matchDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true"><div id="matchDialogBody"></div></div>
+</div>
+
+<!-- AUTHORIZE dialog -->
+<div class="dialog-backdrop" id="authorizeDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true"><div id="authorizeDialogBody"></div></div>
+</div>
+
+<!-- RECORD dialog -->
+<div class="dialog-backdrop" id="recordDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true">
+    <p class="dialog__title">Record a return by hand</p>
+    <p class="dialog__sub">Every field here is required — OpenLinker can't open a return without knowing which channel and how many units.</p>
+    <div class="dialog__field">
+      <label class="dialog__label" for="recOrderSearch">Which order?</label>
+      <div class="order-search" id="recOrderSearchWrap">
+        <input type="text" id="recOrderSearch" placeholder="Order number, or the buyer's name" autocomplete="off" oninput="onOrderSearchInput('rec')" onfocus="onOrderSearchInput('rec')" />
+        <div class="order-search__results" id="recOrderResults"></div>
+      </div>
+      <p class="field-hint">Can't find it by number? Try the buyer's name instead.</p>
+    </div>
+    <div class="dialog__field">
+      <label class="dialog__label" for="recConnection">From which connection?</label>
+      <select id="recConnection" onchange="updateRecordConnectionMismatch()"><option value="">Select the channel this return came in on</option></select>
+      <p class="field-hint">OpenLinker uses this to work out where the item is actually mapped.</p>
+      <div id="recMismatchSlot"></div>
+    </div>
+    <div class="dialog__field">
+      <label class="dialog__label" for="recItem">What came back?</label>
+      <input type="text" id="recItem" placeholder="Item name" />
+    </div>
+    <div class="dialog__row">
+      <div class="dialog__field">
+        <label class="dialog__label" for="recReason">Why?</label>
+        <select id="recReason"><option value="">Select a reason</option></select>
+      </div>
+      <div class="dialog__field" style="max-width:7rem;">
+        <label class="dialog__label" for="recQty">Quantity</label>
+        <input type="number" id="recQty" min="1" value="1" />
+      </div>
+    </div>
+    <div class="dialog__note">Each submit opens a new return. If you're not sure this one's already recorded, check the list first.</div>
+    <p class="field-hint field-hint--error" id="recFormError" style="display:none;">Fill in every field above before recording.</p>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('recordDialogBackdrop')">Cancel</button>
+      <button class="button" onclick="saveRecord()">Record it</button>
+    </div>
+  </div>
+</div>
+
+<div class="demo-toolbar" role="group" aria-label="Mockup — not part of the product">
+  <span class="demo-toolbar__label">Mockup — jump to a state (in situ: real nav + breadcrumb update with it)</span>
+  <button class="chip chip--active" data-chip="list" onclick="setState('list')">Returns list · Orphans</button>
+  <button class="chip" data-chip="list-empty-segment" onclick="setState('list-empty-segment')">List · other segment</button>
+  <button class="chip" data-chip="toast-matched" onclick="setState('toast-matched')">List · post-match toast</button>
+  <button class="chip" data-chip="detail-orphan" onclick="setState('detail-orphan')">Detail · orphan (r1)</button>
+  <button class="chip" data-chip="match-open" onclick="setState('match-open')">Match dialog</button>
+  <button class="chip" data-chip="match-error" onclick="setState('match-error')">Match: unknown order (400)</button>
+  <button class="chip" data-chip="match-conflict" onclick="setState('match-conflict')">Match: already linked (409)</button>
+  <button class="chip" data-chip="detail-pending" onclick="setState('detail-pending')">Detail · pending approval (r3)</button>
+  <button class="chip" data-chip="authorize-open" onclick="setState('authorize-open')">Authorize dialog</button>
+  <button class="chip" data-chip="authorize-refused" onclick="setState('authorize-refused')">Authorize: refused (409)</button>
+  <button class="chip" data-chip="record-open" onclick="setState('record-open')">Record dialog</button>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   Real nav (apps/web/src/app/nav-registry.ts) — "Returns" sits in
+   Operations, between Fulfilment and Automations, with no count badge
+   today (the #2334 contract exposes no counts endpoint). Rendered here
+   verbatim so the mockup shows exactly where an operator finds this page,
+   not just the page in isolation.
+   ══════════════════════════════════════════════════════════════════════ */
+const NAV_GROUPS = [
+  { label: 'Operations', items: [
+    { label: 'Analytics' }, { label: 'Insights' },
+    { label: 'Orders', count: 12 }, { label: 'Products' },
+    { label: 'Customers', count: 4 }, { label: 'Listings', count: 3 },
+    { label: 'Shipments' }, { label: 'Fulfilment' },
+    { label: 'Returns', active: true },
+    { label: 'Automations' }, { label: 'Invoices' },
+  ]},
+  { label: 'Diagnostics', items: [ { label: 'Jobs & Logs' }, { label: 'Webhooks' }, { label: 'Cursors' } ] },
+  { label: 'Platform', items: [ { label: 'Connections', count: 6 }, { label: 'Adapters' }, { label: 'Settings' } ] },
+  { label: 'AI', items: [ { label: 'Prompt templates' }, { label: 'Provider settings' } ] },
+  { label: 'Administration', items: [ { label: 'Users' } ] },
+];
+
+function renderSidebarNav() {
+  document.getElementById('sidebarNav').innerHTML = NAV_GROUPS.map((group) => `
+    <section class="shell-nav__group">
+      <p class="shell-nav__label">${group.label}</p>
+      <ul class="shell-nav__list">
+        ${group.items.map((item) => `<li>
+          <button type="button" class="shell-nav__link${item.active ? ' shell-nav__link--active' : ''}" ${item.active ? '' : 'onclick="setState(\'list\')"'}>
+            <span class="shell-nav__link-label">${item.label}</span>
+            ${item.count !== undefined ? `<span class="shell-nav__link-count mono-text">${item.count}</span>` : ''}
+          </button>
+        </li>`).join('')}
+      </ul>
+    </section>`).join('');
+}
+renderSidebarNav();
+
+function toggleMobileNav(open) {
+  document.getElementById('shellRoot').classList.toggle('nav-open', open);
+}
+document.getElementById('mobileBackdrop').addEventListener('click', () => toggleMobileNav(false));
+
+/* ── Fixtures ──────────────────────────────────────────────────────────── */
+const AGE_WARN_DAYS = 7;
+
+const CONNECTIONS = [
+  { id: 'conn-allegro-main', label: 'Allegro — Main Shop', channel: 'Allegro' },
+  { id: 'conn-prestashop-eu', label: 'PrestaShop — EU Store', channel: 'PrestaShop' },
+];
+
+// Mirrors RefundReasonValues (libs/core/src/orders/domain/types/refund-record.types.ts).
+const REASONS = [
+  { value: 'withdrawal', label: 'Withdrawal — buyer changed their mind' },
+  { value: 'defective', label: 'Defective or damaged' },
+  { value: 'not_as_described', label: 'Not as described' },
+  { value: 'wrong_item', label: 'Wrong item sent' },
+  { value: 'other', label: 'Other' },
+];
+
+// Stands in for an order-search endpoint. matchOrphanToOrder / recordReturn both
+// take an internalOrderId, never the number an operator would type — so every
+// path here resolves through this list rather than accepting free text.
+const ORDER_INDEX = [
+  { id: 'ol_order_9f2e1a4b7c3d', number: '#9F2E1A', buyer: 'Anna Kowalska', channel: 'Allegro', total: '268,00 PLN', placed: 'Sep 5' },
+  { id: 'ol_order_5c810fd2e611', number: '#5C810F', buyer: 'Jan Zieliński', channel: 'PrestaShop', total: '129,00 PLN', placed: 'Aug 29' },
+  { id: 'ol_order_2b774e91aa02', number: '#2B774E', buyer: 'Marta Nowak', channel: 'Allegro', total: '249,00 PLN', placed: 'Sep 2' },
+];
+// Selecting + confirming this one simulates the lost-race 409.
+const ALREADY_ATTRIBUTED_ORDER_ID = 'ol_order_5c810fd2e611';
+
+// The FROZEN baseline the returns LIST is built from — every toolbar jump
+// resets from this, so a named state is reachable exactly one way.
+const INITIAL_RETURNS = [
+  { id: 'r1', externalReturnId: 'AL-RET-88213', channel: 'Allegro', sourceStatus: 'RETURNED',
+    openedAt: 'Sep 8', daysAgo: 3, since: 'Sep 8', stage: 'Awaiting parcel', stageTone: 'warning',
+    bucket: 'orphan', cause: "OpenLinker hasn't ingested that order yet",
+    itemsLabel: 'Wireless earbuds, phone case', value: '268,00 PLN' },
+  { id: 'r2', externalReturnId: 'AL-RET-88250', channel: 'Allegro', sourceStatus: 'RETURNED',
+    openedAt: 'Sep 2', daysAgo: 9, since: 'Sep 2', stage: 'Partially received', stageTone: 'warning',
+    bucket: 'orphan', cause: "No order with that number here — might be under a different connection",
+    itemsLabel: 'Running shoes — size 42', value: '249,00 PLN' },
+  { id: 'r3', externalReturnId: 'PrestaShop return', channel: 'PrestaShop', sourceStatus: '—',
+    openedAt: 'Sep 10', daysAgo: 1, since: 'Sep 10', stage: 'Received — awaiting disposition', stageTone: 'info',
+    bucket: 'operator_authored', origin: 'operator_authored', internalOrderId: 'ol_order_2b774e91aa02', orderNumber: '#2B774E',
+    itemsLabel: 'Ceramic mug — 1 item', value: '39,00 PLN' },
+];
+
+function cloneFixture(list) { return list.map((r) => ({ ...r })); }
+let RETURNS = cloneFixture(INITIAL_RETURNS);
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ── LIST page (/returns) ─────────────────────────────────────────────── */
+// Only "All returns" and "Orphans" are wired with real fixture rows — every
+// other segment card is real (count + tone + click target) but the mockup
+// is honest that it does not model that segment's own data.
+const SEGMENTS = [
+  { key: null, label: 'All returns', tone: null },
+  { key: 'needs_receiving', label: 'Needs receiving', tone: 'warning', count: 4 },
+  { key: 'needs_disposition', label: 'Needs disposition', tone: 'warning', count: 2 },
+  { key: 'restock_blocked', label: 'Restock blocked', tone: 'error', count: 1 },
+  { key: 'money_pending', label: 'Money pending', tone: 'warning', count: 5 },
+  { key: 'orphans', label: 'Orphans', tone: 'error', count: null },
+  { key: 'all_open', label: 'All open', tone: null, count: 8 },
+];
+
+let currentSegment = 'orphans';
+
+function ageBadge(daysAgo, since) {
+  const stale = daysAgo >= AGE_WARN_DAYS;
+  const label = daysAgo === 0 ? 'today' : daysAgo === 1 ? '1 day ago' : `${daysAgo} days ago`;
+  const title = since ? ` title="Arrived ${escapeHtml(since)}"` : '';
+  return `<span class="age-badge${stale ? ' age-badge--stale' : ''}"${title}>${stale ? '⏱ ' : ''}${label}</span>`;
+}
+
+function renderSegmentStrip() {
+  return `<div class="returns-segments" role="group" aria-label="Return worklist segments">
+    ${SEGMENTS.map((s) => {
+      const active = currentSegment === s.key;
+      const count = s.key === 'orphans' ? RETURNS.filter((r) => r.bucket === 'orphan').length
+        : s.key === null ? RETURNS.length : s.count;
+      return `<button type="button" class="card-button-reset returns-segment${active ? ' returns-segment--active' : ''}" onclick="selectSegment(${s.key === null ? 'null' : `'${s.key}'`})">
+        <div class="metric-card metric-card--interactive${s.tone === 'error' ? ' metric-card--error' : ''}">
+          <span class="metric-card__label">${s.label}</span>
+          <span class="metric-card__value">${count}</span>
+        </div>
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+function rowsForSegment() {
+  if (currentSegment === null) return RETURNS;
+  if (currentSegment === 'orphans') return RETURNS.filter((r) => r.bucket === 'orphan');
+  if (currentSegment === 'all_open') return RETURNS;
+  return []; // not modeled in this mockup — see the honest empty note below
+}
+
+function renderListPage() {
+  const rows = rowsForSegment();
+  const notModeled = rows.length === 0 && currentSegment !== 'orphans' && currentSegment !== null;
+  return `<div class="page-section">
+    <div class="page-header page-header--split">
+      <div class="page-header__content">
+        <p class="eyebrow">Returns</p>
+        <h1 class="page-title">Returns</h1>
+        <p class="page-description">OL-owned returns, above the source's own observation. Nothing downstream — restock, refund, invoice fix — happens until a return is linked to an order.</p>
+      </div>
+      <div class="page-header__actions">
+        <button class="button button--secondary" onclick="openRecordFresh()">+ Record a return</button>
+      </div>
+    </div>
+
+    <div id="toastSlot"></div>
+
+    ${renderSegmentStrip()}
+
+    ${notModeled
+      ? `<div class="not-modeled">This mockup only models the <b>Orphans</b> segment (and the unfiltered <b>All returns</b>/<b>All open</b> view) — the real page would show its own filtered rows here.</div>`
+      : `<div class="data-table__container">
+          <table class="data-table">
+            <thead><tr><th>Return</th><th>Order</th><th>Source</th><th>Opened</th><th>Source status</th><th>Stage</th></tr></thead>
+            <tbody>
+              ${rows.map((r) => `<tr class="is-clickable" onclick="setState('detail:${r.id}')">
+                <td><strong>${escapeHtml(r.externalReturnId)}</strong></td>
+                <td>${r.internalOrderId ? `<span class="mono-text">${escapeHtml(r.orderNumber)}</span>` : '<span class="text-muted" style="color:var(--text-muted)">— unlinked</span>'}</td>
+                <td>${escapeHtml(r.channel)}</td>
+                <td>${escapeHtml(r.openedAt)}</td>
+                <td class="mono-text">${escapeHtml(r.sourceStatus)}</td>
+                <td><div class="returns-stage-cell"><span class="status-badge status-badge--compact status-badge--${r.stageTone}">${escapeHtml(r.stage)}</span>${ageBadge(r.daysAgo, r.since)}</div></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`}
+  </div>`;
+}
+
+function selectSegment(key) {
+  currentSegment = key;
+  renderCurrentPage();
+}
+
+/* ── DETAIL page (/returns/:returnId) ─────────────────────────────────── */
+function findReturn(id) { return RETURNS.find((r) => r.id === id) || null; }
+
+function renderDetailPage(id) {
+  const r = findReturn(id);
+  if (!r) return `<div class="not-modeled">Return not found in this mockup's fixtures.</div>`;
+
+  const isOrphan = r.bucket === 'orphan';
+  const isPendingApproval = r.bucket === 'operator_authored';
+
+  const orphanBanner = isOrphan ? `
+    <div class="alert alert--error">
+      <div class="alert__content">
+        <p class="alert__title">Nothing can be done with this return yet</p>
+        <p class="alert__description">Restock, refund and invoice correction are all blocked until this return is linked to an order. ${escapeHtml(r.cause)}.</p>
+      </div>
+      <div class="alert__actions"><button class="button" data-action="match" data-id="${r.id}" data-label="${escapeHtml(r.externalReturnId)}" data-channel="${escapeHtml(r.channel)}" data-cause="${escapeHtml(r.cause)}" data-items="${escapeHtml(r.itemsLabel)}" data-value="${escapeHtml(r.value)}">Match to an order</button></div>
+    </div>` : '';
+
+  const authorizeCallout = isPendingApproval ? `
+    <div class="action-callout">
+      <div>
+        <strong>Not yet approved</strong>
+        <p class="action-callout__text" style="margin-top:2px;">You recorded this return yourself. Approving it is an audit stamp confirming it really happened — restock and refund already follow the return's own state and don't wait on it.</p>
+      </div>
+      <button class="button button--secondary" data-action="authorize" data-id="${r.id}">Approve</button>
+    </div>` : '';
+
+  return `<div class="page-section">
+    <button class="back-link" onclick="setState('list')">&larr; Back to Returns</button>
+    <div class="page-header">
+      <p class="eyebrow">Return</p>
+      <h1 class="page-title">${escapeHtml(r.externalReturnId)}</h1>
+    </div>
+
+    ${orphanBanner}
+    ${authorizeCallout}
+
+    <div class="key-value-list">
+      <div class="key-value-list__label">Order</div>
+      <div class="key-value-list__value">${r.internalOrderId ? `<span class="mono-text">${escapeHtml(r.orderNumber)}</span>` : '<em>Not linked yet</em>'}</div>
+      <div class="key-value-list__label">Channel</div>
+      <div class="key-value-list__value">${escapeHtml(r.channel)}</div>
+      <div class="key-value-list__label">Opened</div>
+      <div class="key-value-list__value">${escapeHtml(r.openedAt)}</div>
+      <div class="key-value-list__label">Source status</div>
+      <div class="key-value-list__value mono-text">${escapeHtml(r.sourceStatus)}</div>
+      <div class="key-value-list__label">What came back</div>
+      <div class="key-value-list__value">${escapeHtml(r.itemsLabel)} · ${escapeHtml(r.value)}</div>
+      <div class="key-value-list__label">Stage</div>
+      <div class="key-value-list__value"><span class="status-badge status-badge--compact status-badge--${r.stageTone}">${escapeHtml(r.stage)}</span></div>
+    </div>
+  </div>`;
+}
+
+/* ── Shared render dispatch ───────────────────────────────────────────── */
+let currentPage = { kind: 'list' };
+
+function renderCurrentPage() {
+  document.getElementById('crumbCurrent').textContent = currentPage.kind === 'list' ? 'Returns' : 'Return';
+  document.getElementById('pageSlot').innerHTML =
+    currentPage.kind === 'list' ? renderListPage() : renderDetailPage(currentPage.id);
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  e.stopPropagation();
+  if (btn.dataset.action === 'match') {
+    openMatch(btn.dataset.id, { label: btn.dataset.label, channel: btn.dataset.channel, cause: btn.dataset.cause, itemsLabel: btn.dataset.items, value: btn.dataset.value });
+  }
+  if (btn.dataset.action === 'authorize') openAuthorize(btn.dataset.id, { refused: false });
+});
+
+/* ── Dialog plumbing ──────────────────────────────────────────────────── */
+function openDialog(id){ document.getElementById(id).classList.add('is-open'); }
+function closeDialog(id){ document.getElementById(id).classList.remove('is-open'); }
+function closeAllDialogs(){ document.querySelectorAll('.dialog-backdrop.is-open').forEach(bd => bd.classList.remove('is-open')); }
+document.querySelectorAll('.dialog-backdrop').forEach(bd => bd.addEventListener('click', (e) => { if (e.target === bd) bd.classList.remove('is-open'); }));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeAllDialogs(); toggleMobileNav(false); } });
+
+/* ── Order search (shared by match + record dialogs) ─────────────────── */
+let matchResolved = null;
+let recResolved = null;
+
+function searchOrders(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return ORDER_INDEX.filter(o => o.number.toLowerCase().includes(q.replace(/^#/, '')) || o.buyer.toLowerCase().includes(q) || o.channel.toLowerCase().includes(q));
+}
+
+function renderOrderResults(scope, query) {
+  const results = searchOrders(query);
+  const box = document.getElementById(scope + 'OrderResults');
+  if (!box) return;
+  if (!query.trim()) { box.classList.remove('is-open'); box.innerHTML = ''; return; }
+  box.innerHTML = results.length
+    ? results.map(o => `<button type="button" class="order-search__result" data-scope="${scope}" data-order-id="${o.id}">
+        <span>${escapeHtml(o.number)} <span class="order-search__result-buyer">— ${escapeHtml(o.buyer)}</span></span>
+        <span class="order-search__result-buyer">${escapeHtml(o.channel)}</span>
+      </button>`).join('')
+    : `<div class="order-search__empty">No orders match &ldquo;${escapeHtml(query)}&rdquo; — check the number, or try the buyer's name.</div>`;
+  box.classList.add('is-open');
+}
+
+function onOrderSearchInput(scope) {
+  const input = document.getElementById(scope + 'OrderSearch');
+  renderOrderResults(scope, input.value);
+}
+
+document.addEventListener('click', (e) => {
+  const result = e.target.closest('.order-search__result');
+  if (result) { resolveOrder(result.dataset.scope, result.dataset.orderId); return; }
+  if (!e.target.closest('.order-search')) document.querySelectorAll('.order-search__results').forEach(b => b.classList.remove('is-open'));
+});
+
+function channelMismatchWarning(returnChannel, order) {
+  if (!returnChannel || order.channel === returnChannel) return '';
+  return `<div class="dialog__warn" style="margin-top:8px;">⚠ This order came in via ${escapeHtml(order.channel)}, but the return arrived via ${escapeHtml(returnChannel)} — double-check that's intentional.</div>`;
+}
+
+function resolveOrder(scope, orderId) {
+  const order = ORDER_INDEX.find(o => o.id === orderId);
+  if (!order) return;
+  if (scope === 'match') matchResolved = order; else recResolved = order;
+  const wrap = document.getElementById(scope + 'OrderSearchWrap');
+  wrap.innerHTML = `<div class="order-search__resolved">
+    <span class="order-search__resolved-label">✓ ${escapeHtml(order.number)} — ${escapeHtml(order.buyer)} (${escapeHtml(order.channel)})</span>
+    <button type="button" class="order-search__clear" onclick="clearResolvedOrder('${scope}')">Change</button>
+  </div>
+  <div class="field-hint">Order total ${escapeHtml(order.total)} · placed ${escapeHtml(order.placed)}</div>
+  ${scope === 'match' ? channelMismatchWarning(matchingReturnChannel, order) : ''}`;
+  if (scope === 'match') updateMatchConfirmState();
+  if (scope === 'rec') updateRecordConnectionMismatch();
+}
+
+function clearResolvedOrder(scope) {
+  if (scope === 'match') matchResolved = null; else recResolved = null;
+  const wrap = document.getElementById(scope + 'OrderSearchWrap');
+  wrap.innerHTML = `<input type="text" id="${scope}OrderSearch" placeholder="Order number, or the buyer's name" autocomplete="off" oninput="onOrderSearchInput('${scope}')" onfocus="onOrderSearchInput('${scope}')" />
+    <div class="order-search__results" id="${scope}OrderResults"></div>`;
+  document.getElementById(scope + 'OrderSearch').focus();
+  if (scope === 'match') updateMatchConfirmState();
+  if (scope === 'rec') updateRecordConnectionMismatch();
+}
+
+/* ── Match dialog ─────────────────────────────────────────────────────── */
+let matchingId = null;
+let matchingReturnChannel = null;
+
+function matchFormHtml(ctx) {
+  const reconcileNote = /hasn't ingested/i.test(ctx.cause || '')
+    ? `<div class="dialog__note">OpenLinker also re-checks this automatically every 30 minutes. If the order shows up on file soon, this return may clear on its own — no need to act right now.</div>` : '';
+  return `<p class="dialog__title">Which order is this?</p>
+    <p class="dialog__sub">Return · ${escapeHtml(ctx.label)} · ${escapeHtml(ctx.itemsLabel)} · ${escapeHtml(ctx.value)}</p>
+    <div class="dialog__field">
+      <label class="dialog__label" for="matchOrderSearch">Order number or buyer name</label>
+      <div class="order-search" id="matchOrderSearchWrap">
+        <input type="text" id="matchOrderSearch" placeholder="e.g. #9F2E1A, or “Kowalska”" autocomplete="off" oninput="onOrderSearchInput('match')" onfocus="onOrderSearchInput('match')" />
+        <div class="order-search__results" id="matchOrderResults"></div>
+      </div>
+      <p class="field-hint">Must be an order OpenLinker already has on file. Can't find it by number? Try the buyer's name.</p>
+    </div>
+    ${reconcileNote}
+    <div class="dialog__warn">⚠ This can't be undone — double-check the order total and channel above before confirming.</div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('matchDialogBackdrop')">Cancel</button>
+      <button class="button" id="matchConfirmBtn" disabled onclick="confirmMatch()">Confirm match</button>
+    </div>`;
+}
+
+function updateMatchConfirmState() {
+  const btn = document.getElementById('matchConfirmBtn');
+  if (btn) btn.disabled = !matchResolved;
+}
+
+function openMatch(id, ctx) {
+  matchingId = id;
+  matchingReturnChannel = ctx.channel || null;
+  matchResolved = null;
+  document.getElementById('matchDialogBody').innerHTML = matchFormHtml(ctx);
+  openDialog('matchDialogBackdrop');
+}
+
+function confirmMatch() {
+  if (!matchResolved) return;
+  if (matchResolved.id === ALREADY_ATTRIBUTED_ORDER_ID) { renderMatchConflict(); return; }
+  RETURNS = RETURNS.map((r) => r.id === matchingId ? { ...r, bucket: 'linked', internalOrderId: matchResolved.id, orderNumber: matchResolved.number } : r);
+  closeDialog('matchDialogBackdrop');
+  currentPage = { kind: 'list' };
+  renderCurrentPage();
+  showToast('success', `<b>Matched to order ${escapeHtml(matchResolved.number)}.</b> OpenLinker can now restock, refund or correct the invoice for this return.`);
+}
+
+function renderMatchError() {
+  document.getElementById('matchDialogBody').innerHTML = `<p class="dialog__title">Which order is this?</p>
+    <p class="dialog__sub">Return · AL-RET-88213 · Wireless earbuds, phone case · 268,00 PLN</p>
+    <div class="dialog__field">
+      <label class="dialog__label" for="matchOrderSearch">Order number or buyer name</label>
+      <div class="order-search"><input type="text" id="matchOrderSearch" value="#ZZZ999" aria-invalid="true" oninput="onOrderSearchInput('match')" /></div>
+      <p class="field-hint field-hint--error">OpenLinker doesn't have an order with that number — double-check it, or try the buyer's name instead.</p>
+    </div>
+    <div class="dialog__warn">⚠ This can't be undone — double-check the order total and channel above before confirming.</div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('matchDialogBackdrop')">Cancel</button>
+      <button class="button" disabled>Confirm match</button>
+    </div>`;
+}
+
+function renderMatchConflict() {
+  document.getElementById('matchDialogBody').innerHTML = `<p class="dialog__title">Already linked</p>
+    <p class="dialog__sub">Return · AL-RET-88213 · Wireless earbuds, phone case · 268,00 PLN</p>
+    <div class="dialog__note">Someone else — another operator, or OpenLinker's own background check — matched this return to an order a moment ago. There's nothing left for you to do here.</div>
+    <div class="dialog__actions"><button class="button" onclick="acknowledgeMatchConflict()">OK, got it</button></div>`;
+}
+
+function acknowledgeMatchConflict() {
+  RETURNS = RETURNS.map((r) => r.id === matchingId ? { ...r, bucket: 'linked' } : r);
+  closeDialog('matchDialogBackdrop');
+  currentPage = { kind: 'list' };
+  renderCurrentPage();
+  showToast('info', `<b>Already linked.</b> No action needed — someone else got there first.`);
+}
+
+/* ── Authorize dialog ─────────────────────────────────────────────────── */
+let authorizingId = null;
+
+function authorizeConfirmHtml() {
+  return `<p class="dialog__title">Give this the OK?</p>
+    <p class="dialog__sub" style="margin-bottom:2px;">You recorded this return yourself. Approving it is an audit stamp, not a gate on the parts of OpenLinker that already act on it — it just lets you say "yes, this really happened."</p>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('authorizeDialogBackdrop')">Not yet</button>
+      <button class="button" onclick="confirmAuthorize()">Approve</button>
+    </div>`;
+}
+
+function authorizeRefusedHtml() {
+  return `<p class="dialog__title">Can't approve this one</p>
+    <p class="dialog__sub" style="margin-bottom:2px;">This return came in from Allegro — the marketplace already decided it. OpenLinker only approves returns you recorded yourself here.</p>
+    <div class="dialog__actions"><button class="button button--secondary" onclick="closeDialog('authorizeDialogBackdrop')">Got it</button></div>`;
+}
+
+function openAuthorize(id, opts) {
+  authorizingId = id;
+  document.getElementById('authorizeDialogBody').innerHTML = (opts && opts.refused) ? authorizeRefusedHtml() : authorizeConfirmHtml();
+  openDialog('authorizeDialogBackdrop');
+}
+
+function confirmAuthorize() {
+  closeDialog('authorizeDialogBackdrop');
+  RETURNS = RETURNS.map((r) => r.id === authorizingId ? { ...r, bucket: 'authorized' } : r);
+  currentPage = { kind: 'list' };
+  renderCurrentPage();
+  showToast('success', `<b>Approved.</b> It's on the record as confirmed by you.`);
+}
+
+/* ── Record dialog ────────────────────────────────────────────────────── */
+function populateRecordSelects() {
+  const connSel = document.getElementById('recConnection');
+  const reasonSel = document.getElementById('recReason');
+  if (connSel.options.length === 1) CONNECTIONS.forEach(c => connSel.add(new Option(c.label, c.id)));
+  if (reasonSel.options.length === 1) REASONS.forEach(r => reasonSel.add(new Option(r.label, r.value)));
+}
+
+function updateRecordConnectionMismatch() {
+  const slot = document.getElementById('recMismatchSlot');
+  const connId = document.getElementById('recConnection').value;
+  const connection = CONNECTIONS.find(c => c.id === connId);
+  if (!connection || !recResolved || connection.channel === recResolved.channel) { slot.innerHTML = ''; return; }
+  slot.innerHTML = `<div class="dialog__warn" style="margin-top:8px;">⚠ This order came in via ${escapeHtml(recResolved.channel)}, but you picked ${escapeHtml(connection.channel)} as the return's channel — double-check that's intentional.</div>`;
+}
+
+function openRecordFresh() {
+  populateRecordSelects();
+  recResolved = null;
+  clearResolvedOrder('rec');
+  document.getElementById('recConnection').value = '';
+  document.getElementById('recItem').value = '';
+  document.getElementById('recReason').value = '';
+  document.getElementById('recQty').value = '1';
+  document.getElementById('recFormError').style.display = 'none';
+  openDialog('recordDialogBackdrop');
+}
+
+function saveRecord() {
+  const connection = document.getElementById('recConnection').value;
+  const item = document.getElementById('recItem').value.trim();
+  const reason = document.getElementById('recReason').value;
+  const qty = parseInt(document.getElementById('recQty').value, 10);
+  const errorEl = document.getElementById('recFormError');
+  if (!recResolved || !connection || !item || !reason || !(qty > 0)) { errorEl.style.display = 'block'; return; }
+  errorEl.style.display = 'none';
+  closeDialog('recordDialogBackdrop');
+  const conn = CONNECTIONS.find(c => c.id === connection);
+  RETURNS.push({ id: 'r-' + Date.now(), externalReturnId: item, channel: conn.channel, sourceStatus: '—',
+    openedAt: 'just now', daysAgo: 0, since: 'today', stage: 'Received — awaiting disposition', stageTone: 'info',
+    bucket: 'operator_authored', origin: 'operator_authored', internalOrderId: recResolved.id, orderNumber: recResolved.number,
+    itemsLabel: `${item} × ${qty}`, value: recResolved.total });
+  currentSegment = null;
+  currentPage = { kind: 'list' };
+  renderCurrentPage();
+  showToast('success', `<b>Recorded.</b> ${escapeHtml(item)} × ${qty} is now on the list, waiting for your OK.`);
+}
+
+/* ── Toast ────────────────────────────────────────────────────────────── */
+function showToast(kind, html) {
+  const slot = document.getElementById('toastSlot');
+  if (slot) slot.innerHTML = `<div class="toast toast--${kind}"><span>${kind === 'success' ? '✓' : 'ℹ'}</span><div class="toast__text">${html}</div></div>`;
+}
+
+/* ── Demo state switcher ──────────────────────────────────────────────── */
+function setState(name) {
+  document.body.dataset.state = name;
+  document.querySelectorAll('.demo-toolbar .chip[data-chip]').forEach(c => c.classList.toggle('chip--active', c.dataset.chip === name));
+  closeAllDialogs();
+  toggleMobileNav(false);
+
+  // Reset from the frozen baseline on EVERY jump, so a named state is
+  // reachable exactly one way regardless of what an earlier dialog/organic
+  // interaction mutated.
+  RETURNS = cloneFixture(INITIAL_RETURNS);
+  currentSegment = 'orphans';
+  currentPage = { kind: 'list' };
+
+  if (name.startsWith('detail:')) {
+    currentPage = { kind: 'detail', id: name.slice('detail:'.length) };
+    renderCurrentPage();
+    return;
+  }
+
+  switch (name) {
+    case 'list':
+      renderCurrentPage();
+      break;
+    case 'list-empty-segment':
+      currentSegment = 'money_pending';
+      renderCurrentPage();
+      break;
+    case 'toast-matched':
+      renderCurrentPage();
+      showToast('success', `<b>Matched to order #9F2E1A.</b> OpenLinker can now restock, refund or correct the invoice for this return.`);
+      break;
+    case 'detail-orphan':
+      currentPage = { kind: 'detail', id: 'r1' };
+      renderCurrentPage();
+      break;
+    case 'match-open':
+      currentPage = { kind: 'detail', id: 'r1' };
+      renderCurrentPage();
+      openMatch('r1', { label: 'AL-RET-88213', channel: 'Allegro', cause: "OpenLinker hasn't ingested that order yet", itemsLabel: 'Wireless earbuds, phone case', value: '268,00 PLN' });
+      break;
+    case 'match-error':
+      currentPage = { kind: 'detail', id: 'r1' };
+      renderCurrentPage();
+      openDialog('matchDialogBackdrop');
+      renderMatchError();
+      break;
+    case 'match-conflict':
+      currentPage = { kind: 'detail', id: 'r1' };
+      renderCurrentPage();
+      matchingId = 'r1';
+      matchingReturnChannel = 'Allegro';
+      openDialog('matchDialogBackdrop');
+      renderMatchConflict();
+      break;
+    case 'detail-pending':
+      currentPage = { kind: 'detail', id: 'r3' };
+      renderCurrentPage();
+      break;
+    case 'authorize-open':
+      currentPage = { kind: 'detail', id: 'r3' };
+      renderCurrentPage();
+      openAuthorize('r3', { refused: false });
+      break;
+    case 'authorize-refused':
+      currentPage = { kind: 'detail', id: 'r3' };
+      renderCurrentPage();
+      openAuthorize('demo-source-ingested', { refused: true });
+      break;
+    case 'record-open':
+      renderCurrentPage();
+      openRecordFresh();
+      break;
+    default:
+      renderCurrentPage();
+  }
+}
+
+setState('list');
+</script>

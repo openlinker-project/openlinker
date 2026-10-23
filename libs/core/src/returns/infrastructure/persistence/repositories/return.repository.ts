@@ -57,6 +57,7 @@ import type {
 } from '../../../domain/types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../../../domain/types/return-reattribution.types';
 import type {
+  OpenReturnOrderSummary,
   ReturnBucketCounts,
   ReturnListFilter,
   ReturnStageCounts,
@@ -368,9 +369,11 @@ export class ReturnRepository implements ReturnRepositoryPort {
    *   observe whether a parcel arrived; re-ingestion resetting a received line
    *   to `advised` would also violate `CHK_return_lines_quantity_ordering` in
    *   the cases where it did not silently lose custody state.
-   * - `resolvedOrderLineId` — core-resolved attribution, never adapter-supplied
-   *   (the type carries no field for it), and always `null` this wave since
-   *   `order_records` has no lines table to point at.
+   * - `resolvedOrderLineId` / `resolvedProductId` / `resolvedVariantId` —
+   *   core-resolved attribution, never adapter-supplied (the type carries no
+   *   field for any of them); `claimOrderLineResolution` (#3450) is their one
+   *   writer, always `null` on ingestion since `order_records` has no lines
+   *   table to point at.
    * - `createdAt` on both tables, and the line's `id` — each records a first
    *   write. Churning a line id would re-key a parcel physically in transit.
    *
@@ -842,6 +845,75 @@ export class ReturnRepository implements ReturnRepositoryPort {
   }
 
   /**
+   * All internal order ids currently carrying an `all_open` return (#2998).
+   *
+   * The SAME `SEGMENT_PREDICATES.all_open` fragment `countReturnsBySegment`
+   * counts on — reused rather than redefined, per `OpenReturnOrderSummary`'s
+   * own docblock. `internalOrderId IS NOT NULL` is part of the query rather
+   * than a caller filter, so an orphan return can never contribute an order id
+   * nobody asked about.
+   */
+  async findOpenReturnOrderIds(): Promise<string[]> {
+    const query = ReturnRepository.joinCountersOnce(this.returns.createQueryBuilder('r'))
+      .select('DISTINCT r."internalOrderId"', 'internalOrderId')
+      .where('r."internalOrderId" IS NOT NULL')
+      .andWhere(ReturnRepository.SEGMENT_PREDICATES.all_open);
+
+    const rows = await query.getRawMany<{ internalOrderId: string }>();
+    return rows.map((row) => row.internalOrderId);
+  }
+
+  /**
+   * Per-order open-return summary for a page of order ids (#2998) — the
+   * `/orders` badge. ONE query for the whole page, never a per-row lookup
+   * (the `getLatestInvoicesForOrders` / #2350 shortfall precedent).
+   *
+   * `openCount` and `latestStage` are both derived in application code from
+   * one ordered result set (`internalOrderId ASC, createdAt DESC`) rather than
+   * with a SQL window function — the query stays a plain `SELECT`, and the
+   * grouping is a handful of rows per order at most.
+   */
+  async findOpenReturnSummariesForOrders(
+    internalOrderIds: readonly string[]
+  ): Promise<Map<string, OpenReturnOrderSummary>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+
+    const query = ReturnRepository.joinCountersOnce(this.returns.createQueryBuilder('r'))
+      .select('r."internalOrderId"', 'internalOrderId')
+      .addSelect(ReturnRepository.RETURN_STAGE_EXPR, 'stage')
+      .where('r."internalOrderId" IN (:...internalOrderIds)', {
+        internalOrderIds: [...internalOrderIds],
+      })
+      .andWhere(ReturnRepository.SEGMENT_PREDICATES.all_open)
+      .orderBy('r."internalOrderId"', 'ASC')
+      .addOrderBy('r."createdAt"', 'DESC');
+
+    const rows = await query.getRawMany<{ internalOrderId: string; stage: string }>();
+
+    const summaries = new Map<string, OpenReturnOrderSummary>();
+    for (const row of rows) {
+      const existing = summaries.get(row.internalOrderId);
+      if (existing) {
+        summaries.set(row.internalOrderId, {
+          openCount: existing.openCount + 1,
+          // Rows are ordered `createdAt DESC` within each order id, so the
+          // FIRST row seen for an id already carries its most-recently-opened
+          // stage — never overwrite it with a later (older) row's stage.
+          latestStage: existing.latestStage,
+        });
+      } else {
+        summaries.set(row.internalOrderId, {
+          openCount: 1,
+          latestStage: row.stage as ReturnStage,
+        });
+      }
+    }
+    return summaries;
+  }
+
+  /**
    * The one predicate builder both #2334 reads share.
    *
    * Shared for the reason `buildReattributionQuery` and `buildSweepQuery` are:
@@ -1043,6 +1115,66 @@ export class ReturnRepository implements ReturnRepositoryPort {
     }
   }
 
+  /**
+   * See the port. Same shape as `claimAttribution` above: the `IS NULL`
+   * conjunct is the whole guarantee, so two concurrent resolves cannot both
+   * win and a re-ingestion can never move an answer that already stands.
+   */
+  async claimOrderLineResolution(
+    returnLineId: string,
+    orderLineId: string,
+    catalogIdentity?: { productId?: string; variantId?: string }
+  ): Promise<boolean> {
+    try {
+      const result = await this.lines
+        .createQueryBuilder()
+        .update(ReturnLineOrmEntity)
+        .set({
+          resolvedOrderLineId: orderLineId,
+          resolvedProductId: catalogIdentity?.productId ?? null,
+          resolvedVariantId: catalogIdentity?.variantId ?? null,
+          updatedAt: () => 'now()',
+        })
+        .where('"id" = :id', { id: returnLineId })
+        .andWhere('"resolvedOrderLineId" IS NULL')
+        .execute();
+
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      throw new ReturnPersistenceError('claimOrderLineResolution', error);
+    }
+  }
+
+  /**
+   * See the port. A NARROWER guard than `claimOrderLineResolution`'s —
+   * `resolvedOrderLineId IS NOT NULL AND resolvedProductId IS NULL` — because
+   * this claims the catalogue-identity columns alone, on a row whose order
+   * line was already resolved before those columns existed.
+   */
+  async backfillResolvedCatalogIdentity(
+    returnLineId: string,
+    catalogIdentity: { productId?: string; variantId?: string }
+  ): Promise<boolean> {
+    try {
+      const result = await this.lines
+        .createQueryBuilder()
+        .update(ReturnLineOrmEntity)
+        .set({
+          resolvedProductId: catalogIdentity.productId ?? null,
+          resolvedVariantId: catalogIdentity.variantId ?? null,
+          updatedAt: () => 'now()',
+        })
+        .where('"id" = :id', { id: returnLineId })
+        .andWhere('"resolvedOrderLineId" IS NOT NULL')
+        .andWhere('"resolvedProductId" IS NULL')
+        .execute();
+
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      throw new ReturnPersistenceError('backfillResolvedCatalogIdentity', error);
+    }
+  }
+
   async claimAuthorizedAt(id: string, at: Date): Promise<boolean> {
     // The `claimDeclinedAt` shape, and the same reasoning: `IsNull()` in the WHERE
     // is the at-most-once guarantee, not the ADR-044 proposal slot and not a lock.
@@ -1207,6 +1339,8 @@ export class ReturnRepository implements ReturnRepositoryPort {
       entity.lineIndex,
       entity.externalLineId,
       entity.resolvedOrderLineId,
+      entity.resolvedProductId,
+      entity.resolvedVariantId,
       entity.offerId,
       entity.sku,
       entity.name,

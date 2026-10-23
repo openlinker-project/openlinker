@@ -42,7 +42,7 @@ function row(overrides: Partial<InvoiceRecordOrmEntity> = {}): InvoiceRecordOrmE
     {
       connectionId: CONNECTION_ID,
       orderId: `ol_order_${orderSeq}`,
-      providerType: 'subiekt',
+      providerType: 'subiekt-gt',
       documentType: 'invoice',
       status: 'issued',
       idempotencyKey: null,

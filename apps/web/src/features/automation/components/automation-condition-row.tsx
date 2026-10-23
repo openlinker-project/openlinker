@@ -17,8 +17,10 @@
  * extra work (a `setValue` to clear the sibling slot it invalidates).
  *
  * The amount condition carries an INLINE amount + currency rather than a
- * `thresholdRef` — the declared divergence from the sales-document composer.
- * Nothing is ever converted, so the currency hint says so.
+ * `thresholdRef`. That was a declared divergence from the sales-document
+ * composer and is no longer one — #3189 inlined the amounts there too — so the
+ * two composers now take the same pair of inputs. Nothing is ever converted in
+ * either, so the currency hint says so.
  *
  * @module apps/web/src/features/automation/components
  */

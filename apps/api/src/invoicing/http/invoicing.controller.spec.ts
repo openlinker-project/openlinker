@@ -86,7 +86,7 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
     id: 'inv_1',
     connectionId: 'conn_1',
     orderId: 'ol_order_1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'FV/2026/1',
@@ -297,12 +297,14 @@ describe('InvoicingController', () => {
       getInvoiceById: jest.fn().mockResolvedValue(null),
       // #2047: the connection-agnostic read backing GET without a connectionId.
       getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null),
+      listRecentByConnectionId: jest.fn().mockResolvedValue([]),
       // #2374 — the correction-proposal read.
       getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null),
       getInFlightIssuance: jest.fn().mockResolvedValue(null),
       listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       listInvoices: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
+      listInvoicesKeyset: jest.fn(),
     } as unknown as jest.Mocked<IInvoiceService>;
     orders = {
       getOrderRecord: jest.fn(),
@@ -523,7 +525,7 @@ describe('InvoicingController', () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
       invoiceService.issueInvoice.mockRejectedValue(
-        new CapabilityNotSupportedException('subiekt', 'Invoicing'),
+        new CapabilityNotSupportedException('subiekt-gt', 'Invoicing'),
       );
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(
         CapabilityNotSupportedException,
@@ -533,7 +535,7 @@ describe('InvoicingController', () => {
     it('AdapterNotFoundException -> 502 provider-unavailable message', async () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
-      invoiceService.issueInvoice.mockRejectedValue(new AdapterNotFoundException('subiekt'));
+      invoiceService.issueInvoice.mockRejectedValue(new AdapterNotFoundException('subiekt-gt'));
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(BadGatewayException);
     });
 
@@ -583,6 +585,50 @@ describe('InvoicingController', () => {
       expect(message).not.toContain('Kowalski');
       expect(message).not.toContain('KSeF');
       expect(message).toContain('correlationId');
+    });
+
+    it('classified rejection -> 422 with the closed failureCode and no correlation id (#3772)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockRejectedValue(
+        Object.assign(new Error('NIP 1234 rejected: buyer Jan Kowalski invalid'), {
+          failureMode: 'rejected',
+          reason: 'The buyer tax id is invalid for buyer Jan Kowalski',
+        }),
+      );
+      const error = await controller.issueInvoice(dto).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UnprocessableEntityException);
+      const body = (error as UnprocessableEntityException).getResponse() as Record<string, unknown>;
+      expect(body).toEqual({
+        message: 'The buyer tax identifier was rejected as invalid.',
+        error: 'InvoiceIssueRejected',
+        failureCode: 'buyer-tax-id-invalid',
+      });
+      // A marker-classified code keeps its FIXED sentence: the provider's
+      // words, which may echo buyer data, never reach the body.
+      expect(JSON.stringify(body)).not.toContain('Kowalski');
+    });
+
+    it('connection-setup refusal -> 422 carrying the adapter reason the panel shows (#3772)', async () => {
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      const reason =
+        'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.';
+      invoiceService.issueInvoice.mockRejectedValue(
+        Object.assign(new Error('cannot invoice order ol_order_1'), {
+          failureMode: 'rejected',
+          failureCause: 'connection-setup',
+          reason,
+        }),
+      );
+      const error = await controller.issueInvoice(dto).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UnprocessableEntityException);
+      expect((error as UnprocessableEntityException).getResponse()).toEqual({
+        message: reason,
+        error: 'InvoiceIssueRejected',
+        failureCode: 'connection-setup-incomplete',
+        failureReason: reason,
+      });
     });
 
     it('OrderSnapshotUnavailableError from the service path -> 422 generic', async () => {
@@ -666,6 +712,59 @@ describe('InvoicingController', () => {
       );
     });
 
+    // #3365 review: the service returns the EXISTING record unchanged on two
+    // resume arms, and answering 201 Created for either states something that did
+    // not happen. The sibling issue route already draws this line (#1200); this
+    // one simply never applied it.
+    it('409 CORRECTION_IN_PROGRESS when another attempt is still in flight', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({
+          status: 'issuing',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          isIssued: false,
+        }),
+      );
+
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('409 CORRECTION_NEEDS_RECONCILIATION for a record that ended in doubt', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({
+          status: 'failed',
+          failureMode: 'in-doubt',
+          leaseExpiresAt: null,
+          isIssued: false,
+        }),
+      );
+
+      await expect(controller.issueCorrection(invoiceId, dto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('still answers 201 for a same-key REPLAY of an already-issued correction', async () => {
+      // Deliberately unlike the issue route's 409 on an existing document: that
+      // route keys on (order, connection), where a second one is a real conflict,
+      // while this keys on the caller's idempotency key, where returning the
+      // original result IS the contract.
+      invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.issueCorrection.mockResolvedValue(
+        makeInvoiceRecord({ documentType: 'corrected', status: 'issued' }),
+      );
+
+      const result = await controller.issueCorrection(invoiceId, dto);
+
+      expect(result.documentType).toBe('corrected');
+    });
+
     it('passes originalDocument (rebuilt from the order snapshot) when the order is available', async () => {
       invoiceService.getInvoiceById.mockResolvedValue(makeInvoiceRecord());
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
@@ -684,7 +783,23 @@ describe('InvoicingController', () => {
             clearanceReference: null,
             documentNumber: 'FV/2026/1',
             issueDate: '2026-06-23',
-            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '' }],
+            // Rebuilt from the ORDER, so the line carries `productId` (see the
+            // sibling assertion below, which reads the persisted issuedLineSnapshot
+            // instead and therefore does not) and `orderLineId` - #3312's stamp of
+            // the originating `OrderItem.id`, put on every line built from an order
+            // snapshot and never onto a synthesized one such as shipping.
+            // `objectContaining` does not recurse into this array - it is compared
+            // field for field.
+            lines: [
+              {
+                name: 'Widget',
+                productId: 'p_1',
+                quantity: 1,
+                unitPriceGross: 100,
+                taxRate: '',
+                orderLineId: 'li_1',
+              },
+            ],
           }),
         }),
       );

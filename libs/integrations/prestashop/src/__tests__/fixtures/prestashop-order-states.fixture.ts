@@ -9,6 +9,13 @@
  * `install/data/xml/order_state.xml`, `logable` included since #2600 - so a
  * spec that asserts what the shop does with an imported order is measuring the
  * same flags a real clean install carries.
+ *
+ * Since #3506 (G02-7) that includes `delivery` and NOT the `delivered` field
+ * this fixture used to invent: PrestaShop has no delivered flag, and its
+ * `delivery` column is `1` on "Processing in progress" (3), "Shipped" (4) AND
+ * "Delivered" (5) - the last two carry identical flags. A fixture that made
+ * "Delivered" look flag-distinct let every delivered-path spec pass against a
+ * shop that does not exist.
  */
 export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>> = [
   {
@@ -17,7 +24,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
   {
@@ -26,7 +33,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '1',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '1',
   },
   {
@@ -35,17 +42,17 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '1',
     shipped: '0',
-    delivered: '0',
+    delivery: '1',
     logable: '1',
   },
-  { id: '4', name: 'Shipped', deleted: '0', paid: '1', shipped: '1', delivered: '0', logable: '1' },
+  { id: '4', name: 'Shipped', deleted: '0', paid: '1', shipped: '1', delivery: '1', logable: '1' },
   {
     id: '5',
     name: 'Delivered',
     deleted: '0',
     paid: '1',
     shipped: '1',
-    delivered: '1',
+    delivery: '1',
     logable: '1',
   },
   {
@@ -54,7 +61,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
   {
@@ -63,7 +70,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
   // Ids 8-13 also ship on a clean install. The removed 1-7 table swept every
@@ -75,7 +82,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
   {
@@ -84,7 +91,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '1',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
   {
@@ -93,7 +100,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
   {
@@ -102,7 +109,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '1',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '1',
   },
   {
@@ -111,7 +118,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
   {
@@ -120,7 +127,7 @@ export const DEFAULT_INSTALL_ORDER_STATES: ReadonlyArray<Record<string, unknown>
     deleted: '0',
     paid: '0',
     shipped: '0',
-    delivered: '0',
+    delivery: '0',
     logable: '0',
   },
 ];

@@ -32,6 +32,8 @@ export const OPERATIONAL_SETTING_KEYS = [
   'inventorySweepBudget',
   'sweepPageSize',
   'deletionAuditBudget',
+  'syncJobRetentionDays',
+  'syncJobDeadRetentionDays',
 ] as const;
 
 export type OperationalSettingKey = (typeof OPERATIONAL_SETTING_KEYS)[number];
@@ -155,6 +157,32 @@ export const OPERATIONAL_SETTING_BOUNDS: Readonly<
     default: 100,
     envVar: 'OL_MASTER_PRODUCT_RECONCILE_PAGE_LIMIT',
   },
+  // #2946: `sync_jobs` retention. D16 gives ONE bound (30-365 days) rather
+  // than a soft-advisory/hard-refusal pair, so `recommendedMax` and
+  // `absoluteMax` are set to the SAME value - there is no "our judgement,
+  // exceedable on request" reading for this knob, only a hard floor and
+  // ceiling. `min: 30` is the floor from the same decision, not the generic
+  // `1` every other knob here uses.
+  syncJobRetentionDays: {
+    min: 30,
+    recommendedMax: 365,
+    recommendedReason:
+      'How long a completed sync job is kept for troubleshooting and for its idempotency-key protection against a replayed retry. Bounded 30-365 days (D16).',
+    absoluteMax: 365,
+    absoluteReason: 'The same 30-365 day bound this knob has no value above.',
+    default: 30,
+    envVar: 'OL_SYNC_JOB_RETENTION_DAYS',
+  },
+  syncJobDeadRetentionDays: {
+    min: 30,
+    recommendedMax: 365,
+    recommendedReason:
+      'How long a permanently-failed sync job is kept as evidence that work was lost. Kept longer than a succeeded job by default because a dead row is the only record an operator has of it. Bounded 30-365 days (D16).',
+    absoluteMax: 365,
+    absoluteReason: 'The same 30-365 day bound this knob has no value above.',
+    default: 90,
+    envVar: 'OL_SYNC_JOB_DEAD_RETENTION_DAYS',
+  },
 };
 
 /** Hourly - the cadence `CORE_CAPABILITY_TASKS` ships for `master.product.reconcile`. */
@@ -230,6 +258,10 @@ export interface OperationalSettingsView {
   readonly inventorySweepBudget: ResolvedOperationalNumber;
   readonly sweepPageSize: ResolvedOperationalNumber;
   readonly deletionAuditBudget: ResolvedOperationalNumber;
+  /** Days a `succeeded` sync_jobs row is kept before the retention prune deletes it (#2946, D16). */
+  readonly syncJobRetentionDays: ResolvedOperationalNumber;
+  /** Days a `dead` sync_jobs row is kept — longer by default, since it is the evidence work was lost (#2946, D16). */
+  readonly syncJobDeadRetentionDays: ResolvedOperationalNumber;
   readonly deletionAuditCadence: ResolvedOperationalSetting<string>;
   /**
    * How often each sweep runs (#2660 review).
@@ -277,6 +309,8 @@ export interface OperationalSettingsInput {
   readonly inventorySweepBudget?: number | null;
   readonly sweepPageSize?: number | null;
   readonly deletionAuditBudget?: number | null;
+  readonly syncJobRetentionDays?: number | null;
+  readonly syncJobDeadRetentionDays?: number | null;
   readonly deletionAuditCadence?: string | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.

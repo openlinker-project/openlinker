@@ -97,16 +97,16 @@ async function seedInvoicingConnection(
   options: { isPrimary?: boolean } = {},
 ): Promise<string> {
   const conn = await createTestConnection(harness.getDataSource(), {
-    platformType: 'subiekt',
+    platformType: 'subiekt-gt',
     name: `Invoicing (${triggerModel})`,
     status: 'active',
     // The real registered adapterKey (`subiektAdapterManifest.adapterKey`) is
-    // `'subiekt.invoicing.v1'`, not `'subiekt.bridge.v1'` — the decision-7
+    // `'subiekt.gt.v1'`, not `'subiekt.bridge.v1'` — the decision-7
     // deeper capability check (#2156) resolves this key against the REAL
     // adapter factory registry, so a wrong key here fails closed with
     // `AdapterNotFoundException` and every positive test in this file silently
     // enqueues zero jobs.
-    adapterKey: 'subiekt.invoicing.v1',
+    adapterKey: 'subiekt.gt.v1',
     // The Subiekt bridge token is OPTIONAL and only resolved when
     // `credentialsRef` is truthy (`SubiektAdapterFactory.createAdapters`) —
     // `createTestConnection`'s default `'test-credentials-ref'` does not

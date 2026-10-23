@@ -10,12 +10,15 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
+import { checkPaymentFactsConsistency } from '../../domain/types/payment-facts-consistency.types';
 import {
   encodeBuyerTaxIdColumn,
   readBuyerTaxId,
 } from '../../domain/types/buyer-tax-id.types';
+import type { HeldOrderRef } from '../../domain/ports/order-record-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
+import { OrderCancellationSignalRepositoryPort } from '../../domain/ports/order-cancellation-signal-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
@@ -28,9 +31,11 @@ import type {
   OrderRecordPagination,
   OrderRecordStatus,
   PaginatedOrderRecords,
+  SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
@@ -60,6 +65,7 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
@@ -81,9 +87,20 @@ import type {
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Cap on remembered contradictory-payment-facts warnings per process (#3294). */
+const PAYMENT_FACTS_WARNED_ORDERS_MAX = 5000;
+
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
   private readonly logger = new Logger(OrderRecordService.name);
+
+  /**
+   * Orders already warned about for contradictory payment facts (#3294), so a
+   * repeat ingestion logs at debug instead of warn. Bounded so a long-running
+   * process cannot grow it without limit; evicting the oldest entry only costs
+   * one more warn for that order.
+   */
+  private readonly paymentFactsWarnedOrderIds = new Set<string>();
 
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
@@ -95,8 +112,21 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
     private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
     @Inject(AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN)
-    private readonly automationEmission: IAutomationTriggerEmissionService
+    private readonly automationEmission: IAutomationTriggerEmissionService,
+    @Inject(ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN)
+    private readonly cancellationSignalRepository: OrderCancellationSignalRepositoryPort
   ) {}
+
+  private rememberPaymentFactsWarning(orderId: string): void {
+    if (this.paymentFactsWarnedOrderIds.size >= PAYMENT_FACTS_WARNED_ORDERS_MAX) {
+      // A Set iterates in insertion order, so the first key is the oldest.
+      for (const oldest of this.paymentFactsWarnedOrderIds) {
+        this.paymentFactsWarnedOrderIds.delete(oldest);
+        break;
+      }
+    }
+    this.paymentFactsWarnedOrderIds.add(orderId);
+  }
 
   /**
    * Persist order record with PII-aware snapshot
@@ -152,6 +182,13 @@ export class OrderRecordService implements IOrderRecordService {
         ...(item.taxSource !== undefined && { taxSource: item.taxSource }),
         ...(item.taxRateReadAt !== undefined && { taxRateReadAt: item.taxRateReadAt }),
         ...(item.taxRateChannel !== undefined && { taxRateChannel: item.taxRateChannel }),
+        // #3365 - the source-reported gross unit price, and the second time
+        // this exact allowlist has lost a field. The warning above was written
+        // about the tax rate; it applies verbatim here, and this omission was
+        // likewise caught by a live run rather than by a unit test: every spec
+        // passed while a PrestaShop order reached the destination adapter with
+        // no gross price and was refused for not having one it HAD reported.
+        ...(item.unitPriceGross !== undefined && { unitPriceGross: item.unitPriceGross }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii
@@ -172,7 +209,13 @@ export class OrderRecordService implements IOrderRecordService {
       // did not supply the flag, so consumers can distinguish "Smart not
       // reported" from "Smart explicitly false".
       ...(order.deliverySmart !== undefined && { deliverySmart: order.deliverySmart }),
+      ...(order.fulfilledBySource !== undefined && {
+        fulfilledBySource: order.fulfilledBySource,
+      }),
       ...(order.paymentStatus !== undefined && { paymentStatus: order.paymentStatus }),
+      // How the buyer pays (#3294) - present-only like paymentStatus, and NOT
+      // PII (a closed four-value vocabulary), so it is kept in both PII modes.
+      ...(order.paymentMethod !== undefined && { paymentMethod: order.paymentMethod }),
       // Marketplace-sourced COD collect amount (#1435) — present-only, like
       // paymentStatus. Read back by `OrderRecord.codToCollect` for the dispatch
       // COD gate; absent for prepaid orders and sources that don't expose it.
@@ -217,6 +260,32 @@ export class OrderRecordService implements IOrderRecordService {
     // Order analytics read-model scalars (#1985) — denormalized alongside
     // dispatchByAt above, from the same already-resolved Order. See ADR-039.
     const analyticsScalars = deriveOrderAnalyticsScalars(order);
+
+    // Contradictory payment facts (#3294): a source adapter reported a method,
+    // a status and a collect amount that cannot all be true. Reported, never
+    // thrown or corrected - the order is the fact, the contradiction is a
+    // defect in an adapter, and refusing the order would lose a paid sale to
+    // surface it. The log is what lets an operator or a maintainer find it.
+    //
+    // `persistOrder` runs on every poll and webhook, so a persistent adapter
+    // defect would repeat the same warning for the same order on every tick and
+    // bury it. The first sighting per order (per process) warns; repeats go to
+    // debug.
+    const paymentFactsViolations = checkPaymentFactsConsistency(order);
+    if (paymentFactsViolations.length > 0) {
+      const message =
+        `order_payment_facts_contradictory: ingested order ${order.id} ` +
+        `(source connection ${sourceConnectionId}): ${paymentFactsViolations.join(', ')} - ` +
+        `paymentMethod=${order.paymentMethod ?? 'absent'} ` +
+        `paymentStatus=${order.paymentStatus ?? 'absent'} ` +
+        `codToCollect=${order.codToCollect === undefined ? 'absent' : 'present'}`;
+      if (this.paymentFactsWarnedOrderIds.has(order.id)) {
+        this.logger.debug(message);
+      } else {
+        this.rememberPaymentFactsWarning(order.id);
+        this.logger.warn(message);
+      }
+    }
 
     // Buyer tax id (#2599) - denormalized so routing and gating never expand
     // JSONB, and so the value outlives the snapshot's PII redaction.
@@ -300,7 +369,20 @@ export class OrderRecordService implements IOrderRecordService {
       [],
       buyerTaxId,
       shippingAddressHash,
-      analyticsScalars.totalTaxTreatment
+      analyticsScalars.totalTaxTreatment,
+      // salesDocumentMatchedRuleId, fulfillmentRoutingSkipReason and
+      // fulfillmentBlock: each owned by its own narrow writer, restated only
+      // because the new argument sits past them.
+      null,
+      null,
+      null,
+      // How the buyer pays (#3294). The `'ready'` path only, like the analytics
+      // scalars: an `awaiting_mapping` re-ingestion must not null a value a
+      // previous ready-path write settled. Stored as reported - `null` when the
+      // source said nothing - and read back as `'unknown'` in that case. The
+      // source is authoritative, so a later ready re-ingestion from a source
+      // that omits the field also writes `null` over an earlier value.
+      order.paymentMethod ?? null
     );
 
     // #1985: persist the order record AND its order_line_items rows in one
@@ -404,7 +486,12 @@ export class OrderRecordService implements IOrderRecordService {
       metadata: incoming.metadata,
       // See `persistOrder` above for the absent-vs-false rationale.
       ...(incoming.deliverySmart !== undefined && { deliverySmart: incoming.deliverySmart }),
+      ...(incoming.fulfilledBySource !== undefined && {
+        fulfilledBySource: incoming.fulfilledBySource,
+      }),
       ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
+      // How the buyer pays (#3294) - see persistOrder.
+      ...(incoming.paymentMethod !== undefined && { paymentMethod: incoming.paymentMethod }),
       // Marketplace-sourced COD collect amount (#1435) — see persistOrder.
       ...(incoming.codToCollect !== undefined && { codToCollect: incoming.codToCollect }),
       ...(incoming.dispatchTime !== undefined && { dispatchTime: incoming.dispatchTime }),
@@ -442,10 +529,25 @@ export class OrderRecordService implements IOrderRecordService {
     // stamping here would be work repeated moments later for the overwhelming
     // majority of orders. An order that never leaves `awaiting_mapping` still
     // carries `totals` in this snapshot and is picked up by the reconcile sweep.
+    //
+    // Consume the early-cancellation signal (#2069) HERE, after the row above
+    // is durably persisted, never before: a failure here leaves the signal
+    // row untouched (a DELETE that throws commits nothing), so a retry — or
+    // simply the next ordinary poll/webhook for this order, since this call
+    // runs unconditionally on every invocation, not only the first — picks it
+    // up again. Consuming before the upsert would risk losing the signal
+    // forever if the upsert itself then failed. `persistOrder` never needs
+    // the same check: its own `upsertWithLineItems()` excludes `cancelledAt`
+    // from its column list, so whatever this write sets here survives it
+    // untouched.
+    const earlySignalAt = await this.cancellationSignalRepository.consume(
+      sourceConnectionId,
+      incoming.externalOrderId
+    );
     const cancellationWrote = await this.recordCancellationIfNeeded(
       internalOrderId,
-      incoming.status === 'cancelled',
-      now
+      incoming.status === 'cancelled' || earlySignalAt !== null,
+      earlySignalAt ?? now
     );
 
     return cancellationWrote ? (await this.repository.findById(internalOrderId)) ?? saved : saved;
@@ -683,6 +785,18 @@ export class OrderRecordService implements IOrderRecordService {
     await this.repository.markCancelled(internalOrderId, cancelledAt);
   }
 
+  async recordEarlyCancellationSignal(
+    sourceConnectionId: string,
+    externalOrderId: string,
+    cancelledAt: Date
+  ): Promise<void> {
+    await this.cancellationSignalRepository.record(
+      sourceConnectionId,
+      externalOrderId,
+      cancelledAt
+    );
+  }
+
   async getSalesAndChannelAnalytics(
     filters: SalesAnalyticsFilters,
     includeBackfilledPreRollout = false
@@ -853,17 +967,24 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
-   * Record or clear the sales-document block (#2100). Thin pass-through to the
-   * repository's narrow absolute-set — see
-   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears,
-   * and is the ordinary path: the auto-issue gate is level-evaluated, so this is
-   * called on every transition with the current answer.
+   * Record or clear the sales-document block (#2100), and the rule that decided
+   * this order's document kind (#3186). Thin pass-through to the repository's
+   * narrow absolute-set — see
+   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears
+   * `block`, the ordinary path: the auto-issue gate is level-evaluated, so this
+   * is called on every transition with the current answer.
+   *
+   * `matchedRule` carries no default (#3186 review) so that every caller states
+   * whether it decided the rule at all — `{action: 'set'}` for the gate, which
+   * re-decides both, and `{action: 'preserve'}` for a caller that decided only
+   * the block.
    */
   async markSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void> {
-    await this.repository.updateSalesDocumentBlock(internalOrderId, block);
+    await this.repository.updateSalesDocumentBlock(internalOrderId, block, matchedRule);
   }
 
   /**
@@ -876,6 +997,25 @@ export class OrderRecordService implements IOrderRecordService {
     block: FulfillmentBlock | null
   ): Promise<void> {
     await this.repository.updateFulfillmentBlock(internalOrderId, block);
+  }
+
+  /** #3485 — thin read for the reroute sweep. */
+  async listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]> {
+    return this.repository.listOrderIdsByFulfillmentBlockReasons(reasons, page);
+  }
+
+  /**
+   * #3455 — the write half of the intercept's routing-skip report. Thin by
+   * design: the decision belongs to the intercept.
+   */
+  async markFulfillmentRoutingSkip(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void> {
+    await this.repository.updateFulfillmentRoutingSkipReason(internalOrderId, reason);
   }
 
   /**

@@ -14,6 +14,7 @@ import { Logger } from '@openlinker/shared/logging';
 
 import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
+import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
 import type { FulfillmentWorkLinkResolution } from '../../domain/types/fulfillment-work-link.types';
 import type { IFulfillmentWorkQueryService } from '../interfaces/fulfillment-work-query.service.interface';
 
@@ -38,6 +39,10 @@ export class FulfillmentWorkQueryService implements IFulfillmentWorkQueryService
     }
 
     return [...connectionIds];
+  }
+
+  async findWorkById(workId: string): Promise<FulfillmentWork | null> {
+    return this.works.findById(workId);
   }
 
   async resolveLinkForOrder(orderId: string): Promise<FulfillmentWorkLinkResolution> {
