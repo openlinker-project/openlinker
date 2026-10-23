@@ -7,9 +7,32 @@
  *
  * @module libs/integrations/shoper/src
  */
+import type { AdapterMetadata } from '@openlinker/core/integrations';
 
 export const SHOPER_ADAPTER_KEY = 'shoper.restapi.v1';
 export const SHOPER_PLATFORM_TYPE = 'shoper';
+
+/**
+ * Outbound pacing for a connection whose operator set no `config.rateLimit`.
+ *
+ * Measured on a live trial shop (2026-10-22/23), not guessed: Shoper's limit
+ * is PER SHOP and shared by every token and every integration installed on it.
+ * A sustained 10 req/s was answered in full (every response advertises
+ * `x-shop-api-limit: 10`); at 15 req/s about 5 req/s came back `429`, an HTML
+ * page with no `Retry-After` and none of the `x-shop-*` headers, so the
+ * transport cannot learn the wait from the answer and pacing has to be ours.
+ *
+ * 240/min (4 req/s, spaced - the limiter has no burst) is deliberately well
+ * under the measured 10 req/s: the budget is shared with whatever else the
+ * merchant runs against the same shop (ERP, marketplace connectors), and a 429
+ * we cause there is a failure in somebody else's integration. `maxConcurrent: 4`
+ * keeps a slow request from stacking more than the spacing allows. The bound is
+ * per CONNECTION, so two OpenLinker connections to one shop get 240 each.
+ */
+export const SHOPER_DEFAULT_RATE_LIMIT: NonNullable<AdapterMetadata['defaultRateLimit']> = {
+  requestsPerMinute: 240,
+  maxConcurrent: 4,
+};
 
 /** Short brand label used as the prefix of domain exceptions and operator-facing messages. */
 export const SHOPER_BRAND = 'Shoper';

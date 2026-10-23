@@ -42,6 +42,7 @@ import type {
   WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
+import type { ConnectionRateLimit } from '@openlinker/shared/rate-limit';
 import { Logger } from '@openlinker/shared/logging';
 
 import { parseShoperBaseUrl } from '../../domain/policies/shoper-base-url.policy';
@@ -68,6 +69,9 @@ export class ShoperWebhookProvisioningAdapter implements WebhookProvisioningPort
     private readonly webhookSecretService: IWebhookSecretService,
     private readonly credentialsResolver: CredentialsResolverPort,
     private readonly http: HttpTransportFactoryPort,
+    // The manifest's `defaultRateLimit`, so an install on a connection no
+    // capability call has touched yet is paced too.
+    private readonly defaultRateLimit?: ConnectionRateLimit,
   ) {}
 
   async install(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult> {
@@ -108,7 +112,7 @@ export class ShoperWebhookProvisioningAdapter implements WebhookProvisioningPort
 
     const client = new ShoperHttpClient(
       { host: base.host, token: credentials.token },
-      this.http.forConnection(connection),
+      this.http.forConnection(connection, this.defaultRateLimit),
     );
     const endpoint = `${callbackBaseUrl.replace(/\/+$/, '')}/webhooks/${SHOPER_WEBHOOK_PROVIDER}/${connectionId}`;
     const deliveryUrl = `${endpoint}?${SHOPER_WEBHOOK_TOKEN_QUERY_KEY}=${encodeURIComponent(secret)}`;

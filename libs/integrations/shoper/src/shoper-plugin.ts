@@ -9,16 +9,17 @@
  * #980 rule), in its own task of the Shoper milestone (#3640-#3644); until
  * then asking for one fails with the SDK's uniform "does not support" error.
  *
- * Not declared, and each for a stated reason:
- *   - `defaultRateLimit` - Shoper's real request ceiling is UNKNOWN, not
- *     "unreached": every response carries `x-shop-api-limit: 10` (SPIKE-3638
- *     C5), unit unstated, and the 25-request burst that was never throttled
- *     (C6) is explicitly not evidence of no limit (open risk 2). Inventing a
- *     number is worse than none, so a connection whose operator never sets
- *     `config.rateLimit` is paced by nothing on OpenLinker's side. Revisit once
- *     the longer sustained-rate test risk 2 asks for has run.
- *   - penalty-free deferral for 429 / 503 (`getRetryDeferral`) - the request
- *     ceiling is unknown, so there is no honest delay to quote.
+ * Outbound pacing: `defaultRateLimit` is `SHOPER_DEFAULT_RATE_LIMIT`, calibrated
+ * against the measured per-shop limit (see that constant). Every
+ * `host.http.forConnection` call site passes it - the capability adapters, the
+ * connection tester and the webhook provisioner - so no path issues unpaced
+ * traffic before the first capability call has set the default.
+ *
+ * A `429` / `503` that still reaches a job is deferred penalty-free
+ * (`ShoperRetryClassifierAdapter.getRetryDeferral`): Shoper's 429 carries no
+ * `Retry-After`, so the delay is ours (60 s throttle, 300 s unavailable).
+ *
+ * Not declared, and for a stated reason:
  *   - Sales documents (invoice / receipt) - confirmed absent from Shoper's API
  *     (SPIKE-3638), a deliberate scope boundary, not a gap.
  *
@@ -28,7 +29,12 @@ import { dispatchCapability, type AdapterPlugin, type HostServices } from '@open
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
-import { SHOPER_ADAPTER_KEY, SHOPER_BRAND, SHOPER_PLATFORM_TYPE } from './shoper.constants';
+import {
+  SHOPER_ADAPTER_KEY,
+  SHOPER_BRAND,
+  SHOPER_DEFAULT_RATE_LIMIT,
+  SHOPER_PLATFORM_TYPE,
+} from './shoper.constants';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { ShoperCustomerProvisioner } from './infrastructure/provisioners/shoper-customer.provisioner';
 import { ShoperAdapterFactory, type ShoperAdapters } from './application/shoper-adapter.factory';
@@ -67,7 +73,7 @@ export const shoperAdapterManifest: AdapterMetadata = {
   // narrows the dispatched `ProductPublisher` adapter, so it is `ProductPublisher`
   // that actually gates provisioning on the publish path today.
   // `OrderSource` is likewise opt-in: ingesting a shop's orders is polling load
-  // against a shop whose request ceiling is unknown (SPIKE-3638 C6), and a
+  // against a request budget the shop shares with every other integration, and a
   // connection that exists only as a catalogue master must not start doing it.
   // `OrderProcessorManager` is supported but NOT on by default. Without this, a
   // connection created with no explicit capability list gets every capability
@@ -76,6 +82,7 @@ export const shoperAdapterManifest: AdapterMetadata = {
   // catalogue / stock master would start receiving orders. An operator who wants
   // Shoper as an order destination enables it explicitly (#3350 mechanism).
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+  defaultRateLimit: SHOPER_DEFAULT_RATE_LIMIT,
   displayName: 'Shoper REST API',
   version: '1.0.0',
   isDefault: true,
@@ -98,7 +105,7 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
     register(host: HostServices): void {
       host.connectionTesterRegistry.register(
         SHOPER_ADAPTER_KEY,
-        new ShoperConnectionTesterAdapter(host.http),
+        new ShoperConnectionTesterAdapter(host.http, SHOPER_DEFAULT_RATE_LIMIT),
       );
       host.connectionConfigShapeValidatorRegistry.register(
         SHOPER_ADAPTER_KEY,
@@ -149,9 +156,9 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
           connection,
           host.identifierMapping,
           host.credentialsResolver,
-          // Connection-bound outbound transport (#1810). No manifest default rate
-          // limit is passed - this plugin declares none (SPIKE-3638 C6).
-          host.http.forConnection(connection),
+          // Connection-bound outbound transport (#1810), paced by the manifest
+          // default unless the operator set `config.rateLimit`.
+          host.http.forConnection(connection, shoperAdapterManifest.defaultRateLimit),
           host.cache,
           deps?.customerProvisioner,
           deps?.mappingConfigService,

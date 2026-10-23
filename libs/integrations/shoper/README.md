@@ -400,8 +400,12 @@ method label.
 
 ## Known gaps
 
-- **No rate limiting or retries yet.** The real request ceiling is unconfirmed (SPIKE-3638 C6); no
-  `defaultRateLimit` is declared. Set `config.rateLimit` on the connection if a shop needs a cap.
+- **Rate limit.** Shoper's limit is per SHOP and shared by every token and integration on it: a
+  sustained 10 req/s was answered in full, 15 req/s drew `429`s (an HTML page with no `Retry-After`).
+  The manifest default is 240 req/min with 4 in flight, leaving room for the merchant's other
+  integrations; `config.rateLimit` on the connection overrides it. A `429` / `503` that reaches a job
+  is deferred penalty-free (60 s / 300 s) instead of spending a retry attempt. The bound is per
+  connection, so two OpenLinker connections to one shop get 240 each.
 - **`adjustInventory` is a non-atomic read-modify-write** (Shoper has no conditional stock write and no
   idempotency key, so it reports `idempotency: 'unsupported'`): a change landing between the read and the PUT is
   overwritten, and a retry after a lost response applies the delta again. The remedy belongs at the call site: a

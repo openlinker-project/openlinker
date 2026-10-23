@@ -23,6 +23,7 @@ interface Fixture {
   connectionPort: jest.Mocked<Pick<ConnectionPort, 'get' | 'update'>>;
   secretService: jest.Mocked<Pick<IWebhookSecretService, 'rotate'>>;
   fetchMock: jest.Mock;
+  http: HttpTransportFactoryPort;
   calls: Array<{ method: string; path: string; body: Record<string, unknown> | null }>;
   shop: { webhooks: ShopWebhook[] };
 }
@@ -102,7 +103,9 @@ function setup(
       secretService as unknown as IWebhookSecretService,
       credentialsResolver,
       http,
+      { requestsPerMinute: 240, maxConcurrent: 4 },
     ),
+    http,
     connectionPort,
     secretService,
     fetchMock,
@@ -148,6 +151,17 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       await f.adapter.install(CONNECTION_ID, 'user-7');
 
       expect(f.secretService.rotate).toHaveBeenCalledWith('shoper', CONNECTION_ID, 'user-7');
+    });
+
+    it('should talk to the shop through the paced connection-bound transport', async () => {
+      const f = setup();
+
+      await f.adapter.install(CONNECTION_ID);
+
+      expect(f.http.forConnection).toHaveBeenCalledWith(
+        expect.objectContaining({ id: CONNECTION_ID }),
+        { requestsPerMinute: 240, maxConcurrent: 4 },
+      );
     });
 
     it('should register ONE webhook with every order event, active, whose URL carries the encoded token', async () => {

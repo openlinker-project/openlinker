@@ -6,12 +6,17 @@
  * connection tester today) and never a DI singleton, because it closes over
  * one connection's token.
  *
- * Deliberately has no retries and no rate limiting yet. Both belong with the
- * first capability that makes authenticated calls from a worker: the real
- * request ceiling is unconfirmed (SPIKE-3638 C6), and a retry on the
- * connection test would mask real latency and make auth failures harder to
- * diagnose. Outbound pacing is the injected `fetchImpl`'s job - callers pass
- * `host.http.forConnection(connection)`.
+ * Deliberately has no retries: a failed call surfaces to the job, whose
+ * runner owns the retry ladder (and defers a 429 / 503 penalty-free through
+ * the retry classifier), and a retry on the connection test would mask real
+ * latency. Outbound pacing is the injected `fetchImpl`'s job - callers pass
+ * `host.http.forConnection(connection, defaultRateLimit)`.
+ *
+ * A rate-limiter rejection (`RateLimitTimeoutError` / `RateLimitAbortedError`)
+ * thrown by that `fetchImpl` is rethrown UNWRAPPED: the job runner recognises
+ * those classes to requeue without spending an attempt, and wrapping them in
+ * `ShoperNetworkError` would turn "we chose not to send yet" into an ordinary
+ * failure.
  *
  * Two safety properties are load-bearing:
  *   - **Redirects are never followed.** The Bearer token must not be replayed
@@ -26,6 +31,7 @@
  * @module libs/integrations/shoper/src/infrastructure/http
  */
 import type { FetchLike } from '@openlinker/shared/http';
+import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 
 import { buildShoperApiUrl } from '../../domain/policies/shoper-base-url.policy';
 import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
@@ -126,6 +132,9 @@ export class ShoperHttpClient {
       });
       text = await this.readBody(response);
     } catch (error) {
+      if (error instanceof RateLimitTimeoutError || error instanceof RateLimitAbortedError) {
+        throw error;
+      }
       throw this.toNetworkError(error, controller.signal.aborted);
     } finally {
       clearTimeout(timer);
