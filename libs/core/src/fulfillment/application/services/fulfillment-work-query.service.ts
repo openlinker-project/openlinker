@@ -16,6 +16,11 @@ import { FULFILLMENT_WORK_REPOSITORY_TOKEN } from '../../fulfillment.tokens';
 import { FulfillmentWorkRepositoryPort } from '../../domain/ports/fulfillment-work-repository.port';
 import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
 import type { FulfillmentWorkLinkResolution } from '../../domain/types/fulfillment-work-link.types';
+import {
+  summarizeOrderWork,
+  type FulfillmentWorkProgress,
+  type OrderWorkSummary,
+} from '../../domain/types/order-work-summary.types';
 import type { IFulfillmentWorkQueryService } from '../interfaces/fulfillment-work-query.service.interface';
 
 @Injectable()
@@ -43,6 +48,26 @@ export class FulfillmentWorkQueryService implements IFulfillmentWorkQueryService
 
   async findWorkById(workId: string): Promise<FulfillmentWork | null> {
     return this.works.findById(workId);
+  }
+
+  async summarizeWorkForOrders(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyMap<string, OrderWorkSummary>> {
+    const rows = await this.works.findProgressByOrderIds(orderIds);
+
+    const worksByOrder = new Map<string, FulfillmentWorkProgress[]>();
+    for (const row of rows) {
+      const works = worksByOrder.get(row.orderId) ?? [];
+      works.push({ status: row.status, parcelClosedAt: row.parcelClosedAt });
+      worksByOrder.set(row.orderId, works);
+    }
+
+    const summaries = new Map<string, OrderWorkSummary>();
+    for (const [orderId, works] of worksByOrder) {
+      const summary = summarizeOrderWork(works);
+      if (summary) summaries.set(orderId, summary);
+    }
+    return summaries;
   }
 
   async resolveLinkForOrder(orderId: string): Promise<FulfillmentWorkLinkResolution> {

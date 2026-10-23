@@ -152,6 +152,7 @@ export type { IFulfillmentRelayGateService } from './application/interfaces/fulf
 // to ask what work covers an order. The repository port stays off the barrel;
 // `check-cross-context-imports.mjs` denies a cross-context `*RepositoryPort`.
 export * from './domain/types/fulfillment-work-link.types';
+export * from './domain/types/order-work-summary.types';
 export type { IFulfillmentWorkQueryService } from './application/interfaces/fulfillment-work-query.service.interface';
 
 export { RoutingDecision } from './domain/entities/routing-decision.entity';

@@ -50,6 +50,7 @@ import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
 import { OrderReservationShortfallDto } from './order-reservation-shortfall.dto';
+import { OrderHandledInOpenLinkerDto } from './order-handled-in-openlinker.dto';
 import { OrderOpenReturnDto } from './order-open-return.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
@@ -245,6 +246,17 @@ export class OrderRecordResponseDto {
       'order) can never contribute to this field by construction.',
   })
   openReturn?: OrderOpenReturnDto;
+
+  @ApiPropertyOptional({
+    type: OrderHandledInOpenLinkerDto,
+    description:
+      'The packing position of an order OpenLinker handles itself (#3482): the OMS router sent it ' +
+      'to the pack bench instead of mirroring it to a product master, so it has no destination ' +
+      'rows and would otherwise read "No destinations". Absent means NO LIVE WORK was found, ' +
+      'never a positive "not routed" claim - the batched read is best-effort and degrades to ' +
+      'absent on failure. A separate, non-partitioning field: it is never a health bucket.',
+  })
+  handledInOpenLinker?: OrderHandledInOpenLinkerDto;
 
   @ApiPropertyOptional({
     type: [String],

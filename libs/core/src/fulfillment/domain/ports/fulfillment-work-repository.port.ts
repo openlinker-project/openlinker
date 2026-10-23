@@ -45,6 +45,7 @@ import type { FulfillmentRequestStatus } from '../types/fulfillment-request-stat
 import type { FulfillmentWork } from '../types/fulfillment-work.types';
 import type { FulfillmentWorkRejection } from '../types/fulfillment-work-rejection.types';
 import type { FulfillmentWorkStatus } from '../types/fulfillment-work-status.types';
+import type { FulfillmentWorkProgress } from '../types/order-work-summary.types';
 import type {
   FulfillmentWorkListFilter,
   FulfillmentWorkPage,
@@ -542,6 +543,19 @@ export interface FulfillmentWorkRepositoryPort {
 
   findById(workId: string): Promise<FulfillmentWork | null>;
   findByOrderId(orderId: string): Promise<FulfillmentWork[]>;
+
+  /**
+   * The packing-relevant facts of every work covering ANY of `orderIds` (#3482) —
+   * one `WHERE "orderId" IN (…)` for a whole list page, never a per-order read.
+   *
+   * `status` AND `parcelClosedAt`, because the pack bench records its progress in
+   * its own columns and never moves `status`. Header columns only, no lines:
+   * hydrating every line of every work on a page would be the N+1 this exists to
+   * avoid. An order with no work is absent from the result.
+   */
+  findProgressByOrderIds(
+    orderIds: readonly string[]
+  ): Promise<ReadonlyArray<FulfillmentWorkProgress & { readonly orderId: string }>>;
 
   /**
    * The worklist read (#2406) — filtered, ordered and BOUNDED.
