@@ -104,7 +104,11 @@ export function planShoperParcelWrite(
   }
   const untracked = existing.filter((p) => normalize(p.shipping_code) === undefined);
   if (untracked.length === 1) {
-    return { kind: 'attach-tracking', parcelId: String(untracked[0].parcel_id) };
+    return {
+      kind: 'attach-tracking',
+      parcelId: String(untracked[0].parcel_id),
+      alreadySent: readShoperFlag(untracked[0].sent) === true,
+    };
   }
   // A new tracking number on an order that already has tracked parcels is a
   // second shipment; without lines OpenLinker cannot say what it carries, and a

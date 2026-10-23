@@ -9,7 +9,12 @@
 
 export type ShoperParcelPlan =
   | { readonly kind: 'create' }
-  | { readonly kind: 'attach-tracking'; readonly parcelId: string }
+  /**
+   * `alreadySent`: Shoper refuses any `PUT /parcels/:id` that names the sent flag
+   * once the parcel is sent (`parcel_already_sent`), so the tracking number must
+   * then travel alone.
+   */
+  | { readonly kind: 'attach-tracking'; readonly parcelId: string; readonly alreadySent: boolean }
   | { readonly kind: 'already-applied' }
   /**
    * The order already has parcel(s) under other tracking numbers. A further parcel

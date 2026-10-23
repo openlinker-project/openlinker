@@ -313,10 +313,15 @@ export interface ShoperOrderStatusUpdate {
   readonly status_id: number;
 }
 
-/** Body of `PUT /parcels/:id` that attaches a tracking number arriving after the parcel. */
+/**
+ * Body of `PUT /parcels/:id` that attaches a tracking number arriving after the
+ * parcel. `sent` is left out for a parcel that is already sent: Shoper answers
+ * 400 `parcel_already_sent` to any write naming the flag then, while the code on
+ * its own is accepted (live-verified 2026-10-23).
+ */
 export interface ShoperParcelTrackingUpdate {
   readonly shipping_code: string;
-  readonly sent: true;
+  readonly sent?: true;
 }
 
 /** Row of `/shippings`, `/payments` or `/statuses`: the id plus per-language labels. */

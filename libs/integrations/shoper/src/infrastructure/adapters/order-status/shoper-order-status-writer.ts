@@ -184,7 +184,9 @@ export class ShoperOrderStatusWriter implements OrderStatusWriteback {
     }
 
     if (plan.kind === 'attach-tracking' && trackingNumber !== undefined) {
-      const body: ShoperParcelTrackingUpdate = { shipping_code: trackingNumber, sent: true };
+      const body: ShoperParcelTrackingUpdate = plan.alreadySent
+        ? { shipping_code: trackingNumber }
+        : { shipping_code: trackingNumber, sent: true };
       await this.client.put(`/parcels/${plan.parcelId}`, body);
       this.logger.log(
         `Attached tracking to Shoper parcel ${plan.parcelId} of order ${externalOrderId} ` +

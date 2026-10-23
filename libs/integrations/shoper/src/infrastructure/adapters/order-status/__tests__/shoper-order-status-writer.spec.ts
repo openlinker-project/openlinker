@@ -181,6 +181,14 @@ describe('ShoperOrderStatusWriter', () => {
       expect(h.post).not.toHaveBeenCalled();
     });
 
+    it('should send only the tracking number to a parcel Shoper already reports as sent', async () => {
+      const h = setup({ parcels: [{ parcel_id: '5', order_id: '10', shipping_code: '', sent: '1' }] });
+
+      await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T2' });
+
+      expect(h.put).toHaveBeenCalledWith('/parcels/5', { shipping_code: 'T2' });
+    });
+
     it('should reject, writing nothing, when a parcel exists under a different tracking number', async () => {
       const h = setup({ parcels: [{ parcel_id: '5', order_id: '10', shipping_code: 'T1' }] });
 

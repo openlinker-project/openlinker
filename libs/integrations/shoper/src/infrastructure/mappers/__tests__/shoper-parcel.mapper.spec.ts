@@ -49,6 +49,15 @@ describe('shoper-parcel.mapper', () => {
       expect(planShoperParcelWrite([parcel('5', '')], 'T2')).toEqual({
         kind: 'attach-tracking',
         parcelId: '5',
+        alreadySent: false,
+      });
+    });
+
+    it('should mark the attach as going to an already-sent parcel when Shoper reports it sent', () => {
+      expect(planShoperParcelWrite([{ ...parcel('5', ''), sent: '1' }], 'T2')).toEqual({
+        kind: 'attach-tracking',
+        parcelId: '5',
+        alreadySent: true,
       });
     });
 
