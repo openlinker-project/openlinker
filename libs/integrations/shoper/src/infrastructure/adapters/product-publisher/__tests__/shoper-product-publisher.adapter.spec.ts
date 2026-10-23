@@ -441,6 +441,85 @@ describe('ShoperProductPublisherAdapter', () => {
     });
   });
 
+  describe('attributes', () => {
+    const COLOUR = {
+      attribute_id: '28',
+      attribute_group_id: '8',
+      name: 'Kolor',
+      type: '2',
+      options: [{ option_id: '113', value: 'Serenity' }],
+    };
+    const envelope = (list: unknown[]): { status: number; data: unknown } => ({
+      status: 200,
+      data: { list, count: String(list.length), pages: 1, page: 1 },
+    });
+
+    /** Answers the attribute reads, and `product` for `GET /products/:id`. */
+    function routeGets(get: jest.Mock, product: unknown = { category_id: '45', main_image: null, stock: { stock_id: '418' } }): void {
+      get.mockImplementation((path: string) => {
+        if (path === '/attributes/28') return Promise.resolve({ status: 200, data: COLOUR });
+        if (path === '/attribute-groups') {
+          return Promise.resolve(envelope([{ attribute_group_id: '8', categories: [45, 38] }]));
+        }
+        if (path === '/attributes') return Promise.resolve(envelope([COLOUR]));
+        return Promise.resolve({ status: 200, data: product });
+      });
+    }
+
+    it('should send the picked attribute as a flat id to option-text map on create', async () => {
+      const { adapter, post, get } = setup();
+      routeGets(get);
+
+      const result = await adapter.publishProduct(
+        command({ parameters: [{ id: '28', values: ['Serenity'], valuesIds: ['113'], section: 'product' }] }),
+      );
+
+      expect(bodyOf(post).attributes).toEqual({ '28': 'Serenity' });
+      expect(result).not.toHaveProperty('warnings');
+    });
+
+    it('should read the current category before an update that names none, and check the binding against it', async () => {
+      const { adapter, put, get } = setup();
+      routeGets(get, { category_id: '12', main_image: null, stock: { stock_id: '418' } });
+
+      const result = await adapter.publishProduct(
+        command({
+          externalProductId: '95',
+          destinationCategoryIds: [],
+          parameters: [{ id: '28', valuesIds: ['113'], section: 'product' }],
+        }),
+      );
+
+      expect(get).toHaveBeenCalledWith('/products/95');
+      expect(bodyOf(put).attributes).toBeUndefined();
+      expect(result.warnings).toEqual([expect.stringContaining('not bound to category 12')]);
+    });
+
+    it('should report a stale mapping when the product to update is gone before anything is written', async () => {
+      const { adapter, put, get } = setup();
+      get.mockRejectedValue(new ShoperApiError(404, 'invalid_request', 'Resource not found'));
+
+      await expect(
+        adapter.publishProduct(
+          command({
+            externalProductId: '999',
+            destinationCategoryIds: [],
+            parameters: [{ id: '28', valuesIds: ['113'], section: 'product' }],
+          }),
+        ),
+      ).rejects.toBeInstanceOf(ProductPublishTargetNotFoundException);
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('should read no attribute when the command carries no parameters', async () => {
+      const { adapter, get } = setup();
+
+      await adapter.publishProduct(command());
+
+      expect((get.mock.calls as [string][]).some(([path]) => path.startsWith('/attribute'))).toBe(false);
+    });
+  });
+
   it('should declare the description grammar Shoper keeps, not the conservative default', () => {
     const { adapter } = setup();
 

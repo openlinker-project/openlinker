@@ -45,8 +45,12 @@
  * product, read as the inverse of how `publishProduct` writes it.
  *
  * And `ShopAttributeReader` (#1835): the shop's attributes and the predefined
- * values of a select attribute, for the attribute picker. Read only for now:
- * a publish does not send `parameters` yet (they come back as a warning).
+ * values of a select attribute, for the attribute picker. A publish sends the
+ * command's `parameters` as Shoper attribute values (`ShoperAttributePlanner`):
+ * a parameter whose `id` is a Shoper attribute id is linked by id, any other is
+ * matched by attribute name, and one Shoper would refuse (an unknown option) or
+ * silently drop (a group not bound to the product's category) is not sent and
+ * comes back as a warning naming it.
  *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
@@ -98,12 +102,14 @@ import {
 } from '../../mappers/shoper-category.mapper';
 import { mapShoperProductPublicationStatus } from '../../mappers/shoper-product-status.mapper';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
+import { readShoperId } from '../../mappers/shoper-product-attributes.mapper';
 import {
   buildShoperProductBody,
   parseShoperCategoryIds,
   planShoperImageUploads,
 } from '../../mappers/shoper-product-write.mapper';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
+import { ShoperAttributePlanner } from './shoper-attribute-planner';
 import { SHOPER_DESCRIPTION_FORMAT } from './shoper-description-format';
 
 const PRODUCTS_PATH = '/products';
@@ -132,6 +138,7 @@ export class ShoperProductPublisherAdapter
 {
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
   private readonly categoryReader: ShoperCategoryReader;
+  private readonly attributePlanner: ShoperAttributePlanner;
   /**
    * The joined directory `browseCategories` filters, memoised as a PROMISE so
    * concurrent browses share one read. A failure is dropped from the memo, so
@@ -145,6 +152,7 @@ export class ShoperProductPublisherAdapter
     private readonly connection: Connection,
   ) {
     this.categoryReader = new ShoperCategoryReader(client);
+    this.attributePlanner = new ShoperAttributePlanner(client);
   }
 
   getDescriptionFormat(): DescriptionFormat {
@@ -184,6 +192,16 @@ export class ShoperProductPublisherAdapter
     }
 
     const { body, warnings } = buildShoperProductBody(cmd, context);
+    if ((cmd.parameters?.length ?? 0) > 0) {
+      const attributePlan = await this.attributePlanner.plan(
+        cmd.parameters,
+        await this.attributeCategoryOf(cmd, isUpsert),
+      );
+      if (Object.keys(attributePlan.attributes).length > 0) {
+        body.attributes = attributePlan.attributes;
+      }
+      warnings.push(...attributePlan.warnings);
+    }
     this.logger.debug(
       `Publishing variant=${cmd.internalVariantId} connection=${this.connection.id} ` +
         `mode=${isUpsert ? 'upsert' : 'create'} status=${cmd.status}`,
@@ -206,6 +224,36 @@ export class ShoperProductPublisherAdapter
       ...(externalVariantId === undefined ? {} : { externalVariantId }),
       ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  /**
+   * The main category the product will sit in after this write, which decides
+   * whether Shoper keeps an attribute. It is the command's first destination
+   * category when it names one (that becomes `category_id`); an update that
+   * names none leaves the shop's category as it is, so that one is read.
+   *
+   * The read happens before the write, so a failure may propagate: nothing has
+   * been written yet, and a retry is safe. A 404 is the stale mapping core
+   * repairs, exactly as it would be on the write itself.
+   */
+  private async attributeCategoryOf(cmd: PublishProductCommand, isUpsert: boolean): Promise<number | null> {
+    const ids = parseShoperCategoryIds(cmd.destinationCategoryIds);
+    if (ids !== null && ids.length > 0) {
+      return ids[0] ?? null;
+    }
+    if (!isUpsert) {
+      return null;
+    }
+    const externalProductId = String(cmd.externalProductId);
+    try {
+      const { data } = await this.client.get<Pick<ShoperProduct, 'category_id'> | null>(
+        `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
+      );
+      const categoryId = readShoperId(data?.category_id);
+      return categoryId === null ? null : Number(categoryId);
+    } catch (error) {
+      throw this.toPublishError(error, externalProductId);
+    }
   }
 
   /**
@@ -343,8 +391,8 @@ export class ShoperProductPublisherAdapter
   /**
    * The shop's product attributes, for the structured attribute picker (#1835).
    * See `shoper-attribute.mapper.ts` for how Shoper's attribute model maps onto
-   * the neutral one. Read only: this publisher does not yet send `parameters`,
-   * so a picked attribute is not linked on publish.
+   * the neutral one. A picked attribute comes back on publish as a parameter
+   * whose `id` is the attribute id and whose `valuesIds` are option ids.
    */
   async listAttributes(): Promise<ShopAttribute[]> {
     const rows = await fetchAllShoperRows<ShoperAttribute>(this.client, ATTRIBUTES_PATH, {

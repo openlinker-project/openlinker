@@ -6,6 +6,10 @@
  * adapter does NOT publish. Nothing here does I/O or throws: refusing a command
  * is the adapter's job, so this stays testable as plain data.
  *
+ * Product `parameters` are not projected here: whether Shoper would keep an
+ * attribute depends on the shop's attribute groups, which takes I/O, so the
+ * adapter plans them (`ShoperAttributePlanner`) and adds `attributes` itself.
+ *
  * Only what the command actually carries is written. An update is a partial
  * `PUT`, so an absent field is left as the shop holds it - never sent as empty
  * or zero. The one exception is the visibility, which is always stated because
@@ -105,9 +109,6 @@ export function collectUnsupportedWarnings(
   }
   if ((cmd.content?.tags?.length ?? 0) > 0) {
     warnings.push('Tags are not published to Shoper yet.');
-  }
-  if ((cmd.parameters?.length ?? 0) > 0) {
-    warnings.push('Product parameters are not published to Shoper yet.');
   }
   const commerce = cmd.commerce;
   if (commerce?.salePrice !== undefined) {
