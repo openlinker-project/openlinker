@@ -17,3 +17,13 @@ export type ShoperParcelPlan =
    * what a second shipment carries (no lines on the event), so nothing is written.
    */
   | { readonly kind: 'conflict' };
+
+/**
+ * The shipping method a new parcel is written under, and why that one: the
+ * operator's `defaults.parcelShippingId`, the order's own method when Shoper
+ * accepts a parcel for it, or the shop's first plain (non-integrated) method.
+ */
+export interface ShoperParcelShippingChoice {
+  readonly shippingId: number;
+  readonly source: 'config' | 'order' | 'fallback';
+}

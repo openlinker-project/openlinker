@@ -10,8 +10,24 @@
 import type {
   ShoperParcel,
   ShoperParcelCreateRequest,
+  ShoperShippingRow,
 } from '../../domain/types/shoper-api.types';
-import type { ShoperParcelPlan } from '../../domain/types/shoper-parcel.types';
+import type {
+  ShoperParcelPlan,
+  ShoperParcelShippingChoice,
+} from '../../domain/types/shoper-parcel.types';
+import { readShoperFlag } from './shoper-flag.mapper';
+import { toPositiveInt } from './shoper-order-input.mapper';
+
+/**
+ * Shipping engines Shoper accepts a manually written parcel for. `POST /parcels`
+ * answers 400 ("Nie znaleziono wartości") for every carrier-integrated method
+ * (InPost, Paczka w Ruchu, DPD, DHL on the trial shop) and accepts the plain
+ * `personal` one. Only `personal` has been confirmed live; another engine that
+ * also accepts parcels must be confirmed against a real shop before it is added
+ * here, because a wrong entry turns into a 400 on every dispatch.
+ */
+const PARCEL_WRITABLE_SHIPPING_ENGINES: ReadonlySet<string> = new Set(['personal']);
 
 export function buildShoperParcelCreateRequest(
   orderId: number,
@@ -24,6 +40,44 @@ export function buildShoperParcelCreateRequest(
     ...(trackingNumber === undefined ? {} : { shipping_code: trackingNumber }),
     sent: true,
   };
+}
+
+/** Whether Shoper accepts a parcel written by OpenLinker for this shipping method (see the engine list). */
+export function acceptsShoperManualParcel(shipping: ShoperShippingRow): boolean {
+  const engine = typeof shipping.engine === 'string' ? shipping.engine.trim().toLowerCase() : '';
+  return PARCEL_WRITABLE_SHIPPING_ENGINES.has(engine);
+}
+
+/**
+ * The shipping method a new parcel is written under. The operator's explicit
+ * choice wins; else the order's own method when Shoper accepts a parcel for it
+ * (so the parcel matches what the buyer chose); else the shop's first active
+ * plain method. Null when none qualifies.
+ *
+ * `shippings` is only consulted when nothing is configured, so a caller that has
+ * a configured id need not read the shop's methods at all.
+ */
+export function selectShoperParcelShipping(input: {
+  readonly configuredShippingId: number | undefined;
+  readonly orderShippingId: number | null;
+  readonly shippings: readonly ShoperShippingRow[];
+}): ShoperParcelShippingChoice | null {
+  if (input.configuredShippingId !== undefined) {
+    return { shippingId: input.configuredShippingId, source: 'config' };
+  }
+  if (input.orderShippingId !== null) {
+    const own = input.shippings.find((row) => toPositiveInt(row.shipping_id) === input.orderShippingId);
+    if (own !== undefined && acceptsShoperManualParcel(own)) {
+      return { shippingId: input.orderShippingId, source: 'order' };
+    }
+  }
+  for (const row of input.shippings) {
+    const id = toPositiveInt(row.shipping_id);
+    if (id !== null && readShoperFlag(row.active) !== false && acceptsShoperManualParcel(row)) {
+      return { shippingId: id, source: 'fallback' };
+    }
+  }
+  return null;
 }
 
 /**
