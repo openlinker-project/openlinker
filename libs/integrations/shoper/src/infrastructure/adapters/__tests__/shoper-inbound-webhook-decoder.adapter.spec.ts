@@ -1,10 +1,14 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 import type { DecodeResult } from '@openlinker/core/integrations';
+import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperInboundWebhookDecoderAdapter } from '../shoper-inbound-webhook-decoder.adapter';
 
 const SECRET = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+// The derivation written out independently of the policy, for the same reason
+// `sign` below is: a change to it must not make both sides agree on a new value.
+const URL_TOKEN = createHmac('sha256', SECRET).update('shoper-webhook-url-token:v1').digest('hex');
 const decoder = new ShoperInboundWebhookDecoderAdapter();
 
 function body(record: Record<string, unknown>): Buffer {
@@ -37,7 +41,7 @@ describe('ShoperInboundWebhookDecoderAdapter', () => {
 
     // `query: null` stands for a delivery URL with no query string at all.
     const verify = ({
-      query = { token: SECRET },
+      query = { token: URL_TOKEN },
       headers = signedHeaders(),
       rawBody = RAW,
       secret = SECRET,
@@ -48,8 +52,17 @@ describe('ShoperInboundWebhookDecoderAdapter', () => {
       secret?: string;
     } = {}) => decoder.verify({ rawBody, headers, secret, ...(query === null ? {} : { query }) });
 
-    it('should accept a delivery whose URL token and signature both match the connection secret', () => {
+    let warn: jest.SpiedFunction<Logger['warn']>;
+    beforeEach(() => {
+      warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it('should accept a delivery whose derived URL token and signature both match the connection secret', () => {
       expect(verify()).toEqual({ ok: true });
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('should accept the signature in upper-case hex', () => {
@@ -110,13 +123,51 @@ describe('ShoperInboundWebhookDecoderAdapter', () => {
         ['no query at all', null],
         ['an empty query', {}],
         ['an empty token', { token: '' }],
-        ['a wrong token', { token: 'a1b2c3d4e5f60718293a4b5c6d7e8f91' }],
+        ['a wrong token', { token: 'f'.repeat(64) }],
         ['a token of another length', { token: 'short' }],
+        ['a prefix of the URL token', { token: URL_TOKEN.slice(0, -1) }],
+        ['the URL token with extra characters', { token: `${URL_TOKEN}x` }],
+        ['the URL token in upper case', { token: URL_TOKEN.toUpperCase() }],
         ['a prefix of the secret', { token: SECRET.slice(0, -1) }],
         ['the secret with extra characters', { token: `${SECRET}x` }],
-        ['the token under another key', { secret: SECRET }],
+        ['the URL token derived from another secret', {
+          token: createHmac('sha256', 'another-secret').update('shoper-webhook-url-token:v1').digest('hex'),
+        }],
+        ['a token derived under another label', {
+          token: createHmac('sha256', SECRET).update('shoper-webhook-url-token:v2').digest('hex'),
+        }],
+        ['the token under another key', { secret: URL_TOKEN }],
       ])('should refuse %s, even though the signature is right', (_name, query) => {
         expect(verify({ query: query as Record<string, string> | null })).toEqual({ ok: false });
+      });
+    });
+
+    describe('a legacy URL token (the raw secret, from an install before the token was derived)', () => {
+      it('should accept it when the signature verifies, and warn naming the remedy', () => {
+        expect(verify({ query: { token: SECRET } })).toEqual({ ok: true });
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        const message = String(warn.mock.calls[0]?.[0]);
+        expect(message).toMatch(/Configure webhooks/);
+        expect(message).toContain(`webhook ${WEBHOOK_ID}`);
+        // The warning must not become a second place the secret leaks.
+        expect(message).not.toContain(SECRET);
+      });
+
+      it.each([
+        ['a forged signature', { 'x-webhook-sha1': 'f'.repeat(40) }],
+        ['a signature made with another secret', { 'x-webhook-sha1': sign(RAW, 'another-secret') }],
+      ])('should refuse it with %s, and not warn', (_name, overrides) => {
+        expect(verify({ query: { token: SECRET }, headers: signedHeaders(overrides) })).toEqual({ ok: false });
+        expect(warn).not.toHaveBeenCalled();
+      });
+
+      it('should refuse it with no signature header, and not warn', () => {
+        const headers = { ...signedHeaders() };
+        delete headers['x-webhook-sha1'];
+
+        expect(verify({ query: { token: SECRET }, headers })).toEqual({ ok: false });
+        expect(warn).not.toHaveBeenCalled();
       });
     });
 

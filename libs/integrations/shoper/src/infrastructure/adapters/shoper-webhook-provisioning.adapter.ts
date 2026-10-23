@@ -3,7 +3,7 @@
  *
  * Implements `WebhookProvisioningPort` for Shoper: registers ONE webhook on the
  * shop carrying every event OpenLinker listens to, pointing at
- * `${openlinkerCallbackBaseUrl}/webhooks/shoper/${connectionId}?token=<secret>`.
+ * `${openlinkerCallbackBaseUrl}/webhooks/shoper/${connectionId}?token=<urlToken>`.
  * Registered by `ShoperIntegrationModule` (it needs `ConnectionPort` and
  * `IWebhookSecretService`, which `HostServices` does not carry), indexed by
  * `adapterKey` in `WebhookProvisioningRegistryService`, and reached through the
@@ -15,15 +15,23 @@
  * match is `POST`. Every match (duplicates left by hand included) is `PUT`, so none
  * keeps a rotated-out token; duplicates are warned about and never deleted.
  *
- * ROTATE-THEN-REGISTER: the new secret must go into the URL, so `rotate()` runs
- * first and invalidates the old token at once. If the shop write then fails, a
+ * TWO VALUES, ONE SECRET: the rotated secret is registered as the webhook's
+ * `secret`, the key Shoper signs every delivery with (`x-webhook-sha1`). The URL
+ * carries only `deriveShoperWebhookUrlToken(secret)`, a one-way derivative,
+ * because the URL is shown in plain text in the shop's webhook list and lands in
+ * proxy access logs: a URL carrying the signing key would let anyone who reads it
+ * forge a correctly signed delivery.
+ *
+ * ROTATE-THEN-REGISTER: the new URL token is derived from the new secret, so
+ * `rotate()` runs first and invalidates the old pair at once. If the shop write then fails, a
  * previously working setup rejects deliveries until install is re-run
  * (`webhooksConfigured` is flipped to false meanwhile). `shoper-orders-poll` is what
  * covers that window - for new orders only - and must therefore not be turned off;
  * for products the catalogue sweeps (`master.product.syncAll`, the delta pass and
  * the deletion audit) are the backstop, as they are for any lost delivery.
- * Re-running install also rotates the token, which is the remedy if it leaks (it
- * travels in the URL and so can appear in proxy/CDN access logs).
+ * Re-running install also rotates the secret, which is the remedy if either the
+ * secret or the URL token leaks, and is what moves a webhook installed before the
+ * URL token was derived (its URL carried the secret itself) onto the derived one.
  *
  * EVENTS FOLLOW THE ENABLED CAPABILITIES: the order events when `OrderSource` is
  * enabled, the product events (`product.create|edit|delete`, triggers for a
@@ -53,6 +61,7 @@ import type { ConnectionRateLimit } from '@openlinker/shared/rate-limit';
 import { Logger } from '@openlinker/shared/logging';
 
 import { parseShoperBaseUrl } from '../../domain/policies/shoper-base-url.policy';
+import { deriveShoperWebhookUrlToken } from '../../domain/policies/shoper-webhook-url-token.policy';
 import type { ShoperCredentials } from '../../domain/types/shoper-credentials.types';
 import {
   SHOPER_ORDER_WEBHOOK_EVENTS,
@@ -127,16 +136,17 @@ export class ShoperWebhookProvisioningAdapter implements WebhookProvisioningPort
       throw new BadRequestException(`Connection ${connectionId} has no API token stored.`);
     }
 
-    // One-shot plaintext. It is also the delivery token: Shoper is told the URL
-    // carrying it, and OpenLinker verifies it on every delivery.
+    // One-shot plaintext, handed to Shoper only as the signing key. The URL gets the
+    // derived token, so reading the URL (panel, access logs) never yields the key.
     const { secret } = await this.webhookSecretService.rotate(SHOPER_WEBHOOK_PROVIDER, connectionId, actorUserId);
+    const urlToken = deriveShoperWebhookUrlToken(secret);
 
     const client = new ShoperHttpClient(
       { host: base.host, token: credentials.token },
       this.http.forConnection(connection, this.defaultRateLimit),
     );
     const endpoint = `${callbackBaseUrl.replace(/\/+$/, '')}/webhooks/${SHOPER_WEBHOOK_PROVIDER}/${connectionId}`;
-    const deliveryUrl = `${endpoint}?${SHOPER_WEBHOOK_TOKEN_QUERY_KEY}=${encodeURIComponent(secret)}`;
+    const deliveryUrl = `${endpoint}?${SHOPER_WEBHOOK_TOKEN_QUERY_KEY}=${encodeURIComponent(urlToken)}`;
     const body: ShoperWebhookWriteBody = {
       url: deliveryUrl,
       events,
@@ -149,9 +159,13 @@ export class ShoperWebhookProvisioningAdapter implements WebhookProvisioningPort
       await this.upsert(client, endpoint, body, connectionId);
     } catch (error) {
       // Shoper echoes the rejected URL in its error text (`'<url>' nie jest poprawnym
-      // adresem URL`), and that URL carries the token: redact it before the message is
-      // logged or returned to the operator.
-      const message = redactSecret(error instanceof Error ? error.message : String(error), secret);
+      // adresem URL`), and that URL carries the token: redact it (and the secret, should
+      // Shoper ever echo the body's `secret` too) before the message is logged or
+      // returned to the operator.
+      const message = [secret, urlToken].reduce(
+        (text, value) => redactSecret(text, value),
+        error instanceof Error ? error.message : String(error),
+      );
       this.logger.error(`Failed to register Shoper webhooks for connection ${connectionId}: ${message}`);
       // Fail-closed visibility: the secret was already rotated OpenLinker-side, so
       // the shop may still hold the old URL until install is re-run. Flip the
@@ -255,7 +269,7 @@ function isOurs(rowUrl: string | null | undefined, endpoint: string): boolean {
   return withoutQuery.replace(/\/+$/, '') === endpoint;
 }
 
-/** Replaces every occurrence of the secret, raw and URL-encoded, so an echoed delivery URL leaks nothing. */
+/** Replaces every occurrence of a credential, raw and URL-encoded, so an echoed delivery URL leaks nothing. */
 export function redactSecret(message: string, secret: string): string {
   if (secret.length === 0) {
     return message;

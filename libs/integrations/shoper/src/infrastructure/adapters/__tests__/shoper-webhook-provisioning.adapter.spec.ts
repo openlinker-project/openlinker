@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { BadRequestException } from '@nestjs/common';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort, IWebhookSecretService } from '@openlinker/core/integrations';
@@ -9,6 +11,9 @@ import { ShoperWebhookProvisioningAdapter, redactSecret } from '../shoper-webhoo
 const CONNECTION_ID = '11111111-2222-3333-4444-555555555555';
 const SECRET = 'S3cr3t+/=value';
 const ENCODED_SECRET = encodeURIComponent(SECRET);
+// Written out independently of the policy, so the URL is checked against the
+// scheme rather than against whatever the policy currently returns.
+const URL_TOKEN = createHmac('sha256', SECRET).update('shoper-webhook-url-token:v1').digest('hex');
 const CALLBACK = 'https://ol.example.com';
 const ENDPOINT = `${CALLBACK}/webhooks/shoper/${CONNECTION_ID}`;
 
@@ -166,7 +171,7 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       );
     });
 
-    it('should register ONE webhook with every order and product event, active, whose URL carries the encoded token', async () => {
+    it('should register ONE webhook with every order and product event, active, whose URL carries the derived token and whose signing secret is the raw secret', async () => {
       const f = setup();
 
       await f.adapter.install(CONNECTION_ID);
@@ -175,7 +180,7 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       expect(posts).toHaveLength(1);
       expect(posts[0]?.path).toBe('/webhooks');
       expect(posts[0]?.body).toEqual({
-        url: `${ENDPOINT}?token=${ENCODED_SECRET}`,
+        url: `${ENDPOINT}?token=${URL_TOKEN}`,
         events: [
           'order.create',
           'order.edit',
@@ -189,6 +194,16 @@ describe('ShoperWebhookProvisioningAdapter', () => {
         format: 0,
         secret: SECRET,
       });
+    });
+
+    it('should never put the signing secret in the URL, raw or encoded', async () => {
+      const f = setup();
+
+      await f.adapter.install(CONNECTION_ID);
+
+      const url = String(f.calls.find((c) => c.method === 'POST')?.body?.url);
+      expect(url).not.toContain(SECRET);
+      expect(url).not.toContain(ENCODED_SECRET);
     });
 
     it.each([
@@ -248,7 +263,7 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       const puts = f.calls.filter((c) => c.method === 'PUT');
       expect(puts).toHaveLength(1);
       expect(puts[0]?.path).toBe('/webhooks/9');
-      expect(puts[0]?.body).toMatchObject({ url: `${ENDPOINT}?token=${ENCODED_SECRET}`, active: 1 });
+      expect(puts[0]?.body).toMatchObject({ url: `${ENDPOINT}?token=${URL_TOKEN}`, active: 1, secret: SECRET });
     });
 
     it('should give a webhook installed with order events only the product events on re-install', async () => {
@@ -347,6 +362,7 @@ describe('ShoperWebhookProvisioningAdapter', () => {
       ].join('\n');
       expect(surfaced).not.toContain(SECRET);
       expect(surfaced).not.toContain(ENCODED_SECRET);
+      expect(surfaced).not.toContain(URL_TOKEN);
       expect(surfaced).toContain('[redacted]');
       error.mockRestore();
     });
