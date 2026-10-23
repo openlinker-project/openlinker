@@ -154,9 +154,15 @@ Paging (all observed on a live shop):
   (the deletion audit) and `master.product.syncDelta` are registered core-side by capability
   (`CORE_CAPABILITY_TASKS`, `capability: 'ProductMaster'`), so declaring `ProductMaster` is what enrols a
   connection. They walk the catalogue through `listExternalIds`, which pages in ascending `product_id` order.
-- **No modified-since rung.** Shoper has no bulk "changed since" query - only a per-object
-  `GET /object-mtime/<object>/<id>` (the plural form answers 500) - so `ModifiedProductLister` is not
-  implemented and the delta pass skips Shoper connections. The full pass is the only sweep, from day one.
+- **Modified-since rung (`ModifiedProductLister`).** `/products` accepts
+  `filters={"edit_date":{">=":"YYYY-MM-DD HH:MM:SS"}}` (live-verified), so the opt-in delta pass
+  (`OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED`) can read only changed products. The bound is rendered in the shop's
+  own zone (`locale_timezone`) and only ever errs early: an unknown zone widens it by 14 h, a DST fall-back
+  moves it back an hour. Results are ordered by `product_id`, not `edit_date`, so a product edited mid-cycle
+  does not move and cannot shift another one out of the window. `edit_date` bumps on a name or category
+  edit, a variant stock/price write through the API, a variant add, a sale and an order line added; it does
+  **not** bump on a variant deleted through the API, an image added or removed, or stock returned (an order
+  line deleted, "return to stock"). Those reach OpenLinker only through the full pass, which therefore stays.
 - **Product webhooks are a trigger (#2647).** With `ProductMaster` enabled, "Configure webhooks" also
   subscribes `product.create`, `product.edit` and `product.delete`; each routes to
   `master.product.syncByExternalId`, which re-reads the product. Nothing in the delivery body is used, and a

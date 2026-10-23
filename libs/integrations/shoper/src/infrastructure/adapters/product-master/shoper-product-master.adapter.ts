@@ -6,6 +6,10 @@
  * `listExternalIds`, `getCategories` and `getProductCategories`. Every write
  * throws `ShoperNotSupportedException` (a silent no-op would read as "done").
  *
+ * Also implements the guard-only `ModifiedProductLister` rung (ADR-048), over
+ * the `edit_date` filter - see `listExternalIdsModifiedSince` for what that
+ * timestamp does and does not cover.
+ *
  * Variant model (SPIKE-3638 M1): `products` is the header and `product-stocks`
  * is the variant grain, so each stock row is one `ProductVariant` keyed by its
  * real `stock_id`. Unlike PrestaShop / WooCommerce, no synthetic variant is
@@ -40,6 +44,8 @@ import type {
   ProductTaxRateReader,
   ReadProductTaxRateInput,
   TaxRateResolution,
+  ModifiedProductLister,
+  ListExternalIdsModifiedSinceInput,
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -53,6 +59,7 @@ import type {
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
 import { joinShoperCategories } from '../../mappers/shoper-category.mapper';
 import { mapShoperTaxRow } from '../../mappers/shoper-tax-rate.mapper';
+import { toShoperLocalBound } from '../../mappers/shoper-shop-time.mapper';
 import type { ShoperOptionEntry, ShoperOptionTableProvider } from '../../shop-context/shoper-option-table.provider';
 import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table.provider';
 import type { ShoperHttpClient, ShoperQuery } from '../../http/shoper-http-client';
@@ -81,7 +88,9 @@ const DEFAULT_WINDOW = SHOPER_MAX_PAGE_SIZE;
 /** A Shoper id is a positive integer; anything else cannot be one. */
 const SHOPER_ID = /^\d+$/;
 
-export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
+export class ShoperProductMasterAdapter
+  implements ProductMasterPort, ProductTaxRateReader, ModifiedProductLister
+{
   private readonly logger = new Logger(ShoperProductMasterAdapter.name);
   private categoryDirectory: Promise<Category[]> | null = null;
   private readonly categoryReader: ShoperCategoryReader;
@@ -112,6 +121,53 @@ export class ShoperProductMasterAdapter implements ProductMasterPort, ProductTax
         offset: filters?.offset ?? 0,
         limit: filters?.limit ?? DEFAULT_WINDOW,
         query: { order: PRODUCT_ORDER },
+      }
+    );
+    return rows.map((p) => String(p.product_id));
+  }
+
+  /**
+   * Shoper ids of the products whose `edit_date` is at or after `since`
+   * (`filters={"edit_date":{">=":"<shop-local time>"}}`, live-verified).
+   *
+   * WHAT BUMPS `edit_date` (measured on a live shop, 2026-10-22/23): a name or
+   * category edit, a variant's stock or price written through the API, adding a
+   * variant, a sale, and an order line being added. WHAT DOES NOT: deleting a
+   * variant through the API, adding or deleting an image, and stock coming back
+   * (an order line deleted, the panel's "return to stock"). Those changes are
+   * invisible to this rung, so the full `master.product.syncAll` pass stays the
+   * backstop, and stock is not this rung's business at all - the inventory sweep
+   * owns it. A caller must not read an empty result as "nothing changed".
+   *
+   * TIME: `edit_date` is a naive shop-local timestamp, so `since` is rendered in
+   * the shop's zone (`application-config.locale_timezone`, Europe/Warsaw on every
+   * shop seen) by `toShoperLocalBound`, which only ever errs EARLY: an unknown
+   * zone widens the bound by 14 h, and a DST fall-back within the next hour
+   * moves it back by the repeated hour. Re-reading a product is free; skipping
+   * one is not.
+   *
+   * ORDER: `product_id ASC`, deliberately NOT `edit_date ASC`. Offset paging over
+   * a live set is stable only if a row does not MOVE while the cycle reads it.
+   * Under `edit_date` order a product re-edited mid-cycle jumps to the tail and
+   * shifts every later row one place left, stepping over one; under `product_id`
+   * order it stays put, a product entering the set only shifts rows RIGHT (one
+   * re-read, harmless) and a new product lands at the tail. It is also the one
+   * order the other sweeps already rely on, and a single unique key, so there
+   * are no ties for the shop to break differently between two pages.
+   */
+  async listExternalIdsModifiedSince(input: ListExternalIdsModifiedSinceInput): Promise<string[]> {
+    const { timezone } = await this.shopContext.get();
+    const bound = toShoperLocalBound(input.since, timezone ?? null);
+    const rows = await fetchShoperWindow<Pick<ShoperProduct, 'product_id'>>(
+      this.client,
+      '/products',
+      {
+        offset: input.offset,
+        limit: input.limit,
+        query: {
+          order: PRODUCT_ORDER,
+          filters: JSON.stringify({ edit_date: { '>=': bound } }),
+        },
       }
     );
     return rows.map((p) => String(p.product_id));

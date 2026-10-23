@@ -23,6 +23,7 @@ import {
   isProductTaxRateReader,
 } from '@openlinker/core/products';
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
+import type { ShoperMapContext } from '../../../mappers/shoper-product.mapper';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
 
 const CONNECTION_ID = 'conn-1';
@@ -59,7 +60,7 @@ const TAX_TABLE = new Map(
   ].map(([tax_id, value, name]) => [tax_id, { tax_id, value, name }]),
 );
 
-function setup(): Harness {
+function setup(context: ShoperMapContext = MAP_CONTEXT): Harness {
   const get = jest.fn();
   const taxTable = { get: jest.fn().mockResolvedValue(TAX_TABLE) };
   const mapping = {
@@ -77,7 +78,7 @@ function setup(): Harness {
   const adapter = new ShoperProductMasterAdapter(
     { get } as unknown as ShoperHttpClient,
     mapping as unknown as IdentifierMappingPort,
-    { get: () => Promise.resolve(MAP_CONTEXT) } as unknown as ShoperShopContextProvider,
+    { get: () => Promise.resolve(context) } as unknown as ShoperShopContextProvider,
     taxTable as unknown as ShoperTaxTableProvider,
     new ShoperOptionTableProvider({ get } as unknown as ShoperHttpClient),
     { id: CONNECTION_ID } as Connection,
@@ -394,10 +395,123 @@ describe('ShoperProductMasterAdapter', () => {
       await expect(adapter.listExternalIds({ limit: 20, offset: 100 })).resolves.toEqual([]);
     });
 
-    it('should not offer a modified-since rung: Shoper has no bulk primitive to back it', () => {
+    it('should offer the modified-since rung, narrowed by its guard (never advertised)', () => {
       const { adapter } = setup();
 
-      expect(isModifiedProductLister(adapter)).toBe(false);
+      expect(isModifiedProductLister(adapter)).toBe(true);
+    });
+  });
+
+  describe('listExternalIdsModifiedSince', () => {
+    const WARSAW = { ...MAP_CONTEXT, timezone: 'Europe/Warsaw' };
+
+    function filtersOf(get: jest.Mock, call = 0): unknown {
+      const query = get.mock.calls[call]?.[1] as { filters: string };
+      return JSON.parse(query.filters);
+    }
+
+    it('should filter on edit_date in the shop’s own time, ordered by product id', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([{ product_id: '93' }, { product_id: '127' }]) });
+
+      const ids = await adapter.listExternalIdsModifiedSince({
+        // 08:15:30.900 UTC is 10:15:30 in Warsaw in summer (UTC+2); the fraction is dropped.
+        since: new Date('2026-07-10T08:15:30.900Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(ids).toEqual(['93', '127']);
+      expect(get).toHaveBeenCalledWith('/products', {
+        order: 'product_id ASC',
+        filters: JSON.stringify({ edit_date: { '>=': '2026-07-10 10:15:30' } }),
+        limit: 50,
+        page: 1,
+      });
+    });
+
+    it('should use the winter offset in winter (UTC+1)', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-01-15T23:30:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-01-16 00:30:00' } });
+    });
+
+    it('should move the bound back an hour when the clock turns back within the next hour', async () => {
+      const { adapter, get } = setup(WARSAW);
+      respond(get, { '/products': envelope([]) });
+
+      // 2026-10-25 00:30 UTC is 02:30 CEST; at 01:00 UTC the clock goes back to
+      // 02:00 CET, so a change at 01:10 UTC reads 02:10 - earlier than the 02:30 a
+      // naive bound would use. The bound must cover it.
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-10-25T00:30:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-10-25 01:30:00' } });
+    });
+
+    it('should widen the bound by 14 h when the shop names no time zone, never reading it as UTC', async () => {
+      const { adapter, get } = setup(MAP_CONTEXT);
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-07-10T20:00:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-07-10 06:00:00' } });
+    });
+
+    it('should widen the bound the same way for a zone the runtime does not know', async () => {
+      const { adapter, get } = setup({ ...MAP_CONTEXT, timezone: 'Mars/Olympus_Mons' });
+      respond(get, { '/products': envelope([]) });
+
+      await adapter.listExternalIdsModifiedSince({
+        since: new Date('2026-07-10T20:00:00Z'),
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(filtersOf(get)).toEqual({ edit_date: { '>=': '2026-07-10 06:00:00' } });
+    });
+
+    it('should serve any window from pages of 50, so a sweep cursor stays exact', async () => {
+      const { adapter, get } = setup(WARSAW);
+      fakeShop(400, get);
+
+      const since = new Date('2026-07-10T08:00:00Z');
+      const cycle = [
+        ...(await adapter.listExternalIdsModifiedSince({ since, limit: 100, offset: 0 })),
+        ...(await adapter.listExternalIdsModifiedSince({ since, limit: 100, offset: 100 })),
+      ];
+
+      expect(cycle).toEqual(idsFrom(1, 200));
+      expect(pagesRequested(get)).toEqual([1, 2, 3, 4]);
+      const limits = get.mock.calls.map(([, query]) => (query as { limit: number }).limit);
+      expect(Math.max(...limits)).toBe(50);
+    });
+
+    it('should return an empty page past the end instead of looping', async () => {
+      const { adapter, get } = setup(WARSAW);
+      fakeShop(30, get);
+
+      await expect(
+        adapter.listExternalIdsModifiedSince({
+          since: new Date('2026-07-10T08:00:00Z'),
+          limit: 100,
+          offset: 100,
+        }),
+      ).resolves.toEqual([]);
     });
   });
 
