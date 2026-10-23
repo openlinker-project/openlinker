@@ -57,6 +57,12 @@ export const shoperAdapterManifest: AdapterMetadata = {
     'CategoryProvisioner',
     'OrderProcessorManager',
     'OrderSource',
+    // Advertised-without-dispatch sub-capabilities of the publisher: declared
+    // here only for host/FE discovery (the publish pickers read this list) and
+    // resolved by narrowing the dispatched `ProductPublisher` adapter with their
+    // `is*` guard, never via `getCapabilityAdapter`. Hence no dispatch entries.
+    // Shop category browse (#1834): feeds the destination taxonomy projection.
+    'ShopCategoryBrowser',
   ],
   // `ProductPublisher` is opt-in as well: it WRITES products to the shop, so a
   // connection that exists only as a catalogue master must not become a publish

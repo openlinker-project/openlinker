@@ -29,6 +29,14 @@
  * the directory is read again so two publishes that raced settle on the same
  * (lowest-id) node.
  *
+ * It also implements `ShopCategoryBrowser`, so the shop's existing tree reaches
+ * the destination taxonomy projection the publish category picker reads (#1979,
+ * #2085). The sync job browses one parent at a time against ONE adapter
+ * instance, while Shoper can only answer the whole directory (tree + every page
+ * of names), so the joined directory is read once per instance and every browse
+ * is a filter over it. A category this instance provisions drops that memo, so a
+ * later browse never hides what was just created.
+ *
  * Fields the command carries but this adapter does not publish come back as
  * `warnings`. Transient failures (429, 408, 5xx, network) propagate untouched so
  * the worker retries the job.
@@ -46,6 +54,8 @@ import {
   type ProvisionCategoryResult,
   type PublishProductCommand,
   type PublishProductResult,
+  type ShopCategory,
+  type ShopCategoryBrowser,
   type ShopProductManagerPort,
 } from '@openlinker/core/listings';
 import type { Category } from '@openlinker/core/products';
@@ -58,7 +68,11 @@ import type {
 } from '../../../domain/types/shoper-product-write.types';
 import { SHOPER_ADAPTER_KEY } from '../../../shoper.constants';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
-import { findShoperCategoryChild, joinShoperCategories } from '../../mappers/shoper-category.mapper';
+import {
+  findShoperCategoryChild,
+  joinShoperCategories,
+  selectShoperCategoryChildren,
+} from '../../mappers/shoper-category.mapper';
 import { ShoperCategoryReader } from '../../readers/shoper-category.reader';
 import {
   buildShoperProductBody,
@@ -78,9 +92,17 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export class ShoperProductPublisherAdapter implements ShopProductManagerPort, CategoryProvisioner {
+export class ShoperProductPublisherAdapter
+  implements ShopProductManagerPort, CategoryProvisioner, ShopCategoryBrowser
+{
   private readonly logger = new Logger(ShoperProductPublisherAdapter.name);
   private readonly categoryReader: ShoperCategoryReader;
+  /**
+   * The joined directory `browseCategories` filters, memoised as a PROMISE so
+   * concurrent browses share one read. A failure is dropped from the memo, so
+   * the next browse retries instead of replaying the rejection.
+   */
+  private browseDirectory: Promise<Category[]> | null = null;
 
   constructor(
     private readonly client: ShoperHttpClient,
@@ -261,6 +283,33 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
     };
   }
 
+  /**
+   * The shop's categories directly under `parentId` (omitted = the root level).
+   * Every Shoper category is a valid placement, so there is no leaf flag.
+   *
+   * Names are read in the shop's default language, the one the publisher writes
+   * category names in; a category with no name there falls back to any language
+   * that has one (`joinShoperCategories`). Unlike provisioning, an unreported
+   * default language is not refused: a read invents nothing, and the fallback
+   * still names every category truthfully.
+   */
+  async browseCategories(parentId?: string): Promise<ShopCategory[]> {
+    return selectShoperCategoryChildren(await this.loadBrowseDirectory(), parentId);
+  }
+
+  private loadBrowseDirectory(): Promise<Category[]> {
+    if (this.browseDirectory === null) {
+      this.browseDirectory = this.shopContext
+        .get()
+        .then(({ language }) => this.readCategories(language))
+        .catch((error: unknown) => {
+          this.browseDirectory = null;
+          throw error;
+        });
+    }
+    return this.browseDirectory;
+  }
+
   private async readCategories(language: string): Promise<Category[]> {
     const raw = await this.categoryReader.read();
     return joinShoperCategories(raw.list, raw.tree, language).categories;
@@ -272,6 +321,8 @@ export class ShoperProductPublisherAdapter implements ShopProductManagerPort, Ca
       translations: { [language]: { name, active: 1 } },
     };
     const { data } = await this.client.post<unknown>(CATEGORIES_PATH, body);
+    // Dropped even when the answer below is unreadable: the category may exist now.
+    this.browseDirectory = null;
     const id = String(data);
     if (!/^\d+$/.test(id)) {
       // Refused, not retried as a network fault: the answer was readable, just not an id.

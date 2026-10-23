@@ -1,5 +1,5 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { isCategoryProvisioner } from '@openlinker/core/listings';
+import { isCategoryProvisioner, isShopCategoryBrowser } from '@openlinker/core/listings';
 import { isOrderStatusWriteback } from '@openlinker/core/orders';
 import type { HostServices } from '@openlinker/plugin-sdk';
 
@@ -68,7 +68,7 @@ describe('Shoper plugin', () => {
     }
   });
 
-  it('should expose the documented manifest with its six capabilities', () => {
+  it('should expose the documented manifest with its six dispatched capabilities and the publisher read sub-capabilities', () => {
     expect(shoperAdapterManifest).toMatchObject({
       adapterKey: 'shoper.restapi.v1',
       platformType: 'shoper',
@@ -79,6 +79,7 @@ describe('Shoper plugin', () => {
         'CategoryProvisioner',
         'OrderProcessorManager',
         'OrderSource',
+        'ShopCategoryBrowser',
       ],
       isDefault: true,
     });
@@ -157,6 +158,22 @@ describe('Shoper plugin', () => {
 
     expect(adapter).toBeInstanceOf(ShoperProductPublisherAdapter);
     expect(isCategoryProvisioner(adapter as ShoperProductPublisherAdapter)).toBe(true);
+  });
+
+  it('should serve the advertised publisher read sub-capabilities by narrowing the ProductPublisher adapter, not by dispatch', async () => {
+    const { host } = hostWithRegistries();
+    const plugin = createShoperPlugin();
+
+    const publisher = await plugin.createCapabilityAdapter<ShoperProductPublisherAdapter>(
+      connection(),
+      'ProductPublisher',
+      host,
+    );
+
+    expect(isShopCategoryBrowser(publisher)).toBe(true);
+    await expect(
+      plugin.createCapabilityAdapter<unknown>(connection(), 'ShopCategoryBrowser', host),
+    ).rejects.toThrow(/does not support/);
   });
 
   it('should resolve InventoryMaster to the Shoper inventory master adapter', async () => {
