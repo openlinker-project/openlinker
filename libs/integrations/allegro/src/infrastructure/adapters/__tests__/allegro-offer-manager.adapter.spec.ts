@@ -3095,6 +3095,192 @@ describe('AllegroOfferManagerAdapter', () => {
       });
     });
 
+    describe('product GPSR precedence', () => {
+      const REGISTRY = {
+        data: {
+          responsibleProducers: [
+            { id: 'rp-acme', name: 'acme label', producerData: { tradeName: 'Acme Sp. z o.o.' } },
+            { id: 'rp-beta', name: 'Beta GmbH' },
+          ],
+        },
+        status: 200,
+        headers: {},
+      };
+
+      type GpsrBody = {
+        productSet?: Array<{
+          product?: { id?: string };
+          responsibleProducer?: { id: string };
+          safetyInformation?: Record<string, unknown>;
+        }>;
+      };
+
+      const created = (): ReturnType<typeof mockHttpResponse> =>
+        mockHttpResponse({ id: 'allegro-offer-gpsr', publication: { status: 'INACTIVE' } });
+
+      const warnLines = (target: AllegroOfferManagerAdapter): jest.SpyInstance =>
+        jest.spyOn((target as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn');
+
+      const withoutGpsrDefaults = (): AllegroOfferManagerAdapter =>
+        new AllegroOfferManagerAdapter(
+          connectionId,
+          httpClient,
+          uploadHttpClient,
+          identifierMapping,
+          connection,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            location: DEFAULT_SELLER_DEFAULTS.location,
+            responsibleProducerId: '',
+            safetyInformation: {} as AllegroSellerDefaultsConfig['safetyInformation'],
+          }
+        );
+
+      it('should use the matched registry producer instead of sellerDefaults when the product names one', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          gpsr: { producer: { name: '  acme   SP. z o.o. ' } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(httpClient.get).toHaveBeenCalledWith('/sale/responsible-producers');
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-acme' });
+        // No product safety text: the connection default still applies.
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({ type: 'NO_SAFETY_INFORMATION' });
+      });
+
+      it('should keep sellerDefaults and warn when no registry producer matches', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+        const warn = warnLines(adapter);
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'Gamma S.A.' } } });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('allegro_gpsr_producer_unmatched'));
+      });
+
+      it('should keep sellerDefaults and warn when two registry producers match the name', async () => {
+        httpClient.get.mockResolvedValue({
+          ...REGISTRY,
+          data: { responsibleProducers: [{ id: 'a', name: 'Acme' }, { id: 'b', name: 'ACME' }] },
+        });
+        httpClient.post.mockResolvedValue(created());
+        const warn = warnLines(adapter);
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'acme' } } });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('(ambiguous)'));
+      });
+
+      it('should keep sellerDefaults when the registry read fails', async () => {
+        httpClient.get.mockRejectedValue(new Error('503'));
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'Beta GmbH' } } });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-test-1' });
+      });
+
+      it('should write the product safety text as a TEXT block over sellerDefaults', async () => {
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          gpsr: { safetyInformation: { text: 'Keep away from children.', certificateNames: ['CE'] } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({
+          type: 'TEXT',
+          description: 'Keep away from children.',
+        });
+        // No producer on the product: no registry read at all.
+        expect(httpClient.get).not.toHaveBeenCalled();
+      });
+
+      it('should keep sellerDefaults safety information when the product text is too long', async () => {
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          gpsr: { safetyInformation: { text: 'x'.repeat(5001) } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.safetyInformation).toEqual({ type: 'NO_SAFETY_INFORMATION' });
+      });
+
+      it('should apply the product declaration on the card-linked path too', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({
+          ...baseCmd,
+          productCardId: 'card-1',
+          gpsr: { producer: { name: 'Beta GmbH' }, safetyInformation: { text: 'Warning.' } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet).toEqual([
+          {
+            product: { id: 'card-1' },
+            responsibleProducer: { id: 'rp-beta' },
+            safetyInformation: { type: 'TEXT', description: 'Warning.' },
+          },
+        ]);
+      });
+
+      it('should accept missing GPSR sellerDefaults when the product supplies both values', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+        httpClient.post.mockResolvedValue(created());
+
+        await withoutGpsrDefaults().createOffer({
+          ...baseCmd,
+          gpsr: { producer: { name: 'Beta GmbH' }, safetyInformation: { text: 'Warning.' } },
+        });
+
+        const body = httpClient.post.mock.calls[0][1] as GpsrBody;
+        expect(body.productSet?.[0]?.responsibleProducer).toEqual({ id: 'rp-beta' });
+      });
+
+      it('should still report a missing default the product could not supply', async () => {
+        httpClient.get.mockResolvedValue(REGISTRY);
+
+        await expect(
+          withoutGpsrDefaults().createOffer({
+            ...baseCmd,
+            gpsr: { producer: { name: 'Gamma S.A.' }, safetyInformation: { text: 'Warning.' } },
+          })
+        ).rejects.toMatchObject({
+          name: 'OfferCreateRejectedException',
+          errors: [expect.objectContaining({ field: 'sellerDefaults.responsibleProducerId' })],
+        });
+        expect(httpClient.post).not.toHaveBeenCalled();
+      });
+
+      it('should never create a responsible producer on Allegro', async () => {
+        httpClient.get.mockResolvedValue({ ...REGISTRY, data: { responsibleProducers: [] } });
+        httpClient.post.mockResolvedValue(created());
+
+        await adapter.createOffer({ ...baseCmd, gpsr: { producer: { name: 'Unregistered Ltd' } } });
+
+        const postedPaths = httpClient.post.mock.calls.map(([path]) => path);
+        expect(postedPaths).toEqual(['/sale/product-offers']);
+        expect(httpClient.put).not.toHaveBeenCalled();
+      });
+    });
+
     describe('seller defaults (#430)', () => {
       it('throws OfferCreateRejectedException with SELLER_DEFAULTS_NOT_CONFIGURED when sellerDefaults are missing', async () => {
         // Construct an adapter without sellerDefaults — preflight must fire.

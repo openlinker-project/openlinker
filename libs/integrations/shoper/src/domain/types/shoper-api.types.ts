@@ -103,6 +103,58 @@ export interface ShoperProduct {
   readonly stock: ShoperStock | null;
   /** Ids of the product's non-default stocks (live: `[217, 218]`) - not option data. */
   readonly options: readonly number[];
+  /**
+   * GPSR references (see {@link ShoperProductSafetyInformation}). Optional
+   * because it is modelled from the published API schema, not yet seen on a
+   * live product payload: an answer without it means "not reported".
+   */
+  readonly safety_information?: ShoperProductSafetyInformation | null;
+}
+
+/**
+ * A product's GPSR references, per Shoper's published schema: ids into the
+ * `product-safety-producers` / `-responsibles` / `-importers` registries
+ * (nullable int32 strings) and `gpsr_certificates` into
+ * `product-safety-certificates`. The records themselves are separate reads.
+ * Ids are accepted as string or number because the schema says string while
+ * the certificate list says integer.
+ */
+export interface ShoperProductSafetyInformation {
+  readonly gpsr_producer_id?: string | number | null;
+  readonly gpsr_responsible_id?: string | number | null;
+  readonly gpsr_importer_id?: string | number | null;
+  readonly gpsr_certificates?: readonly (string | number)[] | null;
+}
+
+/**
+ * A row of `product-safety-producers`, `-responsibles` or `-importers` - the
+ * three share every field the mapper reads; only the id key differs (and
+ * importers carry no `contact_form_url`). `name` is the public name printed on
+ * a safety declaration; `internal_name` is the merchant's own label and is
+ * never used. Modelled from the published schema, hence every field optional.
+ */
+export interface ShoperSafetyPartyRecord {
+  readonly gpsr_producer_id?: string | number | null;
+  readonly gpsr_responsible_id?: string | number | null;
+  readonly gpsr_importer_id?: string | number | null;
+  readonly name?: string | null;
+  readonly internal_name?: string | null;
+  readonly email?: string | null;
+  readonly phone?: string | null;
+  readonly contact_form_url?: string | null;
+  readonly street1?: string | null;
+  readonly street2?: string | null;
+  readonly postcode?: string | null;
+  /** A city name, or (per the schema) a GeolocationSubregion id. */
+  readonly city?: string | null;
+  readonly country_code?: string | null;
+}
+
+/** A `product-safety-certificates` row: a name plus per-locale descriptions. */
+export interface ShoperSafetyCertificateRecord {
+  readonly gpsr_certificate_id?: string | number | null;
+  readonly name?: string | null;
+  readonly translations?: Readonly<Record<string, { readonly description?: string | null }>> | null;
 }
 
 /** Per-language text of a category. */

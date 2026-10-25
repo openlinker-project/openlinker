@@ -27,6 +27,12 @@
  * covers any window with pages of 50 and slices - nothing is refused and no
  * window is ever shifted (see `fetchShoperWindow`).
  *
+ * GPSR: `getProduct` / `getProducts` resolve the product's `safety_information`
+ * references through `ShoperGpsrReader` (the four `product-safety-*`
+ * registries, each read at most once per adapter instance and only when a
+ * product references it) into the neutral `Product.gpsr`. A failed or dangling
+ * reference leaves `gpsr` undefined - unknown - and never fails the read.
+ *
  * Filter syntax, both forms live-verified: `/products` takes the JSON form
  * (`filters={"product_id":{"in":[..]}}`, `{"translations.name":{"like":..}}`),
  * `/product-stocks` takes the bracket form (`filters[product_id]=93`).
@@ -79,6 +85,7 @@ import {
   shoperStockOptionPairs,
 } from '../../mappers/shoper-product.mapper';
 import { resolveShoperExternalProductId } from '../../readers/shoper-product-id';
+import { ShoperGpsrReader } from '../../readers/shoper-gpsr.reader';
 import type { ShoperProductReader } from '../../readers/shoper-product.reader';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 
@@ -100,6 +107,7 @@ export class ShoperProductMasterAdapter
   private readonly stockCache = new Map<string, ShoperStock[]>();
   private readonly categoryReader: ShoperCategoryReader;
   private readonly productReader: ShoperProductReader;
+  private readonly gpsrReader: ShoperGpsrReader;
 
   constructor(
     private readonly client: ShoperHttpClient,
@@ -114,6 +122,7 @@ export class ShoperProductMasterAdapter
   ) {
     this.productReader = productReader;
     this.categoryReader = new ShoperCategoryReader(client);
+    this.gpsrReader = new ShoperGpsrReader(client, connection.id);
   }
 
   // ─── Read methods ──────────────────────────────────────────────────────────
@@ -251,7 +260,7 @@ export class ShoperProductMasterAdapter
     const externalId = await this.resolveExternalProductId(productId);
     const data = await this.readProduct(externalId, productId);
     const ctx = await this.shopContext.get();
-    return { ...mapShoperProduct(data, ctx), id: productId };
+    return this.withGpsr({ ...mapShoperProduct(data, ctx), id: productId }, data);
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
@@ -596,9 +605,19 @@ export class ShoperProductMasterAdapter
         this.logger.warn(`No internal id for Shoper product ${raw.product_id}`);
         continue;
       }
-      products.push({ ...mapShoperProduct(raw, ctx), id: internalId });
+      products.push(await this.withGpsr({ ...mapShoperProduct(raw, ctx), id: internalId }, raw));
     }
     return products;
+  }
+
+  /**
+   * Attach the product's GPSR data when the shop reported any answer.
+   * `undefined` (not reported, or not resolvable this time) adds no key, so
+   * the stored declaration is left as it is.
+   */
+  private async withGpsr(product: Product, raw: ShoperProduct): Promise<Product> {
+    const gpsr = await this.gpsrReader.resolve(raw.safety_information, String(raw.product_id));
+    return gpsr === undefined ? product : { ...product, gpsr };
   }
 
   /** Exhausts every page of a product's stocks (a product may have more than 50 variants). */

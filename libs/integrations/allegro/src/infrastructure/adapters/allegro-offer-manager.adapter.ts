@@ -81,7 +81,15 @@ import {
   CategoryNotFoundException,
   OfferNotFoundOnMarketplaceException,
 } from '@openlinker/core/listings';
-import type { AllegroSellerDefaultsConfig } from '../../domain/types/allegro-seller-defaults.types';
+import type {
+  AllegroSafetyInformation,
+  AllegroSellerDefaultsConfig,
+} from '../../domain/types/allegro-seller-defaults.types';
+import {
+  matchAllegroResponsibleProducer,
+  toAllegroSafetyText,
+  type AllegroProducerMatch,
+} from '../util/resolve-allegro-gpsr-declaration';
 import type { AllegroEnvironment } from '../../domain/types/allegro-config.types';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
@@ -235,6 +243,22 @@ function slugify(name: string): string {
 }
 
 /**
+ * GPSR values taken from the PRODUCT for one offer (`CreateOfferCommand.gpsr`),
+ * already expressed in Allegro's terms. A field is set only when the product
+ * supplied a usable value; otherwise the connection's `sellerDefaults` apply.
+ */
+interface ProductGpsrDeclaration {
+  responsibleProducerId?: string;
+  safetyInformation?: AllegroSafetyInformation;
+}
+
+/** The GPSR declaration an offer is created with, after product-over-defaults precedence. */
+interface AllegroGpsrDeclaration {
+  responsibleProducerId: string;
+  safetyInformation: AllegroSafetyInformation;
+}
+
+/**
  * Defensive runtime check for the persisted `Connection.config
  * .sellerDefaults` (config ROOT) blob. The TypeScript shape (`AllegroSellerDefaultsConfig`)
  * marks every sub-field non-optional, but the JSONB column can carry partial
@@ -245,13 +269,17 @@ function slugify(name: string): string {
  * empty result means the blob is structurally complete.
  */
 function collectMissingSellerDefaultsFields(
-  defaults: AllegroSellerDefaultsConfig | undefined
+  defaults: AllegroSellerDefaultsConfig | undefined,
+  satisfiedByProduct: ProductGpsrDeclaration = {}
 ): string[] {
+  // A product-level GPSR value makes the matching default unnecessary for THIS
+  // offer, so its absence is not reported. Location has no product-level
+  // counterpart and is always required.
   if (!defaults) {
     return [
       'sellerDefaults.location',
-      'sellerDefaults.responsibleProducerId',
-      'sellerDefaults.safetyInformation',
+      ...(satisfiedByProduct.responsibleProducerId ? [] : ['sellerDefaults.responsibleProducerId']),
+      ...(satisfiedByProduct.safetyInformation ? [] : ['sellerDefaults.safetyInformation']),
     ];
   }
   const missing: string[] = [];
@@ -260,8 +288,11 @@ function collectMissingSellerDefaultsFields(
   if (!loc?.province) missing.push('sellerDefaults.location.province');
   if (!loc?.city) missing.push('sellerDefaults.location.city');
   if (!loc?.postCode) missing.push('sellerDefaults.location.postCode');
-  if (!defaults.responsibleProducerId) {
+  if (!defaults.responsibleProducerId && !satisfiedByProduct.responsibleProducerId) {
     missing.push('sellerDefaults.responsibleProducerId');
+  }
+  if (satisfiedByProduct.safetyInformation) {
+    return missing;
   }
   const safety = defaults.safetyInformation;
   if (!safety?.type) {
@@ -368,6 +399,12 @@ export class AllegroOfferManagerAdapter
    * resolver.
    */
   private readonly configuredMaxConcurrent: unknown;
+  /**
+   * The seller's responsible-producer registry, read at most once per adapter
+   * instance for GPSR name matching. Memoised as a promise so concurrent offer
+   * creates share one request; a failure is dropped so the next one retries.
+   */
+  private responsibleProducerRegistry: Promise<AllegroResponsibleProducerEntry[]> | null = null;
 
   constructor(
     private readonly connectionId: string,
@@ -1872,7 +1909,10 @@ export class AllegroOfferManagerAdapter
     // `responsibleProducerId` because the RP dropdown couldn't load).
     // Surface as the neutral `OfferCreateRejectedException` (one error per
     // missing field) — keeps the `core → integration` boundary clean.
-    const missingDefaults = collectMissingSellerDefaultsFields(this.sellerDefaults);
+    // The product's own GPSR data is resolved first, because a product-level
+    // producer or safety text makes the matching default unnecessary.
+    const productGpsr = await this.resolveProductGpsrDeclaration(cmd);
+    const missingDefaults = collectMissingSellerDefaultsFields(this.sellerDefaults, productGpsr);
     if (missingDefaults.length > 0) {
       throw new OfferCreateRejectedException(
         ALLEGRO_ADAPTER_KEY,
@@ -1921,7 +1961,15 @@ export class AllegroOfferManagerAdapter
     // through to inline. Both paths use the seller-defaults checked above.
     const cardLinkResult = await this.maybeResolveProductCard(cmd);
 
-    const body = this.buildCreateOfferRequest(cmd, cardLinkResult);
+    // The preflight above guarantees each value comes from the product or from
+    // a complete `sellerDefaults` field, so neither assertion can see undefined.
+    const gpsrDeclaration: AllegroGpsrDeclaration = {
+      responsibleProducerId:
+        productGpsr.responsibleProducerId ?? this.sellerDefaults!.responsibleProducerId,
+      safetyInformation: productGpsr.safetyInformation ?? this.sellerDefaults!.safetyInformation,
+    };
+
+    const body = this.buildCreateOfferRequest(cmd, cardLinkResult, gpsrDeclaration);
     if (taxSettings) {
       body.taxSettings = taxSettings;
     }
@@ -2035,6 +2083,82 @@ export class AllegroOfferManagerAdapter
       result.publicationStatus = this.mapAllegroPublicationStatus(response.publication.status);
     }
     return result;
+  }
+
+  /**
+   * The product's GPSR data expressed in Allegro's terms, field by field; an
+   * absent field means "use the connection default".
+   *
+   * - Producer: the product's producer name, matched against the seller's own
+   *   responsible-producer registry. No match, two matches, or a failed
+   *   registry read keep the default and log a warning naming the product
+   *   value, so an operator can register the producer (or fix its name) in
+   *   Allegro. A producer is NEVER created here.
+   * - Safety information: the product's safety text as a `TEXT` block; text
+   *   Allegro would reject (over 5000 characters) keeps the default.
+   *
+   * The warnings are the only surface: a create result carries no warning slot,
+   * and the offer itself is fine - it carries the seller's chosen default.
+   */
+  private async resolveProductGpsrDeclaration(
+    cmd: CreateOfferCommand
+  ): Promise<ProductGpsrDeclaration> {
+    const declaration: ProductGpsrDeclaration = {};
+    const gpsr = cmd.gpsr;
+    if (!gpsr) {
+      return declaration;
+    }
+
+    const producerName = gpsr.producer?.name;
+    if (producerName) {
+      const match = await this.matchProductProducer(producerName);
+      if (match.kind === 'matched') {
+        declaration.responsibleProducerId = match.id;
+      } else {
+        this.logger.warn(
+          `allegro_gpsr_producer_unmatched: product producer ${JSON.stringify(producerName)} ` +
+            `(${match.reason}) has no single matching responsible producer in the seller's Allegro ` +
+            `registry; using the connection default. connection=${this.connectionId} ` +
+            `variant=${cmd.internalVariantId}`
+        );
+      }
+    }
+
+    const safetyText = gpsr.safetyInformation?.text;
+    if (safetyText) {
+      const safety = toAllegroSafetyText(safetyText);
+      if (safety) {
+        declaration.safetyInformation = safety;
+      } else {
+        this.logger.warn(
+          `allegro_gpsr_safety_text_rejected: product safety text (${safetyText.length} chars) ` +
+            `is longer than Allegro accepts; using the connection default. ` +
+            `connection=${this.connectionId} variant=${cmd.internalVariantId}`
+        );
+      }
+    }
+    return declaration;
+  }
+
+  private async matchProductProducer(producerName: string): Promise<AllegroProducerMatch> {
+    if (this.responsibleProducerRegistry === null) {
+      this.responsibleProducerRegistry = this.httpClient
+        .get<AllegroResponsibleProducersResponse>('/sale/responsible-producers')
+        .then((response) => response.data.responsibleProducers ?? [])
+        .catch((error: unknown) => {
+          this.responsibleProducerRegistry = null;
+          throw error;
+        });
+    }
+    try {
+      return matchAllegroResponsibleProducer(await this.responsibleProducerRegistry, producerName);
+    } catch (error) {
+      this.logger.warn(
+        `Allegro responsible-producer registry read failed (connection: ${this.connectionId}): ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      return { kind: 'unmatched', reason: 'lookup-failed' };
+    }
   }
 
   /**
@@ -2154,7 +2278,8 @@ export class AllegroOfferManagerAdapter
 
   private buildCreateOfferRequest(
     cmd: CreateOfferCommand,
-    cardLinkResult: ResolveProductCardResult
+    cardLinkResult: ResolveProductCardResult,
+    gpsrDeclaration: AllegroGpsrDeclaration
   ): AllegroProductOfferCreateRequest {
     const platformParams = cmd.overrides?.platformParams ?? {};
 
@@ -2234,7 +2359,14 @@ export class AllegroOfferManagerAdapter
     // ensures `this.sellerDefaults` is defined by the time we get here).
     body.location = { ...this.sellerDefaults!.location };
 
-    this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult, cmd.condition);
+    this.applyPlatformParams(
+      body,
+      platformParams,
+      cmd.parameters,
+      cardLinkResult,
+      cmd.condition,
+      gpsrDeclaration
+    );
 
     return body;
   }
@@ -2419,7 +2551,8 @@ export class AllegroOfferManagerAdapter
     platformParams: Record<string, unknown>,
     parameters: readonly OfferParameter[] | undefined,
     cardLinkResult: ResolveProductCardResult,
-    condition: OfferCondition | undefined
+    condition: OfferCondition | undefined,
+    gpsrDeclaration: AllegroGpsrDeclaration
   ): void {
     const deliveryPolicyId = platformParams['deliveryPolicyId'];
     const handlingTime = platformParams['handlingTime'];
@@ -2490,14 +2623,14 @@ export class AllegroOfferManagerAdapter
       // sellable stock here was both wrong-typed (Allegro wants an object, not
       // a bare int → `JsonMappingException` at `productSet[0].quantity`) and
       // wrong semantics. OL lists 1 variant = 1 sale unit, so we omit it (#808).
-      // `sellerDefaults!` is guaranteed by the `createOffer` preflight
+      // `gpsrDeclaration` is complete by the `createOffer` preflight
       // (`collectMissingSellerDefaultsFields`), which runs on every path,
       // card-linked included.
       body.productSet = [
         {
           product: { id: cardLinkResult.productId },
-          responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
-          safetyInformation: this.sellerDefaults!.safetyInformation,
+          responsibleProducer: { id: gpsrDeclaration.responsibleProducerId },
+          safetyInformation: gpsrDeclaration.safetyInformation,
         },
       ];
       this.logger.log(
@@ -2566,18 +2699,18 @@ export class AllegroOfferManagerAdapter
       name: body.name,
       ...(filtered.length > 0 ? { parameters: filtered } : {}),
     };
-    // The `sellerDefaults!` non-null assertions below are guaranteed by the
-    // per-field preflight in `createOffer` (`collectMissingSellerDefaultsFields`,
-    // #430 / #437): if `responsibleProducerId` or `safetyInformation` were
-    // missing, the preflight throws `OfferCreateRejectedException` before this
-    // method runs. Do not weaken the preflight without revisiting these sites.
+    // `gpsrDeclaration` is complete by the per-field preflight in
+    // `createOffer` (`collectMissingSellerDefaultsFields`, #430 / #437): if
+    // neither the product nor `sellerDefaults` supplied a producer or safety
+    // information, the preflight throws `OfferCreateRejectedException` before
+    // this method runs. Do not weaken the preflight without revisiting these sites.
     body.productSet = [
       {
         product: inlineProduct,
         // #430 — GPSR fields required by Allegro on inline-product creation
         // (Reg. 2023/988, mandatory since 13 Dec 2024).
-        responsibleProducer: { id: this.sellerDefaults!.responsibleProducerId },
-        safetyInformation: this.sellerDefaults!.safetyInformation,
+        responsibleProducer: { id: gpsrDeclaration.responsibleProducerId },
+        safetyInformation: gpsrDeclaration.safetyInformation,
       },
     ];
   }

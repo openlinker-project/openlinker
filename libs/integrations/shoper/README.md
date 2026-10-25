@@ -111,6 +111,14 @@ A passing test does **not** prove every area above was granted; each capability 
 - **Text** is read from `translations[<shop default language>]` (`application-config.default_language_name`);
   the translations' own `isdefault` flag reads `"0"` on every language and is not used.
 - **Images:** only the main image, `https://<host>/userdata/public/gfx/<unic_name>.<extension>`.
+- **GPSR** (EU 2023/988): the product's `safety_information` ids are resolved against the
+  `product-safety-producers` / `-responsibles` / `-importers` / `-certificates` registries into the neutral
+  `Product.gpsr` (producer, responsible person, importer, certificate names). A registry is read only when a
+  product references it, whole and at most once per adapter instance; a failed or dangling reference leaves
+  `gpsr` unknown (the stored value is kept) and logs a warning, never fails the product. Certificate
+  descriptions are not product safety text and are not mapped. Modelled from the published API schema, not
+  yet seen on a live payload - in particular whether the `/products` LIST embeds `safety_information` (a batch
+  prefetch reads it from there) is unverified.
 - Writes throw `ShoperNotSupportedException`.
 
 Paging (all observed on a live shop):
