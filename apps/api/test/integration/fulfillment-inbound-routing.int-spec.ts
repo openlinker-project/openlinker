@@ -106,7 +106,7 @@ describe('Fulfillment inbound routing through the real gate (#2400)', () => {
     const resolution = routing.resolve(canonical, connection, enabled, eventId);
     const job = resolution.status === 'resolved' ? resolution.job : null;
 
-    await gate.insertDeliveryWithJob(
+    await gate.insertDeliveryWithJobs(
       {
         eventId,
         provider: platformType,
@@ -117,7 +117,7 @@ describe('Fulfillment inbound routing through the real gate (#2400)', () => {
         downstreamJobType: job?.jobType ?? null,
         dlqReason: job ? null : `ungated: ${canonical.domain}`,
       },
-      job
+      job ? [job] : []
     );
 
     return job;
