@@ -233,3 +233,46 @@ Starving one host's traffic behind another's remains a real concern; the mechani
 - Related issues: #1810, #1772, #1815, #2015 (closed the cross-process coordination gap — see § "Cross-process coordination — resolved" above)
 - Related PRs: #1941 (PrestaShop-only #1815 prerequisite this ADR generalizes)
 - Primary doc section: [docs/architecture-overview.md § Sync Manager](../../architecture-overview.md#7-sync-manager), [§ Plugin Manager / Integrations](../../architecture-overview.md#10-plugin-manager--integrations)
+
+## Amendment (2026-10-25): shared bucket for a remote quota scoped wider than a credential
+
+**Context.** § "The cap is per connection" rests on one premise: *remotes scope quotas by credential*.
+Shoper does not. Its API limit is per SHOP and shared by every token and every integration installed on
+that shop - measured live: a sustained 10 req/s is answered in full, 15 req/s draws `429`s, and two
+tokens hammering one shop together get about 5 req/s each. Two OpenLinker connections to one shop are an
+ordinary setup (the shop as order source on one connection, as publish destination on another), and with
+one bucket per connection they paced independently, so together they could exceed the shop's budget.
+
+**Decision.**
+
+1. `HttpTransportFactoryPort.forConnection` gains an optional third argument,
+   `options?: { bucketKey?: string }`. Absent (or empty) keeps the default - one bucket per connection
+   id, byte-identical for every plugin that does not pass it. A third argument rather than a widened
+   second one, because `defaultRateLimit` is itself a `ConnectionRateLimit` and an options bag in that
+   slot would make every existing call site ambiguous to read.
+2. Under a shared bucket the policy is `tightenRateLimit(defaultRateLimit, config.rateLimit)`
+   (`@openlinker/shared/rate-limit`): the plugin's `defaultRateLimit` is the remote's ceiling, and a
+   connection's own `config.rateLimit` can only make each knob stricter for that connection, never raise
+   it. One connection's generous config must not loosen a budget every sibling draws from. It is ONE
+   acquire on the shared bucket, not a second acquire on the connection-id bucket: a stricter
+   connection claims against its own lower concurrency cap and advances the shared pacing key by its
+   own longer interval, which can only slow the shared bucket, never speed it up. A second limiter
+   would express the per-connection limit exactly, at the cost of ordering two acquires (and two
+   releases) on every call, for a knob that is a safety valve rather than a fairness tool.
+3. The cached `FetchLike` is keyed by connection id AND bucket key, so a call site asking for a
+   different bucket is never handed a closure bound to the wrong one. `evict(connectionId)` drops the
+   connection's own bucket and its cached shared-bucket fetches, but evicts a SHARED bucket only once no
+   other connection in the process still uses it - disabling one of two connections to a shop must not
+   reset the limiter the other is queued on.
+4. A plugin opts in through `AdapterMetadata.resolveRateLimitBucketKey?(connection)`, a pure function
+   that every `forConnection` call site in the plugin uses AND `RateLimitStatusService` reads (through
+   `readRateLimitBucketKey`), so the operator's status panel shows the bucket that is actually paced and
+   the policy through the same `tightenRateLimit`. For a shared bucket the live counters are therefore
+   the shop's (every connection drawing from it in that process), not the one connection's.
+
+**Shoper is the first user**: `shoper:host:<normalised host>`, from `parseShoperBaseUrl`, at a budget of
+300 req/min with 4 in flight - half of the measured shop limit, leaving the rest to the merchant's panel
+and other integrations, which OpenLinker cannot see. The per-connection default, the reasoning against
+per-HOST buckets, and Allegro's single-bucket-across-two-hosts shape above are unchanged: a shared key
+names the remote's quota scope, not a hostname, and is only for a remote that documents (or is measured
+to have) a quota wider than one credential.

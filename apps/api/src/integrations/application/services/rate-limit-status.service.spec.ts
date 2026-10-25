@@ -119,6 +119,69 @@ describe('RateLimitStatusService', () => {
     expect(rateLimiterRegistry.getStatus).not.toHaveBeenCalled();
   });
 
+  describe('shared bucket (ADR-038 § Amendment)', () => {
+    const SHOP_CEILING = { requestsPerMinute: 300, maxConcurrent: 4 };
+    const sharedManifest = {
+      adapterKey: 'shoper.restapi.v1',
+      platformType: 'shoper',
+      supportedCapabilities: [],
+      defaultRateLimit: SHOP_CEILING,
+      resolveRateLimitBucketKey: (c: Pick<Connection, 'id' | 'config'>): string =>
+        `shoper:host:${String(c.config?.['baseUrl'])}`,
+    };
+
+    it('should read the shared bucket, not the connection bucket, when the manifest names one', async () => {
+      connectionPort.get.mockResolvedValue(connection({ baseUrl: 'sklep1.shoparena.pl' }));
+      integrationsService.resolveAdapterMetadata.mockResolvedValue(sharedManifest);
+      rateLimiterRegistry.getStatus.mockReturnValue({
+        inFlight: 3,
+        queued: 2,
+        lastAcquiredAt: null,
+      });
+
+      const status = await subject.getStatus(connectionId);
+
+      expect(rateLimiterRegistry.getStatus).toHaveBeenCalledWith('shoper:host:sklep1.shoparena.pl');
+      expect(rateLimiterRegistry.getStatus).not.toHaveBeenCalledWith(connectionId);
+      expect(status).toEqual({
+        enabled: true,
+        requestsPerMinute: 300,
+        maxConcurrent: 4,
+        inFlight: 3,
+        queued: 2,
+        lastAcquiredAt: null,
+      });
+    });
+
+    it('should report a looser connection config clamped to the shared ceiling, as the transport enforces it', async () => {
+      connectionPort.get.mockResolvedValue(
+        connection({
+          baseUrl: 'sklep1.shoparena.pl',
+          rateLimit: { requestsPerMinute: 60, maxConcurrent: 10 },
+        })
+      );
+      integrationsService.resolveAdapterMetadata.mockResolvedValue(sharedManifest);
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+
+      const status = await subject.getStatus(connectionId);
+
+      expect(status).toMatchObject({ enabled: true, requestsPerMinute: 60, maxConcurrent: 4 });
+    });
+
+    it('should read the connection bucket when the manifest resolver answers no shared bucket', async () => {
+      connectionPort.get.mockResolvedValue(connection());
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        ...sharedManifest,
+        resolveRateLimitBucketKey: () => undefined,
+      });
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+
+      await subject.getStatus(connectionId);
+
+      expect(rateLimiterRegistry.getStatus).toHaveBeenCalledWith(connectionId);
+    });
+  });
+
   describe('resolve-concurrency ceiling (#2229)', () => {
     const ceiling = { maxInFlight: 9, source: 'adapter-default' as const, adapterDefault: 9 };
 
