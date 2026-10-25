@@ -26,11 +26,19 @@
  * Some shops key an order line by their own VARIANT id rather than the product
  * id (Shoper: `stock_id`). A `variant` ref from such a shop never matches the
  * `ShopProduct` record, whose external id is the product id, so the publish
- * also records the variant-grain id under `ShopProductVariant` and the
- * `variant` branch consults it last. It is a separate entity type because the
- * two ids are separate id spaces on the shop and can be the same number; the
- * `ShopProduct` lookup stays first so a shop whose order lines carry the
- * product id behaves exactly as before.
+ * also records the variant-grain id under `ShopProductVariant`. It is a
+ * separate entity type because the two ids are separate id spaces on the shop
+ * and can be the same number.
+ *
+ * That collision is also why the `variant` branch asks `ShopProductVariant`
+ * BEFORE `ShopProduct`. A `variant` ref carries a variant-grain id, so on a shop
+ * that has the variant-grain record it is the record the ref means; asking
+ * `ShopProduct` first would let a Shoper `stock_id` 256 match the publish
+ * record of an unrelated product whose `product_id` happens to be 256 too, and
+ * the line would resolve, confidently, to the wrong variant. Only the Shoper
+ * publisher writes `ShopProductVariant`, so a shop whose variant ref IS its
+ * shop product id (WooCommerce variations) finds nothing there and still
+ * resolves through `ShopProduct` exactly as before.
  *
  * `ShopProduct` deliberately holds two kinds of internal id in one entityType -
  * a variant's own shop product id maps to a VARIANT, while a grouped parent's
@@ -142,20 +150,22 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (!internalVariantId) {
+          // Variant-grain record first: the two shop id spaces can share a
+          // number, and a variant ref means the variant one (see the module
+          // docblock).
           const published =
-            (await this.resolveViaShopProduct(connectionId, productRef)) ??
             (await this.resolveViaShopProduct(
               connectionId,
               productRef,
               CORE_ENTITY_TYPE.ShopProductVariant
-            ));
+            )) ?? (await this.resolveViaShopProduct(connectionId, productRef));
           if (published) {
             return published;
           }
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,
-            'identifier_mappings:ProductVariant,ShopProduct,ShopProductVariant'
+            'identifier_mappings:ProductVariant,ShopProductVariant,ShopProduct'
           );
         }
         const variant = await this.productsService.getVariant(internalVariantId);
