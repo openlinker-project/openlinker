@@ -810,6 +810,12 @@ export interface AllegroResponsibleProducerEntry {
   id: string;
   name?: string;
   type?: 'PRODUCER' | 'IMPORTER' | 'AUTHORIZED_REPRESENTATIVE' | 'FULFILLMENT_SERVICE_PROVIDER';
+  /**
+   * The producer's registered details. Only `tradeName` is read: it is the
+   * legal name the seller entered, which is what a product's GPSR producer
+   * name is matched against alongside the seller's own label (`name`).
+   */
+  producerData?: { tradeName?: string };
 }
 
 export interface AllegroResponsibleProducersResponse {
