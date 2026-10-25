@@ -87,7 +87,9 @@ export type ShoperOrderWebhookEvent = (typeof SHOPER_ORDER_WEBHOOK_EVENTS)[numbe
  * `product.delete` is kept, unlike `order.delete`, because the 404 its re-read
  * answers IS the deletion signal the product sync acts on. `product.edit` fires
  * within a second on a panel product edit AND on a panel stock edit, and its
- * body is the whole product, stock included - none of which is read.
+ * body is the whole product, stock included - none of which is read. Because the
+ * two cannot be told apart, `product.edit` triggers both a product and an
+ * inventory re-read (see the event translator).
  */
 export const SHOPER_PRODUCT_WEBHOOK_EVENTS = [
   'product.create',

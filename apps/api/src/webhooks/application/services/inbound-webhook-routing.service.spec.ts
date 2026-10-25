@@ -5,6 +5,8 @@
  * deterministic faults (missing connection, no translator, undecodable event,
  * capability-ungated domain) classify as `unroutable`, transient faults
  * rethrow (source retry), and a routable event returns the resolved job spec.
+ * A translator returning several events fans out into several jobs, the
+ * primary keeping the unchanged three-part idempotency key.
  *
  * @module apps/api/src/webhooks/application/services
  */
@@ -12,6 +14,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { InboundWebhookEvent } from '@openlinker/core/events';
 import type {
+  CanonicalInboundEvent,
   IIntegrationsService,
   WebhookEventTranslatorPort,
   WebhookEventTranslatorRegistryService,
@@ -24,7 +27,11 @@ import {
   ConnectionNotFoundException,
   ConnectionDisabledException,
 } from '@openlinker/core/identifier-mapping';
-import type { IInboundRoutingPolicyService, SyncJobRequest } from '@openlinker/core/sync';
+import type {
+  IInboundRoutingPolicyService,
+  InboundRouteResolution,
+  SyncJobRequest,
+} from '@openlinker/core/sync';
 import { INBOUND_ROUTING_POLICY_TOKEN } from '@openlinker/core/sync';
 import { InboundWebhookRoutingService } from './inbound-webhook-routing.service';
 import { WebhookRoutingUnavailableException } from '../errors/webhook-routing-unavailable.exception';
@@ -95,10 +102,15 @@ describe('InboundWebhookRoutingService', () => {
     service = module.get(InboundWebhookRoutingService);
   });
 
-  it('returns routed with the resolved job for a routable event', async () => {
+  it('should return routed with the resolved job unchanged when the translator returns a single event', async () => {
     const outcome = await service.resolveEvent(makeEvent());
 
-    expect(outcome).toEqual({ kind: 'routed', job: resolvedJob });
+    expect(outcome).toEqual({ kind: 'routed', jobs: [resolvedJob] });
+    // The single-event key must stay byte-identical: the lookup endpoint and
+    // the frontend rebuild exactly this form.
+    expect(outcome.kind === 'routed' && outcome.jobs[0].idempotencyKey).toBe(
+      `prestashop:${connectionId}:e1`
+    );
     expect(routingPolicy.resolve).toHaveBeenCalledWith(
       expect.objectContaining({ domain: 'product' }),
       expect.objectContaining({ id: connectionId }),
@@ -190,6 +202,127 @@ describe('InboundWebhookRoutingService', () => {
     expect(outcome).toEqual({
       kind: 'unroutable',
       reason: 'ungated: product requires OrderSource',
+    });
+  });
+
+  describe('fan-out (one delivery, several canonical events)', () => {
+    const productEvent: CanonicalInboundEvent = {
+      domain: 'product',
+      externalId: '23',
+      eventType: 'product.edit',
+    };
+    const inventoryEvent: CanonicalInboundEvent = {
+      domain: 'inventory',
+      externalId: '23',
+      eventType: 'product.edit',
+    };
+    const productJob: SyncJobRequest = {
+      jobType: 'master.product.syncByExternalId',
+      connectionId,
+      payload: { schemaVersion: 1, externalId: '23', objectType: 'Product' },
+      idempotencyKey: `prestashop:${connectionId}:e1`,
+    };
+    const inventoryJob: SyncJobRequest = {
+      jobType: 'master.inventory.syncByExternalId',
+      connectionId,
+      payload: { schemaVersion: 1, externalId: '23', objectType: 'Inventory' },
+      // The policy always stamps the base key; the routing service re-keys it.
+      idempotencyKey: `prestashop:${connectionId}:e1`,
+    };
+
+    /** Policy stub resolving by domain, with a configurable set of gated domains. */
+    function resolveByDomain(
+      gated: readonly string[] = []
+    ): (event: CanonicalInboundEvent) => InboundRouteResolution {
+      return (event) => {
+        if (gated.includes(event.domain)) {
+          return {
+            status: 'ungated',
+            domain: event.domain,
+            requiredCapability: event.domain === 'product' ? 'ProductMaster' : 'InventoryMaster',
+          };
+        }
+        return { status: 'resolved', job: event.domain === 'product' ? productJob : inventoryJob };
+      };
+    }
+
+    it('should route every resolvable event when the translator returns two', async () => {
+      translator.translate.mockReturnValue([productEvent, inventoryEvent]);
+      routingPolicy.resolve.mockImplementation(resolveByDomain());
+
+      const outcome = await service.resolveEvent(makeEvent());
+
+      expect(outcome).toEqual({
+        kind: 'routed',
+        jobs: [
+          productJob,
+          {
+            ...inventoryJob,
+            idempotencyKey: `prestashop:${connectionId}:e1:master.inventory.syncByExternalId`,
+          },
+        ],
+      });
+      expect(routingPolicy.resolve).toHaveBeenCalledTimes(2);
+    });
+
+    it('should still route the secondary job, keeping its discriminated key, when the primary is ungated', async () => {
+      translator.translate.mockReturnValue([productEvent, inventoryEvent]);
+      routingPolicy.resolve.mockImplementation(resolveByDomain(['product']));
+
+      const outcome = await service.resolveEvent(makeEvent());
+
+      // Positional key: the inventory job keeps its own key rather than taking
+      // over the base key, so a later redelivery with the primary ungated
+      // cannot collide with it.
+      expect(outcome).toEqual({
+        kind: 'routed',
+        jobs: [
+          {
+            ...inventoryJob,
+            idempotencyKey: `prestashop:${connectionId}:e1:master.inventory.syncByExternalId`,
+          },
+        ],
+      });
+    });
+
+    it('should drop the gated secondary and keep the primary when only the secondary is ungated', async () => {
+      translator.translate.mockReturnValue([productEvent, inventoryEvent]);
+      routingPolicy.resolve.mockImplementation(resolveByDomain(['inventory']));
+
+      const outcome = await service.resolveEvent(makeEvent());
+
+      expect(outcome).toEqual({ kind: 'routed', jobs: [productJob] });
+    });
+
+    it('should classify the delivery as unroutable, naming every ungated domain, when no event resolves', async () => {
+      translator.translate.mockReturnValue([productEvent, inventoryEvent]);
+      routingPolicy.resolve.mockImplementation(resolveByDomain(['product', 'inventory']));
+
+      const outcome = await service.resolveEvent(makeEvent());
+
+      expect(outcome).toEqual({
+        kind: 'unroutable',
+        reason: 'ungated: product requires ProductMaster; inventory requires InventoryMaster',
+      });
+    });
+
+    it('should classify the delivery as undecodable when the translator returns an empty array', async () => {
+      translator.translate.mockReturnValue([]);
+
+      const outcome = await service.resolveEvent(makeEvent());
+
+      expect(outcome).toMatchObject({ kind: 'unroutable' });
+      expect((outcome as { reason: string }).reason).toContain('undecodable');
+      expect(routingPolicy.resolve).not.toHaveBeenCalled();
+    });
+
+    it('should keep only the first job when two events route to the same job type', async () => {
+      translator.translate.mockReturnValue([productEvent, { ...productEvent, externalId: '99' }]);
+      routingPolicy.resolve.mockImplementation(resolveByDomain());
+
+      const outcome = await service.resolveEvent(makeEvent());
+
+      expect(outcome).toEqual({ kind: 'routed', jobs: [productJob] });
     });
   });
 });

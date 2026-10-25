@@ -152,6 +152,14 @@ Translator-absence therefore degrades to poll-only: webhooks are a latency optim
 
 **Migration path:** Phase 1 (#902) routes PS order webhooks onto the existing `marketplace.order.sync` job — closing the dead-letter gap on the target taxonomy, **after** invariant 1 lands. Phase 2 (#903) adds the translator capability + `InboundRoutingPolicy` and deletes the central switches; the routing table absorbs the current product/stock mappings as rows. Phase 3 (#904) adds the poll backstop. No work is undone: Phase 2 only relocates *who decides*.
 
+## Amendment (2026-10-25) - a translator may return several events
+
+`translate` may now return an ordered array of `CanonicalInboundEvent`s, for a platform that sends
+one event name for several changes (Shoper's `product.edit` covers a product edit and a panel stock
+edit). The routing table above is unchanged and still maps one event to one job; the ingress resolves
+each element and commits every resolvable job in one gate transaction. Ordering, idempotency keys and
+partial gating are recorded in [ADR-049 § Amendment (2026-10-25)](./049-durability-spine-and-domain-event-contract.md).
+
 ## References
 
 - Related issues: #900 (epic), #902, #903, #904, #576 (open-world capability)
