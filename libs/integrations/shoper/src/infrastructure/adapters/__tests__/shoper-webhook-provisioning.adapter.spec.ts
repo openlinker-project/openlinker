@@ -108,7 +108,7 @@ function setup(
       secretService as unknown as IWebhookSecretService,
       credentialsResolver,
       http,
-      { requestsPerMinute: 240, maxConcurrent: 4 },
+      { requestsPerMinute: 300, maxConcurrent: 4 },
     ),
     http,
     connectionPort,
@@ -167,7 +167,9 @@ describe('ShoperWebhookProvisioningAdapter', () => {
 
       expect(f.http.forConnection).toHaveBeenCalledWith(
         expect.objectContaining({ id: CONNECTION_ID }),
-        { requestsPerMinute: 240, maxConcurrent: 4 },
+        { requestsPerMinute: 300, maxConcurrent: 4 },
+        // The SHOP's bucket, shared with every other connection to it.
+        { bucketKey: 'shoper:host:sklep729770.shoparena.pl' },
       );
     });
 

@@ -61,6 +61,7 @@ import type { ConnectionRateLimit } from '@openlinker/shared/rate-limit';
 import { Logger } from '@openlinker/shared/logging';
 
 import { parseShoperBaseUrl } from '../../domain/policies/shoper-base-url.policy';
+import { buildShoperRateLimitBucketKey } from '../../domain/policies/shoper-rate-limit-bucket.policy';
 import { deriveShoperWebhookUrlToken } from '../../domain/policies/shoper-webhook-url-token.policy';
 import type { ShoperCredentials } from '../../domain/types/shoper-credentials.types';
 import {
@@ -143,7 +144,9 @@ export class ShoperWebhookProvisioningAdapter implements WebhookProvisioningPort
 
     const client = new ShoperHttpClient(
       { host: base.host, token: credentials.token },
-      this.http.forConnection(connection, this.defaultRateLimit),
+      this.http.forConnection(connection, this.defaultRateLimit, {
+        bucketKey: buildShoperRateLimitBucketKey(base.host),
+      }),
     );
     const endpoint = `${callbackBaseUrl.replace(/\/+$/, '')}/webhooks/${SHOPER_WEBHOOK_PROVIDER}/${connectionId}`;
     const deliveryUrl = `${endpoint}?${SHOPER_WEBHOOK_TOKEN_QUERY_KEY}=${encodeURIComponent(urlToken)}`;

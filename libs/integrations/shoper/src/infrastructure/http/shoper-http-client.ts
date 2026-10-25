@@ -10,7 +10,8 @@
  * runner owns the retry ladder (and defers a 429 / 503 penalty-free through
  * the retry classifier), and a retry on the connection test would mask real
  * latency. Outbound pacing is the injected `fetchImpl`'s job - callers pass
- * `host.http.forConnection(connection, defaultRateLimit)`.
+ * `host.http.forConnection(connection, defaultRateLimit, { bucketKey })`, the
+ * bucket being the shop's (Shoper's limit is per shop, not per token).
  *
  * A rate-limiter rejection (`RateLimitTimeoutError` / `RateLimitAbortedError`)
  * thrown by that `fetchImpl` is rethrown UNWRAPPED: the job runner recognises

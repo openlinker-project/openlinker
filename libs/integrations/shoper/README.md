@@ -439,11 +439,16 @@ connection to rotate the secret, since the old URL has already shown it to anyon
 ## Known gaps
 
 - **Rate limit.** Shoper's limit is per SHOP and shared by every token and integration on it: a
-  sustained 10 req/s was answered in full, 15 req/s drew `429`s (an HTML page with no `Retry-After`).
-  The manifest default is 240 req/min with 4 in flight, leaving room for the merchant's other
-  integrations; `config.rateLimit` on the connection overrides it. A `429` / `503` that reaches a job
-  is deferred penalty-free (60 s / 300 s) instead of spending a retry attempt. The bound is per
-  connection, so two OpenLinker connections to one shop get 240 each.
+  sustained 10 req/s was answered in full, 15 req/s drew `429`s (an HTML page with no `Retry-After`),
+  and two tokens hammering one shop together got about 5 req/s each. OpenLinker therefore paces every
+  connection to one shop against ONE shared bucket, keyed by the normalised shop host
+  (`shoper:host:<host>`, ADR-038 § Amendment): a shop used as order source on one connection and as
+  publish destination on another shares a single budget. That budget is 300 req/min (5 req/s) with 4
+  in flight, half the shop's limit, leaving the rest to the merchant's panel and other integrations.
+  `config.rateLimit` on a connection can only make it stricter for that connection, never raise the
+  shop's budget. A `429` / `503` that reaches a job is deferred penalty-free (60 s / 300 s) instead of
+  spending a retry attempt. Still not covered: the merchant's OTHER integrations are invisible to
+  OpenLinker, so a busy ERP on the same shop can still push the shop over its limit.
 - **`adjustInventory` is a non-atomic read-modify-write** (Shoper has no conditional stock write and no
   idempotency key, so it reports `idempotency: 'unsupported'`): a change landing between the read and the PUT is
   overwritten, and a retry after a lost response applies the delta again. The remedy belongs at the call site: a

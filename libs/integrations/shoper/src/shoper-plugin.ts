@@ -13,7 +13,11 @@
  * against the measured per-shop limit (see that constant). Every
  * `host.http.forConnection` call site passes it - the capability adapters, the
  * connection tester and the webhook provisioner - so no path issues unpaced
- * traffic before the first capability call has set the default.
+ * traffic before the first capability call has set the default. Every call
+ * site also passes the SHOP's bucket key (`resolveShoperRateLimitBucketKey`),
+ * because Shoper's limit is per shop, not per token: two connections to one
+ * shop pace against one bucket (ADR-038 § Amendment). The manifest carries the
+ * same function so the host's status read shows that shared bucket.
  *
  * A `429` / `503` that still reaches a job is deferred penalty-free
  * (`ShoperRetryClassifierAdapter.getRetryDeferral`): Shoper's 429 carries no
@@ -41,6 +45,7 @@ import { ShoperAdapterFactory, type ShoperAdapters } from './application/shoper-
 import { ShoperInboundWebhookDecoderAdapter } from './infrastructure/adapters/shoper-inbound-webhook-decoder.adapter';
 import { ShoperWebhookEventTranslatorAdapter } from './infrastructure/adapters/shoper-webhook-event-translator.adapter';
 import { buildShoperSchedulerTasks } from './infrastructure/scheduler/shoper-scheduler-tasks';
+import { resolveShoperRateLimitBucketKey } from './domain/policies/shoper-rate-limit-bucket.policy';
 import { ShoperRetryClassifierAdapter } from './infrastructure/adapters/shoper-retry-classifier.adapter';
 import { ShoperAuthFailureClassifierAdapter } from './infrastructure/adapters/shoper-auth-failure-classifier.adapter';
 import { ShoperConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/shoper-connection-config-shape-validator.adapter';
@@ -93,6 +98,8 @@ export const shoperAdapterManifest: AdapterMetadata = {
   // Shoper as an order destination enables it explicitly (#3350 mechanism).
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
   defaultRateLimit: SHOPER_DEFAULT_RATE_LIMIT,
+  // Shoper's limit is per shop, so connections to one shop share one bucket.
+  resolveRateLimitBucketKey: resolveShoperRateLimitBucketKey,
   displayName: 'Shoper REST API',
   version: '1.0.0',
   isDefault: true,
@@ -168,9 +175,12 @@ export function createShoperPlugin(deps?: ShoperPluginDeps): AdapterPlugin {
           connection,
           host.identifierMapping,
           host.credentialsResolver,
-          // Connection-bound outbound transport (#1810), paced by the manifest
-          // default unless the operator set `config.rateLimit`.
-          host.http.forConnection(connection, shoperAdapterManifest.defaultRateLimit),
+          // Connection-bound outbound transport (#1810), paced against the
+          // SHOP's shared bucket: the manifest default is the per-shop budget
+          // and `config.rateLimit` can only tighten it (ADR-038 § Amendment).
+          host.http.forConnection(connection, shoperAdapterManifest.defaultRateLimit, {
+            bucketKey: resolveShoperRateLimitBucketKey(connection),
+          }),
           host.cache,
           deps?.customerProvisioner,
           deps?.mappingConfigService,

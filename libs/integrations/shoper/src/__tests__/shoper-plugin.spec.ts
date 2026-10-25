@@ -96,9 +96,10 @@ describe('Shoper plugin', () => {
       isDefault: true,
     });
     // Calibrated against the measured per-shop limit (10 req/s, shared by every
-    // integration on the shop), not copied from another platform.
+    // integration on the shop): half of it, for every OpenLinker connection to
+    // the shop together, not copied from another platform.
     expect(shoperAdapterManifest.defaultRateLimit).toEqual({
-      requestsPerMinute: 240,
+      requestsPerMinute: 300,
       maxConcurrent: 4,
     });
     expect(createShoperPlugin().manifest).toBe(shoperAdapterManifest);
@@ -271,9 +272,71 @@ describe('Shoper plugin', () => {
 
     await createShoperPlugin().createCapabilityAdapter<unknown>(conn, 'ProductMaster', host);
 
-    expect(host.http.forConnection).toHaveBeenCalledWith(conn, {
-      requestsPerMinute: 240,
-      maxConcurrent: 4,
+    expect(host.http.forConnection).toHaveBeenCalledWith(
+      conn,
+      { requestsPerMinute: 300, maxConcurrent: 4 },
+      { bucketKey: 'shoper:host:sklep729770.shoparena.pl' },
+    );
+  });
+
+  describe('the shared per-shop rate-limit bucket', () => {
+    it('should give every spelling of one shop the same bucket when the baseUrl differs only in scheme or case', async () => {
+      const { host } = hostWithRegistries();
+      const plugin = createShoperPlugin();
+
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c1', config: { baseUrl: 'SKLEP1.shoparena.pl' } }),
+        'ProductMaster',
+        host,
+      );
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c2', config: { baseUrl: 'https://sklep1.shoparena.pl' } }),
+        'OrderSource',
+        host,
+      );
+
+      const bucketKeys = (host.http.forConnection as jest.Mock).mock.calls.map(
+        ([, , options]: [unknown, unknown, { bucketKey?: string }]) => options.bucketKey,
+      );
+      expect(bucketKeys).toEqual([
+        'shoper:host:sklep1.shoparena.pl',
+        'shoper:host:sklep1.shoparena.pl',
+      ]);
+    });
+
+    it('should give two different shops two different buckets', async () => {
+      const { host } = hostWithRegistries();
+      const plugin = createShoperPlugin();
+
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c1', config: { baseUrl: 'sklep1.shoparena.pl' } }),
+        'ProductMaster',
+        host,
+      );
+      await plugin.createCapabilityAdapter<unknown>(
+        connection({ id: 'c2', config: { baseUrl: 'sklep2.shoparena.pl' } }),
+        'ProductMaster',
+        host,
+      );
+
+      const bucketKeys = (host.http.forConnection as jest.Mock).mock.calls.map(
+        ([, , options]: [unknown, unknown, { bucketKey?: string }]) => options.bucketKey,
+      );
+      expect(bucketKeys).toEqual(['shoper:host:sklep1.shoparena.pl', 'shoper:host:sklep2.shoparena.pl']);
+    });
+
+    it('should declare the same bucket on the manifest the transport is handed, so the status read shows the shop bucket', () => {
+      const resolve = shoperAdapterManifest.resolveRateLimitBucketKey;
+
+      expect(resolve?.(connection({ config: { baseUrl: 'https://SKLEP1.shoparena.pl' } }))).toBe(
+        'shoper:host:sklep1.shoparena.pl',
+      );
+    });
+
+    it('should fall back to the connection bucket when the baseUrl is unusable', () => {
+      expect(
+        shoperAdapterManifest.resolveRateLimitBucketKey?.(connection({ config: { baseUrl: '10.0.0.1' } })),
+      ).toBeUndefined();
     });
   });
 
