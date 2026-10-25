@@ -3,7 +3,9 @@
  *
  * Implements `OrderSourcePort` for orders placed in a Shoper shop, plus
  * `OrderStatusWriteback` (the lifecycle relay reaches a source-only shop through
- * this capability) and `SourceOptionsReader` (the mapping page's source lists).
+ * this capability), `SourceOptionsReader` (the mapping page's source lists) and
+ * `OrderFulfillmentReadback` (#3365: what the shop itself says about the order's
+ * dispatch, read back after OpenLinker relayed one).
  *
  * **The feed reads two passes per poll**, both carried in one opaque cursor (see
  * `ShoperOrderFeedCursor`):
@@ -38,6 +40,7 @@
  * @implements {OrderSourcePort}
  * @implements {OrderStatusWriteback}
  * @implements {SourceOptionsReader}
+ * @implements {OrderFulfillmentReadback}
  */
 import type {
   IncomingOrder,
@@ -46,17 +49,21 @@ import type {
   OrderFeedInput,
   OrderFeedItem,
   OrderFeedOutput,
+  OrderFulfillmentReadback,
   OrderLifecycleEvent,
   OrderSourcePort,
   OrderStatusWriteback,
   OrderWritebackResult,
+  SourceFulfillmentReadback,
+  SourceFulfillmentWaybill,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
+import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNetworkError } from '../../../domain/exceptions/shoper-network.error';
-import type { ShoperOrderLineRow, ShoperOrderRow } from '../../../domain/types/shoper-api.types';
+import type { ShoperOrderLineRow, ShoperOrderRow, ShoperParcel } from '../../../domain/types/shoper-api.types';
 import type {
   ShoperOrderFeedCursor,
   ShoperStatusPassResult,
@@ -78,7 +85,10 @@ import {
   shiftWallClockBack,
 } from '../../mappers/shoper-order-feed-cursor.mapper';
 import { ORDER_MARKER_PREFIX } from '../../mappers/shoper-order-input.mapper';
+import { normalizeTrackingNumber, readShoperDispatched } from '../../mappers/shoper-parcel.mapper';
 import { listShoperMappingOptions } from '../../readers/shoper-mapping-options.reader';
+import type { ShoperOrderParcels } from '../../readers/shoper-order-parcels.reader';
+import { readShoperOrderParcels } from '../../readers/shoper-order-parcels.reader';
 import type { ShoperOrderReferenceProvider } from '../../shop-context/shoper-order-reference.provider';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 import { ShoperOrderStatusWriter } from '../order-status/shoper-order-status-writer';
@@ -106,7 +116,9 @@ const NEUTRAL_STATUS_LABEL: Readonly<Record<string, string>> = {
   refunded: 'Refunded',
 };
 
-export class ShoperOrderSourceAdapter implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader {
+export class ShoperOrderSourceAdapter
+  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader, OrderFulfillmentReadback
+{
   private readonly logger = new Logger(ShoperOrderSourceAdapter.name);
   private readonly statusWriter: ShoperOrderStatusWriter;
 
@@ -352,6 +364,139 @@ export class ShoperOrderSourceAdapter implements OrderSourcePort, OrderStatusWri
   /** Delegated: the order processor writes the same events the same way (see `ShoperOrderStatusWriter`). */
   write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     return this.statusWriter.write(event);
+  }
+
+  // ─── OrderFulfillmentReadback (#3365) ──────────────────────────────────────
+
+  /**
+   * What the shop says about this order's dispatch: its status and its parcels.
+   *
+   * `rawStatus` is the order row's own `status_id`, verbatim (`"7"`). The order
+   * carries nothing else: the status NAME is the merchant's own word, per
+   * language, from a separate table, so it would not be the order's answer and
+   * would change whenever the merchant renames a status. The id is stable and
+   * is what an operator finds in the shop's status settings.
+   *
+   * The status TYPE comes from that table (`ShoperOrderReferenceProvider`, the
+   * same cached read `getOrder` uses), and `dispatched` is decided by
+   * `readShoperDispatched`, the rule the processor's read-back shares. The table
+   * read is best-effort: if it fails, the status is reported with its type
+   * unknown rather than losing the answer the order read already gave.
+   *
+   * Waybills come from `/parcels` (a second request, like Allegro's shipments
+   * read): one per parcel carrying a `shipping_code`, with the parcel's shipping
+   * method as the carrier. That read is best-effort too - a failure, or more
+   * parcels than one page holds, reports `waybills: null` ("not reported"),
+   * never `[]`, which would claim the shop listed none.
+   *
+   * Only the ORDER read decides the outcome: when it fails (network, 401, 404,
+   * 5xx) the answer is `unavailable`, never a throw, because the caller is a
+   * read surface.
+   */
+  async readFulfillment(input: { externalOrderId: string }): Promise<SourceFulfillmentReadback> {
+    const { externalOrderId } = input;
+    if (!ORDER_ID.test(externalOrderId)) {
+      this.logger.warn(
+        `Shoper fulfillment readback refused order id "${externalOrderId}": not a Shoper order id ` +
+          `(connection: ${this.connection.id})`,
+      );
+      return unavailableSourceFulfillmentReadback(`"${externalOrderId}" is not a Shoper order id`);
+    }
+
+    let row: ShoperOrderRow;
+    try {
+      ({ data: row } = await this.client.get<ShoperOrderRow>(`/orders/${externalOrderId}`));
+    } catch (error) {
+      this.logger.warn(
+        `Shoper fulfillment readback failed for order ${externalOrderId} (connection: ${this.connection.id}): ` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+      return unavailableSourceFulfillmentReadback(`Shoper did not answer for order ${externalOrderId}`);
+    }
+    if (String(row.order_id) !== externalOrderId) {
+      this.logger.warn(
+        `Shoper returned order ${String(row.order_id)} for ${externalOrderId} (connection: ${this.connection.id})`,
+      );
+      return unavailableSourceFulfillmentReadback(`Shoper answered with a different order for ${externalOrderId}`);
+    }
+
+    const rawStatus = row.status_id === null || row.status_id === undefined ? null : String(row.status_id);
+    const [status, parcels] = await Promise.all([
+      this.readStatusBestEffort(row),
+      this.readParcelsBestEffort(externalOrderId),
+    ]);
+    const dispatched = readShoperDispatched(status, parcels?.rows ?? null);
+    if (dispatched === null && rawStatus !== null) {
+      this.logger.warn(
+        `shoper_fulfillment_status_unrecognised: Shoper order ${externalOrderId} is in status ${rawStatus}, ` +
+          `which could not be read as dispatched or not; reporting it as unknown (connection: ${this.connection.id})`,
+      );
+    }
+
+    return {
+      outcome: 'read',
+      rawStatus,
+      dispatched,
+      waybills: parcels === null || !parcels.complete ? null : await this.toWaybills(parcels.rows),
+    };
+  }
+
+  private async readStatusBestEffort(row: ShoperOrderRow): Promise<ShoperOrderStatusInfo | null> {
+    try {
+      return await this.statusOf(row);
+    } catch (error) {
+      this.logger.debug(
+        `Shoper status table unreadable for order ${String(row.order_id)} (connection: ${this.connection.id}): ` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+      return null;
+    }
+  }
+
+  private async readParcelsBestEffort(
+    externalOrderId: string,
+  ): Promise<ShoperOrderParcels | null> {
+    try {
+      return await readShoperOrderParcels(this.client, externalOrderId);
+    } catch (error) {
+      this.logger.debug(
+        `Shoper parcels unreadable for order ${externalOrderId} (connection: ${this.connection.id}): ` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+      return null;
+    }
+  }
+
+  /**
+   * A parcel with no tracking number is skipped rather than carried blank. The
+   * carrier name is the shipping method's display name, best-effort: a failed
+   * lookup drops the name, never the waybill.
+   */
+  private async toWaybills(parcels: readonly ShoperParcel[]): Promise<SourceFulfillmentWaybill[]> {
+    const waybills: SourceFulfillmentWaybill[] = [];
+    for (const parcel of parcels) {
+      const waybill = normalizeTrackingNumber(parcel.shipping_code ?? undefined);
+      if (waybill === undefined) {
+        continue;
+      }
+      const carrierId =
+        parcel.shipping_id === null || parcel.shipping_id === undefined ? undefined : String(parcel.shipping_id);
+      const carrierName = carrierId === undefined ? null : await this.shippingNameBestEffort(carrierId);
+      waybills.push({
+        waybill,
+        ...(carrierId === undefined ? {} : { carrierId }),
+        ...(carrierName === null ? {} : { carrierName }),
+      });
+    }
+    return waybills;
+  }
+
+  private async shippingNameBestEffort(shippingId: string): Promise<string | null> {
+    try {
+      return await this.reference.getShippingName(shippingId);
+    } catch {
+      return null;
+    }
   }
 
   // ─── SourceOptionsReader ───────────────────────────────────────────────────
