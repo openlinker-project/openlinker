@@ -374,8 +374,8 @@ export class ShoperProductMasterAdapter
    *
    * Built at most ONCE per adapter instance: a caller resolving categories for
    * a page of products would otherwise rebuild the whole directory (the tree
-   * plus every list page) per product, against a shop with an unknown request
-   * ceiling. Memoised as a promise so concurrent callers share one build, and a
+   * plus every list page) per product, against a request budget of about 10/s
+   * per shop that every integration on it shares. Memoised as a promise so concurrent callers share one build, and a
    * failure is dropped so the next call retries. Each caller gets its own array.
    */
   async getCategories(): Promise<Category[]> {

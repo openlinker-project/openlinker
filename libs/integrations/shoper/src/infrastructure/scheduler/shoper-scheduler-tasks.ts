@@ -17,8 +17,10 @@
  *     Rolling scan-offset cursor `shoper.fulfillmentStatus.scanOffset`; cadence
  *     and defaults follow the PrestaShop task.
  *
- * The orders-poll cadence is relaxed (10 min) because Shoper's request ceiling
- * is unknown (SPIKE-3638 C6) and webhooks already carry the primary load.
+ * The orders-poll cadence is relaxed (10 min) because webhooks already carry the
+ * primary load and the shop's request budget (about 10 req/s per SHOP, shared
+ * with the merchant's other integrations - see `SHOPER_DEFAULT_RATE_LIMIT`) is
+ * better spent on the work a delivery triggers.
  *
  * It also contributes the published-product status reconcile, for a connection
  * used as a publish destination.

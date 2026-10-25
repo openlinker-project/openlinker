@@ -9,9 +9,10 @@
  *
  * `getCapabilityAdapter` builds a fresh adapter bag on every call and memoises
  * nothing, so the shop-context request (`application-config`) would be repeated
- * once per resolution - one extra request per product job against a shop whose
- * request ceiling is unknown. The host cache, when wired, carries it between
- * resolutions for a few minutes (see `ShoperShopContextProvider`).
+ * once per resolution - one extra request per product job against a budget of
+ * about 10 requests per second per SHOP, shared by every token and integration
+ * on it (see `SHOPER_DEFAULT_RATE_LIMIT`). The host cache, when wired, carries
+ * it between resolutions for a few minutes (see `ShoperShopContextProvider`).
  *
  * @module libs/integrations/shoper/src/application
  */

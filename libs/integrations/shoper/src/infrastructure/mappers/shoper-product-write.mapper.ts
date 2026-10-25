@@ -123,7 +123,11 @@ export function collectUnsupportedWarnings(
   return warnings;
 }
 
-/** Most images one publish uploads: each is a request against a shop whose ceiling is unknown. */
+/**
+ * Most images one publish uploads. Each is a request against the shop's budget
+ * of about 10 requests per second, shared by every integration on the shop (see
+ * `SHOPER_DEFAULT_RATE_LIMIT`), so one publish must not spend it on a gallery.
+ */
 export const SHOPER_MAX_IMAGES_PER_PUBLISH = 10;
 
 export interface ShoperImagePlan {
