@@ -13,7 +13,7 @@ export const SHOPER_ADAPTER_KEY = 'shoper.restapi.v1';
 export const SHOPER_PLATFORM_TYPE = 'shoper';
 
 /**
- * Outbound pacing for a connection whose operator set no `config.rateLimit`.
+ * Outbound budget for ONE SHOP, shared by every OpenLinker connection to it.
  *
  * Measured on a live trial shop (2026-10-22/23), not guessed: Shoper's limit
  * is PER SHOP and shared by every token and every integration installed on it.
@@ -21,16 +21,21 @@ export const SHOPER_PLATFORM_TYPE = 'shoper';
  * `x-shop-api-limit: 10`); at 15 req/s about 5 req/s came back `429`, an HTML
  * page with no `Retry-After` and none of the `x-shop-*` headers, so the
  * transport cannot learn the wait from the answer and pacing has to be ours.
+ * Two tokens hammering the shop together got about 5 req/s each - the limit
+ * really is the shop's, not the token's.
  *
- * 240/min (4 req/s, spaced - the limiter has no burst) is deliberately well
- * under the measured 10 req/s: the budget is shared with whatever else the
- * merchant runs against the same shop (ERP, marketplace connectors), and a 429
- * we cause there is a failure in somebody else's integration. `maxConcurrent: 4`
- * keeps a slow request from stacking more than the spacing allows. The bound is
- * per CONNECTION, so two OpenLinker connections to one shop get 240 each.
+ * Because the limit is the shop's, so is this bucket: every connection to one
+ * shop paces against it together (`resolveShoperRateLimitBucketKey`, ADR-038 §
+ * Amendment), and a connection's own `config.rateLimit` can only lower it for
+ * that connection, never raise it. 300/min (5 req/s, spaced - the limiter has
+ * no burst) is half the measured 10 req/s: the other half is left to the
+ * merchant's admin panel and the other integrations on the shop (ERP,
+ * marketplace connectors), where a 429 we cause is a failure in somebody
+ * else's integration. `maxConcurrent: 4` keeps a slow request from stacking
+ * more than the spacing allows.
  */
 export const SHOPER_DEFAULT_RATE_LIMIT: NonNullable<AdapterMetadata['defaultRateLimit']> = {
-  requestsPerMinute: 240,
+  requestsPerMinute: 300,
   maxConcurrent: 4,
 };
 

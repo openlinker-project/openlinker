@@ -14,13 +14,28 @@
  * process/replica, so dividing further would only shrink the operator's
  * configured cap.
  *
+ * Shared buckets (ADR-038 § Amendment): a plugin whose remote scopes its quota
+ * wider than a credential passes `options.bucketKey`, and every connection
+ * naming the same key paces against ONE limiter. The cached `FetchLike` is
+ * then keyed by connection id AND bucket key, so a call site asking for a
+ * different bucket can never be handed a closure bound to the wrong one, and
+ * the policy is `tightenRateLimit(defaultRateLimit, config.rateLimit)`: the
+ * plugin's ceiling, which a connection's own config can only lower. One
+ * acquire, not two - a stricter connection's acquire claims against its own
+ * lower cap and advances the shared pacing key by its own longer interval,
+ * which can only slow the shared bucket, never speed it up. A second limiter
+ * on the connection id would be the exact alternative and was not worth its
+ * deadlock-ordering and double-release surface for a knob that is a safety
+ * valve, not a fairness tool.
+ *
  * @module libs/shared/src/http
  */
 import type { RateLimiterRegistry } from '../rate-limit';
-import { getCurrentPriority, getCurrentRateLimitSignal } from '../rate-limit';
+import { getCurrentPriority, getCurrentRateLimitSignal, tightenRateLimit } from '../rate-limit';
 import type { ConnectionRateLimit } from '../rate-limit';
 import type {
   FetchLike,
+  ForConnectionOptions,
   HttpTransportFactoryPort,
   RateLimitedConnection,
 } from './http-transport-factory.port';
@@ -92,8 +107,13 @@ interface ConnectionRef {
  * own `evict()` call to match.
  */
 export class HttpTransportFactory implements HttpTransportFactoryPort {
+  /** Keyed by {@link cacheKeyFor}: the bare connection id for the default bucket. */
   private readonly cache = new Map<string, FetchLike>();
   private readonly connectionRefs = new Map<string, ConnectionRef>();
+  /** Shared-bucket cache keys per connection id, so `evict()` can find them. */
+  private readonly sharedCacheKeys = new Map<string, Set<string>>();
+  /** Connection ids drawing from each shared bucket, so the last one out evicts it. */
+  private readonly sharedBucketUsers = new Map<string, Set<string>>();
   private readonly replicas: number;
   private readonly baseFetch: FetchLike;
   private readonly registry: RateLimiterRegistry;
@@ -114,10 +134,12 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
 
   forConnection(
     connection: RateLimitedConnection,
-    defaultRateLimit?: ConnectionRateLimit
+    defaultRateLimit?: ConnectionRateLimit,
+    options?: ForConnectionOptions
   ): FetchLike {
-    // Keyed on the connection id alone — one bucket per connection, never per
-    // host. See the port doc + ADR-038 § "The cap is per connection".
+    // Keyed on the connection id alone unless the plugin names a shared
+    // bucket - one bucket per connection, never per host. See the port doc +
+    // ADR-038 § "The cap is per connection" and § Amendment.
     //
     // Keep the ref fresh on every forConnection() call so a cached closure (below)
     // never reads a stale `config.rateLimit` from the connection object it
@@ -134,7 +156,15 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       this.connectionRefs.set(connection.id, { current: connection, defaultRateLimit });
     }
 
-    const cached = this.cache.get(connection.id);
+    // An empty string is no bucket name at all; treating it as one would pool
+    // every connection that passed it by mistake into one silent bucket.
+    const sharedBucketKey =
+      options?.bucketKey !== undefined && options.bucketKey.length > 0
+        ? options.bucketKey
+        : undefined;
+    const cacheKey = cacheKeyFor(connection.id, sharedBucketKey);
+
+    const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -144,10 +174,13 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       input: RequestInfo | URL,
       init?: RequestInit
     ): Promise<Response> => {
+      const configured = connectionRef.current.config?.rateLimit;
       const rawPolicy: ConnectionRateLimit =
-        connectionRef.current.config?.rateLimit ?? connectionRef.defaultRateLimit ?? {};
+        sharedBucketKey === undefined
+          ? configured ?? connectionRef.defaultRateLimit ?? {}
+          : tightenRateLimit(connectionRef.defaultRateLimit, configured);
       const policy = dividePolicy(rawPolicy, this.replicas);
-      const limiter = this.registry.get(connectionRef.current.id, policy);
+      const limiter = this.registry.get(sharedBucketKey ?? connectionRef.current.id, policy);
       const priority = getCurrentPriority();
       const signal = getCurrentRateLimitSignal();
 
@@ -166,7 +199,11 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       }
     }) as FetchLike;
 
-    this.cache.set(connection.id, fetchImpl);
+    this.cache.set(cacheKey, fetchImpl);
+    if (sharedBucketKey !== undefined) {
+      addToSet(this.sharedCacheKeys, connection.id, cacheKey);
+      addToSet(this.sharedBucketUsers, sharedBucketKey, connection.id);
+    }
     return fetchImpl;
   }
 
@@ -174,5 +211,39 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     this.cache.delete(connectionId);
     this.connectionRefs.delete(connectionId);
     this.registry.evict(connectionId);
+
+    for (const cacheKey of this.sharedCacheKeys.get(connectionId) ?? []) {
+      this.cache.delete(cacheKey);
+    }
+    this.sharedCacheKeys.delete(connectionId);
+
+    // A shared bucket outlives any one of its connections: evicting it while a
+    // sibling still paces on it would reset the in-process limiter that sibling
+    // is queued on (and, on the in-memory registry, the pacing state itself).
+    for (const [bucketKey, users] of this.sharedBucketUsers) {
+      if (!users.delete(connectionId)) continue;
+      if (users.size === 0) {
+        this.sharedBucketUsers.delete(bucketKey);
+        this.registry.evict(bucketKey);
+      }
+    }
+  }
+}
+
+/**
+ * The default bucket's cache key is the bare connection id - unchanged, so
+ * every plugin that never names a bucket keeps exactly its previous entry. A
+ * shared bucket appends the key after a NUL, which no connection id carries.
+ */
+function cacheKeyFor(connectionId: string, sharedBucketKey: string | undefined): string {
+  return sharedBucketKey === undefined ? connectionId : `${connectionId}\u0000${sharedBucketKey}`;
+}
+
+function addToSet(map: Map<string, Set<string>>, key: string, value: string): void {
+  const existing = map.get(key);
+  if (existing) {
+    existing.add(value);
+  } else {
+    map.set(key, new Set([value]));
   }
 }

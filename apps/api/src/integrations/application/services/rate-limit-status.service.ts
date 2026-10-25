@@ -13,13 +13,26 @@
  * `HttpTransportFactory` is backed by. Never calls the destination
  * platform, never consumes a rate-limit slot.
  *
+ * Shared buckets (ADR-038 § Amendment): when the adapter's manifest names a
+ * bucket wider than the connection (`resolveRateLimitBucketKey`, read through
+ * `readRateLimitBucketKey`), this read follows the SAME function the plugin
+ * hands the transport, so it reads the bucket that is actually paced and
+ * reports the policy through the same `tightenRateLimit` the transport
+ * applies. The live counters are then the bucket's - every connection drawing
+ * from it in this process - not this connection's alone.
+ *
  * @module apps/api/src/integrations/application/services
  * @implements {IRateLimitStatusService}
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  readRateLimitBucketKey,
+  type AdapterMetadata,
+} from '@openlinker/core/integrations';
 import {
   EAN_CATEGORY_MATCHER_STREAMING_CAPABILITY,
   isEanCategoryMatcherStreaming,
@@ -31,7 +44,7 @@ import { RATE_LIMITER_REGISTRY_TOKEN } from '@openlinker/plugin-sdk';
 // Non-type-only import: RateLimiterRegistry is the type of a constructor
 // parameter on an @Injectable() class, and `emitDecoratorMetadata` requires
 // a non-erased reference (mirrors the HttpTransportFactoryPort convention).
-import { RateLimiterRegistry } from '@openlinker/shared/rate-limit';
+import { RateLimiterRegistry, tightenRateLimit } from '@openlinker/shared/rate-limit';
 import { Logger } from '@openlinker/shared/logging';
 import type { IRateLimitStatusService } from '../interfaces/rate-limit-status.service.interface';
 import type { EffectiveRateLimitStatus } from '../types/rate-limit-status.types';
@@ -53,7 +66,15 @@ export class RateLimitStatusService implements IRateLimitStatusService {
     const connection = await this.connectionPort.get(connectionId);
 
     const explicit = connection.config?.rateLimit;
-    const effective = explicit ?? (await this.resolveDefaultRateLimit(connection));
+    const metadata = await this.resolveMetadata(connection);
+    const sharedBucketKey = readRateLimitBucketKey(metadata, connection);
+    // Mirrors `HttpTransportFactory` exactly: on a shared bucket the manifest
+    // default is the remote's ceiling and `config.rateLimit` can only tighten
+    // it; otherwise an explicit config wins outright.
+    const effective: ConnectionRateLimit | undefined =
+      sharedBucketKey === undefined
+        ? explicit ?? metadata?.defaultRateLimit
+        : tightenRateLimit(metadata?.defaultRateLimit, explicit);
 
     // Read on BOTH paths below. A resolve ceiling is applied inside the
     // adapter, below the shared limiter, so it is exactly the connection with
@@ -66,7 +87,7 @@ export class RateLimitStatusService implements IRateLimitStatusService {
       return resolveConcurrency ? { enabled: false, resolveConcurrency } : { enabled: false };
     }
 
-    const live = this.rateLimiterRegistry.getStatus(connectionId);
+    const live = this.rateLimiterRegistry.getStatus(sharedBucketKey ?? connectionId);
 
     return {
       enabled: true,
@@ -153,21 +174,20 @@ export class RateLimitStatusService implements IRateLimitStatusService {
   }
 
   /**
-   * Falls back to the resolved adapter's manifest default (#1810 Phase 4) —
-   * mirrors `HttpTransportFactory`'s own `config.rateLimit ?? defaultRateLimit`
-   * resolution so this read never reports "unlimited" for a connection the
-   * transport is actually pacing.
+   * The resolved adapter's manifest, for its `defaultRateLimit` fallback
+   * (#1810 Phase 4) and its shared-bucket resolver (ADR-038 § Amendment) -
+   * mirroring `HttpTransportFactory`'s own resolution so this read never
+   * reports "unlimited" for a connection the transport is actually pacing.
    */
-  private async resolveDefaultRateLimit(connection: {
+  private async resolveMetadata(connection: {
     platformType: string;
     adapterKey?: string;
-  }): Promise<ConnectionRateLimit | undefined> {
+  }): Promise<AdapterMetadata | undefined> {
     try {
-      const metadata = await this.integrationsService.resolveAdapterMetadata({
+      return await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
         adapterKey: connection.adapterKey,
       });
-      return metadata.defaultRateLimit;
     } catch (error) {
       this.logger.warn(
         `Could not resolve adapter metadata while reading rate-limit status (platformType=${connection.platformType}, adapterKey=${connection.adapterKey ?? '<derived>'}): ${(error as Error).message}`
