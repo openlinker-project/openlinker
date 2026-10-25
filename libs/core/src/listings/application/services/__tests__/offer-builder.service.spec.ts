@@ -30,7 +30,7 @@ import { createFakeAvailabilityService } from './fake-availability-service';
 describe('OfferBuilderService', () => {
   let service: OfferBuilderService;
   let productsService: jest.Mocked<
-    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate'>
+    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getEffectiveTaxRate' | 'getProduct'>
   >;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
@@ -73,6 +73,9 @@ describe('OfferBuilderService', () => {
       getEffectiveTaxRate: jest
         .fn()
         .mockResolvedValue({ code: null, countryIso2: null, readAt: null }),
+      // The stored projection is read only as the GPSR fallback; nothing
+      // stored by default.
+      getProduct: jest.fn().mockResolvedValue(null),
     };
     connectionPort = {
       get: jest.fn().mockResolvedValue(defaultConnection as Connection),
@@ -1204,6 +1207,52 @@ describe('OfferBuilderService', () => {
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Could not read the catalogue tax rate')
       );
+    });
+  });
+
+  describe('gpsr', () => {
+    const input = { internalVariantId: VARIANT_ID, connectionId: MARKETPLACE_CONN_ID, stock: 1 };
+    const gpsr = {
+      producer: { name: 'Acme Sp. z o.o.' },
+      safetyInformation: { text: 'Keep away from children.' },
+    };
+
+    it('should thread the live master gpsr onto the command when the master reports it', async () => {
+      const live = await productMaster.getProduct();
+      productMaster.getProduct.mockResolvedValue({ ...live, gpsr });
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result.gpsr).toEqual(gpsr);
+      expect(productsService.getProduct).not.toHaveBeenCalled();
+    });
+
+    it('should leave gpsr absent without a fallback read when the master reports none', async () => {
+      const live = await productMaster.getProduct();
+      productMaster.getProduct.mockResolvedValue({ ...live, gpsr: null });
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result).not.toHaveProperty('gpsr');
+      expect(productsService.getProduct).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to the stored gpsr when the live master did not report it', async () => {
+      productsService.getProduct.mockResolvedValue({ gpsr } as never);
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(productsService.getProduct).toHaveBeenCalledWith('ol_product_456');
+      expect(result.gpsr).toEqual(gpsr);
+    });
+
+    it('should build the command without gpsr when the fallback read throws', async () => {
+      productsService.getProduct.mockRejectedValue(new Error('db down'));
+
+      const result = await service.buildCreateOfferCommand(input);
+
+      expect(result).not.toHaveProperty('gpsr');
+      expect(result.price).toEqual({ amount: 49.99, currency: 'PLN' });
     });
   });
 

@@ -9,6 +9,8 @@
  *     with a variant carrying a price → `GET /products/:id` → assert the
  *     variant's `price` survives the chain end-to-end. Also covers the
  *     null-price case (returns `null` on the wire).
+ *   - `gpsr` persistence: the three-state write (value / explicit null /
+ *     undefined leaves the stored value untouched) against real Postgres.
  *
  * Uses real Postgres via Testcontainers.
  *
@@ -246,6 +248,61 @@ describe('Products Read API Integration — currency persistence', () => {
 
       const reloaded = await repo.findById(id);
       expect(reloaded?.categories).toBeUndefined();
+    });
+  });
+
+  // GPSR - an undefined `gpsr` must leave the stored declaration untouched, so
+  // a sync whose GPSR reference read failed cannot erase it. That property
+  // depends on TypeORM skipping undefined columns on update, which only a real
+  // database can prove.
+  describe('gpsr persistence', () => {
+    const gpsr = {
+      producer: {
+        name: 'Acme Sp. z o.o.',
+        address: { street: 'Prosta 1', postalCode: '00-001', city: 'Warszawa', countryCode: 'PL' },
+      },
+      safetyInformation: { text: 'Keep away from children.', certificateNames: ['CE'] },
+    };
+    const baseProduct = (id: string): Product => ({
+      id,
+      name: 'GPSR Roundtrip',
+      sku: null,
+      price: null,
+      currency: null,
+      description: null,
+      images: null,
+    });
+    const getRepo = (): ProductRepositoryPort =>
+      harness.getApp().get<ProductRepositoryPort>(PRODUCT_REPOSITORY_TOKEN);
+
+    it('should round-trip a stated gpsr through the jsonb column', async () => {
+      const repo = getRepo();
+      const id = `ol_product_gpsr_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), gpsr });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.gpsr).toEqual(gpsr);
+    });
+
+    it('should keep the stored gpsr when a later upsert does not report it', async () => {
+      const repo = getRepo();
+      const id = `ol_product_gpsr_keep_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), gpsr });
+      await repo.upsert({ ...baseProduct(id), name: 'Renamed' });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.name).toBe('Renamed');
+      expect(reloaded?.gpsr).toEqual(gpsr);
+    });
+
+    it('should clear the stored gpsr when the master reports none', async () => {
+      const repo = getRepo();
+      const id = `ol_product_gpsr_clear_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), gpsr });
+      await repo.upsert({ ...baseProduct(id), gpsr: null });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.gpsr).toBeNull();
     });
   });
 });
