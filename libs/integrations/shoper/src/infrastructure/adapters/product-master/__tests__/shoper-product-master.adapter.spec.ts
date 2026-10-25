@@ -257,6 +257,63 @@ describe('ShoperProductMasterAdapter', () => {
     });
   });
 
+  describe('gpsr', () => {
+    const SAFETY = { gpsr_producer_id: '3', gpsr_responsible_id: null, gpsr_importer_id: null, gpsr_certificates: [] };
+    const PRODUCERS = envelope([{ gpsr_producer_id: '3', name: 'Acme Sp. z o.o.' }]);
+
+    it('should attach the resolved GPSR data when the product references a producer', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ safety_information: SAFETY }),
+        '/product-safety-producers': PRODUCERS,
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.gpsr).toEqual({ producer: { name: 'Acme Sp. z o.o.' } });
+    });
+
+    it('should report null and read no registry when every reference is empty', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({
+          safety_information: { ...SAFETY, gpsr_producer_id: null },
+        }),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.gpsr).toBeNull();
+      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).toEqual(['/products/93']);
+    });
+
+    it('should leave gpsr off the product, not fail it, when the registry read fails', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ safety_information: SAFETY }) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product).not.toHaveProperty('gpsr');
+      expect(product.name).toBe('Ceramiczny zestaw naczyń Sandstone Freckless');
+    });
+
+    it('should read the producer registry once for a page of products sharing a producer', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products': envelope([
+          buildProduct({ product_id: '93', safety_information: SAFETY }),
+          buildProduct({ product_id: '94', safety_information: SAFETY }),
+        ]),
+        '/product-safety-producers': PRODUCERS,
+      });
+
+      const products = await adapter.getProducts({ limit: 2 });
+
+      expect(products.map((p) => p.gpsr?.producer?.name)).toEqual(['Acme Sp. z o.o.', 'Acme Sp. z o.o.']);
+      expect(get.mock.calls.filter((call: unknown[]) => call[0] === '/product-safety-producers')).toHaveLength(1);
+    });
+  });
+
   describe('deletion at the master (getProduct)', () => {
     function failWith(get: jest.Mock, error: Error): void {
       get.mockRejectedValue(error);
