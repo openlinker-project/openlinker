@@ -378,9 +378,10 @@ mapping is not persisted at `createOrder`, so a parcel always ships the remainde
 
 `ShoperOrderSourceAdapter` ingests orders placed in the shop (#3711). It is **opt-in**: `OrderSource` is in
 `supportedCapabilities` but not in `defaultEnabledCapabilities`, so a connection that exists only as a catalogue
-master never starts polling orders. **No scheduler task is registered** - a recurring poll is a separate decision,
-because the shop's request ceiling is unknown (SPIKE-3638 C5/C6, `x-shop-api-limit: 10`, unit unstated). Enabling
-`OrderSource` on a connection still opts it into the core tasks scoped to that capability (automation deadline sweep,
+master never starts polling orders. Once enabled, the `shoper-orders-poll` task backstops webhooks every 10 minutes
+(`OL_SHOPER_POLL_SCHEDULER_ENABLED`); the cadence is relaxed because webhooks carry the primary load and the shop's
+request budget (about 10 req/s per shop, shared by every integration on it - see *Known gaps*) is better spent on the
+work a delivery triggers. Enabling `OrderSource` on a connection still opts it into the core tasks scoped to that capability (automation deadline sweep,
 `returns.orphan.reconcile`, the order FX stamp sweep and the tax-rate backfill); none of them calls the shop's API.
 
 - **Feed (`listOrderFeed`)**: an `order_id` keyset - `order=order_id ASC` plus `filters[order_id][>]=<cursor>`

@@ -78,13 +78,10 @@ import type {
   ShoperOrderRef,
   ShoperOrderProductCreateRequest,
   ShoperOrderShipping,
-  ShoperParcel,
 } from '../../../domain/types/shoper-api.types';
 import type { ShoperHttpClient } from '../../http/shoper-http-client';
-import { SHOPER_MAX_PAGE_SIZE } from '../../http/shoper-pagination';
-import { readShoperFlag } from '../../mappers/shoper-flag.mapper';
 import { mapShoperOrderStatus } from '../../mappers/shoper-incoming-order.mapper';
-import { normalizeTrackingNumber } from '../../mappers/shoper-parcel.mapper';
+import { isShoperParcelSent, normalizeTrackingNumber } from '../../mappers/shoper-parcel.mapper';
 import {
   expectedOrderSum,
   findShoperTaxForRate,
@@ -101,6 +98,7 @@ import {
 } from '../../mappers/shoper-order-input.mapper';
 import type { ShoperCustomerProvisioner } from '../../provisioners/shoper-customer.provisioner';
 import { listShoperMappingOptions } from '../../readers/shoper-mapping-options.reader';
+import { readShoperOrderParcels } from '../../readers/shoper-order-parcels.reader';
 import { ShoperOrderReferenceProvider } from '../../shop-context/shoper-order-reference.provider';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
 import { ShoperOrderStatusWriter } from '../order-status/shoper-order-status-writer';
@@ -535,18 +533,8 @@ export class ShoperOrderProcessorAdapter
       return { status: FULFILLMENT_STATUS.Cancelled, trackingNumber: null, deliveredAt: null };
     }
 
-    const parcels = await this.client.get<{ list?: readonly ShoperParcel[] }>('/parcels', {
-      'filters[order_id]': externalOrderId,
-      limit: SHOPER_MAX_PAGE_SIZE,
-    });
-    const rows = parcels.data.list ?? [];
-    // An ignored filter would report another order's shipment as this one's.
-    if (rows.some((parcel) => String(parcel.order_id) !== externalOrderId)) {
-      throw new ShoperNetworkError(
-        `Shoper returned parcels of other orders for order ${externalOrderId}; the /parcels filter was not honoured`,
-      );
-    }
-    const sent = rows.filter(isSentParcel);
+    const { rows } = await readShoperOrderParcels(this.client, externalOrderId);
+    const sent = rows.filter(isShoperParcelSent);
     if (sent.length > 0) {
       const tracked = sent.map((parcel) => normalizeTrackingNumber(parcel.shipping_code ?? undefined)).find(Boolean);
       return { status: FULFILLMENT_STATUS.Dispatched, trackingNumber: tracked ?? null, deliveredAt: null };
@@ -622,13 +610,4 @@ export class ShoperOrderProcessorAdapter
   private unbuildable(reason: string): ShoperOrderUnbuildableException {
     return new ShoperOrderUnbuildableException(this.connection.id, reason);
   }
-}
-
-/** A parcel Shoper records as sent: its `sent` flag, or a send date when the flag is absent. */
-function isSentParcel(parcel: ShoperParcel): boolean {
-  const flag = readShoperFlag(parcel.sent);
-  if (flag !== undefined) {
-    return flag;
-  }
-  return typeof parcel.send_date === 'string' && parcel.send_date.trim() !== '';
 }

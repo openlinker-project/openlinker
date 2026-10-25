@@ -10,9 +10,9 @@
  * request; a transport failure is dropped so the next call retries). And, when the
  * host cache is wired, across instances: `getCapabilityAdapter` builds a fresh
  * adapter bag per call, so a per-instance memo alone would repeat these reads in
- * every `marketplace.order.sync` job against a shop whose request ceiling is
- * unknown - the reason `ShoperShopContextProvider` already reads through the host
- * cache. The tables change rarely, so a few minutes of staleness is harmless. An
+ * every `marketplace.order.sync` job against a request budget of about 10/s per
+ * shop that every integration on it shares - the reason
+ * `ShoperShopContextProvider` already reads through the host cache. The tables change rarely, so a few minutes of staleness is harmless. An
  * id the shop does not list resolves to `null`: it is the shop's answer, not a
  * fault.
  *

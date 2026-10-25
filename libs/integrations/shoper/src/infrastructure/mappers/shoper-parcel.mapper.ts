@@ -3,7 +3,9 @@
  *
  * Pure helpers for the fulfillment writeback (#3643): build the `POST /parcels`
  * body and decide, from the parcels an order already has, whether a `dispatched`
- * event still needs a write. No I/O.
+ * event still needs a write. Also the one reading of "was this order dispatched",
+ * shared by the processor's fulfilment read-back (#834) and the source's
+ * `OrderFulfillmentReadback` (#3365), so the two cannot disagree. No I/O.
  *
  * @module libs/integrations/shoper/src/infrastructure/mappers
  */
@@ -12,11 +14,14 @@ import type {
   ShoperParcelCreateRequest,
   ShoperShippingRow,
 } from '../../domain/types/shoper-api.types';
+import type { ShoperOrderStatusInfo } from '../../domain/types/shoper-order-status.types';
+import { SHOPER_STATUS_TYPE } from '../../domain/types/shoper-order-status.types';
 import type {
   ShoperParcelPlan,
   ShoperParcelShippingChoice,
 } from '../../domain/types/shoper-parcel.types';
 import { readShoperFlag } from './shoper-flag.mapper';
+import { mapShoperOrderStatus } from './shoper-incoming-order.mapper';
 import { toPositiveInt } from './shoper-order-input.mapper';
 
 /**
@@ -114,6 +119,57 @@ export function planShoperParcelWrite(
   // second shipment; without lines OpenLinker cannot say what it carries, and a
   // parcel without products[] would ship a remainder of zero. Refused, not guessed.
   return { kind: 'conflict' };
+}
+
+/** A parcel Shoper records as sent: its `sent` flag, or a send date when the flag is absent. */
+export function isShoperParcelSent(parcel: ShoperParcel): boolean {
+  const flag = readShoperFlag(parcel.sent);
+  if (flag !== undefined) {
+    return flag;
+  }
+  return typeof parcel.send_date === 'string' && parcel.send_date.trim() !== '';
+}
+
+/**
+ * Whether an order has left the shop, from its status and (when they could be
+ * read) its parcels. `null` is "unknown" and never "not dispatched".
+ *
+ * - A sent parcel is proof on its own, whatever the status says: an order
+ *   cancelled after its parcel left was still dispatched.
+ * - A status of type 3 ("completed", the shop's sent bucket) is dispatched.
+ * - Types 1 and 2 (new, in progress) are not.
+ * - Type 4 splits by meaning. A cancellation is recognised and reads `false`. A
+ *   refund or return usually FOLLOWS a shipment, so only the parcels can answer:
+ *   none sent reads `false` (the processor's read-back draws the same line), and
+ *   parcels that could not be read leave it unknown.
+ * - A status the shop does not list, or a type outside 1-4, is unknown.
+ *
+ * `parcels` is `null` when the parcel read failed or was not made.
+ */
+export function readShoperDispatched(
+  status: ShoperOrderStatusInfo | null,
+  parcels: readonly ShoperParcel[] | null,
+): boolean | null {
+  if (parcels !== null && parcels.some(isShoperParcelSent)) {
+    return true;
+  }
+  if (status === null) {
+    return null;
+  }
+  switch (status.type) {
+    case SHOPER_STATUS_TYPE.Completed:
+      return true;
+    case SHOPER_STATUS_TYPE.New:
+    case SHOPER_STATUS_TYPE.InProgress:
+      return false;
+    case SHOPER_STATUS_TYPE.NotCompleted:
+      if (mapShoperOrderStatus(status) === 'cancelled') {
+        return false;
+      }
+      return parcels === null ? null : false;
+    default:
+      return null;
+  }
 }
 
 export function normalizeTrackingNumber(value: string | undefined): string | undefined {

@@ -301,6 +301,8 @@ export interface ShoperParcel {
   readonly parcel_id: string | number;
   readonly order_id: string | number;
   readonly shipping_code?: string | null;
+  /** The shipping method the parcel was written under; the fulfilment readback reports it as the carrier id. */
+  readonly shipping_id?: string | number | null;
   /** Whether the parcel has been sent; a flag like every other (`"1"` / `true`). */
   readonly sent?: string | number | boolean | null;
   /** When it was sent, naive and shop-local; absent or null while unsent. */
