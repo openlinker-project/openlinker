@@ -160,7 +160,7 @@ export function BenchParcelView({
   onSwitchParcel,
 }: BenchParcelProps): ReactElement {
   const query = useBenchParcelQuery(workId);
-  // B-12: the parcel carries no "a note exists" flag, the worklist row does.
+  // B-12: fallback only, for a parcel payload without `hasBuyerNote`.
   // Read from the rail's cache only (no extra request); absent means not known.
   const queryClient = useQueryClient();
   const cachedWork = queryClient.getQueryData<BenchWorkList>(benchQueryKeys.work());
@@ -806,7 +806,10 @@ export function BenchParcelView({
       <BenchBuyerNote
         parcel={parcel}
         canAcknowledge={canWrite}
-        textNotStored={cachedWork?.works.some((w) => w.workId === workId && w.hasBuyerNote) === true}
+        textNotStored={
+          parcel.hasBuyerNote ??
+          (cachedWork?.works.some((w) => w.workId === workId && w.hasBuyerNote) === true)
+        }
       />
 
       {/* The mockup's hero card (#3401): the ONE line this box is waiting for
