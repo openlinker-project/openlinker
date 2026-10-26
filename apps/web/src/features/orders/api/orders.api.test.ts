@@ -199,3 +199,43 @@ describe('orders api — lifecycle phase (#2310)', () => {
     expect(paths[0]).toContain('sourceConnectionId=conn-1');
   });
 });
+
+describe('orders api - post-import edits (#3544)', () => {
+  function recordingRequests() {
+    const calls: { path: string; init?: RequestInit }[] = [];
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      calls.push({ path, init });
+      return {} as never;
+    });
+    return { api: createOrdersApi(request, vi.fn(async () => new Blob())), calls };
+  }
+
+  it('should post each edit to its own endpoint with the body as sent', async () => {
+    const { api, calls } = recordingRequests();
+
+    await api.editOrderAddress('ol_order_1', { dryRun: true, address1: 'a', city: 'c', postalCode: 'p', country: 'PL' });
+    await api.editOrderLines('ol_order_1', { lines: [{ orderLineId: 'l', quantity: 1 }] });
+    await api.editOrderDeliveryMethod('ol_order_1', { methodId: 'dpd' });
+    await api.editOrderDiscount('ol_order_1', { amount: '15.00' });
+
+    expect(calls.map((c) => c.path)).toEqual([
+      '/orders/ol_order_1/edits/address',
+      '/orders/ol_order_1/edits/lines',
+      '/orders/ol_order_1/edits/delivery-method',
+      '/orders/ol_order_1/edits/discount',
+    ]);
+    expect(calls.every((c) => c.init?.method === 'POST')).toBe(true);
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ dryRun: true, country: 'PL' });
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({ amount: '15.00' });
+  });
+
+  it('should confirm a change with no body unless one is given', async () => {
+    const { api, calls } = recordingRequests();
+
+    await api.confirmOrderChange('ol_order_1', 'change_1');
+    await api.confirmOrderChange('ol_order_1', 'change_2', { acknowledgeAboveCeiling: true });
+
+    expect(calls[0].init).toEqual({ method: 'POST' });
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({ acknowledgeAboveCeiling: true });
+  });
+});

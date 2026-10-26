@@ -92,12 +92,26 @@ export interface ConfirmOrderChangeResult {
   changeId: string;
   kind: string;
   status: 'confirmed';
-  invoiceRecordId: string;
-  invoiceStatus: string;
+  /** A correction kind: the issued correction. `null` for a refund confirmation. */
+  invoiceRecordId: string | null;
+  invoiceStatus: string | null;
   documentNumber: string | null;
+  /** `order.discount_refund`: the refund record the confirmation wrote. `null` otherwise. */
+  refundRecordId?: string | null;
 }
 
-export const OrderChangeKindValues = ['order.cancel_request', 'order.cancel_correction'] as const;
+export const OrderChangeKindValues = [
+  'order.cancel_request',
+  'order.cancel_correction',
+  // #3544: `GET /orders/:id/changes` lists every `order.*` change, so the edits
+  // and a discount's two consequences arrive in the same read (payload empty).
+  'order.address_change',
+  'order.line_quantity_change',
+  'order.delivery_method_change',
+  'order.discount_change',
+  'order.discount_refund',
+  'order.discount_correction',
+] as const;
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
 
 /**

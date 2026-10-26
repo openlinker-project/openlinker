@@ -50,7 +50,7 @@
       </div>
       <div class="page-header__actions"><div class="toolbar__group">
         <span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped edit-form edit-review edit-blocked edit-saved" class="toolbar__group">
-          <button type="button" class="button button--secondary" data-go="edit-form">Edit order</button>
+          <button type="button" class="button button--secondary" data-go="edit-form" data-testid="order-edit-button">Edit order</button>
           <button type="button" class="button button--secondary" data-go="cancel-confirm" data-testid="order-cancel-button">Cancel order</button><span class="mk-pin">1</span>
         </span>
         <span data-mk-show="cancel-done" class="toolbar__group">
@@ -72,7 +72,7 @@
         <span data-mk-show="cancel-shipped" class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span>shipped</span>
         <span data-mk-show="cancel-done" class="status-badge status-badge--neutral"><span class="status-badge__dot" aria-hidden="true"></span>cancelled</span>
         <span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Paid</span>
-        <span data-mk-show="edit-saved" class="status-badge status-badge--info"><span class="status-badge__dot" aria-hidden="true"></span>Edited in OpenLinker</span><span data-mk-show="edit-saved" class="mk-pin">16</span>
+        <span data-mk-show="edit-saved" class="status-badge status-badge--info" data-testid="order-edit-saved-badge"><span class="status-badge__dot" aria-hidden="true"></span>Edited in OpenLinker</span><span data-mk-show="edit-saved" class="mk-pin">16</span>
       </div>
       <p class="order-header__phase-note muted-text" data-mk-show="order cancel-confirm cancel-label edit-form edit-review edit-blocked edit-saved">Ready — waiting to be dispatched.</p>
       <p class="order-header__phase-note muted-text" data-mk-show="cancel-progress">A requested change is waiting for the channel to confirm.</p>
@@ -135,10 +135,10 @@
       <div class="alert__actions"><button type="button" class="button button--secondary button--sm" data-testid="order-cancel-review-correction">Review correction</button></div>
     </div>
 
-    <div class="alert alert--info" role="status" data-mk-show="edit-saved">
+    <div class="alert alert--info" role="status" data-mk-show="edit-saved" data-testid="order-edit-notice">
       <div class="alert__content"><strong class="alert__title">This order was edited in OpenLinker</strong>
         <div class="alert__description">Allegro still shows the order as the buyer placed it: 3 × Kubek ceramiczny, 348.99 PLN. Refund <b class="mono-text">54.00 PLN</b> on Allegro, then confirm the refund here.</div></div>
-      <div class="alert__actions"><button type="button" class="button button--secondary button--sm">Confirm refund</button></div>
+      <div class="alert__actions"><button type="button" class="button button--secondary button--sm" data-testid="order-edit-confirm-refund">Confirm refund</button></div>
     </div>
 
     <!-- ===== Pricing & tax ===== -->
@@ -153,7 +153,7 @@
                 <tr>
                   <td><span class="order-line-item__product"><span class="order-line-item__product-info"><span class="order-line-item__name">Kubek ceramiczny 350 ml, biały</span><span class="order-line-item__sku mono-text">KUB-350-BIA</span></span></span></td>
                   <td><span class="mono-text">23%</span></td>
-                  <td class="oc-num mono-text"><span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">3</span><span data-mk-show="edit-saved">2 <span class="oc-was">was 3</span></span></td>
+                  <td class="oc-num mono-text"><span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">3</span><span data-mk-show="edit-saved">2 <span class="oc-was" data-testid="order-edit-line-was">was 3</span></span></td>
                   <td class="oc-num mono-text">39.00 PLN</td>
                   <td class="oc-num mono-text"><span data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">117.00 PLN</span><span data-mk-show="edit-saved">78.00 PLN</span></td>
                 </tr>
@@ -186,7 +186,7 @@
           <span class="status-badge status-badge--neutral order-pricing__treatment">gross · source-authoritative</span>
         </div>
         <p class="order-pricing__note" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">OpenLinker pins the <b>buyer-paid (gross) price</b> onto the destination — it does not use the destination’s catalog price.</p>
-        <p class="order-pricing__note" data-mk-show="edit-saved">Edited in OpenLinker on 25 Sep, 09:41 by admin. The buyer paid <b>348.99 PLN</b> on Allegro; the label, invoice and pack bench use the edited order (<b>294.99 PLN</b>).</p>
+        <p class="order-pricing__note" data-mk-show="edit-saved" data-testid="order-edit-pricing-note">Edited in OpenLinker on 25 Sep, 09:41 by admin. The buyer paid <b>348.99 PLN</b> on Allegro; the label, invoice and pack bench use the edited order (<b>294.99 PLN</b>).</p>
       </div>
     </section>
 
@@ -243,7 +243,7 @@
               <dt class="key-value-list__label">Ship to</dt>
               <dd class="key-value-list__value">
                 <span class="order-delivery__addr" data-mk-show="order cancel-confirm cancel-progress cancel-label cancel-shipped cancel-done edit-form edit-review edit-blocked">Magdalena Wiśniewska<br>ul. Długa 12<br>31-147 Kraków<br>PL</span>
-                <span class="order-delivery__addr" data-mk-show="edit-saved">Magdalena Wiśniewska<br>ul. Długa 12/4<br>31-147 Kraków<br>PL<br><span class="oc-edited">Edited in OpenLinker · Allegro shows ul. Długa 12</span></span>
+                <span class="order-delivery__addr" data-mk-show="edit-saved">Magdalena Wiśniewska<br>ul. Długa 12/4<br>31-147 Kraków<br>PL<br><span class="oc-edited" data-testid="order-edit-address-original">Edited in OpenLinker · Allegro shows ul. Długa 12</span></span>
               </dd>
               <dt class="key-value-list__label">Method</dt><dd class="key-value-list__value">InPost Kurier</dd>
               <dt class="key-value-list__label">Carrier</dt><dd class="key-value-list__value"><span class="order-delivery__carrier"><span>InPost</span>
@@ -466,51 +466,54 @@
     <!-- ---------- Edit: form ---------- -->
     <div data-mk-state="edit-form" data-mk-label="Edycja: formularz" hidden class="oc-dialog-scope">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="ef-title">
+      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="ef-title" data-testid="order-edit-dialog">
         <h2 class="dialog__title" id="ef-title">Edit order ALG-24817</h2>
         <p class="dialog__description">Your changes stay in OpenLinker and are used for the shipping label, the invoice and the pack bench. Allegro keeps the order as the buyer placed it — marketplace orders can’t be edited there. <span class="mk-pin">11</span></p>
         <form class="oc-form" onsubmit="return false" novalidate>
-          <div class="dialog-section">
+          <div class="dialog-section" data-testid="order-edit-address">
             <p class="dialog-section__head">Shipping address</p>
             <div class="form-field-row">
-              <div class="form-field"><label class="form-field__label" for="ef-name">Recipient</label><input class="control" id="ef-name" value="Magdalena Wiśniewska"></div>
-              <div class="form-field"><label class="form-field__label" for="ef-street">Street and number</label><input class="control" id="ef-street" value="ul. Długa 12/4"><p class="form-field__description">Changed · was ul. Długa 12</p></div>
+              <div class="form-field"><label class="form-field__label" for="ef-first-name">First name</label><input class="control" id="ef-first-name" value="Magdalena" data-testid="order-edit-first-name"></div>
+              <div class="form-field"><label class="form-field__label" for="ef-last-name">Last name</label><input class="control" id="ef-last-name" value="Wiśniewska" data-testid="order-edit-last-name"></div>
+            </div>
+            <div class="form-field-row" style="margin-top:var(--space-3)">
+              <div class="form-field"><label class="form-field__label" for="ef-street">Street and number</label><input class="control" id="ef-street" value="ul. Długa 12/4" data-testid="order-edit-street"><p class="form-field__description">Changed · was ul. Długa 12</p></div>
             </div>
             <div class="form-field-row form-field-row--cols-3" style="margin-top:var(--space-3)">
-              <div class="form-field"><label class="form-field__label" for="ef-zip">Postcode</label><input class="control" id="ef-zip" value="31-147"></div>
-              <div class="form-field"><label class="form-field__label" for="ef-city">City</label><input class="control" id="ef-city" value="Kraków"></div>
-              <div class="form-field"><label class="form-field__label" for="ef-country">Country</label><select class="control control--select" id="ef-country"><option>Poland</option></select></div>
+              <div class="form-field"><label class="form-field__label" for="ef-zip">Postcode</label><input class="control" id="ef-zip" value="31-147" data-testid="order-edit-postcode"></div>
+              <div class="form-field"><label class="form-field__label" for="ef-city">City</label><input class="control" id="ef-city" value="Kraków" data-testid="order-edit-city"></div>
+              <div class="form-field"><label class="form-field__label" for="ef-country">Country</label><input class="control" id="ef-country" value="PL" maxlength="2" data-testid="order-edit-country"></div>
             </div>
           </div>
 
-          <div class="dialog-section">
+          <div class="dialog-section" data-testid="order-edit-delivery">
             <p class="dialog-section__head">Delivery method</p>
             <div class="form-field">
-              <label class="form-field__label" for="ef-method">Method</label>
-              <select class="control control--select" id="ef-method"><option>InPost Kurier</option><option>InPost Paczkomat 24/7</option><option>DPD Kurier</option></select>
+              <label class="form-field__label" for="ef-method">Method id</label>
+              <input class="control" id="ef-method" value="inpost_kurier" data-testid="order-edit-method-id">
               <p class="form-field__description">Decides which carrier OpenLinker buys the label from. The buyer paid 14.99 PLN for delivery on Allegro; that amount doesn’t change.</p>
             </div>
           </div>
 
-          <div class="dialog-section">
+          <div class="dialog-section" data-testid="order-edit-lines">
             <p class="dialog-section__head">Items <span class="mk-pin">12</span></p>
             <div class="data-table__container">
               <table class="data-table">
                 <thead><tr><th>Product</th><th class="oc-num">Qty</th><th class="oc-num">Unit price</th><th class="oc-num">Total</th></tr></thead>
                 <tbody>
-                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Kubek ceramiczny 350 ml, biały</span><span class="order-line-item__sku mono-text">KUB-350-BIA</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="3" value="2" data-price="39" aria-label="Quantity, Kubek ceramiczny 350 ml"><span class="oc-was">of 3</span></span></td><td class="oc-num mono-text">39.00 PLN</td><td class="oc-num mono-text" data-line-total>78.00 PLN</td></tr>
-                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Talerz obiadowy 27 cm, grafitowy</span><span class="order-line-item__sku mono-text">TAL-27-GRA</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="2" value="2" data-price="54" aria-label="Quantity, Talerz obiadowy 27 cm"><span class="oc-was">of 2</span></span></td><td class="oc-num mono-text">54.00 PLN</td><td class="oc-num mono-text" data-line-total>108.00 PLN</td></tr>
-                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Dzbanek 1,2 l, błękitny</span><span class="order-line-item__sku mono-text">DZB-12-BLE</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="1" value="1" data-price="109" aria-label="Quantity, Dzbanek 1,2 l"><span class="oc-was">of 1</span></span></td><td class="oc-num mono-text">109.00 PLN</td><td class="oc-num mono-text" data-line-total>109.00 PLN</td></tr>
+                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Kubek ceramiczny 350 ml, biały</span><span class="order-line-item__sku mono-text">KUB-350-BIA</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="3" value="2" data-price="39" data-testid="order-edit-line-quantity" aria-label="Quantity, Kubek ceramiczny 350 ml"><span class="oc-was">of 3</span></span></td><td class="oc-num mono-text">39.00 PLN</td><td class="oc-num mono-text" data-line-total>78.00 PLN</td></tr>
+                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Talerz obiadowy 27 cm, grafitowy</span><span class="order-line-item__sku mono-text">TAL-27-GRA</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="2" value="2" data-price="54" data-testid="order-edit-line-quantity" aria-label="Quantity, Talerz obiadowy 27 cm"><span class="oc-was">of 2</span></span></td><td class="oc-num mono-text">54.00 PLN</td><td class="oc-num mono-text" data-line-total>108.00 PLN</td></tr>
+                  <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Dzbanek 1,2 l, błękitny</span><span class="order-line-item__sku mono-text">DZB-12-BLE</span></span></td><td class="oc-num"><span class="oc-inline" style="justify-content:flex-end"><input class="control control--narrow" type="number" min="0" max="1" value="1" data-price="109" data-testid="order-edit-line-quantity" aria-label="Quantity, Dzbanek 1,2 l"><span class="oc-was">of 1</span></span></td><td class="oc-num mono-text">109.00 PLN</td><td class="oc-num mono-text" data-line-total>109.00 PLN</td></tr>
                 </tbody>
               </table>
             </div>
             <p class="form-field__description" style="margin-top:var(--space-2)">You can lower a quantity or set it to 0. Raising it or adding products would be a new sale — ask the buyer to order again.</p>
           </div>
 
-          <div class="dialog-section">
+          <div class="dialog-section" data-testid="order-edit-discount">
             <p class="dialog-section__head">Discount <span class="mk-pin">13</span></p>
             <div class="form-field-row">
-              <div class="form-field"><label class="form-field__label" for="ef-disc">Amount</label><span class="oc-inline"><input class="control control--narrow" id="ef-disc" type="number" min="0" step="0.01" value="15.00"> <span class="muted-text">PLN, gross</span></span></div>
+              <div class="form-field"><label class="form-field__label" for="ef-disc">Amount</label><span class="oc-inline"><input class="control control--narrow" id="ef-disc" type="number" min="0" step="0.01" value="15.00" data-testid="order-edit-discount-amount"> <span class="muted-text">PLN, gross</span></span></div>
               <div class="form-field"><label class="form-field__label" for="ef-disc-reason">Reason</label><select class="control control--select" id="ef-disc-reason"><option>Late dispatch</option><option>Damaged packaging</option><option>Goodwill</option><option>Other</option></select></div>
             </div>
             <p class="form-field__description" style="margin-top:var(--space-2)">Lowers the invoice total. The buyer isn’t refunded automatically — you refund on Allegro.</p>
@@ -523,12 +526,12 @@
               <div class="order-totals__row"><dt>Shipping</dt><dd class="mono-text">14.99 PLN</dd></div>
               <div class="order-totals__row order-totals__row--total"><dt>New total</dt><dd class="mono-text" id="ef-total">294.99 PLN</dd></div>
             </dl>
-            <p class="oc-totals-note" style="margin-top:var(--space-2)">Buyer paid 348.99 PLN on Allegro · <b id="ef-refund">54.00 PLN</b> to refund there</p>
+            <p class="oc-totals-note" style="margin-top:var(--space-2)" data-testid="order-edit-paid-note">Buyer paid 348.99 PLN on Allegro · <b id="ef-refund">54.00 PLN</b> to refund there</p>
           </div>
 
           <div class="dialog__footer">
-            <button type="button" class="button button--secondary" data-go="order">Cancel</button>
-            <button type="button" class="button button--primary" data-go="edit-review">Review changes</button>
+            <button type="button" class="button button--secondary" data-go="order" data-testid="order-edit-cancel">Cancel</button>
+            <button type="button" class="button button--primary" data-go="edit-review" data-testid="order-edit-review-button">Review changes</button>
           </div>
         </form>
       </div>
@@ -537,13 +540,13 @@
     <!-- ---------- Edit: diff review ---------- -->
     <div data-mk-state="edit-review" data-mk-label="Edycja: zmiany" hidden class="oc-dialog-scope">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="er-title">
+      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="er-title" data-testid="order-edit-dialog">
         <h2 class="dialog__title" id="er-title">Review changes to ALG-24817</h2>
         <p class="dialog__description">Check what changes and where it’s used before you save.</p>
         <div class="dialog-section">
           <p class="dialog-section__head">Changes</p>
           <div class="data-table__container">
-            <table class="data-table oc-diff">
+            <table class="data-table oc-diff" data-testid="order-edit-diff">
               <thead><tr><th>What</th><th>Before</th><th>After</th></tr></thead>
               <tbody>
                 <tr><td>Shipping address</td><td><del>ul. Długa 12</del></td><td><ins>ul. Długa 12/4</ins></td></tr>
@@ -556,7 +559,7 @@
         </div>
         <div class="dialog-section">
           <p class="dialog-section__head">Where this change is used <span class="mk-pin">14</span></p>
-          <ul class="oc-impact">
+          <ul class="oc-impact" data-testid="order-edit-impact">
             <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Shipping label<span class="oc-impact__sub">InPost Kurier</span></span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">The label is bought with the new address.</span></li>
             <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Invoice<span class="oc-impact__sub">inFakt · not issued yet</span></span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">Issued for 2 × KUB-350-BIA with a 15.00 PLN discount: 294.99 PLN.</span></li>
             <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Pack bench</span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">The packer is asked for 2 × KUB-350-BIA.</span></li>
@@ -564,7 +567,7 @@
             <li class="oc-impact__row oc-impact__row--off"><span class="oc-impact__head"><span class="oc-impact__what">Allegro<span class="oc-impact__sub">ceramika_nowak</span></span><span class="status-badge status-badge--neutral status-badge--compact">Not sent</span></span><span class="oc-impact__how">Not sent. Allegro still shows 3 × Kubek, 348.99 PLN and the old address.</span></li>
           </ul>
         </div>
-        <div class="alert alert--warning" role="status">
+        <div class="alert alert--warning" role="status" data-testid="order-edit-money">
           <div class="alert__content"><strong class="alert__title">Refund 54.00 PLN on Allegro</strong>
             <div class="alert__description">OpenLinker doesn’t move money. After you refund in Allegro Sales Center, use Confirm refund on this order so the invoice and what the buyer paid agree.</div></div>
         </div>
@@ -573,10 +576,10 @@
           <textarea class="control" id="er-note" rows="2">Klientka prosi o nr mieszkania i tylko 2 kubki.</textarea>
         </div>
         <div class="dialog__footer dialog__footer--split">
-          <button type="button" class="button button--ghost" data-go="edit-form">Back to editing</button>
+          <button type="button" class="button button--ghost" data-go="edit-form" data-testid="order-edit-back">Back to editing</button>
           <span class="dialog__footer-group">
-            <button type="button" class="button button--secondary" data-go="order">Discard</button>
-            <button type="button" class="button button--primary" data-go="edit-saved">Save changes</button>
+            <button type="button" class="button button--secondary" data-go="order" data-testid="order-edit-discard">Discard</button>
+            <button type="button" class="button button--primary" data-go="edit-saved" data-testid="order-edit-save">Save changes</button>
           </span>
         </div>
       </div>
@@ -585,13 +588,13 @@
     <!-- ---------- Edit: blocked ---------- -->
     <div data-mk-state="edit-blocked" data-mk-label="Edycja: blokada" hidden class="oc-dialog-scope">
       <div class="dialog__overlay"></div>
-      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="eb-title">
+      <div class="dialog__content dialog__content--wide" role="dialog" aria-modal="true" aria-labelledby="eb-title" data-testid="order-edit-dialog">
         <h2 class="dialog__title" id="eb-title">Edit order ALG-24817</h2>
         <p class="dialog__description">Your changes stay in OpenLinker. Allegro keeps the order as the buyer placed it.</p>
-        <div class="alert alert--warning" role="status">
+        <div class="alert alert--warning" role="status" data-testid="order-edit-blocked">
           <div class="alert__content"><strong class="alert__title">Items and discount can’t be changed</strong><span class="mk-pin">15</span>
             <div class="alert__description">This order was packed at 11:20 by akowalczyk and invoice <span class="mono-text">FV/412/09/2026</span> is issued. To change what the buyer gets:
-              <ol class="oc-list">
+              <ol class="oc-list" data-testid="order-edit-blocked-steps">
                 <li>Mark the order as not packed, so the box is opened again.</li>
                 <li>Issue a correction invoice from Sales document on this page.</li>
               </ol>
@@ -609,7 +612,7 @@
             <p class="dialog-section__head">Delivery method</p>
             <div class="form-field"><label class="form-field__label" for="eb-method">Method</label><select class="control control--select" id="eb-method"><option>InPost Kurier</option><option>InPost Paczkomat 24/7</option><option>DPD Kurier</option></select></div>
           </div>
-          <div class="dialog-section oc-locked" aria-disabled="true">
+          <div class="dialog-section oc-locked" aria-disabled="true" data-testid="order-edit-locked-lines">
             <p class="dialog-section__head">Items · locked</p>
             <div class="data-table__container">
               <table class="data-table">
@@ -622,13 +625,13 @@
               </table>
             </div>
           </div>
-          <div class="dialog-section oc-locked" aria-disabled="true">
+          <div class="dialog-section oc-locked" aria-disabled="true" data-testid="order-edit-locked-discount">
             <p class="dialog-section__head">Discount · locked</p>
             <span class="oc-inline"><input class="control control--narrow" type="number" value="0.00" disabled aria-label="Discount amount"> <span class="muted-text">PLN — the invoice is issued, use a correction invoice instead</span></span>
           </div>
           <div class="dialog__footer">
             <button type="button" class="button button--secondary" data-go="order">Cancel</button>
-            <button type="button" class="button button--primary" disabled>Review changes</button>
+            <button type="button" class="button button--primary" disabled data-testid="order-edit-review-button">Review changes</button>
           </div>
         </form>
       </div>

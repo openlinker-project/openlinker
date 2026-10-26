@@ -31204,3 +31204,71 @@ legend.analytics-settings-dialog__label {
     gap: var(--space-3);
   }
 }
+
+/* Order edit dialog, review and edited markers (#3544, mockup M1 edit states) */
+.order-edit-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.order-edit-section {
+  min-width: 0;
+  margin: 0;
+  padding-inline: 0;
+  border-inline: 0;
+  border-bottom: 0;
+}
+
+.order-edit-locked {
+  opacity: 0.6;
+}
+
+.order-edit-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.order-edit-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.order-edit-inline--end {
+  justify-content: flex-end;
+}
+
+.order-edit-qty {
+  width: 5.5rem;
+}
+
+.order-edit-was {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.order-edit-totals-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.order-edit-diff del {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--status-error);
+}
+
+.order-edit-diff ins {
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.order-edit-edited {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}

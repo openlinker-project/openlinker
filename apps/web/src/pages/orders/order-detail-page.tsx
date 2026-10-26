@@ -91,6 +91,12 @@ import { OrderCancelAction } from '../../features/orders/components/order-cancel
 import { OrderCancelResultNotice } from '../../features/orders/components/order-cancel-result-notice';
 import { buildOrderCancelTimelineEvents } from '../../features/orders/components/order-cancel-timeline-events';
 import type { CancelOrderResult } from '../../features/orders/api/order-cancel.types';
+import { OrderEditAction } from '../../features/orders/components/order-edit-action';
+import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
+import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
+import type { OrderDiscountResult } from '../../features/orders/api/order-edit.types';
+import type { EditOrderOutput } from '../../features/orders/hooks/use-edit-order-mutation';
+import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit';
 import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
 import { formatAmount } from '../../shared/format/format-amount';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
@@ -158,6 +164,13 @@ export function OrderDetailPage(): ReactElement {
   const [cancelOutcome, setCancelOutcome] = useState<{
     internalOrderId: string;
     result: CancelOrderResult;
+  } | null>(null);
+  // The one discount RESPONSE this session holds (#3544): it carries what the
+  // server does not persist (the repriced invoice lines of a correction, whether
+  // the refund intent could be opened) and is gone after a reload, by design.
+  const [discountOutcome, setDiscountOutcome] = useState<{
+    internalOrderId: string;
+    result: OrderDiscountResult;
   } | null>(null);
   const location = useLocation();
   // Deep-link recovery target from a `/shipments` row's Regenerate/Generate
@@ -315,6 +328,26 @@ export function OrderDetailPage(): ReactElement {
     sourceName: cancelSourceName,
     sessionResult: sessionCancelResult,
   });
+
+  // #3544 - the order beside the channel's record, and the edit actions' inputs.
+  const sessionDiscount =
+    discountOutcome?.internalOrderId === order.internalOrderId ? discountOutcome.result : null;
+  const editTimeline = buildOrderEditTimelineEvents(order.edits, cancelSourceName);
+  const handleOrderEdited = (outputs: readonly EditOrderOutput[]): void => {
+    const discount = outputs.find(
+      (output): output is OrderDiscountResult => 'paymentBranch' in output,
+    );
+    if (discount) setDiscountOutcome({ internalOrderId: order.internalOrderId, result: discount });
+    // An edit narrows fulfilment work, changes what a label or invoice is built
+    // from and may open a correction; those panels read keys outside the orders domain.
+    void queryClient.invalidateQueries({ queryKey: shipmentsQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: fulfillmentQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
+  };
+  const scrollToRemedy = (target: OrderEditRemedyTarget): void => {
+    const id = target === 'packing' ? 'packing' : target === 'shipment' ? 'shipment' : 'invoicing';
+    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+  };
 
   const connections = connectionsQuery.data ?? [];
   // The notes section's "Never sent to …" promise names THIS order's channels
@@ -481,6 +514,25 @@ export function OrderDetailPage(): ReactElement {
           orderTotal={snapshot.totals ? snapshot.totals.total.toFixed(2) : null}
           visible={snapshot.status === 'cancelled' || hasCancelRequest}
         />
+        <OrderEditAction
+          // Remount per order so an open dialog never carries over to a cached next order.
+          key={`edit:${order.internalOrderId}`}
+          internalOrderId={order.internalOrderId}
+          orderNumber={snapshot.orderNumber ?? null}
+          sourceName={cancelSourceName}
+          snapshot={snapshot}
+          edits={order.edits}
+          packed={order.packedAt !== null && order.packedAt !== undefined}
+          acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
+          terminal={isOrderCancelTerminal({
+            snapshotStatus: snapshot.status,
+            lifecyclePhase: order.lifecyclePhase,
+            fulfillmentState: order.fulfillmentState,
+          })}
+          amending={order.lifecyclePhase === 'amending'}
+          onSaved={handleOrderEdited}
+          onGoTo={scrollToRemedy}
+        />
         <OrderCancelAction
           // Remount per order so an open dialog never carries over to a cached next order.
           key={order.internalOrderId}
@@ -533,6 +585,17 @@ export function OrderDetailPage(): ReactElement {
         totalLabel={cancelTotalLabel}
         sessionResult={sessionCancelResult}
         onCorrectionConfirmed={() => {
+          void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
+        }}
+      />
+
+      <OrderEditedNotice
+        key={`edited:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        edits={order.edits}
+        sourceName={cancelSourceName}
+        sessionDiscount={sessionDiscount}
+        onConfirmed={() => {
           void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
         }}
       />
@@ -609,7 +672,12 @@ export function OrderDetailPage(): ReactElement {
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">Pricing &amp; tax</h3>
-          <OrderPricingPanel items={snapshot.items} totals={snapshot.totals} />
+          <OrderPricingPanel
+            items={snapshot.items}
+            totals={snapshot.totals}
+            edits={order.edits}
+            channelName={cancelSourceName}
+          />
         </section>
       ) : null}
 
@@ -629,13 +697,16 @@ export function OrderDetailPage(): ReactElement {
               declared as packing and shipping by itself. Display-only: the
               packed endpoint still accepts a write, so that system can still
               report the order as packed. */}
-          {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
-            <OrderPackedControl
-              internalOrderId={order.internalOrderId}
-              packedAt={order.packedAt}
-              packedByUserId={order.packedByUserId}
-            />
-          )}
+          {/* #3544 - the anchor an edit refusal's "Mark as not packed" remedy scrolls to. */}
+          <div id="packing" tabIndex={-1}>
+            {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+              <OrderPackedControl
+                internalOrderId={order.internalOrderId}
+                packedAt={order.packedAt}
+                packedByUserId={order.packedByUserId}
+              />
+            )}
+          </div>
 
           {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
               (#2081 rule 3). Beside the packed control for the same reason it
@@ -708,6 +779,8 @@ export function OrderDetailPage(): ReactElement {
             sourceConnectionId={order.sourceConnectionId}
             sourceDeliveryMethodId={order.sourceDeliveryMethodId}
             sourceDeliveryMethodName={order.sourceDeliveryMethodName}
+            edits={order.edits}
+            channelName={cancelSourceName}
           />
           {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
               (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
@@ -795,10 +868,16 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents, ...buyerNoteTimelineEvents, ...buyerNoteChangeEvents]}
+          extraEvents={[
+            ...returnTimelineEvents,
+            ...noteTimelineEvents,
+            ...buyerNoteTimelineEvents,
+            ...buyerNoteChangeEvents,
+            ...editTimeline.dated,
+          ]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
-          trailingEvents={cancelTimelineEvents}
+          trailingEvents={[...cancelTimelineEvents, ...editTimeline.trailing]}
         />
       </section>
 
