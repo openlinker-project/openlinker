@@ -55,6 +55,13 @@ import type { OfferCommercialWriteOutcome } from '../../domain/types/offer-comme
 import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
 import type { OfferValidationScope } from '../../domain/types/offer-validation-problem.types';
 
+/**
+ * The status an offer the marketplace reports as not found is recorded with.
+ * `ended` is the one status the duplicate guard treats as re-listable, which is
+ * exactly what a vanished offer is.
+ */
+const OFFER_GONE_STATUS: OfferPublicationStatus = 'ended';
+
 @Injectable()
 export class OfferStatusSyncService implements IOfferStatusSyncService {
   private readonly logger = new Logger(OfferStatusSyncService.name);
@@ -121,9 +128,21 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       } catch (error) {
         if (error instanceof OfferNotFoundOnMarketplaceException) {
           notFound += 1;
-          this.logger.debug(
-            `Offer not found on marketplace (connection=${connectionId}, offerId=${externalOfferId}); leaving snapshot unchanged`
-          );
+          // The marketplace answered that the offer no longer exists (a draft
+          // deleted in the seller panel, an offer removed by the platform), so
+          // it is recorded as ended. Leaving the last snapshot in place kept the
+          // variant counted as "already listed" by the bulk wizard's duplicate
+          // guard for ever, with nothing left on the marketplace to end - the
+          // #1934 dead end reached by deletion instead of ending.
+          if (
+            await this.recordObservedStatus(
+              connectionId,
+              { externalOfferId, internalVariantId },
+              { publicationStatus: OFFER_GONE_STATUS, validationMessages: [], observedAt: new Date() }
+            )
+          ) {
+            updated += 1;
+          }
           continue;
         }
         throw error;
@@ -215,10 +234,15 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       observedAt = new Date();
     } catch (error) {
       if (error instanceof OfferNotFoundOnMarketplaceException) {
-        this.logger.debug(
-          `Offer not found on marketplace during refresh (connection=${connectionId}, offerId=${target.externalOfferId}); leaving snapshot unchanged`
-        );
-        return null;
+        // See `sync`: an offer the marketplace no longer has is ended, so the
+        // variant can be listed again. No commercial snapshot - there is
+        // nothing on the marketplace to observe a price or stock on.
+        await this.recordObservedStatus(connectionId, target, {
+          publicationStatus: OFFER_GONE_STATUS,
+          validationMessages: [],
+          observedAt: new Date(),
+        });
+        return OFFER_GONE_STATUS;
       }
       throw error;
     }

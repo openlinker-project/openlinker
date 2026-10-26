@@ -227,7 +227,7 @@ describe('OfferStatusSyncService', () => {
     expect(result.updated).toBe(1);
   });
 
-  it('should count notFound and not upsert when the marketplace reports the offer is gone', async () => {
+  it('should count notFound and record the offer as ended when the marketplace reports it is gone', async () => {
     integrations.getCapabilityAdapter.mockResolvedValue(
       statusReader((externalOfferId) =>
         externalOfferId === '222'
@@ -242,11 +242,20 @@ describe('OfferStatusSyncService', () => {
     const result = await service.sync(CONNECTION_ID, { limit: 10 });
 
     expect(result.scanned).toBe(2);
-    expect(result.updated).toBe(1);
+    expect(result.updated).toBe(2);
     expect(result.notFound).toBe(1);
-    expect(snapshots.upsert).toHaveBeenCalledTimes(1);
+    expect(snapshots.upsert).toHaveBeenCalledTimes(2);
     expect(snapshots.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ externalOfferId: '111' })
+      expect.objectContaining({ externalOfferId: '111', publicationStatus: 'active' })
+    );
+    // A vanished offer must become re-listable (the duplicate guard ignores
+    // only `ended`), so it is recorded as ended rather than left as it was.
+    expect(snapshots.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalOfferId: '222',
+        internalVariantId: 'ol_variant_b',
+        publicationStatus: 'ended',
+      })
     );
   });
 
@@ -311,7 +320,7 @@ describe('OfferStatusSyncService', () => {
       expect(snapshots.upsert).not.toHaveBeenCalled();
     });
 
-    it('should return null and not upsert when the offer is not found on the marketplace', async () => {
+    it('should record the offer as ended when it is not found on the marketplace', async () => {
       integrations.getCapabilityAdapter.mockResolvedValue(
         statusReader(() =>
           Promise.reject(new OfferNotFoundOnMarketplaceException('7781896308', CONNECTION_ID))
@@ -320,8 +329,10 @@ describe('OfferStatusSyncService', () => {
 
       const result = await service.refreshOne(CONNECTION_ID, target);
 
-      expect(result).toBeNull();
-      expect(snapshots.upsert).not.toHaveBeenCalled();
+      expect(result).toBe('ended');
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ externalOfferId: target.externalOfferId, publicationStatus: 'ended' })
+      );
     });
   });
 
@@ -530,7 +541,7 @@ describe('OfferStatusSyncService', () => {
         internalVariantId: 'ol_variant_c',
       });
 
-      expect(result).toBeNull();
+      expect(result).toBe('ended');
       expect(commercialSnapshots.upsert).not.toHaveBeenCalled();
     });
 
