@@ -45,6 +45,7 @@ import { useConnectionsQuery } from '../../features/connections/hooks/use-connec
 import { useActiveLocationCountQuery, useBootstrapLocationsMutation } from '../../features/inventory';
 import {
   SourcingRulesSection,
+  SourcingRulesTestPanel,
   SOURCING_RULES_PAGE_COPY as COPY,
   useInventoryLocationsForRulesQuery,
 } from '../../features/oms';
@@ -203,6 +204,7 @@ export function SourcingRulesPage(): ReactElement {
         </Alert>
       ) : null}
       <SourcingRulesSection connectionId={connection.id} locations={locationsPage.options} />
+      <SourcingRulesTestPanel connectionId={connection.id} locations={locationsPage.options} />
     </>
   );
 }

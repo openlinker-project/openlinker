@@ -105,3 +105,14 @@ export type {
   SourcingRuleFilters,
   UpdateSourcingRuleRequest,
 } from './api/sourcing-rules.types';
+
+// #2954 - the dry-run test panel.
+export { SourcingRulesTestPanel } from './components/sourcing-rules-test-panel';
+export type { SourcingRulesTestPanelProps } from './components/sourcing-rules-test-panel';
+export { useRoutingDryRunMutation } from './hooks/use-routing-dry-run-mutation';
+export { ROUTING_DRY_RUN_COPY } from './lib/routing-dry-run.copy';
+export type {
+  DraftRule,
+  RoutingDryRunRequest,
+  RoutingDryRunResult,
+} from './api/routing-dry-run.types';

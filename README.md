@@ -5,7 +5,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/openlinker-project/openlinker/issues/670)
 
-**[openlinker.io](https://openlinker.io)** · [Architecture](https://openlinker.io/en/architecture) · [Integrations](https://openlinker.io/en/integrations) · [vs BaseLinker](https://openlinker.io/en/vs/baselinker)
+**[openlinker.io](https://openlinker.io)** · [Docs](https://docs.openlinker.io) · [Live demo](https://app.demo.openlinker.io) · [Architecture](https://openlinker.io/en/architecture) · [Integrations](https://openlinker.io/en/integrations) · [vs BaseLinker](https://openlinker.io/en/vs/baselinker)
 
 **Sync orders, inventory, and listings between your shop and the marketplaces you sell on. Self-hosted, open-source, pluggable.**
 

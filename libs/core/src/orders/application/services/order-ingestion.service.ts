@@ -75,7 +75,6 @@ import {
 import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
-  buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
   deriveRoutingHoldOutcome,
   deriveSaleDecrementEnqueueIntents,
@@ -85,8 +84,6 @@ import {
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
-  type RoutingInputLine,
-  type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
 import {
   isFulfillmentRouterUnroutable,
@@ -110,6 +107,10 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
+import {
+  projectOrderForRouting,
+  type OrderRoutingProjection,
+} from '../../domain/project-order-for-routing';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { diffOrderAmendment } from '../../domain/order-amendment-diff';
@@ -178,13 +179,6 @@ type RoutingTarget =
   | { readonly kind: 'skip'; readonly reason: FulfillmentRoutingSkipReason }
   | { readonly kind: 'pass' }
   | { readonly kind: 'indeterminate' };
-
-/** The ADR-062 allowlist projection handed to a router. */
-interface RoutingProjection {
-  readonly lines: RoutingInputLine[];
-  readonly shipTo: RoutingShipTo;
-  readonly requestedDeliveryMethod: string | null;
-}
 
 @Injectable()
 export class OrderIngestionService implements IOrderIngestionService {
@@ -1436,39 +1430,16 @@ export class OrderIngestionService implements IOrderIngestionService {
   private projectOrderForRouting(
     order: Order,
     shippingAddressHash: string | null
-  ): RoutingProjection | null {
-    const shippingAddress = order.shippingAddress;
-    if (shippingAddress === undefined) {
-      return null;
-    }
-
-    return {
-      lines: order.items.map((item) => ({
-        orderLineId: item.id,
-        // A work line needs a variant. `variantId` is optional on `OrderItem`, so
-        // fall back to the product id rather than emitting a blank — a work
-        // object pointing at no variant is unpickable stock nothing would report.
-        productVariantId: item.variantId ?? item.productId,
-        quantity: item.quantity,
-      })),
-      // The OPAQUE key `RoutingInput.requestedDeliveryMethod` documents — the
-      // source's own method id, never a neutral vocabulary.
-      requestedDeliveryMethod: order.shipping?.methodId ?? null,
-      shipTo: buildRoutingShipTo(
-        {
-          countryIso2: shippingAddress.country,
-          postalCode: shippingAddress.postalCode,
-          city: shippingAddress.city,
-          addressHash: shippingAddressHash,
-        },
-        {
-          // `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
-          // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
-          // routing on every ordinary deployment that never enabled hash-only mode.
-          storePii: getEnvBoolean('OL_STORE_PII', true),
-        }
-      ),
-    };
+  ): OrderRoutingProjection | null {
+    // The reduction itself is the shared pure rule (#2954); only the PII flag is
+    // read here. `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
+    // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
+    // routing on every ordinary deployment that never enabled hash-only mode.
+    return projectOrderForRouting(
+      order,
+      shippingAddressHash,
+      getEnvBoolean('OL_STORE_PII', true)
+    );
   }
 
   /**
