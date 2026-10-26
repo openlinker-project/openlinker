@@ -18,10 +18,20 @@
  * shown in plain text in the shop's webhook list and written to reverse-proxy /
  * CDN / tunnel access logs - can leak without letting its reader sign a
  * delivery. Re-running webhook install rotates the secret, and with it the
- * token. No timestamp is signed, so `verify` omits `timestampMs` and the host's
- * replay-window check never fires (the WooCommerce and Erli posture); a replayed
- * delivery costs a redundant re-read at worst, and the dedup gate catches an
- * identical body.
+ * token.
+ *
+ * REPLAY PROTECTION: there is no replay window, because Shoper gives us nothing
+ * to build one from. A delivery carries no delivery timestamp at all - no
+ * timestamp header, signed or unsigned, and no send-time field in the body (the
+ * dates it does carry, such as a product's `edit_date`, describe the record, not
+ * the delivery). So `verify` omits `timestampMs` and the host's
+ * skew-window check never fires (the WooCommerce and Erli posture). Replay
+ * protection is therefore the Postgres dedup gate alone: `deriveEventId` hashes
+ * the event name and the exact body, so a replayed delivery collides with the
+ * original on `webhook_deliveries` and enqueues nothing. That is acceptable
+ * rather than a gap because even a replay that did get through costs at most
+ * one extra re-read of the record: a webhook here is only a trigger (see
+ * TRIGGER MODEL, #904) and nothing it carries is ever written.
  *
  * LEGACY URL TOKEN (accepted, warned about): a webhook installed before the URL
  * token was derived carries the raw secret as `?token=`. Such a delivery is
