@@ -417,6 +417,7 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
           currency: input.currency,
           reason: input.reason,
           ...noteBody(input.note),
+          ...(input.acknowledgeAboveCeiling === true ? { acknowledgeAboveCeiling: true } : {}),
         }),
       });
       return parseConfirmReturnRefundResult(raw);

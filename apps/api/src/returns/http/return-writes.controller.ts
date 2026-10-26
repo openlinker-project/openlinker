@@ -43,6 +43,7 @@
  * @module apps/api/src/returns/http
  */
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -51,12 +52,15 @@ import {
   Inject,
   Param,
   Post,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  RefundAmountPrecisionException,
   RefundCeilingExceededException,
+  RefundRecordContendedException,
   type IOrderRecordService,
   type IOrderRefundService,
   type RefundCeilingContext,
@@ -418,6 +422,39 @@ export class ReturnWritesController {
     @Body() dto: ConfirmReturnRefundDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConfirmReturnRefundResponseDto> {
+    // B-1: one lock per ORDER around context read, ceiling check, money claim
+    // AND the record write, so a second return of the same order cannot read the
+    // ceiling before this one's record exists.
+    const orderId = await this.resolveReturnOrderId(returnId);
+    const run = (orderLockHeld: boolean): Promise<ConfirmReturnRefundResponseDto> =>
+      this.confirmRefundLocked(returnId, dto, user, orderLockHeld);
+    try {
+      if (orderId === null) {
+        return await run(false);
+      }
+      return await this.orderRefunds.runUnderOrderRefundLock(orderId, () => run(true));
+    } catch (error) {
+      if (error instanceof RefundRecordContendedException) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'Conflict',
+          code: error.code,
+          message: error.message,
+        });
+      }
+      if (error instanceof RefundAmountPrecisionException) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async confirmRefundLocked(
+    returnId: string,
+    dto: ConfirmReturnRefundDto,
+    user: AuthenticatedUser,
+    orderLockHeld: boolean
+  ): Promise<ConfirmReturnRefundResponseDto> {
     const refundCeilingContext = await this.resolveRefundCeilingContext(returnId);
     const acknowledgeAboveCeiling = dto.acknowledgeAboveCeiling === true;
 
@@ -493,7 +530,7 @@ export class ReturnWritesController {
         // lines (the first attempt's are no longer attemptable), so a legitimate
         // partial refund still gets its own key.
         idempotencyKey: `return:${intent.returnId}:${[...result.claimedLineIds].sort().join('+')}`,
-      });
+      }, { orderLockHeld });
 
       return {
         ...base,
@@ -668,11 +705,36 @@ export class ReturnWritesController {
     };
   }
 
+  /** The return's order id, or `null` (unknown return / orphan; the service refuses those). */
+  private async resolveReturnOrderId(returnId: string): Promise<string | null> {
+    try {
+      const record = await this.returns.getReturn(returnId);
+      return record?.internalOrderId ?? null;
+    } catch (error) {
+      throw this.ceilingUnavailable(returnId, error);
+    }
+  }
+
+  private ceilingUnavailable(returnId: string, error: unknown): ServiceUnavailableException {
+    this.logger.warn(
+      `Could not resolve the refund ceiling context for return ${returnId}: ` +
+        `${error instanceof Error ? error.message : String(error)}`
+    );
+    return new ServiceUnavailableException({
+      statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+      error: 'Service Unavailable',
+      code: 'refund_ceiling_unavailable',
+      message:
+        'The refund ceiling could not be checked right now, so no refund was recorded. Retry in a moment.',
+    });
+  }
+
   /**
    * The order's total and prior refunds for the ceiling check (#3289), resolved
-   * here because `returns` takes no module edge to `orders`. Best-effort: any
-   * failure or an orphan yields `null` (ceiling unknown, warn-logged by the
-   * service) - the orphan refusal itself is the service's, and comes first.
+   * here because `returns` takes no module edge to `orders`. A READ FAILURE
+   * refuses (503 `refund_ceiling_unavailable`, B-2) before any money moves; a
+   * genuinely unknown ceiling (missing total or currency) is the service's
+   * `unknown` verdict and still proceeds.
    */
   private async resolveRefundCeilingContext(returnId: string): Promise<RefundCeilingContext | null> {
     try {
@@ -698,11 +760,7 @@ export class ReturnWritesController {
         alreadyRefunded: summaries.get(orderId) ?? null,
       };
     } catch (error) {
-      this.logger.warn(
-        `Could not resolve the refund ceiling context for return ${returnId}: ` +
-          `${error instanceof Error ? error.message : String(error)}`
-      );
-      return null;
+      throw this.ceilingUnavailable(returnId, error);
     }
   }
 }

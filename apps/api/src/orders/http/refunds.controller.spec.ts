@@ -32,6 +32,7 @@ describe('RefundsController', () => {
   beforeEach(async () => {
     const mockRefundService: jest.Mocked<IOrderRefundService> = {
       recordRefund: jest.fn(),
+      runUnderOrderRefundLock: jest.fn(),
       getRefundsForOrder: jest.fn(),
       getRefundsForReturn: jest.fn(),
       getRefundSummariesForOrders: jest.fn(),

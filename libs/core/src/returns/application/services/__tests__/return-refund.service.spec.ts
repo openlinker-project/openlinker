@@ -246,6 +246,14 @@ describe('ReturnRefundService', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('refund_ceiling_unknown'));
     });
 
+    it('should refuse an amount with more decimals than the currency allows before anything is claimed (R-18)', async () => {
+      await expect(
+        service.triggerRefund(RETURN_ID, { ...INPUT, amount: '5.123', currency: 'PLN' })
+      ).rejects.toMatchObject({ code: 'refund_amount_precision' });
+
+      expect(repository.claimRefundAttempt).not.toHaveBeenCalled();
+    });
+
     it('should report a within verdict when the refund fits', async () => {
       const result = await service.triggerRefund(RETURN_ID, {
         ...INPUT,

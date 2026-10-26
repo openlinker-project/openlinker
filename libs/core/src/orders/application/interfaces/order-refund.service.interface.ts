@@ -11,8 +11,26 @@
 import type { RefundRecord } from '../../domain/entities/refund-record.entity';
 import type { CreateRefundRecordInput, RefundSummary } from '../../domain/types/refund-record.types';
 
+export interface RecordRefundOptions {
+  /**
+   * The caller already holds the per-order refund lock (via
+   * {@link IOrderRefundService.runUnderOrderRefundLock}), so `recordRefund` must
+   * not acquire it again - the lock is not re-entrant.
+   */
+  orderLockHeld?: boolean;
+}
+
 export interface IOrderRefundService {
-  recordRefund(input: CreateRefundRecordInput): Promise<RefundRecord>;
+  recordRefund(input: CreateRefundRecordInput, options?: RecordRefundOptions): Promise<RefundRecord>;
+
+  /**
+   * Run `work` while holding the per-order refund lock (#3289, B-1). For callers
+   * whose ceiling check and its matching record write are separated by money
+   * moving (the returns confirm flow): holding the lock across both is what
+   * makes "two concurrent refunds of one order cannot both pass" true.
+   * Throws `RefundRecordContendedException` when the lock is taken.
+   */
+  runUnderOrderRefundLock<T>(internalOrderId: string, work: () => Promise<T>): Promise<T>;
   getRefundsForOrder(internalOrderId: string): Promise<RefundRecord[]>;
 
   /**

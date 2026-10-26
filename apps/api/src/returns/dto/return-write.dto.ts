@@ -40,7 +40,7 @@ import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/t
 const NOTE_MAX_LENGTH = 500;
 
 /** Decimal string, matching the `RefundRecord.amount` convention. */
-const DECIMAL_AMOUNT = /^\d{1,13}(\.\d{1,2})?$/;
+const DECIMAL_AMOUNT = /^\d{1,13}(\.\d{1,3})?$/;
 
 /** ISO 4217, 3 uppercase letters. */
 const ISO_4217 = /^[A-Z]{3}$/;
@@ -158,7 +158,7 @@ export class ConfirmReturnRefundDto {
   })
   @IsString()
   @Matches(DECIMAL_AMOUNT, {
-    message: 'amount must be a decimal string with at most two fraction digits',
+    message: 'amount must be a decimal string with at most three fraction digits (the currency limit is enforced by the service)',
   })
   amount!: string;
 

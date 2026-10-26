@@ -274,6 +274,7 @@ export { RefundExecutedByValues } from './domain/types/refund-record.types';
 // returns pre-flight and the RefundRecord write.
 export {
   evaluateRefundCeiling,
+  assertRefundAmountPrecision,
   describeRefundCeilingVerdict,
   REFUND_CEILING_EXCEEDED_CODE,
   REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
@@ -479,6 +480,7 @@ export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-re
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
 export { decideRefundCeiling } from './domain/domain-services/refund-ceiling.domain-service';
 export type { RefundCeilingDisposition } from './domain/domain-services/refund-ceiling.domain-service';
+export { RefundAmountPrecisionException } from './domain/exceptions/refund-amount-precision.exception';
 export { RefundRecordContendedException } from './domain/exceptions/refund-record-contended.exception';
 export { RefundCeilingExceededException } from './domain/exceptions/refund-ceiling-exceeded.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';

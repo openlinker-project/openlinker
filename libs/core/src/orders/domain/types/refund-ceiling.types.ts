@@ -43,6 +43,7 @@
  */
 import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 
+import { RefundAmountPrecisionException } from '../exceptions/refund-amount-precision.exception';
 import type { RefundSummary } from './refund-record.types';
 
 /** Machine-readable code both HTTP entry points answer 409 with. */
@@ -143,6 +144,19 @@ export function evaluateRefundCeiling(input: EvaluateRefundCeilingInput): Refund
   return refundedMinor + requestedMinor > ceilingMinor
     ? { status: 'exceeded', ...figures }
     : { status: 'within', ...figures };
+}
+
+/**
+ * Refuse an amount with more fraction digits than the currency allows (R-18).
+ * Validation lives here rather than in a DTO because only the service knows the
+ * currency the amount is denominated in.
+ */
+export function assertRefundAmountPrecision(amount: string, currency: string): void {
+  const allowed = minorUnitExponentFor(currency.trim().toUpperCase());
+  const fraction = amount.trim().split('.')[1] ?? '';
+  if (fraction.length > allowed) {
+    throw new RefundAmountPrecisionException(amount, currency.trim().toUpperCase(), allowed);
+  }
 }
 
 /** One sentence naming every figure, shared by the refusal and the warn logs. */
