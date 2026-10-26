@@ -15,7 +15,6 @@ import {
   mapShoperProductGallery,
   mapShoperStockToVariant,
   parseShoperNumber,
-  partitionShoperStocks,
   pickShoperTranslation,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
@@ -342,26 +341,6 @@ describe('mapShoperStockToVariant attributes', () => {
 
   it('should default to null attributes', () => {
     expect(mapShoperStockToVariant(LIVE_VARIANT_STOCKS[0], 'p', MAP_CONTEXT).attributes).toBeNull();
-  });
-});
-
-describe('partitionShoperStocks', () => {
-  it('should keep every row of a simple product and report no base row', () => {
-    const stocks = [buildStock({ stock_id: '181', options: [] })];
-    expect(partitionShoperStocks(stocks)).toEqual({ variants: stocks, base: null });
-  });
-
-  it('should drop the live base row of a product with options and keep it as the base', () => {
-    const { variants, base } = partitionShoperStocks(LIVE_VARIANT_STOCKS);
-    expect(variants.map((s) => s.stock_id)).toEqual(['217', '218']);
-    expect(base?.stock_id).toBe('215');
-  });
-
-  it('should keep a row with malformed options as a variant, never as the base', () => {
-    const malformed = buildStock({ stock_id: '300', default: '0', options: ['x'] as unknown as [] });
-    const { variants, base } = partitionShoperStocks([buildStock({ stock_id: '299' }), malformed]);
-    expect(variants.map((s) => s.stock_id)).toEqual(['300']);
-    expect(base?.stock_id).toBe('299');
   });
 });
 

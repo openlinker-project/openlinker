@@ -188,39 +188,6 @@ function weightInKilograms(raw: string | null, unit: string): number | undefined
   return unit === KILOGRAM ? parseShoperNumber(raw) : undefined;
 }
 
-/**
- * A product's stock rows split into what is sold and the row it is derived from.
- *
- * Every Shoper product has a base row (`options: []`). A product WITH variants
- * also has one row per option combination, and its base row is then not
- * something a buyer can pick: counting it as a variant added a phantom variant
- * and doubled the product's stock (live: S 5 + M 5 + L 5 reported as 30). So when
- * any row carries options, only those rows are variants, and the base row is
- * kept aside because variant prices and weights are stated relative to it.
- *
- * A row whose options are malformed still counts as an option row: it is not
- * the base row, and dropping it would hide a real variant.
- */
-export interface ShoperStockPartition {
-  readonly variants: readonly ShoperStock[];
-  /** The base row of a product that has option rows; `null` for a simple product. */
-  readonly base: ShoperStock | null;
-}
-
-export function partitionShoperStocks(stocks: readonly ShoperStock[]): ShoperStockPartition {
-  const isBase = (stock: ShoperStock): boolean => {
-    const pairs = shoperStockOptionPairs(stock.options);
-    return pairs !== 'malformed' && pairs.length === 0;
-  };
-  const optionRows = stocks.filter((stock) => !isBase(stock));
-  if (optionRows.length === 0) {
-    return { variants: stocks, base: null };
-  }
-  const baseRows = stocks.filter(isBase);
-  const base = baseRows.find((stock) => String(stock.default) === '1') ?? baseRows[0] ?? null;
-  return { variants: optionRows, base };
-}
-
 /** Shoper's `PRICE_TYPE_*` / `WEIGHT_TYPE_*` codes (identical for both fields). */
 const RELATIVE_KEEP = '0';
 const RELATIVE_OWN = '1';

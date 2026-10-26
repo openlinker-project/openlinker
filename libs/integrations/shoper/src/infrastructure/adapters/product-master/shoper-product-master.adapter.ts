@@ -13,9 +13,11 @@
  * stock rows in a few requests (see `prefetchProducts`).
  *
  * Variant model (SPIKE-3638 M1): `products` is the header and `product-stocks`
- * is the variant grain, so each stock row is one `ProductVariant` keyed by its
- * real `stock_id`. Unlike PrestaShop / WooCommerce, no synthetic variant is
- * minted for a simple product - Shoper already gives it a stock row and id.
+ * is the variant grain, so each SELLABLE stock row is one `ProductVariant` keyed
+ * by its real `stock_id`: the extended rows of a product that has variants, or
+ * the base row of one that has none (`selectSellableShoperStocks`). Unlike
+ * PrestaShop / WooCommerce, no synthetic variant is minted for a simple product
+ * - Shoper already gives it a stock row and id.
  *
  * Id handling mirrors `WooCommerceProductMasterAdapter`: methods taking a
  * product id take the INTERNAL one and resolve the Shoper id through the
@@ -67,6 +69,7 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 
 import { ShoperNotSupportedException } from '../../../domain/exceptions/shoper-not-supported.exception';
+import { partitionSellableShoperStocks } from '../../../domain/policies/shoper-sellable-stocks.policy';
 import type {
   ShoperProduct,
   ShoperProductImage,
@@ -92,7 +95,6 @@ import {
 import {
   mapShoperProduct,
   mapShoperStockToVariant,
-  partitionShoperStocks,
   resolveShoperVariantAttributes,
   shoperStockOptionPairs,
 } from '../../mappers/shoper-product.mapper';
@@ -363,7 +365,9 @@ export class ShoperProductMasterAdapter
     const ctx = await this.shopContext.get();
     // A product with variants also has a base row nobody can buy; it is left
     // out, and kept only to resolve prices and weights stated relative to it.
-    const { variants: stocks, base } = partitionShoperStocks(await this.fetchAllStocks(externalId));
+    const { variants: stocks, base } = partitionSellableShoperStocks(
+      await this.fetchAllStocks(externalId),
+    );
     if (stocks.length === 0) {
       return [];
     }

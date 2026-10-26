@@ -1059,8 +1059,8 @@ describe('ShoperProductMasterAdapter', () => {
       expect(variants.every((v) => v.productId === 'ol_product_1')).toBe(true);
     });
 
-    it('should map the live multi-variant product options to attributes and leave out its base row', async () => {
-      const { adapter, get } = setup();
+    it('should map the live multi-variant product options to attributes, leaving its base stock out', async () => {
+      const { adapter, get, mapping } = setup();
       respond(get, {
         '/product-stocks': envelope(LIVE_STOCKS_OF_PRODUCT_93),
         '/options/10': LIVE_OPTION_COLOUR,
@@ -1069,11 +1069,15 @@ describe('ShoperProductMasterAdapter', () => {
 
       const variants = await adapter.getProductVariants('ol_product_1');
 
-      // Stock 215 is the base row (`options: []`): no buyer can pick it, so it
-      // is not a variant (it used to add a phantom variant and double the stock).
+      // Base stock 215 is the template the buyer cannot order once the product
+      // has variants: it gets no variant, and no id is minted for it.
       expect(variants.map((v) => [v.id, v.attributes])).toEqual([
         ['ol_217', { Kolor: 'biszkoptowy' }],
         ['ol_218', { Kolor: 'Shoper blue' }],
+      ]);
+      expect(mapping.batchGetOrCreateInternalIds).toHaveBeenCalledWith([
+        expect.objectContaining({ externalId: '217' }),
+        expect.objectContaining({ externalId: '218' }),
       ]);
       // One option is read once for both siblings that use it.
       expect(get.mock.calls.filter(([path]) => path === '/options/10')).toHaveLength(1);
@@ -1125,6 +1129,17 @@ describe('ShoperProductMasterAdapter', () => {
       });
 
       await expect(adapter.getProductVariants('ol_product_1')).rejects.toThrow('connection reset');
+    });
+
+    it('should keep the base stock as the variant of a product with no variant stocks', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/product-stocks': envelope([buildStock({ stock_id: '271', extended: '0', options: [] })]),
+      });
+
+      const variants = await adapter.getProductVariants('ol_product_1');
+
+      expect(variants.map((v) => [v.id, v.attributes])).toEqual([['ol_271', null]]);
     });
 
     it('should not mint a synthetic variant for a simple product', async () => {

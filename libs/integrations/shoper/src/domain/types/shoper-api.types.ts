@@ -108,6 +108,12 @@ export interface ShoperStock {
   readonly weight_type?: string | null;
   /** Variant option values; see {@link ShoperStockOptions}. */
   readonly options: ShoperStockOptions;
+  /**
+   * `"1"` on a variant stock, `"0"` on the product's base stock (verified live,
+   * products 127 and 161). Optional because fixtures captured before it was
+   * read omit it; see `selectSellableShoperStocks` for what it decides.
+   */
+  readonly extended?: string | number | null;
 }
 
 /**
