@@ -1,12 +1,16 @@
 /**
  * Invoicing Issue Handler (OL #1120)
  *
- * Handles `invoicing.issue` sync jobs — a PURE delegate to `IInvoiceService`.
+ * Handles `invoicing.issue` sync jobs — very nearly a pure delegate to
+ * `IInvoiceService`, with ONE deliberate exception noted below.
  * The policy service (`AutoIssueTriggerService`) has already composed the
  * issuance command into the job payload, so this handler:
  *  1. Casts + DEEP-validates the payload (F5).
  *  2. Reconstructs `new BuyerProfile(...)` from the PLAIN payload buyer (#12).
- *  3. Calls `invoiceService.issueInvoice(command)` with the command idempotency
+ *  3. Re-checks the order's LIVE status via `IOrderRecordService` (#1596) —
+ *     the payload was snapshotted at trigger time and can be stale by the time
+ *     this job runs; a cancelled/refunded order must never clear an invoice.
+ *  4. Calls `invoiceService.issueInvoice(command)` with the command idempotency
  *     key equal to `payload.idempotencyKey` (the SAME string as the job row, F4).
  *
  * PII DISCIPLINE (F-validate-PII / D11): the payload carries real buyer PII.
@@ -20,6 +24,21 @@
  *    THROW (retryable); the message excludes payload/buyer (only `error.name` +
  *    `orderId` / `connectionId`).
  *
+ * THE ONE THING THIS HANDLER DOES BESIDES DELEGATE (Z3). After a successful
+ * issuance it asks for a post-document master stock re-read. On a master where
+ * the DOCUMENT moves stock — Subiekt, whose FS/PA carries the warehouse release
+ * — the refresh `OrderSyncService` fires at order-create time runs BEFORE the
+ * sale is recorded and therefore reads the pre-sale quantity; measured at 5.1 s
+ * early, and unrepeatable because that key is order-scoped. This is the only
+ * point that both knows the document committed and still holds the payload.
+ *
+ * It lives here rather than in `InvoiceService` on purpose: doing it there
+ * would mean injecting the job queue, identifier mapping and the integrations
+ * registry into `InvoicingModule` — a new invoicing→inventory edge and three
+ * new throw sites on the fiscal-safety-critical write path, whose whole premise
+ * is that nothing may disturb a committed document. Here it is wrapped so it
+ * can never change the outcome.
+ *
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
@@ -31,6 +50,10 @@ import type {
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import {
+  POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
+  type IPostSaleInventoryRefreshService,
+} from '@openlinker/core/inventory';
+import {
   IInvoiceService,
   INVOICE_SERVICE_TOKEN,
   BuyerProfile,
@@ -40,6 +63,13 @@ import {
 } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
 import { isTaxRateEra } from '@openlinker/core/sales-documents';
+import { readLiveOrderIssuanceDecision } from './live-order-issuance';
+import {
+  IOrderRecordService,
+  IOrderRefundService,
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -57,6 +87,12 @@ export class InvoicingIssueHandler implements SyncJobHandler {
   constructor(
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoiceService: IInvoiceService,
+    @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
+    private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -72,10 +108,43 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     const command = this.toCommand(payload);
 
     try {
+      // #1596: re-check the order's LIVE status immediately before issuing. This
+      // read sits INSIDE the retryable try so a transient repository failure is
+      // wrapped as a retryable SyncJobExecutionError (fail-closed — never issue
+      // on an unresolved read), consistent with the file's two documented
+      // failure paths rather than propagating raw. Mirrors the #938
+      // shipping-dispatch live re-check (ShipmentDispatchService): an
+      // absent/unknown live status (record null, or an unrecognised status)
+      // falls through to normal issuance — graceful degradation for sources that
+      // don't report status — this gate only BLOCKS on a positively-confirmed
+      // cancelled/refunded status (a terminal business_failure, not a retry).
+      // DEF-26: one gate for every issuing path (`decideLiveOrderIssuance`).
+      // `cancelledAt` (#1984) and the recorded refund amounts decide; a partial
+      // refund is still a sale to document.
+      const decision = await readLiveOrderIssuanceDecision(
+        this.orderRecords,
+        this.orderRefunds,
+        payload.orderId,
+      );
+      if (decision.kind === 'block') {
+        this.logger.warn(
+          `invoicing.issue skipped: ${decision.reason} orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+      if (decision.kind === 'allow-with-attention') {
+        this.logger.log(`invoicing.issue proceeds with attention: ${decision.attention} orderId=${payload.orderId}`);
+      }
+
       // F4: command idempotencyKey === payload.idempotencyKey === job row key.
       // The service's `issued`-only exactly-once gate makes duplicate events /
-      // retries a no-op against the same key.
-      await this.invoiceService.issueInvoice(command);
+      // retries a no-op against the same PROVIDER call. It does NOT make the
+      // returned record `issued` - see the gate below, which is what the
+      // refresh actually keys on.
+      const record = await this.invoiceService.issueInvoice(command);
+      if (record.status === 'issued') {
+        await this.refreshMasterStockAfterDocument(record.id, payload);
+      }
       return { outcome: 'ok' };
     } catch (error) {
       // #2047: the order is already invoiced on ANOTHER connection. A retry can
@@ -132,6 +201,55 @@ export class InvoicingIssueHandler implements SyncJobHandler {
   }
 
   /**
+   * Ask for a master stock re-read now that the document — and with it, on a
+   * document-moves-stock master, the warehouse release — has committed.
+   *
+   * Keyed on the INVOICE RECORD, which makes it a genuinely distinct event
+   * from the order-scoped refresh and therefore fires exactly once more. A
+   * retried `invoicing.issue` resolves to the same record through the
+   * exactly-once gate, hence the same key, hence no re-enqueue; a correction
+   * is a new record and legitimately earns one more. The upper bound is the
+   * number of documents issued against the order.
+   *
+   * CALLED ONLY FOR AN `issued` RECORD, which the caller gates on, for the
+   * reason its fiscal-receipt sibling states in as many words
+   * (`fiscalization-register.handler.ts`): `issueInvoice` returns WITHOUT
+   * throwing when a live in-flight lease is found, and again when an in-doubt
+   * `failed` record is surfaced for manual reconciliation
+   * (`InvoiceService.resumeExisting`). Both reuse the SAME record id. An
+   * ungated call would therefore spend `invoice:{id}` on an attempt that moved
+   * no stock, and `sync_jobs.idempotencyKey` is globally unique and TTL-less -
+   * so the later SUCCESSFUL issuance re-derives that consumed key, enqueues
+   * nothing, and the channels keep publishing the pre-sale quantity until the
+   * next scheduled sweep. Nothing is lost on the gated-out branches: no stock
+   * moved, so there is nothing to re-read.
+   *
+   * NEVER throws and never changes the job outcome: the document is already
+   * committed fiscal state, and a queue hiccup must not turn a successful
+   * issuance into a retry that would re-enter the issuance path.
+   */
+  private async refreshMasterStockAfterDocument(
+    invoiceRecordId: string,
+    payload: InvoicingIssuePayloadV1,
+  ): Promise<void> {
+    try {
+      await this.postSaleInventoryRefresh.enqueue({
+        // Shipping and manual lines carry no product and are simply absent.
+        productIds: payload.lines
+          .map((line) => line.productId)
+          .filter((id): id is string => typeof id === 'string' && id !== ''),
+        keyScope: `invoice:${invoiceRecordId}`,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `post-document master inventory refresh could not be enqueued for orderId=${payload.orderId} ` +
+          `(invoice ${invoiceRecordId}): ${error instanceof Error ? error.name : 'unknown error'}. ` +
+          `The scheduled inventory sweep remains the backstop.`,
+      );
+    }
+  }
+
+  /**
    * DEEP payload validation (F5). Returns the typed payload on success; returns
    * `null` to signal a `business_failure` outcome on ANY violation:
    *  - `schemaVersion === 1`;
@@ -140,7 +258,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
    *    finite number `> 0` and `unitPriceGross` a finite number `>= 0`;
    *  - `buyer.type ∈ BuyerTypeValues`; `buyer.name` non-empty; `buyer.address`
    *    present with required string fields; `buyer.taxId` `null` OR
-   *    `{ scheme, value }` with both non-empty; `buyer.email` (#1797) absent
+   *    `{ value }` with `value` non-empty and `scheme` OPTIONAL (#3224 - core
+   *    hands the number over untagged); `buyer.email` (#1797) absent
    *    (pre-existing payload), `null`, OR a `string` — never any other type.
    *
    * PII: on violation logs ONLY the failed field name(s) + `orderId` /
@@ -165,6 +284,12 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     if (!isNonEmptyString(p.currency)) return fail('currency');
     // Optional additive field (#1525): validated only when present.
     if (p.saleDate !== undefined && !isNonEmptyString(p.saleDate)) return fail('saleDate');
+    if (
+      p.saleInstant !== undefined &&
+      (!isNonEmptyString(p.saleInstant) || Number.isNaN(Date.parse(p.saleInstant)))
+    ) {
+      return fail('saleInstant');
+    }
     // Optional additive field (#1694): validated only when present.
     if (p.source !== undefined && !isNonEmptyString(p.source)) return fail('source');
 
@@ -193,7 +318,19 @@ export class InvoicingIssueHandler implements SyncJobHandler {
 
     if (buyer.taxId !== null) {
       if (!buyer.taxId || typeof buyer.taxId !== 'object') return fail('buyer.taxId');
-      if (!isNonEmptyString(buyer.taxId.scheme)) return fail('buyer.taxId.scheme');
+      // `scheme` is OPTIONAL (#3224, ADR-073 decision 1): the order stores a
+      // bare tax number and core hands it over UNTAGGED, because minting a tag
+      // would make `libs/core` name a country's identifier system - "an adapter
+      // needing a tag supplies it". Requiring it here rejected every
+      // auto-issued B2B invoice as a terminal `business_failure`, i.e. NO
+      // document at all rather than the untagged one the epic exists to send -
+      // strictly worse than the defective invoice #3224 replaced.
+      //
+      // Present-but-wrong-shaped is still refused, the same way `buyer.email`
+      // (#1797) distinguishes absent from malformed.
+      if (buyer.taxId.scheme !== undefined && !isNonEmptyString(buyer.taxId.scheme)) {
+        return fail('buyer.taxId.scheme');
+      }
       if (!isNonEmptyString(buyer.taxId.value)) return fail('buyer.taxId.value');
     }
     // Optional additive field (#1797): a payload persisted before this field
@@ -225,6 +362,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       payload.buyer.address,
       payload.buyer.type,
       payload.buyer.email ?? null,
+      payload.buyer.isPublicSectorEntity,
+      payload.buyer.isTaxGroupMember,
     );
 
     const command: IssueInvoiceCommand = {
@@ -244,6 +383,9 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     if (payload.saleDate !== undefined) {
       command.saleDate = payload.saleDate;
     }
+    if (payload.saleInstant !== undefined) {
+      command.saleInstant = new Date(payload.saleInstant);
+    }
     // #1694: thread the order-origin onto the command's `source` numbering axis.
     if (payload.source !== undefined) {
       command.source = payload.source;
@@ -254,6 +396,13 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     // era" (i.e. the guard applies) instead of silently exempting the order.
     if (isTaxRateEra(payload.taxRateEra)) {
       command.taxRateEra = payload.taxRateEra;
+    }
+    // #3188: the three-state buyer tax identity frozen onto the issued record.
+    // Carried verbatim - `''` is the asserted-none state and must not be
+    // normalised away by a truthiness test, which is why this checks the TYPE
+    // rather than using `isNonEmptyString` like the fields above.
+    if (typeof payload.buyerTaxIdAssertion === 'string') {
+      command.buyerTaxIdAssertion = payload.buyerTaxIdAssertion;
     }
 
     return command;

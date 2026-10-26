@@ -19,8 +19,10 @@ import type { ReactElement, ReactNode } from 'react';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { shortenId } from '../../../shared/ui/entity-label';
-import { SYSTEM_CONNECTION_ID, type ConnectionStatus } from '../api/connections.types';
+import type { ConnectionStatus } from '../api/connections.types';
 import { useConnectionQuery } from '../hooks/use-connection-query';
+import { isSystemConnectionId } from '../lib/connection-link-target';
+import { ConnectionChip, type ConnectionChipChannel } from './ConnectionChip';
 import { ConnectionEntityLabel } from './ConnectionEntityLabel';
 
 /** The connection facts this cell renders. A whole `Connection` satisfies it. */
@@ -58,6 +60,13 @@ export interface ConnectionCellProps {
    * same-platform shops are the operator-authored name and a shortened id.
    */
   adornment?: ReactNode;
+  /**
+   * The connection's channel, rendered TOGETHER with its name as one clickable
+   * `ConnectionChip` (#3670). Takes precedence over `adornment`: a channel pill
+   * beside a separate name link is the shape this replaces. `adornment` stays
+   * for glyphs that are not a channel (a carrier `ConnectionDot`).
+   */
+  channel?: ConnectionChipChannel;
   className?: string;
 }
 
@@ -68,6 +77,7 @@ const STATUS_NOTES: Record<Exclude<ConnectionStatus, 'active'>, string> = {
   disabled: 'Disabled',
   error: 'Error',
   needs_reauth: 'Re-auth',
+  archived: 'Archived',
 };
 
 export function ConnectionCell({
@@ -75,13 +85,15 @@ export function ConnectionCell({
   connection,
   loading: loadingProp = false,
   adornment,
+  channel,
   className = '',
 }: ConnectionCellProps): ReactElement {
   // The all-zero placeholder id (#2745) is never a real connection - line 1
-  // already renders "System" via ConnectionEntityLabel's own special case, so
-  // line 2's copyable id + status note (which describe a real connection)
-  // are suppressed rather than shown against a placeholder.
-  const isSystem = connectionId === SYSTEM_CONNECTION_ID;
+  // already renders "System" via `resolveConnectionLinkTarget` (through the
+  // chip or `ConnectionEntityLabel`), so line 2's copyable id + status note
+  // (which describe a real connection) are suppressed rather than shown
+  // against a placeholder.
+  const isSystem = isSystemConnectionId(connectionId);
   const factsSupplied = connection !== undefined || isSystem;
   const query = useConnectionQuery(connectionId, { enabled: !factsSupplied });
 
@@ -103,14 +115,25 @@ export function ConnectionCell({
     <span className={classes}>
       <span className="connection-cell__body">
         <span className="connection-cell__line">
-          {adornment ? <span className="connection-cell__adornment">{adornment}</span> : null}
-          <ConnectionEntityLabel
-            connectionId={connectionId}
-            name={resolvedName}
-            loading={loading}
-            showId={false}
-            showCopy={false}
-          />
+          {channel ? (
+            <ConnectionChip
+              connectionId={connectionId}
+              name={resolvedName}
+              loading={loading}
+              channel={channel}
+            />
+          ) : (
+            <>
+              {adornment ? <span className="connection-cell__adornment">{adornment}</span> : null}
+              <ConnectionEntityLabel
+                connectionId={connectionId}
+                name={resolvedName}
+                loading={loading}
+                showId={false}
+                showCopy={false}
+              />
+            </>
+          )}
         </span>
         {isSystem ? null : (
           <span className="connection-cell__meta">

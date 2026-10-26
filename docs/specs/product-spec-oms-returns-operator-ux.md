@@ -298,7 +298,10 @@ difference between an operator trusting the number and going to check it by hand
 > **This section is the canonical copy source for `restock_blocked`.** The Wave-2 operator-experience
 > spec's attention state **RB-L** imports these strings rather than restating them, and the copy
 > mirror check that the Wave-2 spec's S2-1 mandates covers **both** feature folders. Where any other
-> document disagrees with the strings below, this section wins.
+> document disagrees with the strings below, this section wins. That is enforced for the
+> placeholder-free emphasised strings (bold titles, `code` badges, `[button]` labels) by
+> `scripts/check-spec-owned-copy.mjs` (#2795), which compares them to the code byte for byte in
+> `pnpm check:invariants` - so editing a string here without its code, or the reverse, fails the build.
 
 When the master's `adjustInventory` refuses (PrestaShop today), the line records `restock_blocked` and
 the units stay in `quantityReceived`, **not** in `quantityRestocked`. Three surfaces, all required:

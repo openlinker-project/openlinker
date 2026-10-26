@@ -4,7 +4,7 @@
  * Maps a neutral `BuyerProfile` to the bridge-native `BridgeBuyer` (the bridge's
  * inline `BuyerDto`):
  *   - `name` 1:1
- *   - `nip` <- `taxId.value` ONLY when `taxId.scheme === 'pl-nip'`, else `null`
+ *   - `nip` <- `taxId.value` when the tax id is domestic or UNTAGGED (#3224), else `null`
  *     (a non-PL tax id must not silently force a faktura)
  *   - `isCompany` <- `buyer.type === 'company'`
  *   - `address` <- neutral `BuyerAddress` mapped onto the bridge's Polish
@@ -17,7 +17,7 @@
  */
 import type { BuyerProfile } from '@openlinker/core/invoicing';
 import type { BridgeAddress, BridgeBuyer } from '../../bridge/subiekt-bridge.types';
-import { PL_NIP_SCHEME } from './subiekt-document-type.mapper';
+import { readDomesticTaxId } from './subiekt-document-type.mapper';
 
 function toBridgeAddress(address: BuyerProfile['address']): BridgeAddress {
   return {
@@ -32,11 +32,7 @@ function toBridgeAddress(address: BuyerProfile['address']): BridgeAddress {
 }
 
 export function toBridgeBuyer(buyer: BuyerProfile): BridgeBuyer {
-  const taxId = buyer.taxId;
-  const nip =
-    taxId !== null && taxId.scheme === PL_NIP_SCHEME && taxId.value.length > 0
-      ? taxId.value
-      : null;
+  const nip = readDomesticTaxId(buyer.taxId);
 
   return {
     name: buyer.name,

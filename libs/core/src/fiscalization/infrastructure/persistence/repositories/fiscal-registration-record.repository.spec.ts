@@ -69,4 +69,25 @@ describe('FiscalRegistrationRecordRepository', () => {
       expect(records.map((record) => record.id)).toEqual(['fis-1', 'fis-2']);
     });
   });
+
+  describe('findRecentByConnectionId', () => {
+    it('reads the newest N records for one connection, capped at the given limit (#3179)', async () => {
+      ormRepository.find.mockResolvedValue([ormRow(), ormRow({ id: 'fis-2' })]);
+
+      const records = await repository.findRecentByConnectionId('conn-1', 10);
+
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: { connectionId: 'conn-1' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        take: 10,
+      });
+      expect(records.map((record) => record.id)).toEqual(['fis-1', 'fis-2']);
+    });
+
+    it('returns an empty array for a connection with no records', async () => {
+      ormRepository.find.mockResolvedValue([]);
+
+      await expect(repository.findRecentByConnectionId('conn-empty', 10)).resolves.toEqual([]);
+    });
+  });
 });

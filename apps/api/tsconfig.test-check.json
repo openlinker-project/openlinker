@@ -1,0 +1,22 @@
+{
+  // Type-checks the integration tests, which nothing else did (#3263).
+  //
+  // `tsconfig.type-check.json` excludes `test`, so the ONLY thing that ever
+  // type-checked these files was ts-jest doing it on every run - which is the
+  // 11.9 s per-file floor that change removes. Dropping the floor without
+  // adding this would mean test files are type-checked nowhere at all.
+  //
+  // Separate from `tsconfig.type-check.json` rather than a widened `include`,
+  // so the two tiers keep their own `include` and a src-tier run stays exactly
+  // what it was. `types` is deliberately NOT narrowed: restricting it to
+  // ["jest", "node"] drops `@types/multer` and the src files these tests pull
+  // in transitively then fail on `Express.Multer` - a false error about code
+  // this config is not here to check.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../../",
+    "noEmit": true
+  },
+  "include": ["test/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

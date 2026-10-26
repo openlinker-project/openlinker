@@ -18,11 +18,11 @@
  * needed the first to give up — the write-path conflict guard genuinely
  * needs a database — but nothing in this concern injects `IIntegrationsService`,
  * `IOrdersService`, or any other `@openlinker/core/<sibling>` token; the one
- * connection-capability check the mockup describes ("a rule pointing
- * `Invoice → eparagony.pl` is rejected because eparagony.pl carries no
- * `Invoicing` capability") is deliberately done at the API layer
- * (`apps/api/src/sales-documents/`), which already has that token in scope,
- * rather than injected here. `libs/core/src/__tests__/barrel-purity.spec.ts`
+ * connection-capability check the mockup describes ("a rule pointing an
+ * invoice-kind document at a connection is rejected because that connection's
+ * adapter carries no `Invoicing` capability") is deliberately done at the API
+ * layer (`apps/api/src/sales-documents/`), which already has that token in
+ * scope, rather than injected here. `libs/core/src/__tests__/barrel-purity.spec.ts`
  * now enforces the NARROWER property: no VALUE or (non-exempt) TYPE-ONLY
  * import from a `@openlinker/core/<ctx>` specifier anywhere under this
  * directory, while `@nestjs/*` / `typeorm` / `node:crypto` imports are
@@ -50,6 +50,7 @@ export * from './domain/types/sales-document-decision.types';
 export * from './domain/types/sales-document-condition.types';
 export * from './domain/types/sales-document-order-facts.types';
 export * from './domain/types/sales-document-rule-write.types';
+export * from './domain/types/sales-document-dry-run.types';
 export * from './domain/types/sales-document-country-summary.types';
 export * from './domain/types/sales-document-market-discovery.types';
 export * from './domain/types/sales-document-view.types';
@@ -57,6 +58,8 @@ export * from './domain/ports/capabilities/self-routing-document-kind.capability
 export * from './domain/domain-services/resolve-sales-document-routing';
 export * from './domain/domain-services/evaluate-sales-document-rules';
 export * from './domain/domain-services/choose-sales-document-decision';
+export * from './domain/domain-services/detect-sales-document-rule-overlap';
+export * from './domain/domain-services/expand-sales-document-routing-candidates';
 export { SalesDocumentRule } from './domain/entities/sales-document-rule.entity';
 export { SalesDocumentCountryDefault } from './domain/entities/sales-document-country-default.entity';
 export { SalesDocumentThreshold } from './domain/entities/sales-document-threshold.entity';
@@ -76,11 +79,13 @@ export * from './sales-documents.tokens';
 // #2252). Lives here because BOTH document contexts consume it and a fiscal
 // receipt is not an invoice - the same reason the reason vocabularies do.
 export * from './domain/types/shipping-tax-split.types';
+export * from './domain/types/line-total-mismatch.types';
 // The per-line tax-rate enforcement switch and the pre-rollout era marker
 // (#2245 review, ADR-063 § Consequences). Here for the same reason the shipping
 // split is: both document contexts and both channel adapters need one answer,
 // and this leaf imports nothing so any of them can value-import it.
 export * from './domain/types/tax-rate-enforcement.types';
+export * from './domain/types/live-order-issuance-gate.types';
 // The readable in-flight signal (#2521, ADR-042 amendment #2502 decision 2).
 // Here for the same reason the two vocabularies above are: a per-order surface
 // covering both kinds must not branch on which context answered, and a fiscal

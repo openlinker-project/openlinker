@@ -23,6 +23,406 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## Never route a one-field change through a full-upsert port
+
+**Context**: price-change propagation to a WooCommerce shop (#3144) reused
+`ShopProductManagerPort.publishProduct`, because the port had no narrower write.
+
+**Problem**: `publishProduct` is a full upsert. The WooCommerce body always sends
+`manage_stock: true` + `stock_quantity`, and name / description whenever content
+is present, so every price change overwrote the shop's stock (and switched stock
+management on for products the shop did not manage), and its title and
+description whenever no earlier publish snapshot existed. Reusing the last
+snapshot and wrapping the call in the stock lock made the write *consistent*,
+not *narrow* — it still wrote fields nobody asked to change. The e2e run caught
+it only because stock 30 came back as OL's number (G01-10).
+
+**Rule**: a change to one field needs a write that carries only that field. If
+the port has none, add an optional sub-capability with a type guard
+(`ShopProductPriceUpdater`) and fall back to the full write only for adapters
+that lack it. Assert the adapter body with `toEqual` on the exact object, so a
+field sneaking back in fails the spec.
+
+**Applies to**: `libs/core/src/listings/application/services/price-change-apply.service.ts`,
+any shop/marketplace adapter `publishProduct`-style upsert.
+
+**Source**: #3505 (G01-10), 2026-10-01.
+
+---
+
+## `position: sticky` inside `.shell-content` never engages - `overflow-x: hidden` made the shell a scroll container that does not scroll
+
+**Context**: the sync-pacing summary rail had to stay in view while the form beside it scrolls
+(#3631 follow-up).
+
+**Problem**: `.shell-content` sets `overflow-x: hidden`, and CSS Overflow 3 computes the other axis
+of a `hidden`/`visible` pair to `auto`, so the shell is a scroll container in both axes. A sticky
+descendant resolves against its NEAREST scroll container - the shell - but the DOCUMENT is what
+scrolls, so the sticky offset never applies and the element just scrolls away. Every sticky rule
+inside the shell is dormant this way (bulk-action bar, numbering-editor preview, bench rail, ...),
+and nothing fails: the rule is valid, the computed `position` reads `sticky`, and happy-dom has
+no layout to notice.
+
+**Rule**: to make one page's element sticky, scope `overflow-x: clip` to that page
+(`.shell-content:has(.<page-root>)`) - `clip` cuts horizontal overflow exactly like `hidden` but
+is not a scroll container. Do not flip the shell globally as a drive-by: it wakes every dormant
+sticky rule at once, and some (a `top: var(--space-5)` preview) would then slide under the 52 px
+topbar. Prove stickiness in a real browser by scrolling and reading `getBoundingClientRect().top`
+before and after.
+
+**Applies to**: `apps/web/src/index.css` (`.shell-content`), any page wanting a sticky rail, bar or
+header inside the app shell.
+
+**Source**: #3631 (sync-pacing summary rail), 2026-10-04.
+
+---
+
+## A single-class modifier loses to the global `input[type=...]` rule, and a `--modifier` class without its base class styles nothing
+
+**Context**: the sync-pacing settings page (#2653 / #2946) shipped a slider + number box per
+value, laid out with `workspace-grid--primary` and a `control--narrow` number box.
+
+**Problem**: the reviewer saw a full-width text box with the slider's thumb squeezed to its left
+edge, and the calculator column stacked UNDER the form at 1440 px. Two CSS facts, neither visible
+in a unit test: `input[type='number'] { width: 100% }` in the form-control block has specificity
+(0,1,1) and beats any single class such as `.control--narrow` (0,1,0), so the number box took the
+whole row; and `.workspace-grid--primary` only sets `grid-template-columns` — `display: grid`
+lives on `.workspace-grid`, which the page never applied, so the two-column layout never existed.
+
+**Rule**: a class meant to size or restyle a native `<input type="number|text|…">` needs two
+classes of specificity (e.g. `.range-number__box .range-number__input`), and a BEM modifier is
+applied together with its base class or not at all. Neither failure shows in happy-dom, so a page
+whose layout is the point gets a real-browser screenshot at 1440 and 390 before review.
+
+**Applies to**: `apps/web/src/index.css`; any page composing grid / control modifiers.
+
+**Source**: #3631 (sync-pacing rework), 2026-10-04.
+
+---
+
+## Compare a screen with its mockup by computed box model, not by the text it renders
+
+**Context**: the fulfilment task detail (#3096) shipped with every sentence of
+its mockup on screen, and every class-presence and copy test green.
+
+**Problem**: the mockup draws each section as a CARD — a `--border-default`
+border, `--radius-lg`, 20 x 24 px of padding, `--shadow-xs`, 22 px between
+cards — and the page rendered the same sections as flat blocks on the page
+background with a 24 px bottom margin. Nothing a text query, a snapshot of
+class names or a copy audit checks could see the difference; a reviewer
+looking at both side by side called the page "a sketch". The same review
+found facts in five columns where the mockup has two, 28 px buttons where it
+has 32 px, and a UUID in the Delivery row — all invisible to the tests,
+because the tests asserted presence.
+
+**Rule**: when a screen has a committed mockup, assert the box model the
+mockup is drawn with — the declarations on the card, the grid tracks, the
+control heights — either in a stylesheet test against the rule bodies
+(`fulfilment-work-detail-styles.test.ts` § "the mockup box model") or by
+measuring computed style on both renders at the same viewport. Build the card
+as a shared primitive (`DetailSection`) the first time a second page needs it,
+so the next page cannot re-derive it flatter.
+
+**Applies to**: any page implemented from `docs/plans/mockups/*`; detail pages
+especially.
+
+**Source**: #3096 review (epic #3096 UI rework, 2026-10-01).
+
+---
+
+## In a container that turns into a column, a flex-basis is a height
+
+**Context**: the fulfilment board's filter inputs (#3096) sat in `.toolbar`,
+which switches to `flex-direction: column` below 900 px, with
+`.assign-packing-work-filters > * { flex: 0 1 20rem }` written for the row.
+
+**Problem**: in a column the main axis is vertical, so `flex-basis: 20rem`
+became the inputs' HEIGHT — 324 x 320 px squares on a phone, overriding the
+control's own `height: 2rem`. The same board's metric cards had
+`height: 100%` inside a wrapped flex row; on the wrapped lines the percentage
+resolved against the row track and the cards overlapped the lanes below.
+Both rules were correct at the width they were written at.
+
+**Rule**: size a control in a direction-switching container with `width` (and
+`flex: none`), never with a `flex-basis` meant for one axis; and lay out a
+wrapping row of cards on grid tracks (`.kpi-grid`,
+`repeat(auto-fit, minmax(160px, 1fr))`) rather than a wrapped flex line with
+`height: 100%` children. When a media block overrides a rule, put it AFTER the
+base rule — an earlier block loses on source order at equal specificity (the
+board's phone row stayed `nowrap` for exactly that reason).
+
+**Applies to**: `apps/web/src/index.css`, any toolbar, filter bar or metric row
+that reflows on mobile.
+
+**Source**: #3096 review (board mobile defects M1–M2).
+
+---
+
+## `triggerAndWait` on a SWEEP waits for the fan-out, not for the work
+
+**Context**: an e2e asserting that a Subiekt model product carries the VAT rate
+its members agree on (#3365). The spec triggered `master.product.syncAll` via
+`jobs.triggerAndWait`, then read the product.
+
+**Problem**: it failed with "the model-key branch is not resolving" against a
+branch that was resolving perfectly - the rate landed about ninety seconds
+later. A budgeted sweep's job is to ENQUEUE children (#2218/#2593); the
+per-product syncs that actually read the rate drain afterwards, behind whatever
+the stack already had queued. `triggerAndWait` returns when the PARENT
+succeeds, and the parent succeeding means the children were enqueued. The
+failure message named the wrong culprit with total confidence, which is the
+expensive part: ten minutes went into reading an adapter that was correct.
+
+**Rule**: after triggering a sweep, POLL for the effect rather than reading it
+once. Key the poll on the marker that says the work HAPPENED (a `*ReadAt`
+column, a status transition) rather than on the value, so an honest "the master
+answered and named nothing" ends the poll instead of spinning it out. This
+applies to every `master.*.syncAll`, `master.product.reconcile` and
+`*.statusSync` trigger - anything whose handler fans out.
+
+**Applies to**: `apps/e2e/**` specs that call `SyncJobs.triggerAndWait` with a
+sweep job type.
+
+**Source**: #3365.
+
+---
+
+## A shared e2e fixture picker that pages BEFORE it filters answers about the wrong catalogue
+
+**Context**: `pickDriverProduct` in `apps/e2e/src/support/order-synthesis.ts`
+listed `{ limit: 50 }` across every connection and then filtered by the
+connection it had been handed.
+
+**Problem**: on a stack whose catalogue is mostly another master's, every
+candidate fell off the end of page one, and `synthesizeOrder` threw "found no
+catalogue product with a priced, EAN-complete variant" about a catalogue that
+had six of them. The error was about the pager, and it read as being about the
+data.
+
+**Rule**: when a support helper filters a paged read by a field the API can
+filter on, pass the filter to the API. A post-page filter turns "which page did
+this land on" into the answer, and the resulting failure message describes the
+operator's data rather than the query.
+
+**Applies to**: `apps/e2e/src/support/**` helpers that call a `list()` and then
+narrow the result.
+
+**Source**: #3365.
+
+---
+
+## A push plan built from pre-rebase subjects silently drops commits made after it
+
+**Context**: the pack-bench stack (#3330-#3439). After rebasing fourteen
+branches, a script remapped each branch tip to its new sha by matching the
+commit SUBJECT recorded before the rebase, then force-pushed each one.
+
+**Problem**: two commits authored AFTER the boundaries were recorded - a lessons
+entry and ten web-test fixes - sat above the matched tip, so they were never in
+the plan and were never pushed. Everything reported success: fourteen `ok` rows,
+every lease honoured, no error anywhere. CI then ran against a head that
+predated the fixes, and the ten failures it reported had already been fixed
+locally, which reads as "the fixes did not work" rather than "the fixes are not
+there".
+
+**Rule**: a push plan is a snapshot, and anything committed after it is outside
+it. Either build the plan immediately before pushing, or - better - assert
+afterwards that the working branch's own `HEAD` equals what was pushed for it,
+since that is the one boundary a subject match cannot get wrong (the topmost
+branch's tip is the only one that keeps moving while work continues). `git log
+origin/<branch>..HEAD` answering non-empty after a push meant to be complete is
+the check; it costs one command and it is the difference between reading CI as a
+result and reading it as a stale artefact.
+
+**Applies to**: any scripted multi-branch push, especially in a stacked-PR flow
+where the tip branch is also the working branch.
+
+**Source**: #3439 (the pack-bench stack), 2026-09-23.
+
+---
+
+## Shared UI primitives take `tone`, not `variant` - `tsc -b` catches it, a fast visual skim does not
+
+**Context**: building the order-notes panel (#3531/#3533), copying an
+`order-hold-panel.tsx`-style `<Button tone="secondary">` usage from memory
+rather than re-reading the component.
+
+**Problem**: `Button` (`apps/web/src/shared/ui/button.tsx`) exposes
+`ButtonProps.tone: ButtonTone`, not `variant` - a prop name common enough in
+other component libraries that writing `<Button variant="ghost">` compiles
+under a loose editor but fails `tsc -b` with a real type error (an unknown
+prop, since `ButtonHTMLAttributes` has no `variant`). The same session also
+mis-guessed `TimeDisplay`'s `value` prop (it is `iso`) and rendered
+`<ReadOnlyLock message="...">`, standalone, as if it were a lock icon with a
+tooltip - it is a WRAPPER (`{ active, message, children }`) that always
+renders its children and dims them only when `active`, the
+`order-hold-panel.tsx` precedent for how a demo-read-only affordance stays
+visible-but-locked rather than disappearing.
+
+**Rule**: before reusing a shared `shared/ui/*` primitive by name-recall,
+open the file and read its prop interface - do not infer it from a sibling
+component's *usage* site, which shows only the props that call site happened
+to set. `pnpm type-check` (never `tsc --noEmit` on a hand-picked file) is
+what actually catches a wrong prop name; a subjective "looks right" pass over
+JSX does not, because a misnamed prop on an untyped-looking spread often
+renders as if it worked and simply drops the value.
+
+**Applies to**: any new component consuming `apps/web/src/shared/ui/*`
+primitives, especially `Button`, `TimeDisplay`, `ReadOnlyLock`.
+
+**Source**: #3507 (Pilot G03 - orders list search/notes/tags/export), 2026-09-28.
+
+---
+
+## A test fixture that contradicts the call under test passes until a guard is added
+
+**Context**: ADR-074 gained a rule that a parcel cannot be made exclusive
+without an assigned packer (#3360).
+
+**Problem**: four cases in `fulfillment-worklist.service.spec.ts` asked for
+`selfServeEligible: false` against `workAt()`, whose default is
+`assignedToUserId: null` - so every one of them was asserting behaviour for
+"exclusive to nobody", the state the new guard forbids. They had passed for
+years because nothing checked the combination, and they all failed the moment
+something did. The same shape as the #2380 entry below, arriving from the other
+direction: there a fixture described a state the code could not produce, here a
+fixture described one the code should not accept.
+
+**Rule**: when a shared fixture factory has a permissive default, a case that
+overrides one field and leaves the rest is asserting about whatever the default
+happens to be - which is fine until that combination acquires a meaning. On
+adding a cross-field rule, grep the fixture's own default for the other side of
+it rather than waiting for the suite; and repair such a case by giving it a
+fixture consistent with its own call, never by relaxing the new guard. The
+lost-race case here is the worked example: its premise is that its own
+`assignToPacker` lost, so the honest re-read is a row assigned to somebody else,
+which is both more realistic than the unassigned row it had and the shape the
+rule needs.
+
+**Applies to**: any spec suite built on a `makeX(over)` factory — and any hand-written fixture of a
+stored document (an `orderSnapshot`, a payload), which must be copied from the producer's type, not
+from the reader under test.
+
+**Source**: #3360, 2026-09-23. Recurred in #3507 G03-11: `order-export-columns.spec.ts` put
+`currency` at the snapshot's top level, where `readTotals` wrongly looked, instead of on `totals`
+(`OrderTotals.currency`) where every producer writes it — so the export's Currency column was empty
+for every real order while the spec stayed green.
+
+---
+
+## A stacked branch that will not merge may be a parallel lineage, not a stale copy
+
+**Context**: the pack-bench stack (#3330-#3439). `#3386` reported
+`mergeable_state: dirty` and the three PRs above it `unknown`, because GitHub
+cannot evaluate past a base that does not merge. A three-dot merge preview
+reported 19 conflicting files.
+
+**Problem**: the obvious reading - "the top was cut before the review fixes
+landed below, so bring the base up" - was wrong, and acting on it would have
+been destructive. The merge base between the two halves was the FIRST commit of
+the whole stack, and the upper half's twelve commits were its own pre-review
+versions of the same twelve features the lower half carried in twenty-three
+(original plus fixes). Bringing the base up would have applied every one of
+them twice; that is why nineteen files conflicted rather than two or three.
+
+**Rule**: when a stacked branch will not merge, find the merge base between the
+two sides before choosing how to reconcile them. A base at or near the stack's
+root means the branches are parallel lineages of the same work, and the answer
+is a rebase onto the reviewed lineage that DROPS the duplicated commits, never
+a merge. Resolve each conflict by asking which side is a SUPERSET rather than
+which is newer: a review fix is usually an addition to the same region, so
+"take mine" is how one gets reverted silently. Where both sides fixed the same
+thing differently, merge the two intents rather than picking a side.
+
+**Applies to**: any stack of PRs whose lower half has been force-pushed with
+review fixes.
+
+**Source**: #3439 (the pack-bench stack), 2026-09-23.
+
+---
+
+## Run the gate AFTER a rebase - a clean replay is not a result
+
+**Context**: the same rebase - 64 commits replayed with nine hand-resolved
+conflicts, reported as `Successfully rebased`.
+
+**Problem**: it was not successful. A conflict marker had reached a commit, and
+two test assertions named a refusal reason the code cannot return - both halves
+of the stack had added the same guard and named its refusal differently, so
+unifying the name left the reopen tests asserting a value the reopen union does
+not carry. `toMatchObject` with a string literal is not checked against a
+union, so `tsc` passed and those tests would have failed only when somebody ran
+them. A third defect was the rebase's own doing: a migration renumber authored
+late replayed in date order, dozens of commits after the one that CREATES that
+migration, silently reinstating the timestamp collision a reviewer had blocked
+on.
+
+**Rule**: after any rebase, run the full gate and redeploy before claiming it
+worked - lint, type-check, and whatever live verification the change has. Then
+re-read the ORDER of the replayed commits: one authored late but belonging
+early lands in the wrong place, and that failure is a property of the stack
+rather than of any file, so no per-file check finds it. `GIT_SEQUENCE_EDITOR`
+pointed at a script folds it back where it belongs without an interactive
+editor.
+
+**Applies to**: any rebase of more than a handful of commits.
+
+**Source**: #3439, 2026-09-23.
+
+---
+
+## A client-side gate needs a permission the role can actually hold
+
+**Context**: #3424. The pack bench's two write controls - `Claim this parcel` and `Take next task` -
+were gated on `useWriteAccess('orders:write')`. The routes behind them are
+`@Roles('admin', 'operator', 'packer')` and work correctly for a packer.
+
+**Problem**: `ROLE_PERMISSIONS.packer` was `[]`, deliberately, on the reasoning that granting a
+permission "merely to populate the Record" would light up a nav surface a packer must not see. So
+both controls rendered **zero times for the only role that would press them**, while the API
+accepted that role perfectly well. Nothing failed: lint, type-check and the whole unit suite were
+green, because a control that never renders breaks no assertion. It surfaced only when a live E2E
+state tried to click one and found `count: 0`. An empty permission row is not automatically a
+narrower role - here it was a broken one.
+
+**Rule**: when a control is gated client-side, check that the ROLES allowed by the route behind it
+can hold the permission the gate reads. If none can, the control is dead code that type-checks.
+Where the existing permissions are all too wide (as `orders:write` was), add a narrow one scoped to
+that surface and keep the roles holding it identical to the route's own `@Roles` list - the
+permission gates the control, the decorator gates the route, and a UI that hides what the route
+allows is the same class of defect as one that offers what the route refuses.
+
+**Applies to**: `apps/web/**` `useWriteAccess` / `usePermission` call sites;
+`libs/core/src/users/domain/types/role.types.ts`.
+
+**Source**: #3424 (`bench:write`), ADR-071.
+
+---
+
+## When you cannot run the suites, grep for the assertions type-check cannot see
+
+**Context**: #3424 and the #3415 review, developed on a machine that cannot sustain `pnpm test`.
+The gate was `pnpm lint`, `pnpm type-check`, `pnpm check:invariants` and a live E2E sweep.
+
+**Problem**: `tsc` catches a widened INTERFACE at every consumer, so adding a field to
+`FulfillmentWork` failed loudly in three fixtures and was fixed. It cannot see a widened VALUE
+asserted at runtime: changing `ROLE_PERMISSIONS.packer` from `[]` to `['bench:write']` type-checks
+cleanly and breaks `expect(ROLE_PERMISSIONS.packer).toEqual([])` in a tripwire spec written
+specifically to catch that change. Found by grep during a pre-review sweep, not by the gate.
+
+**Rule**: after widening any exported VALUE - an `as const` array, a `Record` row, a DTO's projected
+field set - grep the spec files for a runtime equality on it before claiming the change is verified:
+`toEqual(`, `toHaveLength(`, `toStrictEqual(` naming the identifier or its container. Check the same
+way for a DTO that SPREADS a widened entity, which silently puts the new field on an API response no
+type error will report. State in the PR that the suites were not run, and name what was run instead.
+
+**Applies to**: any change to `role.types.ts`, `*Values` arrays, `ROLE_PERMISSIONS`, or a domain
+entity's constructor, made without running `pnpm test`.
+
+**Source**: #3424, #3415 review.
+
+---
+
 ## A claim about a dependency's internals must be read against the installed version
 
 **Context**: #2957 split a paginated read into a fast page and a separate total. The change had to
@@ -1011,12 +1411,12 @@ than a double-check, since nothing downstream will do it for you.
 
 **Partly graduated (#2674)**: the stylesheet half of this lesson is now a gate.
 `scripts/check-css-structure.mjs` runs under `pnpm lint` (chained into `check:invariants`) and fails
-on an unclosed block, a stray `}`, an unclosed comment or an unterminated string in any `.css` /
-`.scss` / `.sass` / `.less` file, reporting `file:line:column`. Two things it deliberately does not
-do, so the manual habit above still matters everywhere else: it does not parse **YAML or JSON
-fixtures**, and it does not check **parenthesis balance** (a dropped `)` in `@media (min-width: 700px {`
-leaves braces balanced and still kills the block - deferred as #2677). The seam re-read remains the rule for every
-artefact the gate does not cover.
+on an unclosed block, a stray `}`, an unclosed `(`, a stray `)`, an unclosed comment or an
+unterminated string in any `.css` / `.scss` / `.sass` / `.less` file, reporting `file:line:column`.
+Parenthesis balance was added by #2677: a dropped `)` in `@media (min-width: 700px {` leaves braces
+balanced and still kills the block. One thing it deliberately does not do, so the manual habit above
+still matters everywhere else: it does not parse **YAML or JSON fixtures**. The seam re-read remains
+the rule for every artefact the gate does not cover.
 
 **Applies to**: any merge or rebase touching an append-heavy file — a stylesheet, a barrel, a job-type
 union, a DI provider list, a long positional constructor. Sharpest when several parallel bodies of
@@ -1226,3 +1626,1006 @@ where an adjacent context already owns similar vocabulary (`routing`, `fulfillme
 
 **Source**: #2953 (caught by `/pre-implement` before implementation; both collisions were in the
 first draft of the plan).
+
+---
+
+## Format only the touched files with the workspace's own pinned prettier binary — never `npx prettier`
+
+**Context**: #3031 touched ten files. A convenience pass over all of them with `npx prettier
+--write` (intending to just clean up the new hunks) reformatted every one **in full** — hundreds of
+unrelated lines, stripping trailing commas from every multi-line call/array/constructor across
+files nobody was asked to touch.
+
+**Problem**: `npx prettier` resolves (and may fetch) a prettier build outside this pnpm workspace's
+`node_modules`, so it does not reliably pick up the repo's pinned `prettier@3.2.5` or apply
+`.prettierrc` (`trailingComma: "es5"`) the way the workspace's own tooling does. The result reads
+like an intentional whole-file reformat and is easy to miss in a large diff — `git diff --stat`
+before-and-after is the tell (a 12-line intended change became 700+ lines across 5 files). Re-running
+the SAME command with the LOCAL binary (`node_modules/.bin/prettier` / `pnpm exec prettier`)
+reproduced the identical mass-reformat, which ruled out a version mismatch and confirmed the
+project's own quality gate (`pnpm lint` → `.eslintrc.js`'s `extends: ['prettier']` is
+`eslint-config-prettier`, which only *disables* conflicting stylistic ESLint rules — it does **not**
+run `eslint-plugin-prettier`) never enforces prettier formatting as a lint error, and CI has no
+separate `format:check` step either. So running prettier at all here bought nothing the gate needed
+and cost a large, unreviewable diff.
+
+**Rule**: don't run prettier as a formatting pass on a diff unless the task is specifically a
+formatting task. When touching a handful of files, format by hand to match the surrounding style
+(the existing lines are the spec) and verify with `git diff --stat` that only the intended lines
+changed. If prettier must run, target the exact files with the local pinned binary
+(`node_modules/.bin/prettier --config .prettierrc --write <files>`), never `npx prettier`, and
+`git diff --stat` immediately after to catch a whole-file reformat before it's mixed into a commit.
+
+**Applies to**: any edit to existing `*.ts`/`*.tsx` files in this repo, especially a small,
+surgical change to a large pre-existing file.
+
+**Source**: #3031 (caught before commit by comparing `git diff --stat` line counts against the
+size of the intended change).
+
+---
+
+## A more destructive reset needs its own audit before it is made global — do not just copy the sibling suite's fix
+
+**Context**: #2999, the worker-side twin of #2986/PR #2996. `apps/worker/test/integration`
+holds 27 int-specs sharing one Testcontainers Postgres + Redis at `maxWorkers: 1`, and
+`jest-integration.cjs` declared no `setupFilesAfterEnv` at all — so six specs
+(`automation-dispatch-boot`, `automation-emission-boot`, `fulfillment-no-injection-boot`,
+`fulfillment-router-binding-boot`, `invoicing-auto-issue-boot`, `oms-module-boot`) reset
+nothing between their own test cases, and 21 more only reset in `afterEach`, which is a
+courtesy to the next FILE, not isolation for the current one.
+
+**Problem**: the api's fix (root `beforeEach`/`afterEach` via `setupFilesAfterEnv`) could not
+be copied blindly. The worker's `reset()` is materially more destructive — alongside
+Postgres `TRUNCATE`s it calls `redisClient.flushDb()`, wiping ALL of Redis, and the worker
+harness boots a real background consumer (`MasterDeletionToJobHandler`, gated by neither of
+the two env vars the harness already forces off for this reason) holding live stream
+consumer groups and Pending Entries Lists. Registering the global hook without first
+checking whether any spec creates a consumer group / dedup key / lock in `beforeAll` and
+reads it back from a LATER `it()` in the same file would have risked breaking exactly the
+kind of test the fix should never touch, and the failure would have looked like a consumer
+bug rather than a harness one.
+
+**Rule**: before making a MORE destructive reset (one that clears more than a plain table
+truncate — a full cache flush, a stream wipe, anything shared infrastructure depends on)
+unconditional between every test case, audit every file in the suite for what it creates
+OUTSIDE its own test body (`beforeAll`) and reads back INSIDE a later, sibling test body.
+Record the audit in the PR/commit rather than asserting safety from the sibling suite's
+precedent — a fix that was safe for Postgres-only truncation is not automatically safe for
+a whole-Redis flush.
+
+**Applies to**: `apps/worker/test/integration/**`, wired in
+`apps/worker/test/jest-integration.cjs` via `setup-each.ts` (which carries the full
+per-spec audit) and guarded by `harness-isolation.int-spec.ts`.
+
+**Source**: #2999.
+
+---
+
+## Bound the fan-out when the hook escalates to the full suite; never reach for `--no-verify`
+
+**Context**: a change that touches a core context's top-level barrel
+(`libs/core/src/<ctx>/index.ts`) or its `<ctx>.tokens.ts` is classified by
+`scripts/smart-test.mjs` as a **wide** trigger (`CORE_BARREL_RE` /
+`CORE_TOKENS_RE`) — correctly, since both are published-contract changes. The
+wide branch then runs `pnpm test`, which is `pnpm -r test`.
+
+**Problem**: `pnpm -r` fans out at pnpm's DEFAULT `workspace-concurrency` of
+**4**, so four packages' Jest instances run at once, each defaulting to about
+`cores - 1` workers. On a memory-constrained machine that is an OS OOM-kill,
+which surfaces as `signal=SIGKILL` / `exitCode=null` and reads like a test
+failure rather than a resource one. `test:ci` was bounded to
+`--workspace-concurrency=2` back in #976 for exactly this, but the pre-commit
+hook's path was never bounded — so the same machine passes CI-shaped runs and
+dies on a commit.
+
+The tempting escape is `git commit --no-verify`, and it is the wrong one: it
+skips **lint and type-check as well**, so the commit lands verified by nothing.
+On a stacked epic whose PRs target a sibling branch rather than `main`, CI does
+not run either (`ci.yml` is `pull_request: branches: [main]`), so the hook is
+the only gate there is.
+
+**Rule**: bound the fan-out for that one commit instead of skipping the gate —
+
+```
+npm_config_workspace_concurrency=1 git commit -s -F <message-file>
+```
+
+Where a full local run is genuinely impractical, run `pnpm lint` and
+`pnpm type-check` by hand plus the suites for every package the diff touches,
+and say so in the commit body. "I skipped the hook" and "I ran the gate another
+way" are different claims and the reader cannot tell them apart afterwards.
+
+**Applies to**: any commit touching `libs/core/src/<ctx>/index.ts` or
+`libs/core/src/<ctx>/<ctx>.tokens.ts`; more generally any diff `smart-test.mjs`
+classifies wide. See `docs/testing-guide.md` § "Red suite with `SIGKILL`" for
+diagnosing the OOM itself — that section does not name this trigger.
+
+**Source**: #3188 (rider), building on #976.
+
+---
+
+## Read GitHub issues and retarget PRs through `gh api`, not `gh issue view` / `gh pr edit`
+
+**Context**: this repository still carries Projects (classic) data, and the
+`gh` CLI resolves `repository.issue.projectCards` on several of its
+higher-level commands.
+
+**Problem**: both `gh issue view <N>` and `gh pr edit <N> --base <branch>` fail
+outright with
+
+```
+GraphQL: Projects (classic) is being deprecated in favor of the new Projects
+experience ... (repository.issue.projectCards)
+```
+
+This is not a transient error and no flag avoids it. It matters more than a
+missing convenience: several `docs/plans/*.md` instruct the reader to retarget
+a dependent PR with `gh pr edit <n> --base main`, which cannot work, and a
+stacked epic needs exactly that operation.
+
+**Rule**: use the REST endpoints, which are unaffected —
+
+```
+gh api repos/openlinker-project/openlinker/issues/<N> --jq '.title + "\n" + .body'
+gh api repos/openlinker-project/openlinker/pulls/<N> -X PATCH -f base=<branch>
+```
+
+Note also that `gh pr checks <N>` returns nothing for a PR targeting a sibling
+branch; the working read is
+`gh api repos/openlinker-project/openlinker/commits/<branch>/check-runs`.
+
+**Applies to**: any agent or contributor scripting against this repo's issues
+and PRs, and to the plan documents that still recommend `gh pr edit`.
+
+**Source**: #3188 (rider).
+
+## A leaf-bound value import from a main `@openlinker/core/<ctx>` barrel can undefine a DI token in a sibling context
+
+**Context**: #3187 threaded the three-state buyer tax id onto the fiscal-receipt path, and its
+mapper reached for `decodeBuyerTaxIdColumn` through `@openlinker/core/orders` — the main orders
+barrel. That barrel publishes `OrdersModule` and every orders service, one of which
+(`SalesDocumentViewService`, #2516) value-imports `@openlinker/core/fiscalization` straight back.
+
+**Problem**: a real CJS cycle, `invoicing -> orders -> fiscalization -> invoicing`, whose only
+symptom was a Nest error that names the wrong culprit: *"Nest can't resolve dependencies of the
+SalesDocumentViewService (…, ?, …), make sure the argument dependency at index [2] is available in
+the RootTestModule context"* — while the spec provided all five tokens. `?` there does **not** mean
+a missing provider. It means the token the `@Inject()` decorator recorded was `undefined` at class
+evaluation, because the barrel it came from was still mid-load. Twenty-four tests failed on that
+one import, and two plausible fixes (a type-only import of the fixture class, reordering the spec's
+own imports) each moved the number without touching the cause.
+
+**Rule**: when a Nest dependency error prints `?` for a token the test clearly provides, stop
+looking at the providers array and log the token at the *service module's* own evaluation
+(`console.log(String(TOKEN))` above the `@Injectable()`); `undefined` proves a cycle. Then fix the
+cycle at its source — import the symbol from the context's `@openlinker/core/<ctx>/types`
+cycle-breaker sub-barrel, which publishes the vocabulary without the module, the services or the
+ORM entities. Never repair it by reordering imports in the spec: that moves which module loses the
+race, so the failure reappears one level up (here, `OrdersModule`'s own `imports` metadata lost
+`FiscalizationModule`) and the production cycle survives untouched.
+
+**Applies to**: any `libs/core/src/<ctx>` file importing a *value* from a sibling context's main
+barrel, and especially the mutually-importing `orders` / `invoicing` / `fiscalization` triangle.
+
+**Source**: #3189 (fixing an edge introduced by #3187); the sub-barrel contract is
+`docs/engineering-standards.md § Import Aliases` and `scripts/check-types-sub-barrels.mjs`.
+
+## A guarded UPDATE's cross-table subquery does not see a concurrent committer, even after the row lock unblocks
+
+**Context**: `ReservationRepository.applyGuardedAdd` guards a reservation claim with one
+`UPDATE inventory_items SET olReservedQuantity = ... WHERE availableQuantity - (SELECT SUM(...)
+FROM reservations WHERE ...) >= $delta`. Two concurrent claims for the last unit of stock
+(different `orderRecordId`, same position) intermittently both got granted in CI —
+`reservations-ledger.int-spec.ts`'s "exactly one of two concurrent claims" test failed with
+`granted.length === 2`.
+
+**Problem**: PostgreSQL's READ COMMITTED re-check (EvalPlanQual) for a blocked UPDATE only
+refetches the ROW BEING UPDATED once the blocking transaction commits — it does **not** take a
+fresh snapshot for a correlated subquery against a *different* table referenced in the WHERE
+clause. The subquery still runs against the snapshot the statement started with, which predates
+the other transaction's commit. So transaction B, blocked on the `inventory_items` row A holds,
+unblocks after A commits, re-checks the row itself against the new version, but its subquery
+into `reservations` still doesn't see A's just-committed reservation row — B computes the same
+"nobody else holds this" sum A did, and both pass the availability guard. This is documented
+Postgres behavior ("it does not see effects of [concurrent] commands on any other rows in the
+database" — PostgreSQL docs § Read Committed Isolation), not a driver or ORM bug, and it only
+manifests when the two transactions' timing causes one to actually block on the other — hence a
+CI-only intermittent failure rather than a deterministic one.
+
+**Rule**: when a guard's WHERE clause combines the target row with a correlated subquery
+against another table, acquire the target row's lock as its **own** prior statement
+(`SELECT ... FOR UPDATE`) before issuing the guarded UPDATE. The guarded UPDATE then runs as a
+brand-new statement that only starts once the lock is actually held — under READ COMMITTED,
+a new statement always takes a fresh snapshot, so the concurrent committer's row is now visible
+to the subquery. A single statement that both locks and reads cross-table state cannot be made
+safe this way; it must be split into two.
+
+**Applies to**: any guarded `UPDATE ... WHERE <column> - (SELECT ... FROM <other table>) >= ...`
+pattern — currently `libs/core/src/inventory/infrastructure/persistence/repositories/reservation.repository.ts`'s
+`applyGuardedAdd`.
+
+**Source**: PR #3035 CI failure, fixed same-branch.
+
+---
+
+## A cache that exists is not a cache that hits — measure the key, not the directory
+
+**Context**: #3271 investigated why the `Test` job takes 14m54s. The self-hosted
+runner's containers are long-lived and their jest cache directory held **33 GB
+across ~2M files**, written to daily. Every surface reading suggested a healthy,
+warm cache, so "add caching" was rejected as already done.
+
+**Problem**: the cache was never read back. Jest's transform-cache key is a
+function of the file's content **and** its mtime, and `actions/checkout` rewrites
+every file on every run. Each run therefore minted a complete new set of keys,
+could not match the previous run's entries, and appended a full new set beside
+them. Jest applies no TTL, size cap or eviction to that directory, so it only
+grew. Measured on `libs/integrations/prestashop` with content byte-identical
+throughout: warm 73-82 s, after a bare `touch` of `libs/core/**/*.ts` 168.7 s
+**and 1030 freshly written cache entries**. `pnpm install` and `pnpm -r build`
+invalidated nothing; only mtime did.
+
+The size of the directory was actively misleading: it was large *because* it was
+never hit, and reading it as evidence of warmth inverted the diagnosis.
+
+**Rule**: to decide whether a cache helps, measure a repeat run against a cold
+one and count the entries the repeat *writes*. Zero new entries means a hit; a
+full new set means the key moved. Never infer hit-rate from the cache's presence,
+age or size.
+
+**Applies to**: any CI cache — jest transform cache, ts-jest, pnpm store, build
+output — especially on long-lived self-hosted runners where a stale cache never
+disappears on its own.
+
+**Source**: #3271.
+
+---
+
+## A safety test must vary the exact dimension the mechanism keys on
+
+**Context**: #3271 pins every tracked file to one fixed mtime so the jest cache
+can hit. That is only sound if a *changed* file still misses the cache, so the
+change was gated on a safety test: break a file, roll its mtime back to the
+identical stamp, confirm the suites fail.
+
+**Problem**: the first version of that test appended a line. It failed the suites
+as hoped — but it had changed the file's **size** as well as its content, and
+jest's file-metadata check is `(mtime, size)`. The test therefore proved nothing
+about the case that actually matters: content that changes while both mtime and
+size stay identical, which a one-character edit produces routinely. Had the key
+been `(mtime, size)` rather than content-derived, the test would still have
+passed and the change would have shipped a CI that silently runs stale code.
+
+The corrected test replaced one word with another of equal length, preserving the
+byte count exactly (20069 → 20069), and still failed 21 suites — which is what
+established the key is content-derived.
+
+**Rule**: when a change is gated on a safety property, write the test so that
+every dimension the suspected mechanism could key on is held constant except the
+one under test. If the test would still pass under the hypothesis you are trying
+to rule out, it is not evidence.
+
+**Applies to**: cache-invalidation work, memoization, content-addressed storage,
+any "is this stale?" guard.
+
+**Source**: #3271.
+
+---
+
+## A skipped step must fail loudly, or it reads as a passing one
+
+**Context**: #3271 added a CI step that stamps every source file with a fixed
+mtime so the jest cache can hit. The first version asked the VCS for the file
+list, and wrapped that call so an unavailable binary degraded to a no-op with a
+printed message and exit 0 — reasoning that a step which only *accelerates* a
+build must never *break* one.
+
+**Problem**: the runner has no git binary (`actions/checkout` succeeds through
+its tarball/API path — a condition `ci.yml` already documents elsewhere). So the
+step ran, printed `version-control listing unavailable, skipping`, exited 0, and
+stamped nothing. The job showed a green tick beside a step that did nothing at
+all, and the change looked deployed while being entirely inert. It was caught
+only because someone noticed the job was slower than before, not because
+anything reported a problem.
+
+The "safe" degradation was the bug: it converted a hard dependency into an
+invisible one.
+
+**Rule**: when a step degrades instead of failing, the degradation must be
+impossible to mistake for success — fail the step, or emit a `::warning::` that
+surfaces in the job summary. Better still, remove the dependency: here, walking
+the working tree needs no external binary and cannot silently return an empty
+list.
+
+**Applies to**: CI steps that optimise rather than verify; any `try/catch` whose
+catch branch continues as if nothing happened.
+
+**Source**: #3271.
+
+---
+
+## Do not bundle an unmeasured safety knob with a measured change
+
+**Context**: #3271 raised `maxWorkers` from 2 to 8 under CI on the strength of a
+lab run (whole job 753.9 s -> 538.1 s; that raise was itself later reverted for
+most packages — see the next entry). A review suggested also adding
+`workerIdleMemoryLimit: '512MB'` to the three packages newly taking 4x the
+workers, since only prestashop and allegro had a ceiling. It sounded prudent, so
+it shipped alongside — untested.
+
+**Problem**: `libs/core`'s workers legitimately peak near **2.8 GB**, five times
+that ceiling. Jest recycles a worker whenever its heap crosses the limit, so the
+package re-spawned a process and rebuilt its whole module graph after almost
+every file: **74 s became over 17 minutes** on the real runner. The measured part
+of the change was fine; the unmeasured "precaution" bundled with it was the
+regression, and because they shipped together the first CI run could not say
+which half was at fault.
+
+There was also nothing to protect against at the time — the whole job's peak RSS
+at 8 workers had been measured at 32.4 GB of the runner's 251 GB, on an idle box.
+Under the real job an `apps/api` worker was later OOM-killed anyway, which is the
+next entry's subject.
+
+**Rule**: ship the measured change alone. A knob nobody measured is a change,
+not a safeguard, and bundling it destroys the attribution the measurement was
+for. If a ceiling is genuinely wanted, size it above the package's observed
+working set — never by copying a neighbour's number.
+
+**Applies to**: `workerIdleMemoryLimit`, worker/concurrency caps, timeouts, pool
+sizes — any tuning value copied from one package to another.
+
+**Source**: #3271.
+
+---
+
+## A lab number from an idle machine is not a CI number
+
+**Context**: #3271 needed to know whether raising jest's `maxWorkers` from 2 to 8
+would speed the `Test` job up. The self-hosted runner was available, so the whole
+job was run there directly, twice, at each setting — the real hardware, the real
+suite, the real commit. It measured 753.9 s -> 538.1 s cold and 490.3 s ->
+256.8 s warm, and the change shipped on that evidence.
+
+**Problem**: the lab runs had the machine to themselves. The real `Test` job runs
+alongside seven other jobs of the same workflow — Build, Lint, Type Check, Docker
+Build Smoke, PHP Unit Tests, Integration Tests — spread across the same four
+long-lived runner containers on one host. Re-measured there, the raise was net
+harmful: it helped only the three largest packages and made everything else
+slower, doubling `apps/api` (80.0 s -> 163.0 s) and reproducing the
+`signal=SIGKILL, exitCode=null` OOM its own config comment had warned about since
+444244f. Two packages at eight workers each is sixteen processes competing with
+whatever else the host is running, and on an empty box that contention does not
+exist to be measured.
+
+The mistake was not using a lab. It was treating "same hardware, same suite" as
+"same conditions", when the variable under test — contention for a shared
+machine — was precisely the one the lab removed.
+
+**Rule**: before trusting a resource-contention measurement, ask what else is
+running in production that was not running in the lab. If the answer is anything,
+the lab bounds the *best* case only; confirm on the real pipeline before drawing
+a conclusion, and treat a result that contradicts an existing in-code warning as
+the warning being right until proven otherwise.
+
+**Applies to**: worker/concurrency/pool sizing, memory ceilings, timeouts,
+rate-limit tuning — anything whose behaviour depends on what else shares the box.
+
+**Source**: #3271.
+
+---
+
+## Two runs on different machines are two cold runs, not a cache experiment
+
+**Context**: #3271 pinned every source file's mtime so jest's transform cache
+could stop missing. To confirm it worked on the real pipeline, the same commit
+was run twice — once to write the entries under the new stable stamps, once to
+read them back. `apps/api` came in at 260.6 s and then 163.0 s, `apps/worker` at
+242.0 s and then 142.9 s, and everything else stayed flat. That reads exactly
+like a transform cache doing its job on the two packages with the largest
+compile graphs, and it was written up as the confirmation.
+
+**Problem**: the jest cache directory is per runner *container*, and this pool
+holds four. Checking `Runner name:` in the job logs afterwards showed four
+consecutive runs on four different containers. Both halves of the "cold versus
+warm" comparison were cold. The difference was host load: the second run started
+after the rest of the workflow had finished, so it had the machine to itself —
+the same confound as the idle-lab entry above, arrived at from a different
+direction.
+
+What made it convincing was that the result *matched the hypothesis*. A
+transform cache should move exactly the packages with the biggest compile graphs
+and leave the rest flat, and it did. Plausibility is not evidence.
+
+**Rule**: a cache measurement has to establish that both runs shared the cache,
+not just that they ran the same code. Identify the host, or count what the second
+run *writes* — zero new entries is a hit, a full new set means the key moved or
+the store was empty. On a multi-runner pool, assume a fresh store unless the log
+proves otherwise.
+
+**Applies to**: any per-host cache on self-hosted CI — jest, ts-jest, pnpm store,
+docker layers, compiler output.
+
+**Postscript**: the controlled repeat — two runs that did share a container —
+confirmed the mechanism outright: the whole job went 13m46s -> 8m10s, every one
+of the nineteen packages faster, most by 70-87%. The withdrawal was still right.
+The first result was true by accident, and a number arrived at by accident cannot
+be relied on the next time.
+
+**Source**: #3271.
+
+---
+
+## Measure the whole thing, interleaved, or the drift measures you
+
+**Context**: #3271 needed to choose a `maxWorkers` / `--workspace-concurrency`
+pair for the CI test job. Three attempts to raise workers had already been
+reverted off real CI runs, so the next round moved to the runner host itself.
+
+**Problem, twice over.** The first lab pass measured ONE package at a time and
+reported that `libs/core` goes 70 s -> 26 s at 8 workers and `apps/api`
+47 s -> 21 s. Both true, both useless for the decision: the whole backend
+command at 8 workers then took 17m12s on real CI, because a single package on a
+quiet box is not the same question as twenty packages beside `Test (web)`,
+`Integration Tests` and `Lint`.
+
+The second pass measured the whole command, which was right, but ran the
+candidates in sequence while the host's load average happened to fall from 85
+to 45. Every later candidate got a quieter machine than the one before it, and
+the config that ran last "won". Running them interleaved over two rounds
+reversed part of the ordering and produced a stable answer instead
+(`4 x 2` 90/97 s, `4 x 4` 82/83 s, `3 x 8` 88/91 s).
+
+**Rule**: measure the same unit of work the decision is about, not a component
+of it; and when the environment can drift, interleave the candidates rather
+than running A then B. A one-percent spread across interleaved repeats is
+evidence. A single ordered sweep on a busy host is a ranking of when each
+candidate happened to run.
+
+**And know what your harness cannot see.** The lab still understates high
+worker counts, because it runs without the sibling CI jobs. A measurement
+environment that is missing a load source will always flatter the option that
+consumes the most of it.
+
+**Applies to**: performance tuning of any kind on shared hardware, A/B timing
+comparisons, benchmark harnesses that model one process out of many.
+
+**Source**: #3271.
+
+---
+
+## Raising a test-suite worker count turns a lazy-boot check-then-act into a race
+
+**Context**: #3263 raised the api integration suite from `maxWorkers: 1` to 6, made safe for
+Postgres/Redis by giving every worker its own database and logical DB. `startSharedPrestashopContainer()`
+was left as-is: `readLiveSharedRecord()` returns nothing on first use, so the caller boots a fresh
+container pair and writes the record only once the boot finishes.
+
+**Problem**: with several workers now able to reach that function inside the same ~90s boot
+window, "no record yet" is not the same fact as "nobody else is booting." A second worker sees the
+same absence and boots its own pair — a real Testcontainers boot cannot be prevented by rechecking
+the same file faster, only by a distinct claim the loser can observe *before* it starts booting.
+The two extra PS+MySQL pairs then compete for the same 24 GiB / 8-CPU cgroup cap this PR's own
+6-worker analysis was sized around, and only the last writer's ids survive to `globalTeardown`, so
+the others leak on the persistent CI runner (the #1285 failure mode, reopened one layer up).
+
+**Rule**: raising a suite's parallelism is not just "the shared containers already get per-worker
+databases" — audit every OTHER piece of cross-worker shared state for the same lazy
+check-then-act shape, and replace it with an atomic filesystem claim (`openSync(file, 'wx')`,
+which fails `EEXIST` if a peer already created it) rather than a plain existence check. A loser
+polls for the winner's completed record instead of retrying the boot; a stale claim (winner died
+mid-boot) needs its own age-based reclaim path or every later spec in the run polls out to a
+timeout for nothing.
+
+**Applies to**: any lazily-booted, cross-worker-shared Testcontainer or fixture whose dedup is a
+record file — currently `startSharedPrestashopContainer()` in
+`apps/api/test/integration/helpers/prestashop-container.helper.ts`.
+
+**Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+---
+
+## `internalOrderId` is `text` (`ol_order_{uuid}`), never a bare `uuid` column
+
+**Context**: the G03 orders-list epic (#3507) added `order_notes` and `order_tag_assignments`,
+each carrying an `internalOrderId` column, and both migrations declared it `uuid NOT NULL` — matching
+`authorUserId`/`assignedByUserId` right next to it, which really are uuids.
+
+**Problem**: an internal order id has the shape `ol_order_{uuid}` (`docs/architecture-overview.md §
+Identifier Mapping Service` — `ol_{prefix}_{uuid}`, stored as `TEXT`), so a real order id is not
+valid `uuid` input and every insert against a real order would fail with a Postgres type error. Every
+other reference to this exact column in the same context — `order_holds`, `order_changes`,
+`refund_records` — already types it `text`; the two new tables were the only ones that got it wrong,
+and nothing caught it because the integration test fixtures happened to use literal uuid-shaped
+strings as order ids, which pass a `uuid` column silently.
+
+**Rule**: when adding a column that stores an internal id (`internalOrderId`, `internalProductId`,
+etc.), grep the SAME entity type in a sibling table first (`grep -B2 'internalOrderId!:' libs/core/src/orders/infrastructure/persistence/entities/*.ts`)
+rather than inferring the column type from what LOOKS like a uuid in a test fixture. An internal id's
+wire format is `text`; only a genuine platform-native uuid (`users.id`, a Postgres-generated PK) is
+`uuid`.
+
+**Applies to**: any new ORM entity/migration carrying `internalOrderId`, `internalProductId`, or any
+other `ol_*`-prefixed internal id as a foreign-value column.
+
+**Source**: session-013 recovery pass on #3507 (G03), caught by code review before merge — no
+migration had shipped yet, so both were fixed in place rather than needing a follow-up migration.
+
+---
+
+## A migration backfill must copy application logic, never call it — and never lean on an optional Postgres extension for correctness
+
+**Context**: the `order_records.searchText` backfill migration (#3527) used PostgreSQL's `unaccent()`
+extension to normalize existing rows, reasoning that it was "close enough" to the application's own
+`deriveOrderSearchText`/`normalizeOrderSearchText`.
+
+**Problem**: two separate problems compound. First, `unaccent` is an optional contrib extension not
+guaranteed available on every managed Postgres, and even where installed its diacritic-folding table
+is NOT guaranteed byte-identical to the application's own normalizer — `normalizeOrderSearchText`'s
+own docblock names the exact trap (`ł`/`ø`/`ß`-class letters plain NFD does not decompose, which is
+why that function carries a hand-maintained `NON_DECOMPOSING_LETTERS` table `unaccent` may fold
+differently or not at all). Second, and more generally: any migration backfill that calls a database
+extension or re-derives logic separately from the application's own function is a SECOND
+implementation of that logic, which drifts the moment either side changes.
+
+**Rule**: a migration backfill of an application-derived column copies the application's pure
+function verbatim into the migration file (with a comment naming the source function and the
+migration that must be kept in sync), and runs it in TypeScript against pages of rows read with
+`SELECT`, never inside a bare SQL `UPDATE` calling a database extension. This is the same rule
+`1892000000000-inline-sales-document-rule-amounts.ts` already established for its own hash
+canonicalization ("the canonicalisation is COPIED, not imported... a migration has to reproduce the
+rule as it stands AT THE MOMENT IT RUNS") — apply it to a backfill's *value computation* too, not
+only to its hashing.
+
+**Applies to**: any migration backfilling a column that mirrors what an application-layer pure
+function computes.
+
+**Source**: session-013 recovery pass on #3507 (G03) review, fixed same-branch before the migration
+had run anywhere.
+
+---
+
+## A static route under a parametric controller's prefix must be registered BEFORE that controller
+
+**Context**: #3530 added `OrderColumnPresetsController` at `@Controller('orders/column-presets')`
+beside `OrdersController` at `@Controller('orders')`, whose detail route is `@Get(':internalOrderId')`.
+The new controller was appended to `OrdersModule.controllers` after `OrdersController`.
+
+**Problem**: Express matches routes in registration order and Nest registers controllers in the
+order of the module's `controllers` array, so `GET /orders/column-presets` — two segments, the same
+shape as `/orders/:internalOrderId` — was answered by the order-detail handler with `404 Order not
+found: column-presets`. Every three-segment preset route (`workspace-default`, `:id`) still worked,
+so saving a preset succeeded while listing presets failed; the defect only showed on the live API
+(#3507 G03-10). No gate notices: the route-authorization coverage spec reads decorators, not path
+precedence, and a controller unit spec calls the handler directly, bypassing routing entirely.
+
+**Rule**: when a controller's prefix extends another controller's prefix with a STATIC segment
+(`orders/column-presets`, `orders/export` under `orders`), list it before the parametric controller in
+the module's `controllers` array, with a comment saying why the order is load-bearing. Prove it with
+an HTTP int-spec that hits the static path's shortest route (the one with the same segment count as
+the parametric route) AND a real id on the parametric route, so the fix cannot invert the defect.
+Cross-module shadowing follows the same rule at the `imports` level of the host app.
+
+**Applies to**: `apps/api/src/**/*.module.ts` `controllers` arrays; any new controller whose prefix
+starts with another controller's prefix (`grep -rn "@Controller('" apps/api/src` — the companion
+lesson above on prefix collisions).
+
+**Source**: #3507 G03-10 (live API: `GET /v1/orders/column-presets` → 404); fixed in
+`apps/api/src/orders/orders.module.ts`, guarded by
+`apps/api/test/integration/orders/order-column-presets-routing.int-spec.ts`.
+
+---
+
+## A default-install status fixture can be ambiguous for a status your test doesn't already cover
+
+**Context**: #3526 added `delivered` and `in-progress` to `OrderLifecycleEvent`, and the
+PrestaShop adapter maps `in-progress` onto its native `OrderStatus` `'processing'` through the
+same shop-catalogue-derivation seam `dispatched`/`cancelled` already use (`deriveOrderState` in
+`prestashop-order-state-semantics.ts`).
+
+**Problem**: `DEFAULT_INSTALL_ORDER_STATES` (`libs/integrations/prestashop/src/__tests__/fixtures/`),
+the shared fixture every existing PrestaShop status-writeback spec builds on, carries TWO rows —
+id 2 ("Payment accepted") and id 3 ("Processing in progress") — that both derive to `'processing'`
+(`paid=1, shipped=0, delivered=0`, matched by `deriveOrderState`'s `paid-flag` basis; `stateIdFor`
+resolves the ambiguity silently by returning the lowest matching id). Every status the *existing*
+tests exercised (`shipped`/`delivered`/`cancelled`) happens to resolve uniquely against that
+fixture, so the ambiguity was invisible until a test needed `'processing'` specifically — writing
+an assertion against `id_order_state: 2` (or 3) would have been asserting an implementation detail
+of `stateIdFor`'s iteration order rather than a real requirement.
+
+**Rule**: before writing a status-writeback test against a shared default-install fixture, check
+whether the TARGET status resolves to more than one row in that fixture — grep the fixture for the
+flag combination (`paid`/`shipped`/`delivered`) your target status derives from. If it's ambiguous,
+build a small unambiguous fixture (one row per status, the `CUSTOM_STATES` shape in
+`order-state-mapping.spec.ts`) rather than asserting against whichever id the default install
+happens to resolve first — a passing assertion against an ambiguous fixture proves nothing about
+the mapping logic and can silently start asserting a different id the day `stateIdFor`'s iteration
+or the fixture's row order changes.
+
+**Applies to**: any PrestaShop test asserting a specific `id_order_state` against
+`DEFAULT_INSTALL_ORDER_STATES` for a status that isn't `shipped`/`delivered`/`cancelled`.
+
+**Source**: #3526 (epic #3506), 2026-09-28.
+
+---
+
+## An HTTP client's default retry loop is opt-out only for methods that are idempotent by definition
+
+**Context**: #3505 (epic G01) found that the InPost, Allegro, WooCommerce and PrestaShop HTTP
+clients all retried a POST on an ambiguous `5xx` or a network/timeout error exactly like a GET —
+the retry loop keyed on status code and error type, never on the HTTP method. `POST
+/v1/organizations/{id}/shipments` (InPost label create), `POST /sale/product-offers` (Allegro offer
+create), `POST /orders` (WooCommerce), and every PrestaShop Webservice `createResource` call
+inherited this. A committed-but-lost response — the request succeeded on the platform, but the
+client never saw the 2xx — is indistinguishable from a genuine failure, so the retry re-sent an
+identical create: a second paid shipping label, a second live marketplace offer, a second shop
+order. The correct precedent already existed in the same tree (DPD, eParagony, Erli, KSeF all
+gated retry by method), so this was an inconsistency, not a missing pattern.
+
+**Problem, restated as the rule that was missing**: a shared retry loop's default must be
+"idempotent methods retry, everything else does not," with a per-call opt-in
+(`{ idempotent: true }`) for the rare POST that is genuinely safe (the platform holds its own
+dedup key, or the call is a read dressed as a POST). `429` is the one exception that retries
+*regardless* of method or the opt-in, because a 429 means the platform refused the request before
+doing any work — there is nothing to double.
+
+**A shared test fixture that predates the fix can itself become the regression surface.** Fixing
+this exposed a second-order defect: `PrestashopOrderProcessorManagerAdapter` sends `order.orderNumber`
+verbatim as `ps_orders.reference`, a `VARCHAR(9)` column under non-strict MySQL — so a 36-character
+Allegro `checkoutFormId` was silently truncated, and the duplicate-recovery lookup's *exact* filter
+on the untruncated value could never match what was actually stored. The shared
+`createTestOrder()` fixture's default `orderNumber: 'TEST-ORDER-001'` (14 characters) had been
+exercising this truncation-unsafe path in every test that used it, unnoticed, because no test
+asserted on the literal reference sent — only on the mocked response. Once the fix derived a
+column-safe reference, every assertion of the literal shape `orderReference: order.orderNumber`
+had to become `orderReference: derivePrestashopOrderReference(order.orderNumber)`.
+
+**Rule**: when a shared fixture's default value happens to sit on the safe side of a boundary
+(≤ 9 chars, a `0`/exempt tax rate, an always-`false` flag), a later correctness fix that makes that
+boundary load-bearing will pass against the fixture and still ship a genuine bug — or, as here,
+break silently because the fixture was ALREADY on the wrong side, worked around by no test
+depending on the literal value. Audit a shared fixture's defaults against the new boundary
+explicitly, not just "do the existing tests still pass."
+
+**Applies to**: any shared retry-loop implementation (`libs/integrations/*/src/infrastructure/http/*-client.ts`)
+and to `createTestOrder()` / equivalent shared order fixtures across the integration packages.
+
+**Source**: #3469, #3470, #3472, #3473 (epic #3505).
+
+---
+
+## A workspace package missing from `tsconfig.base.json`'s `paths` degrades to `any` under `pnpm lint`, with no diagnostic and a misleading failure site
+
+**Context**: #3003 — `pnpm lint` failed on a clean checkout at `apps/worker/src/plugins.ts:45`,
+the line assigning the whole `workerPlugins: PluginEntry[]` array literal, reported as "Unsafe
+assignment of type `any[]`". The issue's own bisection blamed `@openlinker/oms` (rebuilding its
+`dist` made the symptom disappear).
+
+**Problem**: `@openlinker/oms` was not the cause. `.eslintrc.js`'s `parserOptions.project:
+['./tsconfig.eslint.json']` with `tsconfigRootDir: __dirname` anchors to the REPO ROOT regardless
+of which package's own `pnpm run lint` invoked ESLint, so every package's lint run shares ONE
+TypeScript program built from `tsconfig.eslint.json` (which only extends `tsconfig.base.json` —
+`apps/api/tsconfig.json` and `apps/worker/tsconfig.json`'s own `paths` are never consulted by
+ESLint at all). `tsconfig.base.json`'s `paths` map was missing entries for two packages,
+`@openlinker/integrations-dpd-polska` and `@openlinker/integrations-infakt` — bisecting the
+literal array (binary search, removing half the elements at a time) isolated `DpdIntegrationModule`
+as a *standalone* reproducer with `OmsModule` entirely absent from the file, proving the report's
+own root-cause claim wrong. A workspace import missing from `paths` falls through to plain
+`node_modules` resolution, which needs a built `dist` (the package's `types`/`exports` field) to
+succeed; absent that, TypeScript's resolver logs "module name ... was not resolved" internally
+(confirmed with `tsc --traceResolution`) but — for reasons not fully explained by this repo's own
+config once resolution genuinely fails — raises **no** `TS2307` diagnostic anywhere in the whole
+compile; the import's type silently becomes `any`. Because `any` in one element of an array
+literal widens the WHOLE literal's inferred type to `any[]`, `no-unsafe-assignment` fires on the
+array's declaration line — nowhere near the actually-broken import — so bisecting by *symptom
+line* points at the wrong culprit; only bisecting the array's *elements* finds it. And because
+`pnpm build` builds every workspace package via `pnpm -r build`, rebuilding ANY sufficiently-widely-
+imported package (including one that was never the cause) makes the symptom disappear too, which
+is what produced the original misattribution.
+
+**Rule**: when `pnpm lint` reports an `any`-typed value from an import that "should" have real
+types, do not trust the reported line — it names where the `any` got USED (often an array/object
+literal several imports away from the real one), not where it originated. Bisect by commenting out
+individual imports/array elements until the error disappears, not by reading the stack trace.
+Once found, the fix is to add the missing package to `tsconfig.base.json`'s `paths` (pointing at
+its `src/index.ts`, matching every other workspace package) rather than building `dist` — a `paths`
+entry resolves to source with **no** prior build step, on every future clean checkout, which a
+built `dist` does not survive past the next `git clean`. `apps/api/tsconfig.json` and
+`apps/worker/tsconfig.json` were also individually incomplete (each missing a different subset of
+packages) — irrelevant to `pnpm lint` for the reason above, but relevant to a live editor's
+language server (which uses the PER-PACKAGE tsconfig, not `tsconfig.eslint.json`) and to
+`pnpm type-check` in edge configurations, so keep all three `paths` maps in sync with the full
+workspace package list rather than growing them ad hoc per import.
+
+**Applies to**: `tsconfig.base.json`, `apps/api/tsconfig.json`, `apps/worker/tsconfig.json`; any
+new `libs/integrations/<name>` or `libs/<name>` package — add its `paths` entry to all three
+in the SAME commit that first imports it from `apps/api` or `apps/worker` source, or the import
+type-checks fine locally (dist already built from prior work) and silently degrades to `any` for
+the next contributor's clean checkout.
+
+**Source**: #3003.
+
+## A probe that skips the auth boundary proves nothing about auth
+
+**Context**: #3462. `SubiektConnectionTesterAdapter` verified a Subiekt connection with
+`GET /health`, and the same adapter backs the `subiekt.bridge.reachabilitySweep` job. Both
+Subiekt bridges deliberately exempt `/health` from their auth middleware so a load balancer or
+monitoring probe needs no credential.
+
+**Problem**: the probe therefore proved reachability and nothing else. A connection created with
+no bridge token got a green "Connection test passed - OK" and then failed `401` on its first
+invoice, because every `/api/*` route is closed until the token is configured. The wizard
+compounded it by calling the field optional, so the operator was told to leave it blank, told the
+setup was fine, and found out at the first real document. The sweep was blind to the same thing -
+a rotated bridge token is the likeliest way a working connection stops working, and the sweep kept
+reporting green through it.
+
+**Rule**: a connection test must exercise the same authorization the real work does. Probe a route
+that sits BEHIND the auth boundary and is a side-effect-free read, so any answer other than
+401/403 proves the credential works; assert the probed URL in the test, not the client method
+name, so swapping back to the unauthenticated route fails even if the method keeps its name. When
+a health endpoint is deliberately anonymous, that is a reason not to build a credential check on
+it - not a convenience.
+
+**Applies to**: every `ConnectionTesterPort` implementation, and any periodic reachability job
+built on one. Currently `libs/integrations/{subiekt,subiekt-nexo}/src/infrastructure/adapters/subiekt-connection-tester.adapter.ts`.
+
+**Source**: PR #3464, issue #3462.
+
+## Documentation can state the opposite of the code, and the test can agree with the documentation
+
+**Context**: #3463. Three Subiekt guides (`setup-guide.md`, `tutorial.md`, `runbook.md`) said the
+bridge credentials were *"hardcoded constants in the bridge, not read from an environment variable
+or config file - consult the bridge operator"*.
+
+**Problem**: `BridgeConfig.cs` resolves every key as env `OL_BRIDGE_*` -> `appsettings.json` ->
+built-in default, and the three credentials have no default at all, so the operator both CAN and
+MUST set them. The bridge's own `appsettings.example.json` said so in its `_readme`
+(*"choose your own"*), one directory away. Two independent sources of truth disagreed for months,
+and nothing noticed, because the connection test (see the lesson above) agreed with the wrong one.
+The guides also shipped an example `appsettings.json` that was the OTHER product's bridge schema
+with names swapped - every key wrong - and told the reader the public bridge repository was
+*"not yet published"*.
+
+**Rule**: when a document states a fact about a component's behaviour, cite where that behaviour is
+defined and read it. Prefer pointing at the authoritative artifact (`appsettings.example.json`, a
+port interface, a migration) over restating it in prose, because a restatement is a second copy
+that can drift. When a claim turns out to be wrong in the direction that blocks the reader, say so
+where it was: a one-line note that the previous text claimed X saves the next reader from
+concluding the correction is the mistake.
+
+**Applies to**: `libs/integrations/*/docs/**`, `docs/user-guide/**` - anywhere prose describes
+runtime behaviour defined in another repository or another language.
+
+**Source**: PR #3465, issue #3463.
+
+## Green locally does not mean green in the image, and a rebuilt stack may not include the service you changed
+
+**Context**: #3461 added a new workspace package (`libs/integrations/subiekt-nexo`) and a
+migration, then deployed to the demo stack to verify.
+
+**Problem**: two independent failures, both silent. The `Dockerfile` enumerates every workspace
+`package.json` by hand before `pnpm install`, so a new package is invisible to the image until it
+is named there - `pnpm lint`, `type-check` and every test pass locally while the image build dies
+on `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`. Separately, `docker compose build api worker web` does not
+rebuild `migrate`: it is its own service with its own `build.target` and its own image, so the
+migration ran from the previous build and the command still exited 0.
+
+**Rule**: adding a workspace package is a `Dockerfile` edit as well as a `tsconfig`/`plugins.ts`
+edit. Before concluding a deployment verified a change, confirm the container that performs it was
+one of the containers rebuilt - list the compose services and check each one's build target rather
+than rebuilding the ones whose names match the change. A zero exit code from a build or a compose
+command is not evidence the new code ran.
+
+**Applies to**: `Dockerfile`, `docker-compose.yml`, and any verification run on a locally built
+stack.
+
+**Source**: PR #3464.
+
+## TypeORM keys an applied migration by class NAME, so renumbering one makes it run again
+
+**Context**: while checking a suspected duplicate migration prefix, the demo database's
+`migrations` table was read directly.
+
+**Problem**: it contained BOTH `SplitSubiektGtIdentity1898000000000` and
+`SplitSubiektProductLines1898000000000` - two different classes at the same timestamp, both
+recorded as applied. TypeORM matches executed migrations by class name (`MigrationExecutor`), not
+by timestamp, so a duplicate prefix does not collide at runtime at all; it is caught only by
+`scripts/check-migration-timestamps.mjs` rule 3, and only within ONE tree. Two branches can each
+carry a different migration at the same prefix and both pass their own lint - the failure appears
+when the second one merges.
+
+The corollary bites in the other direction: renumbering an already-merged migration changes its
+class name, so TypeORM treats it as new and runs it again. On any environment that already applied
+it, a plain `ALTER TABLE ... ADD COLUMN` then fails on "column already exists".
+
+**Rule**: before picking a migration prefix, scan every remote ref, not just the current branch and
+`origin/main` - the guard cannot see the branch that will collide with yours. If a merged migration
+must be renumbered, make its `up()` and `down()` idempotent (`ADD COLUMN IF NOT EXISTS` /
+`DROP COLUMN IF EXISTS`) in the same commit, and say in a comment why that one is idempotent so the
+pattern is not copied without cause. Check whether the colliding branch has already renumbered
+before doing it yourself: a stale branch can keep a prefix its own base has already moved off.
+
+**Applies to**: `apps/api/src/migrations/**`, `scripts/check-migration-timestamps.mjs`.
+
+**Source**: #3461 (investigated; renumbering proved unnecessary once the colliding branch turned
+out to be three commits behind its own base).
+
+## An order field has to be named in THREE allowlists, and each omission fails differently
+
+Adding a field to an entity and to every mapper that produces it is not enough to make it survive.
+`OrderRecordService.persistOrder` projects order items through an explicit allowlist on the way
+INTO the `orderSnapshot` jsonb, and `orderFromReadySnapshot.readItems` projects them through a
+second one on the way back OUT. A field named in only one of the two is silently dropped - and
+which half is missing decides which paths break, so the bug looks path-dependent rather than
+structural.
+
+It has now happened twice in the same function. #2254 lost the per-line tax rate on the write side,
+which left every MANUAL issuance path rehydrating a rate-less order while the auto-issue path -
+which composes from the live `Order` and never reads the snapshot - was fine. #3365 lost the
+source-reported gross unit price the same way: the mapper read it, the adapter carried it, the
+ingestion service carried it, the reader was updated to accept it, and the writer was not, so a
+PrestaShop order reached the destination adapter with no gross price and was refused for not
+reporting one it HAD reported.
+
+Both times every unit test passed. Both times it was found by a live run. That is not a coincidence:
+a unit test naturally exercises one side of the pair, and the round trip is the only thing that
+exercises both.
+
+**There is a THIRD list, and it is the worst one to miss.** `OrderSyncService` projects `Order`
+into `OrderCreate` field by field before handing it to a destination adapter. A field missing there
+is invisible to every destination while being visibly present on the order and in its snapshot -
+so the data is demonstrably there and the adapter still says it is not, which is the hardest of the
+three to diagnose. #3365 hit all three in one change, one after another, each found only by the
+next live run.
+
+**Rule**: adding an `OrderItem` or `OrderTotals` field that must reach a destination is a
+THREE-file edit, in one commit:
+
+| file | what it feeds | how the omission shows |
+|---|---|---|
+| `order-record.service.ts` (writer) | the persisted snapshot | manual/rehydrating paths lose it; the auto path works |
+| `order-from-ready-snapshot.ts` (reader) | rehydrated `Order` | manual paths lose it, invisibly |
+| `order-sync.service.ts` (`OrderCreate`) | every destination adapter | present everywhere except where it is used |
+
+Add a spec per site asserting the key is present when set and ABSENT when not - absent rather than
+`undefined`, because the snapshot is a JSON contract and consumers distinguish the two. Before
+trusting a live run, confirm the running container is on the image you just built: the first
+"verification" of each of these ran against a stale one.
+
+**Applies to**: `libs/core/src/orders/application/services/order-record.service.ts`,
+`libs/core/src/orders/domain/order-from-ready-snapshot.ts`,
+`libs/core/src/orders/application/services/order-sync.service.ts`.
+
+**Source**: #2254 (first occurrence, writer only), #3365 (all three, in sequence, each found by a
+live run after the previous fix).
+
+---
+
+## Two paths can agree about a VALUE and disagree about IDENTITY, and nothing notices
+
+**Context**: `SubiektProductMasterAdapter` mints a standalone towar's variant
+under the external id `{symbol}::variant` and, on the model path, minted the
+same towar's variant under the bare `{symbol}` (#3365, round 3).
+
+**Problem**: grouping a standalone towar into a model therefore minted a SECOND
+internal variant id, orphaning and pausing every offer attached to the first —
+on the very grouping operation the feature introduces. It survived three
+verification rounds because `SubiektInventoryMasterAdapter` strips `::variant`
+before asking the bridge, so **stock resolved correctly under either shape**.
+Every quantity assertion passed. The only thing that differed was which row the
+identity pointed at, and nothing asserted that.
+
+It also survived a grep: searching for `::variant` returns a hit on the
+*standalone* path, which reads as evidence the model path is fine.
+
+**Rule**: when two code paths mint an identifier for the same real-world thing,
+assert they produce the SAME identifier — not merely that both downstream reads
+work. A reader that normalises the two shapes (a strip, a trim, a case-fold, a
+`??` fallback) is precisely what hides the divergence, so its existence is a
+reason to test identity harder, not evidence that identity is fine. And when a
+grep for a literal is your evidence that a path is correct, check which path the
+hit is on.
+
+**Applies to**: any adapter with more than one path minting ids through
+`getOrCreateInternalId`; anywhere a reader normalises an id shape before use.
+
+**Source**: PR #3365 (`resolveMemberVariantId`, and the strip it revealed in
+`subiekt-inventory-master.adapter.ts`)
+
+## Changing a minting key orphans existing rows unless the old key is consulted first
+
+**Context**: fixing the divergence above (#3365).
+
+**Problem**: simply switching the model path to the canonical key would have
+caused, once and on upgrade, exactly the orphaning it was fixing — every install
+whose model members already carried the bare key would be re-identified on the
+next sweep.
+
+**Rule**: a change to a minting key is a data migration wearing a code change's
+clothes. Consult the OLD key first and reuse it when present, then mint the new
+one; the fix then applies only to rows that do not yet exist under either. State
+which of the three cases each test covers (legacy reused, canonical reused,
+fresh minted), and confirm the legacy case passes with AND without the change —
+that it does not move is the no-change-on-upgrade guarantee, not a weak test.
+
+**Applies to**: `getOrCreateInternalId` call sites; any `identifier_mappings`
+key format change.
+
+**Source**: PR #3365
+
+## A diagnosis that never checked which BUILD was running cost three wrong answers
+
+**Symptom**: a live e2e run failed with a destination error, and three successive
+explanations were written for it - a lane cap, then a queue back-fill, then the real one.
+The first two were confidently reasoned from real data and were both wrong.
+
+**What actually happened**: `Subiekt rejected the request: Parametr jest niepoprawny.` was
+the OLD `resolveTowarSymbol` putting a model's grouping key (`model:1`) on the wire as a
+towar symbol. The fix for it had been written, tested and committed hours earlier in the
+same session - and the `api` and `worker` containers were two days old, so none of it was
+running. The bridge had been redeployed twice during that session; OpenLinker had not.
+
+**The specific trap**: this repository already carries the entry *"Green locally does not
+mean green in the image, and a rebuilt stack may not include the service you changed"*. It
+was applied - to the C# bridge, which was correctly rebuilt and verified each time. Having
+applied it once, the same session then read every OpenLinker-side e2e result as evidence
+about code it had just written. A rule remembered for one component is not remembered.
+
+**What made it findable**: replaying the same failing order through the bridge BY HAND, in
+six shapes - buyer name, `uwagi`, a symbol-less shipping line, PLN, EUR, minimal. All six
+created a ZK. Only once the bridge was positively ruled out did the image become the
+obvious suspect. The wrong two answers had both been reached without ever reproducing the
+failure outside the stack.
+
+**Rule**: before explaining ANY behaviour observed on a running stack, verify the running
+artefact contains the change being reasoned about. One command:
+
+```bash
+docker inspect <container> --format '{{.Created}}'
+docker exec <container> grep -rc '<a symbol from the new code>' /app/node_modules/...
+```
+
+A container older than the commit under discussion invalidates every observation made
+through it - including the ones that look like they confirm something.
+
+**Source**: PR #3365
+
+## Anchor a price parity test on what the buyer pays, never on the previous hop
+
+**Context**: a PrestaShop product at 100.00 net in a 23% group was published to Allegro as an active offer at 100.00 (#3737, ADR-077).
+
+**Problem**: the golden path compared OL's price with PrestaShop's raw `price` field, then the Allegro offer with OL's price. A net figure carried through unchanged satisfies both equalities, so the suite stayed green while every PrestaShop-mastered offer was underpriced by the VAT. The local PrestaShop stack hid it a second time: its default country was the United States, so the storefront showed net prices as well. And `Product.price` had no stated tax basis, so each master adapter filled it with whatever field its platform stores.
+
+**Rule**:
+- A price test asserts against the platform's own figure for the buyer: PrestaShop's computed `price[..][use_tax]=1` for a stated country, or an explicit gross in the fixture. Never against the previous hop.
+- A numeric field that crosses a context boundary states its basis in its docblock.
+- A fixture that exercises tax must use a product whose tax group is not "No tax", with net and gross set apart.
+
+**Applies to**: `apps/e2e/tests/golden-path/full-flow/*`, `apps/e2e/tests/pricing/*`, master-adapter mapper specs, any `price` field on a core type.
+
+**Source**: #3737, [ADR-077](./architecture/adrs/077-catalogue-prices-are-gross.md)
+
+## Build web fixtures from the API's field names, not from the web type alone
+
+**Context**: the Pricing & sync page (#3149/#3166/#3167) declared a per-source
+`isCustomOverride` in `apps/web`, while the API had always sent two flags,
+`modeOverridden` and `ruleOverridden`.
+
+**Problem**: `apps/web` cannot import the API's DTOs, and the API client passes
+the response body through unmapped, so the web type was a hand-written claim
+about the wire. Every test built its fixtures from that same wrong type, so
+type-check and the whole suite stayed green while the field was `undefined` at
+runtime. Every reader of it saw "no override", and because the PATCH replaces
+both override maps wholesale, a Save silently deleted existing overrides with
+no confirmation (#3729).
+
+**Rule**: when a web type describes an API response, copy the field names from
+the DTO (`apps/api/.../*-response.dto.ts`) rather than from another web file,
+and make at least one test's fixture exercise each field the UI branches on.
+When the write is a full replace, test that an override the operator did not
+touch is re-sent - "does not crash" does not cover "does not delete".
+
+**Applies to**: `apps/web/src/features/**/api/*.types.ts` and the specs that
+mock them.
+
+**Source**: #3729

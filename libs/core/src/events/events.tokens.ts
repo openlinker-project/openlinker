@@ -11,6 +11,10 @@
 // Token for dependency injection (interfaces can't be used as values)
 export const EVENT_PUBLISHER_TOKEN = Symbol('EventPublisherPort');
 
+// #2301, D48
+export const STREAM_DEAD_LETTER_REPOSITORY_TOKEN = Symbol('StreamDeadLetterRepositoryPort');
+export const STREAM_DEAD_LETTERS_SERVICE_TOKEN = Symbol('IStreamDeadLettersService');
+
 
 
 

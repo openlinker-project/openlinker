@@ -21,10 +21,15 @@
  * - **Unattributed rows are claimable only where the claim is provable.** A
  *   NULL-provenance row (an install that predates #2317) is staled by the sole
  *   claimant and left alone when a rival is present.
- * - **Reversal is half free.** A source that stops locating re-creates and
- *   un-stales its pooled row through the ordinary upsert — but the abandoned
- *   located row survives, because the ordinary prune's granularity is
- *   per-variant, not per-location. That gap is pinned by assertion below.
+ * - **Reversal takes two writes, and only one of them is the prune.** A source
+ *   that stops locating re-creates and un-stales its pooled row through the
+ *   ordinary upsert, but the abandoned located row survives the ordinary prune,
+ *   whose granularity is per-variant rather than per-location. #3206 closes
+ *   that with the mirror repair (`staleLocatedPositionsForSource`), which
+ *   `MasterInventorySyncService` runs beside the pooled one. This spec
+ *   exercises the primitives WITHOUT the mirror — that is what the surviving
+ *   double-count below records, and it is why the sync-level claim is asserted
+ *   end-to-end in `inventory-stock-location-override-e2e.int-spec.ts` instead.
  *
  * Plus the no-op guarantee: a locationless-only sync — what both in-tree
  * adapters emit — leaves `isStale` and `updatedAt` byte-identical.
@@ -297,16 +302,21 @@ describe('Inventory pooled-position enforcement (#2322)', () => {
     expect(pooledRow?.isStale).toBe(false);
     expect(pooledRow?.availableQuantity).toBe(9);
 
-    // KNOWN GAP, pinned rather than papered over: the ordinary prune's
+    // What the PRUNE alone does, asserted rather than wished for: its
     // granularity is per-VARIANT, not per-location (see the
     // `markStaleExceptVariants` port docblock — "a still-present variant that
     // the master stops returning at one specific location keeps all its
     // location rows live"). The variant is still present, so the abandoned
     // located row stays live and the total double-counts on the way BACK, at
-    // 9 + 7. #2322 enforces decision (2) in one direction only; the
-    // mirror-image sweep is multi-location pruning, which ADR-058 leaves out of
-    // scope. Asserting the true number is what makes the gap visible to the
-    // next reader instead of surfacing as a mystery overcount in production.
+    // 9 + 7.
+    //
+    // That double-count is CLOSED in production by #3206's mirror repair,
+    // `staleLocatedPositionsForSource`, which the sync service runs beside the
+    // pooled one — deliberately NOT called here, because this spec's subject is
+    // the persisted predicate of each primitive on its own. Keeping the real
+    // number visible is what stops the next reader assuming the prune covers
+    // it. The end-to-end claim lives in
+    // `inventory-stock-location-override-e2e.int-spec.ts`.
     expect(rows.find((r) => r.locationId === 'loc-1')?.isStale).toBe(false);
     const [availability] = await inventoryQueryService.getAvailabilityByVariantIds([variantId]);
     expect(availability.totalAvailable).toBe(16);

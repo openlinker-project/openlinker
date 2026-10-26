@@ -87,6 +87,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.fulfillmentWorkId ?? null,
     // #2073 waybill-relay failure history — none by default.
     overrides.waybillRelayFailure ?? null,
+    // #3506 delivered-relay bookkeeping — nothing owed by default.
+    overrides.deliveredRelay ?? { relayedAt: null, failureCount: 0, lastFailureAt: null },
   );
 }
 
@@ -137,8 +139,11 @@ describe('ShipmentController', () => {
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
+      recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
@@ -705,9 +710,25 @@ describe('ShipmentController', () => {
 
   describe('cancel', () => {
     it('should return the cancelled shipment', async () => {
-      cancellation.cancel.mockResolvedValue(makeShipment({ status: 'cancelled' }));
+      cancellation.cancel.mockResolvedValue({
+        shipment: makeShipment({ status: 'cancelled' }),
+        cancelledAfterDispatch: false,
+      });
       const result = await controller.cancel('ol_shipment_1');
-      expect(result.status).toBe('cancelled');
+      expect(result.shipment.status).toBe('cancelled');
+      expect(result.cancelledAfterDispatch).toBe(false);
+    });
+
+    // The flag is the whole reason this route returns a result rather than the
+    // row: cancelling after dispatch leaves the marketplace believing the
+    // parcel shipped, and OpenLinker sends nothing to withdraw that.
+    it('should report a cancellation that happened after dispatch', async () => {
+      cancellation.cancel.mockResolvedValue({
+        shipment: makeShipment({ status: 'cancelled' }),
+        cancelledAfterDispatch: true,
+      });
+      const result = await controller.cancel('ol_shipment_1');
+      expect(result.cancelledAfterDispatch).toBe(true);
     });
 
     it('should map ShipmentNotFoundException to 404', async () => {
@@ -814,6 +835,27 @@ describe('ShipmentController', () => {
         'attachment; filename="ol-shipment-ol_shipment_1.pdf"',
       );
       expect(send).toHaveBeenCalledWith(Buffer.from(doc.body));
+    });
+
+    // Regression (#3340): this route used to stamp `FulfillmentWork.labelPrintedAt`
+    // on every successful fetch, so a viewer's or a script's stray GET silently
+    // marked a label printed the packer never actually printed. It carries no
+    // `@Roles` and any caller may reach it with nothing more than a shipment id,
+    // so a fetch here is not evidence anyone printed anything — the stamp now
+    // lives exclusively on `GET /bench/work/:workId/documents/label`. This route
+    // must therefore neither read the shipment a second time to find its
+    // `fulfillmentWorkId`, nor call any verification seam.
+    it('should NOT stamp a label print, and should not re-read the shipment to look for one', async () => {
+      const doc: LabelDocument = {
+        contentType: 'application/pdf',
+        body: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      };
+      labelService.fetchLabel.mockResolvedValue(doc);
+      const { res } = makeRes();
+
+      await controller.downloadLabel('ol_shipment_1', ADMIN_USER, res);
+
+      expect(query.getById).not.toHaveBeenCalled();
     });
 
     it('should use the content-type-derived extension for a non-PDF document', async () => {

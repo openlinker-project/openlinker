@@ -31,6 +31,8 @@ export interface WooCommerceProduct {
   manage_stock?: boolean;
   stock_status?: string;           // 'instock' | 'outofstock' | 'onbackorder'
   weight?: string;
+  /** Dimensions in the store's `woocommerce_dimension_unit`; empty strings when unset (#3650). */
+  dimensions?: WooCommerceDimensions;
   /** Tax class SLUG, not a rate. `''` is the store's "standard" class (#2054). */
   tax_class?: string;
   tax_status?: 'taxable' | 'shipping' | 'none';
@@ -52,6 +54,8 @@ export interface WooCommerceProductVariation {
   manage_stock?: boolean;
   stock_status?: string;           // 'instock' | 'outofstock' | 'onbackorder'
   weight?: string;
+  /** Own dimensions; empty strings mean "inherit the parent product's" (#3650). */
+  dimensions?: WooCommerceDimensions;
   /**
    * Tax class SLUG. `'parent'` means "whatever the product says" and is the
    * WooCommerce default for a variation (#2054) - neither a rate of its own
@@ -117,6 +121,13 @@ export interface WooCommerceTaxRate {
   shipping?: boolean;
   order?: number;
   class?: string;
+}
+
+/** WooCommerce `dimensions` object; every member is a string, empty when unset. */
+export interface WooCommerceDimensions {
+  length?: string;
+  width?: string;
+  height?: string;
 }
 
 /** One row of `GET /wp-json/wc/v3/settings/general`. */

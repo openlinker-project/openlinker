@@ -71,9 +71,17 @@
  *   node scripts/check-architecture-gates.mjs --self-check
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = process.cwd();
+/**
+ * Anchored to this file, never to `process.cwd()` (#2792). `readdirSync`
+ * against `ADR_DIR` threw `ENOENT` from any CWD other than the repo root,
+ * which propagated out of `checkGateMarkers` as an uncaught error rather
+ * than a diagnosable failure — the `check-stream-writes.mjs` fix, applied
+ * here for the same reason.
+ */
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ADR_DIR = 'docs/architecture/adrs';
 const CORE_SRC = 'libs/core/src';
 const RUNG_DIR = 'libs/core/src/products/domain/ports/capabilities';
@@ -104,6 +112,14 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readPricingRule', key: 'config.pricingRule' },
   ],
   [
+    'libs/core/src/identifier-mapping/domain/types/price-sync-mode.types.ts',
+    { helper: 'readPriceSyncModeConfig', key: 'config.priceSyncMode' },
+  ],
+  [
+    'libs/core/src/identifier-mapping/domain/types/auto-dispatch.types.ts',
+    { helper: 'readAutoDispatchConfig', key: 'config.autoDispatch' },
+  ],
+  [
     'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
     {
       helper: 'readSalesDocumentRouting',
@@ -123,6 +139,21 @@ const KNOWN_CONFIG_KNOBS = new Map([
         'config.orderLifecycleAuthority + config.returnsAuthority + config.refundTrigger',
     },
   ],
+  [
+    'libs/core/src/inventory/domain/types/stock-location-override.types.ts',
+    { helper: 'readStockLocationOverride', key: 'config.stockLocationOverride' },
+  ],
+  [
+    'libs/core/src/shipping/domain/types/dispatch-notification.types.ts',
+    {
+      helper: 'readNotifyOnLabelPurchase',
+      key: 'config.shipping.notifyMarketplaceOnLabelPurchase',
+    },
+  ],
+  [
+    'libs/core/src/listings/domain/types/price-change-block.types.ts',
+    { helper: 'readConnectionCurrency', key: 'config.currency' },
+  ],
 ]);
 
 /**
@@ -130,21 +161,6 @@ const KNOWN_CONFIG_KNOBS = new Map([
  * An entry here must say why it is not a knob.
  */
 const NON_KNOBS = new Map([
-  [
-    'libs/core/src/invoicing/domain/types/invoicing-primary.types.ts',
-    // SUPERSEDED, not a second knob. #2161 (ADR-041 decision 4) moved the live
-    // read of `config.invoicing.isPrimary` into `readSalesDocumentRouting`,
-    // registered above — its own docblock says it reads "the EXACT shape #2047
-    // already writes (decision 4 fixes that shape, it does not introduce a
-    // second one)". `parseIsPrimaryInvoicing` has no production caller left
-    // (only its definition and the `@openlinker/core/invoicing` barrel
-    // re-export), so counting it would report five knobs where four keys are
-    // actually coerced, and would trip KNOB_THRESHOLD on a helper nothing
-    // calls. Deleting it — and `selectPrimaryInvoicingConnection` beside it,
-    // likewise superseded by `resolveSalesDocumentRouting` — is a public-barrel
-    // change that belongs in its own reviewed PR, tracked separately.
-    'superseded by readSalesDocumentRouting (#2161); dead export pending removal',
-  ],
   [
     'libs/core/src/fulfillment-authority/domain/types/authority-attention-reason.types.ts',
     // NOT a per-connection config knob, despite matching both halves of the
@@ -159,6 +175,21 @@ const NON_KNOBS = new Map([
     // threshold with a read that coerces OL's own storage, which is the one
     // thing the shared-rules-model conversation is not about.
     'coerces a persisted jsonb column, not Connection.config (#2352)',
+  ],
+  [
+    'libs/core/src/identifier-mapping/domain/types/fulfilment-ownership.types.ts',
+    // A per-connection config coercion that is deliberately NOT counted toward
+    // the #1032 threshold, and this is a judgement a reviewer should confirm.
+    // `config.fulfilmentOwnedByDestination` (#2118) is an operator-declared
+    // DISPLAY flag: no server code reads it at runtime (the only core use is
+    // refusing a non-boolean on write), it resolves no precedence, blocks no
+    // write and feeds no rule - `POST /orders/:id/packed` succeeds whatever it
+    // says, and only the browser reads it, to hide OpenLinker's own packing
+    // affordances. The accretion #1032's shared rules model exists to replace
+    // is knobs that change what the system DOES; this changes what an operator
+    // is shown. If it ever starts to drive behaviour it must move to
+    // KNOWN_CONFIG_KNOBS and trip the threshold like every other knob.
+    'display-only flag no server code dispatches on; changes what is shown, not what happens (#2118)',
   ],
 ]);
 
@@ -218,8 +249,134 @@ const NON_KNOBS = new Map([
  * rationales above stand; the invariant preserved is the same in each — the
  * NEXT unrelated knob (the seventh) fires this gate again with zero headroom,
  * and #2169 remains the tracked consolidation.
+ *
+ * **Contributing raise — #3142 (ADR-072, recurring price propagation), the
+ * seventh knob, 7 -> 8.** `readPriceSyncModeConfig` (`config.priceSyncMode`)
+ * is registered above rather than exempted: it genuinely is per-connection
+ * JSONB coercion of exactly the counted shape, on the DESTINATION connection,
+ * and suppressing it would make the count lie in the direction that matters.
+ * The gate firing here is not dismissed — it is deferred on the same grounds
+ * #2305 and #2304 were:
+ *
+ * 1. `price-sync-mode.types.ts` is a types-and-pure-helpers file with no
+ *    persistence and no binding; a shared per-connection rules model needs
+ *    both, which this slice must not grow ahead of the design owning it.
+ * 2. The knob is required by the design, not accreted casually: ADR-072
+ *    decision 3 keeps `priceSyncMode` a SEPARATE key from `pricingRule`
+ *    (rather than folding "whether to auto-apply" into the pricing rule)
+ *    because the two axes — how to compute the price, and whether to ask
+ *    before publishing it — are independently operator-set per (destination,
+ *    feeding source) pair.
+ * 3. The consolidation already has an owner (#2169). Raising the bar by one
+ *    buys exactly one more knob before the gate fires again — the eighth
+ *    knob re-opens this same conversation with no further headroom.
+ *
+ * A reviewer who disagrees should push back on this raise specifically. Note
+ * `pricing-rule.types.ts` was ALSO widened by #3142 (ADR-072 decision 2, the
+ * per-source-override shape) — that is the SAME registered knob getting a
+ * richer shape, not a second one, and does not itself contribute to this
+ * raise.
+ *
+ * **Contributing raise — #3206, the eighth knob, 8 -> 9.** The gate fired on
+ * `readStockLocationOverride`, and it is registered rather than exempted
+ * because it genuinely is per-connection JSONB coercion. It is NOT the kind of
+ * knob the #1032/#2169 consolidation is aimed at, though: every prior entry
+ * coerces a ROUTING or AUTHORITY decision (who issues, who decides, which
+ * document, which lifecycle) — exactly the "shared per-connection rules
+ * model" #2162 § Out of scope is about. `stockLocationOverride` coerces
+ * neither; it is a one-shot OPERATOR ASSERTION of a physical-world fact no
+ * master will ever report (ADR-058 decision (2): `locationId IS NULL`
+ * permanently means the master declines to locate its stock, for both shipped
+ * `InventoryMasterPort` adapters). A rules engine that could express "which
+ * connection issues invoice vs. receipt" has no way to express "where is this
+ * connection's unlocated stock physically located" — the two aren't the same
+ * shape of question, so consolidating this knob into that future engine buys
+ * nothing. It stays a candidate for #2169's revisit anyway, since the revisit
+ * is about the JSONB-accretion COST, not just the routing-knob shape.
+ *
+ * The rung is raised by exactly one, so the NEXT unrelated knob still stops and
+ * has this conversation. #2169 remains the tracked revisit.
+ *
+ * Merge note: #3142 took the 7 -> 8 step on `main` while this branch was open,
+ * for a different helper, and #3159 then took 8 -> 9 for `readConnectionCurrency`.
+ * All three raises are real and independent, so every paragraph stands and the
+ * threshold lands on 10 rather than any side silently overwriting the others
+ * back down. The gate is `>=`, so 9 registered knobs under a threshold of 10
+ * passes while a tenth still stops and has this conversation - verified by
+ * adding a probe entry and watching it trip.
+ *
+ * **Contributing raise — #3143/#3159 (ADR-072 decision 4, currency-mismatch
+ * blocking), the eighth knob, 8 -> 9.** `readConnectionCurrency`
+ * (`config.currency`) is registered above rather than exempted: it genuinely
+ * coerces a per-connection JSONB value of exactly the counted shape (a
+ * destination's configured currency, read to decide whether the automatic
+ * price-propagation bypass may fire). It is registered even though the #3159
+ * review found it currently INERT on the repo's default topology — no
+ * destination form writes `config.currency` today, only a PrestaShop
+ * SOURCE-side setup form does — because "not yet reachable in practice" is
+ * not the same claim as "not a knob"; suppressing it here would make the
+ * count lie about the shape of the config surface rather than about how
+ * often it fires. The deferral grounds are the same as #2305/#2304/#3142's:
+ *
+ * 1. `price-change-block.types.ts` is a types-and-pure-helpers file with no
+ *    persistence and no binding, exactly like `price-sync-mode.types.ts`
+ *    beside it — a shared per-connection rules model needs both, which this
+ *    slice must not grow ahead of the design owning it.
+ * 2. The knob is required by the design, not accreted casually: ADR-072
+ *    decision 4 blocks a currency mismatch by naming why, and doing so needs
+ *    to read what currency the destination is configured for.
+ * 3. The consolidation already has an owner (#2169). Raising the bar by one
+ *    buys exactly one more knob before the gate fires again — the ninth knob
+ *    re-opens this same conversation with no further headroom.
+ *
+ * A reviewer who disagrees should push back on this raise specifically.
+ *
+ * ## Raised to 11 by #3415 (`config.autoDispatch`)
+ *
+ * The tenth knob is `readAutoDispatchConfig` - whether a connection buys its
+ * shipping label automatically when the holder accepts the work, and with
+ * what default parcel weight and template. Registered rather than excused,
+ * and the raise is stated here rather than made quietly, on the same three
+ * grounds as its predecessors:
+ *
+ * 1. `auto-dispatch.types.ts` is a types-and-pure-helpers file with no
+ *    persistence and no binding, exactly like `price-sync-mode.types.ts` and
+ *    `price-change-block.types.ts` beside it. A shared per-connection rules
+ *    model needs both, and this slice must not grow one ahead of the design
+ *    that owns it.
+ * 2. It has to be PER CONNECTION rather than a deployment-wide env flag,
+ *    because buying a label spends the operator's money at a carrier. An
+ *    operator who wants one shop's parcels bought automatically and another's
+ *    bought by hand cannot express that in a global switch, and a global
+ *    switch defaulting either way is wrong for somebody.
+ * 3. The consolidation already has an owner (#2169), and this raise buys
+ *    exactly one more knob before the gate fires again.
+ *
+ * One thing that is NOT like its predecessors, recorded because it should
+ * shape the consolidation rather than be rediscovered: every earlier knob
+ * changes how OpenLinker describes or publishes something, while this one
+ * decides whether OpenLinker SPENDS. Whatever replaces these ten will need a
+ * way to say that a rule costs money, and that is a stronger requirement than
+ * any of the nine before it put on it.
+ *
+ * A reviewer who disagrees should push back on THIS raise specifically.
  */
-const KNOB_THRESHOLD = 7;
+// #3365 review: raised from 11 to 12 for the eleventh knob, deliberately and
+// with the trade named rather than nudged past.
+//
+// That knob is `config.shipping.notifyMarketplaceOnLabelPurchase`, and it exists
+// because #3365 made buying a label notify the marketplace on EVERY install.
+// Printing a label and handing a parcel over are two acts, and an install that
+// batches labels in the morning was telling buyers "your order shipped" hours
+// before anything moved. The alternatives were worse than an eleventh knob: an
+// env var makes it install-wide, when the question is per-connection; and
+// leaving it unconditional leaves a buyer-facing claim firing everywhere.
+//
+// What this does NOT do is answer the question the threshold asks. Eleven
+// per-connection knobs in JSONB is the accretion #1032's rules model is meant to
+// replace, and that is still true - it is simply not something a review fix may
+// take on. The number is raised by one so the next knob asks again.
+const KNOB_THRESHOLD = 12;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
@@ -283,15 +440,58 @@ function lineOfOffset(text, offset) {
   return text.slice(0, offset).split('\n').length;
 }
 
+/**
+ * Total live occurrences of the "*Reversal gate" convention phrase across
+ * `text`, marked or unmarked or inside the ADR-048 block heading. This is
+ * the floor's raw material: `checkGateMarkers` only ever reports on
+ * UNMARKED occurrences, so if the convention phrase itself were reworded
+ * everywhere (or a filename pattern changed and nothing was scanned), the
+ * unmarked-count check would silently read zero violations forever — a
+ * pass with nothing left to check. Counting every occurrence, marked or
+ * not, is what lets `evaluateGateOccurrenceFloor` catch that (#2792).
+ */
+export function countGateOccurrences(text) {
+  return (text.match(/\*Reversal gate/g) || []).length;
+}
+
+/**
+ * As of filing (#2792), 38 live occurrences are scanned across ADR-048+.
+ * Set well below that so a handful of gates legitimately closing (ADR-048's
+ * whole point) never trips this — but high enough that a wholesale rewording
+ * of the convention phrase (which would drop the live count to 0) still
+ * fails loudly instead of reading as a quiet, permanent pass.
+ */
+const MIN_GATE_MARKER_OCCURRENCES = 20;
+
+/**
+ * Pure evaluator, mirroring `evaluateKnobs` / `evaluateRungs` below — a
+ * count under the floor names the gap and floors at 0 rather than reporting
+ * a pass over nothing.
+ */
+export function evaluateGateOccurrenceFloor({ count, min }) {
+  if (count < min) {
+    return (
+      `only ${count} "*Reversal gate" occurrence(s) were found across ADR-${String(MARKER_CONVENTION_STARTS_AT).padStart(3, '0')}+ ` +
+      `(expected at least ${min}). Zero matches reads as a pass with nothing to check - if the ` +
+      `convention phrase was reworded, this floor is what catches it. check-architecture-gates.mjs ` +
+      `is likely broken (wrong ADR_DIR / phrase spelling), not the ADR corpus - fix the script, or ` +
+      `lower MIN_GATE_MARKER_OCCURRENCES in the same reviewed change if gates have genuinely closed.`
+    );
+  }
+  return null;
+}
+
 function checkGateMarkers() {
   const failures = [];
   const adrDirAbs = join(REPO_ROOT, ADR_DIR);
+  let totalOccurrences = 0;
   for (const name of readdirSync(adrDirAbs)) {
     const numberMatch = /^(\d{3})-.*\.md$/.exec(name);
     if (!numberMatch) continue;
     if (Number(numberMatch[1]) < MARKER_CONVENTION_STARTS_AT) continue;
     const rel = `${ADR_DIR}/${name}`;
     const text = readFileSync(join(REPO_ROOT, rel), 'utf8');
+    totalOccurrences += countGateOccurrences(text);
     for (const offset of findUnmarkedInlineGates(text)) {
       failures.push(
         `${rel}:${lineOfOffset(text, offset)} — unmarked reversal gate. Every gate in ADR-048+ ` +
@@ -300,6 +500,11 @@ function checkGateMarkers() {
       );
     }
   }
+  const floorFailure = evaluateGateOccurrenceFloor({
+    count: totalOccurrences,
+    min: MIN_GATE_MARKER_OCCURRENCES,
+  });
+  if (floorFailure) failures.push(floorFailure);
   return failures;
 }
 
@@ -547,6 +752,23 @@ function selfCheck() {
   expect(
     'third rung trips the ADR-048 gate',
     evaluateRungs({ rungCount: 3, threshold: 3 }) !== null,
+    true
+  );
+
+  // gate-marker occurrence floor (#2792): counts every occurrence of the
+  // phrase, marked or not, and a live corpus reworded to drop it entirely
+  // must fail loudly rather than reading as a clean pass.
+  expect(
+    'countGateOccurrences counts marked and unmarked alike',
+    countGateOccurrences(
+      '*Reversal gate (countable):* a. *Reversal gate:* b. **Reversal gates** (heading):'
+    ),
+    3
+  );
+  expect('count above floor passes', evaluateGateOccurrenceFloor({ count: 38, min: 20 }), null);
+  expect(
+    'count of zero (a reworded phrase) trips the floor',
+    evaluateGateOccurrenceFloor({ count: 0, min: 20 }) !== null,
     true
   );
 

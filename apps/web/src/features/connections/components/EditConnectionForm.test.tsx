@@ -3,12 +3,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
+  findToastTitle,
+  getToastDescription,
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
 import type { Connection } from '../api/connections.types';
 import type * as SystemModule from '../../system';
 import { EditConnectionForm } from './EditConnectionForm';
+import { ApiError } from '../../../shared/api/api-error';
+import type { PaginatedInventoryLocations } from '../../inventory';
+import type * as ReactRouterDom from 'react-router-dom';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
+  return { ...actual, useNavigate: (): typeof mockNavigate => mockNavigate };
+});
 
 // Drive demo mode directly rather than through the async system-config query.
 // The query->demoMode plumbing is covered by use-demo-mode's own tests; these
@@ -76,6 +87,8 @@ describe('EditConnectionForm', () => {
   afterEach(() => {
     cleanup();
     mockDemoMode = false;
+    mockNavigate.mockReset();
+    vi.unstubAllEnvs();
   });
 
   it('renders pre-filled form fields from the connection', () => {
@@ -136,7 +149,219 @@ describe('EditConnectionForm', () => {
     renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(await screen.findByText('Server error')).toBeInTheDocument();
+    expect(await screen.findByText('Unable to update connection')).toBeInTheDocument();
+    expect(screen.getByText('Server error', { selector: '.alert__description' })).toBeInTheDocument();
+    // #3765 - the Alert sits at the top of a long form, so the failure is
+    // also reported where the operator is looking.
+    expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
+    expect(getToastDescription('Server error')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows an error toast and stays on the page when the pre-submit refetch fails (#3765)', async () => {
+    const updateFn = vi.fn();
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        getById: vi.fn().mockRejectedValue(new Error('Network unreachable')),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
+    expect(
+      getToastDescription('Network unreachable'),
+    ).toBeInTheDocument();
+    expect(updateFn).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows an error toast and lists a nested field error in the summary when validation fails (#3765)', async () => {
+    const updateFn = vi.fn();
+    const connectionWithRateLimit: Connection = {
+      ...sampleConnection,
+      config: { ...sampleConnection.config, rateLimit: { requestsPerMinute: 10, maxConcurrent: 11 } },
+    };
+    const apiClient = createMockApiClient({
+      connections: { update: updateFn, getById: vi.fn().mockResolvedValue(connectionWithRateLimit) },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithRateLimit} />, { apiClient });
+    fireEvent.change(screen.getByLabelText('Max concurrent requests'), { target: { value: '65' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
+    expect(
+      getToastDescription('1 field needs attention. See the list at the top of the form.'),
+    ).toBeInTheDocument();
+    // Before #3765 the summary read only top-level messages, so a nested
+    // `rateLimit.maxConcurrent` error never reached it.
+    expect(
+      screen.getByText('Must be at most 64', { selector: '.form-error-summary__list li' }),
+    ).toBeInTheDocument();
+    expect(updateFn).not.toHaveBeenCalled();
+  });
+
+  it('shows a success toast and navigates back when the save succeeds', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        update: vi.fn().mockResolvedValue(sampleConnection),
+        getById: vi.fn().mockResolvedValue(sampleConnection),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await findToastTitle('Connection updated')).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(`/connections/${sampleConnection.id}`);
+  });
+
+  it('shows the stockLocationOverride API error only as a field-level error, not also as the generic banner (#3207 review)', async () => {
+    // The override group is part of the OMS routing UI (#3634).
+    vi.stubEnv('VITE_OL_OMS_ROUTING_UI_ENABLED', 'true');
+    // Pre-populate an already-open location-override group (#3206) so the
+    // field-level error has somewhere to render, and reject the update with
+    // the exact message shape `ConnectionService.validateStockLocationOverride`
+    // sends — a 400 whose message names `stockLocationOverride`.
+    const connectionWithOverride: Connection = {
+      ...sampleConnection,
+      config: { ...sampleConnection.config, stockLocationOverride: 'ol_location_1' },
+    };
+    const locations: PaginatedInventoryLocations = {
+      items: [
+        {
+          id: 'ol_location_1',
+          code: 'WH1',
+          name: 'Main warehouse',
+          kind: 'warehouse',
+          ownerConnectionId: null,
+          externalRef: null,
+          status: 'active',
+          countryIso2: null,
+          postcode: null,
+          latitude: null,
+          longitude: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 100,
+    };
+    const fieldErrorMessage = 'config.stockLocationOverride names an unknown location: ol_location_1';
+    const apiClient = createMockApiClient({
+      connections: {
+        // The `error` code is what the field-level mapping branches on
+        // (#3207 review) — not a substring match on `message`, which is
+        // prose the backend is free to reword.
+        update: vi.fn().mockRejectedValue(
+          new ApiError(fieldErrorMessage, 400, {
+            statusCode: 400,
+            error: 'STOCK_LOCATION_OVERRIDE_INVALID',
+            message: fieldErrorMessage,
+          }),
+        ),
+        getById: vi.fn().mockResolvedValue(connectionWithOverride),
+      },
+      inventory: { listLocations: vi.fn().mockResolvedValue(locations) },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithOverride} />, { apiClient });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    // The field-level error renders under the Location select (and, since
+    // submitCount > 0, is also echoed in the top-of-form validation
+    // summary — that's the form's ordinary error-summary behaviour, not the
+    // bug this test guards against). Exactly two, not `> 0` (#3207
+    // review) — the count is deterministic here, and a fixed length also
+    // fails loudly if the field and the summary ever stop agreeing.
+    const fieldErrors = await screen.findAllByText(fieldErrorMessage);
+    expect(fieldErrors).toHaveLength(2);
+    // The generic "Unable to update connection" banner must not also render
+    // — before the fix, `updateConnection.error` stayed set independently of
+    // `form.setError`, so the message rendered a THIRD time, in that banner.
+    expect(screen.queryByText('Unable to update connection')).not.toBeInTheDocument();
+  });
+
+  it('does not offer the stock-location-override group, and does not read locations, for a connection without InventoryMaster (#3207 review)', async () => {
+    const connectionWithoutInventoryMaster: Connection = {
+      ...sampleConnection,
+      enabledCapabilities: ['OfferManager', 'OrderProcessorManager'],
+    };
+    const listLocations = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'ol_location_1',
+          code: 'WH1',
+          name: 'Main warehouse',
+          kind: 'warehouse',
+          ownerConnectionId: null,
+          externalRef: null,
+          status: 'active',
+          countryIso2: null,
+          postcode: null,
+          latitude: null,
+          longitude: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 100,
+    });
+    const apiClient = createMockApiClient({
+      connections: { getById: vi.fn().mockResolvedValue(connectionWithoutInventoryMaster) },
+      inventory: { listLocations },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithoutInventoryMaster} />, {
+      apiClient,
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText("Assign a location to this connection's stock"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(listLocations).not.toHaveBeenCalled();
+  });
+
+  it('should not offer the stock-location-override group, and should keep a stored override on save, when the OMS routing UI flag is off (#3634)', async () => {
+    const connectionWithOverride: Connection = {
+      ...sampleConnection,
+      config: { ...sampleConnection.config, stockLocationOverride: 'ol_location_1' },
+    };
+    const listLocations = vi.fn();
+    const updateFn = vi.fn().mockResolvedValue(connectionWithOverride);
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        getById: vi.fn().mockResolvedValue(connectionWithOverride),
+      },
+      inventory: { listLocations },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithOverride} />, { apiClient });
+
+    expect(
+      screen.queryByLabelText("Assign a location to this connection's stock"),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue(connectionWithOverride.name), {
+      target: { value: 'Renamed Store' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(updateFn).toHaveBeenCalled();
+    });
+    const [, submittedInput] = updateFn.mock.calls[0] as [string, { config: Record<string, unknown> }];
+    expect(submittedInput.config.stockLocationOverride).toBe('ol_location_1');
+    expect(listLocations).not.toHaveBeenCalled();
   });
 
   it('preserves a config field written by a sibling panel after this form mounted, instead of clobbering it with the load-time snapshot', async () => {
@@ -208,6 +433,43 @@ describe('EditConnectionForm', () => {
     const [, submittedInput] = updateFn.mock.calls[0] as [string, { config: Record<string, unknown> }];
     expect('rateLimit' in submittedInput.config).toBe(true);
     expect(submittedInput.config.rateLimit).toBeNull();
+  });
+
+  it('persists an explicit config.print: null when the operator clears the paper-receipt setting on an eparagony.pl connection, even though the pre-submit refetch still returns the old value (#3268)', async () => {
+    // The eparagony.pl counterpart of the #2016 test above, for the same
+    // reason: `EditConnectionForm.onSubmit` merges
+    // `{ ...fresh.config, ...input.config }`, and a shallow spread can only
+    // override a key present on the right side. `applyEparagonyConfig` used to
+    // `delete` a cleared key rather than null it, so the clear was silently
+    // restored from the refetch and never reached the server — this is the
+    // test that would have caught it.
+    const eparagonyConnection: Connection = {
+      ...sampleConnection,
+      platformType: 'eparagony',
+      adapterKey: 'eparagony.documents.v3',
+      config: { environment: 'sandbox', posId: 'openlinker', print: true },
+    };
+    const updateFn = vi.fn().mockResolvedValue(eparagonyConnection);
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        // Refetch still reports the old `print: true` — nothing has persisted yet.
+        getById: vi.fn().mockResolvedValue(eparagonyConnection),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={eparagonyConnection} />, { apiClient });
+
+    expect(screen.getByRole('radio', { name: 'Print' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('radio', { name: 'Not set' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(updateFn).toHaveBeenCalled();
+    });
+    const [, submittedInput] = updateFn.mock.calls[0] as [string, { config: Record<string, unknown> }];
+    expect('print' in submittedInput.config).toBe(true);
+    expect(submittedInput.config.print).toBeNull();
   });
 
   describe('structured PrestaShop inputs + raw JSON toggle', () => {

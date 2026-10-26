@@ -16,6 +16,7 @@
  */
 import type { TaxIdentifier } from '@openlinker/core/invoicing';
 import { InvalidBuyerIdentificationException } from '../../../domain/exceptions/fa3-builder.exception';
+import { normalizePlNip } from '../../adapters/nip-checksum';
 
 /**
  * Resolved FA(3) `Podmiot2` identity — a discriminated union the builder pattern
@@ -47,6 +48,26 @@ export const EU_VAT_PATTERN = /^([A-Z]{2})([A-Za-z0-9]+)$/;
 export const COUNTRY_PREFIXED_ID_PATTERN = EU_VAT_PATTERN;
 
 /**
+ * The scheme tag to use when a buyer tax id has to be rendered into a STABLE
+ * handle rather than placed into a document (#3225 review).
+ *
+ * Deliberately does NOT throw where {@link resolveBuyerIdentity} does. That
+ * function refuses an untagged non-domestic value because placing it would
+ * mean guessing an element of a document bound for a tax authority; a customer
+ * handle has no such consequence, and throwing would fail `upsertCustomer` for
+ * a buyer the adapter can otherwise serve. It resolves the domestic case so
+ * one buyer keeps one handle whichever path issued - tagged from the HTTP
+ * path, untagged from auto-issue - and falls back to a literal `untagged`
+ * rather than ever rendering `undefined` into a persisted identifier.
+ */
+export function resolveBuyerIdSchemeTag(taxId: TaxIdentifier): string {
+  if (taxId.scheme !== undefined && taxId.scheme.trim().length > 0) {
+    return taxId.scheme.trim().toLowerCase();
+  }
+  return NIP_PATTERN.test(normalizePlNip(taxId.value)) ? 'pl-nip' : 'untagged';
+}
+
+/**
  * Resolve a neutral buyer `TaxIdentifier` (or `null` for B2C) to the FA(3)
  * `Podmiot2` choice.
  *
@@ -58,15 +79,18 @@ export function resolveBuyerIdentity(taxId: TaxIdentifier | null): BuyerIdentity
     return { kind: 'none' };
   }
 
-  const scheme = taxId.scheme.toLowerCase();
   const value = taxId.value.trim();
+  const scheme = resolveScheme(taxId.scheme, value);
 
-  // Domestic Polish buyer → <NIP> (10 digits).
+  // Domestic Polish buyer → <NIP> (10 digits). Separators are stripped here as
+  // well as at the API (DEF-11): an old snapshot, an ingested order or an MCP
+  // caller can still carry `526-000-12-46`, and `TNrNIP` admits digits only.
   if (scheme === 'pl-nip') {
-    if (!NIP_PATTERN.test(value)) {
-      throw new InvalidBuyerIdentificationException(taxId.scheme, 'NIP must be exactly 10 digits');
+    const nip = normalizePlNip(value);
+    if (!NIP_PATTERN.test(nip)) {
+      throw new InvalidBuyerIdentificationException(scheme, 'NIP must be exactly 10 digits');
     }
-    return { kind: 'nip', nip: value };
+    return { kind: 'nip', nip };
   }
 
   // EU buyer → <KodUE> + <NrVatUE>. The 2-letter prefix is the country code; the
@@ -76,7 +100,7 @@ export function resolveBuyerIdentity(taxId: TaxIdentifier | null): BuyerIdentity
     const match = EU_VAT_PATTERN.exec(value);
     if (!match) {
       throw new InvalidBuyerIdentificationException(
-        taxId.scheme,
+        scheme,
         'EU VAT must be a 2-letter country prefix followed by an alphanumeric body',
       );
     }
@@ -88,9 +112,46 @@ export function resolveBuyerIdentity(taxId: TaxIdentifier | null): BuyerIdentity
   const foreign = COUNTRY_PREFIXED_ID_PATTERN.exec(value);
   if (!foreign) {
     throw new InvalidBuyerIdentificationException(
-      taxId.scheme,
+      scheme,
       'foreign identifier must carry a 2-letter country prefix and an id body',
     );
   }
   return { kind: 'other', countryCode: foreign[1], id: foreign[2] };
+}
+
+/**
+ * Resolve the scheme to branch on, inferring one when the caller supplied none.
+ *
+ * Since #3224 a `TaxIdentifier` may arrive UNTAGGED: an `Order` stores a bare
+ * tax number and ADR-073 decision 1 forbids core minting the tag, so *"an
+ * adapter needing a tag supplies it"*. This is that adapter, and this is where
+ * it supplies it.
+ *
+ * Inference is deliberately narrow. A ten-digit value is a Polish NIP and
+ * nothing else in this market, so it resolves. Anything else carries a
+ * two-letter country prefix, and `<KodUE>+<NrVatUE>` (EU) and
+ * `<KodKraju>+<NrID>` (non-EU) are structurally identical — the ONLY thing that
+ * tells them apart is the scheme. Guessing would file a buyer under the wrong
+ * element of a document submitted to a tax authority, so an untagged value that
+ * is not a NIP is REFUSED with the remedy named, rather than placed by a coin
+ * flip. That is the same refuse-rather-than-mislabel rule the tagged branches
+ * below already apply to a malformed value.
+ *
+ * A caller that knows the answer (the HTTP issue path, where the operator chose
+ * it) supplies the scheme and never reaches the inference at all.
+ */
+function resolveScheme(scheme: string | undefined, value: string): string {
+  // Trimmed as well as lowercased (DEF-39): `' pl-nip '` passes the API check,
+  // and an untrimmed scheme would fall through to the foreign-id branch below.
+  if (scheme !== undefined && scheme.trim().length > 0) {
+    return scheme.trim().toLowerCase();
+  }
+  if (NIP_PATTERN.test(normalizePlNip(value))) {
+    return 'pl-nip';
+  }
+  throw new InvalidBuyerIdentificationException(
+    '(untagged)',
+    'an untagged buyer tax id must be a 10-digit NIP; supply a scheme ' +
+      "(e.g. 'eu-vat') for a foreign identifier, which cannot be placed without one",
+  );
 }

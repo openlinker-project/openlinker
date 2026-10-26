@@ -15,6 +15,7 @@
  */
 import { ApiError } from './api-error';
 import type {
+  SourceFulfillmentView,
   AnalyticsCoverageView,
   AnalyticsRangeQuery,
   AnalyticsRemediationRun,
@@ -27,10 +28,12 @@ import type {
   UpdateAnalyticsSettingsInput,
   ProductContentState,
   ApproveUserInput,
+  UserSummary,
   BulkBatchSummary,
   DescriptionFormatView,
   BulkIssueInvoicesInput,
   BulkIssueInvoicesResult,
+  CancelShipmentResult,
   CategoryMappingInput,
   CategoryParameter,
   CategoryParametersResponse,
@@ -78,6 +81,9 @@ import type {
   SalesDocumentCountryAcknowledgment,
   SalesDocumentCountryDefault,
   SalesDocumentMarketsResponse,
+  SalesDocumentRule,
+  AcceptedFiscalRegistration,
+  FiscalRegistrationRecordSummary,
   SendInvoiceEmailInput,
   SendInvoiceEmailResult,
   Shipment,
@@ -408,6 +414,15 @@ export class ApiClient {
         body: JSON.stringify(input),
         skipAuth: true,
       }),
+    /**
+     * `GET /auth/me` — the currently authenticated user, resolved server-side
+     * from THIS client's own bearer token. The one honest way to prove a
+     * provisioned account's `id` (read back from the admin's user list) is
+     * the same principal a login actually authenticates as, rather than two
+     * independently-derived values that merely happen to both be non-null
+     * (#3385 review).
+     */
+    me: (): Promise<UserSummary> => this.request<UserSummary>('/auth/me'),
   };
 
   // ── Users (admin only) ────────────────────────────────────────────────────
@@ -433,6 +448,19 @@ export class ApiClient {
      */
     delete: (userId: string): Promise<void> =>
       this.request<void>(`/users/${userId}`, { method: 'DELETE' }),
+  };
+
+  // ── Pack bench (#3342/#3343) ────────────────────────────────────────────
+  bench = {
+    /**
+     * `GET /bench/work` — the install-WIDE worklist (unscoped by packer
+     * identity, spec D2), used by the pack-bench mockup-parity spec to check
+     * whether the worklist is genuinely empty before asserting the
+     * not-routed empty state, since another connection's accepted work is
+     * outside any one seed's control on a shared stack.
+     */
+    listWork: (): Promise<{ works: unknown[] }> =>
+      this.request<{ works: unknown[] }>('/bench/work'),
   };
 
   // ── AI provider settings (admin only) ─────────────────────────────────────
@@ -482,7 +510,7 @@ export class ApiClient {
   products = {
     list: (query?: ListProductsQuery): Promise<Paginated<Product>> =>
       this.request<Paginated<Product>>(
-        `/products${buildQuery({ search: query?.search, limit: query?.limit, offset: query?.offset })}`,
+        `/products${buildQuery({ search: query?.search, limit: query?.limit, offset: query?.offset, connectionId: query?.connectionId })}`,
       ),
     getById: (productId: string): Promise<Product> =>
       this.request<Product>(`/products/${productId}`),
@@ -517,6 +545,25 @@ export class ApiClient {
 
   // ── Listings (offers) ───────────────────────────────────────────────────
   listings = {
+    /**
+     * Force a live read of one offer's status from the channel, which also
+     * refreshes its commercial snapshot (#1760/#2024).
+     *
+     * Without this a caller reads whatever the hourly rolling scan last wrote,
+     * so a freshly propagated quantity would not be visible for up to an hour.
+     */
+    refreshOfferStatus: (
+      connectionId: string,
+      externalOfferId: string,
+      internalVariantId: string,
+    ): Promise<{ publicationStatus: string | null }> =>
+      this.request<{ publicationStatus: string | null }>(
+        `/listings/connections/${connectionId}/offers/${encodeURIComponent(
+          externalOfferId,
+        )}/refresh-status`,
+        { method: 'POST', body: JSON.stringify({ internalVariantId }) },
+      ),
+
     /**
      * A bulk offer-creation batch and its per-record failure reasons.
      *
@@ -621,10 +668,46 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify({ connectionId, variantIds }),
       }).then((response) => response.publishedVariantIds),
+
+    /**
+     * Publish one variant to a shop connection
+     * (`POST /listings/connections/:id/shop-publish`).
+     *
+     * Enqueues and returns immediately (202) - the `ShopProduct` mapping the
+     * publish writes appears only once the job has run, so a caller waits by
+     * polling `publishedVariants` above rather than by reading this result.
+     */
+    shopPublish: (
+      connectionId: string,
+      body: {
+        internalVariantId: string;
+        status: string;
+        stock: number;
+        /**
+         * A money OBJECT, not a number: `PublishPriceDto` is
+         * `{amount, currency}` and a bare number is rejected with
+         * "nested property price must be either object or array".
+         */
+        price?: { amount: number; currency: string };
+      },
+    ): Promise<{ jobId: string; listingCreationRecordId: string }> =>
+      this.request<{ jobId: string; listingCreationRecordId: string }>(
+        `/listings/connections/${encodeURIComponent(connectionId)}/shop-publish`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
   };
 
   // ── Orders ──────────────────────────────────────────────────────────────
   orders = {
+    /**
+     * Ask the SOURCE marketplace what it says about the order (#3365).
+     *
+     * The only read in this client that reaches an external system's own view
+     * of an order. Every other order assertion in the suite reads an
+     * OpenLinker row.
+     */
+    sourceFulfillment: (internalOrderId: string): Promise<SourceFulfillmentView> =>
+      this.request<SourceFulfillmentView>(`/orders/${internalOrderId}/source-fulfillment`),
     list: (query?: ListOrdersQuery): Promise<Paginated<OrderRecord>> =>
       this.request<Paginated<OrderRecord>>(
         `/orders${buildQuery({
@@ -637,6 +720,15 @@ export class ApiClient {
       ),
     getById: (internalOrderId: string): Promise<OrderRecord> =>
       this.request<OrderRecord>(`/orders/${internalOrderId}`),
+    /** Record a refund against an order (#2036); used to drive the DEF-26 gate. */
+    recordRefund: (
+      internalOrderId: string,
+      input: { amount: string; currency: string; reason: string; note?: string; idempotencyKey?: string },
+    ): Promise<{ id: string }> =>
+      this.request<{ id: string }>(`/orders/${internalOrderId}/refunds`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
     /**
      * Per-health-bucket counts plus the orthogonal sales-document block count
      * (#929/#2100). Deliberately un-scoped here: the endpoint is not
@@ -672,6 +764,39 @@ export class ApiClient {
       this.request<void>(`/sales-documents/countries/${country}/acknowledgment`, {
         method: 'DELETE',
       }),
+    /**
+     * GET /sales-documents/rules?country= — the rules the ENGINE will read.
+     * Used to read back a rule the composer saved through the browser, which is
+     * the only evidence that a UI save reached persistence rather than a cache.
+     */
+    rules: (country: string): Promise<SalesDocumentRule[]> =>
+      this.request<SalesDocumentRule[]>(`/sales-documents/rules${buildQuery({ country })}`),
+    deleteRule: (ruleId: string): Promise<void> =>
+      this.request<void>(`/sales-documents/rules/${ruleId}`, { method: 'DELETE' }),
+  };
+
+  // ── Fiscal registrations (#1908, ADR-042) ────────────────────────────────
+  fiscalRegistrations = {
+    /**
+     * POST /fiscal-registrations — **202**, and the 202 is the whole contract:
+     * the request is recorded and a `fiscalization.register` job enqueued, so a
+     * success here never means the sale was registered. The cross-kind 409
+     * (#2157/#3184) is raised HERE rather than by a job failing out of sight,
+     * which is what makes it assertable from a spec.
+     */
+    register: (input: {
+      connectionId: string;
+      orderId: string;
+    }): Promise<AcceptedFiscalRegistration> =>
+      this.request<AcceptedFiscalRegistration>('/fiscal-registrations', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Every fiscal-registration record an order holds, newest first, across connections. */
+    listForOrder: (orderId: string): Promise<FiscalRegistrationRecordSummary[]> =>
+      this.request<FiscalRegistrationRecordSummary[]>(
+        `/fiscal-registrations${buildQuery({ orderId })}`,
+      ),
   };
 
   // ── Invoices ────────────────────────────────────────────────────────────
@@ -733,6 +858,9 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    /** The authority's public verification link (KSeF KOD I), built server-side (DEF-02/03). */
+    verificationLink: (invoiceId: string): Promise<{ url: string | null }> =>
+      this.request<{ url: string | null }>(`/invoices/${invoiceId}/verification-link`),
     /** Re-send a rejected document to the tax authority (#1121). */
     resendToKsef: (invoiceId: string): Promise<InvoiceRecord> =>
       this.request<InvoiceRecord>(`/invoices/${invoiceId}/resend-to-ksef`, { method: 'POST' }),
@@ -792,9 +920,13 @@ export class ApiClient {
     /** Mark a shipment dispatched (mutating — attended run only). */
     notifyDispatched: (id: string): Promise<Shipment> =>
       this.request<Shipment>(`/shipments/${id}/notify-dispatched`, { method: 'POST' }),
-    /** Cancel a not-yet-dispatched shipment (mutating — attended run only). */
-    cancel: (id: string): Promise<Shipment> =>
-      this.request<Shipment>(`/shipments/${id}/cancel`, { method: 'POST' }),
+    /**
+     * Cancel a shipment (mutating — attended run only). Returns the cancelled
+     * row plus `cancelledAfterDispatch` (#3365) - NOT a bare `Shipment`; see
+     * `CancelShipmentResult`.
+     */
+    cancel: (id: string): Promise<CancelShipmentResult> =>
+      this.request<CancelShipmentResult>(`/shipments/${id}/cancel`, { method: 'POST' }),
     /**
      * Download the carrier handover protocol over a set of dispatched shipments
      * (POST /shipments/bulk/protocol) — binary response, metadata-only like

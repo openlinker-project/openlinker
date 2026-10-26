@@ -14,6 +14,7 @@ function baseView(over: Partial<SalesDocumentView> = {}): SalesDocumentView {
     unresolvedReason: null,
     blockDetail: null,
     otherRecords: [],
+    matchedRule: null,
     ...over,
   };
 }

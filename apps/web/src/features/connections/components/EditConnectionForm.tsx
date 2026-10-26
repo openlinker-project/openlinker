@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { Connection } from '../api/connections.types';
+import { hasMissingCredentials } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
 import { useProductMasterConnections } from '../hooks/use-product-master-connections';
 import {
@@ -18,6 +19,8 @@ import {
 } from './edit-connection.schema';
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
+import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
+import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -38,9 +41,22 @@ import {
 } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { isPricingDestination } from '../lib/pricing-destination';
+import { ApiError } from '../../../shared/api/api-error';
+import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
+import { isOmsRoutingUiEnabled } from '../../../shared/config/oms-routing-ui';
 
 interface EditConnectionFormProps {
   connection: Connection;
+}
+
+const NEEDS_ATTENTION_ONE = '1 field needs attention. See the list at the top of the form.';
+
+function describeInvalidFields(count: number): string {
+  if (count === 1) return NEEDS_ATTENTION_ONE;
+  if (count > 1) return `${count} fields need attention. See the list at the top of the form.`;
+  return 'Some fields need attention. See the list at the top of the form.';
 }
 
 /**
@@ -158,15 +174,41 @@ function readWholeUnits(raw: unknown): string {
 }
 
 /**
- * Read the pricing rule out of `config.pricingRule` (#2610). An absent or
- * unrecognised `type` reads as `''` (no rule), mirroring `readPricingRule`'s
- * own coercion in `@openlinker/core/identifier-mapping`.
+ * Read the per-connection stock-location override out of
+ * `config.stockLocationOverride` (#3206/#3207). Mirrors the core reader
+ * `readStockLocationOverride` - a missing, blank or non-string value reads
+ * as `''` (unset).
+ */
+function readStockLocationOverride(config: Record<string, unknown>): string {
+  const raw = config.stockLocationOverride;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : '';
+}
+
+/**
+ * Read the pricing rule out of `config.pricingRule` (#2610, widened by #3142
+ * ADR-072 decision 2). This form edits only the DESTINATION-level default
+ * rule — not `sourceOverrides` (a separate per-source picker, #3149) — so it
+ * must read the `default` sub-object out of the nested
+ * `{ default, sourceOverrides }` shape rather than the whole `pricingRule`
+ * value, or every widened connection would render as unconfigured
+ * (`raw.type` reading `undefined` off the wrapper object). The discriminator
+ * mirrors `readPricingRuleConfig`'s own `'default' in candidate` check
+ * (`@openlinker/core/identifier-mapping`) exactly, so this reader can never
+ * disagree with what the backend actually resolves. The legacy flat shape
+ * (pre-#3142, no `default` key) is read as before. An absent or unrecognised
+ * `type` reads as `''` (no rule).
  */
 function readPricingRuleForm(config: Record<string, unknown>): PricingRuleFormValues {
-  const raw =
+  const container =
     typeof config.pricingRule === 'object' && config.pricingRule !== null
       ? (config.pricingRule as Record<string, unknown>)
       : {};
+  const raw =
+    'default' in container
+      ? typeof container.default === 'object' && container.default !== null
+        ? (container.default as Record<string, unknown>)
+        : {}
+      : container;
   const type =
     raw.type === 'passthrough' || raw.type === 'markup' || raw.type === 'margin' ? raw.type : '';
   const rounding =
@@ -378,6 +420,9 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   const apiClient = useApiClient();
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
+  // DEF-21: advisory notices the save returned. They outlive the toast, so the
+  // form stays put and lets the operator read them before moving on.
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
   const navigate = useNavigate();
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
@@ -454,6 +499,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
       stockPolicy: readStockPolicy(connection.config),
       pricingRule: readPricingRuleForm(connection.config),
+      // Per-connection stock-location override (#3206/#3207) — platform-neutral.
+      stockLocationOverride: readStockLocationOverride(connection.config),
+      // "This system packs and ships orders itself" (#2118) — platform-neutral.
+      fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -462,9 +511,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     resolver: zodResolver(resolverSchema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
-  );
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   // Structured-config dispatch (#578/#579):
   //   - A platform plugin may contribute its own structured inputs (today: PS).
@@ -478,10 +525,23 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // master-catalog product data (name/description/images/price) through
   // `masterCatalogConnectionId` — `OfferBuilderService` and
   // `ProductPublishBuilderService` share the same requirement.
-  const isMarketplace = connection.enabledCapabilities.includes('OfferManager');
-  const needsMasterCatalog =
-    isMarketplace || connection.enabledCapabilities.includes('ProductPublisher');
+  // ONE predicate, shared with the pricing-sync page and the detail page
+  // (#3166 round-3 review) — `onSubmit` deletes `config.pricingRule` for this
+  // population, so a divergence here is silently destructive.
+  const needsMasterCatalog = isPricingDestination(connection);
   const hasStructuredInputs = StructuredSection !== undefined || needsMasterCatalog;
+  // #3207 review — `config.stockLocationOverride` is read by
+  // `MasterInventorySyncService` only, so offering the knob on a connection
+  // with no enabled `InventoryMaster` capability would let it persist and be
+  // read by nothing: the configuration-that-decides-nothing shape #2407
+  // refuses. Gating here also stops `StockAndPricingSection` from firing its
+  // `GET /inventory/locations` read on every connection-edit page load.
+  //
+  // #3634 — the override only feeds OMS routing, so it is also withheld unless
+  // the build opts into that UI. Hiding the group does not drop a stored value:
+  // `stockLocationOverride` is hydrated from config and written back unchanged.
+  const isInventoryMaster = connection.enabledCapabilities.includes('InventoryMaster');
+  const offersStockLocationOverride = isInventoryMaster && isOmsRoutingUiEnabled();
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
   // structured inputs so typing in them can't silently drop custom keys that
@@ -640,6 +700,32 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #3206/#3207 — re-serialize `config.stockLocationOverride` into configText.
+  // Clone of `syncRateLimitToJson`: reads CURRENT form state, takes NO
+  // argument, keeps the `!configIsParseable` early-return. The section MUST
+  // setValue('stockLocationOverride', …) BEFORE calling this.
+  function syncStockLocationOverrideToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      stockLocationOverride: form.getValues('stockLocationOverride'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #2118 — re-serialize `config.fulfilmentOwnedByDestination` into configText.
+  // Clone of `syncStockLocationOverrideToJson`: reads CURRENT form state, takes
+  // NO argument, keeps the `!configIsParseable` early-return. The section MUST
+  // setValue('fulfilmentOwnedByDestination', …) BEFORE calling this.
+  function syncFulfilmentOwnershipToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      fulfilmentOwnedByDestination: form.getValues('fulfilmentOwnedByDestination'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -664,6 +750,13 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     hasStoredMaster,
   ]);
 
+  // #3765 - every click on Save must end in a visible signal. The inline
+  // `Alert` / `FormErrorSummary` sit at the top of a long form while the
+  // button is at the bottom, so a failure is also reported as a toast.
+  const showSaveFailedToast = (description: string): void => {
+    showToast({ tone: 'error', title: 'Changes not saved', description });
+  };
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const input = toUpdateConnectionInput(values);
@@ -676,19 +769,66 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // the operator never touched survives a concurrent sibling write, while
       // anything the operator actually edited in the raw JSON still wins.
       const fresh = await apiClient.connections.getById(connection.id);
-      await updateConnection.mutateAsync({
+      const mergedConfig: Record<string, unknown> = { ...fresh.config, ...input.config };
+      // #3149/#3166 review — for a viable pricing DESTINATION,
+      // `config.pricingRule` is owned exclusively by the dedicated
+      // `PricingAndSyncSection` page (nested `{default, sourceOverrides}`,
+      // PATCHed through its own lock-guarded endpoint). This form's
+      // `input.config.pricingRule` is derived from `configText`, whose
+      // snapshot predates this submit and can never see a save made there
+      // concurrently — spreading it over `fresh.config.pricingRule` would
+      // silently roll that save back (and, via the legacy flat-shape
+      // `StockAndPricingSection`, could drop every per-source override too).
+      // Deleting the key here means `fresh.config.pricingRule` — whatever it
+      // currently holds — always survives this form's own submit.
+      if (needsMasterCatalog) {
+        delete mergedConfig.pricingRule;
+      }
+      const saved = await updateConnection.mutateAsync({
         connectionId: connection.id,
-        input: { ...input, config: { ...fresh.config, ...input.config } },
+        input: { ...input, config: mergedConfig },
       });
       showToast({
         tone: 'success',
         title: 'Connection updated',
         description: 'Connection settings have been saved.',
       });
+      if (saved?.warnings && saved.warnings.length > 0) {
+        setSaveWarnings(saved.warnings);
+        return;
+      }
       void navigate(`/connections/${connection.id}`);
-    } catch {
-      return;
+    } catch (error) {
+      // #3207 — a 400 naming `config.stockLocationOverride` (unknown/retired
+      // location id, #3206's server-side guard) surfaces as a field-level
+      // error rather than the generic `updateConnection.error` alert below.
+      // This is the first field-level API-error mapping in this component;
+      // `updateConnection.reset()` clears the mutation's own error state
+      // (set automatically by `useMutation` on rejection, independent of
+      // this catch) so the generic alert doesn't also render the same
+      // message a second time beneath it.
+      //
+      // Branches on the backend's machine-readable `error` code, not on
+      // `error.message.includes('stockLocationOverride')` — that matched on
+      // prose the backend is free to reword, and a reworded message would
+      // have silently reverted this to the generic banner (review finding).
+      if (error instanceof ApiError && isStockLocationOverrideValidationError(error)) {
+        form.setError('stockLocationOverride', { message: error.message });
+        updateConnection.reset();
+        // The field and the summary already carry the message; the toast
+        // points at them rather than repeating it a third time.
+        showSaveFailedToast(NEEDS_ATTENTION_ONE);
+        return;
+      }
+      // Covers the PATCH rejecting (also shown in the top-of-form `Alert`) and
+      // anything thrown before it - the pre-submit refetch or the input
+      // mapping - which `updateConnection.error` never sees.
+      showSaveFailedToast(
+        error instanceof Error && error.message ? error.message : 'An unexpected error occurred.',
+      );
     }
+  }, (errors) => {
+    showSaveFailedToast(describeInvalidFields(collectFormErrorMessages(errors).length));
   });
 
   return (
@@ -707,6 +847,22 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       {updateConnection.error ? (
         <Alert tone="error" title="Unable to update connection">
           {updateConnection.error.message}
+        </Alert>
+      ) : null}
+      {saveWarnings.length > 0 ? (
+        <Alert
+          tone="warning"
+          title="Saved, with something to check"
+          data-testid="connection-save-warnings"
+          action={
+            <Button tone="secondary" onClick={() => void navigate(`/connections/${connection.id}`)}>
+              Go to connection
+            </Button>
+          }
+        >
+          {saveWarnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
         </Alert>
       ) : null}
 
@@ -728,9 +884,11 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         <FormField label="Credentials" name="credentials">
           <Input
             value={
-              connection.credentialsBacked
-                ? 'Stored securely (managed by integration)'
-                : 'Environment variable (not editable via UI)'
+              hasMissingCredentials(connection)
+                ? 'Not set - removed when this connection was archived'
+                : connection.credentialsBacked
+                  ? 'Stored securely (managed by integration)'
+                  : 'Environment variable (not editable via UI)'
             }
             disabled
           />
@@ -815,13 +973,40 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         defaultRateLimit={connection.defaultRateLimit ?? null}
       />
 
-      {/* #2610 — generic, platform-neutral: rendered for every connection. */}
+      {/* #2610 — generic, platform-neutral: rendered for every connection.
+          `pricingRuleManagedElsewhere` (#3149/#3166 review) is true for a
+          viable pricing DESTINATION (`needsMasterCatalog`) — that population
+          now owns `config.pricingRule` exclusively through the dedicated
+          `PricingAndSyncSection` page (nested `{default, sourceOverrides}`
+          shape), so this section renders a read-only pointer there instead
+          of its own editable flat-shape fields for the same key. Two
+          independent editors of one config key on one mega-form produced a
+          contradiction on first paint, a destructive checkbox interaction,
+          and a stale-merge-on-submit hazard; this is the structural fix
+          rather than a UI-only patch, since `onSubmit` below also excludes
+          `pricingRule` from what this form ever writes for that population. */}
       <StockAndPricingSection
         form={form}
         configIsParseable={configIsParseable}
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
+        syncStockLocationOverrideToJson={syncStockLocationOverrideToJson}
+        stockLocationOverrideCapable={offersStockLocationOverride}
+        pricingRuleManagedElsewhere={
+          needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
+        }
       />
+
+      {/* #2118 — only a connection that can be an order destination can own
+          fulfilment, so the checkbox is withheld elsewhere rather than
+          persisting a flag nothing reads. */}
+      {connection.enabledCapabilities.includes('OrderProcessorManager') ? (
+        <FulfilmentOwnershipSection
+          form={form}
+          configIsParseable={configIsParseable}
+          syncFulfilmentOwnershipToJson={syncFulfilmentOwnershipToJson}
+        />
+      ) : null}
 
       <div className="config-panel__toggle">
         <Button

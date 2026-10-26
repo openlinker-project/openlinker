@@ -9,6 +9,16 @@ import type { SalesDocumentRuleInput } from '../types/sales-document-rule-write.
 export interface SalesDocumentRuleRepositoryPort {
   findById(id: string): Promise<SalesDocumentRule | null>;
 
+  /**
+   * Batch counterpart of {@link findById} (#3186): every rule named by `ids`,
+   * in no particular order. Backs the per-order sales-document projection's
+   * "Why this kind?" disclosure, which resolves a whole page's matched rules
+   * in one query rather than one per row. Returns `[]` for an empty input; an
+   * id naming a since-deleted rule is simply absent from the result — the read
+   * side treats that identically to "no rule ever matched".
+   */
+  findByIds(ids: readonly string[]): Promise<SalesDocumentRule[]>;
+
   /** All rules for one country (or `*`), in no particular order. */
   findByCountry(country: string): Promise<SalesDocumentRule[]>;
 

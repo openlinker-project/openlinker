@@ -64,15 +64,17 @@ export const RETURN_DETAIL_HEADER_COPY = {
  * heading and the "safe here" framing the detail page owes an operator who has
  * just clicked into a return nothing can be done with (returns spec §5.5).
  *
- * There is no `Match to an order` action, and the copy says why: re-attribution
- * is automatic once the order is ingested. A button that did nothing would be
- * worse than the sentence.
+ * `matchAction` is the manual way out (#3078/#3082), alongside the automatic
+ * reconcile `reattribution` describes — the two are not alternatives, an
+ * operator who knows the order does not have to wait for the background pass.
  */
 export const RETURN_ORPHAN_BANNER_COPY = {
   title: 'This return is not matched to an order.',
   safeHere: 'It is safe here — nothing is lost.',
   reattribution:
     'If the order is ingested later, OpenLinker matches this return to it automatically and the actions below become available.',
+  matchAction: 'Match to an order',
+  matchActionReadOnly: 'You do not have permission to make changes.',
 } as const;
 
 export const RETURN_LINES_COPY = {

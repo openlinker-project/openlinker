@@ -118,6 +118,7 @@ describe('OfferCreationExecutionService', () => {
       updateClassificationReport: jest.fn(),
       resetForRetry: jest.fn(),
       deleteById: jest.fn(),
+      markFailedIfPending: jest.fn(),
     };
     identifierMapping = {
       createMapping: jest.fn().mockResolvedValue(undefined),
@@ -211,6 +212,35 @@ describe('OfferCreationExecutionService', () => {
     expect(records.updateExternalOfferId).not.toHaveBeenCalled();
     expect(records.updateStatus).not.toHaveBeenCalled();
     expect(offerCreationRecord.status).toBe('draft');
+  });
+
+  // #3505 (G01-2) — a dead job used to leave its record `pending` for ever.
+  describe('abandonCreation', () => {
+    it('should move a pending record to failed with an error naming the uncertainty', async () => {
+      const failed = buildRecord({ status: 'failed' });
+      records.markFailedIfPending.mockResolvedValue(failed);
+
+      const result = await service.abandonCreation('rec-1', 'socket hang up');
+
+      expect(result).toBe(failed);
+      expect(records.markFailedIfPending).toHaveBeenCalledWith('rec-1', [
+        {
+          code: 'OFFER_CREATION_JOB_DEAD',
+          message: expect.stringContaining('Offer creation job died: socket hang up'),
+        },
+      ]);
+      const [[, errors]] = records.markFailedIfPending.mock.calls;
+      expect(errors[0].message).toContain('may already have received the request');
+    });
+
+    it('should leave a record that is no longer pending untouched', async () => {
+      records.markFailedIfPending.mockResolvedValue(null);
+
+      const result = await service.abandonCreation('rec-1', 'socket hang up');
+
+      expect(result).toBeNull();
+      expect(records.updateStatus).not.toHaveBeenCalled();
+    });
   });
 
   describe('condition threading (#1500)', () => {

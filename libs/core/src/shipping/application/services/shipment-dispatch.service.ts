@@ -39,7 +39,12 @@ import {
   type IOrderHoldService,
   ORDER_HOLD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
-import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import {
+  type SyncJobQueuePort,
+  type SyncLockPort,
+  SYNC_JOB_QUEUE_TOKEN,
+  SYNC_LOCK_TOKEN,
+} from '@openlinker/core/sync';
 
 import type { IShipmentDispatchService } from '../interfaces/shipment-dispatch.service.interface';
 import { IOrderFulfillmentProjectionService } from '../interfaces/order-fulfillment-projection.service.interface';
@@ -55,6 +60,7 @@ import {
 import { UndispatchableResolutionException } from '../../domain/exceptions/undispatchable-resolution.exception';
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order-not-dispatchable-held.exception';
+import { FulfillmentWorkDispatchConflictException } from '../../domain/exceptions/fulfillment-work-dispatch-conflict.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
 import {
@@ -68,6 +74,7 @@ import type { ShippingProviderManagerPort } from '../../domain/ports/shipping-pr
 import { isShipmentReferenceReconciler } from '../../domain/ports/capabilities/shipment-reference-reconciler.capability';
 import { shipmentDispatchLockKey, SHIPMENT_DISPATCH_LOCK_TTL_MS } from './shipment-dispatch-lock';
 import { SHIPMENT_STATUS } from '../../domain/types/shipment-status.types';
+import { readNotifyOnLabelPurchase } from '../../domain/types/dispatch-notification.types';
 import type { ShippingMethod } from '../../domain/types/shipping-method.types';
 import type { DeliveryIntent } from '../../domain/types/delivery-intent.types';
 import { DISPATCH_BLOCKING_PAYMENT_STATUSES } from '../types/dispatch-payment-policy.types';
@@ -107,6 +114,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // the bridge permanently unreachable, exercised only by its own spec.
     @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
     private readonly fulfillmentWorks: IFulfillmentWorkQueryService,
+    // #3365: the parcel's participants are told automatically. Enqueued, not
+    // called, so a bulk dispatch does not make N sequential marketplace calls
+    // inside one request and a momentarily-down marketplace gets the retry
+    // ladder instead of losing the notification.
+    @Inject(SYNC_JOB_QUEUE_TOKEN)
+    private readonly jobQueue: SyncJobQueuePort,
   ) {}
 
   /**
@@ -154,6 +167,12 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       // the answer is "this order is already shipping", not "your carrier is".
       const active = await this.shipments.findActiveByOrderId(input.orderId, 'outbound');
       if (active?.providerShipmentId) {
+        // #3340 follow-up: the finished shipment a peer just handed back may
+        // belong to a SIBLING work on a split order — see
+        // `assertNotClaimedBySiblingWork` for the full reasoning, applied
+        // identically here so the contended path cannot report the same false
+        // success the sequential path used to.
+        await this.assertNotClaimedBySiblingWork(input, active);
         this.logger.log(
           `Dispatch for order ${input.orderId} is contended; returning the shipment ` +
             `the concurrent dispatch already generated (${active.id} on connection ` +
@@ -366,6 +385,10 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // window it used to leave open is closed by construction.
     const active = await this.shipments.findActiveByOrderId(input.orderId, 'outbound');
     if (active) {
+      // #3340 follow-up: on a split order this "already active" row may
+      // belong to a SIBLING work, not this one — see
+      // `assertNotClaimedBySiblingWork`.
+      await this.assertNotClaimedBySiblingWork(input, active);
       return active;
     }
 
@@ -441,6 +464,16 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // attributing a parcel to a work that may not have shipped it (#2727).
     const workLink = await this.resolveWorkLink(input.orderId);
 
+    // #3340 follow-up: a caller that ALREADY knows which work this dispatch is
+    // for (the auto-dispatch job) is authoritative — preferred over the
+    // per-order `workLink` guess, which cannot disambiguate a split order at
+    // all (every sibling resolves `ambiguous` for as long as more than one
+    // work is live). Falling back to `workLink` keeps every caller that does
+    // not supply `fulfillmentWorkId` (the manual HTTP dispatch route) byte-
+    // identical to its pre-#3340 behaviour.
+    const linkedWorkId =
+      input.fulfillmentWorkId ?? (workLink.kind === 'unique' ? workLink.workId : undefined);
+
     const shipment = priorBranchOne
       ? await this.shipments.update(priorBranchOne.id, {
           status: SHIPMENT_STATUS.Draft,
@@ -459,7 +492,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
           paczkomatId: input.paczkomatId,
           sourceDeliveryMethodId: input.sourceDeliveryMethodId ?? undefined,
           // Work linkage (#2402). Stamped at birth on the create branch.
-          fulfillmentWorkId: workLink.kind === 'unique' ? workLink.workId : undefined,
+          fulfillmentWorkId: linkedWorkId,
         });
 
     // The retry branch above REUSED a prior row rather than creating one, so it
@@ -474,8 +507,8 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // re-reading the row purely to refresh a column no caller consults would be
     // an extra query for nothing — stated so a future reader of `shipment` here
     // knows it can disagree with the row.
-    if (priorBranchOne && workLink.kind === 'unique') {
-      await this.shipments.claimFulfillmentWorkLink(shipment.id, workLink.workId);
+    if (priorBranchOne && linkedWorkId !== undefined) {
+      await this.shipments.claimFulfillmentWorkLink(shipment.id, linkedWorkId);
     }
 
     // Lost-response recovery (#1917). A prior attempt may have committed at the
@@ -504,6 +537,21 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       } else {
         const adopted = await this.adoptExistingCarrierShipment(shipment.id, adapter, input.orderId);
         if (adopted) {
+          // ADOPTION MUST NOTIFY TOO (#3365 audit). This `return` used to
+          // short-circuit past the `enqueueDispatchNotification` below - this
+          // file's ONLY call to it - so a label the carrier had already minted
+          // was recovered, the parcel shipped, and the marketplace was never
+          // told. Permanently: `waybillRelayedAt` stayed null and unwritable,
+          // so the failure counter stayed 0 and the "Tracking not sent" badge
+          // could never render; and `ShipmentStatusSyncService` could not
+          // rescue it either, because its push gate opens only from
+          // `dispatched`/`in-transit` and nothing else moves a row off
+          // `generated`. The only trace was a `log`-level line that did not
+          // mention the skipped notification.
+          //
+          // The job is idempotent at its own dedupe key, so enqueuing here
+          // cannot double-notify a shipment that already was.
+          await this.enqueueDispatchNotification(adopted.id, processorConnectionId);
           return adopted;
         }
       }
@@ -538,6 +586,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       });
       // Project the order's fulfillment rollup (#1108) — best-effort, never throws.
       await this.fulfillmentProjection.recompute(input.orderId);
+      await this.enqueueDispatchNotification(generated.id, processorConnectionId);
       return generated;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -558,6 +607,16 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       // structured `providerCode` (#1918) is persisted alongside the
       // free-text message so triage grouping can key on it instead of
       // fuzzy-matching prose.
+      //
+      // An ambiguous write (5xx / network error after the POST may have been
+      // applied, e.g. `InpostAmbiguousWriteException`) also lands here as
+      // `Failed`, though "failed" and "we do not know" are different facts: a
+      // label may already exist and be paid for. Kept deliberately (#3630
+      // review): the reference-lookup adoption above (#1917) heals the row on
+      // the operator's next retry instead of minting a second label. If the
+      // dispatch surface ever grows an in-doubt state - as #3654/#3663 added
+      // `voidState: 'in-doubt'` for bench voids - this branch is its first
+      // consumer.
       await this.shipments.update(shipment.id, {
         status: SHIPMENT_STATUS.Failed,
         failedAt: new Date(),
@@ -589,6 +648,83 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
    * `shippingMethod`, which is compared strictly.
    */
   /** Resolve an order's work link, degrading to `none` on failure. */
+  /**
+   * Tell the order's participants the parcel shipped (#3365).
+   *
+   * Enqueued rather than called, and BEST-EFFORT: the label is already bought
+   * and the carrier already committed, so a queue that is momentarily
+   * unreachable must not turn a successful dispatch into a failed one. The
+   * operator's "Mark dispatched" button remains the manual fallback, and the
+   * job and the button cannot both act - `notifyDispatched` gates on the
+   * shipment still being `generated` and advances it itself.
+   *
+   * The dedupe key is per SHIPMENT, not per attempt. `sync_jobs.idempotencyKey`
+   * is globally unique and TTL-less, so a second dispatch of the same shipment
+   * row - the retry path reuses it after a `failed` label - enqueues nothing
+   * and relies on the first job still being in flight or already done. That is
+   * correct while the notification is a function of persisted state rather
+   * than of the attempt: the job re-reads the row, so whichever attempt's job
+   * runs reports the row as it stands.
+   */
+  private async enqueueDispatchNotification(
+    shipmentId: string,
+    connectionId: string,
+  ): Promise<void> {
+    // #3365 review: OPT-IN, and off unless the operator said otherwise.
+    //
+    // Buying a label and dispatching a parcel are two acts, and only the
+    // operator knows whether their process treats them as one. Notifying by
+    // default told every install's buyers "your order shipped" the moment a
+    // label was printed - including the warehouses that print in the morning and
+    // hand over in the afternoon. The manual "Mark dispatched" action is
+    // unchanged and remains the route every install already had.
+    //
+    // A config read that FAILS suppresses the notification rather than sending
+    // it: the same direction as the coercer's own default, because a notice sent
+    // on a guess cannot be recalled.
+    if (!(await this.wantsDispatchNotification(connectionId))) {
+      return;
+    }
+
+    try {
+      await this.jobQueue.enqueue({
+        type: 'shipping.shipment.notifyDispatched',
+        connectionId,
+        payload: { schemaVersion: 1, shipmentId },
+        options: { dedupeKey: `shipment:notifyDispatched:${shipmentId}` },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `shipment_dispatch_notification_enqueue_failed shipmentId=${shipmentId} ` +
+          `connectionId=${connectionId}: ${message}. The label is bought and the shipment is ` +
+          `generated; the marketplace will not be told automatically, so the operator's ` +
+          `"Mark dispatched" action is the remaining route.`,
+      );
+    }
+  }
+
+  /**
+   * Read the connection's opt-in, treating an unreadable connection as "no".
+   *
+   * Never throws: this sits between a successfully bought label and the caller's
+   * return value, so a failure here must not turn a completed dispatch into an
+   * error the operator reads as "the label did not work".
+   */
+  private async wantsDispatchNotification(connectionId: string): Promise<boolean> {
+    try {
+      const { connection } = await this.integrations.getAdapter(connectionId);
+      return readNotifyOnLabelPurchase(connection.config);
+    } catch (error) {
+      this.logger.warn(
+        `shipment_dispatch_notification_optin_unreadable connectionId=${connectionId}: ` +
+          `${error instanceof Error ? error.message : String(error)}. Not notifying - the ` +
+          `operator's "Mark dispatched" action remains the route.`,
+      );
+      return false;
+    }
+  }
+
   private async resolveWorkLink(orderId: string): Promise<FulfillmentWorkLinkResolution> {
     try {
       return await this.fulfillmentWorks.resolveLinkForOrder(orderId);
@@ -599,6 +735,50 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       );
       return { kind: 'none' };
     }
+  }
+
+  /**
+   * Refuse to hand back an already-active shipment when it cannot be
+   * attributed to the CALLER's work (#3340 follow-up).
+   *
+   * Only fires when the caller both (a) supplied `fulfillmentWorkId` — a
+   * caller with no work in hand (the manual HTTP dispatch route) is
+   * untouched — and (b) the order genuinely has more than one live work
+   * (`resolveWorkLink` answers `'ambiguous'`). That second condition is what
+   * keeps this narrow: an active-but-UNLINKED shipment on a single-work order
+   * (a branch-1 row the status poll created before routing existed, or one a
+   * prior dispatch left unclaimed) is legitimately this work's own label —
+   * refusing it there would be a regression, not a fix, since nothing else
+   * disambiguates it.
+   *
+   * `active.fulfillmentWorkId` is checked rather than trusted blindly, because
+   * on a split order EVERY sibling's shipment resolves `ambiguous` at create
+   * time (#2727 — the link stays NULL rather than guessing), so a bare
+   * `fulfillmentWorkId !== null` test would never fire for the exact case this
+   * guards. The real signal is the AMBIGUITY itself plus a caller who knows
+   * precisely which work it is: if the active row is not definitely this
+   * work's (matching id), it must not be reported as satisfying it.
+   */
+  private async assertNotClaimedBySiblingWork(
+    input: ShipmentDispatchInput,
+    active: Shipment,
+  ): Promise<void> {
+    if (input.fulfillmentWorkId === undefined) return;
+    if (active.fulfillmentWorkId === input.fulfillmentWorkId) return;
+
+    const workLink = await this.resolveWorkLink(input.orderId);
+    if (workLink.kind !== 'ambiguous') return;
+
+    this.logger.warn(
+      `Dispatch for order ${input.orderId} (work ${input.fulfillmentWorkId}) refused: an ` +
+        `active shipment (${active.id}) already exists and the order has more than one live ` +
+        'fulfillment work, so it cannot be attributed to this one',
+    );
+    throw new FulfillmentWorkDispatchConflictException(
+      input.orderId,
+      input.fulfillmentWorkId,
+      active.id,
+    );
   }
 
   private describeParameterDivergence(

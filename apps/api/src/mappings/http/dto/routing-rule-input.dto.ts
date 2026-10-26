@@ -9,12 +9,69 @@
  * @module apps/api/src/mappings/http/dto
  */
 
-import { IsIn, IsString, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   FulfillmentProcessorKindValues,
+  PARCEL_PROFILE_BOUNDS,
   type FulfillmentProcessorKind,
 } from '@openlinker/core/mappings';
+
+/**
+ * Optional parcel profile of a routing rule (#3651). Every field is optional
+ * and nullable ("not set"); integers must be positive. Length/width/height
+ * must be supplied together - enforced by the service, not here, because that
+ * is a cross-field rule.
+ */
+export class ParcelProfileInputDto {
+  @ApiPropertyOptional({ nullable: true, description: 'Carrier size code, e.g. a locker size' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(PARCEL_PROFILE_BOUNDS.parcelTemplateMaxLength)
+  parcelTemplate?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Box length in millimetres' })
+  @IsOptional()
+  @IsInt()
+  @Min(PARCEL_PROFILE_BOUNDS.dimensionMmMin)
+  @Max(PARCEL_PROFILE_BOUNDS.dimensionMmMax)
+  lengthMm?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Box width in millimetres' })
+  @IsOptional()
+  @IsInt()
+  @Min(PARCEL_PROFILE_BOUNDS.dimensionMmMin)
+  @Max(PARCEL_PROFILE_BOUNDS.dimensionMmMax)
+  widthMm?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Box height in millimetres' })
+  @IsOptional()
+  @IsInt()
+  @Min(PARCEL_PROFILE_BOUNDS.dimensionMmMin)
+  @Max(PARCEL_PROFILE_BOUNDS.dimensionMmMax)
+  heightMm?: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Per-unit fallback weight in grams for variants that carry none',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(PARCEL_PROFILE_BOUNDS.defaultWeightGramsMin)
+  @Max(PARCEL_PROFILE_BOUNDS.defaultWeightGramsMax)
+  defaultWeightGrams?: number | null;
+}
 
 export class RoutingRuleInputDto {
   @ApiProperty({
@@ -33,4 +90,10 @@ export class RoutingRuleInputDto {
   @IsString()
   @IsNotEmpty()
   processorConnectionId!: string;
+
+  @ApiPropertyOptional({ type: ParcelProfileInputDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ParcelProfileInputDto)
+  parcelProfile?: ParcelProfileInputDto | null;
 }

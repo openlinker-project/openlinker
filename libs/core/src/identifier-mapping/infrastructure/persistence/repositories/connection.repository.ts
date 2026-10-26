@@ -21,6 +21,7 @@ import type {
   ConnectionCreate,
   ConnectionUpdate,
   ConnectionFilters,
+  ConnectionStatus,
 } from '../../../domain/types/connection.types';
 import { ConnectionNotFoundException } from '../../../domain/exceptions/connection-not-found.exception';
 import { Logger } from '@openlinker/shared/logging';
@@ -73,6 +74,9 @@ export class ConnectionRepository implements ConnectionPort {
       queryBuilder.andWhere('connection.status = :status', {
         status: filters.status,
       });
+    } else {
+      // #3657 — see ConnectionPort.list: archived rows are only listed on request.
+      queryBuilder.andWhere('connection.status <> :archived', { archived: 'archived' });
     }
 
     const entities = await queryBuilder.getMany();
@@ -115,6 +119,9 @@ export class ConnectionRepository implements ConnectionPort {
       if (patch.enabledCapabilities !== undefined) {
         existing.enabledCapabilities = patch.enabledCapabilities;
       }
+      if (patch.credentialsRef !== undefined) {
+        existing.credentialsRef = patch.credentialsRef;
+      }
 
       // Save updated entity
       const saved = await this.repository.save(existing);
@@ -143,7 +150,7 @@ export class ConnectionRepository implements ConnectionPort {
       entity.id,
       entity.platformType,
       entity.name,
-      entity.status as 'active' | 'disabled' | 'error',
+      entity.status as ConnectionStatus,
       entity.config,
       entity.credentialsRef,
       entity.createdAt,

@@ -71,6 +71,7 @@ import {
   type LockerTemplate,
 } from './generate-label-form.schema';
 import { useRoutedCarrierPlatform } from '../hooks/use-routed-carrier-platform';
+import { useRoutedParcelProfile } from '../hooks/use-routed-parcel-profile';
 import {
   buildDispatchItem,
   classifyDeliveryMethod,
@@ -254,11 +255,41 @@ export function GenerateLabelForm({
   const lockerTemplateRegister = form.register('lockerTemplate');
   const lockerTemplate = form.watch('lockerTemplate');
 
-  // COD is driven by the order's payment status + the marketplace-sourced
-  // amount (#1435). The gate is a block-list on the one prepaid status, not an
-  // allow-list, so sources that don't report payment (PrestaShop / WooCommerce /
-  // DPD) keep the manual-COD path (#966). States:
-  //   - COD + sourced amount            → read-only "from Allegro" panel; submit
+  // Default parcel of the routing rule this delivery method matches (#3652).
+  // Rules load asynchronously, so prefill once when the profile arrives and
+  // never overwrite a field the operator already touched. No profile -> no-op,
+  // leaving the empty fields and 'medium' locker size exactly as before.
+  const routedParcel = useRoutedParcelProfile(order.sourceConnectionId, snapshot.shipping?.methodId);
+  useEffect(() => {
+    if (!routedParcel) return;
+    const dirty = form.formState.dirtyFields;
+    const opts = { shouldDirty: false, shouldValidate: false } as const;
+    if (routedParcel.lengthMm !== undefined && !dirty.length) form.setValue('length', routedParcel.lengthMm, opts);
+    if (routedParcel.widthMm !== undefined && !dirty.width) form.setValue('width', routedParcel.widthMm, opts);
+    if (routedParcel.heightMm !== undefined && !dirty.height) form.setValue('height', routedParcel.heightMm, opts);
+    if (routedParcel.weightGrams !== undefined && !dirty.weightGrams) {
+      form.setValue('weightGrams', routedParcel.weightGrams, opts);
+    }
+    const template = routedParcel.template;
+    if (
+      template !== undefined &&
+      !dirty.lockerTemplate &&
+      (LOCKER_TEMPLATE_VALUES as readonly string[]).includes(template)
+    ) {
+      form.setValue('lockerTemplate', template as LockerTemplate, opts);
+    }
+    // Prefill only when the routed profile changes: form is stable and
+    // formState is read imperatively at effect time.
+  }, [routedParcel]);
+
+  // COD is driven by the order's payment status + the source-reported amount
+  // (#1435). The gate is a block-list on the one prepaid status, not an
+  // allow-list, so a source that reports no payment keeps the manual-COD path
+  // (#966). Since #3294 every order source that can identify a COD order states
+  // the amount itself (Allegro, Erli, PrestaShop, WooCommerce, Shoper); a source
+  // or gateway it cannot identify - an unrecognised plugin slug, say - stays on
+  // the manual path rather than guessing. States:
+  //   - COD + sourced amount            → read-only "from the order" panel; submit
   //                                       sends the sourced amount.
   //   - COD + no sourced amount         → fallback manual input.
   //   - unknown / unreported payment    → fallback manual input (DPD/PrestaShop
@@ -272,8 +303,8 @@ export function GenerateLabelForm({
   // payment-blocked (awaiting/refunded never dispatch, but stay defensive here).
   const codAllowed =
     paymentStatus !== 'paid' && paymentStatus !== 'awaiting' && paymentStatus !== 'refunded';
-  // The read-only "from Allegro" panel only applies to a marketplace COD order
-  // that carried a sourced amount; every other allowed state uses the input.
+  // The read-only "from the order" panel only applies to a COD order whose
+  // source stated the amount; every other allowed state uses the input.
   const showSourcedCod = isCodOrder && sourcedCod !== undefined;
 
   // COD currency scoping (#1569). Predict the carrier this order's delivery
@@ -668,7 +699,7 @@ export function GenerateLabelForm({
 
         {/* Cash on delivery (#1435) — payment-status-driven. Explicitly prepaid
             (and dispatch-blocked) orders render nothing. A marketplace COD order
-            shows the read-only sourced amount ("from Allegro"); a COD order with
+            shows the read-only sourced amount ("from the order"); a COD order with
             no sourced amount, or a source that doesn't report payment
             (PrestaShop / DPD / legacy), shows a manual input (the operator-typed
             path, #966). */}
@@ -679,7 +710,7 @@ export function GenerateLabelForm({
                 Cash on delivery
               </StatusBadge>
               {showSourcedCod ? (
-                <span className="generate-label-form__cod-source">from Allegro</span>
+                <span className="generate-label-form__cod-source">from the order</span>
               ) : null}
             </div>
 

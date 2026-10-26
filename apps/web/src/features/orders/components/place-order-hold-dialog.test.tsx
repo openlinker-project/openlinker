@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PlaceOrderHoldDialog } from './place-order-hold-dialog';
 import { ApiError } from '../../../shared/api/api-error';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { createMockApiClient, renderWithProviders, findToastDescription } from '../../../test/test-utils';
 
 const ORDER_ID = 'ol_order_1';
 
@@ -64,7 +64,7 @@ describe('PlaceOrderHoldDialog (#2342)', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Put on hold' }));
 
-    expect(await screen.findByText('Order put on hold.')).toBeInTheDocument();
+    expect(await findToastDescription('Order put on hold.')).toBeInTheDocument();
     expect(screen.queryByText(/label may already have been created/i)).not.toBeInTheDocument();
   });
 

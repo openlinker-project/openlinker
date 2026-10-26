@@ -2150,11 +2150,28 @@ class OpenLinker extends CarrierModule
         }
         self::$fastPathDrainScheduled = true;
 
+        $classesDir = dirname(__FILE__) . '/classes/';
+
+        // Loaded BEFORE the guard below, not only inside the shutdown closure.
+        // `fastPathAvailable()` is a static call on this class, so reaching it
+        // with the file unloaded is a PHP FATAL - and it is reached from
+        // `hookActionValidateOrderAfter`, i.e. from inside `validateOrder`,
+        // i.e. on every order PrestaShop creates.
+        //
+        // It survived because the storefront checkout happens to load the
+        // class earlier in the same request through another hook. The
+        // webservice `POST /api/orders` does not, so every order created that
+        // way fataled AFTER the order had already been validated: the row
+        // exists, the caller gets an empty HTTP 500, and the fast-path drain
+        // this method exists to arm never arms (the cron path still drains
+        // those rows, so the cost is a 500 and a latency, not lost events).
+        if (!class_exists('WebhookSender')) {
+            require_once($classesDir . 'WebhookSender.php');
+        }
+
         if (!WebhookSender::fastPathAvailable()) {
             return;
         }
-
-        $classesDir = dirname(__FILE__) . '/classes/';
 
         register_shutdown_function(function () use ($classesDir) {
             // Flush and close the buyer's connection now. Everything below

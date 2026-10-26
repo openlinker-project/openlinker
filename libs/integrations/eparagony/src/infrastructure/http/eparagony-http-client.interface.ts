@@ -1,8 +1,9 @@
 /**
  * eparagony.pl HTTP Client Port
  *
- * Narrow transport contract the fiscalization adapter codes against, so its unit
- * specs can drive the whole registration lifecycle without a real `fetch`.
+ * Narrow transport contract BOTH document adapters code against - the
+ * fiscalization one and, since #3192, the invoicing one - so their unit specs can
+ * drive a whole registration or issuance lifecycle without a real `fetch`.
  *
  * Package-private: consumed by the in-package factory and adapters via relative
  * import, and NOT re-exported from the package barrel (siblings keep their

@@ -20,7 +20,7 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     id: 'inv-1',
     orderId: 'order-1',
     connectionId: 'conn-1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'pending',
     providerInvoiceId: null,
@@ -141,3 +141,51 @@ describe('resolveFailureCopy', () => {
     expect(copy).toMatch(/confirm whether/i);
   });
 });
+
+describe('resolveFailureCopy - connection missing a setting (#3772)', () => {
+  const t = (_key: string, fallback: string): string => fallback;
+
+  it('should show the stored reason, which names the missing setting', () => {
+    const reason = 'This connection has no seller tax number set, which every invoice requires.';
+    expect(
+      resolveFailureCopy(
+        makeRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'connection-setup-incomplete',
+          failureReason: reason,
+        }),
+        t,
+      ),
+    ).toBe(reason);
+  });
+
+  it('should fall back to fixed copy pointing at the connection when no reason was stored', () => {
+    expect(
+      resolveFailureCopy(
+        makeRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'connection-setup-incomplete',
+          failureReason: null,
+        }),
+        t,
+      ),
+    ).toContain('Complete the connection’s settings');
+  });
+
+  it('should never show the stored reason for any other code', () => {
+    expect(
+      resolveFailureCopy(
+        makeRecord({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'provider-rejected',
+          failureReason: 'The invoicing provider rejected the request.',
+        }),
+        t,
+      ),
+    ).toContain('Check the order’s data');
+  });
+});
+

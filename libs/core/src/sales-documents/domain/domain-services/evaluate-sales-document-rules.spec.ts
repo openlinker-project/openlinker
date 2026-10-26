@@ -10,7 +10,6 @@ import {
 import type {
   SalesDocumentOrderFacts,
   SalesDocumentRuleFact,
-  SalesDocumentThresholdFact,
 } from '../types/sales-document-order-facts.types';
 
 const NOW = new Date('2027-06-01T00:00:00.000Z');
@@ -31,7 +30,7 @@ function rule(overrides: Partial<SalesDocumentRuleFact> = {}): SalesDocumentRule
     id: 'rule-1',
     conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }],
     documentKind: 'fiscal-receipt',
-    connectionId: 'conn-eparagony',
+    connectionId: 'conn-receipt-only',
     effectiveFrom: new Date('2020-01-01T00:00:00.000Z'),
     effectiveTo: null,
     ...overrides,
@@ -45,7 +44,6 @@ function baseInput(overrides: Partial<SalesDocumentRuleEngineInput> = {}): Sales
     countryDefaults: [],
     restOfWorldRules: [],
     restOfWorldDefaults: [],
-    thresholds: [],
     now: NOW,
     ...overrides,
   };
@@ -58,22 +56,17 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
+        ruleId: 'rule-1',
       });
     });
 
     it('should evaluate multi-condition rules with AND semantics', () => {
-      const threshold: SalesDocumentThresholdFact = {
-        ref: 'pl-simplified-invoice-2026',
-        amount: 450,
-        currency: 'PLN',
-        comparisonOp: 'gte',
-      };
       const highValueRule = rule({
         id: 'rule-high',
         conditions: [
           { field: 'buyerHasTaxId', op: 'eq', value: true },
-          { field: 'orderTotalGross', op: 'gte', thresholdRef: 'pl-simplified-invoice-2026' },
+          { field: 'orderTotalGross', op: 'gte', amount: '450.00', currency: 'PLN' },
         ],
         documentKind: 'invoice',
         connectionId: 'conn-infakt',
@@ -81,18 +74,43 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       const input = baseInput({
         order: order({ buyerHasTaxId: true, totalGross: 500 }),
         countryRules: [highValueRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'invoice',
         connectionId: 'conn-infakt',
+        ruleId: 'rule-high',
       });
     });
 
     it('should not match a rule outside its effective date range', () => {
       const expired = rule({ effectiveFrom: new Date('2020-01-01'), effectiveTo: new Date('2026-12-31') });
       const input = baseInput({ countryRules: [expired], now: new Date('2027-01-01') });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'unresolved',
+        reason: 'no-matching-rule',
+      });
+    });
+
+    it('should match an orderCountry condition stored in stray case against the normalised order country (#3176)', () => {
+      // A rule authored before #3176 persists `pl` in its `conditions` jsonb,
+      // and `resolveRouting` now always hands the evaluator an uppercased
+      // `order.country` — a strict compare would make that rule permanently
+      // unmatchable. The migration cannot rewrite the stored value without
+      // desynchronising `conditions_hash`, so the fold lives here.
+      const legacy = rule({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'pl' }] });
+      const input = baseInput({ order: order({ country: 'PL' }), countryRules: [legacy] });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-receipt-only',
+        ruleId: 'rule-1',
+      });
+    });
+
+    it('should still not match an orderCountry condition naming a DIFFERENT country', () => {
+      const other = rule({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'de' }] });
+      const input = baseInput({ order: order({ country: 'PL' }), countryRules: [other] });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'unresolved',
         reason: 'no-matching-rule',
@@ -132,7 +150,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       const input = baseInput({
         countryDefaults: [
           { documentKind: 'invoice', connectionId: 'conn-infakt' },
-          { documentKind: 'fiscal-receipt', connectionId: 'conn-eparagony' },
+          { documentKind: 'fiscal-receipt', connectionId: 'conn-receipt-only' },
         ],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
@@ -152,6 +170,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-row',
+        ruleId: 'rule-1',
       });
     });
 
@@ -179,21 +198,14 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
   });
 
   describe('currency and net-priced safety (never a silent FX conversion)', () => {
-    const threshold: SalesDocumentThresholdFact = {
-      ref: 'pl-simplified-invoice-2026',
-      amount: 450,
-      currency: 'PLN',
-      comparisonOp: 'lt',
-    };
     const amountRule = rule({
-      conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+      conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
     });
 
     it('should resolve unresolved/threshold-currency-mismatch when the order currency differs from the threshold currency', () => {
       const input = baseInput({
         order: order({ currency: 'EUR' }),
         countryRules: [amountRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'unresolved',
@@ -210,7 +222,6 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       const input = baseInput({
         order: order({ taxTreatment: undefined }),
         countryRules: [amountRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'unresolved',
@@ -222,7 +233,6 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       const input = baseInput({
         order: order({ taxTreatment: 'exclusive' }),
         countryRules: [amountRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'unresolved',
@@ -234,12 +244,12 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       const input = baseInput({
         order: order({ totalGross: 100, currency: 'PLN', taxTreatment: 'inclusive' }),
         countryRules: [amountRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
+        ruleId: 'rule-1',
       });
     });
 
@@ -249,50 +259,49 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       const cleanRule = rule({ id: 'clean', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }] });
       const brokenRule = rule({
         id: 'broken',
-        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+        conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
         connectionId: 'conn-other',
       });
       const input = baseInput({
         order: order({ currency: 'EUR' }),
         countryRules: [cleanRule, brokenRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
+        ruleId: 'clean',
       });
     });
 
     it('should still route on a clean match even when an EARLIER rule in the scope has a currency mismatch', () => {
       const brokenRule = rule({
         id: 'broken',
-        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+        conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
         connectionId: 'conn-other',
       });
       const cleanRule = rule({ id: 'clean', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }] });
       const input = baseInput({
         order: order({ currency: 'EUR' }),
         countryRules: [brokenRule, cleanRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
+        ruleId: 'clean',
       });
     });
 
     it('should still resolve the data problem when NOTHING in the scope matches cleanly', () => {
       const brokenRule = rule({
         id: 'broken',
-        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+        conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
       });
       const nonMatching = rule({ id: 'other', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }] });
       const input = baseInput({
         order: order({ currency: 'EUR' }),
         countryRules: [nonMatching, brokenRule],
-        thresholds: [threshold],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'unresolved',

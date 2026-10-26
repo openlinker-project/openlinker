@@ -18,11 +18,13 @@ import type {
   OrderLifecyclePhaseSummary,
   OrderRecordStatus,
   FailedSyncValueSummary,
+  SalesDocumentMatchedRuleWrite,
 } from '../types/order-record.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
   AuthorityAttentionOutcome,
@@ -35,11 +37,27 @@ import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/ord
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
-  NetExcludedOrderCandidate,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
   PaginatedProductMatchingErrorOrders,
   CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
 import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
+import type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+} from '../types/order-search-text-reindex.types';
+
+/**
+ * A held order and when its CURRENT hold began (#3485 review). The age bounds
+ * how often the reroute sweep re-drives an order that stays refused.
+ * `blockedAt` is `null` for a row held before the column existed: "not asserted",
+ * never a guess.
+ */
+export interface HeldOrderRef {
+  readonly orderId: string;
+  readonly blockedAt: Date | null;
+}
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -377,25 +395,37 @@ export interface OrderRecordRepositoryPort {
   ): Promise<CoverageConnectionAggregateRow[]>;
 
   /**
-   * Data Coverage tax A/B/C detector's base population (#2465) — every
-   * order EXCLUDED from `getDailyOrderAggregates`' `net_excluded_count`
-   * figure, i.e. the IDENTICAL predicate mirrored from
-   * `netExcludedAndNotCancelled` there: `recordStatus = 'ready'`, resolvable
-   * `placedAt`/`totalAmount`, `[filters.from, filters.to)`, optional
-   * connection narrowing, non-cancelled, current-era stamped
-   * (`reportingCurrency = currentReportingCurrency`), and `NOT
-   * netSalesOrderNetEligibleSql(...)`. Kept as the SAME predicate on purpose
-   * so `candidates.length` is exactly `netExcludedCount` summed over the
-   * same filters — the #2465 regression guard.
+   * Data Coverage tax A/B/C detector's base population, ONE BOUNDED PAGE at
+   * a time (#2465, re-bounded by #2834) — every order EXCLUDED from
+   * `getDailyOrderAggregates`' `net_excluded_count` figure, i.e. the
+   * IDENTICAL predicate mirrored from `netExcludedAndNotCancelled` there:
+   * `recordStatus = 'ready'`, resolvable `placedAt`/`totalAmount`,
+   * `[filters.from, filters.to)`, optional connection narrowing,
+   * non-cancelled, current-era stamped (`reportingCurrency =
+   * currentReportingCurrency`), and `NOT netSalesOrderNetEligibleSql(...)`.
+   * Kept as the SAME predicate on purpose so the SUM of every page's
+   * `items.length` is exactly `netExcludedCount` summed over the same
+   * filters — the #2465 regression guard, now proven across a
+   * multi-page population by the #2834 int-spec.
    *
-   * Unpaged by design: unlike {@link findCurrencyMismatchOrders}, this read
-   * feeds `TaxCoverageDetectionService`'s classification pass, which needs
-   * the FULL candidate set (to compute correct per-category totals) before
-   * any page can be sliced — pushing pagination down to SQL here would
-   * paginate the wrong population (page-of-candidates, not
-   * page-of-one-category). Bounded in practice by the same
-   * `[filters.from, filters.to)` window every sales-analytics read already
-   * requires (10-100 orders/day persona scale, per #1985's ADR-039 note).
+   * Keyset-paginated by `(placedAt DESC, internalOrderId DESC)` — the same
+   * order the pre-#2834 unbounded read already sorted by, with
+   * `internalOrderId` added purely as a deterministic tiebreak for rows
+   * sharing a `placedAt`. `placedAt` is guaranteed non-null in scope (see
+   * {@link NetExcludedOrderCandidateCursor}'s doc comment), so no
+   * null-ordering special case is needed. `cursor: null` starts from the
+   * beginning; `page.nextCursor === null` means this was the last page.
+   *
+   * #2834 replaces the pre-existing unbounded `findNetExcludedOrderCandidates`
+   * (a single `getRawMany()` with no `LIMIT`, whose row count scaled
+   * linearly with total net-excluded order history for the filter window —
+   * currently up to 400 days). Bounding it here does NOT, on its own,
+   * change what a caller can compute: `TaxCoverageDetectionService.classify()`
+   * drives this method in a loop and appends each page's classification
+   * result, which is provably equivalent to classifying the whole unbounded
+   * set at once — see that service's doc comment for why (per-order
+   * classification never depends on any OTHER order's state or on its
+   * position in the population).
    *
    * `includeBackfilledPreRollout` (#2469) is the same operator opt-in
    * {@link getDailyOrderAggregates} documents, and threading it here is a
@@ -403,12 +433,29 @@ export interface OrderRecordRepositoryPort {
    * setting ON a backfilled pre-rollout order becomes net-ELIGIBLE, so it must
    * leave this candidate population too — otherwise the Data Coverage panel
    * keeps reporting as `tax-a` an order that is already inside Net Sales.
+   *
+   * `limit` defaults to the repository's own page-size constant when
+   * omitted. It exists so test code can pass a smaller value to exercise
+   * multi-page behaviour without seeding a large fixture — no production
+   * caller passes it; `TaxCoverageDetectionService.classify()` always omits
+   * it and takes the default.
+   *
+   * NOT a consistent snapshot across the whole loop: `classify()` calls this
+   * page by page rather than inside one transaction, so a row whose FX stamp
+   * (or any other predicate input) changes mid-loop can enter or leave the
+   * population between pages and be double-counted or skipped once. That is
+   * an accepted property of a diagnostic panel read on every page load —
+   * `getDailyOrderAggregates`'s `net_excluded_count` has the identical
+   * caveat for the same reason — and would matter only for a caller needing
+   * a point-in-time-consistent total, which this port does not promise.
    */
-  findNetExcludedOrderCandidates(
+  findNetExcludedOrderCandidatesPage(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    includeBackfilledPreRollout?: boolean
-  ): Promise<NetExcludedOrderCandidate[]>;
+    includeBackfilledPreRollout?: boolean,
+    cursor?: NetExcludedOrderCandidateCursor | null,
+    limit?: number
+  ): Promise<NetExcludedOrderCandidatePage>;
 
   /**
    * Data Coverage `'product-matching'` category drill-down (#2466) — orders
@@ -500,22 +547,36 @@ export interface OrderRecordRepositoryPort {
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this
-   * order (#2100, ADR-041 decision 11). Narrow absolute-set on the three
-   * `salesDocumentBlock*` columns only, mirroring
+   * order (#2100, ADR-041 decision 11), and the `sales_document_rules` row
+   * that decided its document kind, when a rule engine match produced it
+   * (#3186). Narrow absolute-set on the FOUR `salesDocumentBlock*` /
+   * `salesDocumentMatchedRuleId` columns only, mirroring
    * {@link updateItemResolutionFailure}, so it can't clobber a concurrent write
    * to any other column on the same row.
    *
-   * Passing `null` CLEARS all three columns, and that is the primary path, not an
-   * edge case: the auto-issue gate is level-evaluated, so this is called on
-   * every order transition with whatever the current answer is. Last write
-   * wins by design — the newest evaluation is the truthful one.
+   * Passing `null` for `block` CLEARS the three block columns — the primary
+   * path, not an edge case: the auto-issue gate is level-evaluated, so this is
+   * called on every order transition with whatever the current answer is. Last
+   * write wins by design — the newest evaluation is the truthful one.
+   *
+   * `matchedRule` moves INDEPENDENTLY of `block`: a rule can decide the
+   * document kind while issuance is still blocked for an unrelated reason
+   * (e.g. a missing tax rate, or a `manual` trigger model), so the two are
+   * never coupled to one another's null-ness — and the instruction is
+   * REQUIRED, never defaulted, so a caller that decided only the block has to
+   * say so ({@link SalesDocumentMatchedRuleWrite}). `{action: 'set'}` writes
+   * the column, `null` included, which is what lets an edited or deleted rule
+   * stop being named on the very next transition; `{action: 'preserve'}` omits
+   * it from the statement altogether, so no read-then-write is needed and
+   * nothing can race.
    *
    * No-op (no throw) when the order row doesn't exist, mirroring
    * {@link updateFulfillmentState}'s residual-race tolerance.
    */
   updateSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void>;
 
   /**
@@ -531,6 +592,36 @@ export interface OrderRecordRepositoryPort {
   updateFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * #3485 — one keyset page of internal order ids whose fulfilment block is one
+   * of `reasons`, ascending by `internalOrderId`, starting strictly after
+   * `afterOrderId` (`null` = from the start).
+   *
+   * Keyset, never offset: the set shrinks as orders are re-routed, and an offset
+   * over a shrinking set steps over rows. And keyset, never oldest-`updatedAt`:
+   * a re-refused order rewrites an identical block, the `IS DISTINCT FROM` guard
+   * (correctly) leaves `updatedAt` alone, so an oldest-first page would re-read
+   * the same head for ever and starve everything behind it.
+   */
+  listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]>;
+
+  /**
+   * #3455 — record why the ingestion intercept deliberately did NOT route the
+   * order while the OMS is on, or clear it with `null`. Level-triggered: the
+   * intercept re-decides on every ingestion and writes the answer including
+   * `null`. Outside the ingestion write set, so a re-poll cannot reset it; a
+   * no-change write costs no `updatedAt` bump.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
   ): Promise<void>;
 
   /**
@@ -892,6 +983,25 @@ export interface OrderRecordRepositoryPort {
   clearFxStampForRestatement(internalOrderId: string): Promise<boolean>;
 
   /**
+   * TEST-FIXTURE-ONLY (#2855). Stamps `taxRateEra = 'pre-rollout'` on one
+   * order so a non-production install can reach the `tax-a` / `tax-c`
+   * analytics coverage states with a fresh, flow-seeded order — no ingestion
+   * path writes this column going forward (it was set exactly once, by a
+   * historical backfill migration), so without this seam those states are
+   * structurally unreachable by any real order.
+   *
+   * Guarded on `"taxRateEra" IS DISTINCT FROM 'pre-rollout'`, the same
+   * idempotency shape {@link clearFxStampForRestatement} uses: a row already
+   * in the target state matches nothing and reports `false`, so a repeated
+   * call is a no-op rather than a second, redundant write.
+   *
+   * Deliberately NOT role/env-aware — this is a dumb, narrow conditional
+   * writer, same as its precedent. The `@Roles('admin')` + `OL_ALLOW_TEST_FIXTURES`
+   * double gate lives in `OrderTestFixtureService`, one layer up.
+   */
+  stampPreRolloutEraForTesting(internalOrderId: string): Promise<boolean>;
+
+  /**
    * The mismatched population still remaining in `filters`' scope,
    * partitioned by whether the FX pipeline already reached a terminal answer
    * (#2468) — what a restatement run's completion poll reads to decide
@@ -908,4 +1018,28 @@ export interface OrderRecordRepositoryPort {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<FxRestatementRemainingSummary>;
+
+  /**
+   * One keyset page of `order_records` for the `searchText` reindex pass
+   * (#3507 G03-14): rows with `internalOrderId > afterInternalOrderId` (or from
+   * the start when `null`), ascending, at most `limit`. Narrowed to the three
+   * columns the pass needs — the snapshot to re-derive from and the stored text
+   * to compare against — and NOT filtered on the text: the derivation is
+   * application code, so "does this row disagree" can only be answered after
+   * reading it.
+   */
+  findSearchTextReindexPage(
+    afterInternalOrderId: string | null,
+    limit: number
+  ): Promise<OrderSearchTextReindexRow[]>;
+
+  /**
+   * Conditionally rewrite `searchText` for each entry (#3507 G03-14), guarded
+   * on the row still holding `expectedSearchText` — a concurrent ingestion that
+   * already rewrote it wins. `updatedAt` is deliberately left untouched: the
+   * text is derived data, and bumping the timestamp would reorder every
+   * "recently updated" view by an internal reindex nobody performed. Returns
+   * how many rows were actually rewritten.
+   */
+  rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number>;
 }

@@ -11,6 +11,7 @@ import { WooCommerceHttpClient } from '../woocommerce-http-client';
 import { WooCommerceUnauthorizedException } from '../../../domain/exceptions/woocommerce-unauthorized.exception';
 import { WooCommerceNetworkException } from '../../../domain/exceptions/woocommerce-network.exception';
 import { WooCommerceHttpResponseException } from '../woocommerce-http-response.exception';
+import { WooCommerceAmbiguousWriteException } from '../../../domain/exceptions/woocommerce-ambiguous-write.exception';
 
 // Mock fetch globally
 global.fetch = jest.fn();
@@ -321,29 +322,89 @@ describe('WooCommerceHttpClient', () => {
       expect((err as WooCommerceHttpResponseException).statusCode).toBe(404);
     });
 
-    it('should retry on 5xx and succeed on second attempt', async () => {
-      const stub = jest
-        .fn()
-        .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) })
-        .mockResolvedValueOnce({ ok: true, status: 201, json: () => Promise.resolve({ id: 1 }) });
-      jest.spyOn(global, 'fetch').mockImplementation(stub);
-      const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
-        maxRetries: 1,
-        initialDelayMs: 0,
-        backoffMultiplier: 1,
-        maxDelayMs: 0,
-      });
-      const result = await client.post('/test', {});
-      expect(result).toEqual({ id: 1 });
-      expect(stub).toHaveBeenCalledTimes(2);
-    });
-
     it('should throw WooCommerceNetworkException on timeout', async () => {
       const abortError = new Error('The operation was aborted.');
       abortError.name = 'AbortError';
       jest.spyOn(global, 'fetch').mockRejectedValue(abortError);
       const client = makeClient();
       await expect(client.post('/test', {})).rejects.toBeInstanceOf(WooCommerceNetworkException);
+    });
+
+    describe('non-idempotent retry gating (#3469 — guards duplicate creates)', () => {
+      it('should NOT retry an ambiguous 5xx by default (exactly one request)', async () => {
+        const stub = jest
+          .fn()
+          .mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({}) });
+        jest.spyOn(global, 'fetch').mockImplementation(stub);
+        const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
+          maxRetries: 2,
+          initialDelayMs: 0,
+          backoffMultiplier: 1,
+          maxDelayMs: 0,
+        });
+        // #3469 IMPORTANT-1 review: raised as the distinguishable
+        // WooCommerceAmbiguousWriteException — WooCommerceRetryClassifierAdapter
+        // keys on this type so a job-level retry does not re-send the same POST.
+        const error = await client
+          .post('/wp-json/wc/v3/orders', {})
+          .then(() => null)
+          .catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(WooCommerceAmbiguousWriteException);
+        expect(error).toMatchObject({ method: 'POST', url: expect.stringContaining('/wp-json/wc/v3/orders'), statusCode: 500 });
+        expect(stub).toHaveBeenCalledTimes(1);
+      });
+
+      it('should NOT retry a network error by default (exactly one request)', async () => {
+        const stub = jest.fn().mockRejectedValue(new Error('ECONNRESET'));
+        jest.spyOn(global, 'fetch').mockImplementation(stub);
+        const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
+          maxRetries: 2,
+          initialDelayMs: 0,
+          backoffMultiplier: 1,
+          maxDelayMs: 0,
+        });
+        const error = await client
+          .post('/wp-json/wc/v3/orders', {})
+          .then(() => null)
+          .catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(WooCommerceAmbiguousWriteException);
+        expect((error as WooCommerceAmbiguousWriteException).statusCode).toBeUndefined();
+        expect(stub).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still retry a 429 (WooCommerce never processed the request)', async () => {
+        const stub = jest
+          .fn()
+          .mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) })
+          .mockResolvedValueOnce({ ok: true, status: 201, json: () => Promise.resolve({ id: 1 }) });
+        jest.spyOn(global, 'fetch').mockImplementation(stub);
+        const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
+          maxRetries: 1,
+          initialDelayMs: 0,
+          backoffMultiplier: 1,
+          maxDelayMs: 0,
+        });
+        const result = await client.post('/test', {});
+        expect(result).toEqual({ id: 1 });
+        expect(stub).toHaveBeenCalledTimes(2);
+      });
+
+      it('should retry an ambiguous 5xx when the caller opts in via idempotent: true', async () => {
+        const stub = jest
+          .fn()
+          .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({}) })
+          .mockResolvedValueOnce({ ok: true, status: 201, json: () => Promise.resolve({ id: 1 }) });
+        jest.spyOn(global, 'fetch').mockImplementation(stub);
+        const client = new WooCommerceHttpClient(SITE_URL, CONSUMER_KEY, CONSUMER_SECRET, mockFetch, {
+          maxRetries: 1,
+          initialDelayMs: 0,
+          backoffMultiplier: 1,
+          maxDelayMs: 0,
+        });
+        const result = await client.post('/test', {}, { idempotent: true });
+        expect(result).toEqual({ id: 1 });
+        expect(stub).toHaveBeenCalledTimes(2);
+      });
     });
   });
 

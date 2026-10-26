@@ -14,6 +14,7 @@ import type {
   ProductVariantListFilters,
   ProductPagination,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
 } from '../types/product.types';
 import type { StoredTaxRate } from '../types/tax-rate.types';
 
@@ -201,6 +202,15 @@ export interface ProductVariantRepositoryPort {
   ): Promise<string[]>;
 
   /**
+   * End the ADR-077 tax-basis correction window for these variants: clear
+   * `priceBasisPending`. Called only once the corrected price has been
+   * reported (or found unchanged), so a report that failed keeps the variant
+   * pending and the next price move is still treated as the correction.
+   * An empty list is a no-op.
+   */
+  clearPriceBasisPending(variantIds: readonly string[]): Promise<void>;
+
+  /**
    * Record what the ProductMaster said about this variant's tax rate (#2054).
    *
    * A separate writer from `upsert` / `upsertMany`, for the same reason the
@@ -230,4 +240,36 @@ export interface ProductVariantRepositoryPort {
 
   /** Read the stored override for one variant. `null` when the variant is unknown. */
   findTaxRate(variantId: string): Promise<StoredTaxRate | null>;
+
+  /**
+   * Record operator-authored physical dimensions (#3403, mockup-parity epic
+   * #3401) — the dedicated writer for `weightGrams`/`lengthMm`/`widthMm`/
+   * `heightMm`, mirroring `recordTaxRate`'s single-writer discipline: the
+   * master-sync upsert must never blank a value an operator typed in.
+   * `null` on any field clears it back to "not recorded".
+   */
+  recordPhysicalDimensions(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<void>;
+
+  /**
+   * Fill-when-NULL writer for the four physical columns (#3650): each column
+   * is set only while it is still NULL, so a value already present - typed by
+   * an operator or filled by an earlier sync - is never overwritten. Distinct
+   * from `recordPhysicalDimensions`, which is the unconditional operator
+   * writer. Absent/`null` fields are skipped, never written as NULL.
+   *
+   * Takes every variant of a product at once and writes them in ONE statement:
+   * the catalogue sweep calls this per product on every tick, so a statement
+   * per variant would be a per-tick cost for the life of the install.
+   * Returns how many variants had at least one column actually filled; empty
+   * input (or input with no numeric field) returns 0 without a round-trip.
+   */
+  fillPhysicalDimensionsIfAbsent(fills: readonly VariantPhysicalDimensionsFill[]): Promise<number>;
 }

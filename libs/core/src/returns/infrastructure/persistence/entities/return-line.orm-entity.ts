@@ -80,6 +80,21 @@ export class ReturnLineOrmEntity {
   @Column({ type: 'text', nullable: true })
   resolvedOrderLineId!: string | null;
 
+  /**
+   * Catalogue identity denormalized from the resolved order line at claim
+   * time (#3450) — `OrderItem.productId` / `OrderItem.variantId`. Written
+   * only alongside `resolvedOrderLineId` by `claimOrderLineResolution`, never
+   * independently, and never FK'd for the same reason `resolvedOrderLineId`
+   * is not: these are internal ids on `products`/`product_variants`, but the
+   * write is a by-value denormalization of an already-resolved fact rather
+   * than a relation this table owns.
+   */
+  @Column({ type: 'text', nullable: true })
+  resolvedProductId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  resolvedVariantId!: string | null;
+
   /** Best-effort provenance, never authority. */
   @Column({ type: 'text', nullable: true })
   offerId!: string | null;

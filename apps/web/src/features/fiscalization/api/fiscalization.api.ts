@@ -5,6 +5,9 @@
  *   - `GET /fiscal-registrations?orderId=…` — every record held by an order,
  *     newest-first, across every connection. Empty list is the normal
  *     never-registered state — never a 404.
+ *   - `GET /fiscal-registrations/:id` — one record by id (#3306/#3307 — the
+ *     fiscal-receipt half of the merged /sales-documents detail route,
+ *     mirroring `getById` on the invoicing side). 404 when no record exists.
  *   - `POST /fiscal-registrations` — ASK for a registration on an explicit
  *     operator request. It accepts the work and returns; it does not perform it,
  *     so the answer carries no outcome (#2525).
@@ -25,6 +28,7 @@ import type {
 
 export interface FiscalizationApi {
   listForOrder: (orderId: string) => Promise<FiscalRegistrationRecord[]>;
+  getById: (id: string) => Promise<FiscalRegistrationRecord>;
   register: (input: RegisterFiscalTransactionInput) => Promise<AcceptedFiscalRegistration>;
   getProgress: (orderId: string, connectionId: string) => Promise<FiscalRegistrationProgressView>;
   reconcile: (id: string) => Promise<ReconcileFiscalRegistrationResult>;
@@ -41,6 +45,9 @@ export function createFiscalizationApi(request: ApiRequest): FiscalizationApi {
     listForOrder(orderId): Promise<FiscalRegistrationRecord[]> {
       const query = new URLSearchParams({ orderId }).toString();
       return request<FiscalRegistrationRecord[]>(`/fiscal-registrations?${query}`);
+    },
+    getById(id): Promise<FiscalRegistrationRecord> {
+      return request<FiscalRegistrationRecord>(`/fiscal-registrations/${encodeURIComponent(id)}`);
     },
     register(input): Promise<AcceptedFiscalRegistration> {
       return request<AcceptedFiscalRegistration>('/fiscal-registrations', {

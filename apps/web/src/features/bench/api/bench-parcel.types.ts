@@ -14,9 +14,15 @@
  *
  * ## What is NOT on this wire, and why that is the point
  *
- * No address, no email, no phone, no total, no price. The API projects field by
- * field rather than by spread, and this mirror is the same allowlist one layer
- * out — so a surface built on it cannot render what it was never handed.
+ * No address, no email, no phone. The API projects field by field rather than
+ * by spread, and this mirror is the same allowlist one layer out — so a
+ * surface built on it cannot render what it was never handed.
+ *
+ * `totalAmount`/`currency`/`carrierName`/`dispatchByAt` on `BenchParcel`, and
+ * `imageUrl`/`attributes`/`binCode`/the weight+dimension fields on
+ * `BenchParcelLine`, are a DELIBERATE reversal of the original "no total, no
+ * price" exclusion (#3409/#3410, mockup-parity epic #3401) — see the API
+ * type's own docblock for the reasoning.
  *
  * @module apps/web/src/features/bench/api
  */
@@ -34,6 +40,28 @@ export interface BenchParcelLine {
   readonly requiredQuantity: number;
   /** Units verified into the box. Never greater than `requiredQuantity`. */
   readonly verifiedQuantity: number;
+  /** The parent product's first image, or `null`. */
+  readonly imageUrl: string | null;
+  /** The variant's distinguishing attributes (colour, size, …), or `null`. */
+  readonly attributes: Record<string, string> | null;
+  /** Operator-authored bin/shelf code, or `null` when never recorded. */
+  readonly binCode: string | null;
+  /** Display-only physical master data. `null` on any field means "not recorded". */
+  readonly weightGrams: number | null;
+  readonly lengthMm: number | null;
+  readonly widthMm: number | null;
+  readonly heightMm: number | null;
+}
+
+/**
+ * A note an office user flagged "Show to packer" (D12). Read only - unflagged
+ * notes and tags are never on this wire.
+ */
+export interface BenchPackerNote {
+  readonly id: string;
+  readonly body: string;
+  readonly authorUsername: string;
+  readonly createdAt: string;
 }
 
 /** One box, as the bench sees it. */
@@ -43,6 +71,12 @@ export interface BenchParcel {
   readonly version: number;
   readonly orderReference: string;
   readonly buyerName: string | null;
+  /** The order's total, in the source's own currency. */
+  readonly totalAmount: number | null;
+  readonly currency: string | null;
+  /** The source's own delivery-method label; `null` when the source reports none. */
+  readonly carrierName: string | null;
+  readonly dispatchByAt: string | null;
   readonly parcelIndex: number;
   readonly parcelTotal: number;
   /**
@@ -54,7 +88,32 @@ export interface BenchParcel {
   /** When the last verification shut the box, or `null` while it is open. */
   readonly closedAt: string | null;
   readonly packedByUserId: string | null;
+  /**
+   * Who this parcel is assigned to, or `null` for the unassigned pool.
+   *
+   * A raw OL user id, like `packedByUserId` beside it — never a name, and
+   * never rendered directly. Carried so a lost claim race can name who
+   * actually holds the parcel now, rather than a refusal that names nobody.
+   */
+  readonly assignedToUserId: string | null;
+  /**
+   * When this parcel's invoice was FIRST printed, or `null` if never. A
+   * reprint never moves it — the question is whether it was ever printed,
+   * because that is what the pack-bench completion confirm reads.
+   */
+  readonly invoicePrintedAt: string | null;
+  /** The label sibling of `invoicePrintedAt`. Same reading. */
+  readonly labelPrintedAt: string | null;
+  /**
+   * When an operator declared this parcel finished and off the bench, or
+   * `null` until that act. A distinct, later instant from `closedAt` — the
+   * box can be correctly packed for a while before anyone confirms the label
+   * is on it and it has actually left.
+   */
+  readonly completedAt: string | null;
   readonly lines: readonly BenchParcelLine[];
+  /** Notes flagged "Show to packer". Empty is the ordinary case. */
+  readonly packerNotes: readonly BenchPackerNote[];
 }
 
 /** What one verification did. `parcel` comes back on every outcome, refusals included. */
@@ -69,18 +128,57 @@ export interface BenchVerificationResult {
 export interface BenchReopenResult {
   /** `reopened` | `refused`. */
   readonly outcome: string;
-  /** `shipped` | `not-closed`, or `null`. */
+  /** `shipped` | `not-closed` | `not-packable` (#3435 review), or `null`. */
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/**
+ * What declaring a parcel finished and off the bench answers (pack-bench
+ * completion).
+ *
+ * `parcel` comes back on every outcome, exactly as it does on a verification —
+ * a refusal re-renders the box as it now stands rather than leaving a stale
+ * one on screen.
+ */
+export interface BenchCompleteResult {
+  /** `completed` | `refused`. */
+  readonly outcome: string;
+  /**
+   * `not-closed` | `already-completed` | `version-conflict` |
+   * `not-claimable-by-viewer`, or `null` on `completed`, or something newer.
+   */
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/**
+ * What taking back a completion answers.
+ *
+ * The counterpart to `BenchCompleteResult` — a completion used to be a
+ * one-way door, and this clears `completedAt` alone. Every scan and the
+ * closed box stand; the box is not reopened.
+ */
+export interface BenchUndoCompletionResult {
+  /** `undone` | `refused`. */
+  readonly outcome: string;
+  /**
+   * `not-completed` | `version-conflict` | `not-claimable-by-viewer`, or
+   * `null` on `undone`, or something newer.
+   */
   readonly reason: string | null;
   readonly parcel: BenchParcel;
 }
 
 /** The paper that goes INSIDE the box. */
 export interface BenchInvoice {
-  /** `ready` | `issued-not-printable` | `missing`. */
+  /** `ready` | `link` | `issued-not-printable` | `missing`, or something newer. */
   readonly state: string;
   readonly invoiceId: string | null;
   readonly documentNumber: string | null;
   readonly issuedAt: string | null;
+  /** Set when `state` is `link` (#3648): the authority's public verification link. */
+  readonly verificationUrl: string | null;
   /** The persisted sales-document block reason, verbatim. Never blocks packing. */
   readonly blockReason: string | null;
   /** The routing half of the same answer. */
@@ -111,12 +209,79 @@ export interface BenchLabel {
    */
   readonly carrierMessageRedacted: boolean;
   readonly failedAt: string | null;
+  /**
+   * Size codes the routed carrier accepts (#3655). Optional on the wire: the
+   * backend contract (#3654) does not promise a list, so `[]` means "offer a
+   * box or a weight only", never "no size can be chosen".
+   */
+  readonly parcelTemplates?: readonly string[];
+}
+
+/**
+ * What a registered receipt produced, WITHOUT its content (#3646). `disposition`
+ * is the adapter's hint and never evidence that the buyer received anything.
+ */
+export interface BenchFiscalArtefact {
+  /** `document` | `link` | `markup` | `code` | `text`, or something newer. */
+  readonly medium: string;
+  readonly disposition: string;
+  readonly label: string | null;
+  readonly contentType: string | null;
+}
+
+/**
+ * The order's sales document, of either kind and in any status (#3646). One
+ * nullable shape for both kinds, exactly as the API sends it.
+ */
+export interface BenchSalesDocument {
+  /** `invoice` | `fiscal-receipt`, or a kind this build does not know. */
+  readonly kind: string;
+  readonly recordId: string;
+  readonly connectionId: string;
+  /** Receipts only: which integration registered it, for its presentation slot. */
+  readonly platformType: string | null;
+  /** On the kind's own axis: `pending` | `issuing` | `issued` | `failed`, or `pending` | `registering` | `registered` | `failed`. */
+  readonly status: string;
+  /** `rejected` | `in-doubt`, or `null`. A failed record with none means `in-doubt`. */
+  readonly failureMode: string | null;
+  /** The invoice number, or the receipt number. */
+  readonly documentNumber: string | null;
+  readonly completedAt: string | null;
+  /** Invoices only: issued AND printable. */
+  readonly printable: boolean;
+  /**
+   * Invoices only (#3648): the authority's public link, present when the
+   * provider cannot render a document but can point at one a person prints from.
+   * Built by the backend - the browser never assembles it.
+   */
+  readonly verificationUrl: string | null;
+  /** Receipts only. `null` = nothing produced yet; `[]` = registered with nothing attached. */
+  readonly artefacts: readonly BenchFiscalArtefact[] | null;
 }
 
 export interface BenchDocuments {
   readonly workId: string;
-  readonly invoice: BenchInvoice;
+  /**
+   * @deprecated since #3646 - invoice-only. Read only when {@link document} is
+   * absent, i.e. from an API older than #3646.
+   */
+  readonly invoice: BenchInvoice | null;
+  /**
+   * The order's sales document. `null` = none of any kind; `undefined` = an API
+   * older than #3646 that does not send the slot at all.
+   */
+  readonly document?: BenchSalesDocument | null;
+  /** The kind routing resolved for an order with no document. */
+  readonly documentKind: string | null;
+  /** Why there is no document. Only ever set when {@link document} is `null`. */
+  readonly blockReason: string | null;
+  readonly unresolvedReason: string | null;
   readonly label: BenchLabel;
+}
+
+/** A registered receipt's link, from the work-scoped receipt route (#3646). */
+export interface BenchReceiptLink {
+  readonly url: string;
 }
 
 /** One finished box with no label on it. Read by this bench and by dispatch alike. */
@@ -135,4 +300,146 @@ export interface BenchUnlabelledParcelList {
   readonly total: number;
   /** Whether the read hit its cap. Said out loud rather than truncating silently. */
   readonly truncated: boolean;
+}
+
+/** What an undo-last-scan answers (#3405, epic #3401). */
+export interface BenchUndoResult {
+  /** `voided` | `refused`. */
+  readonly outcome: string;
+  /** `parcel-closed` | `nothing-to-undo`, or `null`. */
+  readonly reason: string | null;
+  /** Which line's count just went down. `null` on any outcome but `voided`. */
+  readonly workLineId: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/** What claiming this parcel answers (#3412). */
+export interface BenchClaimResult {
+  /** `claimed` | `refused`. */
+  readonly outcome: string;
+  /**
+   * `held` | `cancelled` | `not-claimable` | `claimed-by-someone-else`, or
+   * `null`.
+   *
+   * `not-claimable` is the standing ADR-074 lock; `claimed-by-someone-else`
+   * is a peer winning the race between the read that offered this parcel and
+   * the write — a different fact, and the two must read differently. See
+   * `parcel.assignedToUserId` for who holds it now.
+   */
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/** What "take next task" answers (#3412). */
+export interface BenchClaimNextResult {
+  /**
+   * `claimed` | `nothing-to-claim` | `refused`.
+   *
+   * The last two are different facts and must stay apart on screen:
+   * `nothing-to-claim` means the queue was empty, `refused` means a parcel was
+   * found and lost — usually to another packer, in the moment between the read
+   * and the write, with the rail still showing the row.
+   */
+  readonly outcome: string;
+  readonly parcel: BenchParcel | null;
+  /**
+   * `held` | `cancelled` | `not-claimable` | `claimed-by-someone-else`.
+   * Non-null only on `refused`.
+   */
+  readonly reason: string | null;
+}
+
+/** One OTHER packer who currently has this parcel open (#3406). */
+export interface BenchPresenceViewer {
+  /**
+   * Already masked by the API — "Anna Kowalska" arrives as "A. Kowalska".
+   * Never a user id, and never a name this surface assembles itself.
+   */
+  readonly displayName: string;
+}
+
+/**
+ * A collision signal (#3406) — advisory only, never a lock.
+ *
+ * `others` NEVER includes the viewer, and an empty array is the first-class
+ * answer "nobody else". A FAILED read is not that answer: it throws, and the
+ * surface renders no banner AND no reassurance, because a read that did not
+ * happen has no standing to say the box is yours alone.
+ */
+export interface BenchPresence {
+  /** Exactly `others.length > 0`. What the banner's visibility keys on. */
+  readonly collision: boolean;
+  /** Most recently seen first. */
+  readonly others: readonly BenchPresenceViewer[];
+}
+
+/** One entry of a parcel's recent-activity log (#3411). */
+export interface BenchActivityEntry {
+  readonly workLineId: string;
+  readonly name: string | null;
+  /** `verified` | `undone`. */
+  readonly kind: string;
+  readonly at: string;
+  readonly byUserId: string | null;
+}
+
+/** One row of the "Packed today" tab (#3413). */
+export interface BenchPackedTodayRow {
+  readonly workId: string;
+  readonly orderReference: string;
+  readonly buyerName: string | null;
+  readonly parcelIndex: number;
+  readonly parcelTotal: number;
+  readonly closedAt: string;
+  readonly packedByUserId: string | null;
+}
+
+export interface BenchPackedTodayList {
+  readonly works: readonly BenchPackedTodayRow[];
+  readonly total: number;
+}
+
+/** The bench metric row (#3413). */
+export interface BenchMetrics {
+  readonly packedToday: number;
+  readonly packedYesterday: number;
+  readonly toPackAllBenches: number;
+}
+
+// ── Change size (#3655, backend #3654) ──────────────────────────────────────
+// Wire units are mm and grams. The UI speaks cm and kg and converts in
+// `lib/bench-label-replace.ts` - nowhere else.
+
+/** Parcel data ONLY. There is deliberately no address, recipient or carrier member. */
+export type BenchLabelReplaceInput =
+  | { readonly template: string }
+  | {
+      readonly lengthMm: number;
+      readonly widthMm: number;
+      readonly heightMm: number;
+      readonly weightGrams: number;
+    }
+  | { readonly weightGrams: number };
+
+/**
+ * Whether the old label is KNOWN to be void (#3654's `voidState`).
+ * `in-doubt` - the cancel failed at the carrier boundary, so it may or may not
+ * be void; nothing was re-bought. Either way the old label must not be used.
+ */
+export type BenchLabelVoidState = 'confirmed' | 'in-doubt';
+
+/**
+ * `replaced` - a new label was bought.
+ * `refused` - nothing changed; `reason` is a refusal code (see the dialog's
+ *   `REFUSAL_COPY`) or an unrecognised value from a newer API.
+ * `cancelled-not-replaced` - the old label is void (or, `in-doubt`, may be) and
+ *   no new one exists.
+ */
+export interface BenchLabelReplaceResult {
+  readonly outcome: 'replaced' | 'refused' | 'cancelled-not-replaced';
+  readonly reason: string | null;
+  /** `null` on a refusal, where nothing was cancelled. */
+  readonly voidState: BenchLabelVoidState | null;
+  /** The configured size bought with when only the weight was corrected; else `null`. */
+  readonly keptTemplate: string | null;
 }

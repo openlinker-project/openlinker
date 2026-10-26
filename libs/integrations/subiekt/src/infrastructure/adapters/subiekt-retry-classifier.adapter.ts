@@ -27,6 +27,17 @@
  *     violation; deterministic, never resolves on retry.
  *   - `SubiektConfigException` — deterministic config / SSRF-guard failure
  *     raised before any request leaves the client; re-throws every attempt.
+ *   - `SubiektOrderProductMappingException` — the product has no Subiekt
+ *     catalogue mapping on this connection; retrying re-reads the same
+ *     `identifier_mappings` row and gets the same answer.
+ *   - `SubiektOrderKeyMissingException` — the request carried no order key, so
+ *     the create cannot be serialized or deduped and is refused.
+ *   - `SubiektNetPricedOrderException` — the order's source reports net line
+ *     prices, which is a property of the order; every retry refuses again.
+ *   - `SubiektRejectedError` — the bridge's own business refusal, raw. It
+ *     reaches the runner unwrapped from every adapter that does not translate
+ *     it, and a retry re-asks a question whose answer lives in the Subiekt
+ *     database.
  *   - `SubiektBridgeAuthError` — TERMINAL bridge auth/config failure (401/403);
  *     a retry with the same bad credentials fails identically, and re-issuing
  *     on a credential fix is a human action, not an auto-retry.
@@ -50,8 +61,12 @@ import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { SubiektInvoiceRejectedError } from '../../domain/exceptions/subiekt-invoice-rejected.exception';
 import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/subiekt-unsupported-document-type.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
+import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
+import { SubiektNetPricedOrderException } from '../../domain/exceptions/subiekt-net-priced-order.exception';
+import { SubiektOrderKeyMissingException } from '../../domain/exceptions/subiekt-order-key-missing.exception';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
+import { SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 
 export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
@@ -66,7 +81,34 @@ export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof SubiektInvoiceRejectedError ||
       cause instanceof SubiektUnsupportedDocumentTypeError ||
       cause instanceof SubiektConfigException ||
-      cause instanceof SubiektBridgeAuthError
+      cause instanceof SubiektBridgeAuthError ||
+      // A product with no Subiekt catalogue mapping on this connection is a
+      // CONFIGURATION fact, not a transient one: every retry re-runs the same
+      // `identifier_mappings` lookup and gets the same answer, so without this
+      // the order spent the full ladder (~10 attempts, backing off to 6h) over
+      // roughly two days before dead-lettering — turning "this product isn't
+      // mapped" into a silent two-day disappearance. Terminal instead, so the
+      // operator sees a failed job naming the product straight away.
+      cause instanceof SubiektOrderProductMappingException ||
+      // The source's tax treatment is a property of the order itself, so every
+      // retry re-reads the same value and reaches the same refusal.
+      cause instanceof SubiektNetPricedOrderException ||
+      // A request that arrived with no order key will arrive with none on
+      // every retry, and creating without one is what the refusal exists to
+      // prevent - so spending the ladder here would end in a dead job having
+      // risked nothing and proved nothing.
+      cause instanceof SubiektOrderKeyMissingException ||
+      // #3365 review: the RAW bridge refusal, which reaches the runner
+      // unwrapped from every path that does not translate it. The invoicing
+      // adapter maps it to `SubiektInvoiceRejectedError` (listed above) and is
+      // therefore covered, but the product, inventory and order-processor
+      // adapters catch it only to test for specific conditions and let anything
+      // else propagate as-is - so a plain business refusal ("towar nie
+      // istnieje", "dokument zablokowany") spent the full ladder, ~10 attempts
+      // backing off to 6h, re-asking a question whose answer is a property of
+      // the Subiekt database. It is terminal by definition: the bridge answered,
+      // and it answered no.
+      cause instanceof SubiektRejectedError
     ) {
       return true;
     }

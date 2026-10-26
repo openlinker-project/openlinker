@@ -375,6 +375,70 @@ export interface OrderRecordFilters {
    */
   activeHoldReason?: HoldReason;
   /**
+   * "Is it packed" filter (#2997, #2072's missing acceptance criterion).
+   * `true` -> `packedAt IS NOT NULL`, `false` -> `packedAt IS NULL`, absent ->
+   * no arm. ANDed with `health`, never folded into it — `OrderHealthValues` is
+   * a documented partition summing to the KPI cards, and packed is orthogonal
+   * (an order is routinely packed AND `needs_attention`), the same rule
+   * `salesDocumentBlocked` and `taxRateConflict` already follow.
+   */
+  packed?: boolean;
+  /**
+   * Free-text search (#3527). Matches order number, buyer name, buyer email
+   * and any line SKU via the denormalized, diacritic-folded `searchText`
+   * column (GIN trigram index). `undefined` means "don't filter"; a query
+   * that normalizes to nothing (blank, or stripped entirely by diacritic
+   * folding) is treated the same way rather than as "match nothing".
+   */
+  search?: string;
+  /**
+   * Internal order ids to ADDITIONALLY match when `search` is set (#3528).
+   * ORed with `search`'s `searchText LIKE` predicate — never ANDed, and never
+   * applied when `search` itself is absent, since there is then nothing to
+   * widen. Populated by the caller (the orders interface layer) from a
+   * tracking-number lookup against the shipping context, which `orders` may
+   * not import directly — see `docs/architecture-overview.md § Cross-context
+   * dependencies in core` ("shipping" already depends on "orders").
+   */
+  searchTrackingOrderIds?: string[];
+  /**
+   * "Has an open return" filter (#2998). `true` restricts to orders whose
+   * internal id appears in `openReturnOrderIds`; `false` excludes them;
+   * `undefined` means "don't filter". `openReturnOrderIds` is the id list the
+   * caller (the orders interface layer) resolved from `IReturnsService.
+   * listOpenReturnOrderIds()` BEFORE this filter runs — `orders` may not
+   * import `returns`, mirroring the tracking-number composition above. An
+   * EMPTY array is a legitimate "no orders currently have one", not "don't
+   * filter" — the caller supplies it whenever `hasOpenReturn` is set.
+   *
+   * ANDed with `health` like every other axis on this filter object, never a
+   * sixth `OrderHealthValues` member — the #2100 trap.
+   */
+  hasOpenReturn?: boolean;
+  openReturnOrderIds?: string[];
+  /**
+   * Tag filter (#3532, D34). `tagId` restricts to orders carrying that one
+   * tag; `untagged: true` restricts to orders carrying NONE (the "No tags"
+   * picker option). The two are mutually exclusive by convention — a caller
+   * sends one or the other, never both. `order_tags`/`order_tag_assignments`
+   * live in THIS context, so this is a plain same-context SQL join, unlike
+   * the tracking-number / open-return axes above.
+   */
+  tagId?: string;
+  untagged?: boolean;
+  /**
+   * Order-placement date range (#3534, D35) — filters `placedAt`, the
+   * buyer's true order time, as OPPOSED to `createdFrom`/`createdTo` which
+   * filter `createdAt` (when OpenLinker received the order). Added for the
+   * export feature, whose default date field is `placedAt` while the list's
+   * own filter stays `createdAt` (unchanged, D35's own "backend gaps" note:
+   * "the list filters by createdAt... while accounting wants placedAt").
+   * An order with no `placedAt` (a source that reports none) never matches
+   * either bound.
+   */
+  placedFrom?: Date;
+  placedTo?: Date;
+  /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
    * last) is the list's triage default; the JSONB-derived keys (`customer`,
@@ -430,3 +494,31 @@ export interface PaginatedOrderRecords {
   items: OrderRecord[];
   total: number;
 }
+
+/**
+ * What a caller SAYS about `order_records.salesDocumentMatchedRuleId` when it
+ * writes the sales-document block (#3186 review).
+ *
+ * The block and the matched rule are two independent facts carried by one
+ * narrow UPDATE, and only ONE caller re-decides both: the level-evaluated
+ * auto-issue gate, which runs on every order transition. The manual-issue
+ * clear path decides the block ALONE — it knows nothing about which rule chose
+ * the document kind, so writing `null` there would erase an operator-visible
+ * disclosure that the next unrelated transition then puts straight back, and a
+ * surface fact that flaps on an unrelated action is worse than one that is
+ * simply absent.
+ *
+ * Hence a REQUIRED, explicit instruction rather than a defaulted parameter: a
+ * default is a silent decline, and lets a later call site keep compiling while
+ * writing a cohort it never decided about — the rule
+ * `ShipmentRepositoryPort`'s required `direction` states
+ * (`docs/architecture-overview.md` § 23).
+ *
+ * - `set` — this caller re-decided the rule; the column is written, `null`
+ *   included, which is what lets an edited or deleted rule stop being named.
+ * - `preserve` — this caller has no opinion; the column is left out of the
+ *   statement entirely, so there is no read-then-write and nothing to race.
+ */
+export type SalesDocumentMatchedRuleWrite =
+  | { readonly action: 'set'; readonly matchedRuleId: string | null }
+  | { readonly action: 'preserve' };

@@ -8,6 +8,7 @@
  */
 import { Module } from '@nestjs/common';
 import { SyncModule } from '@openlinker/core/sync';
+import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
@@ -19,11 +20,13 @@ import { ReturnsModule } from '@openlinker/core/returns';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
+import { MappingsModule } from '@openlinker/core/mappings';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { WorkerContentModule } from '../content/worker-content.module';
+import { PriceChangeObserverBindingModule } from './price-change-observer-binding.module';
 import { JobIntakeConsumer } from './job-intake.consumer';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
@@ -36,20 +39,24 @@ import { OrdersTaxRateBackfillHandler } from './handlers/orders-tax-rate-backfil
 import { MarketplaceOfferQuantityUpdateHandler } from './handlers/marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferQuantityReconcileHandler } from './handlers/marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './handlers/marketplace-offer-field-update.handler';
+import { PriceChangeApplyHandler } from './handlers/price-change-apply.handler';
 import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './handlers/marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './handlers/marketplace-offer-status-sync.handler';
 import { MarketplaceReturnsPollHandler } from './handlers/marketplace-returns-poll.handler';
 import { MarketplaceReturnSyncHandler } from './handlers/marketplace-return-sync.handler';
+import { ReturnOrderLineResolverService } from './return-order-line-resolver.service';
 import { MarketplaceReturnsStatusSyncHandler } from './handlers/marketplace-returns-status-sync.handler';
 import { ReturnsOrphanReconcileHandler } from './handlers/returns-orphan-reconcile.handler';
 import { MarketplaceOfferRefreshSnapshotHandler } from './handlers/marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offer-stock-restore.handler';
 import { MarketplaceOfferPauseStaleHandler } from './handlers/marketplace-offer-pause-stale.handler';
 import { MarketplaceOfferPauseStaleSweepHandler } from './handlers/marketplace-offer-pause-stale-sweep.handler';
+import { SubiektBridgeReachabilitySweepHandler } from './handlers/subiekt-bridge-reachability-sweep.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
+import { ShippingShipmentNotifyDispatchedHandler } from './handlers/shipping-shipment-notify-dispatched.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-fulfillment-status-sync.handler';
 import { FulfillmentWorkStatusSyncHandler } from './handlers/fulfillment-work-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
@@ -77,16 +84,22 @@ import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-r
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-dispatch.handler';
+import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
+import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
+import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventory-sale-decrement-reconcile-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
+import { OrdersExportHandler } from './handlers/orders-export.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
   imports: [
     SyncModule, // Import SyncModule to access SYNC_JOB_REPOSITORY_TOKEN
+    EventsModule, // #2301, D48 — exposes STREAM_DEAD_LETTERS_SERVICE_TOKEN for JobIntakeConsumer's poison-entry terminal write
     IntegrationsModule, // Import IntegrationsModule to access INTEGRATIONS_SERVICE_TOKEN
     IdentifierMappingModule, // Import IdentifierMappingModule to access IDENTIFIER_MAPPING_SERVICE_TOKEN
     ProductsModule, // Import ProductsModule to access PRODUCTS_SERVICE_TOKEN
@@ -94,7 +107,12 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     OperationalSettingsModule, // #2651 — operator-settable sweep budgets, read per tick by the sweep handlers
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
+    // #3143 — binds PRICE_CHANGE_OBSERVER_TOKEN (owned by ProductsModule) to
+    // ListingsModule's PriceChangeDetectionService, so MasterProductSyncService's
+    // @Optional() injection resolves under this role.
+    PriceChangeObserverBindingModule,
     ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
+    MappingsModule, // #3651 — exposes FULFILLMENT_ROUTING_SERVICE_TOKEN for the auto-dispatch handler's parcel profile
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
     // #2399 — exposes FULFILLMENT_HANDSHAKE_SERVICE_TOKEN. A leaf module: it
     // imports no sibling context, so this edge adds no cycle risk.
@@ -120,23 +138,30 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOrderFxStampSweepHandler,
     OrdersTaxRateBackfillHandler,
     AnalyticsCurrencyRecalculateHandler,
+    OrdersExportHandler,
     MarketplaceOfferQuantityUpdateHandler,
     MarketplaceOfferQuantityReconcileHandler,
     MarketplaceOfferFieldUpdateHandler,
+    PriceChangeApplyHandler,
     MarketplaceOfferCreateHandler,
     MarketplaceOfferPollCreationStatusHandler,
     MarketplaceOffersSyncHandler,
     MarketplaceOfferStatusSyncHandler,
     MarketplaceReturnsPollHandler,
     MarketplaceReturnSyncHandler,
+    // #3171 — the worker-side order read the returns context deliberately does
+    // not take; the rule and the write live in core.
+    ReturnOrderLineResolverService,
     MarketplaceReturnsStatusSyncHandler,
     ReturnsOrphanReconcileHandler,
     MarketplaceOfferRefreshSnapshotHandler,
     MarketplaceOfferStockRestoreHandler,
     MarketplaceOfferPauseStaleHandler,
     MarketplaceOfferPauseStaleSweepHandler,
+    SubiektBridgeReachabilitySweepHandler,
     MarketplaceShipmentStatusSyncHandler,
     MarketplaceShipmentSyncByExternalIdHandler,
+    ShippingShipmentNotifyDispatchedHandler,
     MarketplaceFulfillmentStatusSyncHandler,
     FulfillmentWorkStatusSyncHandler,
     MasterProductSyncHandler,
@@ -165,9 +190,13 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     PendingRecoveryHandler,
     PaymentStatusRefreshHandler,
     FulfillmentWorkDispatchHandler,
+    FulfillmentWorkAutoDispatchHandler,
     FulfillmentWorkRouteHandler,
     FulfillmentWorkTimeoutSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    InventorySaleDecrementHandler,
+    FulfillmentWorkRerouteSweepHandler,
+    InventorySaleDecrementReconcileSweepHandler,
     HandlerRegistrationService,
   ],
 })

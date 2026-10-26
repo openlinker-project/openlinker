@@ -67,7 +67,7 @@ import {
 import { ORDER_INGESTION_SERVICE_TOKEN, IOrderIngestionService } from '@openlinker/core/orders';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 import { describeUnsuccessfulSync, destinationOrderIdFromRef } from '../helpers/order-ref.helper';
-import { getTestHarness, IntegrationTestHarness } from '../setup';
+import { getTestHarness, IntegrationTestHarness, resetTestHarness } from '../setup';
 import {
   PRESTASHOP_IMAGE,
   PrestashopTestContainer,
@@ -338,6 +338,10 @@ describe('Allegro → PrestaShop carrier mapping (#535, #692)', () => {
       if (prestashopConnectionId) {
         await deleteTestConnection(harness.getDataSource(), prestashopConnectionId);
       }
+      // The orders this suite ingested would otherwise stay in the shared
+      // database for whichever spec the worker runs next: order-dispatch-sla
+      // read four of them as deadline-less rows and failed on main.
+      await resetTestHarness();
     }
     // Restore the env var the suite mutated. Even though Jest's worker model
     // for integration tests is `maxWorkers: 1`, leaving the secret in
@@ -602,16 +606,17 @@ interface SeedScenarioOpts {
  *   1. A PS product (so the destination order-create resolves the line).
  *   2. An OL Product + ProductVariant pair (so OrderItemRefResolverService
  *      can walk Offer-mapping → variantRepository.findById → productId).
- *   3. Two identifier_mappings rows:
- *        (Offer,   externalOfferId,   allegroConnectionId)    → variantId
- *        (Product, '<psProductId>',   prestashopConnectionId) → productId
+ *   3. Three identifier_mappings rows:
+ *        (Offer,          externalOfferId,          allegroConnectionId)    → variantId
+ *        (Product,        '<psProductId>',          prestashopConnectionId) → productId
+ *        (ProductVariant, 'product:<psProductId>',  prestashopConnectionId) → variantId
  *      The Offer mapping drives source-side item resolution. The Product
  *      mapping is what the PS adapter reads to translate `order.items[].productId`
- *      back to a PS id_product when writing the cart line.
- *
- * Variant-level destination mapping (ProductVariant → ps_combination) is
- * intentionally not seeded — the test product has no combinations, so PS
- * matches by id_product alone.
+ *      back to a PS id_product when writing the cart line. The ProductVariant
+ *      mapping is the synthetic simple-product marker the PS product sync mints
+ *      for a product without combinations (#923); the adapter refuses an order
+ *      line whose variant has no destination mapping at all (#3472), so the
+ *      seed must carry it like a real catalog sync would.
  */
 async function seedScenario(opts: SeedScenarioOpts): Promise<void> {
   const psProduct = await seedPrestashopProductForOrders(opts.psMysqlAddress, {
@@ -639,10 +644,8 @@ async function seedScenario(opts: SeedScenarioOpts): Promise<void> {
     opts.prestashopConnectionId
   );
 
-  // The product has no PS combination row, so there's no destination-side
-  // ProductVariant mapping to seed — PS resolves the line by id_product
-  // alone. We DO need a canonical OL variant id so OrderItemRefResolverService
-  // can join Offer → variant → product. UUID-formatted to match the
+  // A canonical OL variant id so OrderItemRefResolverService can join
+  // Offer → variant → product. UUID-formatted to match the
   // `ol_variant_<uuid>` shape the system produces.
   const internalVariantId = `ol_variant_${randomUUID().replace(/-/g, '')}`;
 
@@ -651,6 +654,17 @@ async function seedScenario(opts: SeedScenarioOpts): Promise<void> {
     'Offer',
     opts.externalOfferId,
     opts.allegroConnectionId,
+    internalVariantId
+  );
+
+  // Destination-side synthetic variant mapping. The product has no PS
+  // combination row, so the PS product sync would map its variant as
+  // `product:<id>` (#923), which the cart mapper collapses to
+  // id_product_attribute 0.
+  await identifierMapping.createMapping(
+    'ProductVariant',
+    `product:${psProduct.idProduct}`,
+    opts.prestashopConnectionId,
     internalVariantId
   );
 

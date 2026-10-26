@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createReturnsApi } from './returns.api';
 import { RETURNS_MAX_LIMIT } from './returns.types';
+import type { ReturnFilters } from './returns.types';
 
 function envelope(): unknown {
   return {
@@ -24,22 +25,33 @@ describe('createReturnsApi.list', () => {
   it('should forward every declared filter', async () => {
     const request = vi.fn().mockResolvedValue(envelope());
 
-    await createReturnsApi(request).list(
-      {
-        bucket: 'orphan',
-        sourceConnectionId: 'conn_1',
-        createdFrom: '2026-01-01T00:00:00.000Z',
-        createdTo: '2026-02-01T00:00:00.000Z',
-      },
-      { limit: 20, offset: 40 },
-    );
+    // Typed `Required<ReturnFilters>` so a filter added to the interface
+    // without a matching `buildQuery` line is a compile error here rather
+    // than a silently-dropped param discovered in production (#3280 review —
+    // `segment`/`stage`/`money`/`reason`/`openedFrom`/`openedTo` were declared,
+    // parsed from the URL, and re-rendered the page, but never reached the
+    // server because `buildQuery` had no line for them).
+    const filters: Required<ReturnFilters> = {
+      bucket: 'orphan',
+      sourceConnectionId: 'conn_1',
+      internalOrderId: 'ol_order_1',
+      createdFrom: '2026-01-01T00:00:00.000Z',
+      createdTo: '2026-02-01T00:00:00.000Z',
+      segment: 'all_open',
+      stage: 'disposed',
+      money: 'pending',
+      reason: 'defective',
+      openedFrom: '2026-01-05T00:00:00.000Z',
+      openedTo: '2026-01-20T00:00:00.000Z',
+    };
+
+    await createReturnsApi(request).list(filters, { limit: 20, offset: 40 });
 
     const [path] = request.mock.calls[0] as [string];
     const query = new URLSearchParams(path.split('?')[1]);
-    expect(query.get('bucket')).toBe('orphan');
-    expect(query.get('sourceConnectionId')).toBe('conn_1');
-    expect(query.get('createdFrom')).toBe('2026-01-01T00:00:00.000Z');
-    expect(query.get('createdTo')).toBe('2026-02-01T00:00:00.000Z');
+    for (const [key, value] of Object.entries(filters)) {
+      expect(query.get(key)).toBe(value);
+    }
     expect(query.get('limit')).toBe('20');
     expect(query.get('offset')).toBe('40');
   });
@@ -89,5 +101,63 @@ describe('createReturnsApi.getIngestionAvailability', () => {
     const request = vi.fn().mockResolvedValue({ nonsense: true });
 
     expect(await createReturnsApi(request).getIngestionAvailability()).toBeNull();
+  });
+});
+
+function proposalOutcome(overrides: Record<string, unknown> = {}): unknown {
+  return { outcome: 'nothing-correctable', proposal: null, changeId: null, opened: false, ...overrides };
+}
+
+describe('createReturnsApi.getCorrectionProposal', () => {
+  it('should GET the preview without a body', async () => {
+    const request = vi.fn().mockResolvedValue(proposalOutcome());
+
+    await createReturnsApi(request).getCorrectionProposal('ol_return_1');
+
+    expect(request).toHaveBeenCalledWith('/returns/ol_return_1/correction-proposal');
+    const init = (request.mock.calls[0] as [string, RequestInit?])[1];
+    expect(init?.method ?? undefined).toBeUndefined();
+  });
+
+  it('should carry changeId and opened through, defaulting to null/false when absent', async () => {
+    const request = vi.fn().mockResolvedValue({ outcome: 'nothing-correctable', proposal: null });
+
+    const result = await createReturnsApi(request).getCorrectionProposal('ol_return_1');
+
+    expect(result.changeId).toBeNull();
+    expect(result.opened).toBe(false);
+  });
+});
+
+describe('createReturnsApi.recordCorrectionProposal', () => {
+  it('should POST to the same path with no body', async () => {
+    const request = vi.fn().mockResolvedValue(proposalOutcome());
+
+    await createReturnsApi(request).recordCorrectionProposal('ol_return_1');
+
+    expect(request).toHaveBeenCalledWith('/returns/ol_return_1/correction-proposal', {
+      method: 'POST',
+    });
+  });
+
+  it('should report the recorded change id and whether it was freshly opened', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(proposalOutcome({ changeId: 'ol_order_change_1', opened: true }));
+
+    const result = await createReturnsApi(request).recordCorrectionProposal('ol_return_1');
+
+    expect(result.changeId).toBe('ol_order_change_1');
+    expect(result.opened).toBe(true);
+  });
+
+  it('should report opened: false when an identical open proposal was reused', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue(proposalOutcome({ changeId: 'ol_order_change_1', opened: false }));
+
+    const result = await createReturnsApi(request).recordCorrectionProposal('ol_return_1');
+
+    expect(result.opened).toBe(false);
   });
 });

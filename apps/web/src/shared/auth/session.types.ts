@@ -22,6 +22,12 @@ export const PermissionValues = [
   'users:read',
   'users:write',
   'customers:read',
+  // #3424 - the pack bench's own write affordances. Its own value rather than
+  // `orders:write` so a packer, who holds nothing else, can still claim work.
+  'bench:write',
+  // #3736 - read-only Fulfilment board and task detail (admin, operator, viewer).
+  'fulfillment:read',
+  'bench:read',
   'shipments:read',
   'shipments:write',
   'invoices:read',
@@ -31,7 +37,15 @@ export const PermissionValues = [
   'content:write',
   'automations:read',
   'automations:write',
+  // DISPLAY-ONLY (#3066): gates the locations-list Add/Edit/Delete/Retire
+  // affordances. Deliberately not `inventory:write` — see that constant's
+  // docblock on the backend for why.
+  'inventory-locations:write',
   'analytics:write',
+  // D35 (#3534/#3535): the Export button + row checkboxes on the export
+  // dialog. Admin and operator only — an export takes buyer data out of the
+  // system, so read access to /orders does not imply it.
+  'orders:export',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];
@@ -48,6 +62,20 @@ export interface MeResponse {
    * missing value as no consent (opt-in default).
    */
   analyticsConsent?: boolean;
+  /**
+   * The signed-in user's own bench/printer label (#3404), e.g.
+   * "Zebra ZD420 · Bench 3", or `null` if unset. Optional so a payload from
+   * an API predating this field is tolerated. This is always the VIEWER'S
+   * own value — never a colleague's — so there is no PII concern in `/auth/me`
+   * carrying it.
+   */
+  packStationLabel?: string | null;
+  /**
+   * The account was created by an admin with a one-time password and must
+   * replace it before doing anything else (#3456). Optional so a payload from an
+   * API predating the field is tolerated; absent reads as `false`.
+   */
+  mustChangePassword?: boolean;
 }
 
 export interface SessionUser {
@@ -58,6 +86,10 @@ export interface SessionUser {
   permissions: Permission[];
   /** Account opt-in for demo-only usage analytics (#1743). Absent ⇒ opt-in (off). */
   analyticsConsent?: boolean;
+  /** The signed-in user's own bench/printer label (#3404). Absent/null ⇒ unset. */
+  packStationLabel?: string | null;
+  /** Forced first-sign-in password change is pending (#3456). Absent ⇒ false. */
+  mustChangePassword?: boolean;
 }
 
 export interface Session {

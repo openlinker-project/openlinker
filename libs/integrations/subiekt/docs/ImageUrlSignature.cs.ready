@@ -1,0 +1,109 @@
+// ImageUrlSignature.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/ImageUrlSignature.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// afterwards so a reviewer can read what is actually running without leaving
+// the PR.
+//
+// ImageUrlSignature - a bearer-free gate for /gt-image (#3365).
+//
+// /gt-image is excluded from BOTH auth middlewares: from basic auth by an
+// explicit carve-out, and from the bearer gate because its path does not begin
+// with /api. It also takes a SEQUENTIAL integer, so anyone who can reach port
+// 5056 can enumerate the seller's entire product-image library by counting.
+//
+// A bearer token cannot fix it. The whole point of these URLs is that a BROWSER
+// and a MARKETPLACE fetch them, and neither will attach a header OpenLinker
+// chose - the URL travels inside an offer, not inside an API call. So the proof
+// has to ride in the URL itself.
+//
+// The signature is HMAC-SHA256 over the towar id, keyed on the same shared
+// secret the bearer gate uses, truncated to 128 bits and base64url-encoded.
+// Truncation is deliberate and safe here: the value proves knowledge of the
+// secret, it protects a product photo rather than a payment, and a shorter
+// token keeps the URL usable inside marketplace payloads that have length
+// limits of their own.
+//
+// It is an ENUMERATION gate, not an authorization system. It says "somebody
+// who holds the bridge secret minted this link". It does NOT expire, so a
+// leaked link keeps working until the secret is rotated - the same property the
+// bearer token itself has, and acceptable for the same reason: the bytes behind
+// it are a product photograph the seller publishes on a marketplace anyway.
+// What it removes is the ability to walk 1..N and take the whole catalogue from
+// outside.
+//
+// UPGRADING BREAKS ALREADY-STORED URLs, and that is not avoidable here.
+//
+// OpenLinker stores the image URL it was given at sync time. Every URL stored
+// before this shipped carries no signature, so the moment the gate is deployed
+// those URLs answer 404 - observed on the verification stand, where a spec
+// asserting "a product image URL loads FROM A BROWSER" went red against a URL
+// synced an hour earlier.
+//
+// It self-heals: the catalogue sweep rewrites `imageUrls` on its next cycle
+// (20 minutes at the default cadence), and nothing already PUBLISHED to a
+// marketplace is affected, because marketplaces copy the bytes at publish time
+// rather than hot-linking. What breaks in between is OpenLinker's own
+// thumbnails and any offer published inside that window.
+//
+// An operator who cannot accept that window should trigger a product sweep
+// straight after deploying the bridge. There is no version of a gate on a URL
+// that leaves URLs already in circulation working - a grace period that served
+// unsigned requests would be a door held open on exactly the enumeration this
+// closes, with no way to tell when it was safe to shut.
+//
+// UNSIGNED REQUESTS ARE STILL SERVED when no secret is configured. A bridge
+// with no token has no secret to sign with, and refusing there would black out
+// every image on an install that was working a moment ago - the token gate
+// already fails such a bridge closed on /api, which is where the damage would
+// be.
+using System.Security.Cryptography;
+using System.Text;
+
+public static class ImageUrlSignature
+{
+    /// <summary>Query-string parameter carrying the signature.</summary>
+    public const string ParameterName = "s";
+
+    private const int TruncatedBytes = 16;
+
+    /// <summary>The signature for one towar id, or "" when unconfigured.</summary>
+    public static string For(int towarId)
+    {
+        if (!BridgeConfig.TokenAuthConfigured) return "";
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(BridgeConfig.InvoiceToken));
+        var full = hmac.ComputeHash(Encoding.UTF8.GetBytes($"gt-image:{towarId}"));
+        return Convert.ToBase64String(full, 0, TruncatedBytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    /// <summary>`?s=...` ready to append, or "" when unconfigured.</summary>
+    public static string QuerySuffix(int towarId)
+    {
+        var signature = For(towarId);
+        return signature == "" ? "" : $"?{ParameterName}={signature}";
+    }
+
+    /// <summary>
+    /// Whether a request may be served.
+    ///
+    /// Compared in CONSTANT TIME, like the bearer gate: a byte-by-byte compare
+    /// leaks the prefix through timing, and with a 128-bit value that is the
+    /// difference between forging one and not.
+    /// </summary>
+    public static bool IsValid(int towarId, string? supplied)
+    {
+        var expected = For(towarId);
+        if (expected == "") return true; // unconfigured: serve, see the header note
+        if (string.IsNullOrEmpty(supplied)) return false;
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expected),
+            Encoding.UTF8.GetBytes(supplied));
+    }
+}

@@ -23,22 +23,28 @@
  * either guard's allow-set. Needing one would be the signal the placement is
  * wrong.
  *
- * ## Nothing calls this in production yet, and that is deliberate
+ * ## The first production caller is the "operator action" arm (#3525)
  *
- * `fulfillment.work.statusSync` READS its reference, logs, and completes — it
- * resolves nothing (resolution to an OL `workId` is #2399's) and it does
- * NOT construct an event, because there is no authoritative source to construct
- * one from. The only thing an inbound webhook can offer is
- * `CanonicalInboundEvent.payload`, which core documents as *"Non-authoritative
- * payload hint; never source of truth"* — moving counters off it would be
- * exactly the failure the webhook-as-trigger discipline (#904) prevents.
+ * `apps/api`'s `FulfillmentParcelClosureNotifierService` calls `record()` with
+ * a `'shipped'` event from BOTH places a parcel can close — the pack bench's
+ * automatic close (D18) and the desktop worklist's manual `close` action —
+ * which is exactly the third caller this seam was built for.
+ *
+ * The other two arms remain unreached. `fulfillment.work.statusSync` READS
+ * its reference, logs, and completes — it resolves nothing (resolution to an
+ * OL `workId` is #2399's) and it does NOT construct an event, because there
+ * is no authoritative source to construct one from. The only thing an
+ * inbound webhook can offer is `CanonicalInboundEvent.payload`, which core
+ * documents as *"Non-authoritative payload hint; never source of truth"* —
+ * moving counters off it would be exactly the failure the webhook-as-trigger
+ * discipline (#904) prevents.
  *
  * #2398's `FulfillmentStatusSource.getFulfillmentStatus(workRef)` is the
- * authoritative read, and becomes this method's first production caller. Until
- * then it is exercised by specs. Shipping a seam ahead of its consumer is this
- * programme's established posture, not a shortfall: `FulfillmentRouterPort`
- * (#2393) has no implementer either, and all four vocabulary leaves shipped
- * ahead of their consumers so the adopting contexts adopt one spelling.
+ * authoritative READ for a polling holder and has no caller yet. Shipping a
+ * seam ahead of every one of its consumers was this programme's established
+ * posture, not a shortfall: `FulfillmentRouterPort` (#2393) shipped the same
+ * way, and all four vocabulary leaves shipped ahead of their consumers so the
+ * adopting contexts adopt one spelling.
  *
  * @module libs/core/src/fulfillment/application/interfaces
  * @see docs/architecture/adrs/053-fulfillment-authority-vocabulary-leaf.md

@@ -649,7 +649,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       if (this.authFailureClassifierRegistry.isCredentialRejected(cause)) {
         await this.flagConnectionNeedsReauth(job.connectionId);
       }
-      await this.jobRepository.markDead(job.id, errorMessage, attemptDurationMs);
+      await this.markDeadAndNotify(job, errorMessage, attemptDurationMs, true);
       this.logger.warn(`Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error`);
       return;
     }
@@ -657,7 +657,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     // Check if max attempts reached
     if (nextAttempt >= job.maxAttempts) {
       // Max attempts reached - mark as dead
-      await this.jobRepository.markDead(job.id, errorMessage, attemptDurationMs);
+      await this.markDeadAndNotify(job, errorMessage, attemptDurationMs, false);
       this.logger.warn(
         `Job ${job.id} (${job.jobType}) marked as dead after ${nextAttempt} attempt(s)`
       );
@@ -673,6 +673,38 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     this.logger.debug(
       `Job ${job.id} (${job.jobType}) scheduled for retry in ${backoffSeconds}s (attempt ${nextAttempt + 1}/${job.maxAttempts})`
     );
+  }
+
+  /**
+   * Mark the job dead, then let its handler settle anything it owns outside
+   * `sync_jobs` (#3505, G01-2) — e.g. an offer-creation record that would
+   * otherwise stay `pending` once nothing will ever run the job again.
+   *
+   * `markDead` comes first and is not undone: the hook is best-effort, so a
+   * throw is logged and swallowed rather than turning a settled dead job back
+   * into a runner failure. The "no handler registered" path never reaches
+   * here — there is no handler to notify.
+   */
+  private async markDeadAndNotify(
+    job: SyncJobEntity,
+    errorMessage: string,
+    attemptDurationMs: number,
+    nonRetryable: boolean
+  ): Promise<void> {
+    await this.jobRepository.markDead(job.id, errorMessage, attemptDurationMs);
+
+    const handler = this.handlerRegistry.getHandler(job.jobType);
+    if (!handler?.onDead) {
+      return;
+    }
+    try {
+      await handler.onDead(job, { message: errorMessage, nonRetryable });
+    } catch (hookError) {
+      this.logger.warn(
+        `onDead hook failed for job ${job.id} (${job.jobType}): ` +
+          `${hookError instanceof Error ? hookError.message : String(hookError)}`
+      );
+    }
   }
 
   /**

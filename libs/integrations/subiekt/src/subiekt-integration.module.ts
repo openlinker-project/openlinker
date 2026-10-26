@@ -1,7 +1,7 @@
 /**
  * Subiekt Integration Module (#753)
  *
- * Host wiring for the Subiekt nexo invoicing plugin. Subiekt has no
+ * Host wiring for the Subiekt GT plugin. Subiekt has no
  * plugin-specific NestJS providers, so it uses the SDK's
  * `createNestAdapterModule` directly — the helper builds the `HostServices`
  * bag, registers the manifest + factory, and calls `plugin.register(host)`.

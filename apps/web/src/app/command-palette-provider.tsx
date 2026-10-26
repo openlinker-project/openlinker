@@ -36,7 +36,14 @@ import type { PaletteGroup, PaletteItem } from '../shared/ui/command-palette';
 import { useSession } from '../shared/auth/use-session';
 import { useDemoMode } from '../features/system';
 import { captureDemoEvent } from '../features/demo';
-import { BASE_NAV_GROUPS } from './nav-registry';
+import { useOmsRoutingState } from '../features/fulfillment-authority';
+import {
+  BASE_NAV_GROUPS,
+  isNavItemVisible,
+  isOmsNavItemVisible,
+  navRoleOf,
+  sessionNeedsOmsRouting,
+} from './nav-registry';
 import type { LiveNavGroup } from './nav-registry.types';
 
 // ── Recents ──────────────────────────────────────────────────────────
@@ -163,7 +170,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       setIsOpen(false);
       void navigate(entry.to);
     },
-    [navigate, recents],
+    [navigate, recents]
   );
 
   // ── Data queries (unconditional — served from TanStack Query cache) ──
@@ -175,11 +182,15 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
   const ordersQuery = useOrdersQuery(undefined, { limit: 20 });
   const productsQuery = useProductsQuery(
     searchTerm.length >= 2 ? { search: debouncedQuery } : undefined,
-    { limit: 10 },
+    { limit: 10 }
   );
   const syncJobsQuery = useSyncJobsQuery(undefined, { limit: 20 });
   const demoMode = useDemoMode();
   const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
+  // Same `requiresOms` gate as the sidebar (#3505) — and the same cached read.
+  const omsRouting = useOmsRoutingState({
+    enabled: sessionNeedsOmsRouting(session.user?.permissions, navRoleOf(session)),
+  });
 
   // ── Navigation source ─────────────────────────────────────────────
 
@@ -193,12 +204,21 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       // Admins keep full access in every mode (#1379).
       if (demoMode && !isAdmin && liveGroup.requiresRole !== undefined) continue;
       for (const item of liveGroup.items) {
-        // Same per-item permission gate the sidebar applies (#2358 review I5):
-        // otherwise ⌘K is a way around it into a page that 403s.
+        // Same per-item permission AND role gates the sidebar applies
+        // (#2358 review I5, #3108) via the shared `isNavItemVisible` — two
+        // independent implementations of this check is how ⌘K became a way
+        // around whichever one drifted.
         if (
-          item.requiresPermission !== undefined &&
-          !(session.user?.permissions ?? []).includes(item.requiresPermission)
+          !isNavItemVisible(item, {
+            permissions: session.user?.permissions,
+            role: navRoleOf(session),
+          })
         ) {
+          continue;
+        }
+        // …and the sidebar's routing gate, so ⌘K cannot surface an entry the
+        // sidebar hides for a routing-off install.
+        if (!isOmsNavItemVisible(item, omsRouting)) {
           continue;
         }
         if (
@@ -210,14 +230,22 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
             id: 'nav:' + item.to,
             label: item.label,
             description: item.to,
-            onSelect: () =>
-              handleSelect({ id: 'nav:' + item.to, label: item.label, to: item.to }),
+            onSelect: () => handleSelect({ id: 'nav:' + item.to, label: item.label, to: item.to }),
           });
         }
       }
     }
     return items;
-  }, [searchTerm, handleSelect, demoMode, isAdmin, session.user?.permissions]);
+  }, [
+    searchTerm,
+    handleSelect,
+    demoMode,
+    isAdmin,
+    session.status,
+    session.user?.permissions,
+    session.user?.role,
+    omsRouting,
+  ]);
 
   // ── Connection source ─────────────────────────────────────────────
 
@@ -228,7 +256,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
         (c) =>
           searchTerm.length === 0 ||
           c.name.toLowerCase().includes(searchTerm) ||
-          c.platformType.toLowerCase().includes(searchTerm),
+          c.platformType.toLowerCase().includes(searchTerm)
       )
       .slice(0, 5)
       .map((c) => ({
@@ -300,8 +328,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       .filter((j) => {
         if (searchTerm.length === 0) return true;
         return (
-          j.jobType.toLowerCase().includes(searchTerm) ||
-          j.id.toLowerCase().includes(searchTerm)
+          j.jobType.toLowerCase().includes(searchTerm) || j.id.toLowerCase().includes(searchTerm)
         );
       })
       .slice(0, 5)
@@ -335,17 +362,14 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
 
   const groups = useMemo<PaletteGroup[]>(() => {
     const out: PaletteGroup[] = [];
-    if (recentItems.length > 0)
-      out.push({ key: 'recents', heading: 'Recent', items: recentItems });
+    if (recentItems.length > 0) out.push({ key: 'recents', heading: 'Recent', items: recentItems });
     if (navItems.length > 0) out.push({ key: 'nav', heading: 'Navigation', items: navItems });
     if (connectionItems.length > 0)
       out.push({ key: 'connections', heading: 'Connections', items: connectionItems });
-    if (orderItems.length > 0)
-      out.push({ key: 'orders', heading: 'Orders', items: orderItems });
+    if (orderItems.length > 0) out.push({ key: 'orders', heading: 'Orders', items: orderItems });
     if (productItems.length > 0)
       out.push({ key: 'products', heading: 'Products', items: productItems });
-    if (syncJobItems.length > 0)
-      out.push({ key: 'jobs', heading: 'Jobs', items: syncJobItems });
+    if (syncJobItems.length > 0) out.push({ key: 'jobs', heading: 'Jobs', items: syncJobItems });
     return out;
   }, [recentItems, navItems, connectionItems, orderItems, productItems, syncJobItems]);
 
@@ -362,7 +386,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
         setIsOpen(true);
       },
     }),
-    [],
+    []
   );
 
   return (

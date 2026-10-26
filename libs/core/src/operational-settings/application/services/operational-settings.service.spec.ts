@@ -15,7 +15,7 @@ import type { OperationalSettingsRepositoryPort } from '../../domain/ports/opera
 import { OperationalSettingsService } from './operational-settings.service';
 
 const emptyRow = (): OperationalSettings =>
-  new OperationalSettings(null, null, null, null, null, new Date('2026-08-01T00:00:00Z'), 'admin');
+  new OperationalSettings(null, null, null, null, null, null, null, new Date('2026-08-01T00:00:00Z'), 'admin');
 
 describe('OperationalSettingsService', () => {
   let repository: jest.Mocked<OperationalSettingsRepositoryPort>;
@@ -68,7 +68,7 @@ describe('OperationalSettingsService', () => {
     it('should let a stored row win over the env var and report the row stamp', async () => {
       env.OL_PRODUCT_SYNC_PAGE_LIMIT = '250';
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(900, null, null, null, null, new Date('2026-08-02T10:00:00Z'), 'ada')
+        new OperationalSettings(900, null, null, null, null, null, null, new Date('2026-08-02T10:00:00Z'), 'ada')
       );
 
       const view = await service.resolve();
@@ -87,7 +87,7 @@ describe('OperationalSettingsService', () => {
 
     it('should fall back rather than hand the scheduler a stored cadence it cannot construct a CronJob from', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(null, null, null, null, 'not-a-cron', new Date(), null)
+        new OperationalSettings(null, null, null, null, null, null, 'not-a-cron', new Date(), null)
       );
 
       const view = await service.resolve();
@@ -170,7 +170,7 @@ describe('OperationalSettingsService', () => {
 
     it('should report an acknowledged override as above the recommendation when read back', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(5000, null, null, null, null, new Date(), 'ada')
+        new OperationalSettings(5000, null, null, null, null, null, null, new Date(), 'ada')
       );
 
       const view = await service.resolve();
@@ -254,7 +254,7 @@ describe('OperationalSettingsService', () => {
 
     it('should mark a stored value as one both processes read', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(750, null, null, null, null, new Date(), 'ada')
+        new OperationalSettings(750, null, null, null, null, null, null, new Date(), 'ada')
       );
 
       const view = await service.resolve();

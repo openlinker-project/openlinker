@@ -169,9 +169,14 @@ const ALLOW_LIST = new Map([
   ],
 
   // apps + worker → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
-  ['apps/api/src/integrations/http/connection.controller.ts', new Set(['SyncJobRepositoryPort'])],
+  // (#3179 moved the connection diagnostics fan-out off the controller and into
+  // ConnectionDiagnosticsService, so the coupling moved with it.)
   [
-    'apps/api/src/integrations/http/connection.controller.spec.ts',
+    'apps/api/src/integrations/application/services/connection-diagnostics.service.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/api/src/integrations/application/services/connection-diagnostics.service.spec.ts',
     new Set(['SyncJobRepositoryPort']),
   ],
   ['apps/api/src/sync/http/sync.controller.ts', new Set(['SyncJobRepositoryPort'])],
@@ -448,6 +453,14 @@ const ALLOW_LIST = new Map([
     'apps/api/test/integration/order-health-summary.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
+  // #3527/#3528 — trigram search + diacritic folding + the tracking-number OR
+  // arm are claims about the repository's real SQL predicate, not about
+  // anything IOrderRecordService exposes distinctly. Like the #2944 row above,
+  // this has no rewire target and must NOT be swept when #722 lands.
+  [
+    'apps/api/test/integration/order-search-text.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
   [
     'apps/api/test/integration/order-dispatch-sla.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
@@ -505,6 +518,17 @@ const ALLOW_LIST = new Map([
   [
     'apps/api/test/integration/erli/erli-offers-vertical-slice.int-spec.ts',
     new Set(['OfferStatusSnapshotRepositoryPort']),
+  ],
+
+  // apps → listings.PriceChangeEpisodeRepositoryPort (#3142, ADR-072) — the vertical
+  // slice asserts the episode-pattern conflict-arm write (`upsertOpen`'s
+  // `ON CONFLICT DO UPDATE` against the partial `UQ_price_change_episodes_open`
+  // index) and the reopen-vs-rival-episode race, both of which only the repository
+  // can drive against a real Postgres. Rewire via a read/application service once
+  // #3162's `PriceChangesService` lands (#722).
+  [
+    'apps/api/test/integration/listings-price-change-episode.int-spec.ts',
+    new Set(['PriceChangeEpisodeRepositoryPort']),
   ],
 
   // apps → webhooks.WebhookDeliveryRepositoryPort (#1916) - the status

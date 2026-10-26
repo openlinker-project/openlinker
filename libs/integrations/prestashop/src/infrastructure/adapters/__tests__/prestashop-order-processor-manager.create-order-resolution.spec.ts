@@ -18,7 +18,10 @@ import {
 } from '../../../__tests__/mocks/prestashop-order-processor-manager.factory';
 import { PrestashopOrderProcessorManagerAdapter } from '../prestashop-order-processor-manager.adapter';
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
-import { PrestashopApiException } from '@openlinker/integrations-prestashop';
+import {
+  PrestashopApiException,
+  PrestashopTaxRateUnknownException,
+} from '@openlinker/integrations-prestashop';
 import { PrestashopOlModuleException } from '../../../domain/exceptions/prestashop-ol-module.exception';
 import type { OrderCreate } from '@openlinker/core/orders';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
@@ -414,6 +417,105 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
       );
     });
 
+    /**
+     * The OL Dynamic carrier carries no tax group, so PrestaShop adds nothing
+     * to the sidecar amount: it must be what the buyer PAID for shipping
+     * (ADR-077). A net-priced source states that in `shippingGross`.
+     */
+    describe('buyer-paid shipping amount (ADR-077)', () => {
+      const orderWithTotals = (totals: Partial<OrderCreate['totals']>): OrderCreate => {
+        const base = buildOrderForSidecar(10.0);
+        return { ...base, totals: { ...base.totals, ...totals } };
+      };
+
+      it.each<[string, OrderCreate['totals']['taxTreatment']]>([
+        ['a net-priced source', 'exclusive'],
+        ['a gross-priced source', 'inclusive'],
+        ['a source asserting no treatment', undefined],
+      ])(
+        'should write the gross shipping as both amounts when %s reports it',
+        async (_label, taxTreatment) => {
+          wireSuccessfulCreatePath();
+
+          await adapter.createOrder(
+            orderWithTotals({ shipping: 10.0, shippingGross: 12.3, taxTreatment })
+          );
+
+          expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledTimes(1);
+          expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledWith(
+            expect.objectContaining({ idCart: 123, amountTaxExcl: 12.3, amountTaxIncl: 12.3 })
+          );
+        }
+      );
+
+      it('should write the shipping as stated when a gross-priced source reports no separate gross shipping', async () => {
+        wireSuccessfulCreatePath();
+
+        await adapter.createOrder(orderWithTotals({ shipping: 12.5, taxTreatment: 'inclusive' }));
+
+        expect(mockOpenLinkerModuleClient.writeCartShipping).toHaveBeenCalledWith(
+          expect.objectContaining({ idCart: 123, amountTaxExcl: 12.5, amountTaxIncl: 12.5 })
+        );
+        expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalled();
+      });
+
+      it('should refuse the order before writing the sidecar when a net-priced source reports no gross shipping', async () => {
+        wireSuccessfulCreatePath();
+
+        const error = await adapter
+          .createOrder(orderWithTotals({ shipping: 10.0, taxTreatment: 'exclusive' }))
+          .then(
+            () => null,
+            (e: unknown) => e
+          );
+
+        // A terminal refusal, re-thrown unchanged: wrapping it into the
+        // retryable API exception would retry a condition no retry can fix.
+        expect(error).toBeInstanceOf(PrestashopTaxRateUnknownException);
+        expect(error).not.toBeInstanceOf(PrestashopApiException);
+        expect((error as PrestashopTaxRateUnknownException).message).toContain(
+          'the source reports shipping without tax and no tax-included shipping amount'
+        );
+        expect((error as PrestashopTaxRateUnknownException).connectionId).toBe(connection.id);
+        // The net shipping was never written as if it were what the buyer paid,
+        // and the order was never submitted.
+        expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
+        expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
+        expect(mockHttpClient.createResource).not.toHaveBeenCalledWith(
+          'specific_prices',
+          expect.anything()
+        );
+      });
+
+      it('should not need a gross shipping amount when a static carrier prices the shipping itself', async () => {
+        wireSuccessfulCreatePath();
+        const mockMappingConfig = {
+          resolveCarrierMapping: jest.fn().mockResolvedValue(String(STATIC_CARRIER_ID)),
+          resolveOrderStateMapping: jest.fn().mockResolvedValue(null),
+        } as unknown as IMappingConfigService;
+        const adapterUnderTest = new PrestashopOrderProcessorManagerAdapter(
+          mockHttpClient,
+          mockIdentifierMapping,
+          mockOrderMapper,
+          connection,
+          mockCustomerProvisioner,
+          mockAddressProvisioner,
+          mockCurrencyResolver,
+          mockCustomerProjectionRepository,
+          mockOpenLinkerModuleClient,
+          mockTaxRateResolver,
+          mockMappingConfig
+        );
+
+        await adapterUnderTest.createOrder(
+          orderWithTotals({ shipping: 10.0, taxTreatment: 'exclusive' })
+        );
+
+        expect(mockOpenLinkerModuleClient.writeCartShipping).not.toHaveBeenCalled();
+        expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalled();
+      });
+    });
+
     it('aborts order creation (does NOT POST /orders) when the sidecar write throws', async () => {
       wireSuccessfulCreatePath();
       const sidecarError = new PrestashopOlModuleException(
@@ -685,7 +787,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
         mockHttpClient.listResources = jest.fn().mockResolvedValue([
           { id: '1', name: 'Awaiting check payment', deleted: '0', paid: '0' },
           { id: '2', name: 'Payment accepted', deleted: '0', paid: '1' },
-          { id: '5', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivered: '1' },
+          { id: '5', name: 'Delivered', deleted: '0', paid: '1', shipped: '1', delivery: '1' },
         ]);
 
         const result = await adapter.listOrderStatuses();

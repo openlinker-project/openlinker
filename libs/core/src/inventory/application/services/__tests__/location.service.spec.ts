@@ -45,6 +45,7 @@ describe('LocationService', () => {
       create: jest.fn().mockResolvedValue(sample),
       update: jest.fn().mockResolvedValue(sample),
       findById: jest.fn().mockResolvedValue(sample),
+      findByIds: jest.fn().mockResolvedValue([sample]),
       list: jest.fn(),
       delete: jest.fn().mockResolvedValue(true),
       countPositionsAtLocation: jest.fn().mockResolvedValue(0),
@@ -174,6 +175,33 @@ describe('LocationService', () => {
       repository.findById.mockResolvedValue(null);
 
       await expect(service.getLocation('missing')).resolves.toBeNull();
+    });
+  });
+
+  describe('getLocationsByIds (#3426 batched read)', () => {
+    it('should resolve a whole page of ids in ONE repository call', async () => {
+      // The reason this method exists: the Assign Packing Work board renders a
+      // page of rows each naming a location, and resolving those with
+      // `getLocation` is the N+1 this seam forbids.
+      repository.findByIds.mockResolvedValue([sample]);
+
+      await service.getLocationsByIds(['a', 'b', 'c']);
+
+      expect(repository.findByIds).toHaveBeenCalledTimes(1);
+      expect(repository.findByIds).toHaveBeenCalledWith(['a', 'b', 'c']);
+      expect(repository.findById).not.toHaveBeenCalled();
+    });
+
+    it('should return the matches only — an unknown id is ABSENT, not a null hole', async () => {
+      // Callers key a Map off this and read a miss as null; a positional zip
+      // against the input array would mis-attribute every row after the first
+      // unknown id.
+      repository.findByIds.mockResolvedValue([sample]);
+
+      const found = await service.getLocationsByIds([sample.id, 'ol_location_gone']);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].id).toBe(sample.id);
     });
   });
 

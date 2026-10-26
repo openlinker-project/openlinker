@@ -47,6 +47,7 @@ import {
   canRegenerateLabel,
   isPreWaybill,
 } from '../lib/shipment-action-eligibility';
+import { cancelShipmentCopy } from '../lib/cancel-shipment-copy';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { CopyableId } from '../../../shared/ui/copyable-id';
@@ -144,6 +145,7 @@ export function ShipmentRowDetail({
   const isPostWaybillFailure = isFailed && !isPreWaybill(shipment);
   const liveWaybill = shipment.trackingNumber ?? shipment.providerShipmentId;
   const carrierName = getCarrierDisplayName(shipment.carrier) ?? 'the carrier';
+  const cancelCopy = cancelShipmentCopy(shipment.status, carrierName);
   // Drives the "why is there nothing to do here" line below — true for a
   // common transitional state (`dispatched` / `in-transit` before the carrier
   // status-sync poll has backfilled `carrier`, so no tracking link yet) as
@@ -355,8 +357,13 @@ export function ShipmentRowDetail({
         title="Cancel this shipment?"
         description={
           <>
-            The label will be voided with {carrierName}. This cannot be undone — to ship this
-            order again you&apos;ll need to generate a new label.
+            {cancelCopy.effect}
+            {cancelCopy.alsoOutstanding ? (
+              <>
+                {' '}
+                <strong>{cancelCopy.alsoOutstanding}</strong>
+              </>
+            ) : null}
           </>
         }
         confirmLabel={cancelMutation.isPending ? 'Cancelling…' : 'Cancel shipment'}

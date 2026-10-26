@@ -41,6 +41,14 @@ export class SalesDocumentRuleRepository implements SalesDocumentRuleRepositoryP
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async findByIds(ids: readonly string[]): Promise<SalesDocumentRule[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const entities = await this.ormRepository.find({ where: { id: In([...ids]) } });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findByCountryAndConditionsHash(
     country: string,
     conditionsHash: string,

@@ -34,7 +34,10 @@
  */
 import type { AuthorityAttentionOutcome } from '@openlinker/core/fulfillment-authority';
 
+import type { DeriveAcceptanceAttentionOptions } from '../../domain/types/fulfillment-dispatch-timeout.types';
 import type {
+  FindStalledUnsubmittedInput,
+  FindStalledUnsubmittedResult,
   ReapTimedOutDispatchesInput,
   ReapTimedOutDispatchesResult,
 } from '../types/fulfillment-dispatch-timeout-sweep.types';
@@ -86,5 +89,22 @@ export interface IFulfillmentDispatchTimeoutService {
    *
    * REPORTS the verdict; the caller writes it (ADR-053).
    */
-  recomputeAcceptanceAttention(orderId: string): Promise<AuthorityAttentionOutcome<'acceptance'>>;
+  recomputeAcceptanceAttention(
+    orderId: string,
+    options: Required<DeriveAcceptanceAttentionOptions>
+  ): Promise<AuthorityAttentionOutcome<'acceptance'>>;
+
+  /**
+   * One keyset page of works routed to a holder and never offered to it (#3476).
+   *
+   * Reports, never writes: the works themselves are left exactly as they are,
+   * and the A3-X verdict for their orders is returned as intents for the worker
+   * to write. Re-driving the dispatch is the worker's too, because only it can
+   * tell whether the holder's connection can now execute.
+   *
+   * **Keyset, not frontier.** Nothing here writes the work row, so a stalled
+   * work never leaves the predicate and a frontier read would return the same
+   * head page for ever.
+   */
+  findStalledUnsubmitted(input: FindStalledUnsubmittedInput): Promise<FindStalledUnsubmittedResult>;
 }

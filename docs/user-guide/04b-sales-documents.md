@@ -4,7 +4,7 @@ OpenLinker never decides what a sale legally requires — that stays your call a
 your accountant's. What it does is **execute the routing you configure**: given
 an order, decide which document (an invoice, or a fiscal receipt) it gets and
 through which connection, automatically, the moment the order settles. This
-section walks through the Settings → **Sales documents** screen where you
+section walks through the Settings → **Sales documents routing** screen where you
 configure that routing, and the per-order **Sales document** panel that shows
 what happened (or explains why nothing did).
 
@@ -33,8 +33,8 @@ review, no manual clicking, unless you want it that way.
 ## Prerequisites
 
 - At least one **active** connection with `Invoicing` and/or `Fiscalization`
-  enabled (KSeF, inFakt, Subiekt, or eparagony.pl — see the two guides linked
-  above).
+  enabled (KSeF, inFakt, Subiekt GT, Subiekt nexo, or eparagony.pl — see the two
+  guides linked above).
 - Knowing which of your order sources actually reports a **buyer tax ID**, if
   you plan to write rules that read one. All four sources can report it, but
   each only under its own condition: PrestaShop when the buyer filled in a VAT
@@ -46,13 +46,13 @@ review, no manual clicking, unless you want it that way.
 
 ---
 
-## Settings → Sales documents
+## Settings → Sales documents routing
 
-Open **Settings → Sales documents**. Under the heading **What each market
+Open **Settings → Sales documents routing**. Under the heading **What each market
 issues** sits one list — a row per country you have configured, plus every
 country that has had recent order activity.
 
-![Sales documents settings: a summary line, four filter chips with counts (All markets, Recent orders, Configured no recent orders, Needs a decision), seven highlighted rows reading "Nothing issued" with a short reason and a Configure button, a plain PL row reading "Fiscal receipt", the country search with its Add a market button, and a ★ Rest of world row with its own Configure action](./images/04b-sales-documents-market-list.png)
+![Sales documents routing settings: a summary line, four filter chips with counts (All markets, Recent orders, Configured no recent orders, Needs a decision), eight highlighted rows reading "Nothing issued" with a short reason and a Configure button, a plain PL row reading "Invoice", the country search with its Add a market button, and a ★ Rest of world row with its own Configure action](./images/04b-sales-documents-market-list.png)
 
 - The **summary line** above the list says how many markets currently issue
   nothing, and states plainly that nothing is lost while they are unconfigured.
@@ -282,7 +282,7 @@ resolve it either, the panel says so plainly:
 Two actions are offered:
 
 - **Fix routing settings** (the primary one) goes straight to
-  Settings → Sales documents, where the market's routing is configured.
+  Settings → Sales documents routing, where the market's routing is configured.
 - **Set a primary** goes to a connection's own edit page, where marking it
   primary makes it the last-resort issuer so orders like this one start issuing
   without full rules. It is only offered when there is an `Invoicing`-capable
@@ -315,27 +315,26 @@ including the unresolved one in the previous section — it is not exclusive to 
 manual connection.
 
 Only one of the two can be exercised per order. Once either has been used, the
-other is replaced by a blocking notice — *This order already has a document* —
-because an order gets **one** originating sales document, never both. The two
-notices differ: an existing invoice tells you to void it first if a receipt is
-what the order actually needed.
+other simply disappears from the panel, because an order gets **one**
+originating sales document, never both. For an issued invoice the rule is
+spelled out under **Why this document?** at the bottom of the panel.
 
 ### In progress
 
 Once you (or auto-issue) trigger a registration, the panel's heading switches to
 **Registering** and the page keeps polling for the result. Registering continues
-even if you navigate away, and the panel says so — except where the order already
-carries a document, as in the capture below, and the blocking notice takes that
-space instead:
+even if you navigate away, and the panel says so:
 
 ![Sales document panel headed "Fiscal receipt · Registering". Because this order already carries a receipt, the body renders the "This order already has a document" notice](./images/04b-order-panel-registering.png)
 
 ### Issued — the lifecycle stepper
 
 Once a document is issued, the panel's heading names the **document type and the
-stage it has reached**, and the body shows an *Issued by* card, a **lifecycle
-stepper**, and every provider-reported field. Two lifecycle states, from two
-different invoices:
+stage it has reached**, and the body shows a **lifecycle stepper** and every
+provider-reported field. The connection that issued it is already in the
+heading, so it is not repeated in the body; **Why this document?** at the
+bottom of the panel explains where every further action goes. Two lifecycle
+states, from two different invoices:
 
 **An invoice submitted, awaiting the tax authority's clearance** —
 *Invoice · Awaiting clearance*:
@@ -401,7 +400,7 @@ Two things are worth stating plainly, because both surprise people:
   install with a primary set and no routing anywhere still issues — which is
   usually what you want, and worth knowing before you conclude that an
   unconfigured market issues nothing. It is set per connection, in the
-  **Connected providers** table further down the same Settings → Sales documents
+  **Connected providers** table further down the same Settings → Sales documents routing
   page, alongside what that connection may issue and when.
 
 ---

@@ -3,12 +3,21 @@
  * the validate -> reconstruct -> delegate path, F5 business-failure rejection,
  * PII discipline on failure logs, and retryable transport wrapping.
  *
+ * The `buyer.taxId (#3224)` block below was added after a real defect: the
+ * spec HAD coverage of `buyer.taxId` (the `half-populated taxId` row in the F5
+ * table) but none of an UNTAGGED one, so when #3224 made `scheme` optional in
+ * core the worker kept requiring it and every auto-issued B2B invoice was
+ * rejected as a terminal `business_failure`. Both halves type-checked, so
+ * neither lint nor type-check could have caught it.
+ *
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { InvoicingIssueHandler, MAX_INVOICE_LINES } from '../invoicing-issue.handler';
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
+import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
+import type { IOrderRecordService, IOrderRefundService, OrderRecord } from '@openlinker/core/orders';
 import type {
   InvoicingIssuePayloadV1,
   SyncJob as SyncJobEntity,
@@ -58,17 +67,29 @@ function makeJob(payload: unknown): SyncJobEntity {
   } as SyncJobEntity;
 }
 
+function makeOrderRecord(
+  status: string | undefined,
+  isCancelled = false,
+): OrderRecord | null {
+  if (status === undefined) return null;
+  return { status, isCancelled } as unknown as OrderRecord;
+}
+
 describe('InvoicingIssueHandler', () => {
   let invoiceService: jest.Mocked<IInvoiceService>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
+  let orderRefundService: jest.Mocked<IOrderRefundService>;
   let handler: InvoicingIssueHandler;
+  let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
     invoiceService = {
-      issueInvoice: jest.fn().mockResolvedValue({} as never),
+      issueInvoice: jest.fn().mockResolvedValue({ id: 'inv-record-1', status: 'issued' } as never),
       getInvoice: jest.fn(),
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
+      listRecentByConnectionId: jest.fn(),
       // #2374 — the correction-proposal read.
       getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null),
       getInFlightIssuance: jest.fn().mockResolvedValue(null),
@@ -79,8 +100,23 @@ describe('InvoicingIssueHandler', () => {
       listInvoices: jest.fn(),
       issueCorrection: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
+      listInvoicesKeyset: jest.fn(),
     };
-    handler = new InvoicingIssueHandler(invoiceService as unknown as IInvoiceService);
+    postSaleInventoryRefresh = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
+    orderRecordService = {
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+    orderRefundService = {
+      getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as jest.Mocked<IOrderRefundService>;
+    handler = new InvoicingIssueHandler(
+      invoiceService as unknown as IInvoiceService,
+      postSaleInventoryRefresh,
+      orderRecordService,
+      orderRefundService,
+    );
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
@@ -210,11 +246,203 @@ describe('InvoicingIssueHandler', () => {
     });
   });
 
+  describe('live order-status gate (#1596)', () => {
+    it('skips issuance when the live order status is cancelled', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('cancelled'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain('order-cancelled');
+    });
+
+    it('skips issuance when the live order status is refunded', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('refunded'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('skips issuance when the order carries cancelledAt even though its snapshot status lags', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('processing', true));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain('order-cancelled');
+    });
+
+    it('proceeds with issuance when the live order status is still eligible (e.g. processing)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('processing'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('proceeds with issuance when the order record is absent (graceful degradation)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('issues the full sale when only part of the order was refunded (DEF-26)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        ...makeOrderRecord('refunded'),
+        totalAmount: 100,
+      } as never);
+      orderRefundService.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['order-1', { count: 1, totalAmount: '40.00', currency: 'PLN' }]]),
+      );
+
+      const result = await handler.execute(makeJob(makePayload({ orderId: 'order-1' })));
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips issuance when the recorded refunds cover the whole order (DEF-26)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        ...makeOrderRecord('processing'),
+        totalAmount: 100,
+      } as never);
+      orderRefundService.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['order-1', { count: 2, totalAmount: '100.00', currency: 'PLN' }]]),
+      );
+
+      const result = await handler.execute(makeJob(makePayload({ orderId: 'order-1' })));
+
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('re-checks the order by payload.orderId', async () => {
+      await handler.execute(makeJob(makePayload({ orderId: 'order-42' })));
+      expect(orderRecordService.getOrderRecord).toHaveBeenCalledWith('order-42');
+    });
+  });
+
   describe('transport / bridge-unreachable (retryable)', () => {
     it('a transport error from issueInvoice is wrapped in SyncJobExecutionError and THROWN', async () => {
       invoiceService.issueInvoice.mockRejectedValue(new Error('ECONNREFUSED'));
       await expect(handler.execute(makeJob(makePayload()))).rejects.toBeInstanceOf(
         SyncJobExecutionError,
+      );
+    });
+  });
+
+  describe('buyer.taxId (#3224)', () => {
+    function withTaxId(taxId: unknown): SyncJobEntity {
+      const base = makePayload();
+      return makeJob({ ...base, buyer: { ...base.buyer, taxId } });
+    }
+
+    // The regression. An untagged number is what core SENDS since #3224
+    // (ADR-073 decision 1 - tagging it would make `libs/core` name a country's
+    // identifier system), so rejecting it here means the epic's flagship fix
+    // issues nothing at all.
+    it('accepts an UNTAGGED tax id and issues the invoice', async () => {
+      const result = await handler.execute(withTaxId({ value: '5213796333' }));
+
+      expect(result.outcome).toBe('ok');
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('still accepts a tagged tax id, so an adapter-tagged payload is unaffected', async () => {
+      const result = await handler.execute(
+        withTaxId({ scheme: 'pl-nip', value: '5213796333' }),
+      );
+
+      expect(result.outcome).toBe('ok');
+    });
+
+    // Absent and malformed stay different: a present tag of the wrong TYPE is
+    // a defect in whoever built the payload, and letting it through would hand
+    // the adapter something it cannot place while looking deliberate.
+    it('refuses a present-but-wrong-typed scheme as a terminal business failure', async () => {
+      const result = await handler.execute(
+        withTaxId({ scheme: 42, value: '5213796333' }),
+      );
+
+      expect(result.outcome).toBe('business_failure');
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain('buyer.taxId.scheme');
+    });
+
+    it('refuses a tax id carrying no value', async () => {
+      const result = await handler.execute(withTaxId({ scheme: 'pl-nip' }));
+
+      expect(result.outcome).toBe('business_failure');
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('post-document master inventory refresh (Z3)', () => {
+    it('enqueues a refresh keyed on the issued invoice record, with productIds from the payload lines', async () => {
+      invoiceService.issueInvoice.mockResolvedValue({ id: 'inv-record-42', status: 'issued' } as never);
+      await handler.execute(
+        makeJob(
+          makePayload({
+            lines: [
+              { name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', productId: 'ol_product_1' },
+              // Shipping/manual lines carry no productId — must be filtered, not passed through blank.
+              { name: 'Shipping', quantity: 1, unitPriceGross: 5, taxRate: '' },
+              { name: 'Gadget', quantity: 1, unitPriceGross: 20, taxRate: '', productId: '' },
+            ],
+          }),
+        ),
+      );
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith({
+        productIds: ['ol_product_1'],
+        keyScope: 'invoice:inv-record-42',
+      });
+    });
+
+    it('a rejecting enqueue does not change the returned outcome', async () => {
+      postSaleInventoryRefresh.enqueue.mockRejectedValue(new Error('queue unavailable'));
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'ok' });
+    });
+
+    // `issueInvoice` returns WITHOUT throwing on two branches that move no
+    // stock, both reusing the SAME record id: a live in-flight lease, and an
+    // in-doubt `failed` record surfaced for manual reconciliation. Enqueueing
+    // there spends `invoice:{id}` on an attempt that issued nothing, and
+    // `sync_jobs.idempotencyKey` is globally unique and TTL-less - so the
+    // later SUCCESSFUL issuance re-derives a consumed key, enqueues nothing,
+    // and the channels keep publishing the pre-sale quantity until the next
+    // sweep. The fiscal-receipt sibling has always gated on this.
+    it.each(['issuing', 'failed', 'pending'] as const)(
+      'does NOT spend the refresh key when the record came back %s',
+      async (status) => {
+        invoiceService.issueInvoice.mockResolvedValue({ id: 'inv-record-7', status } as never);
+
+        const result = await handler.execute(makeJob(makePayload()));
+
+        expect(result).toEqual({ outcome: 'ok' });
+        expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+      },
+    );
+
+    // The key must still be available to the attempt that actually issues.
+    it('spends the key on the later successful issuance of the SAME record', async () => {
+      invoiceService.issueInvoice.mockResolvedValueOnce({
+        id: 'inv-record-7',
+        status: 'issuing',
+      } as never);
+      await handler.execute(makeJob(makePayload()));
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+
+      invoiceService.issueInvoice.mockResolvedValueOnce({
+        id: 'inv-record-7',
+        status: 'issued',
+      } as never);
+      await handler.execute(makeJob(makePayload()));
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledTimes(1);
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ keyScope: 'invoice:inv-record-7' }),
       );
     });
   });

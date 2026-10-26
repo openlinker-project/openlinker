@@ -40,9 +40,11 @@ import { PrestashopCountryResolver } from '../infrastructure/provisioners/presta
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
 import { PrestashopPackResolver } from '../infrastructure/provisioners/prestashop-pack.resolver';
 import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
+import { PrestashopShopUnitsResolver } from '../infrastructure/provisioners/prestashop-shop-units.resolver';
 import { PrestashopOrderCurrencyResolver } from '../infrastructure/provisioners/prestashop-order-currency.resolver';
 import { PrestashopOrderFeedCapabilityCache } from '../infrastructure/provisioners/prestashop-order-feed-capability.cache';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
+import { PrestashopSalesCountryResolver } from '../infrastructure/provisioners/prestashop-sales-country.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
 import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
 import { PrestashopCategoryPathResolver } from '../infrastructure/provisioners/prestashop-category-path.resolver';
@@ -76,6 +78,10 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // connection config leaves `currency` unset.
   private readonly shopCurrencyResolver = new PrestashopShopCurrencyResolver();
 
+  // Process-singleton for the same reason: the shop's weight/dimension units
+  // are read once per connection, not once per per-product adapter (#3650).
+  private readonly shopUnitsResolver = new PrestashopShopUnitsResolver();
+
   // Same placement and reasoning: master inventory sync builds one adapter per
   // product, so the set of pack ids has to be cached above the adapter or the
   // adapter is back to reading `products/{id}` for every simple product just to
@@ -87,8 +93,16 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // order-create path keeps its own instance, built inside the customer-
   // provisioning branch - catalogue sync must not depend on that branch being
   // wired.
+  private readonly catalogueCountryResolver = new PrestashopCountryResolver();
   private readonly productTaxRateResolver = new PrestashopTaxRateResolver(
-    new PrestashopCountryResolver()
+    this.catalogueCountryResolver
+  );
+
+  // Process-singleton, sharing the catalogue's country-id cache: names the
+  // country the product master's gross prices are read for (ADR-077). One
+  // configurations read per connection per hour.
+  private readonly salesCountryResolver = new PrestashopSalesCountryResolver(
+    this.catalogueCountryResolver
   );
 
   // Same placement and reasoning as `shopCurrencyResolver`, whose shop-default
@@ -187,7 +201,9 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       // one shop. Its own instance (and so its own 5-minute cache) rather than
       // the order branch's, because that one is built only when customer
       // provisioning is wired and the catalogue sync must not depend on that.
-      this.productTaxRateResolver
+      this.productTaxRateResolver,
+      this.shopUnitsResolver,
+      this.salesCountryResolver
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(
@@ -269,7 +285,16 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     // host push back the PrestaShop limiter's own pacing via
     // `noteRetryAfter`. Leaving it `undefined` falls back to
     // `globalThis.fetch`, unbound.
-    const productPublisher = new PrestashopProductPublisherAdapter(httpClient, connection);
+    // ADR-077: the publisher turns the gross catalogue price into PrestaShop's
+    // net field with the shop's own rate for the sales country, so it shares
+    // the catalogue's tax-rate and sales-country resolvers (and their caches).
+    const productPublisher = new PrestashopProductPublisherAdapter(
+      httpClient,
+      connection,
+      undefined,
+      this.productTaxRateResolver,
+      this.salesCountryResolver
+    );
 
     this.logger.log(`PrestaShop adapters created successfully for connection: ${connection.id}`);
 
@@ -329,8 +354,10 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     this.featureResolver.clearCache(connectionId);
     this.categoryPathResolver.clearCache(connectionId);
     this.shopCurrencyResolver.clearCache(connectionId);
+    this.shopUnitsResolver.clearCache(connectionId);
     this.orderCurrencyResolver.clearCache(connectionId);
     this.productTaxRateResolver.clearCache(connectionId);
+    this.salesCountryResolver.clearCache(connectionId);
     // Pack ids are shop-scoped product ids, so the previous shop's set would
     // classify unrelated products of the new shop as packs.
     this.packResolver.clearCache(connectionId);

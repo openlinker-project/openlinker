@@ -37,8 +37,10 @@ import { DpdIntegrationModule } from '@openlinker/integrations-dpd-polska';
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
+import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openlinker/integrations-subiekt-nexo';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
+import { ShoperIntegrationModule } from '@openlinker/integrations-shoper';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
 
@@ -54,9 +56,15 @@ export const workerPlugins: PluginEntry[] = [
   DpdIntegrationModule,
   ErliIntegrationModule,
   KsefIntegrationModule,
-  // #753: resolve the Subiekt 'Invoicing' capability when issuance is driven
-  // from the worker (mirrors WooCommerce/InPost dual registration).
+  // #753: resolve the Subiekt GT 'Invoicing' capability when issuance is
+  // driven from the worker (mirrors WooCommerce/InPost dual registration).
+  // Subiekt GT and Subiekt nexo are two separate products with two separate
+  // bridges and two separate wire contracts; each registers its own module.
   SubiektIntegrationModule,
+  // Subiekt nexo (Sfera bridge) 'Invoicing' capability, resolved from the
+  // worker for the same reason as the line above. NOT the same product as
+  // Subiekt GT — must never share an identifier with it.
+  SubiektNexoIntegrationModule,
   // #1281: resolve the Infakt 'Invoicing' capability when issuance/reconcile
   // jobs run from the worker (mirrors Subiekt/KSeF dual registration).
   InfaktIntegrationModule,
@@ -64,6 +72,9 @@ export const workerPlugins: PluginEntry[] = [
   // registration is driven from the worker (mirrors the invoicing adapters'
   // dual registration).
   EparagonyIntegrationModule,
+  // #3639: Shoper connection skeleton, registered worker-side so the auth
+  // failure classifier is available when later capabilities run jobs here.
+  ShoperIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB), registered into the
   // core currency registry at boot. Load-bearing here: order ingestion and the
   // FX retry / reconcile-sweep handlers are worker-side. NOT a plugin - no

@@ -43,17 +43,21 @@ import {
 import type { InvoiceFailureCode, InvoiceFailureMode } from '@openlinker/core/invoicing';
 import {
   CoreSalesDocumentKindValues,
+  SalesDocumentAfterIssueAttentionValues,
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
 } from '@openlinker/core/sales-documents';
 import type {
+  SalesDocumentAfterIssueAttention,
   SalesDocumentGateBlockReason,
   SalesDocumentIdentity,
+  SalesDocumentMatchedRuleView,
   SalesDocumentOtherRecord,
   SalesDocumentRecordView,
   SalesDocumentUnresolvedReason,
   SalesDocumentView,
 } from '@openlinker/core/sales-documents';
+import { SalesDocumentConditionDto } from '../../../sales-documents/http/dto/sales-document-condition.dto';
 
 export class SalesDocumentIdentityDto {
   @ApiProperty({ description: "The underlying record's own id, for the per-document routes." })
@@ -224,6 +228,23 @@ export class SalesDocumentOtherRecordDto {
   blocksFurtherIssuance!: boolean;
 }
 
+export class SalesDocumentMatchedRuleViewDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ description: 'ISO 3166-1 alpha-2, or `*` for the Rest-of-world scope.' })
+  country!: string;
+
+  @ApiProperty({ type: [SalesDocumentConditionDto] })
+  conditions!: SalesDocumentConditionDto[];
+
+  @ApiProperty({ enum: CoreSalesDocumentKindValues, description: 'Open-world document kind.' })
+  documentKind!: string;
+
+  @ApiProperty()
+  connectionId!: string;
+}
+
 @ApiExtraModels(SalesDocumentInvoiceViewDto, SalesDocumentReceiptViewDto)
 export class SalesDocumentViewResponseDto {
   @ApiProperty()
@@ -287,6 +308,30 @@ export class SalesDocumentViewResponseDto {
       'non-empty list is surfaced, never hidden behind the single-record panel.',
   })
   otherRecords!: SalesDocumentOtherRecordDto[];
+
+  @ApiProperty({
+    type: SalesDocumentMatchedRuleViewDto,
+    nullable: true,
+    description:
+      'The rule that decided this order\'s document kind. `null` covers BOTH "no rule ever decided ' +
+      'this order\'s kind" (a country default, the pre-#2170 single-primary fallback, a manually ' +
+      'issued document) AND "a rule did, but it has since been deleted" - a surface must not tell the ' +
+      'two apart, since either way there is no rule left to explain. DETAIL-ONLY: always `null` on the ' +
+      'paged `GET /orders` list, which renders no explanation from it - read the single-order endpoint ' +
+      'before concluding that no rule decided an order\'s kind.',
+  })
+  matchedRule!: SalesDocumentMatchedRuleViewDto | null;
+
+  @ApiProperty({
+    enum: SalesDocumentAfterIssueAttentionValues,
+    nullable: true,
+    description:
+      'DEF-26: the sale changed after its document was made (cancelled, or refunded in whole or in ' +
+      'part), so the document may need a correction. Derived on every read from the live order and ' +
+      'its refunds, never stored. `null` when there is no live document or nothing changed. A ' +
+      'suggestion only: whether a correction is due is the operator\'s call.',
+  })
+  afterIssueAttention!: SalesDocumentAfterIssueAttention | null;
 }
 
 /**
@@ -308,10 +353,28 @@ export function toSalesDocumentViewDto(view: SalesDocumentView): SalesDocumentVi
     unresolvedReason: view.unresolvedReason,
     blockDetail: view.blockDetail,
     otherRecords: view.otherRecords.map(toOtherRecordDto),
+    matchedRule: view.matchedRule === null ? null : toMatchedRuleViewDto(view.matchedRule),
+    afterIssueAttention: view.afterIssueAttention,
   };
 }
 
-function toRecordDto(
+function toMatchedRuleViewDto(rule: SalesDocumentMatchedRuleView): SalesDocumentMatchedRuleViewDto {
+  return {
+    id: rule.id,
+    country: rule.country,
+    conditions: rule.conditions.map((condition) => SalesDocumentConditionDto.fromDomain(condition)),
+    documentKind: rule.documentKind,
+    connectionId: rule.connectionId,
+  };
+}
+
+/**
+ * Exported (#3306) so `sales-document-list-item-response.dto.ts` can project
+ * the merged operational list's rows through the SAME per-kind mapping this
+ * file already uses for the per-order projection - one mapping, never two
+ * that could quietly diverge on what a status/failure field means.
+ */
+export function toRecordDto(
   record: SalesDocumentRecordView
 ): SalesDocumentInvoiceViewDto | SalesDocumentReceiptViewDto {
   // Switching on the discriminant rather than testing for a field keeps the

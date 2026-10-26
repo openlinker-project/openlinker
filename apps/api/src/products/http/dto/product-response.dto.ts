@@ -21,7 +21,11 @@ export class ProductResponseDto {
   @ApiPropertyOptional({ nullable: true, description: 'Product SKU' })
   sku!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Product price' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Gross catalogue price (what a buyer pays in the master connection sales country, excluding promotions). Null when the master could not state a gross figure.',
+  })
   price!: number | null;
 
   @ApiPropertyOptional({
@@ -58,6 +62,18 @@ export class ProductResponseDto {
       'Distinct from variant-distinguishing attributes. Absent until a sync populates it.',
   })
   features?: { name: string; value: string }[];
+
+  @ApiPropertyOptional({
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: { id: { type: 'string' }, name: { type: 'string' } },
+    },
+    description:
+      "The master's own category path, root to leaf (source-shop category id + name). " +
+      'Absent until a sync populates it, or when the master reports no path.',
+  })
+  categoryBreadcrumb?: { id: string; name: string }[];
 
   @ApiPropertyOptional({
     nullable: true,

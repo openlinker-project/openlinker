@@ -251,6 +251,31 @@ describe('OrderIdentityCell', () => {
     expect(container.querySelector('.orders-cell-sub')).toBeNull();
   });
 
+  it('should name the hidden tags on the +N when the order carries more than two tags', () => {
+    const tag = (id: string, name: string) => ({
+      id,
+      name,
+      color: 'grey' as const,
+      orderCount: 1,
+      createdAt: '',
+      updatedAt: '',
+    });
+    const { container } = renderWithProviders(
+      <OrderIdentityCell
+        orderId={ORDER_ID}
+        orderNumber="6839-2911-4402"
+        firstItemName="Terra Wool Coat"
+        itemCount={1}
+        tags={[tag('t1', 'VIP'), tag('t2', 'Fragile'), tag('t3', 'Resend')]}
+      />,
+    );
+
+    const more = container.querySelector('.orders-tags-line .orders-more-count');
+    expect(more).toHaveAttribute('title', '1 more tag: Resend');
+    // The screen-reader half of the same fact, since `title` is not reliably read.
+    expect(screen.getByText('1 more tag: Resend')).toHaveClass('sr-only');
+  });
+
   it('should render an empty-value placeholder when there is no order id to resolve', () => {
     renderWithProviders(<OrderIdentityCell orderId="" />);
 

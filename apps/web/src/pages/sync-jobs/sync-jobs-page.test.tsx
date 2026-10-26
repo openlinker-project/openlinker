@@ -64,7 +64,26 @@ describe('SyncJobsPage', () => {
 
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // The poison-entries section below the jobs list has its own loading
+    // region, so the jobs list's one is picked out by its label.
+    const jobsLoading = screen.getByText('Loading sync jobs…').closest('[role="status"]');
+    expect(jobsLoading).toBeInTheDocument();
+  });
+
+  it('should announce each list by name when the jobs and poison entries are both loading', () => {
+    const mockApi = createMockApiClient({
+      syncJobs: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+      streamDeadLetters: {
+        list: vi.fn().mockReturnValue(new Promise(() => {})),
+        count: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
+
+    const announcements = screen.getAllByRole('status').map((region) => region.textContent);
+    expect(announcements).toEqual(['Loading sync jobs…', 'Loading poison stream entries…']);
   });
 
   it('should show jobs table when data loads', async () => {
@@ -173,6 +192,32 @@ describe('SyncJobsPage', () => {
     renderWithProviders(<SyncJobsPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Allegro Europe')).toBeInTheDocument();
+  });
+
+  // #3507 G03-12: the type filter listed 21 of the core's job types, so an
+  // `orders.export` run — which the export dialog links to — could be seen but
+  // never filtered to. `scripts/check-job-type-mirror.mjs` guards the whole set.
+  it('should offer orders.export in the job type filter and apply it when the URL carries it', async () => {
+    const listMock = vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
+    const mockApi = createMockApiClient({
+      syncJobs: { list: listMock },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<SyncJobsPage />, {
+      apiClient: mockApi,
+      route: '/sync-jobs?jobType=orders.export',
+    });
+
+    const typeFilter = await screen.findByRole('combobox', { name: /filter by job type/i });
+    expect(
+      await screen.findByRole('option', { name: 'orders.export' }),
+    ).toBeInTheDocument();
+    expect(typeFilter).toHaveValue('orders.export');
+    await waitFor(() => {
+      const lastCall = listMock.mock.calls.at(-1) as [SyncJobFilters, SyncJobPagination];
+      expect(lastCall[0].jobType).toBe('orders.export');
+    });
   });
 
   it('filters sync jobs by the selected connection when changing the dropdown', async () => {

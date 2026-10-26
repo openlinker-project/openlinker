@@ -103,6 +103,10 @@ const VALUE_EXPORT_ALLOWED = new Map([
       ],
       ['buyerHasTaxId', '#2599 - the three-state predicate beside readBuyerTaxId, same consumer.'],
       [
+        'decodeBuyerTaxIdColumn',
+        '#3224 - `AutoIssueTriggerService` (invoicing) value-imports it to decode the persisted three-state column before composing the invoice payload, the same cycle this seam breaks and the same consumer as readBuyerTaxId above. The alternative is a second, drifting copy of the column encoding inside `invoicing`, which the column\'s own docblock forbids ("read the column back through decodeBuyerTaxIdColumn, never with a bare IS NOT NULL"). The service ALREADY value-imports PAYMENT_STATUS from this same seam, so no new runtime edge is created.',
+      ],
+      [
         'OrderStatusValues',
         "#2305 (ADR-059) - the `order-lifecycle` vocabulary leaf's totality spec iterates the runtime array, and ADR-053 forbids that leaf the sibling-context value edge the main @openlinker/core/orders barrel would give it. `phaseToOrderStatus` itself imports the TYPE only.",
       ],

@@ -1,0 +1,216 @@
+/**
+ * Price Change Episode Repository Port (#3142, ADR-072)
+ *
+ * The persistence contract for `price_change_episodes`.
+ *
+ * @module libs/core/src/listings/domain/ports
+ */
+import type { PriceChangeEpisode } from '../entities/price-change-episode.entity';
+import type {
+  PriceChangeEpisodeClaimOutcome,
+  PriceChangeEpisodeFilters,
+  PriceChangeResolution,
+  UpsertOpenPriceChangeEpisodeInput,
+} from '../types/price-change-episode.types';
+
+export interface PriceChangeEpisodeRepositoryPort {
+  findById(id: string): Promise<PriceChangeEpisode | null>;
+
+  /**
+   * Batched `findById` (#3162 review — `bulkAccept` previously called
+   * `findById` once per item in a loop; `docs/engineering-standards.md §
+   * When A Paginated Total Is Expensive` / the #2083 rule: a batched read
+   * happens ONCE, before the per-row loop, never inside it). Ids with no
+   * matching row are simply absent from the result — never a thrown error,
+   * since the caller (`loadActionable`) still needs its own not-found check
+   * per id to report which one.
+   */
+  findByIds(ids: readonly string[]): Promise<readonly PriceChangeEpisode[]>;
+
+  /** The one open episode for this key, or `null` if none exists. */
+  findOpenByKey(
+    productVariantId: string,
+    destinationConnectionId: string,
+    sourceConnectionId: string
+  ): Promise<PriceChangeEpisode | null>;
+
+  /**
+   * The most recently RESOLVED episode for this key — the "last applied
+   * price" baseline detection falls back to when no episode is currently open
+   * (#3143's assumption).
+   */
+  findLastResolvedByKey(
+    productVariantId: string,
+    destinationConnectionId: string,
+    sourceConnectionId: string
+  ): Promise<PriceChangeEpisode | null>;
+
+  /**
+   * Open a new episode, or update the SAME open row if one already exists for
+   * this key (the episode-pattern conflict-arm write, mirroring
+   * `ReservationShortfallRepositoryPort.openEpisode`'s `ON CONFLICT DO UPDATE`
+   * shape against the partial unique index).
+   *
+   * **The conflict arm's write set IS the contract** (the
+   * `ReturnRepositoryPort.upsertFromSource` precedent): it updates
+   * `sourceNewAmount`, `computedNewAmount`, `sourceCurrency`, `blockReason`
+   * and `updatedAt` — and DELIBERATELY never touches `sourceOldAmount`,
+   * `computedOldAmount`, or `detectedAt`, which stay pinned to the episode's
+   * ORIGINAL detection for the life of the row (#3159 depends on this by
+   * name: those three describe when/at-what-price the condition first
+   * arose, not its current state).
+   *
+   * Returns the resulting row plus whether this call's WRITE was the conflict
+   * arm (an existing open row was updated) rather than a fresh INSERT —
+   * `wasRefresh: true` does **not** by itself mean `episode.refreshedAt` was
+   * (re-)stamped. `refreshedAt` is stamped by this SAME write, and only when
+   * the conflict arm's incoming `sourceNewAmount` genuinely differs from what
+   * was already stored — i.e. the price changed again while the episode
+   * stood open, unreviewed (#3143's staleness marker). A conflict-arm write
+   * that repeats an already-stored `sourceNewAmount` (e.g. the same source
+   * price re-observed on the next poll) reports `wasRefresh: true` but leaves
+   * `refreshedAt` exactly as it was.
+   */
+  upsertOpen(
+    input: UpsertOpenPriceChangeEpisodeInput
+  ): Promise<{ episode: PriceChangeEpisode; wasRefresh: boolean }>;
+
+  /**
+   * Open episodes for a destination connection, filtered for the review
+   * queue. Bounded by `filters.limit`/`filters.offset` (#3162) — see
+   * `countOpen` / `countOpenBySource` for the operator-facing counts.
+   */
+  findOpenForConnection(
+    destinationConnectionId: string,
+    filters?: PriceChangeEpisodeFilters
+  ): Promise<readonly PriceChangeEpisode[]>;
+
+  /**
+   * Open episodes across the install (no destination scope) for the review
+   * queue's "All" filter. Bounded, same as `findOpenForConnection`.
+   */
+  findOpenAll(filters?: PriceChangeEpisodeFilters): Promise<readonly PriceChangeEpisode[]>;
+
+  /**
+   * Resolve an OPEN episode. Guarded `WHERE "resolvedAt" IS NULL` so a
+   * concurrent resolution cannot be overwritten; `false` means it was already
+   * resolved (or never existed).
+   */
+  resolve(
+    id: string,
+    resolution: PriceChangeResolution,
+    resolvedByUserId: string | null,
+    manualPriceOverride: number | null,
+    resolvedAt: Date
+  ): Promise<boolean>;
+
+  /**
+   * Re-open a previously-`ignored` episode (the review queue's row-level
+   * Undo, #3147/#3145). Guarded to only reverse an `'ignored'` resolution —
+   * an already-published price is never un-published by this call.
+   *
+   * `false` means the row was not an ignored, resolved episode (already
+   * accepted, still open, or unknown). A rival episode already open for the
+   * same key — an operator ignoring E, then a later detection opening a
+   * fresh F for the same key, then the operator clicking Undo on E — raises
+   * `PriceChangeEpisodeSupersededError` rather than either returning `true`
+   * (which would leave two open episodes for one key) or letting a raw
+   * unique-violation escape the port.
+   */
+  reopenIgnored(id: string): Promise<boolean>;
+
+  /**
+   * Acknowledge a re-detection (#3162 review — `needsRefresh` must not be
+   * sticky forever): clears `refreshedAt` back to `null` on an OPEN episode,
+   * so the row's `version` collapses back onto `detectedAt` and the caller's
+   * NEXT read reports `needsRefresh: false` for whatever it just re-fetched.
+   *
+   * Guarded `WHERE "resolvedAt" IS NULL` — a resolved episode's `refreshedAt`
+   * is historical, not an actionable flag, and must not be touched here.
+   *
+   * Returns the refreshed row, or `null` if it does not exist or is no
+   * longer open.
+   */
+  acknowledgeRefresh(id: string): Promise<PriceChangeEpisode | null>;
+
+  /** Count of open episodes matching the filters, for badge/tab counters. */
+  countOpen(filters?: PriceChangeEpisodeFilters): Promise<number>;
+
+  /**
+   * Claim exclusive resolution rights over an OPEN episode (#3162 review,
+   * IMPORTANT — "nothing claims the episode at accept time"). Guarded
+   * `WHERE "resolvedAt" IS NULL AND "claimedAt" IS NULL`, the
+   * `claimWaybillRelay`/`claimDispatchAttempt` idiom applied here: a
+   * concurrent second accept/edit/bulk-item on the SAME episode sees
+   * `'in-flight'` rather than silently enqueueing a second publish job for
+   * the same price change. `claimedAt` also doubles as the idempotency
+   * key's generation marker (never the raw amount or a wall-clock bucket,
+   * per #2285/#3159's "episode id + a generation the row itself owns"
+   * rule) — a released-then-reclaimed episode mints a fresh, distinct key.
+   */
+  claimForResolution(id: string, claimedAt: Date): Promise<PriceChangeEpisodeClaimOutcome>;
+
+  /**
+   * Release a claim taken by {@link claimForResolution} WITHOUT resolving
+   * the episode — a failed enqueue, or a bulk submit that aborted
+   * mid-validation/mid-fan-out (#3162 review). Idempotent: releasing an
+   * unclaimed or already-resolved episode is a silent no-op — `resolve`'s
+   * own `WHERE resolvedAt IS NULL` guard already makes a resolved row
+   * unreachable via `claimForResolution` again, so there is nothing left to
+   * protect once it resolves.
+   */
+  releaseClaim(id: string): Promise<void>;
+
+  /**
+   * Open-episode count per source connection, for a single destination — one
+   * `GROUP BY` read rather than one `countOpen` call per source in a loop
+   * (`docs/engineering-standards.md § When A Paginated Total Is Expensive`;
+   * the #2083 batched-read rule). Sources with zero open episodes are absent
+   * from the map, never present with `0`.
+   *
+   * Cheap despite that doc's "a COUNT under a non-sargable filter scans the
+   * table" warning: `resolvedAt IS NULL` is a plain equality filter on the
+   * OPEN set, which is the working set by definition and small relative to
+   * the episode table's full history, grouped over a handful of source
+   * connections — not the jsonb/ILIKE shape that section warns about.
+   *
+   * @see countOpenByDestination for the mirror grouping (by destination,
+   * across the whole install).
+   */
+  countOpenBySource(destinationConnectionId: string): Promise<ReadonlyMap<string, number>>;
+
+  /**
+   * Distinct destination connection ids with at least one OPEN episode
+   * sourced from `sourceConnectionId` — a connection's "which destinations
+   * do I feed" read (#3146's `getAsSource`) needs only the id set, never
+   * hydrated rows (the #2083 rule again — `findOpenAll` would fetch and map
+   * every column of every open episode purely to throw the rows away).
+   */
+  listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]>;
+
+  /**
+   * Open-episode count per DESTINATION connection, across the WHOLE
+   * install — the review queue's connection filter-bar chip counts (#3325,
+   * split out of #3237/#3164 review). The mirror of `countOpenBySource`
+   * (which groups by source for a single destination): this groups by
+   * destination with no scope at all, one `GROUP BY` rather than a
+   * `countOpen({ destinationConnectionId })` call per connection in a loop
+   * (`docs/engineering-standards.md § When A Paginated Total Is Expensive`).
+   *
+   * Strictly-open, matching `countOpen`/`countOpenBySource` — never widened
+   * by `includeRecentlyResolved`, which stays a review-queue LIST concern.
+   * Destinations with zero open episodes are absent from the map, never
+   * present with `0`.
+   *
+   * Cheap for the same reason `countOpenBySource` is: `resolvedAt IS NULL`
+   * is a plain equality filter on the open set (the working set by
+   * definition, not the episode table's full history), grouped over a
+   * handful of destination connections — not the non-sargable jsonb/ILIKE
+   * shape `docs/engineering-standards.md § When A Paginated Total Is
+   * Expensive` warns about.
+   *
+   * @see countOpenBySource for the mirror grouping (by source, scoped to
+   * one destination).
+   */
+  countOpenByDestination(): Promise<ReadonlyMap<string, number>>;
+}

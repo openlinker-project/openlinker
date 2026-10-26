@@ -15,7 +15,7 @@
  * `listMarkets` read, so this test mocks THAT endpoint instead, deriving its
  * response from the same mutable `rules`/`defaults` state the old mock did.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -105,9 +105,14 @@ describe('SalesDocumentRuleEnginePanel — Reset country reflects everywhere (#2
     });
 
     // Sanity: DE starts out issuing an invoice — the merged list's own row,
-    // no disclosure to open first.
-    await screen.findByText('DE');
-    const deRow = screen.getByText('DE').closest('li');
+    // no disclosure to open first. Scoped to the market list itself
+    // (`within`) rather than the whole document — since #3177 the country
+    // routing dialog's own "country default" tier also renders the country
+    // code (in its readback sentence), so once that dialog is open a bare
+    // `screen.getByText('DE')` is ambiguous.
+    const marketList = await screen.findByRole('list', { name: 'Sales-document markets' });
+    await within(marketList).findByText('DE');
+    const deRow = within(marketList).getByText('DE').closest('li');
     expect(deRow).not.toBeNull();
     expect(deRow).toHaveTextContent('Invoice');
 
@@ -143,9 +148,12 @@ describe('SalesDocumentRuleEnginePanel — Reset country reflects everywhere (#2
     await userEvent.click(screen.getByRole('button', { name: 'Go back' }));
 
     // Market row flips to "Nothing issued" — the same outcome a country
-    // that was never touched at all resolves to.
+    // that was never touched at all resolves to. The routing dialog is
+    // still open here (only its "leave unconfigured?" confirm was
+    // dismissed), so this is scoped to the market list for the same reason
+    // as the sanity check above.
     await waitFor(() => {
-      const refreshedRow = screen.getByText('DE').closest('li') as HTMLElement;
+      const refreshedRow = within(marketList).getByText('DE').closest('li') as HTMLElement;
       expect(refreshedRow).toHaveTextContent('Nothing issued');
     });
   });

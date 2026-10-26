@@ -7,6 +7,11 @@
  * the live platform.
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
+import {
+  ConnectionDisabledException,
+  ConnectionNotFoundException,
+} from '@openlinker/core/identifier-mapping';
 
 import { DestinationTaxonomyService } from '../destination-taxonomy.service';
 import { TaxonomySourceUnavailableException } from '../../../domain/exceptions/taxonomy-source-unavailable.exception';
@@ -47,6 +52,13 @@ function buildService(options: {
   repository?: Partial<DestinationCategoryRepositoryPort>;
   /** `false` makes `acquire` return null — another run holds the scope. */
   lockAcquires?: boolean;
+  /**
+   * Connection-level failures a probe should surface INSTEAD of the ordinary
+   * "capability not supported" rejection (#2146) — e.g. a nonexistent or
+   * disabled connection, which never gets far enough to answer the capability
+   * question at all.
+   */
+  connectionErrorsByConnection?: Record<string, Error>;
 }): {
   service: DestinationTaxonomyService;
   repository: jest.Mocked<DestinationCategoryRepositoryPort>;
@@ -55,10 +67,14 @@ function buildService(options: {
 } {
   const getCapabilityAdapter = jest.fn(
     (connectionId: string, capability: string): Promise<Record<string, unknown>> => {
+      const connectionError = options.connectionErrorsByConnection?.[connectionId];
+      if (connectionError) {
+        return Promise.reject(connectionError);
+      }
       const adapter = options.adaptersByConnection[connectionId]?.[capability as keyof Adapters];
       if (!adapter) {
         return Promise.reject(
-          new Error(`Capability ${capability} not supported by ${connectionId}`),
+          new CapabilityNotSupportedException('fake-adapter-key', capability),
         );
       }
       return Promise.resolve(adapter);
@@ -213,6 +229,66 @@ describe('DestinationTaxonomyService', () => {
         taxonomyOwner: 'allegro',
         connectionId: null,
       });
+    });
+
+    it('should propagate ConnectionNotFoundException rather than collapsing it into a 422 (#2146)', async () => {
+      const { service } = buildService({
+        adaptersByConnection: {},
+        connectionErrorsByConnection: {
+          'conn-missing': new ConnectionNotFoundException('conn-missing'),
+        },
+      });
+
+      await expect(service.resolveScope('conn-missing')).rejects.toBeInstanceOf(
+        ConnectionNotFoundException,
+      );
+    });
+
+    it('should propagate ConnectionDisabledException rather than collapsing it into a 422 (#2146)', async () => {
+      const { service } = buildService({
+        adaptersByConnection: {},
+        connectionErrorsByConnection: {
+          'conn-disabled': new ConnectionDisabledException('conn-disabled'),
+        },
+      });
+
+      await expect(service.resolveScope('conn-disabled')).rejects.toBeInstanceOf(
+        ConnectionDisabledException,
+      );
+    });
+
+    it('should swallow an adapter-construction failure and fall through to the capability-shaped 422, not rethrow it as an unmapped 500 (#2146)', async () => {
+      const { service } = buildService({
+        adaptersByConnection: {},
+        connectionErrorsByConnection: {
+          'conn-misconfigured': new Error('AllegroConfigException: missing OAuth credentials'),
+        },
+      });
+
+      // Neither ConnectionNotFoundException nor ConnectionDisabledException —
+      // an ordinary adapter-construction failure has no filter registered in
+      // apps/api, so rethrowing it would surface an unmapped 500 instead of
+      // the capability-shaped 422 this replaces.
+      await expect(service.resolveScope('conn-misconfigured')).rejects.toBeInstanceOf(
+        TaxonomySourceUnavailableException,
+      );
+    });
+
+    it('should not probe the second capability once the first probe reports a connection-level failure (#2146)', async () => {
+      const { service, getCapabilityAdapter } = buildService({
+        adaptersByConnection: {},
+        connectionErrorsByConnection: {
+          'conn-disabled': new ConnectionDisabledException('conn-disabled'),
+        },
+      });
+
+      await expect(service.resolveScope('conn-disabled')).rejects.toBeInstanceOf(
+        ConnectionDisabledException,
+      );
+      // A connection's existence/status is not capability-scoped — retrying
+      // with the second capability (ProductPublisher) would fail identically,
+      // so the fallback probe must never run.
+      expect(getCapabilityAdapter).toHaveBeenCalledTimes(1);
     });
   });
 

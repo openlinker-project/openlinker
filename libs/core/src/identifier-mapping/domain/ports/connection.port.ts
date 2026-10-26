@@ -25,6 +25,13 @@ export interface ConnectionPort {
 
   /**
    * List connections with optional filters
+   *
+   * Without a `status` filter, archived connections are left out (#3657): an
+   * archived connection is gone from the operator's point of view, so no
+   * picker, sweep, capability listing or authority read may see it. Pass
+   * `status: 'archived'` to list them. `get()` is deliberately NOT filtered, so
+   * history that references an archived connection still resolves its name.
+   *
    * @param filters - Optional filter criteria (platformType, status)
    * @returns Array of Connection entities matching the filters
    */
@@ -49,7 +56,8 @@ export interface ConnectionPort {
    * Disable a connection
    * Sets the connection status to 'disabled'. Hard delete is not recommended
    * because IdentifierMapping uses connectionId as a namespace. Disabling
-   * preserves historical data and prevents orphaned mappings.
+   * preserves historical data and prevents orphaned mappings; removing a
+   * connection from view is the `archived` status for the same reason (#3657).
    * @param connectionId - The connection identifier (UUID)
    * @returns Disabled Connection entity or throws if not found
    */

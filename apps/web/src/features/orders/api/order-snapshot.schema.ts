@@ -168,6 +168,33 @@ const orderInvoiceSchema = z.object({
    *  blocks are still worth explaining. Optional: a snapshot written before this
    *  field existed is treated as suppressing, matching the pre-#2100 behaviour. */
   blocksIssuanceElsewhere: z.boolean().optional(),
+  /** How many of the document's lines the provider could not link to its own
+   *  catalogue and issued as free text - on Subiekt such a line does not move
+   *  warehouse stock, so the document looks correct while the sale never
+   *  reaches the warehouse. TRI-STATE, and `nullish` is load-bearing: absent /
+   *  `null` means the provider does not report linkage (inFakt, KSeF and
+   *  eparagony never will), `0` means every line was linked, `> 0` is the
+   *  badge. Read it through `unlinkedCatalogueLineCount`, never as a
+   *  truthiness test, which reports false for `0` and for `null` alike while
+   *  meaning two different things. */
+  unlinkedCatalogueLines: z.number().int().nullish(),
+  /** Whether the goods this document billed for left the warehouse in the
+   *  provider's own books. FOUR states and only one of them is a claim:
+   *  `'not-released'` means a release was expected and none was made - the
+   *  badge. `'released'` is the ordinary success (its number is below),
+   *  `'not-applicable'` means there was nothing to release, and absent /
+   *  `null` means this provider has no warehouse and never reports (inFakt,
+   *  KSeF and eparagony never will). Read the OUTCOME, never the number's
+   *  nullability: the number is legitimately absent on three of the four, so a
+   *  test on it reports "nothing released" for a service-only document and for
+   *  a provider that was never asked. */
+  warehouseReleaseOutcome: z
+    .enum(['released', 'not-released', 'not-applicable'])
+    .nullish()
+    .catch(null),
+  /** The release document number the provider created or detected (Subiekt:
+   *  the WZ). Present only when the outcome is `'released'`. */
+  warehouseReleaseNumber: z.string().nullish(),
 });
 export type ParsedOrderInvoice = z.infer<typeof orderInvoiceSchema>;
 
@@ -191,6 +218,20 @@ export interface ParseWarning {
  */
 export const PaymentStatusValues = ['paid', 'cod', 'awaiting', 'refunded'] as const;
 export type PaymentStatus = (typeof PaymentStatusValues)[number];
+
+/**
+ * Payment method (#3294) - hand-mirrored from the backend `PaymentMethod` union
+ * (`libs/core/src/orders/domain/types/payment-method.types.ts`); the web app
+ * cannot import `@openlinker/core` (#591). How the buyer pays, independent of
+ * the payment status above. `unknown` is a first-class value, not an absence.
+ */
+export const PaymentMethodValues = [
+  'online',
+  'bank_transfer',
+  'cash_on_delivery',
+  'unknown',
+] as const;
+export type PaymentMethod = (typeof PaymentMethodValues)[number];
 
 export interface ParsedOrderSnapshot {
   id?: string;
@@ -235,6 +276,12 @@ export interface ParsedOrderSnapshot {
   pickupPoint?: ParsedOrderPickupPoint;
   /** Source-reported payment status (#928); absent when the source didn't report it. */
   paymentStatus?: PaymentStatus;
+  /**
+   * How the buyer pays (#3294); absent for an order ingested before the field
+   * existed or when the source reported nothing. An absent value and an
+   * explicit `'unknown'` must be rendered identically.
+   */
+  paymentMethod?: PaymentMethod;
   /** Invoice projection (#1713); absent when the order has no invoice record. */
   invoice?: ParsedOrderInvoice;
   /**
@@ -268,6 +315,25 @@ function readPaymentStatus(value: unknown, warnings: ParseWarning[]): PaymentSta
   warnings.push({
     field: 'paymentStatus',
     message: `unrecognised payment status: ${String(value)}`,
+  });
+  return undefined;
+}
+
+/**
+ * Read the optional payment method (#3294) with the same degrade-to-absent rule
+ * as {@link readPaymentStatus}: an unrecognised value is a warning, never a
+ * crash and never a guess.
+ */
+function readPaymentMethod(value: unknown, warnings: ParseWarning[]): PaymentMethod | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'string' && (PaymentMethodValues as readonly string[]).includes(value)) {
+    return value as PaymentMethod;
+  }
+  warnings.push({
+    field: 'paymentMethod',
+    message: `unrecognised payment method: ${String(value)}`,
   });
   return undefined;
 }
@@ -440,6 +506,7 @@ export function parseOrderSnapshot(snapshot: Record<string, unknown>): ParsedOrd
     shipping,
     pickupPoint,
     paymentStatus: readPaymentStatus(snapshot.paymentStatus, warnings),
+    paymentMethod: readPaymentMethod(snapshot.paymentMethod, warnings),
     invoice,
     codToCollect,
     parseWarnings: warnings,

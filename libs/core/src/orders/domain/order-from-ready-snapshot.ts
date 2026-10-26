@@ -20,10 +20,19 @@
  * @module libs/core/src/orders/domain
  */
 import type { OrderRecord } from './entities/order-record.entity';
-import type { Address, Order, OrderItem, OrderTotals } from './types/order.types';
+import type {
+  Address,
+  Order,
+  OrderItem,
+  OrderPickupPoint,
+  OrderShipping,
+  OrderTotals,
+} from './types/order.types';
+import { OrderPickupPointTypeValues } from './types/order.types';
 import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unavailable.error';
 import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 import { isTaxRateSource } from '@openlinker/core/products';
+import { isPaymentMethod } from './types/payment-method.types';
 
 /**
  * The placeholder `redactAddress` writes for a PII-redacted field. Imported
@@ -117,14 +126,73 @@ export function orderFromReadySnapshot(
   if (typeof snapshot.customerEmail === 'string') {
     order.customerEmail = snapshot.customerEmail;
   }
+  // #3294: without this every invoice path that rehydrates an order (auto-issue,
+  // manual, bulk, correction) composed its command with no payment method, so
+  // the form of payment never reached the provider. Present-only, and an
+  // unrecognised stored value reads as absent rather than being passed on.
+  const paymentMethod = isPaymentMethod(snapshot.paymentMethod)
+    ? snapshot.paymentMethod
+    : record.paymentMethod;
+  if (paymentMethod !== null && paymentMethod !== undefined) {
+    order.paymentMethod = paymentMethod;
+  }
   if (billingAddress) {
     order.billingAddress = billingAddress;
   }
   if (shippingAddress) {
     order.shippingAddress = shippingAddress;
   }
+  // Source-side delivery method + pickup point (#3340/#2729): needed by the
+  // auto-dispatch trigger to resolve a carrier-neutral `DeliveryIntent`
+  // (locker vs courier) and a paczkomat id, mirroring the
+  // `OrderRecordService.persistOrder` writer's own present-only convention -
+  // absent from the snapshot means the source didn't expose one, never a
+  // synthesized default.
+  const shipping = readShipping(snapshot.shipping);
+  if (shipping) {
+    order.shipping = shipping;
+  }
+  const pickupPoint = readPickupPoint(snapshot.pickupPoint);
+  if (pickupPoint) {
+    order.pickupPoint = pickupPoint;
+  }
 
   return order;
+}
+
+/** Narrow an unknown snapshot value into an {@link OrderShipping}; `undefined` when absent/malformed. */
+function readShipping(value: unknown): OrderShipping | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.methodId !== 'string') {
+    return undefined;
+  }
+  const shipping: OrderShipping = { methodId: raw.methodId };
+  if (typeof raw.methodName === 'string') shipping.methodName = raw.methodName;
+  return shipping;
+}
+
+/** Narrow an unknown snapshot value into an {@link OrderPickupPoint}; `undefined` when absent/malformed. */
+function readPickupPoint(value: unknown): OrderPickupPoint | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== 'string') {
+    return undefined;
+  }
+  const pickupPoint: OrderPickupPoint = { id: raw.id };
+  if (typeof raw.name === 'string') pickupPoint.name = raw.name;
+  if (typeof raw.description === 'string') pickupPoint.description = raw.description;
+  if (
+    typeof raw.pointType === 'string' &&
+    (OrderPickupPointTypeValues as readonly string[]).includes(raw.pointType)
+  ) {
+    pickupPoint.pointType = raw.pointType as OrderPickupPoint['pointType'];
+  }
+  return pickupPoint;
 }
 
 /** Pick the first address the command composer would accept (billing wins). */
@@ -209,6 +277,14 @@ function readItems(value: unknown): OrderItem[] {
     }
     if (typeof item.taxRateReadAt === 'string') orderItem.taxRateReadAt = item.taxRateReadAt;
     if (typeof item.taxRateChannel === 'string') orderItem.taxRateChannel = item.taxRateChannel;
+    // The source-reported gross unit price. Same allowlist trap as the rate
+    // fields above: omitted here, a net-priced order that CAN be invoiced would
+    // be refused on every manual-issuance path while the auto path succeeded.
+    // `Number.isFinite` rather than the bare `typeof` used above, because this
+    // figure lands on a fiscal document and a NaN there is not recoverable.
+    if (typeof item.unitPriceGross === 'number' && Number.isFinite(item.unitPriceGross)) {
+      orderItem.unitPriceGross = item.unitPriceGross;
+    }
     return orderItem;
   });
 }
@@ -232,6 +308,12 @@ function readTotals(value: unknown): OrderTotals {
   // would vanish on any manual-issuance path that reaches this function.
   if (raw.totalTaxTreatment === 'inclusive' || raw.totalTaxTreatment === 'exclusive') {
     totals.totalTaxTreatment = raw.totalTaxTreatment;
+  }
+  if (typeof raw.shippingGross === 'number' && Number.isFinite(raw.shippingGross)) {
+    totals.shippingGross = raw.shippingGross;
+  }
+  if (typeof raw.discountTotal === 'number' && Number.isFinite(raw.discountTotal)) {
+    totals.discountTotal = raw.discountTotal;
   }
   return totals;
 }

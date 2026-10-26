@@ -373,6 +373,53 @@ describe('ConnectionDetailPage', () => {
     });
   });
 
+  describe('routing readiness panel on the Health tab (#3634)', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    type ListActiveLocations = ReturnType<
+      typeof createMockApiClient
+    >['inventory']['listActiveLocations'];
+
+    async function openHealthTab(listActiveLocations: ListActiveLocations): Promise<void> {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        connections: { getById: vi.fn().mockResolvedValue(sampleConnection) },
+        inventory: { listActiveLocations },
+      });
+      await renderDetailPage(sampleConnection, apiClient);
+      await user.click(screen.getByRole('tab', { name: 'Health' }));
+      await screen.findByRole('heading', { name: 'Diagnostics' });
+    }
+
+    it('should not render the panel, nor read locations, when the OMS routing UI flag is off', async () => {
+      const listActiveLocations = vi
+        .fn<ListActiveLocations>()
+        .mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 });
+
+      await openHealthTab(listActiveLocations);
+
+      expect(
+        screen.queryByRole('heading', { name: 'Fulfilment routing readiness' }),
+      ).not.toBeInTheDocument();
+      expect(listActiveLocations).not.toHaveBeenCalled();
+    });
+
+    it('should render the panel when the OMS routing UI flag is on', async () => {
+      vi.stubEnv('VITE_OL_OMS_ROUTING_UI_ENABLED', 'true');
+      const listActiveLocations = vi
+        .fn<ListActiveLocations>()
+        .mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 });
+
+      await openHealthTab(listActiveLocations);
+
+      expect(
+        await screen.findByRole('heading', { name: 'Fulfilment routing readiness' }),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe('ReauthRequiredBanner (#819)', () => {
     it('shows the re-auth banner with an OAuth re-auth link when status is needs_reauth', async () => {
       const connection = makeAllegro({ status: 'needs_reauth' });
@@ -390,6 +437,60 @@ describe('ConnectionDetailPage', () => {
       await renderDetailPage(connection, apiClient);
 
       expect(screen.queryByText('Re-authentication required')).toBeNull();
+    });
+  });
+
+  describe('archive / restore banners (#3657)', () => {
+    function renderAsAdmin(connection: Connection): void {
+      renderWithProviders(
+        <Routes>
+          <Route path="/connections/:connectionId" element={<ConnectionDetailPage />} />
+        </Routes>,
+        {
+          apiClient: apiClientForBanner(connection, []),
+          route: `/connections/${connection.id}`,
+          sessionAdapter: createAuthenticatedSessionAdapter(),
+        },
+      );
+    }
+
+    it('says an archived connection is archived and offers Restore', async () => {
+      renderAsAdmin(makeAllegro({ status: 'archived', credentialsStored: false }));
+      await screen.findByRole('heading', { name: 'Overview' });
+
+      expect(await screen.findByText('This connection is archived')).toBeInTheDocument();
+      expect((await screen.findAllByRole('button', { name: 'Restore' })).length).toBeGreaterThan(0);
+      expect(screen.queryByText('Syncing is paused')).toBeNull();
+    });
+
+    it('asks for credentials instead of Enable on a restored OAuth connection', async () => {
+      const connection = makeAllegro({
+        status: 'disabled',
+        credentialsBacked: true,
+        credentialsStored: false,
+      });
+      renderAsAdmin(connection);
+      await screen.findByRole('heading', { name: 'Overview' });
+
+      expect(await screen.findByText('Credentials needed')).toBeInTheDocument();
+      const link = await screen.findByRole('link', { name: 'Re-authenticate' });
+      expect(link.getAttribute('href')).toContain(`reauth=${connection.id}`);
+      expect(screen.queryByText('Syncing is paused')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Enable connection' })).toBeNull();
+    });
+
+    it('points a restored non-OAuth connection at the edit page', async () => {
+      const connection = {
+        ...sampleConnection,
+        status: 'disabled' as const,
+        credentialsBacked: true,
+        credentialsStored: false,
+      };
+      renderAsAdmin(connection);
+      await screen.findByRole('heading', { name: 'Overview' });
+
+      const link = await screen.findByRole('link', { name: 'Enter credentials' });
+      expect(link.getAttribute('href')).toBe(`/connections/${connection.id}/edit`);
     });
   });
 

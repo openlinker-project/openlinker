@@ -96,13 +96,20 @@ export interface OrderLifecycleRelayTargetResult {
   outcome: OrderWritebackOutcome;
   detail?: string;
   /**
-   * Set only for an `unsupported` outcome — but **an `unsupported` outcome does
-   * not imply it is set** (corrected #2401). This field is populated by the
-   * RELAY, for the two conditions it can tell apart itself; `writeToTarget`
-   * passes an adapter's own `OrderWritebackResult` through verbatim, and several
-   * shipped adapters return a bare `unsupported` from their own `default:` arm.
-   * A consumer switching on this MUST handle `undefined` as its own case rather
-   * than assuming one of the two members. See the reason type's docs.
+   * Set on EVERY `unsupported` outcome (#3526) — populated by the RELAY, never
+   * the adapter, since `OrderWritebackResult` carries no reason field of its
+   * own. Two of the three ways to land here are the relay's own: it cannot
+   * resolve an adapter for the connection (`adapter-unresolved`, TRANSIENT) or
+   * the connection exposes no order-writeback capability at all
+   * (`no-capability`, STRUCTURAL). The third is an in-tree adapter's own
+   * `default:` decline of a specific event kind its platform cannot express —
+   * `writeToTarget` defaults THAT to `no-capability` too, because "this
+   * platform cannot show this state" is the same fact whether the capability
+   * is entirely absent or merely declines one event. Still OPTIONAL on the
+   * type for an out-of-tree adapter compiled against an older port (ADR-055
+   * forward-compat), but every in-tree path now sets it — a consumer that
+   * still branches on `undefined` degrades to treating it as structural,
+   * never as transient.
    */
   unsupportedReason?: OrderWritebackUnsupportedReason;
 }

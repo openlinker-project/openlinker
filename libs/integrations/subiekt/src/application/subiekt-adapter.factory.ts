@@ -11,7 +11,7 @@
  *
  * @module libs/integrations/subiekt/src/application
  */
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
@@ -24,10 +24,30 @@ import type { SubiektBridgeCredentials } from '../domain/types/subiekt-credentia
 import { SubiektConfigException } from '../domain/exceptions/subiekt-config.exception';
 import { SubiektInvoicingAdapter } from '../infrastructure/adapters/subiekt-invoicing.adapter';
 import { SubiektBridgeHttpClient } from '../infrastructure/http/subiekt-bridge-http.client';
+import { SubiektProductMasterAdapter } from '../infrastructure/adapters/subiekt-product-master.adapter';
+import { SubiektInventoryMasterAdapter } from '../infrastructure/adapters/subiekt-inventory-master.adapter';
+import { SubiektInventoryBridgeClient } from '../infrastructure/http/subiekt-inventory-bridge.client';
+import { SubiektOrderSourceAdapter } from '../infrastructure/adapters/subiekt-order-source.adapter';
+import { SubiektOrderProcessorAdapter } from '../infrastructure/adapters/subiekt-order-processor.adapter';
+import { SubiektOrdersBridgeClient } from '../bridge/subiekt-orders-bridge.client';
+import { SubiektFiscalizationAdapter } from '../infrastructure/adapters/subiekt-fiscalization.adapter';
+import { SUBIEKT_BRIDGE_TIMEOUT_MS } from '../bridge/subiekt-bridge-timeout';
 
-/** The capability adapters this factory builds for a connection. */
+/**
+ * The capability adapters this factory builds for a connection.
+ *
+ * `fiscalization` is OPTIONAL — built only when `config.drukarkaFiskalnaId`
+ * is set (#3192). A connection with no configured fiscal printer legitimately
+ * has no Fiscalization capability; `dispatchCapability` degrades to a clean
+ * "capability not supported" rather than the factory guessing a device id.
+ */
 export interface SubiektAdapters {
   invoicing: SubiektInvoicingAdapter;
+  productMaster: SubiektProductMasterAdapter;
+  inventoryMaster: SubiektInventoryMasterAdapter;
+  orderSource: SubiektOrderSourceAdapter;
+  orderProcessor: SubiektOrderProcessorAdapter;
+  fiscalization?: SubiektFiscalizationAdapter;
 }
 
 export class SubiektAdapterFactory {
@@ -36,6 +56,7 @@ export class SubiektAdapterFactory {
     credentialsResolver: CredentialsResolverPort,
     logger: LoggerPort,
     fetchImpl: FetchLike,
+    identifierMapping: IdentifierMappingPort,
   ): Promise<SubiektAdapters> {
     const config = this.validateAndParseConfig(
       (connection.config ?? {}) as Record<string, unknown>,
@@ -59,9 +80,73 @@ export class SubiektAdapterFactory {
       fetchImpl,
     });
 
-    return {
-      invoicing: new SubiektInvoicingAdapter(client, connection.id, logger, config),
+    const inventoryClient = new SubiektInventoryBridgeClient(config.bridgeBaseUrl, {
+      token,
+      timeoutMs: config.timeoutMs,
+      fetchImpl,
+    });
+
+    const ordersClient = new SubiektOrdersBridgeClient(config.bridgeBaseUrl, {
+      token,
+      timeoutMs: config.timeoutMs,
+      fetchImpl,
+    });
+
+    const productMaster = new SubiektProductMasterAdapter(
+      config.bridgeBaseUrl,
+      identifierMapping,
+      connection,
+      { token, timeoutMs: config.timeoutMs, fetchImpl, logger },
+    );
+
+    const adapters: SubiektAdapters = {
+      invoicing: new SubiektInvoicingAdapter(client, identifierMapping, connection.id, logger, config),
+      productMaster,
+      inventoryMaster: new SubiektInventoryMasterAdapter(
+        inventoryClient,
+        identifierMapping,
+        connection.id,
+        logger,
+        config.stockMagazynId,
+        // Subiekt keeps stock per TOWAR while OpenLinker keys a model's
+        // product by the model, so the inventory side has to be able to ask
+        // which towary a model holds. One bound question rather than the whole
+        // product adapter, so it cannot start reaching for a second capability.
+        (modelId: number) => productMaster.readModelMemberSymbols(modelId),
+        // The inventory-side twin of `assertStillAProduct` (#3365 audit). The
+        // product master already refuses to serve a towar that joined a model;
+        // without this the inventory master kept answering for the same
+        // mapping and resurrected the variant the products side had staled.
+        // Bound to the SAME product-master instance, so the `/api/models` walk
+        // it needs is served from that adapter's per-instance GET memo - one
+        // walk per resolved adapter, not one per product.
+        (symbol: string) => productMaster.readModelIdForSymbol(symbol),
+      ),
+      orderSource: new SubiektOrderSourceAdapter(ordersClient, logger, identifierMapping, connection.id),
+      orderProcessor: new SubiektOrderProcessorAdapter(
+        ordersClient,
+        identifierMapping,
+        connection.id,
+        logger,
+        config.stockMagazynId,
+      ),
     };
+
+    if (config.drukarkaFiskalnaId !== undefined) {
+      adapters.fiscalization = new SubiektFiscalizationAdapter(
+        config.bridgeBaseUrl,
+        {
+          drukarkaFiskalnaId: config.drukarkaFiskalnaId,
+          stanowiskoKasoweId: config.defaultStanowiskoKasoweId,
+        },
+        logger,
+        fetchImpl,
+        token,
+        config.timeoutMs,
+      );
+    }
+
+    return adapters;
   }
 
   /**
@@ -83,9 +168,18 @@ export class SubiektAdapterFactory {
     let timeoutMs: number | undefined;
     if (config.timeoutMs !== undefined) {
       const raw = config.timeoutMs;
-      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1000 || raw > 120000) {
+      // #3365 review: the ceiling has to admit the shared default. It was
+      // 120000 while `SUBIEKT_BRIDGE_TIMEOUT_MS` is 150000, so an operator could
+      // not configure the value the clients already use by default - the knob
+      // refused the very number it was meant to let them tune around.
+      if (
+        typeof raw !== 'number' ||
+        !Number.isInteger(raw) ||
+        raw < 1000 ||
+        raw > SUBIEKT_BRIDGE_TIMEOUT_MS
+      ) {
         throw new SubiektConfigException(
-          'timeoutMs must be an integer between 1000 and 120000',
+          `timeoutMs must be an integer between 1000 and ${SUBIEKT_BRIDGE_TIMEOUT_MS}`,
           'timeoutMs',
           raw,
         );
@@ -114,6 +208,11 @@ export class SubiektAdapterFactory {
       config.defaultStanowiskoKasoweId,
       'defaultStanowiskoKasoweId',
     );
+    const drukarkaFiskalnaId = this.parsePositiveIntField(
+      config.drukarkaFiskalnaId,
+      'drukarkaFiskalnaId',
+    );
+    const stockMagazynId = this.parsePositiveIntField(config.stockMagazynId, 'stockMagazynId');
 
     const parsed: SubiektConnectionConfig = { bridgeBaseUrl };
     if (timeoutMs !== undefined) parsed.timeoutMs = timeoutMs;
@@ -122,6 +221,8 @@ export class SubiektAdapterFactory {
     if (defaultStanowiskoKasoweId !== undefined) {
       parsed.defaultStanowiskoKasoweId = defaultStanowiskoKasoweId;
     }
+    if (drukarkaFiskalnaId !== undefined) parsed.drukarkaFiskalnaId = drukarkaFiskalnaId;
+    if (stockMagazynId !== undefined) parsed.stockMagazynId = stockMagazynId;
     return parsed;
   }
 

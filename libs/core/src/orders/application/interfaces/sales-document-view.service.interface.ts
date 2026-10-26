@@ -20,9 +20,36 @@
  * @module libs/core/src/orders/application/interfaces
  * @see docs/architecture/adrs/065-sales-document-read-surface.md
  */
+import type { FiscalArtefact } from '@openlinker/core/fiscalization';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentListFilters,
+  SalesDocumentListPage,
+  SalesDocumentListPagination,
+} from '../../domain/types/sales-document-list.types';
 
 export interface ISalesDocumentViewService {
+  /**
+   * Cross-order operational list (#3306) - `GET /sales-documents`. Unlike
+   * {@link getForOrders}, which projects a caller-supplied set of order ids,
+   * this walks every order that has AT LEAST ONE invoice or
+   * fiscal-registration record, newest-first, keyset-paginated.
+   *
+   * Merges two independently keyset-paginated sources
+   * (`IInvoiceService.listInvoicesKeyset`,
+   * `IFiscalRegistrationService.listRegistrationsKeyset`) in application
+   * code - never a SQL `UNION` - via the pure
+   * `mergeSalesDocumentPages` helper, which is what keeps the merge correct
+   * under concurrent inserts (see that function's own docblock). Each
+   * returned row's duplicate-order signal
+   * (`SalesDocumentListItem.otherRecordCount`) reuses the SAME
+   * `groupRankedRecords` grouping `getForOrders` uses internally, batched
+   * over just the orders on this page.
+   */
+  listSalesDocuments(
+    filters: SalesDocumentListFilters,
+    pagination: SalesDocumentListPagination,
+  ): Promise<SalesDocumentListPage>;
   /**
    * The sales-document projection for each of `orderIds`, keyed by order id.
    *
@@ -41,6 +68,12 @@ export interface ISalesDocumentViewService {
    * inventing an all-null entry would let a caller render a document panel for
    * an order OpenLinker has never seen.
    *
+   * `matchedRule` is ALWAYS `null` here (#3186 review): the "Why this kind?"
+   * disclosure is a detail-only read — the #2349/#2350 convention — so this
+   * path neither carries a conditions array per row nor issues the extra rule
+   * read. A caller must therefore never infer "no rule decided this order's
+   * kind" from this read; only {@link getForOrder} answers that.
+   *
    * Duplicate ids are collapsed. Returns an empty map for an empty input.
    */
   getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>>;
@@ -55,6 +88,27 @@ export interface ISalesDocumentViewService {
    * they stop agreeing. `null` is the caller's 404, never an all-null
    * projection - an order OpenLinker has never seen has no document state to
    * describe.
+   *
+   * The ONE field that differs from the batch read is `matchedRule`, which only
+   * this path resolves (#3186 review) — one shared assembly with one flag, not
+   * a second path, so nothing else can drift between the row and the panel.
    */
   getForOrder(orderId: string): Promise<SalesDocumentView | null>;
+
+  /**
+   * The one artefact of the order's registered fiscal receipt that a person can
+   * be handed, WITH its payload (#3646) - or `null` when the order's document is
+   * not a registered receipt, or the receipt produced nothing that can be
+   * handed over.
+   *
+   * The only read here that carries artefact `content`, and deliberately a
+   * separate method: {@link getForOrders} decides what to OFFER and must stay
+   * payload-free, while this serves what was offered. Both read the SAME
+   * winning record, and the artefact is chosen by `selectHandoverArtefact` -
+   * the rule the offer side applies to the summaries - so the two cannot
+   * disagree about which artefact is meant.
+   *
+   * Still a read: it registers nothing and asks no provider anything.
+   */
+  getReceiptHandoverArtefact(orderId: string): Promise<FiscalArtefact | null>;
 }

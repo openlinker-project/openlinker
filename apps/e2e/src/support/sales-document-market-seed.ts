@@ -28,7 +28,7 @@
  *
  * @module support
  */
-import { Client } from 'pg';
+import pg from 'pg';
 import { resolveEnv } from '../config/env';
 import { assertSeedableDatabase } from './assert-seedable-database';
 
@@ -72,7 +72,7 @@ export async function seedSalesDocumentMarketOrders(): Promise<void> {
   // is not obviously a disposable stack unless the operator opted in.
   assertSeedableDatabase('seedSalesDocumentMarketOrders');
   const env = resolveEnv();
-  const client = new Client({ connectionString: env.databaseUrl });
+  const client = new pg.Client({ connectionString: env.databaseUrl });
   await client.connect();
   try {
     await client.query('BEGIN');

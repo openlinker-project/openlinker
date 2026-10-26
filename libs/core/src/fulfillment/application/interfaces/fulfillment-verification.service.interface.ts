@@ -32,9 +32,16 @@
  * @module libs/core/src/fulfillment/application/interfaces
  */
 import type {
+  CompleteInput,
+  CompleteResult,
+  ParcelVerificationEvent,
   ParcelVerificationState,
   ReopenParcelInput,
   ReopenParcelResult,
+  UndoCompletionInput,
+  UndoCompletionResult,
+  UndoLastVerificationInput,
+  UndoLastVerificationResult,
   VerifyUnitInput,
   VerifyUnitResult,
 } from '../../domain/types/fulfillment-verification.types';
@@ -71,4 +78,67 @@ export interface IFulfillmentVerificationService {
    * nobody knows which unit was wrong.
    */
   reopenParcel(input: ReopenParcelInput): Promise<ReopenParcelResult>;
+
+  /**
+   * Undo the single most recent scan on an OPEN parcel (#3405) — a lighter
+   * correction than `reopenParcel`, offered inline beside the line a packer
+   * just scanned rather than the full close-then-reopen ceremony.
+   *
+   * Refuses `parcel-closed` rather than reopening the box as a side effect:
+   * a closed parcel already went through D18's silent auto-close, and undoing
+   * INTO that state without the operator ever seeing a reopen confirmation
+   * would let a packer un-close a box with no record that they meant to.
+   *
+   * Refuses `nothing-to-undo` when no active verification exists to void.
+   * Never throws for either — both are ordinary answers a packer is shown.
+   */
+  voidLastVerification(
+    input: UndoLastVerificationInput
+  ): Promise<UndoLastVerificationResult>;
+
+  /**
+   * The whole per-unit ledger for one work, newest first (#3411) — a pure
+   * passthrough of the repository read, for a "recent activity" log.
+   */
+  listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]>;
+
+  /**
+   * Stamp the FIRST time this parcel's invoice was printed (pack-bench completion). A pure
+   * passthrough to the repository's fill-in-when-NULL claim — `false` means
+   * it was already recorded, an ordinary outcome the caller need not act on.
+   *
+   * Never throws for an unknown work id: the caller (a document download)
+   * already resolved the work to serve the document, so a passthrough
+   * `false` is indistinguishable from, and as harmless as, a benign reprint.
+   */
+  markInvoicePrinted(workId: string, at: Date): Promise<boolean>;
+
+  /** The label sibling of `markInvoicePrinted` (pack-bench completion). Same contract. */
+  markLabelPrinted(workId: string, at: Date): Promise<boolean>;
+
+  /**
+   * Declare a parcel finished and off the bench (pack-bench completion) — a distinct,
+   * explicit completion act from D18's silent auto-close.
+   *
+   * Never throws for a modelled refusal: a not-yet-closed parcel, an
+   * already-completed one and a stale token are all ordinary answers a
+   * packer must be shown, not errors.
+   *
+   * @throws {FulfillmentWorkNotFoundError} the work vanished between the
+   *   failed claim and the re-read that explains it — not reachable through
+   *   any shipped caller, which always resolves the work first.
+   */
+  complete(input: CompleteInput): Promise<CompleteResult>;
+
+  /**
+   * Take back a declared completion (#3340 follow-up) — the undo `complete`
+   * needed. Unlike `reopenParcel`, this touches ONLY `completedAt` /
+   * `completedByUserId`: the box itself was correctly packed, so the
+   * verification ledger and `parcelClosedAt` are untouched.
+   *
+   * Never throws for a modelled refusal: a parcel that was never completed
+   * and a stale token are both ordinary answers a caller must be shown, not
+   * errors.
+   */
+  undoCompletion(input: UndoCompletionInput): Promise<UndoCompletionResult>;
 }

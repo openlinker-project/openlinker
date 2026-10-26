@@ -28,7 +28,10 @@ export interface ProductVariant {
   /** Populated by the repository on load; adapters/drafts may omit. */
   updatedAt?: Date;
   /**
-   * Master price for this variant. Persisted on the variants table.
+   * Master price for this variant: GROSS, for the master connection's sales
+   * country, excluding promotions - the same contract as `Product.price`
+   * (ADR-077). Absent when the master could not state a gross figure; never a net
+   * one. Persisted on the variants table.
    * Optional at the domain level so adapter drafts and test factories may
    * omit it; the repository / DTO layer normalises `undefined ↔ null` at
    * the persistence and wire boundaries. Do not assign `null` directly to
@@ -38,6 +41,20 @@ export interface ProductVariant {
   price?: number;
   /** Master-derived, not persisted on the variants table. */
   weight?: number;
+  /**
+   * Operator-authored PHYSICAL master data (#3403, mockup-parity epic
+   * #3401), PERSISTED on `product_variants` — distinct from `weight` above,
+   * which is master-derived and read fresh per publish call rather than
+   * stored. Captured at product setup and displayed read-only at the pack
+   * bench; never a live scale/measuring capture. `undefined`/`null` means
+   * "not recorded", never zero. Units match `weight`'s own sibling usage in
+   * `libs/core/src/shipping` (`ParcelSpec.weightGrams`, grams) and
+   * millimetres for the three dimensions.
+   */
+  weightGrams?: number | null;
+  lengthMm?: number | null;
+  widthMm?: number | null;
+  heightMm?: number | null;
   /**
    * Soft-mark set when the variant is deleted at the master — absent from the
    * master's `getProductVariants` response, or the product itself 404s (#1599).
@@ -49,6 +66,14 @@ export interface ProductVariant {
   isStale?: boolean;
   /** Timestamp of the most recent stale-marking; `null`/absent when live. */
   staleAt?: Date | null;
+  /**
+   * Set by the ADR-077 migration on variants whose master used to report NET
+   * catalogue prices. The first sync that records a price for the variant
+   * clears it, and while it is set a price change is reported as a
+   * tax-basis correction (never auto-applied to a sales channel). Read-only at
+   * the domain level: the repository owns both writes.
+   */
+  priceBasisPending?: boolean;
   /**
    * Per-variant tax-rate OVERRIDE (#2054). Absent means "no opinion" - the
    * product's rate applies - never "no rate". Only a master that keys tax per

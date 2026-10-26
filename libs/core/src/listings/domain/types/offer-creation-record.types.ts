@@ -73,6 +73,14 @@ export interface OfferCreationError {
 }
 
 /**
+ * OL-defined `OfferCreationError.code` for a record settled because its
+ * creation job died (#3505, G01-2) — distinct from every platform code, so a
+ * reader can tell "the marketplace refused" from "nothing will run this
+ * create again, and its outcome is unknown".
+ */
+export const OFFER_CREATION_JOB_DEAD_ERROR_CODE = 'OFFER_CREATION_JOB_DEAD';
+
+/**
  * Input contract for `OfferCreationRecordRepositoryPort.create`.
  *
  * Dedicated input type (not `Omit<OfferCreationRecord, ...>`) so the write

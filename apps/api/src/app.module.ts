@@ -105,6 +105,16 @@ import { RequestPriorityModule } from './http/request-priority.module';
     ProductsApiModule,
     CustomersApiModule,
     ListingsApiModule,
+    // #3143/#3159 — PRICE_CHANGE_OBSERVER_TOKEN (owned by @openlinker/core/products)
+    // is deliberately NOT bound here. `MasterProductSyncService`'s job
+    // handlers — the only callers of `syncFromMaster*` that could ever
+    // exercise the observer — run exclusively in the worker (`apps/worker`);
+    // the API process only ENQUEUES `master.product.sync*` jobs, it never
+    // executes them. Binding the token here would be dead wiring with a
+    // false justification (an earlier version of this comment claimed a
+    // "manually-triggered master-product-sync from the API surface", which
+    // does not exist anywhere in `apps/api/src`). See the worker's
+    // `PriceChangeObserverBindingModule` for the real (and only) binding.
     CursorsModule,
     MappingsApiModule,
     ContentModule, // Product content draft buffer + reconcile + publish (#338)

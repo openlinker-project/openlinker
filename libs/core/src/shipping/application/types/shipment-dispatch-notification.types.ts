@@ -35,9 +35,16 @@ export interface ShipmentDispatchNotificationResult {
   /**
    * - `notified` — the shipment was `generated` and the notify ran.
    * - `skipped-not-generated` — the status-gate skipped it (already dispatched/terminal).
+   * - `skipped-inbound` — the shipment is a RETURN (#2373 `direction`), so there is
+   *   nothing to tell the order's source: a return label moving goods back to the
+   *   seller is not the seller dispatching the order. Reported rather than silently
+   *   folded into `skipped-not-generated`, because the two say different things to
+   *   an operator reading a job result — one is "already done", this one is "never
+   *   applicable". See the guard's own comment at the call site for why this is
+   *   checked here rather than relied on upstream.
    * - `shipment-not-found` — no shipment for the id.
    */
-  outcome: 'notified' | 'skipped-not-generated' | 'shipment-not-found';
+  outcome: 'notified' | 'skipped-not-generated' | 'skipped-inbound' | 'shipment-not-found';
   source: DispatchNotificationSourceOutcome;
   destinations: ReadonlyArray<DispatchNotificationDestinationOutcome>;
 }

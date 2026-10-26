@@ -21,7 +21,30 @@
  */
 import type { DispatchCarrierHint } from './dispatch-carrier-hint.types';
 
-export const OrderLifecycleEventTypeValues = ['dispatched', 'cancelled'] as const;
+/**
+ * `'delivered'` and `'in-progress'` (#3526) join the two founding members.
+ *
+ * `'delivered'` is fired by `ShipmentStatusSyncService` on the delivered
+ * transition of a shipment's own carrier tracking — see that service for the
+ * at-most-once reasoning (a status writeback is idempotent on every shipped
+ * adapter, unlike the non-idempotent waybill-attach call `dispatched` also
+ * carries, so it does not earn a dedicated claim column the way
+ * `Shipment.waybillRelayedAt` does).
+ *
+ * `'in-progress'` (work accepted / picking) is vocabulary-only in this slice
+ * — every adapter maps or declines it, but nothing fires it yet. This mirrors
+ * the programme's established posture of shipping a seam ahead of its
+ * consumer (`fulfillment-progress.service.interface.ts`'s own header states
+ * the same thing for its `'picked'` event): the natural future caller is
+ * #2400's fulfilment-progress ingestion the day it needs to relay picking
+ * status outward, which is a decision for that slice, not this one.
+ */
+export const OrderLifecycleEventTypeValues = [
+  'dispatched',
+  'cancelled',
+  'delivered',
+  'in-progress',
+] as const;
 export type OrderLifecycleEventType = (typeof OrderLifecycleEventTypeValues)[number];
 
 /**
@@ -61,6 +84,16 @@ export type OrderLifecycleEvent =
       type: 'cancelled';
       externalOrderId: string;
       reason?: string;
+    }
+  | {
+      type: 'delivered';
+      externalOrderId: string;
+      /** The carrier's own delivery instant, when known — never OL's clock. */
+      deliveredAt?: Date;
+    }
+  | {
+      type: 'in-progress';
+      externalOrderId: string;
     };
 
 /**

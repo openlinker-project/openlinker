@@ -32,6 +32,7 @@ have no order-create API — noted per-doc as an environment limitation, not a g
 | 5 | [`05-inpost.md`](./05-inpost.md) | Shipping label generation | ✅ Confirmed — label→download→dispatch clean; Part C (tracking) is a sandbox-side limitation, researched (InPost-side, not OL) |
 | 6 | [`06-dpd.md`](./06-dpd.md) | Shipping label generation | ✅ Confirmed — connection created + Active, real waybill generated (`0000876013430Q`), SOAP tracking path verified; 4 findings filed (#1775, #1777, #1778 fixed by #1781; #1776 open, promoted to an epic) |
 | 7 | [`07-ksef.md`](./07-ksef.md) | Invoicing + regulatory clearance | ✅ Confirmed — full issue→clearance→UPO cycle verified against real KSeF; found & fixed #1447 (missing Test connection) |
+| 9 | [`09-subiekt-gt.md`](./09-subiekt-gt.md) | ERP: catalogue, orders, documents, stock | ⚠️ Fifth round on PR #3365 — **11 of 15 pass, up from 7**. `published-product-order.spec.ts` ran for the first time in its existence and its identity assertion passes: an order for a published product resolves back to the SAME Subiekt product, confirmed in the database. The bridge's `dok_Typ` codes, warehouse ids and bank-account owner column were MEASURED live and the five prefix-matching filters retired. Two things stay unproven and are named as such: the document-and-stock link (the stand's destination fan-out is queued behind a lane cap) and the ZK spec, which still uses the catalogue master's own driver product — Part L |
 
 ## Environment (as used in this run)
 

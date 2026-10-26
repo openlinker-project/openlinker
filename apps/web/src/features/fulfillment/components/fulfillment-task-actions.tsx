@@ -52,6 +52,12 @@ export interface FulfillmentTaskActionsProps {
   onReleaseHold: (hold: FulfillmentTaskHold) => void;
   /** `force_cancel` — opens the confirmation. */
   onForceCancel: () => void;
+  /**
+   * `sm` (28 px, the default) for the dense surfaces — the board's overflow
+   * menu and the order panel's card; `md` (32 px) for the task detail's action
+   * card, where the mockup draws full-size buttons (#3096).
+   */
+  size?: 'sm' | 'md';
 }
 
 export function FulfillmentTaskActions({
@@ -63,6 +69,7 @@ export function FulfillmentTaskActions({
   onHold,
   onReleaseHold,
   onForceCancel,
+  size = 'sm',
 }: FulfillmentTaskActionsProps): ReactElement | null {
   if (!visible || task.supportedActions.length === 0) return null;
 
@@ -75,7 +82,7 @@ export function FulfillmentTaskActions({
     <ReadOnlyLock key={key} active={readOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
       <Button
         tone={fulfillmentActionTone(action)}
-        className="button--sm"
+        className={size === 'sm' ? 'button--sm' : undefined}
         disabled={readOnly || busy}
         title={fulfillmentActionHint(action) ?? undefined}
         onClick={onClick}

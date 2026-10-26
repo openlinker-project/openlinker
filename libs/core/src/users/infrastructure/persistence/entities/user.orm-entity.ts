@@ -38,6 +38,42 @@ export class UserOrmEntity {
   @Column({ name: 'analytics_consent', type: 'boolean', default: false })
   analyticsConsent!: boolean;
 
+  /**
+   * Free-text label the packer types in for their own bench/printer (#3424,
+   * mockup-parity epic #3401) — e.g. "Bench 3 / Zebra ZD420". Config, never
+   * identity: it carries no authentication weight of its own (ADR-071
+   * rejects a station/device *principal* — no station token, no PIN, no
+   * badge), so this column is read-and-displayed only, exactly like a
+   * connection's own operator-authored `name`.
+   */
+  @Column({ name: 'pack_station_label', type: 'varchar', nullable: true })
+  packStationLabel!: string | null;
+
+  /**
+   * Best-effort online-presence heartbeat for the Assign Packing Work board
+   * (#3424). Bumped by the bench's own activity, never a login/session
+   * event — a signed-in-but-idle packer must read as offline after the
+   * presence window elapses. `null` means "never observed active".
+   */
+  @Column({ name: 'last_active_at', type: 'timestamptz', nullable: true })
+  lastActiveAt!: Date | null;
+
+  /**
+   * The person's name as an admin typed it at account creation (#3456), e.g.
+   * "Anna Kowalska". `null` for every account created another way; surfaces
+   * fall back to `username`, which stays the login.
+   */
+  @Column({ name: 'display_name', type: 'varchar', nullable: true })
+  displayName!: string | null;
+
+  /**
+   * Set when an admin creates the account with a one-time password (#3456);
+   * cleared by the user's own password change in the same statement that
+   * writes the new hash. `PasswordChangeRequiredGuard` enforces it.
+   */
+  @Column({ name: 'must_change_password', type: 'boolean', default: false })
+  mustChangePassword!: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

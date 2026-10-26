@@ -124,6 +124,7 @@ describe('BulkListingRetryService', () => {
       updateStatus: jest.fn(),
       updateExternalOfferId: jest.fn(),
       updateExternalIdAndStatus: jest.fn(),
+      markFailedIfPending: jest.fn(),
       findByBulkBatchId: jest.fn(),
       deleteById: jest.fn(),
       updateClassificationReport: jest.fn(),

@@ -124,4 +124,30 @@ describe('SalesDocumentRuleRepository', () => {
       });
     });
   });
+
+  describe('findByIds (#3186)', () => {
+    it('reads nothing for an empty input', async () => {
+      const ormRepository = { find: jest.fn() };
+      const repository = new SalesDocumentRuleRepository(
+        ormRepository as unknown as ConstructorParameters<typeof SalesDocumentRuleRepository>[0],
+      );
+
+      await expect(repository.findByIds([])).resolves.toEqual([]);
+      expect(ormRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('issues ONE query for every rule id in the batch', async () => {
+      const ormRepository = { find: jest.fn().mockResolvedValue([]) };
+      const repository = new SalesDocumentRuleRepository(
+        ormRepository as unknown as ConstructorParameters<typeof SalesDocumentRuleRepository>[0],
+      );
+
+      await repository.findByIds(['rule-1', 'rule-2']);
+
+      expect(ormRepository.find).toHaveBeenCalledTimes(1);
+      expect(ormRepository.find).toHaveBeenCalledWith({
+        where: { id: In(['rule-1', 'rule-2']) },
+      });
+    });
+  });
 });

@@ -15,7 +15,7 @@ import { SubiektConfigException } from '../domain/exceptions/subiekt-config.exce
 function makeConnection(overrides: Partial<{ config: Record<string, unknown>; credentialsRef: string }> = {}): Connection {
   return new Connection(
     'conn-1',
-    'subiekt' as never,
+    'subiekt-gt' as never,
     'Test',
     'active' as never,
     (overrides.config ?? { bridgeBaseUrl: 'http://192.168.1.10:5000' }) as never,
@@ -45,9 +45,19 @@ describe('createSubiektPlugin', () => {
       expect(subiektAdapterManifest.supportedCapabilities).toContain('Invoicing');
     });
 
-    it("adapterKey is 'subiekt.invoicing.v1' and platformType is 'subiekt'", () => {
-      expect(subiektAdapterManifest.adapterKey).toBe('subiekt.invoicing.v1');
-      expect(subiektAdapterManifest.platformType).toBe('subiekt');
+    it("adapterKey is 'subiekt.gt.v1' and platformType is 'subiekt-gt'", () => {
+      expect(subiektAdapterManifest.adapterKey).toBe('subiekt.gt.v1');
+      expect(subiektAdapterManifest.platformType).toBe('subiekt-gt');
+    });
+
+    // #3365 review (I12): the bridge-side /api/fiscalize endpoint has never
+    // been compiled or run against a real fiscal printer — advertising the
+    // capability here would make it operator-tickable and auto-issue-reachable
+    // (#2156) against an unverified endpoint, which ADR-042's exactly-once
+    // guarantee cannot honestly back yet. This must stay off until
+    // fiscalization-not-live-verified.md's steps are done.
+    it("supportedCapabilities does NOT include 'Fiscalization' (unverified live, #3365 review)", () => {
+      expect(subiektAdapterManifest.supportedCapabilities).not.toContain('Fiscalization');
     });
 
     it('createSubiektPlugin().manifest === subiektAdapterManifest (no drift)', () => {
@@ -61,16 +71,29 @@ describe('createSubiektPlugin', () => {
       configRegister: jest.Mock;
       testerRegister: jest.Mock;
       retryClassifierRegister: jest.Mock;
+      authFailureClassifierRegister: jest.Mock;
+      schedulerTaskRegister: jest.Mock;
     } {
       const configRegister = jest.fn();
       const testerRegister = jest.fn();
       const retryClassifierRegister = jest.fn();
+      const authFailureClassifierRegister = jest.fn();
+      const schedulerTaskRegister = jest.fn();
       const host = {
         connectionConfigShapeValidatorRegistry: { register: configRegister },
         connectionTesterRegistry: { register: testerRegister },
         retryClassifierRegistry: { register: retryClassifierRegister },
+        authFailureClassifierRegistry: { register: authFailureClassifierRegister },
+        schedulerTaskRegistry: { register: schedulerTaskRegister },
       } as unknown as HostServices;
-      return { host, configRegister, testerRegister, retryClassifierRegister };
+      return {
+        host,
+        configRegister,
+        testerRegister,
+        retryClassifierRegister,
+        authFailureClassifierRegister,
+        schedulerTaskRegister,
+      };
     }
 
     it('registers the config-shape validator under the adapterKey', () => {
@@ -101,6 +124,27 @@ describe('createSubiektPlugin', () => {
         expect.anything(),
       );
     });
+
+    it('registers the auth-failure classifier under the adapterKey (#3358)', () => {
+      const { host, authFailureClassifierRegister } = makeRegisterHost();
+      createSubiektPlugin().register?.(host);
+      expect(authFailureClassifierRegister).toHaveBeenCalledWith(
+        subiektAdapterManifest.adapterKey,
+        expect.anything(),
+      );
+    });
+
+    it('registers the bridge reachability sweep scheduler task (#3358)', () => {
+      const { host, schedulerTaskRegister } = makeRegisterHost();
+      createSubiektPlugin().register?.(host);
+      expect(schedulerTaskRegister).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'subiekt-bridge-reachability-sweep',
+          platformType: 'subiekt-gt',
+          jobType: 'subiekt.bridge.reachabilitySweep',
+        }),
+      );
+    });
   });
 
   describe('createCapabilityAdapter', () => {
@@ -127,9 +171,19 @@ describe('createSubiektPlugin', () => {
     });
 
     it('rejects for an unknown capability', async () => {
+      // ProductMaster is a real, supported capability as of the Subiekt GT
+      // multi-capability build (#3192-epic) - 'ShippingProviderManager' is
+      // never supported by this adapter and stays a genuine negative case.
       const plugin = createSubiektPlugin();
       await expect(
-        plugin.createCapabilityAdapter(makeConnection(), 'ProductMaster', makeHost()),
+        plugin.createCapabilityAdapter(makeConnection(), 'ShippingProviderManager', makeHost()),
+      ).rejects.toThrow();
+    });
+
+    it('rejects for Fiscalization when the connection has no drukarkaFiskalnaId configured', async () => {
+      const plugin = createSubiektPlugin();
+      await expect(
+        plugin.createCapabilityAdapter(makeConnection(), 'Fiscalization', makeHost()),
       ).rejects.toThrow();
     });
 

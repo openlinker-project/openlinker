@@ -4,7 +4,7 @@
  * #2413 reviewed all 76 `@AnyRole()` routes against the new `packer` role and
  * narrowed 45 of them to `@Roles('admin', 'operator', 'viewer')` — the same
  * audience they had, named explicitly so the fourth role is excluded by
- * construction. The 31 that remain are listed below, one per line.
+ * construction. The 32 that remain are listed below, one per line.
  *
  * ## Why an ALLOW-LIST and not a list of excluded controllers
  *
@@ -67,6 +67,10 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   // signed-in name, visible without opening a menu. Excluding it breaks A4.
   'AuthController.getMe',
   'AuthController.updateAnalyticsConsent',
+  // Replacing the one-time password an admin issued (#3456). The account that
+  // flow creates is typically a packer's, and the session is gated on the
+  // change until it happens, so excluding the role would lock that user out.
+  'AuthController.changePassword',
 
   // Item identity — what a packer scans against.
   'ProductsController.listProducts',
@@ -74,6 +78,13 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   'ProductsController.listVariantsByProduct',
   'ProductsController.getVariantSummary',
   'ProductsController.getTaxRateJournal',
+  // The picture of the thing. A packer matches what is in their hand against
+  // what is on the screen, and a catalogue photo is the fastest way to do
+  // that - which is the whole reason the bench renders one. It discloses the
+  // same product a packer may already read through `getProduct` beside it,
+  // in a different encoding, so it is strictly narrower than the route it
+  // accompanies rather than a new disclosure.
+  'ProductsController.getProductImage',
   'VariantsController.searchVariants',
 
   // The `/count` siblings of the three LIST reads above (#2943). Each answers ONE
@@ -153,8 +164,22 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // name, email and BOTH un-redacted addresses under the default
   // `OL_STORE_PII=true`, a superset of the customer register. This projection is
   // an explicit allowlist: a reference, a buyer name, the lines' catalogue
-  // identity and counts. No address, no email, no phone, no total, no price. A
-  // parcel routed to any other executor answers 404.
+  // identity and counts, and - since #3409 - the order total, its currency,
+  // the carrier and the ship-by deadline. No address, no email, no phone.
+  //
+  // The four commercial fields are a DELIBERATE widening, not a leak: every
+  // one of them is printed on the documents the packer is about to put in the
+  // box, so withholding them from the screen while handing them over on paper
+  // protected nothing and cost the packer the check that catches a wrong
+  // parcel. The line that matters is unchanged - a packer still cannot reach
+  // an address, a contact detail, or any order they are not packing.
+  //
+  // ADR-062 is NOT the authority for this list and must not be cited as one:
+  // its subject is what crosses to a PLUGIN (`RoutingInput`, `HostServices`,
+  // the router port), and it says nothing about what OpenLinker's own HTTP
+  // surfaces show a signed-in operator. This spec is that authority.
+  //
+  // A parcel routed to any other executor answers 404.
   'BenchParcelController.getParcel',
 
   // #2418, Surface E. The two writes a bench makes. Both are scoped to a parcel
@@ -163,6 +188,54 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // NO close route: the parcel closes on the last verification (D18).
   'BenchParcelController.verifyUnit',
   'BenchParcelController.reopenParcel',
+  // #3405, mockup-parity epic #3401. A lighter correction than reopen: undo
+  // the single most recent scan on an OPEN parcel, offered inline beside the
+  // line a packer just scanned. Scoped the same way as the two writes above —
+  // a parcel this bench may pack — and cannot reach a closed box, an order or
+  // a document.
+  'BenchParcelController.undoLastScan',
+  // #3406, widened by #3415. An ephemeral Redis TTL presence heartbeat,
+  // scoped exactly as `getParcel` scopes it. Discloses only another packer's
+  // MASKED name ("A. Kowalska") — never a user id, never an unmasked
+  // username — and only while that packer's own ping is fresh.
+  'BenchParcelController.pingPresence',
+  // #3411. A read: the verification ledger for one parcel, scoped exactly as
+  // getParcel scopes it. Carries no buyer PII of its own beyond what
+  // getParcel already discloses (a product name per entry).
+  'BenchParcelController.getActivity',
+  // #3412. A self-claim: can only ever assign the caller. Scoped exactly as
+  // getParcel scopes it, plus the ADR-074 lock.
+  'BenchParcelController.claimParcel',
+  // #3412. Server-picked "whatever's next" over the same sorted, filtered
+  // worklist listBenchWork returns; delegates to claimParcel for the actual
+  // write and re-check.
+  'BenchWorkController.claimNext',
+  // #3654. The ONE packer-reachable label WRITE: replace the label on this box
+  // with a different parcel size. Narrower than the /shipments/* routes it
+  // spares a packer a trip to an admin for: the body is parcel data only (global
+  // ValidationPipe whitelist + forbidNonWhitelisted, so no address or shipment
+  // id), the recipient is derived server-side from the order exactly as
+  // auto-dispatch derives it, and the route is work-scoped with no shipment id,
+  // so another order's shipment is unreachable. Serialised per work. It cannot
+  // issue an invoice or fiscal document (bench-never-issues.spec.ts). The packer
+  // still reaches no /shipments/* write directly (ADR-071: no new principal).
+  'BenchLabelController.replaceLabel',
+  // pack-bench completion. Declare a parcel finished and off the bench — the completion act
+  // after the last scan (label applied, invoice inside, box on the
+  // trolley). Scoped exactly as getParcel scopes it, plus the ADR-074 lock a
+  // scan already enforces; attributed to the verified token's own user, same
+  // as verifyUnit.
+  'BenchParcelController.completeParcel',
+  // #3415. The way back from that completion, and the reason it needs one: the
+  // only other route back was `reopenParcel` above, which UNPACKS the box, so a
+  // packer who tapped the wrong row had to re-scan a parcel that was packed
+  // correctly. It clears the completion and nothing else, is scoped exactly as
+  // `completeParcel` is - the same eligibility rule, the same ADR-074 lock -
+  // and is attributed to the verified token's own user.
+  'BenchParcelController.undoCompletion',
+  // #3413. Two reads, scoped exactly as listBenchWork scopes them.
+  'BenchWorkController.listPackedToday',
+  'BenchWorkController.getMetrics',
 
   // #2418, Surface F. The paper for THIS parcel, and the boxes that cannot go
   // out. `getDocuments` and `downloadInvoice` take a WORK id and no invoice id,
@@ -182,7 +255,23 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // else's paperwork. The asymmetry with `getParcel` is deliberate, not an
   // oversight.
   'BenchDocumentsController.downloadInvoice',
+  // #3646. The receipt sibling of `downloadInvoice`, granted for the same
+  // reason: the customer-facing e-receipt is the paper (or the link) the buyer
+  // is owed for this very box. Reached through the work and its own order only -
+  // no registration id - so it cannot be walked to another order's receipt, and
+  // it reads through the sales-document projection, never a fiscalization route.
+  'BenchDocumentsController.downloadReceipt',
   'BenchDocumentsController.listUnlabelled',
+  // #3415. The label, and it is granted for a NARROWER reason than the invoice
+  // above: the sheet goes on the outside of the box and `ShipmentResponseDto`
+  // carries no recipient, so the bytes disclose less than the invoice a packer
+  // is already trusted with. The route exists at all because the stamp that
+  // records the print used to live on the open `ShipmentController.downloadLabel`
+  // route, which carries no role check - so ANY viewer fetching the PDF to look
+  // at it marked the label printed, and that silenced the prompt warning a
+  // packer they had not printed it. Reached through the work, like its invoice
+  // sibling, so it cannot be walked to another parcel's label.
+  'BenchDocumentsController.downloadLabel',
 ];
 
 function walk(dir: string, out: string[] = []): string[] {

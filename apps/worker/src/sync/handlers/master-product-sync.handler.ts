@@ -98,6 +98,19 @@ export class MasterProductSyncHandler implements SyncJobHandler {
         return { outcome: 'business_failure', outcomeReason: 'master_deleted' };
       }
 
+      // #3143/#3159 review, SUGGESTION: `priceChangeObserverFailures` was
+      // computed by the service but never read here, so a permanently-failing
+      // detector produced `outcome: 'ok'` with nothing visible anywhere.
+      // Warn-only — never a business_failure — because the catalogue sync
+      // this job exists to run still succeeded; the failure is already
+      // logged at `error` per-variant by the service itself, this just makes
+      // the per-job total visible on the job's own log line.
+      if (result.priceChangeObserverFailures > 0) {
+        this.logger.warn(
+          `Master product sync: ${result.priceChangeObserverFailures} price-change observer call(s) failed and were NOT reported (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)}, internalProductId: ${result.internalProductId})`
+        );
+      }
+
       // #2263 (ADR-063): the shop is the authority, so a rate it just changed is
       // pushed onto the offers already selling under the old one. Strictly after
       // the sync and outside its try: a propagation failure must not turn a

@@ -12,6 +12,7 @@ import { SubiektInvoiceRejectedError } from '../../../domain/exceptions/subiekt-
 import { SubiektUnsupportedDocumentTypeError } from '../../../domain/exceptions/subiekt-unsupported-document-type.exception';
 import { SubiektConfigException } from '../../../domain/exceptions/subiekt-config.exception';
 import { SubiektBridgeAuthError } from '../../../domain/exceptions/subiekt-bridge-auth.exception';
+import { SubiektRejectedError } from '../../../bridge/subiekt-bridge.errors';
 
 describe('SubiektRetryClassifierAdapter', () => {
   const classifier = new SubiektRetryClassifierAdapter();
@@ -47,6 +48,14 @@ describe('SubiektRetryClassifierAdapter', () => {
   it('treats a bridge auth failure (401/403) as non-retryable', () => {
     expect(classifier.isNonRetryable(new SubiektBridgeAuthError(401))).toBe(true);
     expect(classifier.isNonRetryable(new SubiektBridgeAuthError(403))).toBe(true);
+  });
+
+  it('treats a RAW bridge business refusal as non-retryable', () => {
+    // It reaches the runner unwrapped from every adapter that does not
+    // translate it - the product, inventory and order-processor paths catch it
+    // only to test for specific conditions - so without this a plain "the
+    // bridge said no" spent the full ladder re-asking a settled question.
+    expect(classifier.isNonRetryable(new SubiektRejectedError('towar nie istnieje'))).toBe(true);
   });
 
   it('ABSTAINS (returns false) for non-Subiekt errors so sibling plugins keep their own retry policy', () => {

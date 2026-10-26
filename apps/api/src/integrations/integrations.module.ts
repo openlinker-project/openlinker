@@ -26,6 +26,13 @@ import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/
 // Safe for the same reason CoreListingsModule is: the core InventoryModule
 // imports the CORE IntegrationsModule, a different class from this one.
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
+// #3179 — ConnectionDiagnosticsService folds the connection's own
+// document-registration activity (fiscal receipts / invoices) into the
+// diagnostics read alongside sync_jobs, so it needs
+// FISCAL_REGISTRATION_SERVICE_TOKEN and INVOICE_SERVICE_TOKEN. No cycle:
+// neither core module imports this one.
+import { FiscalizationModule as CoreFiscalizationModule } from '@openlinker/core/fiscalization';
+import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { WebhooksCoreModule } from '@openlinker/core/webhooks';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { RateLimitModule } from '@openlinker/plugin-sdk';
@@ -33,6 +40,7 @@ import { WebhookDeliveryQueryService } from '../webhooks/application/services/we
 import { WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN } from '../webhooks/application/interfaces/webhook-delivery-query.service.interface';
 import { apiPlugins } from '../plugins';
 import { ConnectionController } from './http/connection.controller';
+import { ConnectionPricingSyncController } from './http/connection-pricing-sync.controller';
 import { AdapterController } from './http/adapter.controller';
 import { AllegroController } from './http/allegro.controller';
 import { SubiektController } from './http/subiekt.controller';
@@ -44,6 +52,10 @@ import { WebhookStatusService } from './application/services/webhook-status.serv
 import { WEBHOOK_STATUS_SERVICE_TOKEN } from './application/interfaces/webhook-status.service.interface';
 import { RateLimitStatusService } from './application/services/rate-limit-status.service';
 import { RATE_LIMIT_STATUS_SERVICE_TOKEN } from './application/interfaces/rate-limit-status.service.interface';
+import { ConnectionDiagnosticsService } from './application/services/connection-diagnostics.service';
+import { CONNECTION_DIAGNOSTICS_SERVICE_TOKEN } from './application/interfaces/connection-diagnostics.service.interface';
+import { ConnectionPricingSyncService } from './application/services/connection-pricing-sync.service';
+import { CONNECTION_PRICING_SYNC_SERVICE_TOKEN } from './application/interfaces/connection-pricing-sync.service.interface';
 import { DemoModeService } from '../auth/demo-mode.service';
 import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
 
@@ -54,6 +66,8 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     CoreInventoryModule, // #2407 routing enablement guard reads the location count
     IdentifierMappingModule,
     SyncModule, // Required for cursor repository
+    CoreFiscalizationModule, // #3179 — FISCAL_REGISTRATION_SERVICE_TOKEN for connection diagnostics
+    CoreInvoicingModule, // #3179 — INVOICE_SERVICE_TOKEN for connection diagnostics
     WebhooksCoreModule, // Webhook-delivery repository for the webhook-status projection (#1770)
     RedisConfigModule, // Required for OAuth state storage
     // ConnectionService depends on HTTP_TRANSPORT_FACTORY_TOKEN directly
@@ -65,7 +79,13 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     RateLimitModule,
     PluginRegistryModule.forRoot({ plugins: apiPlugins }),
   ],
-  controllers: [ConnectionController, AdapterController, AllegroController, SubiektController],
+  controllers: [
+    ConnectionController,
+    ConnectionPricingSyncController,
+    AdapterController,
+    AllegroController,
+    SubiektController,
+  ],
   providers: [
     ConnectionService,
     { provide: CONNECTION_SERVICE_TOKEN, useExisting: ConnectionService },
@@ -90,6 +110,12 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     // explicit import needed here.
     RateLimitStatusService,
     { provide: RATE_LIMIT_STATUS_SERVICE_TOKEN, useExisting: RateLimitStatusService },
+    // The connection-health read (#3179), composed here for the same reason the
+    // two above are: one app-layer service per composed read, controllers thin.
+    ConnectionDiagnosticsService,
+    { provide: CONNECTION_DIAGNOSTICS_SERVICE_TOKEN, useExisting: ConnectionDiagnosticsService },
+    ConnectionPricingSyncService,
+    { provide: CONNECTION_PRICING_SYNC_SERVICE_TOKEN, useExisting: ConnectionPricingSyncService },
     // Wired locally (mirrors SystemModule) — DemoModeService depends only on
     // the global ConfigService, so IntegrationsModule doesn't need AuthModule
     // just to gate demo-viewer config visibility (#1616 review fix).

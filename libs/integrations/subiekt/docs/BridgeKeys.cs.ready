@@ -1,0 +1,271 @@
+// BridgeKeys.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/BridgeKeys.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// afterwards so a reviewer can read what is actually running without leaving
+// the PR.
+//
+using System.Globalization;
+
+using System.Globalization;
+
+/// <summary>
+/// The bridge's pure decision functions, in one file with NO COM and NO SQL.
+///
+/// They live here so they can be unit-tested (PR #7 second review, finding 4).
+/// Every one of them has already produced a defect in review - a truncated key
+/// that deduplicated two different operations onto one, a cursor that walked
+/// past a whole day of orders, an address comparison that matched any buyer
+/// against a blank record - and each is a few lines of string handling that
+/// needs no Subiekt to exercise. The callers keep their names and delegate
+/// here, so no call site moved and there is exactly one implementation of each.
+/// </summary>
+public static class BridgeKeys
+{
+    /// <summary>Cut to what `dok_NrPelnyOryg` holds. TRUNCATES; see the callers'
+    /// docblocks for when that is safe and why it has not moved to the hash.</summary>
+    public static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+
+    /// <summary>Reduce a long, structured key to something the column can hold
+    /// WITHOUT discarding the part that varies. A hash, because these keys lead
+    /// with a fixed prefix and end with the id that tells them apart.</summary>
+    public static string ReduceIdempotencyKey(string key)
+    {
+        if (key.Length <= 30) return key;
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(hash).Substring(0, 30);
+    }
+
+    /// <summary>Parse a feed cursor. A bare date is accepted DELIBERATELY: that
+    /// is the format cursors stored before the pair existed carry, and refusing
+    /// them would restart every connection's feed from the beginning.</summary>
+    public static bool TryParseCursor(string cursor, out DateTime watermark, out int lastId)
+    {
+        watermark = default;
+        lastId = 0;
+        var bar = cursor.LastIndexOf('|');
+        if (bar < 0)
+            return DateTime.TryParse(cursor, CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark);
+
+        return DateTime.TryParse(cursor[..bar], CultureInfo.InvariantCulture, DateTimeStyles.None, out watermark)
+            && int.TryParse(cursor[(bar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out lastId);
+    }
+
+    /// <summary>Render the pair. Round-trips through TryParseCursor.</summary>
+    public static string FormatCursor(DateTime watermark, int lastId) =>
+        watermark.ToString("o", CultureInfo.InvariantCulture) + "|" + lastId.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The address truth table: at least one field CONFIRMED equal on
+    /// both sides, and no field CONTRADICTED. A false negative mints a duplicate
+    /// kontrahent; a false positive bills one person's document to another.</summary>
+    public static bool AddressesMatch(string wantKod, string wantMiasto, string storedKod, string storedMiasto)
+    {
+        var confirmed = false;
+        if (wantKod != "" && storedKod != "")
+        {
+            if (!string.Equals(wantKod, storedKod, StringComparison.OrdinalIgnoreCase)) return false;
+            confirmed = true;
+        }
+        if (wantMiasto != "" && storedMiasto != "")
+        {
+            if (!string.Equals(wantMiasto, storedMiasto, StringComparison.OrdinalIgnoreCase)) return false;
+            confirmed = true;
+        }
+        return confirmed;
+    }
+
+    /// <summary>The kontrahent symbol derived from a buyer's name: uppercased,
+    /// non-alphanumerics dropped, cut to 16.
+    ///
+    /// NOT a hash, and the difference matters: two customers with the SAME NAME
+    /// derive the same symbol, which is common rather than exotic for Polish
+    /// surnames. That is why a symbol match is verified against the address
+    /// rather than trusted, and why the address-less carve-out is a stated risk
+    /// rather than a safe shortcut.</summary>
+    public static string MakeSymbol(string name, string fallbackPrefix = "ZAM")
+    {
+        var baseSym = (name ?? "").ToUpperInvariant();
+        var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
+        return sym == "" ? fallbackPrefix + "-ANON" : sym;
+    }
+
+    /// <summary>A tax id reduced to its digits, for comparison only.
+    ///
+    /// `123-456-78-90` and `1234567890` are the same NIP written two ways, and
+    /// matching on the raw string made them two buyers, each minting its own
+    /// kontrahent. BOTH sides are reduced rather than assuming either is
+    /// clean - the stored one is whatever an operator typed years ago.</summary>
+    public static string DigitsOnly(string? value) =>
+        new string((value ?? "").Where(char.IsDigit).ToArray());
+
+    /// <summary>The identity truth table for a buyer who supplied NO address.
+    ///
+    /// PR #7 second review, finding 6. Accepting such a buyer on the symbol
+    /// alone merges every "Jan Kowalski" onto one kontrahent, and the harm
+    /// lands on a fiscal document billed to the wrong person - which the
+    /// operator cannot see from Subiekt. Refusing outright mints a fresh
+    /// kontrahent on every marketplace order that carries no invoice address,
+    /// which is the common case, not the exceptional one.
+    ///
+    /// So the phone decides, when there is one on BOTH sides: it is the only
+    /// discriminating field OpenLinker actually sends (`BridgeBuyer.telefon`).
+    /// Compared digits-only, because the stored side is whatever an operator
+    /// typed years ago. With no phone to compare, this returns FALSE and the
+    /// caller creates a new record - the reviewer's stated preference, and the
+    /// direction the carve-out's own comment already called the lesser harm.</summary>
+    public static bool AddresslessBuyerMatches(string wantTelefon, string storedTelefon)
+    {
+        var want = NationalPhoneDigits(wantTelefon);
+        var stored = NationalPhoneDigits(storedTelefon);
+        // NO PHONE ON EITHER SIDE falls back to accepting the symbol match,
+        // which is the pre-review behaviour - and the live evidence says it has
+        // to. This Subiekt build has no `Telefon` property at all (setting it
+        // raises "'System.__ComObject' does not contain a definition for
+        // 'Telefon'"), so no phone can be STORED, so requiring one would refuse
+        // every address-less buyer and mint a kontrahent per order: the
+        // unbounded-duplicates defect, introduced by the fix for a rarer one.
+        //
+        // So the phone TIGHTENS the match where the data exists and never
+        // loosens or replaces it. Where both sides have one they must agree;
+        // where one side has none there is nothing to contradict.
+        if (want == "" || stored == "") return true;
+        return want == stored;
+    }
+
+    /// <summary>A telephone reduced to the digits that identify the subscriber.
+    ///
+    /// The LAST NINE, because a Polish number is nine digits and what varies in
+    /// front of them is the country prefix: `+48 601 234 567` and `601234567`
+    /// are the same person, and comparing all the digits made them two buyers -
+    /// caught by this function's own test before it shipped. Anything shorter
+    /// than nine is compared whole rather than padded, since a short string is
+    /// more likely a partial entry than a national number.</summary>
+    public static string NationalPhoneDigits(string? value)
+    {
+        var digits = DigitsOnly(value);
+        return digits.Length <= 9 ? digits : digits.Substring(digits.Length - 9);
+    }
+
+    /// <summary>What a Basic header authorises, as a PURE decision.
+    ///
+    /// Extracted so the ordering can be tested (PR #7 second review, finding 4).
+    /// `Program.cs` is a file of top-level statements with COM behind it, so it
+    /// cannot be hosted by `WebApplicationFactory` - but the property that
+    /// matters is not the pipeline, it is that UNCONFIGURED is decided BEFORE
+    /// the comparison. With blank credentials an equality check would happily
+    /// match a request that also sent blanks, so an unconfigured bridge would
+    /// be an OPEN one: the direction a missing credential must never fail in.
+    ///
+    /// Returns the reason rather than a bool, so a caller can tell a malformed
+    /// header (401, but a different message) from a wrong password.</summary>
+    public enum BasicAuthOutcome { NotConfigured, Missing, Malformed, WrongCredentials, Allowed }
+
+    public static BasicAuthOutcome DecideBasicAuth(
+        bool configured, string? header, string user, string pass,
+        Func<string, string, bool> equals)
+    {
+        // FIRST, before anything is compared.
+        if (!configured) return BasicAuthOutcome.NotConfigured;
+        var h = header ?? "";
+        if (!h.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase)) return BasicAuthOutcome.Missing;
+
+        var payload = h.Substring(6).Trim();
+        var buffer = new byte[h.Length];
+        if (!Convert.TryFromBase64String(payload, buffer, out var written))
+            return BasicAuthOutcome.Malformed;
+
+        var raw = System.Text.Encoding.UTF8.GetString(buffer, 0, written);
+        var i = raw.IndexOf(':');
+        if (i <= 0) return BasicAuthOutcome.Malformed;
+        return equals(raw.Substring(0, i), user) && equals(raw.Substring(i + 1), pass)
+            ? BasicAuthOutcome.Allowed
+            : BasicAuthOutcome.WrongCredentials;
+    }
+
+    /// <summary>
+    /// The OpenLinker customer-id prefix. Anything else found in the custom
+    /// field the bridge shares with the operator is THEIR data and is never
+    /// read as a claim.
+    /// </summary>
+    public const string OlBuyerIdPrefix = "ol_customer_";
+
+    /// <summary>
+    /// Could this value be an OpenLinker customer id at all?
+    ///
+    /// The one guard that makes a shared column safe. It has to answer false
+    /// for an operator's own note in BOTH directions: such a value must not
+    /// MATCH a buyer, and - the half that actually bites - must not read as a
+    /// RIVAL claim either, which would refuse a card the buyer legitimately
+    /// owns and mint a duplicate on every order.
+    /// </summary>
+    public static bool LooksLikeOlBuyerId(string? value)
+        => value is not null
+           && value.Length > OlBuyerIdPrefix.Length
+           && value.StartsWith(OlBuyerIdPrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// The `kh__Kontrahent` column an operator-configured field name refers to,
+    /// or null when it is not one of `Pole1`..`Pole8`.
+    ///
+    /// THIS IS ALSO THE INJECTION DEFENCE. A column name cannot be a SQL
+    /// parameter, so the value is interpolated into the statement text; null
+    /// means no statement is built at all. Nothing else may widen it.
+    ///
+    /// Null deliberately does not degrade to a default column. An operator
+    /// naming another field is most likely doing it BECAUSE the default is
+    /// occupied, so a fallback would write into exactly the data they were
+    /// steering away from.
+    /// </summary>
+    public static string? ResolveKontrahentOlIdColumn(string? configuredField)
+    {
+        var f = (configuredField ?? "").Trim();
+        for (var n = 1; n <= 8; n++)
+            if (string.Equals(f, "Pole" + n, StringComparison.OrdinalIgnoreCase))
+                return "kh_Pole" + n;
+        return null;
+    }
+
+    /// <summary>
+    /// May a candidate be accepted on the NAME-DERIVED SYMBOL ALONE, when the
+    /// buyer supplied no address and no phone can be compared?
+    ///
+    /// The symbol is not an identity - it is the buyer's name uppercased and
+    /// cut to 16 characters - so accepting on it alone means every Jan Kowalski
+    /// resolves to one kontrahent. Both answers cost something and the caller
+    /// picks which cost it takes:
+    ///
+    ///   ACCEPT (refuseSymbolOnly = false) is the ORDER path. Refusing there
+    ///   mints a kontrahent on every marketplace order that carries no invoice
+    ///   address - the common case, not the exception - which is the unbounded
+    ///   duplicates defect. Measured live: kontrahent 102 then 103 for one
+    ///   buyer upserted twice. That path also has `olBuyerId` now, consulted
+    ///   before any symbol is reached, so the carve-out is the last resort
+    ///   rather than the only rule.
+    ///
+    ///   REFUSE (refuseSymbolOnly = true) is the INVOICE path, which carries no
+    ///   such identifier: `IssueInvoiceCommand` has no customer id, so a symbol
+    ///   match is all there would be. The document is FISCAL and a buyer with
+    ///   no address at all is unusual on one, so the arithmetic flips - a
+    ///   duplicate an operator can merge beats a document billed to whoever
+    ///   shares the name.
+    ///
+    /// IT TAKES NO PHONE ARGUMENT, and that is a correction rather than an
+    /// omission (PR #3365 review). It had a `phoneComparable` parameter whose
+    /// only call site passed a hardcoded `false` - it sits inside the
+    /// `phoneColumn is null || wantTelefon == ""` branch - so the `true` arm was
+    /// unreachable, and it was the arm that would have bypassed
+    /// `refuseSymbolOnly` on the invoice path too. The name invited the wrong
+    /// reading as well: COMPARABLE is not MATCHED, and accepting because a phone
+    /// exists on both sides rather than because the two agreed is exactly the
+    /// false positive the invoice refusal exists to prevent. The real comparison
+    /// happens below this in `MatchesAddress` and never consults this function,
+    /// so a parameter that could only ever be satisfied by presence had no
+    /// honest caller and is gone.
+    /// </summary>
+    public static bool AcceptsSymbolOnlyMatch(bool refuseSymbolOnly) => !refuseSymbolOnly;
+}

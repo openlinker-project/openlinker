@@ -44,6 +44,28 @@ describe('OrderRecord.paymentStatus', () => {
   });
 });
 
+describe('OrderRecord.status (#1596)', () => {
+  it.each(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])(
+    'returns the recognised order status %s from the snapshot',
+    (status) => {
+      expect(makeRecord({ status }).status).toBe(status);
+    },
+  );
+
+  it('returns undefined when the snapshot has no status key', () => {
+    expect(makeRecord({}).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is an unrecognised string', () => {
+    expect(makeRecord({ status: 'archived' }).status).toBeUndefined();
+  });
+
+  it('returns undefined when status is a non-string value', () => {
+    expect(makeRecord({ status: 42 }).status).toBeUndefined();
+    expect(makeRecord({ status: null }).status).toBeUndefined();
+  });
+});
+
 describe('OrderRecord.codToCollect (#1435)', () => {
   it('returns the sourced amount when the snapshot carries a well-formed pair', () => {
     expect(makeRecord({ codToCollect: { amount: '510.94', currency: 'PLN' } }).codToCollect).toEqual({
@@ -141,6 +163,50 @@ describe('OrderRecord.dispatchByEstimated (#1776)', () => {
   it('returns false when estimated is a truthy non-boolean (strict === true)', () => {
     expect(makeRecord({ dispatchTime: { estimated: 'true' } }).dispatchByEstimated).toBe(false);
     expect(makeRecord({ dispatchTime: { estimated: 1 } }).dispatchByEstimated).toBe(false);
+  });
+});
+
+describe('OrderRecord.orderItems (#3171)', () => {
+  const item = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: 'oi_1',
+    productId: 'ol_product_1',
+    quantity: 2,
+    price: 189,
+    sku: 'EARB-01',
+    ...over,
+  });
+
+  it('returns the snapshot lines in the document order a correction addresses', () => {
+    const record = makeRecord({
+      items: [item({ id: 'oi_1' }), item({ id: 'oi_2', price: 179 })],
+    });
+
+    expect(record.orderItems.map((line) => line.id)).toEqual(['oi_1', 'oi_2']);
+  });
+
+  it('returns an empty array when the snapshot carries no items', () => {
+    expect(makeRecord({}).orderItems).toEqual([]);
+  });
+
+  it('returns an empty array when items is not an array', () => {
+    expect(makeRecord({ items: { id: 'oi_1' } }).orderItems).toEqual([]);
+  });
+
+  it.each([
+    ['a missing id', item({ id: undefined })],
+    ['a blank id', item({ id: '' })],
+    ['a missing productId', item({ productId: undefined })],
+    ['a non-numeric quantity', item({ quantity: '2' })],
+    ['a null price', item({ price: null })],
+    ['a non-finite price', item({ price: Number.NaN })],
+    ['a non-object entry', 'oi_1'],
+  ])('drops a line with %s rather than coercing it', (_label, malformed) => {
+    // A partial line is worse than a missing one: consumers join on `id` and do
+    // arithmetic on `quantity` / `price`, so `undefined` in either would resolve
+    // or compute wrong rather than not at all.
+    const record = makeRecord({ items: [item({ id: 'oi_ok' }), malformed] });
+
+    expect(record.orderItems.map((line) => line.id)).toEqual(['oi_ok']);
   });
 });
 

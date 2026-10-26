@@ -95,11 +95,15 @@ jobs:
       # pre-merge (#1020). Forced refspec tolerates a stale ref on reused
       # self-hosted workspaces; main is never force-pushed.
       #
+      # check-adr-numbers.mjs (#2082) depends on this same ref too — it's the
+      # baseline for the cross-PR ADR-number-collision guard. Removing this
+      # step silently degrades BOTH invariants, not just the migration one.
+      #
       # Guarded on `git` being present: some self-hosted runners have no git
       # binary (actions/checkout then uses its tarball/API fallback), where a
       # bare `git fetch` would exit 127 and fail the job. When git is absent the
       # guard skips gracefully (it can't run without git anyway — see #662/#557).
-      - name: Fetch origin/main (baseline for migration-ordering invariant)
+      - name: Fetch origin/main (baseline for migration-ordering + ADR-number invariants)
         run: |
           if command -v git >/dev/null 2>&1; then
             git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
@@ -112,6 +116,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -133,9 +138,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
+      - name: Type-check the integration tests
+        # `tsconfig.type-check.json` excludes `test`, so until #3263 the only
+        # thing type-checking these files was ts-jest doing it on every run -
+        # the 11.9 s per-file floor that change removes. Without this step the
+        # tests would be type-checked nowhere at all.
+        #
+        # A separate step rather than a widened `pnpm type-check`, so a failure
+        # here names the test tier rather than looking like a src regression.
+        # It runs in this already-parallel job, so it costs nothing on the
+        # critical path.
+        run: |
+          pnpm --filter @openlinker/api exec tsc -p tsconfig.test-check.json
+          pnpm --filter @openlinker/worker exec tsc -p tsconfig.test-check.json
 
   test:
     name: Test
@@ -152,7 +171,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
+      # `actions/checkout` writes every file afresh, so each run sees new mtimes
+      # for byte-identical content. Jest's transform-cache key is a function of
+      # BOTH content and mtime, so without this step every run mints a complete
+      # new set of keys: the previous run's entries become unreadable and a full
+      # new set is written beside them. The runner containers are long-lived and
+      # jest applies no TTL or size cap to its cache directory, so `/tmp/jest_rt`
+      # had reached 33 GB across ~2M entries that nothing could ever read.
+      #
+      # Pinning one constant mtime makes an unchanged file produce an unchanged
+      # key across runs and across branches. Measured on this runner (#3271):
+      # whole job 753.9 s -> 490.3 s from this step alone; combined with the
+      # raised worker caps, 256.8 s.
+      #
+      # Safe because the key also includes the content hash — verified directly,
+      # not assumed: a one-word edit preserving the file's exact byte length,
+      # with mtime rolled back to the same stamp, still failed 21 suites.
+      # Removing this step was MEASURED, not reasoned about, and it cost more
+      # than double: same runner, 4m24s with it and 9m22s without (#3271). It
+      # stays. Transpile-only takes mtime out of the cache key for `libs/core`,
+      # `apps/api` and `apps/worker` only - the other sixteen packages, the two
+      # heavy ESM integrations among them, still key on it.
+      - name: Normalize source mtimes so the jest cache can hit (#3271)
+        run: node scripts/normalize-source-mtimes.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       # No explicit libs build: `pnpm test:ci` already runs
@@ -160,6 +203,41 @@ jobs:
       # step here builds libs twice in this one job.
       - name: Run tests
         run: pnpm test:ci
+
+  # apps/web runs on its own runner, in parallel with `test` (#3271).
+  #
+  # It is the only vitest package and the only one with NO workspace
+  # dependencies, and it was the reason the combined job kept going red. Beside
+  # three jest packages under `--workspace-concurrency=4` it was starved to
+  # 352-371 s against the 162 s it takes with the box to itself, and RTL tests
+  # assert on elapsed behaviour - two consecutive runs failed on two DIFFERENT
+  # timing-sensitive tests, neither of which is about the thing it failed on.
+  #
+  # Splitting costs no extra runner time, it saves it: the two jobs together do
+  # less work than the one did, because neither side is starving the other. It
+  # also skips the libs build entirely, since apps/web imports no @openlinker
+  # package (#591), and it needs no mtime normalisation - that fixes jest's
+  # transform cache, and vitest keeps its own in node_modules/.vite.
+  test-web:
+    name: Test (web)
+    timeout-minutes: 30
+    runs-on: self-hosted
+    needs: changes
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run web tests
+        run: pnpm test:ci:web
 
   test-integration:
     name: Integration Tests
@@ -206,6 +284,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       # A cold ts-jest transform cache costs the FIRST suite of each
       # integration step ~32 s (measured: 6.4 s warm vs 76.3 s cold locally for
@@ -215,19 +294,33 @@ jobs:
       # ts-jest keys entries by file content, so restoring an older cache is
       # safe: changed files simply miss and re-transform (#1920).
       #
-      # The key is scoped to what invalidates the whole cache wholesale (deps,
-      # base tsconfig, the jest configs) plus the run id, so a save still
-      # happens while unchanged-deps runs share one entry. Keying on
-      # `github.sha` instead minted a fresh multi-hundred-MB entry per commit,
-      # which would evict the pnpm store cache this same job restores above -
-      # the repo-wide budget is 10 GB with LRU eviction (PR #1923 review).
+      # The key is scoped to what invalidates the whole cache wholesale: deps,
+      # base tsconfig, the jest configs, AND `jest.test-workers.cjs` (#3263) -
+      # the worker count now decides how many per-worker databases exist, so a
+      # change to it belongs in the same cache-busting set as the configs that
+      # size the transform.
+      #
+      # The PRIMARY key carries `github.run_id`, the ordinary rolling-cache
+      # shape `restore-keys` below already assumes: `actions/cache@v4` skips
+      # the save whenever the primary key already exists ("Cache already
+      # exists. Skipping save."), so a key with no run-scoped component is
+      # written ONCE and then frozen - every spec added or edited after that
+      # first save misses forever with nothing in the log to say so. An
+      # earlier version of this comment argued the run-scoped suffix was
+      # "pure waste" because it could never be restored; that reasoning
+      # ignored `restore-keys`, whose `jest-integration-<os>-<hash>-` prefix
+      # is exactly what restores the PREVIOUS run's entry by content, while
+      # this run still saves its own - the standard pattern, not a special
+      # case. ts-jest keys its own entries by file content, so restoring an
+      # older cache is safe regardless (unchanged files hit, changed ones
+      # re-transform, #1920).
       - name: Cache jest transform output
         uses: actions/cache@v4
         with:
           path: .jest-cache
-          key: jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs') }}-${{ github.run_id }}
+          key: jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs', 'jest.test-workers.cjs') }}-${{ github.run_id }}
           restore-keys: |
-            jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs') }}-
+            jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs', 'jest.test-workers.cjs') }}-
             jest-integration-${{ runner.os }}-
       - name: Sweep orphaned Testcontainers from finished CI runs (#1285)
         # Ryuk is disabled (see above) so containers from a cancelled or
@@ -341,6 +434,16 @@ jobs:
         run: |
           test -f libs/core/dist/identifier-mapping/index.js \
             || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
+      # The two tiers run in SEQUENCE deliberately. Running them concurrently in
+      # one step was tried and measured worse on this runner (#3263): 20m31s
+      # sequential against 30m+ concurrent, on an otherwise IDLE box, so it is
+      # not a contention artefact from a busy machine. The likely cause is that
+      # a runner slot gets a fraction of the shared host's CPU, so two tiers at
+      # `maxWorkers: 8` each oversubscribe it roughly 2x and both halves slow
+      # down by more than the 4m19s the worker tier would have saved. Two
+      # separate GitHub jobs would take a second slot on that same host and is
+      # rejected for the same reason. Re-test only with a measurement, not a
+      # hypothesis, and lower the worker count if you do.
       - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
         # Was 25 (PS container boot + module install + cache:warmup adds ~20-30s
@@ -388,6 +491,178 @@ jobs:
         # containers anyway — the next run's pre-flight sweep picks up anything
         # this run itself failed to clean up.
 
+  backup-restore:
+    name: Backup / Restore (#3618)
+    # Deliberately UNGATED by `needs: changes`, matching `Type Check`'s own
+    # precedent above ("intentionally NOT gated, so it always reports") — the
+    # path filter above explicitly EXCLUDES `docker-compose.yml`, so a
+    # PR touching only the backup service or its scripts would otherwise never
+    # run this job at all, silently. A pilot-readiness gate that can be
+    # skipped by editing exactly the files it exists to verify is not a gate.
+    timeout-minutes: 20
+    runs-on: self-hosted
+    # One container name PER RUN, never a shared literal: every self-hosted
+    # runner talks to the same Docker daemon, so with a fixed name a second
+    # PR's opening `docker rm -f` (or its closing clean-up) removed the first
+    # run's Postgres mid-job and failed it with "No such container". The run
+    # attempt is part of the name so a re-run never meets a leftover from the
+    # attempt before it.
+    env:
+      PG_CONTAINER: ol-backup-restore-ci-pg-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      # A throwaway Postgres this job fully owns, published to an
+      # OS-assigned host port (never a fixed one, so a concurrent run on this
+      # persistent self-hosted runner can't collide) — plain `docker run -p`
+      # port publishing, not the Testcontainers reaper callback the
+      # `Integration Tests` job's TESTCONTAINERS_RYUK_DISABLED comment
+      # describes as broken under this runner's Docker-in-Docker network; an
+      # ordinary published port works exactly as it does for any other
+      # `docker run -p` container here.
+      #
+      # `127.0.0.1::5432` was wrong for a reason distinct from the Ryuk
+      # callback problem: it publishes the port on the DOCKER HOST's loopback
+      # only. This `self-hosted` runner is ITSELF a container
+      # (`/home/docker/actions-runner/...`, its own network namespace), so its
+      # `127.0.0.1` is not the host's — a published port bound to the host's
+      # loopback is unreachable from here no matter which port number is used
+      # (confirmed live: `ECONNREFUSED 127.0.0.1:32768` from the migration
+      # step below, while `docker exec ... pg_isready` — which runs INSIDE
+      # the Postgres container's own namespace — reported ready throughout).
+      #
+      # `Integration Tests`' Testcontainers-driven Postgres does not hit this:
+      # testcontainers-node's `resolveHost` (container-runtime/utils/
+      # resolve-host.js) detects it is running inside a container (checks for
+      # `/.dockerenv`) and, instead of trusting `localhost`, resolves the
+      # gateway IP of the Docker `bridge` network and connects through THAT
+      # address — the one interface of the docker HOST that every container
+      # attached to the default bridge network (this runner included) can
+      # always reach. Testcontainers never binds the published port to a
+      # specific host IP either (`generic-container.js`'s `withExposedPorts`
+      # sets only `HostPort`, no `HostIp`, which Docker defaults to `0.0.0.0`
+      # — published on every host interface); it is the DESTINATION address
+      # that changes, never the bind address. We replicate that exact
+      # mechanism rather than inventing a second one: publish on every
+      # interface as before, but connect to the gateway address everywhere
+      # below instead of `localhost`.
+      #
+      # (Binding the publish itself to the gateway address, i.e.
+      # `-p "${GATEWAY}::5432"`, was tried and rejected: on at least one
+      # Docker setup checked while fixing this, that populates
+      # `NetworkSettings.Ports` with an empty list — no port at all — rather
+      # than failing loudly, which would have made the failure this fix
+      # exists to remove reappear as a different, more confusing one.)
+      - name: Start a throwaway Postgres
+        run: |
+          # A run that died before its own clean-up leaves a container nothing
+          # else would ever remove (the name is per run). Sweep only THIS job's
+          # containers, by label, and only ones older than 30 min - past this
+          # job's 20 min timeout, so a concurrent run's live Postgres is never
+          # touched. `-v` takes the image's anonymous data volume with it.
+          for id in $(docker ps -aq --filter label=openlinker.ci=backup-restore); do
+            created="$(docker inspect -f '{{.Created}}' "$id")"
+            if [ $(( $(date +%s) - $(date -d "$created" +%s) )) -gt 1800 ]; then
+              docker rm -f -v "$id" >/dev/null 2>&1 || true
+            fi
+          done
+          docker rm -f -v "$PG_CONTAINER" >/dev/null 2>&1 || true
+          PG_GATEWAY_HOST="$(docker network inspect bridge --format '{{ (index .IPAM.Config 0).Gateway }}')"
+          echo "PG_GATEWAY_HOST=$PG_GATEWAY_HOST" >> "$GITHUB_ENV"
+          docker run -d --name "$PG_CONTAINER" --label openlinker.ci=backup-restore \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=openlinker \
+            -p 5432 \
+            postgres:17-alpine
+          PG_HOST_PORT="$(docker inspect -f '{{ (index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort }}' "$PG_CONTAINER")"
+          echo "PG_HOST_PORT=$PG_HOST_PORT" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do
+            docker exec "$PG_CONTAINER" pg_isready -U postgres >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec "$PG_CONTAINER" pg_isready -U postgres
+          # The check above only proves the daemon is ready INSIDE the
+          # container's own network namespace — exactly what was already true
+          # in the failing run above while the migration step still got
+          # ECONNREFUSED. Prove reachability over the SAME address migration
+          # will actually dial: a raw TCP connect through bash's `/dev/tcp`
+          # (no extra binary needed on the runner) against
+          # `PG_GATEWAY_HOST:PG_HOST_PORT`.
+          for i in $(seq 1 30); do
+            timeout 1 bash -c "cat < /dev/null > /dev/tcp/${PG_GATEWAY_HOST}/${PG_HOST_PORT}" 2>/dev/null && break
+            sleep 1
+          done
+          timeout 1 bash -c "cat < /dev/null > /dev/tcp/${PG_GATEWAY_HOST}/${PG_HOST_PORT}"
+      # Seeds a REAL database via the actual migration chain, which is also
+      # #2684's own from-empty proof: this Postgres container has never run
+      # `CREATE EXTENSION "uuid-ossp"` at all until BootstrappedDataSource
+      # does it as part of this very command.
+      - name: Seed a database via the real migration chain
+        working-directory: apps/api
+        env:
+          DB_HOST: ${{ env.PG_GATEWAY_HOST }}
+          DB_PORT: ${{ env.PG_HOST_PORT }}
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          DB_DATABASE: openlinker
+        run: pnpm run migration:run
+      - name: Insert a marker row (so the restore assertion below is not vacuous)
+        run: |
+          docker exec "$PG_CONTAINER" psql -U postgres -d openlinker -c \
+            "INSERT INTO connections (id, \"platformType\", name, status, config, \"credentialsRef\") VALUES (uuid_generate_v4(), 'ci-backup-restore-marker', 'backup-restore-ci-marker', 'disabled', '{}'::jsonb, '');"
+      # The SAME script the `backup` compose service runs nightly (#3618) —
+      # never a CI-only reimplementation, or this job would prove nothing
+      # about what actually runs in production.
+      - name: Produce a dump with the real backup script
+        run: |
+          docker cp scripts/backup "$PG_CONTAINER":/scripts
+          docker exec \
+            -e PGHOST=localhost -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres -e PGDATABASE=openlinker \
+            -e OL_BACKUP_DIR=/tmp/ci-backups \
+            "$PG_CONTAINER" bash /scripts/pg-backup-once.sh
+      - name: Restore the dump into a genuinely empty database
+        run: |
+          DUMP_FILE="$(docker exec "$PG_CONTAINER" sh -c 'ls -1t /tmp/ci-backups/daily/*.dump | head -1')"
+          docker exec "$PG_CONTAINER" psql -U postgres -c 'CREATE DATABASE restore_check;'
+          docker exec \
+            -e PGHOST=localhost -e PGPORT=5432 -e PGUSER=postgres -e PGPASSWORD=postgres \
+            "$PG_CONTAINER" bash /scripts/pg-restore.sh "$DUMP_FILE" restore_check
+      # Covers #2684's own acceptance criterion too: `migration:show` always
+      # exits 0 regardless of pending status (MigrationShowCommand discards
+      # DataSource#showMigrations()'s return value), so a dedicated script
+      # reads that return value directly — see
+      # apps/api/scripts/assert-no-pending-migrations.ts's own docblock.
+      - name: Assert 0 pending migrations against the restored database
+        working-directory: apps/api
+        env:
+          DB_HOST: ${{ env.PG_GATEWAY_HOST }}
+          DB_PORT: ${{ env.PG_HOST_PORT }}
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          DB_DATABASE: restore_check
+        run: pnpm run migration:assert-clean
+      - name: Assert the seeded marker row survived the restore
+        run: |
+          COUNT="$(docker exec "$PG_CONTAINER" psql -U postgres -d restore_check -tAc "SELECT count(*) FROM connections WHERE \"platformType\" = 'ci-backup-restore-marker';")"
+          if [ "$COUNT" != "1" ]; then
+            echo "expected 1 seeded marker row to survive the restore, found $COUNT" >&2
+            exit 1
+          fi
+          echo "restored database carries the seeded marker row."
+      - name: Clean up
+        if: always()
+        # `-v`: postgres:17-alpine declares VOLUME /var/lib/postgresql/data, so
+        # every run creates an anonymous volume holding the whole database. A
+        # bare `docker rm -f` left one behind per run on the shared runner disk.
+        run: docker rm -f -v "$PG_CONTAINER" >/dev/null 2>&1 || true
+
   test-php:
     name: PHP Unit Tests
     timeout-minutes: 10
@@ -412,6 +687,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
       - name: Run PHP unit tests
         run: pnpm test:php
 
@@ -430,6 +706,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build

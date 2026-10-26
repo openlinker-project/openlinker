@@ -38,8 +38,18 @@ describe('toRegisterTransactionCommand', () => {
     expect(cmd.idempotencyKey).toBe('fiscal:conn-1:ol_order_1');
     expect(cmd.currency).toBe('PLN');
     expect(cmd.totalGross).toBe(49.2);
+    // `productId` rides along beside `sku` so a destination that keeps a
+    // catalogue can link the line to a real product instead of emitting free
+    // text - a free-text line moves no stock (#3445). Carried, never invented.
     expect(cmd.lines).toEqual([
-      { name: 'Widget', quantity: 2, unitPriceGross: 24.6, taxRate: '', sku: 'W-1' },
+      {
+        name: 'Widget',
+        productId: 'ol_product_1',
+        quantity: 2,
+        unitPriceGross: 24.6,
+        taxRate: '',
+        sku: 'W-1',
+      },
     ]);
   });
 
@@ -72,6 +82,45 @@ describe('toRegisterTransactionCommand', () => {
       taxRate: '',
       sku: null,
     });
+  });
+
+  // The mirror of the invoicing mapper's test: the shipping split weights each
+  // rate by its share of the basket's GROSS value, and on a net-priced source
+  // reporting its own gross figures (#3365) `price` is net. Only a MIXED-rate
+  // basket shows it, because net scales to gross by a different factor per
+  // rate. Net weights would give 11.40/11.40 here.
+  it('should weight the shipping split by gross, not by net, on a mixed-rate net-priced order', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        items: [
+          { id: 'a', productId: 'p1', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' },
+          { id: 'b', productId: 'p2', quantity: 1, price: 100, unitPriceGross: 105, taxRate: '5' },
+        ],
+        totals: {
+          subtotal: 200,
+          tax: 28,
+          shipping: 18.54,
+          shippingGross: 22.8,
+          total: 250.8,
+          currency: 'PLN',
+          taxTreatment: 'exclusive',
+        },
+      }),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+
+    const shipping = cmd.lines.filter((line) => line.name === 'Shipping');
+    expect(shipping.map((line) => ({ taxRate: line.taxRate, amount: line.unitPriceGross }))).toEqual(
+      [
+        { taxRate: '23', amount: 12.3 },
+        { taxRate: '5', amount: 10.5 },
+      ]
+    );
+    // The composed lines still reconcile against the order's own total, which
+    // is the guard this mapper already enforces - so a re-weighting that moved
+    // money rather than re-labelling it would have thrown instead.
+    expect(shipping.reduce((sum, line) => sum + line.unitPriceGross, 0)).toBeCloseTo(22.8, 2);
   });
 
   it('should honour a caller-supplied shipping line label', () => {
@@ -390,5 +439,77 @@ describe('toRegisterTransactionCommand', () => {
       idempotencyKey: 'k',
     });
     expect(cmd.recipient).toBeUndefined();
+  });
+
+  describe("the buyer's tax number (#3187, ADR-073 decision 1)", () => {
+    it('should carry the tax number onto the command when the persisted column holds one', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: '5213796333',
+      });
+      expect(cmd.buyerTaxId).toBe('5213796333');
+    });
+
+    it('should leave the field absent when the caller has no column value ("not asserted")', () => {
+      expect(
+        toRegisterTransactionCommand({ order: order(), connectionId: 'conn-1', idempotencyKey: 'k' })
+          .buyerTaxId,
+      ).toBeUndefined();
+    });
+
+    it('should leave the field absent for the "asserted none" state (an empty-string column)', () => {
+      // #3187 scope item 5: `readSourceBuyerTaxId` never returns `null`, so
+      // this state is unreachable from any shipped source and needs a fixture
+      // to exercise at all — this is that fixture. `encodeBuyerTaxIdColumn`
+      // persists "the buyer has none" as an empty string, decoded back to
+      // `null` by `decodeBuyerTaxIdColumn`; there is nothing for a receipt to
+      // transmit either way, so the command carries no field.
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: '',
+      });
+      expect(cmd.buyerTaxId).toBeUndefined();
+    });
+
+    it('should leave the field absent for a WHITESPACE-only column (#3220 review)', () => {
+      // `decodeBuyerTaxIdColumn` guards on `column.length === 0`, so a blank
+      // column decodes to the blank string rather than to `null` and would
+      // have gone out as `consumerTIN: "   "` on a real fiscal document.
+      // Unreachable through `encodeBuyerTaxIdColumn`, which trims - so, like
+      // the empty-string case above, this needs a fixture to exercise at all.
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: '   ',
+      });
+      expect(cmd.buyerTaxId).toBeUndefined();
+    });
+
+    it('should leave the field absent when the caller explicitly passes null', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: null,
+      });
+      expect(cmd.buyerTaxId).toBeUndefined();
+    });
+
+    it('should never validate, normalise or reject the value (ADR-073 decision 5)', () => {
+      // Core has no basis to judge which tax numbers a provider accepts, and
+      // acquiring one would mean holding a country's identifier rules here.
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: 'not-a-real-looking-value-at-all',
+      });
+      expect(cmd.buyerTaxId).toBe('not-a-real-looking-value-at-all');
+    });
   });
 });

@@ -21,18 +21,21 @@
  *     table is presentational, and failing a build because a doc table was
  *     alphabetised trains people to distrust the gate.
  *
- *   RULE B — SCAN. No banned term appears in operator-facing copy under the
- *     three Wave-2 feature folders: JSX text and user-facing JSX attribute
- *     values in `.tsx`, and every string literal in a `*.copy.ts`.
+ *   RULE B — SCAN. No banned term appears in operator-facing copy under ANY
+ *     feature slice (`apps/web/src/features/*`, discovered at run time, #2737):
+ *     JSX text and user-facing JSX attribute values in `.tsx`, and every string
+ *     literal in a `*.copy.ts`.
  *
  * ---------------------------------------------------------------------------
  * WHAT THIS GATE DOES **NOT** CATCH. Read this before trusting it — an
  * overstated gate is worse than none, because reviewers stop reading copy when
  * they believe a script already did.
  *
- *   1. Only three folders. Copy in `pages/`, `shared/ui/`, or any other
- *      feature is unscanned. A Wave-2 surface that puts operator copy in a
- *      shared primitive escapes entirely.
+ *   1. Only `apps/web/src/features/*`. Copy in `pages/`, `shared/ui/` or
+ *      `plugins/` is unscanned, so a surface that puts operator copy in a
+ *      shared primitive escapes entirely. Every feature slice IS covered, by
+ *      discovery rather than by a list: a slice added later is scanned the
+ *      moment its folder exists, with no edit here (#2737).
  *   2. Only literal strings. A term assembled at runtime (`${noun} authority`,
  *      a concatenation, a value from a lookup keyed elsewhere) is invisible.
  *   3. Backend-sourced copy is out of reach. A message the API returns and the
@@ -50,30 +53,36 @@
  *
  * So § 2.1's acceptance line — "no banned vocabulary word appears in any
  * shipped string; the lint gate proves it" — is true for literal strings in the
- * three folders, and no wider.
+ * feature slices, and no wider.
  *
  * ---------------------------------------------------------------------------
- * "MATCHED NOTHING" — three zero-cases, only one of which is a pass. The repo
- * has been bitten by checks that pass because they matched nothing.
+ * "MATCHED NOTHING" — zero-cases, only some of which are a pass. The repo has
+ * been bitten by checks that pass because they matched nothing.
  *
  *   Z1  the fenced spec table parses to zero terms   -> FATAL
  *       (the parser or the fence broke; a gate with an empty deny-list cannot
  *        fire, and would then pass forever)
- *   Z2  a declared scan root does not exist          -> note, exit 0
- *       (all three today; the folders ship in later Wave-2 issues. This is the
- *        `check-authority-kind-mirror` PENDING_MIRRORS idiom, reused. Because
- *        an absent path is a PASS, a typo'd path would pass forever — so the
- *        PARENT directory is asserted, exactly as that script's #2441 S-6
- *        comment prescribes.)
- *   Z3  a scan root exists but yields zero files     -> FAIL
- *       (the extension logic or the walk broke; passing here is the trap)
+ *   Z2  the features directory is missing or holds no slice -> FATAL
+ *       (roots are DISCOVERED now, so there is no "pending" root left to excuse
+ *        an absent path: nothing to scan means the walk broke, not that the
+ *        surface is clean)
+ *   Z3  the run scanned no file, or fewer than MIN_SCANNED_SLICES slices held a
+ *       scannable file                                -> FAIL
+ *       (the extension logic or the walk broke. This is GLOBAL, not per slice:
+ *        a slice with only hooks and an API client legitimately has no copy, and
+ *        failing it would force an exemption for every such folder - an
+ *        exemption that is unavoidable is a sign the rule is wrong. Those
+ *        slices are listed in the success line instead of silently dropped.)
+ *   Z4  a `.ts` file named like copy that the scanner would skip -> FAIL
  *
- * A stale or typo'd EXEMPTIONS path is the same hazard as Z2 and is guarded the
- * same way: an exemption whose scan root exists must name a file that exists.
+ * A stale or typo'd exemption is the same hazard one level down: an
+ * EXEMPT_FEATURES slug must name a slice that exists, and an EXEMPTIONS file
+ * whose slice exists must name a file that exists.
  *
  * Note the script's own `BANNED_TERMS` and the fenced spec table both contain
- * all nine terms verbatim. Any future widening of SCAN_ROOTS must exclude this
- * file and that spec, or the gate self-matches.
+ * all nine terms verbatim. The scan stays under `apps/web/src/features`, which
+ * contains neither this file nor that spec; widening it past that directory
+ * must exclude both, or the gate self-matches.
  *
  * Every file is parsed TEXTUALLY (no TypeScript import, no transpile, no
  * dependency) so this stays a zero-dependency `check:invariants` step like its
@@ -128,87 +137,26 @@ const BANNED_TERMS = [
 ];
 
 /**
- * The three Wave-2 feature folders § 2.1 scopes the ban to. `automation` is
- * SINGULAR even though its route is `/automations` (settled in #2364).
- *
- * TWO FIELDS, deliberately split in #2335 — they answer different questions and
- * conflating them cost the list both of its guarantees:
- *
- *   `owner`   — which issue creates this folder. ALWAYS required, and asserted
- *               by `--self-check` for EVERY root, live or not. Folded into the
- *               `pending` field it became unassertable the moment a folder
- *               landed, so a future root could be added with no owner at all.
- *   `pending` — whether the folder is still expected to be absent. A boolean:
- *               it drives only the pending-notes line. Note that Z2 keys on
- *               `isDirectory()`, so a root is SCANNED the moment its folder
- *               exists regardless of this flag; flipping it to `false` does not
- *               unlock scanning, it stops the run reporting a gap that closed.
- *
- * #2335 also corrected a crossed attribution: `features/returns` was declared
- * pending #2364 and `features/fulfillment-authority` pending #2335 — which is
- * the issue that built `features/returns`, and never touched the other folder.
- */
-const SCAN_ROOTS = [
-  {
-    // NOT #2335 — that issue shipped `features/returns` (below). All three
-    // attributions shipped rotated by one; resolved by title against the epic
-    // #2389 checklist: #2354 is the "Who decides what" settings page, which is
-    // what builds this folder.
-    dir: join('apps', 'web', 'src', 'features', 'fulfillment-authority'),
-    owner: 'W2-17 (#2354)',
-    pending: false,
-  },
-  {
-    // #2364 is "automations index and trigger list" — this folder's real owner.
-    dir: join('apps', 'web', 'src', 'features', 'automation'),
-    owner: 'W2-27 (#2364)',
-    // Live as of #2364 — the folder ships `.tsx` components and
-    // `lib/automation.copy.ts`, so the scan is real rather than vacuous (Z3
-    // fails an existing root with nothing scannable in it).
-    pending: false,
-  },
-  {
-    // Built by #2335 (the returns list), ahead of #2364's own returns surfaces.
-    dir: join('apps', 'web', 'src', 'features', 'returns'),
-    owner: 'W1c-8 (#2335)',
-    pending: false,
-  },
-  {
-    // #2411's work-grain fulfilment-task panel. Added with the folder, not
-    // after it: the epic's UI naming rule is binding on every FE child, and a
-    // gate that arrives a wave later scans copy nobody re-reads.
-    dir: join('apps', 'web', 'src', 'features', 'fulfillment'),
-    owner: 'W3a-21 (#2411)',
-    pending: false,
-  },
-  {
-    // #2413's pack-bench identity surface (locked / sign-in / handover). Added
-    // with the folder, not after it — the same rule `features/fulfillment`
-    // records above: the epic's UI naming rule is binding on every FE child,
-    // and a gate that arrives a wave later scans copy nobody re-reads. This
-    // surface is where an operator-facing "FulfillmentWork" would be most
-    // tempting, since the bench is literally looking at one.
-    dir: join('apps', 'web', 'src', 'features', 'bench'),
-    owner: 'W3b-1 (#2413)',
-    pending: false,
-  },
-  {
-    // #2342's hold copy (badge, dialogs, timeline) lives here, and the gate was
-    // scanning three folders none of which contained it. Added after a trial run
-    // proved the folder is already clean — widening a shared gate onto existing
-    // violations would be a wave-scoped decision, not a body-scoped one.
-    dir: join('apps', 'web', 'src', 'features', 'orders'),
-    owner: 'W2-A (#2342)',
-    pending: false,
-  },
-];
-
-/**
- * The directory every scan root must live under. Asserted so a typo in a slug
- * above is caught immediately instead of reading as a legitimately-pending
- * folder forever (the `check-authority-kind-mirror` #2441 S-6 guard).
+ * The directory whose direct subdirectories are the scan roots. DISCOVERED at
+ * run time (#2737): an enumerated list silently excludes every slice added
+ * after it was written, which is the defect this replaced - it covered 8 of 38
+ * slices, and `features/connections` was not among them.
  */
 const SCAN_ROOT_PARENT = join('apps', 'web', 'src', 'features');
+
+/**
+ * Z3's floor: fewer slices than this holding a scannable file means the walk or
+ * the extension test broke. Deliberately far below today's count (34 of 38), so
+ * ordinary slice churn never trips it, and well above the 8 the old list held.
+ */
+const MIN_SCANNED_SLICES = 15;
+
+/**
+ * Whole feature slices exempt from the scan, by slug with a reason. Empty, and
+ * meant to stay so: a slice that cannot be made clean is the exception to
+ * explain here, never a default. Prefer the file-level `EXEMPTIONS` below.
+ */
+const EXEMPT_FEATURES = new Map();
 
 /**
  * Files permitted to contain a banned term, BY FILE with a reason — never by
@@ -596,6 +544,39 @@ function copyModuleEscapee(path) {
   return /copy/i.test(base) && !isCopyModule(path);
 }
 
+/**
+ * The scan roots for a set of directory names found under SCAN_ROOT_PARENT.
+ * Pure, so `--self-check` can prove the default-on shape without a filesystem:
+ * every non-exempt name is a root, in a stable order, and an exemption naming a
+ * folder that is not there is reported rather than silently exempting nothing.
+ */
+export function selectScanRoots(names, exempt = EXEMPT_FEATURES) {
+  const present = new Set(names);
+  return {
+    roots: [...names].filter((n) => !exempt.has(n)).sort(),
+    staleExemptions: [...exempt.keys()].filter((n) => !present.has(n)).sort(),
+  };
+}
+
+/**
+ * Z3, global. `slicesWithFiles` counts slices that held at least one scannable
+ * file; a slice with only hooks and an API client is legitimate and does not
+ * count against the run - but too FEW slices with copy, or no file at all,
+ * means the walk or the extension test is broken.
+ */
+export function scanFloorIssues({ filesScanned, slicesWithFiles }, min = MIN_SCANNED_SLICES) {
+  const issues = [];
+  if (filesScanned === 0) {
+    issues.push('the run scanned no file at all, so it is checking nothing');
+  } else if (slicesWithFiles < min) {
+    issues.push(
+      `only ${slicesWithFiles} slice(s) held a scannable file, below the floor of ${min} - the ` +
+        'directory walk or the .tsx / copy-module test has most likely broken',
+    );
+  }
+  return issues;
+}
+
 async function exists(path) {
   return stat(path).then(
     () => true,
@@ -612,7 +593,6 @@ async function isDirectory(path) {
 
 async function main() {
   const failures = [];
-  const pendingNotes = [];
 
   // --- RULE A: mirror -------------------------------------------------------
   const specContent = await readFile(join(repoRoot, SPEC_FILE), 'utf8');
@@ -642,43 +622,45 @@ async function main() {
   }
 
   // --- RULE B: scan ---------------------------------------------------------
-  const parentExists = await isDirectory(join(repoRoot, SCAN_ROOT_PARENT));
+  // Z2 — roots are discovered, so a missing parent or an empty one is FATAL
+  // rather than "nothing pending": there is nothing left to excuse it.
+  const parentAbs = join(repoRoot, SCAN_ROOT_PARENT);
+  const dirEntries = (await isDirectory(parentAbs))
+    ? await readdir(parentAbs, { withFileTypes: true })
+    : [];
+  const sliceNames = dirEntries.filter((e) => e.isDirectory()).map((e) => e.name);
+  if (sliceNames.length === 0) {
+    failures.push({
+      rule: 'the features directory must exist and hold at least one slice',
+      locations: [`${SCAN_ROOT_PARENT}  (scan root parent)`],
+      issues: [
+        'no feature slice was found, so the scan would check nothing and pass — fix the path ' +
+          'if the directory moved',
+      ],
+    });
+  }
+
+  const { roots, staleExemptions } = selectScanRoots(sliceNames);
+  for (const slug of staleExemptions) {
+    failures.push({
+      rule: 'every exempt feature must name a slice that exists (a typo silently exempts nothing)',
+      locations: [`${join(SCAN_ROOT_PARENT, slug)}  (exemption: ${EXEMPT_FEATURES.get(slug)})`],
+      issues: ['the exempted slice does not exist — fix the slug, or drop the exemption'],
+    });
+  }
+
   let scannedFiles = 0;
   const liveRoots = [];
+  const slicesWithoutCopy = [];
 
-  for (const root of SCAN_ROOTS) {
-    const abs = join(repoRoot, root.dir);
-    if (!(await isDirectory(abs))) {
-      // Z2 — absent root is a PASS, so a typo would pass forever. Assert the
-      // parent to catch a misspelt slug while still allowing the folder itself
-      // to be legitimately absent.
-      if (!parentExists) {
-        failures.push({
-          rule: "a pending scan root's parent directory must exist (a typo here would pass forever)",
-          locations: [`${root.dir}  (declared scan root, owner ${root.owner})`],
-          issues: [
-            `the parent directory '${SCAN_ROOT_PARENT}' does not exist, so this path can never ` +
-              'resolve — fix the declared path, or remove the entry',
-          ],
-        });
-      }
-      pendingNotes.push(
-        root.pending
-          ? `${root.dir} (pending ${root.owner})`
-          : // Declared live, but its folder is gone. Not a failure — a root may
-            // legitimately be retired ahead of this list — but it must be said,
-            // or the run reports a folder as covered while nothing is scanned.
-            `${root.dir} (declared live for ${root.owner}, but the folder is absent)`,
-      );
-      continue;
-    }
-
-    liveRoots.push(root);
-    const walked = await walk(abs);
+  for (const name of roots) {
+    const dir = join(SCAN_ROOT_PARENT, name);
+    liveRoots.push({ dir });
+    const walked = await walk(join(repoRoot, dir));
     const files = walked.filter(isScannable);
 
     // Z4 — a file that calls itself copy but that the matcher would skip. See
-    // `copyModuleEscapee`: the miss this catches has shipped twice.
+    // `copyModuleEscapee`: the miss this catches has shipped three times.
     const escapees = walked.map((f) => relative(repoRoot, f)).filter(copyModuleEscapee);
     if (escapees.length > 0) {
       failures.push({
@@ -691,18 +673,8 @@ async function main() {
       });
     }
 
-    // Z3 — the root exists but nothing matched. The walk or the extension
-    // logic broke; passing here is the silent-nothing trap this gate is
-    // supposed to be immune to.
     if (files.length === 0) {
-      failures.push({
-        rule: 'a scan root that exists must contain at least one .tsx or copy module',
-        locations: [`${root.dir}  (scan root)`],
-        issues: [
-          'the directory exists but no scannable file was found, so this root is being checked ' +
-            'vacuously — verify the folder layout, or remove the root if the feature moved',
-        ],
-      });
+      slicesWithoutCopy.push(name);
       continue;
     }
 
@@ -725,8 +697,21 @@ async function main() {
     }
   }
 
-  // A stale or typo'd exemption suppresses nothing while its author believes
-  // it does — the Z2 hazard one level down. Only checkable once the root exists.
+  // Z3 — global, see `scanFloorIssues`.
+  const floor = scanFloorIssues({
+    filesScanned: scannedFiles,
+    slicesWithFiles: roots.length - slicesWithoutCopy.length,
+  });
+  if (floor.length > 0) {
+    failures.push({
+      rule: 'the scan must reach operator copy in a plausible number of slices',
+      locations: [`${SCAN_ROOT_PARENT}  (scan root parent)`],
+      issues: floor,
+    });
+  }
+
+  // A stale or typo'd file exemption suppresses nothing while its author
+  // believes it does. Only checkable once its slice exists.
   for (const [rel, reason] of EXEMPTIONS) {
     // Path-segment match, never a bare prefix: `features/returns` must not
     // claim an exemption under `features/returns-archive`.
@@ -744,10 +729,10 @@ async function main() {
     console.log(
       `✓ check-ui-vocabulary: ${BANNED_TERMS.length} banned term(s) identical in the script and ` +
         `the fenced table in ${SPEC_FILE}; ${scannedFiles} file(s) scanned across ` +
-        `${liveRoots.length} of ${SCAN_ROOTS.length} feature folder(s).`,
+        `${liveRoots.length - slicesWithoutCopy.length} of ${liveRoots.length} feature slice(s).`,
     );
-    if (pendingNotes.length > 0) {
-      console.log(`  pending scan roots (declared, not yet present): ${pendingNotes.join(', ')}`);
+    if (slicesWithoutCopy.length > 0) {
+      console.log(`  slices with no operator copy to scan: ${slicesWithoutCopy.join(', ')}`);
     }
     process.exit(0);
   }
@@ -758,9 +743,6 @@ async function main() {
     console.error(`      rule: ${rule}`);
     for (const issue of issues) console.error(`        - ${issue}`);
     console.error('');
-  }
-  if (pendingNotes.length > 0) {
-    console.error(`    pending scan roots (declared, not yet present): ${pendingNotes.join(', ')}`);
   }
   console.error(`    docs: ${DOCS_REF}`);
   console.error('');
@@ -981,29 +963,53 @@ function selfCheck() {
 
   // --- declared structure ----------------------------------------------------
   expect('the banned list is closed at nine terms', BANNED_TERMS.length, 9);
-  // EVERY root, live or pending. Asserting only the pending ones would go
-  // vacuous as folders land, and would let a future root be added with no owner
-  // recorded anywhere (#2335).
-  expect(
-    'every scan root names its owner',
-    SCAN_ROOTS.every((r) => typeof r.owner === 'string' && r.owner.length > 0),
-    true,
-  );
-  expect(
-    'every scan root declares pending as a boolean',
-    SCAN_ROOTS.every((r) => typeof r.pending === 'boolean'),
-    true,
-  );
   expect(
     'every exemption is a file→reason pair with a non-empty reason',
     [...EXEMPTIONS.values()].every((reason) => typeof reason === 'string' && reason.trim().length > 0),
     true,
   );
   expect(
-    'every scan root lives under the asserted parent',
-    SCAN_ROOTS.every((r) => r.dir.startsWith(SCAN_ROOT_PARENT)),
+    'every exempt feature carries a non-empty reason',
+    [...EXEMPT_FEATURES.values()].every((r) => typeof r === 'string' && r.trim().length > 0),
     true,
   );
+  expect('no whole feature slice is exempt at ship time', EXEMPT_FEATURES.size, 0);
+
+  // --- default-on discovery (#2737) ------------------------------------------
+  // A slice nobody has heard of is covered with no edit to this file - the
+  // property the enumerated list could not have.
+  const discovered = selectScanRoots(['connections', 'brand-new-slice', 'orders']);
+  expect(
+    'a new slice is scanned without being declared',
+    discovered.roots.join(','),
+    'brand-new-slice,connections,orders',
+  );
+  expect('nothing is stale when nothing is exempt', discovered.staleExemptions.length, 0);
+  const exempted = selectScanRoots(['a', 'b'], new Map([['b', 'reason']]));
+  expect('an exempt slice is the only one left out', exempted.roots.join(','), 'a');
+  expect('an exemption naming a present slice is not stale', exempted.staleExemptions.length, 0);
+  const typo = selectScanRoots(['a', 'b'], new Map([['bb', 'reason']]));
+  expect('a typo\'d exemption is reported, not silently exempting nothing', typo.staleExemptions.join(','), 'bb');
+  expect('and the typo\'d slug exempts nothing', typo.roots.join(','), 'a,b');
+
+  // Z3, global: no file, or too few slices with copy, fails; a plausible count passes.
+  expect('zero files scanned is a failure', scanFloorIssues({ filesScanned: 0, slicesWithFiles: 0 }).length, 1);
+  expect(
+    'a collapsed walk (few slices) is a failure even with some files',
+    scanFloorIssues({ filesScanned: 40, slicesWithFiles: MIN_SCANNED_SLICES - 1 }).length,
+    1,
+  );
+  expect(
+    'a healthy run passes',
+    scanFloorIssues({ filesScanned: 400, slicesWithFiles: MIN_SCANNED_SLICES }).length,
+    0,
+  );
+  expect(
+    'the floor is above the 8 slices the enumerated list covered, below today\'s 34',
+    MIN_SCANNED_SLICES > 8 && MIN_SCANNED_SLICES < 34,
+    true,
+  );
+  expect('the scan parent is the features directory', SCAN_ROOT_PARENT, join('apps', 'web', 'src', 'features'));
 
   if (failures.length > 0) {
     console.error('✗ check-ui-vocabulary --self-check failed:\n');

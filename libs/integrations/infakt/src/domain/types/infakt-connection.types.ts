@@ -25,6 +25,28 @@ export const InfaktPaymentMethodValues = ['cash', 'transfer'] as const;
 export type InfaktPaymentMethod = (typeof InfaktPaymentMethodValues)[number];
 
 /**
+ * Sale-type values inFakt requires on `POST invoices.json` for a non-PL client
+ * (#2177). inFakt silently defaults `sale_type` for a PL-country client, so
+ * issuance to a PL buyer worked without it; for any other country inFakt
+ * rejects the request with 422
+ * (`{"errors":{"sale_type":["Proszę określić rodzaj sprzedaży."]}}`) unless
+ * the field is present.
+ *
+ * Only `'service'` is CONFIRMED against inFakt's sandbox (live-tested,
+ * exact-lowercase match) — several other spellings (`goods`, `product`,
+ * `towar`, `usluga`, `mixed`, case variants) were all rejected, including
+ * `'goods'` itself. The correct value for a physical-goods sale was NOT found
+ * in that pass, and is deliberately NOT listed here (#2995 review): this
+ * union is closed and validated at save time, so a placeholder value an
+ * operator could select would pass that gate and then 422 at issuance —
+ * converting the very guard meant to catch a malformed shape into a trap.
+ * Add the second member (with its own confirmed test coverage) once the real
+ * goods value is found — tracked as a follow-up, see the plugin README.
+ */
+export const InfaktSaleTypeValues = ['service'] as const;
+export type InfaktSaleType = (typeof InfaktSaleTypeValues)[number];
+
+/**
  * inFakt API environment (#2174). The neutral choice the FE create wizard and
  * edit form persist on `connection.config.environment`; the adapter factory
  * and connection tester map it to the concrete API base URL via
@@ -75,4 +97,27 @@ export interface InfaktConnectionConfig {
    * and Infakt is left to reject the invoice as documented in #1303.
    */
   bankAccount?: InfaktBankAccountConfig;
+  /**
+   * Sale-type sent on EVERY issued invoice/correction (#2177) — applied
+   * uniformly, not only for non-PL clients, to match how `defaultPaymentMethod`
+   * always applies rather than branching on the buyer's country.
+   *
+   * There is NO safe universal default: a PL client works today because inFakt
+   * silently defaults `sale_type` server-side, and this field defaults to
+   * leaving `sale_type` OFF the payload entirely when unset — PL issuance keeps
+   * working exactly as before, and non-PL issuance keeps 422ing exactly as
+   * before, until the operator configures this explicitly.
+   *
+   * Compliance caveat: the value asserts the invoice's VAT sale-type
+   * classification (goods vs. services). Configuring the wrong one for a given
+   * sale misstates that classification on a real fiscal document — this is an
+   * explicit operator opt-in for their own catalog composition, never an
+   * inference OL can make from a possibly-mixed catalog.
+   *
+   * Deliberately reachable only through the raw config JSON editor, unlike
+   * {@link InfaktConnectionConfig.defaultPaymentMethod} (#2995 review) — see
+   * the plugin README for why a structured `<select>` isn't worth adding
+   * while the field carries a single confirmed option.
+   */
+  defaultSaleType?: InfaktSaleType;
 }

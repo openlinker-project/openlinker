@@ -180,8 +180,12 @@ export function KsefNumberingRoutingCard({
   return (
     <section className="numbering-routing" aria-labelledby="numbering-routing-heading">
       <div className="numbering-routing__header">
+        {/* Not "Document routing": until #3656 that was also the name of
+            sales-documents routing (which document to issue), while this card
+            routes KSeF document types to numbering series. Keeping the generic
+            name here would leave a search for it landing on the wrong feature. */}
         <h3 className="section-title" id="numbering-routing-heading">
-          Document routing
+          Numbering routing
         </h3>
         <p className="muted-text">
           Choose which series numbers each KSeF document type on this connection. A route can be

@@ -53,6 +53,15 @@ const REPOSITORY_PORT_RE = /RepositoryPort$/;
 
 const DOCS_REF = 'docs/engineering-standards.md#service-interface-implementation';
 
+/**
+ * A floor on how many in-scope service files a run must have found (#2792).
+ * ~160 exist under `libs/core/src/**\/application/services/*.service.ts`
+ * today; well below that so legitimate deletions never trip it, but high
+ * enough that a moved root / renamed convention (which would silently drop
+ * this to 0) fails loudly instead of reporting a spurious clean pass.
+ */
+const MIN_SERVICES_CHECKED = 50;
+
 /** Recursively collect files under `dir`. */
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -189,6 +198,21 @@ async function main() {
     });
     checked += 1;
     if (!result.ok) violations.push({ file: repoRel, reason: result.reason });
+  }
+
+  // A run that scanned nothing is a broken run, not a clean tree (#2792) —
+  // most likely SERVICES_GLOB_ROOT moved or the `.service.ts` naming
+  // convention drifted. There are ~160 in-scope files today, so a floor well
+  // below that still catches a walk that silently found almost nothing.
+  if (checked < MIN_SERVICES_CHECKED) {
+    console.error(
+      `✗ check-service-interfaces: only ${checked} service(s) were scanned under ` +
+        `${relative(repoRoot, SERVICES_GLOB_ROOT)} (expected at least ${MIN_SERVICES_CHECKED}).\n\n` +
+        '  The walk found almost nothing, so a clean result means the scan is broken rather than\n' +
+        '  the tree. Check SERVICES_GLOB_ROOT / SERVICES_PATH_SEGMENT and that this repo layout\n' +
+        '  has not moved.'
+    );
+    process.exit(1);
   }
 
   if (violations.length === 0) {

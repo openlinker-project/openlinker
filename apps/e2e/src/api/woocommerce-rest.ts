@@ -313,6 +313,48 @@ export class WooCommerceRestClient {
     return null;
   }
 
+  /**
+   * The store settings that decide whether a stored price is what a buyer pays
+   * (ADR-077): taxes switched off, or prices entered with tax, means it is.
+   */
+  async getStorePriceBasis(): Promise<{
+    taxesEnabled: boolean;
+    pricesIncludeTax: boolean;
+    storeCountry: string | null;
+  }> {
+    const general = asArray(await this.get('/wp-json/wc/v3/settings/general'));
+    const valueOf = (rows: unknown[], id: string): string | null =>
+      asStringOrNull(pick(asRecord(rows.find((row) => pick(asRecord(row), 'id') === id)), 'value'));
+    const taxesEnabled = valueOf(general, 'woocommerce_calc_taxes') === 'yes';
+    const storeCountry = valueOf(general, 'woocommerce_default_country')?.split(':')[0] || null;
+    if (!taxesEnabled) {
+      return { taxesEnabled, pricesIncludeTax: false, storeCountry };
+    }
+    const tax = asArray(await this.get('/wp-json/wc/v3/settings/tax'));
+    return {
+      taxesEnabled,
+      pricesIncludeTax: valueOf(tax, 'woocommerce_prices_include_tax') === 'yes',
+      storeCountry,
+    };
+  }
+
+  /**
+   * The standard-class rate (percent) the store applies in `country`, or `null`
+   * when it has no single matching row. Country rows win over the wildcard.
+   */
+  async getStandardTaxRatePercent(country: string): Promise<number | null> {
+    const rows = asArray(await this.get('/wp-json/wc/v3/taxes?class=standard&per_page=100'));
+    const rateOf = (code: string): number | null => {
+      const matches = rows.filter(
+        (row) => String(pick(asRecord(row), 'country') ?? '').toUpperCase() === code,
+      );
+      if (matches.length !== 1) return null;
+      const rate = Number.parseFloat(String(pick(asRecord(matches[0]), 'rate') ?? ''));
+      return Number.isFinite(rate) ? rate : null;
+    };
+    return rateOf(country.toUpperCase()) ?? rateOf('');
+  }
+
   private async get(path: string): Promise<unknown> {
     return this.request('GET', path);
   }

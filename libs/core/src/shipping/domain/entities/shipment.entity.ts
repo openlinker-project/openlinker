@@ -24,6 +24,7 @@
  * @module libs/core/src/shipping/domain/entities
  */
 
+import type { DeliveredRelayState } from '../types/delivered-relay.types';
 import type { WaybillRelayFailure } from '../types/waybill-relay-failure.types';
 import type { ShipmentDirection } from '../types/shipment-direction.types';
 import type { ShipmentStatus } from '../types/shipment-status.types';
@@ -183,5 +184,12 @@ export class Shipment {
     //
     // Appended last for the same anti-collision rationale as every field above.
     public readonly waybillRelayFailure: WaybillRelayFailure | null,
+    // Whether the `delivered` lifecycle event reached the order's participants,
+    // and how often it failed to (#3506, G02-7). ONE value object for three
+    // columns, for the same reason as `waybillRelayFailure` above. Meaningful
+    // only on a `delivered` row; `NO_DELIVERED_RELAY_STATE` everywhere else.
+    // A DISPLAY fact: the re-drive pass selects by query, not by reading this.
+    // Appended last for the same anti-collision rationale as every field above.
+    public readonly deliveredRelay: DeliveredRelayState,
   ) {}
 }

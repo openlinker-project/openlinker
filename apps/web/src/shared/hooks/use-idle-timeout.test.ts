@@ -112,4 +112,99 @@ describe('useIdleTimeout (#2413, A3)', () => {
     expect(setItem).not.toHaveBeenCalled();
     setItem.mockRestore();
   });
+
+  // ── #3408 — the optional warning phase ───────────────────────────────
+  describe('the warning phase', () => {
+    it('fires onWarning before onIdle, at the configured lead time', () => {
+      const onIdle = vi.fn();
+      const onWarning = vi.fn();
+      renderHook(() =>
+        useIdleTimeout({ timeoutMs: 1000, onIdle, warningMs: 700, onWarning })
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
+      expect(onWarning).toHaveBeenCalledTimes(1);
+      expect(onIdle).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+
+    it('dismisses the warning on activity, and restarts BOTH clocks', () => {
+      const onIdle = vi.fn();
+      const onWarning = vi.fn();
+      const onWarningDismissed = vi.fn();
+      renderHook(() =>
+        useIdleTimeout({
+          timeoutMs: 1000,
+          onIdle,
+          warningMs: 700,
+          onWarning,
+          onWarningDismissed,
+        })
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
+      expect(onWarning).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        window.dispatchEvent(new Event('keydown'));
+      });
+      expect(onWarningDismissed).toHaveBeenCalledTimes(1);
+
+      // Both clocks restarted — the warning does not re-fire until another
+      // 700ms elapse, and onIdle does not fire at the original 1000ms mark.
+      act(() => {
+        vi.advanceTimersByTime(699);
+      });
+      expect(onWarning).toHaveBeenCalledTimes(1);
+      expect(onIdle).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(onWarning).toHaveBeenCalledTimes(2);
+      expect(onIdle).not.toHaveBeenCalled();
+    });
+
+    it('does NOT dismiss (or revive) anything once the terminal lock has fired', () => {
+      const onIdle = vi.fn();
+      const onWarning = vi.fn();
+      const onWarningDismissed = vi.fn();
+      renderHook(() =>
+        useIdleTimeout({
+          timeoutMs: 1000,
+          onIdle,
+          warningMs: 700,
+          onWarning,
+          onWarningDismissed,
+        })
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(1000);
+        window.dispatchEvent(new Event('pointermove'));
+        vi.advanceTimersByTime(5000);
+      });
+
+      expect(onIdle).toHaveBeenCalledTimes(1);
+      expect(onWarningDismissed).not.toHaveBeenCalled();
+    });
+
+    it('never fires onWarning when omitted, leaving the pre-#3408 two-state behaviour unchanged', () => {
+      const onIdle = vi.fn();
+      renderHook(() => useIdleTimeout({ timeoutMs: 1000, onIdle }));
+
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(onIdle).toHaveBeenCalledTimes(1);
+    });
+  });
 });

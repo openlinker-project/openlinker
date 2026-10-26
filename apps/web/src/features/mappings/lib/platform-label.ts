@@ -23,6 +23,7 @@
 interface PlatformLike {
   platformType: string;
   displayName: string;
+  shortLabel?: string;
 }
 
 interface ConnectionLike {
@@ -82,4 +83,24 @@ export function resolvePlatformLabel(
 ): string {
   const platformType = typeof platform === 'string' ? platform : platform.platformType;
   return findPlatformDisplayName(platforms, platformType) ?? platformType;
+}
+
+/**
+ * The compact label for a space-constrained surface (the connection chip face,
+ * #3670): the plugin's declared `shortLabel`, else the same label
+ * `resolvePlatformLabel` returns.
+ *
+ * Declared by the plugin rather than derived from the display name, because a
+ * display name's parenthetical is sometimes incidental (`Subiekt GT (Sfera GT
+ * bridge)` names the bridge it is reached through) and sometimes load-bearing,
+ * and only the plugin knows which. A regex that stripped every trailing
+ * parenthetical was what this replaced.
+ */
+export function resolvePlatformShortLabel(
+  platforms: readonly PlatformLike[],
+  platform: string | ConnectionLike,
+): string {
+  const platformType = typeof platform === 'string' ? platform : platform.platformType;
+  const entry = platforms.find((p) => p.platformType === platformType);
+  return entry?.shortLabel ?? entry?.displayName ?? platformType;
 }

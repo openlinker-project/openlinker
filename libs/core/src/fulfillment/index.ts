@@ -92,12 +92,14 @@ export type {
   CreateFulfillmentWorkInput,
   CreateFulfillmentWorkLineInput,
   FulfillmentWorkTransaction,
+  ListStalledUnsubmittedWorksInput,
   ListTimedOutDispatchesInput,
   PlaceFulfillmentHoldInput,
   RecordFulfillmentAcceptanceInput,
   RecordFulfillmentLineProgressInput,
   RecordFulfillmentRejectionInput,
   ReleaseFulfillmentHoldInput,
+  StalledUnsubmittedFulfillmentWork,
   TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
@@ -114,6 +116,9 @@ export { FulfillmentWorkUnassignedError } from './domain/exceptions/fulfillment-
 export * from './domain/types/fulfillment-progress-event.types';
 export * from './domain/types/routing-decision.types';
 export * from './domain/types/fulfillment-dispatch-enqueue.types';
+// #3453 — the producer of `inventory.saleDecrement`, derived here and enqueued by
+// the two routing hosts.
+export * from './domain/types/fulfillment-sale-decrement-enqueue.types';
 
 // #2869 R7 / M3 — the live-decision refusal. Ships with NO caller: the manual
 // route producer is #2869's and does not exist yet. Exported anyway because it
@@ -168,6 +173,12 @@ export type {
   RouteOrderInput,
   RoutingCommitOutcome,
 } from './application/types/routing-commit.types';
+// #3485 — the ONE mapping from a routing outcome to the order's hold state,
+// shared by the ingestion intercept and the `fulfillment.work.route` handler.
+export {
+  deriveRoutingHoldOutcome,
+  type RoutingHoldOutcome,
+} from './application/types/routing-hold-outcome.types';
 export type { RoutingLockPort } from './domain/ports/routing-lock.port';
 export {
   FULFILLMENT_ROUTE_LOCK_TTL_MS,
@@ -187,6 +198,8 @@ export { MissingFulfillmentWorkActionFieldError } from './domain/exceptions/miss
 export { FulfillmentWorkVersionConflictError } from './domain/exceptions/fulfillment-work-version-conflict.error';
 export { FulfillmentWorkVersionMismatchError } from './domain/exceptions/fulfillment-work-version-mismatch.error';
 export { UnsupportedFulfillmentWorkActionError } from './domain/exceptions/unsupported-fulfillment-work-action.error';
+export { EmptyFulfillmentWorkAssignmentUpdateError } from './domain/exceptions/empty-fulfillment-work-assignment-update.error';
+export { ExclusiveAssignmentRequiresPackerError } from './domain/exceptions/exclusive-assignment-requires-packer.error';
 
 // Parcel verification at the pack bench (#2418). The SERVICE INTERFACE and its
 // vocabulary cross the barrel; `FulfillmentWorkRepositoryPort` still does not,
@@ -210,6 +223,12 @@ export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
 export * from './domain/types/fulfillment-relay-reconcile.types';
 export type { IFulfillmentRelayReconcileService } from './application/interfaces/fulfillment-relay-reconcile.service.interface';
 export * from './application/types/fulfillment-relay-reconcile-sweep.types';
+
+// The sale-decrement reconcile read (#3629). The enqueue is the worker's:
+// `fulfillment` may not import `@openlinker/core/sync`.
+export * from './domain/types/fulfillment-sale-decrement-reconcile.types';
+export type { IFulfillmentSaleDecrementReconcileService } from './application/interfaces/fulfillment-sale-decrement-reconcile.service.interface';
+export * from './application/types/fulfillment-sale-decrement-reconcile-sweep.types';
 
 export { FulfillmentModule } from './fulfillment.module';
 

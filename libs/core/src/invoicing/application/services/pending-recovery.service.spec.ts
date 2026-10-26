@@ -220,6 +220,34 @@ describe('PendingRecoveryService', () => {
       expect((criteria.issuedFrom as Date).getTime()).toBeLessThan(new Date('2026-06-01T10:00:00Z').getTime());
       expect((criteria.issuedTo as Date).getTime()).toBeGreaterThan(new Date('2026-06-01T10:00:00Z').getTime());
     });
+
+    it('includes idempotencyKey in the locate criteria (#3389) — the only reliable key for a self-numbering provider', async () => {
+      const adapter = locatorAdapter(null);
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      const record = makeRecord({
+        status: 'issuing',
+        documentNumber: null,
+        idempotencyKey: 'invoice:conn-invoicing-1:order-1',
+      });
+      repo.findStuckPending.mockResolvedValue({ items: [record], total: 1 });
+
+      await service.recover(CONNECTION_ID, { limit: 50 });
+
+      const criteria = ((adapter.locateByQuery as jest.Mock).mock.calls[0] as [Record<string, unknown>])[0];
+      expect(criteria.idempotencyKey).toBe('invoice:conn-invoicing-1:order-1');
+    });
+
+    it('omits idempotencyKey from the criteria when the record has none (a keyless issuance)', async () => {
+      const adapter = locatorAdapter(null);
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+      const record = makeRecord({ status: 'issuing', idempotencyKey: null });
+      repo.findStuckPending.mockResolvedValue({ items: [record], total: 1 });
+
+      await service.recover(CONNECTION_ID, { limit: 50 });
+
+      const criteria = ((adapter.locateByQuery as jest.Mock).mock.calls[0] as [Record<string, unknown>])[0];
+      expect(criteria.idempotencyKey).toBeUndefined();
+    });
   });
 
   describe('issuing found on the authority side -> reconcile', () => {

@@ -20,7 +20,12 @@
  * than a breaking signature change.
  *
  * PICKS EXACTLY ONE, NEVER A LIST (decision 3a): invoice XOR receipt, never
- * both, never the same kind on two connections.
+ * both, never the same kind on two connections. One CONNECTION may
+ * legitimately appear as two candidate rows (#3195 — a connection configured
+ * `documentKind: 'both'` expands into an `'invoice'` row and a
+ * `'fiscal-receipt'` row via `expandSalesDocumentRoutingCandidates`), but this
+ * rule is unaffected: only one row total ever wins per order, regardless of
+ * how many rows trace back to the same connection.
  *
  * NEVER SILENTLY PICKS ONE (decision 6): ambiguous input resolves
  * `unresolved`, never an incidental choice — a wrong pick for a fiscal
@@ -81,9 +86,8 @@ export const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<CoreSalesDocument
 
 /**
  * One candidate connection, reduced to what the resolve depends on.
- * Structural on purpose — mirrors `InvoicingConnectionCandidate`
- * (`libs/core/src/invoicing/domain/types/invoicing-primary.types.ts`): the
- * resolve is a pure function that needs no `Connection` entity (and
+ * Structural on purpose, as the #2047 invoicing-only candidate this replaced
+ * was: the resolve is a pure function that needs no `Connection` entity (and
  * therefore no cross-context value import here, preserving this concern's
  * dependency-free-leaf property). The caller resolves `documentKind` /
  * `isPrimary` via `readSalesDocumentRouting(connection.config)` and
@@ -96,6 +100,14 @@ export const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<CoreSalesDocument
  * to the one bit the resolver needs. A self-routing connection is eligible
  * for selection even with `documentKind: null`, since the destination decides
  * its own kind and the operator never configures one for it.
+ *
+ * `documentKind` here is always a single concrete kind (or `null`) - never the
+ * `'both'` config sentinel (#3195, `SALES_DOCUMENT_KIND_BOTH`). A dual-role
+ * connection's config is expanded, before it ever reaches this resolver, into
+ * two independent candidate rows sharing one `connectionId` - one row per
+ * kind - by `expandSalesDocumentRoutingCandidates`. This resolver carries no
+ * dual-role logic of its own: it has no notion of a connection appearing
+ * twice, since it operates purely over the candidate list it is handed.
  */
 export interface SalesDocumentRoutingCandidate {
   readonly connectionId: string;
@@ -124,7 +136,7 @@ export function isCoreSalesDocumentKind(value: SalesDocumentKind): value is Core
  *    decision 9): a connection with neither is not a routing candidate at
  *    all.
  * 2. Exactly one such candidate wins outright, primary flag irrelevant
- *    (mirrors `selectPrimaryInvoicingConnection`'s single-candidate rule): a
+ *    (the single-candidate rule #2047 introduced for invoicing): a
  *    single-connection install must not require the operator to also set
  *    `isPrimary`.
  * 3. Several candidates: the operator-set primary among THEM wins; none or
@@ -139,8 +151,8 @@ export function isCoreSalesDocumentKind(value: SalesDocumentKind): value is Core
  *    and "no unambiguous primary among the candidates" is equally true
  *    whether there are zero or several non-primary candidates. A caller that
  *    already knows it has zero eligible connections is expected to
- *    short-circuit before calling this resolver (mirroring
- *    `selectPrimaryInvoicingConnection`'s own `'none'` pre-check today) —
+ *    short-circuit before calling this resolver (as the #2047 invoicing selection
+ *    did with its own `'none'` pre-check) —
  *    this branch is a defensive fallback, not the common path.
  * 5. SELF-ROUTING SHORT-CIRCUIT (decision 9): if the winning candidate
  *    self-routes, return `documentKind: null` immediately — there is no OL-

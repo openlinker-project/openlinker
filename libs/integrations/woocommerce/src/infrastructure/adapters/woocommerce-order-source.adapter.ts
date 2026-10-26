@@ -19,8 +19,15 @@ import type {
   IncomingOrderAddress,
   IncomingOrderTotals,
   OrderFeedEventType,
+  PaymentStatus,
 } from '@openlinker/core/orders';
-import { readSourceBuyerTaxId } from '@openlinker/core/orders';
+import {
+  readSourceBuyerTaxId,
+  PAYMENT_METHOD,
+  PAYMENT_STATUS,
+  toCodToCollect,
+} from '@openlinker/core/orders';
+import { deriveWooCommercePaymentMethod } from './woocommerce-payment-method';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
@@ -35,6 +42,23 @@ import type {
   WooCommerceShippingAddress,
   WooCommerceOrderMetaData,
 } from './order-source/woocommerce-order.types';
+
+/**
+ * Statuses in which a core COD order is dead (#3294): neither "paid" nor "pays
+ * the courier" describes anything, so no `cod` claim is made. They fall through
+ * to the ordinary status reading, which reports nothing for them.
+ */
+const COD_DEAD_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'failed', 'trash']);
+
+/**
+ * Statuses in which a core COD order is already settled (#3294). A COD order
+ * only reaches `completed` once the goods were delivered and the cash
+ * collected, so nothing is left to collect and it must read as paid - otherwise
+ * an `auto-on-paid` invoicing connection never issues for it and a label would
+ * pre-fill an amount already taken. Falls through to the status fallback below,
+ * which reports `paid`.
+ */
+const COD_SETTLED_STATUSES: ReadonlySet<string> = new Set(['completed']);
 
 export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
@@ -157,6 +181,26 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       externalOrderId,
       orderNumber: order.number,
       status: order.status,
+      ...(() => {
+        const paymentStatus = deriveWooCommercePaymentStatus(order);
+        // The courier collects the whole order on delivery (#3294): nothing is
+        // paid in advance on a COD order and WooCommerce states no separate
+        // amount to collect, so it is the order's gross `total` (which, unlike
+        // the net line prices, includes tax and fees). Only while the order is
+        // reported `cod` - a COD order WooCommerce records as paid has nothing
+        // left to collect, and a dead one carries no claim at all.
+        const codToCollect =
+          paymentStatus === PAYMENT_STATUS.Cod
+            ? toCodToCollect(roundCurrency(Number(order.total)), order.currency)
+            : undefined;
+        return {
+          ...(paymentStatus === undefined ? {} : { paymentStatus }),
+          ...(codToCollect === undefined ? {} : { codToCollect }),
+        };
+      })(),
+      // How the buyer pays (#3294): only WooCommerce core's own gateway ids
+      // are evidence; every plugin slug is `unknown`.
+      paymentMethod: deriveWooCommercePaymentMethod(order),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),
@@ -208,6 +252,96 @@ function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEvent
   return 'updated';
 }
 
+/**
+ * What this WooCommerce order says about the MONEY.
+ *
+ * ## Why it exists
+ *
+ * This adapter reported no `paymentStatus` at all, and an `auto-on-paid`
+ * connection reads exactly that field - so a WooCommerce sale never issued an
+ * invoice or a receipt, never produced a warehouse release, and never moved
+ * stock, silently and with no block reason, because "not paid yet" is
+ * legitimately not a block. The same gap was found and fixed on the PrestaShop
+ * source in the same change (#3365).
+ *
+ * ## `date_paid` is the evidence; the status is the fallback
+ *
+ * WooCommerce stamps `date_paid` when a gateway confirms payment, so its
+ * presence is the store's own answer rather than a reading of a label. It is
+ * not universal - a store settling orders by hand, or a plugin that skips the
+ * stamp, leaves it null on an order the merchant considers paid - so the two
+ * core statuses that mean money arrived stand in for it.
+ *
+ * ## It reports `'paid'` or NOTHING, and the silence is load-bearing
+ *
+ * A first version returned `'awaiting'` for the core unpaid statuses. That is
+ * true about the store and wrong about OpenLinker, because
+ * `DISPATCH_BLOCKING_PAYMENT_STATUSES` holds `awaiting` and `refunded` - either
+ * one REFUSES a label with a 422 - and the label form hides its manual
+ * cash-on-delivery amount field for any status other than unknown or `cod`.
+ * Both were explicitly load-bearing on this source reporting NOTHING; the
+ * form's own docblock names WooCommerce among the sources that "keep the
+ * manual-COD path".
+ *
+ * WooCommerce cannot express cash on delivery here either: the method is
+ * `payment_method`, a free-text slug a plugin chooses. So an unpaid COD order
+ * would report `'awaiting'` and OpenLinker would refuse to ship it until it was
+ * paid, while the buyer pays the courier on delivery - a deadlock with no
+ * escape state. `'cancelled'` and `'failed'` would block a re-dispatch for the
+ * same reason.
+ *
+ * The rule is about the SOURCE's vocabulary rather than about the gate: a
+ * source that cannot distinguish "unpaid, prepay expected" from "unpaid, pays
+ * the courier" must not report a status that assumes the first. `'paid'` blocks
+ * nothing and is the only value the auto-issue gate needs.
+ *
+ * A status this adapter has never seen answers nothing for a second reason: a
+ * plugin's own word is not evidence about anybody's money.
+ *
+ * ## The one gateway that CAN be named: core cash on delivery (#3294)
+ *
+ * The paragraph above says WooCommerce cannot express cash on delivery, and
+ * that stays true of the free-text `payment_method` slugs plugins choose. The
+ * core `cod` gateway is the exception - its id is fixed and its meaning is not
+ * in doubt. And it matters here for a reason the original rule could not see:
+ * a core COD order is created `processing`, so the status fallback below used
+ * to read it as `paid`, and the shipment gate then STRIPPED the cash-on-delivery
+ * amount from its label while the label form hid the COD field. An unpaid order
+ * the courier must collect on was being reported as already paid.
+ *
+ * So a core `cod` order reports `cod` (dispatch permitted, nothing blocked) -
+ * unless WooCommerce itself stamped a payment date, which is the store's own
+ * statement that the money has arrived and stays the strongest evidence. The
+ * rule still never reports `awaiting`: COD is non-blocking, and everything else
+ * about the order is read exactly as before.
+ */
+export function deriveWooCommercePaymentStatus(
+  order: Pick<WooCommerceOrder, 'status' | 'date_paid' | 'date_paid_gmt' | 'payment_method'>,
+): PaymentStatus | undefined {
+  const status = order.status.toLowerCase();
+  // Withheld, not reported: `refunded` is a dispatch-blocking status, and the
+  // money question a refund raises is not one this seam should answer with a
+  // value that refuses a label.
+  if (status === 'refunded') {
+    return undefined;
+  }
+  const paidAt = order.date_paid_gmt ?? order.date_paid;
+  if (typeof paidAt === 'string' && paidAt.trim().length > 0) {
+    return PAYMENT_STATUS.Paid;
+  }
+  if (
+    deriveWooCommercePaymentMethod(order) === PAYMENT_METHOD.CashOnDelivery &&
+    !COD_DEAD_STATUSES.has(status) &&
+    !COD_SETTLED_STATUSES.has(status)
+  ) {
+    return PAYMENT_STATUS.Cod;
+  }
+  if (status === 'processing' || status === 'completed') {
+    return PAYMENT_STATUS.Paid;
+  }
+  return undefined;
+}
+
 function mapLineItem(item: WooCommerceLineItem): IncomingOrderItem {
   const productRef: IncomingOrderItemRef =
     item.variation_id > 0
@@ -226,7 +360,41 @@ function mapLineItem(item: WooCommerceLineItem): IncomingOrderItem {
     sku: item.sku || undefined,
     name: item.name || undefined,
     imageUrl: item.image?.src || undefined,
+    ...toUnitPriceGross(item),
   };
+}
+
+/**
+ * The gross UNIT price for a WooCommerce line (#3365).
+ *
+ * WooCommerce reports LINE totals net (`total`) with the tax beside them
+ * (`total_tax`), and no gross unit price of its own - unlike PrestaShop, which
+ * stores `unit_price_tax_incl` directly. So this sums two figures the platform
+ * reported and divides by the quantity. Both operations are what ADR-063 § 5
+ * permits; what it forbids is `net * (1 + rate)`, and no rate is read here.
+ *
+ * Dividing is also what makes the result faithful to a DISCOUNTED line: `total`
+ * is post-discount, so `unitPriceGross * quantity` reproduces what the buyer
+ * actually paid, which `price` (the pre-discount unit price) would not.
+ *
+ * Returns nothing - never a zero - when `total_tax` is absent or either side is
+ * unreadable, and when the quantity is not a positive number. An absent tax
+ * component silently read as zero would label a net figure gross, and a
+ * non-positive quantity has no unit price to speak of.
+ */
+function toUnitPriceGross(item: WooCommerceLineItem): { unitPriceGross?: number } {
+  if (item.total_tax === undefined) {
+    return {};
+  }
+  const lineNet = Number(item.total);
+  const lineTax = Number(item.total_tax);
+  if (!Number.isFinite(lineNet) || !Number.isFinite(lineTax)) {
+    return {};
+  }
+  if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+    return {};
+  }
+  return { unitPriceGross: roundCurrency((lineNet + lineTax) / item.quantity) };
 }
 
 function mapBaseAddress(
@@ -263,8 +431,14 @@ function mapShippingAddress(addr: WooCommerceShippingAddress): IncomingOrderAddr
  * false asserted-none. An operator has no way to extend this list today; a
  * per-connection `config` key is the obvious follow-up if this proves too
  * narrow.
+ *
+ * Exported (#3471 item 5, decided) so the order-PROCESSOR side
+ * (`WooCommerceOrderProcessorAdapter.mapAddress`) can write an OL-created
+ * order's buyer tax id under this list's FIRST key — one list, one place
+ * that decides which meta_data key means "buyer tax id" for both the read
+ * and the write direction.
  */
-const WOOCOMMERCE_VAT_META_KEY_ALLOWLIST = [
+export const WOOCOMMERCE_VAT_META_KEY_ALLOWLIST = [
   'VAT Number',
   '_billing_eu_vat_number',
   '_vat_number',
@@ -331,6 +505,22 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     // rule condition can trust it without also relabeling the (still net)
     // line prices as gross (#2836).
     totalTaxTreatment: 'inclusive',
+    // #3365: gross shipping, so a fiscal document's shipping line carries what
+    // the buyer paid rather than the net figure `shipping` holds. Summing two
+    // amounts WooCommerce itself reported is not computing tax (ADR-063 § 5
+    // permits grouping and division; it forbids `net * (1 + rate)`), and
+    // nothing here reads a rate. Left ABSENT when `shipping_tax` is missing or
+    // unreadable - an absent component must not be silently read as zero tax,
+    // which would publish a net figure while claiming it was gross.
+    ...(((): { shippingGross?: number } => {
+      const shippingTax = Number(order.shipping_tax);
+      if (order.shipping_tax === undefined || !Number.isFinite(shippingTax)) {
+        return {};
+      }
+      return Number.isFinite(shipping)
+        ? { shippingGross: roundCurrency(shipping + shippingTax) }
+        : {};
+    })()),
   };
 }
 

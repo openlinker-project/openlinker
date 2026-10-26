@@ -424,7 +424,12 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     );
     expect(internalOrderId).not.toBeNull();
     expect(await recordRepo.count({ where: { internalOrderId: internalOrderId! } })).toBe(1);
-    expect(await recordRepo.count()).toBe(1);
+    // SCOPED to this spec's own connection. Unscoped it counts every
+    // `order_records` row in the database, so it asserts something about the
+    // whole suite rather than about this slice, and goes red the moment a
+    // sibling spec sharing the harness writes an order - which is what it did
+    // to `order-reingestion-echo-guard` (expected 1, received 5).
+    expect(await recordRepo.count({ where: { sourceConnectionId: connectionId } })).toBe(1);
   });
 
   // ── S5: COD → processing + paymentStatus:'cod' ─────────────────────────────

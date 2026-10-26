@@ -143,6 +143,46 @@ export interface FiscalArtefactSummary {
 }
 
 /**
+ * The artefact mediums a person can be HANDED, in the order one is preferred
+ * (#3646).
+ *
+ * A self-contained file comes first because it is the only form a caller can
+ * print without leaving OpenLinker; a link comes second because it still lets a
+ * person open the document at the provider. `markup`, `code` and `text` are
+ * deliberately absent: each needs a renderer or a device OpenLinker does not
+ * own, so offering one as "the receipt" would promise something no surface can
+ * deliver.
+ */
+export const FiscalHandoverMediumValues = ['document', 'link'] as const;
+export type FiscalHandoverMedium = (typeof FiscalHandoverMediumValues)[number];
+
+/**
+ * Pick the one artefact a surface should hand over, or `null` when none of them
+ * can be handed over (#3646).
+ *
+ * Pure, generic over the full artefact and its payload-free summary, so the
+ * read that decides what to OFFER and the route that SERVES it cannot pick
+ * different artefacts - reported and served are one decision.
+ *
+ * The first artefact of the most-preferred medium wins; order within a medium
+ * is the adapter's own.
+ */
+export function selectHandoverArtefact<T extends { medium: FiscalArtefactMedium }>(
+  artefacts: readonly T[] | null | undefined,
+): T | null {
+  if (artefacts === null || artefacts === undefined) {
+    return null;
+  }
+  for (const medium of FiscalHandoverMediumValues) {
+    const match = artefacts.find((artefact) => artefact.medium === medium);
+    if (match !== undefined) {
+      return match;
+    }
+  }
+  return null;
+}
+
+/**
  * Project artefacts onto their summaries, dropping every payload.
  *
  * Pure, and co-located with the type it projects onto (the pure-rule exception
@@ -179,6 +219,18 @@ export function summarizeFiscalArtefacts(
  */
 export interface FiscalTransactionLine {
   name: string;
+  /**
+   * The OL-internal product id this line sells, when the caller knows it —
+   * the same id `OrderItem.productId` carries, and the same optional field
+   * `InvoiceLine` gained for the same reason.
+   *
+   * It exists so a caller that has just registered a receipt can ask the
+   * master to re-read the stock the receipt moved. It is NOT the catalogue
+   * key a provider files the line under: `sku` remains that, because a fiscal
+   * provider addresses its own catalogue by symbol. Optional and
+   * provider-ignorable — a shipping charge has no product.
+   */
+  productId?: string;
   quantity: number;
   /** Buyer-paid gross price of ONE unit. */
   unitPriceGross: number;
@@ -247,6 +299,28 @@ export interface RegisterTransactionCommand {
    * the job - a silent decline along the era axis.
    */
   taxRateEra?: string | null;
+  /**
+   * The buyer's tax number, as the source reported it (ADR-073 decision 1 /
+   * #3187) - a BARE value, never a `TaxIdentifier { scheme, value }`. Every
+   * `scheme` in the tree is produced by an adapter or an HTTP caller, never by
+   * core, and core has no country to derive one from here: the order stores an
+   * untagged string, so minting a tag from it would force core to invent one.
+   * An adapter that needs the value tagged tags it itself.
+   *
+   * Present ONLY when the buyer actually has a number to send - never for the
+   * "asserted none" or "not asserted" states the order's three-state buyer-tax
+   * -id column also carries. Those two carry nothing a receipt can transmit,
+   * so the caller composing this command omits the field rather than sending
+   * an empty or null value the provider would have to interpret.
+   *
+   * Carried verbatim, with NO validation, normalisation or format check on
+   * either side of the wire (ADR-073 decision 5): a receipt is not an invoice,
+   * and telling one country's number from another's would need a member-state
+   * list that must exist nowhere in this tree. A provider that refuses the
+   * value reports its own refusal, which core surfaces on the record's
+   * `failureReason` / `failureMode` rather than pre-judging.
+   */
+  buyerTaxId?: string;
 }
 
 /**
@@ -550,3 +624,30 @@ export const FiscalReconcileOutcomeValues = [
   'still-unknown',
 ] as const;
 export type FiscalReconcileOutcome = (typeof FiscalReconcileOutcomeValues)[number];
+
+/**
+ * Filter surface for {@link FiscalRegistrationRecordRepositoryPort.findManyKeyset}
+ * (#3306) - the cross-order operational list, never an order-scoped read. All
+ * fields optional; an absent filter never constrains the query.
+ */
+export interface FiscalRegistrationListFilters {
+  status?: FiscalRegistrationStatus;
+  connectionId?: string;
+  /** Inclusive lower bound on `createdAt`. */
+  createdFrom?: Date;
+  /** Inclusive upper bound on `createdAt`. */
+  createdTo?: Date;
+  /** Matches `orderId` or `documentReference` (case-insensitive, partial). */
+  search?: string;
+}
+
+/**
+ * Row-value keyset position for {@link FiscalRegistrationListFilters}'s list -
+ * `(createdAt, id)`, the same shape `invoice-record.repository.ts`'s
+ * `findIssuedNonTerminal` already uses. `null` on the incoming request means
+ * "first page"; `null` on the outgoing page means "no more rows."
+ */
+export interface FiscalRegistrationKeysetCursor {
+  createdAt: Date;
+  id: string;
+}

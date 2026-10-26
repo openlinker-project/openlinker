@@ -92,6 +92,7 @@
  */
 import type { RetryClassifierPort, RetryDeferral } from '@openlinker/core/sync';
 import { PrestashopApiException } from '../../domain/exceptions/prestashop-api.exception';
+import { PrestashopAmbiguousWriteException } from '../../domain/exceptions/prestashop-ambiguous-write.exception';
 import { PrestashopTaxRateUnknownException } from '../../domain/exceptions/prestashop-tax-rate-unknown.exception';
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
@@ -167,6 +168,16 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof PrestashopTruncatedReadException ||
       cause instanceof PrestashopPackFilterIgnoredException ||
       cause instanceof PrestashopOrFilterIgnoredException ||
+      // #3469 IMPORTANT-1 review — a non-idempotent write (createResource,
+      // or importOrder once its own by-reference recovery lookup also
+      // failed to find what may have been created) that failed with an
+      // ambiguous 5xx/network error. The client/adapter already refuses to
+      // retry it internally; classifying it here too is what stops
+      // SyncJobRunner from re-running the whole job and re-sending the same
+      // write. Checked ahead of the generic PrestashopApiException shape
+      // (it IS one, a subclass) so it never falls through to a retryable
+      // default.
+      cause instanceof PrestashopAmbiguousWriteException ||
       this.isTerminalModuleRefusal(cause)
     );
   }

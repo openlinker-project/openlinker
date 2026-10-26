@@ -10,10 +10,13 @@ import type { SalesDocumentCountryAcknowledgment } from '../../domain/entities/s
 import type {
   SalesDocumentCountryDefaultInput,
   SalesDocumentRuleInput,
+  SalesDocumentRuleOverlapCheckInput,
 } from '../../domain/types/sales-document-rule-write.types';
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
+import type { SalesDocumentRuleOverlapVerdict } from '../../domain/domain-services/detect-sales-document-rule-overlap';
+import type { SalesDocumentDryRunCandidate } from '../../domain/types/sales-document-dry-run.types';
 
 export interface ISalesDocumentRulesService {
   listRules(country: string): Promise<SalesDocumentRule[]>;
@@ -21,15 +24,40 @@ export interface ISalesDocumentRulesService {
   /**
    * Create a rule. Runs the write-path conflict guard (same country + same
    * `conditionsHash` + overlapping effective range + a DIFFERENT connection
-   * → `SalesDocumentRuleConflictException`) and validates every referenced
-   * `thresholdRef` resolves (`SalesDocumentThresholdNotFoundException`
-   * otherwise) before persisting. Auto-clears any existing no-document
+   * → `SalesDocumentRuleConflictException`) and narrows every condition through
+   * `isSalesDocumentCondition` before persisting, so a malformed one is refused
+   * at authoring time rather than silently reading as "never matches" at
+   * evaluation time. The threshold-ref resolution check this used to run went
+   * with the refs themselves (#3189 inlined the amount). Auto-clears any existing no-document
    * acknowledgment for `input.country` as part of the same write (#2186) — a
    * real configuration and an acknowledgment can never coexist.
    */
   createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule>;
 
+  /**
+   * Would this draft rule match the same order as one already saved (#3190)?
+   *
+   * A READ - it persists nothing and refuses nothing. The engine holding an
+   * order on two matching rules is correct behaviour (ADR-041 never silently
+   * picks one); what was missing is anyone finding out before the save. The
+   * write path is deliberately NOT gated on this, and the asymmetry with the
+   * browser (which refuses the save outright) is intentional - see the
+   * `#3190` paragraph in `docs/architecture-overview.md` for why a held order
+   * is not the class of silent-wrong-outcome that #2610 made server-side.
+   */
+  detectRuleOverlap(
+    input: SalesDocumentRuleOverlapCheckInput
+  ): Promise<SalesDocumentRuleOverlapVerdict>;
+
   deleteRule(id: string): Promise<void>;
+
+  /**
+   * Batch lookup by id (#3186) — every rule named by `ids`, in no particular
+   * order, an id naming a since-deleted rule simply absent from the result.
+   * Backs the per-order sales-document projection's "Why this kind?"
+   * disclosure, which resolves a whole page's matched rules in one call.
+   */
+  getRulesByIds(ids: readonly string[]): Promise<SalesDocumentRule[]>;
 
   listCountryDefaults(country: string): Promise<SalesDocumentCountryDefault[]>;
 
@@ -38,7 +66,7 @@ export interface ISalesDocumentRulesService {
    * as part of the same write (#2186) — see `createRule`.
    */
   upsertCountryDefault(
-    input: SalesDocumentCountryDefaultInput,
+    input: SalesDocumentCountryDefaultInput
   ): Promise<SalesDocumentCountryDefault>;
 
   deleteCountryDefault(id: string): Promise<void>;
@@ -70,7 +98,7 @@ export interface ISalesDocumentRulesService {
    */
   resolveRoutingBatch(
     orders: readonly SalesDocumentOrderFacts[],
-    now?: Date,
+    now?: Date
   ): Promise<SalesDocumentDecision[]>;
 
   /**
@@ -93,4 +121,32 @@ export interface ISalesDocumentRulesService {
 
   /** Idempotent — clearing an already-unacknowledged country is a no-op. */
   clearAcknowledgment(country: string): Promise<void>;
+
+  /**
+   * Dry-run an in-progress, NEVER-PERSISTED rule candidate against a sample
+   * order (#3191): "what would this order get if I saved this rule?".
+   * Writes NOTHING — no `sales_document_rules` row, no country-default
+   * change, no acknowledgment clear — and is safe to call repeatedly with the
+   * same or a different candidate.
+   *
+   * Loads the SAME persisted rules/defaults `resolveRouting` would (the order's
+   * own country, plus `★ Rest of world`), folds the candidate into whichever of
+   * those two scopes it would actually occupy once saved — `candidate.country`
+   * compared against `sampleOrder.country`, never both unconditionally — and
+   * delegates to the identical pure `evaluateSalesDocumentRules`. A candidate
+   * scoped to a country the sample order is not delivering to therefore never
+   * enters the evaluation, exactly as it would not once saved either.
+   *
+   * The candidate is evaluated as always-effective (no `effectiveFrom` /
+   * `effectiveTo` window) — a dry run tests conditions, not a calendar — and
+   * is stamped with the reserved sentinel id
+   * `SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID` so a caller can tell "the
+   * candidate itself matched" apart from "an already-saved rule matched".
+   * `now` defaults to the system clock — pass it explicitly in tests.
+   */
+  dryRunRule(
+    candidate: SalesDocumentDryRunCandidate,
+    sampleOrder: SalesDocumentOrderFacts,
+    now?: Date,
+  ): Promise<SalesDocumentDecision>;
 }

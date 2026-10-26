@@ -47,6 +47,22 @@ export interface MasterInventorySyncResult {
    * closes. Emits no `master.*.stale` event: re-locating is not a deletion.
    */
   pooledPositionsStaled?: number;
+  /**
+   * Rows this sync soft-staled because the SAME source stopped reporting the
+   * variant at a location while a located row of its own was still live — the
+   * MIRROR of `pooledPositionsStaled`, and ADR-058 decision (2) enforced in the
+   * other direction (#3206).
+   *
+   * **Optional** for the same reason its mirror is: the worker handler reads
+   * neither, and a required field would be churn for a repair slice.
+   *
+   * A non-zero value means an available-to-promise DOUBLE-COUNT was just
+   * removed: `getPromisableQuantities` sums across every location in `global`
+   * scope (#2321), so until this pass ran the variant was publishing its pooled
+   * and its abandoned located quantity added together. Emits no
+   * `master.*.stale` event: re-pooling is not a deletion.
+   */
+  locatedPositionsStaled?: number;
 }
 
 /** One product the batch could not sync, and why (#2648). */

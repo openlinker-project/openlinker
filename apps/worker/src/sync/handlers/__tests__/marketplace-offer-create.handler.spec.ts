@@ -22,7 +22,9 @@ import {
   type IOfferCreationExecutionService,
 } from '@openlinker/core/listings';
 import type { IContentSuggestionService } from '@openlinker/core/content';
+import { PromptTemplateNotFoundException } from '@openlinker/core/ai';
 import type { IProductsService } from '@openlinker/core/products';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 
 const VARIANT_ID = 'ol_variant_123';
 const PRODUCT_ID = 'ol_product_456';
@@ -56,10 +58,12 @@ describe('MarketplaceOfferCreateHandler', () => {
   let contentSuggestion: jest.Mocked<IContentSuggestionService>;
   let products: jest.Mocked<IProductsService>;
   let bulkProgress: jest.Mocked<IBulkListingProgressService>;
+  let integrationsService: jest.Mocked<IIntegrationsService>;
 
   beforeEach(() => {
     offerCreation = {
       executeCreation: jest.fn(),
+      abandonCreation: jest.fn(),
     } as unknown as jest.Mocked<IOfferCreationExecutionService>;
 
     contentSuggestion = {
@@ -74,11 +78,18 @@ describe('MarketplaceOfferCreateHandler', () => {
       advanceBatchStatus: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<IBulkListingProgressService>;
 
+    integrationsService = {
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: { id: CONNECTION_ID, platformType: 'allegro' },
+      }),
+    } as unknown as jest.Mocked<IIntegrationsService>;
+
     handler = new MarketplaceOfferCreateHandler(
       offerCreation,
       contentSuggestion,
       products,
-      bulkProgress
+      bulkProgress,
+      integrationsService
     );
   });
 
@@ -244,6 +255,7 @@ describe('MarketplaceOfferCreateHandler', () => {
       await handler.execute(job);
 
       expect(products.getVariant).toHaveBeenCalledWith(VARIANT_ID);
+      expect(integrationsService.getAdapter).toHaveBeenCalledWith(CONNECTION_ID);
       expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith({
         productId: PRODUCT_ID,
         channel: 'allegro',
@@ -252,6 +264,113 @@ describe('MarketplaceOfferCreateHandler', () => {
       expect(offerCreation.executeCreation).toHaveBeenCalledWith(
         expect.objectContaining({
           overrides: { title: 'Operator Title', description: '<p>AI-built description</p>' },
+        })
+      );
+    });
+
+    it('resolves the channel from the connection platformType, not a hardcoded literal', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { id: CONNECTION_ID, platformType: 'erli' } as never,
+        metadata: {} as never,
+      });
+      products.getVariant.mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+      } as never);
+      contentSuggestion.suggestDescription.mockResolvedValue({
+        suggestion: '<p>Erli description</p>',
+      } as never);
+      offerCreation.executeCreation.mockResolvedValue({
+        offerCreationRecord: buildRecord({
+          status: 'active',
+          externalOfferId: EXTERNAL_OFFER_ID,
+          bulkBatchId: BATCH_ID,
+        }),
+        outcome: 'ok',
+      });
+
+      const job = createJob(
+        baseV2({
+          generateDescription: true,
+          overrides: { title: 'Operator Title' },
+        })
+      );
+
+      await handler.execute(job);
+
+      expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'erli' })
+      );
+    });
+
+    it('falls through with operator overrides when the resolved channel has no published template', async () => {
+      // Regression coverage for #3027's review: `channel` resolving
+      // correctly is not the same as a template existing for it —
+      // `PromptTemplateService.render` does an exact (key, channel) match
+      // and throws `PromptTemplateNotFoundException` with no channel→master
+      // fallback, which is exactly what a real, unseeded channel produces.
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { id: CONNECTION_ID, platformType: 'erli' } as never,
+        metadata: {} as never,
+      });
+      products.getVariant.mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+      } as never);
+      contentSuggestion.suggestDescription.mockRejectedValue(
+        new PromptTemplateNotFoundException({
+          key: 'offer.description.suggest',
+          channel: 'erli',
+        })
+      );
+      offerCreation.executeCreation.mockResolvedValue({
+        offerCreationRecord: buildRecord({ status: 'failed' }),
+        outcome: 'business_failure',
+      });
+
+      const job = createJob(
+        baseV2({
+          generateDescription: true,
+          overrides: { title: 'Operator Title' },
+        })
+      );
+
+      await handler.execute(job);
+
+      expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'erli' })
+      );
+      expect(offerCreation.executeCreation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrides: { title: 'Operator Title' },
+        })
+      );
+    });
+
+    it('falls through with operator overrides when connection lookup fails', async () => {
+      products.getVariant.mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+      } as never);
+      integrationsService.getAdapter.mockRejectedValue(new Error('connection not found'));
+      offerCreation.executeCreation.mockResolvedValue({
+        offerCreationRecord: buildRecord({ status: 'failed' }),
+        outcome: 'business_failure',
+      });
+
+      const job = createJob(
+        baseV2({
+          generateDescription: true,
+          overrides: { title: 'Operator Title' },
+        })
+      );
+
+      await handler.execute(job);
+
+      expect(contentSuggestion.suggestDescription).not.toHaveBeenCalled();
+      expect(offerCreation.executeCreation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrides: { title: 'Operator Title' },
         })
       );
     });
@@ -369,6 +488,77 @@ describe('MarketplaceOfferCreateHandler', () => {
     it('throws SyncJobExecutionError when generateDescription is missing', async () => {
       const job = createJob(baseV2({ generateDescription: undefined }));
       await expect(handler.execute(job)).rejects.toBeInstanceOf(SyncJobExecutionError);
+    });
+  });
+
+  // ---------- onDead (#3505, G01-2) ----------
+
+  describe('onDead', () => {
+    const DEAD = { message: 'ambiguous write', nonRetryable: true };
+    const v2Payload = {
+      schemaVersion: 2,
+      internalVariantId: VARIANT_ID,
+      stock: 1,
+      publishImmediately: false,
+      offerCreationRecordId: RECORD_ID,
+      bulkBatchId: BATCH_ID,
+      generateDescription: false,
+    };
+
+    it('should abandon the pending record when a single-offer job dies', async () => {
+      offerCreation.abandonCreation.mockResolvedValue(buildRecord({ status: 'failed' }));
+
+      await handler.onDead(
+        createJob({
+          schemaVersion: 1,
+          internalVariantId: VARIANT_ID,
+          stock: 1,
+          publishImmediately: false,
+          offerCreationRecordId: RECORD_ID,
+        }),
+        DEAD
+      );
+
+      expect(offerCreation.abandonCreation).toHaveBeenCalledWith(RECORD_ID, 'ambiguous write');
+      expect(bulkProgress.advanceBatchStatus).not.toHaveBeenCalled();
+    });
+
+    it('should count a bulk child as failed when its record was moved out of pending', async () => {
+      offerCreation.abandonCreation.mockResolvedValue(buildRecord({ status: 'failed' }));
+
+      await handler.onDead(createJob(v2Payload), DEAD);
+
+      expect(bulkProgress.advanceBatchStatus).toHaveBeenCalledWith(BATCH_ID, RECORD_ID, 'failed');
+    });
+
+    it('should not advance the batch when the record was no longer pending', async () => {
+      offerCreation.abandonCreation.mockResolvedValue(null);
+
+      await handler.onDead(createJob(v2Payload), DEAD);
+
+      expect(offerCreation.abandonCreation).toHaveBeenCalledWith(RECORD_ID, 'ambiguous write');
+      expect(bulkProgress.advanceBatchStatus).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when a legacy single-offer payload carries no record id', async () => {
+      await handler.onDead(
+        createJob({
+          schemaVersion: 1,
+          internalVariantId: VARIANT_ID,
+          stock: 1,
+          publishImmediately: false,
+        }),
+        DEAD
+      );
+
+      expect(offerCreation.abandonCreation).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when the payload cannot be parsed', async () => {
+      await handler.onDead(createJob(undefined), DEAD);
+
+      expect(offerCreation.abandonCreation).not.toHaveBeenCalled();
+      expect(bulkProgress.advanceBatchStatus).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * InvoicesListPage — component tests (#758, #1240 A1+C2+C3)
+ * InvoicesListPage - component tests (#758, #1240 A1+C2+C3)
  *
  * Mirrors the webhook deliveries page test: loading / error / empty / data
  * states + "filter drives query" assertions via a mocked api client.
@@ -45,7 +45,7 @@ function makeInvoice(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     id: 'inv_1',
     connectionId: 'conn_1',
     orderId: 'order_1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'pi_1',
@@ -121,12 +121,60 @@ describe('InvoicesListPage', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/invoice.pdf');
     expect(within(link).getByText('FV/2026/001')).toBeInTheDocument();
     // Status badge (issued) renders in both the desktop table cell and the
-    // mobile card-view meta. The regulatory label "KSeF: accepted" now appears
-    // both as the row badge AND as a filter <option> (the filter reuses the badge
-    // label map, #1585 F7), so assert the non-option badge element specifically.
+    // mobile card-view meta. The regulatory label is regulator-neutral
+    // (#3181 - this list mixes rows from every provider, e.g. this fixture's
+    // own `providerType: 'subiekt-gt'`, so it must never assume KSeF): "Accepted"
+    // appears both as the row badge AND as a filter <option> (the filter
+    // reuses the badge label map, #1585 F7), so assert the non-option badge
+    // element specifically.
     expect(screen.getAllByText('Issued').length).toBeGreaterThan(0);
-    const accepted = screen.getAllByText('KSeF: accepted');
+    const accepted = screen.getAllByText('Accepted');
     expect(accepted.some((el) => el.tagName !== 'OPTION')).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------
+  // #3188 - the Buyer tax ID column. The list already FILTERED on tax
+  // identity (`taxId=with|without`, #1202) while showing no column for it, so
+  // the filter answered a yes/no question and hid the answer.
+  //
+  // The three renderings come from the order detail's own component, so there
+  // is no second copy of the vocabulary to drift; these assert the states are
+  // reachable from this page and carry the hook
+  // `docs/plans/mockups/sales-document-tax-number-on-receipt.html` declares.
+  // ---------------------------------------------------------------------
+  it('renders the buyer tax id verbatim when the document carries one (#3188)', async () => {
+    const invoice = makeInvoice({ buyerTaxId: '5213796333' });
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [invoice], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const cell = await screen.findByTestId('invoice-row-tax-id-0');
+    expect(within(cell).getByText('5213796333')).toBeInTheDocument();
+  });
+
+  // "Has none" and "we were not told" decide DIFFERENT fiscal documents, so the
+  // two absences are told apart by hook rather than by wording.
+  it('distinguishes asserted-none from not-asserted by hook, not by text (#3188)', async () => {
+    const assertedNone = makeInvoice({ id: 'inv_1', buyerTaxId: null });
+    const notAsserted = makeInvoice({ id: 'inv_2' });
+    const list = vi
+      .fn()
+      .mockResolvedValue(makeEnvelope({ items: [assertedNone, notAsserted], total: 2 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const first = await screen.findByTestId('invoice-row-tax-id-0');
+    const second = await screen.findByTestId('invoice-row-tax-id-1');
+    expect(within(first).getByTestId('order-buyer-tax-id-none')).toBeInTheDocument();
+    expect(within(second).getByTestId('order-buyer-tax-id-unknown')).toBeInTheDocument();
+  });
+
+  // An invoice issued before the column existed has nothing to backfill from,
+  // so it must read as "not asserted" rather than as an empty identifier.
+  it('renders a pre-column invoice as not-asserted rather than blank (#3188)', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [makeInvoice()], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const cell = await screen.findByTestId('invoice-row-tax-id-0');
+    expect(within(cell).getByTestId('order-buyer-tax-id-unknown')).toBeInTheDocument();
   });
 
   it('links each row to /invoices/:id (not /orders/:orderId)', async () => {
@@ -164,18 +212,21 @@ describe('InvoicesListPage', () => {
     await screen.findByRole('link', { name: 'Open invoice PDF for FV/2026/001 (opens in new tab)' });
     const cell = container.querySelector('.invoice-document-cell');
     expect(cell).not.toBeNull();
-    // Number on line 1 (still the PDF anchor), LABELLED type on line 2 — the raw
+    // Number on line 1 (still the PDF anchor), LABELLED type on line 2 - the raw
     // slug `invoice` is what the sibling detail page never showed.
     expect(within(cell as HTMLElement).getByText('FV/2026/001')).toBeInTheDocument();
     expect(within(cell as HTMLElement).getByText('Invoice (faktura)')).toBeInTheDocument();
     expect(within(cell as HTMLElement).queryByText('invoice')).toBeNull();
 
-    // The separate "Invoice no." column is gone; the list is 8 columns wide.
+    // The separate "Invoice no." column is gone. The width is 9 since #3188 added
+    // Buyer tax ID (8 before it); the assertion that carries the #2090 intent is
+    // the `Invoice no.` absence below, and the count is kept beside it so a
+    // column added by accident still fails something.
     const headers = container.querySelectorAll('thead th');
-    expect(headers).toHaveLength(8);
+    expect(headers).toHaveLength(9);
     expect(screen.queryByText('Invoice no.')).toBeNull();
 
-    // The merged column must survive 768px — it hosts #2094's tablet fold, so it
+    // The merged column must survive 768px - it hosts #2094's tablet fold, so it
     // cannot be the thing that disappears there. Connection keeps its 1024 gate.
     expect(headers[2]?.className).not.toContain('data-table__cell--hide-below-768');
     expect(headers[6]?.className).toContain('data-table__cell--hide-below-1024');
@@ -204,7 +255,7 @@ describe('InvoicesListPage', () => {
   it('says "Not yet issued" rather than rendering a blank cell for a failed record', async () => {
     // `InvoiceService` writes `documentType: ''` on the pending row and the
     // failure patch never backfills it, and both production issuance paths omit
-    // the type — so a raw render left the merged cell's ONLY text empty on every
+    // the type - so a raw render left the merged cell's ONLY text empty on every
     // row a triage filter selects.
     const list = vi.fn().mockResolvedValue(
       makeEnvelope({
@@ -223,11 +274,11 @@ describe('InvoicesListPage', () => {
     expect(cell).not.toBeNull();
     // The dash is an `EmptyValue`, so a screen reader hears a word.
     expect(within(cell as HTMLElement).getByLabelText('No value')).toBeInTheDocument();
-    expect(container.querySelector('.invoice-document-cell')?.textContent).not.toBe('—');
+    expect(container.querySelector('.invoice-document-cell')?.textContent).not.toBe('-');
   });
 
   it('makes the document number copyable when the provider ships no PDF url', async () => {
-    // KSeF and inFakt both hard-null `pdfUrl`, so line 1 was inert text — the one
+    // KSeF and inFakt both hard-null `pdfUrl`, so line 1 was inert text - the one
     // identifier on the row with no affordance at all, on a page organised around
     // reconciling by document number.
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -300,7 +351,7 @@ describe('InvoicesListPage', () => {
   it('keeps the document number copyable when the provider pdf url is not http(s)', async () => {
     // `InvoicePdfLink` renders an anchor only for a safe http(s) URL and nothing
     // validates the scheme server-side, so branching on `pdfUrl` truthiness left a
-    // relative or garbage URL rendering inert plain text — the exact state the
+    // relative or garbage URL rendering inert plain text - the exact state the
     // Copy fallback exists to remove.
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
@@ -342,7 +393,7 @@ describe('InvoicesListPage', () => {
       renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
 
       // `formatOrderRef`'s head-tail form, the same shortening the desktop cell
-      // applies — the card reimplementing identity resolution is how it drifted.
+      // applies - the card reimplementing identity resolution is how it drifted.
       expect(await screen.findByText('d1f4a2c3…f60789')).toBeInTheDocument();
       expect(screen.queryByText('d1f4a2c3-9b8e-4f7a-a1b2-c3d4e5f60789')).toBeNull();
     } finally {
@@ -406,7 +457,7 @@ describe('InvoicesListPage', () => {
       route: '/invoices',
     });
 
-    // Was the raw 41-character orderId in a mono span — no link, no Copy.
+    // Was the raw 41-character orderId in a mono span - no link, no Copy.
     expect(await screen.findByRole('link', { name: '6839-2911-4402' })).toHaveAttribute(
       'href',
       '/orders/ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
@@ -458,7 +509,7 @@ describe('InvoicesListPage', () => {
   it('links the shortened internal order id when no order summary resolves', async () => {
     // #2090's AC asked for `–`; the shared cell deliberately renders a link
     // instead, because `buildOrderSummary` also returns null for "the snapshot
-    // carried no parseable items" — a live order. What the issue actually removes
+    // carried no parseable items" - a live order. What the issue actually removes
     // is the raw 41-character UUID, and a shortened link removes it.
     const list = vi.fn().mockResolvedValue(
       makeEnvelope({
@@ -477,7 +528,7 @@ describe('InvoicesListPage', () => {
       'href',
       '/orders/ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
     );
-    // The raw untruncated id — what this issue removes — is nowhere on the row.
+    // The raw untruncated id - what this issue removes - is nowhere on the row.
     expect(
       screen.queryByText('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9'),
     ).toBeNull();
@@ -502,7 +553,7 @@ describe('InvoicesListPage', () => {
     expect(
       within(cell).getByRole('button', { name: 'Copy connection ID for PrestaShop Main' }),
     ).toBeInTheDocument();
-    // No adornment on this page — an invoice's connection IS its issuing provider.
+    // No adornment on this page - an invoice's connection IS its issuing provider.
     expect(cell.querySelector('.connection-cell__adornment')).toBeNull();
   });
 
@@ -515,7 +566,7 @@ describe('InvoicesListPage', () => {
 
     await screen.findByText('Invoice (faktura)');
 
-    // What a document is and who issued it are the same sentence — and this
+    // What a document is and who issued it are the same sentence - and this
     // column is deliberately always visible, which is what makes it a valid host.
     const fold = container.querySelector('.invoice-document-cell .conn-fold');
     expect(fold).not.toBeNull();
@@ -529,12 +580,12 @@ describe('InvoicesListPage', () => {
     expect(foldEl.querySelector('.copyable-id')).toBeNull();
     expect(within(foldEl).queryByRole('button')).toBeNull();
 
-    // The desktop column keeps its 1024 gate — not lowered to 768.
+    // The desktop column keeps its 1024 gate - not lowered to 768.
     const headers = container.querySelectorAll('thead th');
     expect(headers[6]?.className).toContain('data-table__cell--hide-below-1024');
 
     // The merged Document type column must stay visible at 768, since it is the
-    // host — this is the constraint #2090 recorded for exactly this reason.
+    // host - this is the constraint #2090 recorded for exactly this reason.
     expect(headers[2]?.className).not.toContain('data-table__cell--hide-below-768');
   });
 
@@ -751,8 +802,37 @@ describe('InvoicesListPage', () => {
     // the banner's own text (robust to the Alert component's internal markup /
     // CSS class names) rather than the `alert__description` implementation class.
     const banner = await screen.findByText(/Bulk issue complete\./);
-    expect(banner.textContent).toContain('1 issued.');
+    expect(banner.textContent).toContain('Issued 1 of 2.');
     expect(banner.textContent).toContain('1 skipped (already issued or in progress).');
+  });
+
+  it('reports issued against the asked total and flags orders the server did not account for (DEF-21)', async () => {
+    const user = userEvent.setup();
+    const conn = makeConnection({ id: 'conn_a', name: 'Connection A' });
+    const invoiceA = makeInvoice({ id: 'inv_a', orderId: 'order_a', connectionId: 'conn_a' });
+    const invoiceB = makeInvoice({ id: 'inv_b', orderId: 'order_b', connectionId: 'conn_a' });
+    const list = vi
+      .fn()
+      .mockResolvedValue(makeEnvelope({ items: [invoiceA, invoiceB], total: 2 }));
+    const bulkIssue = vi
+      .fn()
+      .mockResolvedValueOnce({ issued: 1, skipped: 0, failed: 0, total: 2, results: [] });
+
+    renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list, [conn], bulkIssue),
+      route: '/invoices',
+    });
+
+    await screen.findByText('order_a');
+    const checkboxes = screen.getAllByRole('checkbox', { name: /select invoice/i });
+    await user.click(checkboxes[0]);
+    await user.click(checkboxes[1]);
+    await user.click(screen.getByRole('button', { name: /issue invoices/i }));
+    await user.click(screen.getByRole('button', { name: 'Issue' }));
+
+    const banner = await screen.findByText(/Bulk issue complete\./);
+    expect(banner.textContent).toContain('Issued 1 of 2.');
+    expect(banner.textContent).toContain('Some orders were not reported back');
   });
 
   it('renders the clearanceReference (KSeF number) column when present', async () => {
@@ -761,5 +841,94 @@ describe('InvoicesListPage', () => {
     renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
 
     expect(await screen.findByText('5260001246-20260625-A1B2-3D')).toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------
+  // #3194 - the regulatory-status filter reverses a prior deliberate
+  // exclusion of `not-applicable` (a real, reachable outcome). `cleared`
+  // stays excluded: nothing in the tree writes it, so selecting it would
+  // filter to a state nothing can be in. A chip surfaces the count +
+  // elapsed age of invoices currently `pending-submission` (never an ETA -
+  // OpenLinker has no basis for one).
+  // ---------------------------------------------------------------------
+  it('makes not-applicable selectable but keeps cleared excluded (#3194)', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    await screen.findByText('No invoices found');
+    const select = screen.getByTestId('invoices-filter-regulatory');
+    // Fallback label (#1585 F7): "N/A" for not-applicable.
+    expect(within(select).getByRole('option', { name: 'N/A' })).toBeInTheDocument();
+    expect(within(select).queryByRole('option', { name: 'Clearing' })).toBeNull();
+    expect(within(select).getAllByRole('option')).toHaveLength(6); // "All" + 5 values
+  });
+
+  it('renders the awaiting-submission chip with a count and an elapsed-age phrase, never an ETA (#3194)', async () => {
+    // Real clock, deliberately: `screen.findBy*` polls via real timers, and
+    // fake timers left engaged past this test (e.g. by an early assertion
+    // failure) would hang every later test in the file. A wall-clock offset
+    // from `Date.now()` is exact enough at day/hour granularity.
+    //
+    // Ages off `issuedAt` (never `updatedAt`, which the offline-resubmit
+    // sweep bumps on every claim - see the page's own docblock), so this
+    // sets `issuedAt` and deliberately leaves `updatedAt` at a DIFFERENT,
+    // unrelated timestamp: were the code still keyed on `updatedAt`, this
+    // test would fail rather than pass on stale reasoning.
+    const fourteenHoursAgo = new Date(Date.now() - 14 * 3_600_000).toISOString();
+    const awaiting = makeInvoice({
+      id: 'inv_awaiting',
+      regulatoryStatus: 'pending-submission',
+      issuedAt: fourteenHoursAgo,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [awaiting], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const chip = await screen.findByTestId('invoices-chip-awaiting');
+    expect(chip.textContent).toContain('Awaiting submission');
+    expect(chip.textContent).toContain('1');
+    expect(chip.textContent).toContain('oldest 14 h');
+    // Not a completion-time estimate under any spelling.
+    expect(chip.textContent?.toLowerCase()).not.toMatch(/eta|estimate|expected/);
+  });
+
+  it('does not render the awaiting-submission chip when no invoice is pending-submission (#3194)', async () => {
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({ items: [makeInvoice({ regulatoryStatus: 'accepted' })], total: 1 }),
+    );
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    await screen.findByText('order_1');
+    expect(screen.queryByTestId('invoices-chip-awaiting')).toBeNull();
+  });
+
+  it('clicking the awaiting-submission chip drives the regulatoryStatus filter', async () => {
+    const user = userEvent.setup();
+    const awaiting = makeInvoice({ id: 'inv_awaiting', regulatoryStatus: 'pending-submission' });
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [awaiting], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const chip = await screen.findByTestId('invoices-chip-awaiting');
+    await user.click(chip);
+
+    await waitFor(() => {
+      expect(list.mock.calls.at(-1)?.[0]).toMatchObject({ regulatoryStatus: 'pending-submission' });
+    });
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the chip visible and clickable-to-clear while the filter is active, even at a zero count', async () => {
+    // Once applied, the fetched page may legitimately hold no matching rows -
+    // the chip must remain so the filter stays clearable (the
+    // `salesDocumentBlocked` chip's rule on the orders list, #2100 review).
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
+    renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices?regulatoryStatus=pending-submission',
+    });
+
+    const chip = await screen.findByTestId('invoices-chip-awaiting');
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(chip.textContent).toContain('0');
   });
 });

@@ -30,12 +30,12 @@ export class NotifyDispatchedResponseDto {
   shipmentId!: string;
 
   @ApiProperty({
-    enum: ['notified', 'skipped-not-generated'],
+    enum: ['notified', 'skipped-not-generated', 'skipped-inbound', 'shipment-not-found'],
     description:
       'Top-level outcome. `notified` — the gate was open and source + destinations were attempted. ' +
       '`skipped-not-generated` — the shipment is past the gate (already dispatched/terminal), idempotent no-op.',
   })
-  outcome!: 'notified' | 'skipped-not-generated';
+  outcome!: 'notified' | 'skipped-not-generated' | 'skipped-inbound' | 'shipment-not-found';
 
   @ApiProperty({
     enum: ['ok', 'failed', 'absent'],
@@ -53,7 +53,7 @@ export class NotifyDispatchedResponseDto {
     dto.shipmentId = result.shipmentId;
     // Caller filters `shipment-not-found` to a 404 before fromResult is invoked, so
     // narrow the wire-level union to the two values that can appear here.
-    dto.outcome = result.outcome as 'notified' | 'skipped-not-generated';
+    dto.outcome = result.outcome;
     dto.source = result.source;
     dto.destinations = result.destinations.map((d) => ({
       connectionId: d.connectionId,

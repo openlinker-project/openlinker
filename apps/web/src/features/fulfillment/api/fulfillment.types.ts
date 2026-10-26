@@ -35,12 +35,28 @@
  *
  * @module apps/web/src/features/fulfillment/api
  */
+import type { ShipmentStatus } from '../../shipments';
 
 /** One line's quantity counters. Counters, never a per-line status. */
 export interface FulfillmentTaskLine {
   id: string;
   orderLineId: string;
   productVariantId: string;
+  /**
+   * What the line's product card shows (#3426, #3096): the parent product's
+   * name, the variant's codes, a picture and its attributes. Every one is
+   * `null` when the catalogue does not have it and `undefined` against an API
+   * that predates it — the card falls back to `productVariantId` either way.
+   *
+   * `imageUrl` is the API's own PROXY path (`/products/:id/images/:index`),
+   * behind the route guard, so it is fetched with the bearer token
+   * (`useAuthenticatedImage`) and never handed to a bare `<img src>`.
+   */
+  productName?: string | null;
+  sku?: string | null;
+  ean?: string | null;
+  imageUrl?: string | null;
+  attributes?: Record<string, string> | null;
   totalQuantity: number;
   /**
    * DISPLAY-ONLY, and not protected by the optimistic token: progress ingress
@@ -73,7 +89,57 @@ export interface FulfillmentTask {
   orderId: string;
   locationId: string | null;
   deliveryMethod: string | null;
+  /**
+   * The order's own reference, and the facts an operator recognises it by
+   * (#3401). A task carries only internal ids of its own, so without these
+   * the assign board can render nothing but `ol_order_…`.
+   *
+   * `buyerName` is MASKED server-side ("A. Kowalska") — a deliberate,
+   * bounded reversal of ADR-062's exclusion for THIS board only, because a
+   * supervisor deciding who packs a box has to recognise the order.
+   *
+   * All four are `null` when the order or the location row is not there, and
+   * `undefined` against an API that predates them.
+   */
+  orderReference?: string | null;
+  /**
+   * MASKED server-side ("A. Kowalska"). The field name carries that, so no
+   * reader can mistake it for the buyer's own name. `null` under
+   * `OL_STORE_PII=false`, where the persisted address is redacted and there
+   * genuinely is no name - an ordinary answer, not a failure.
+   */
+  buyerNameMasked?: string | null;
+  dispatchByAt?: string | null;
+  carrierName?: string | null;
+  /**
+   * `null` FAR more often than it looks: `inventory_items.locationId IS NULL`
+   * means the master declines to locate its stock (ADR-058 decision 2), and
+   * neither shipped `InventoryMasterPort` adapter can report a location. So
+   * expect no location at all unless the operator set a per-connection
+   * `stockLocationOverride` (#3206).
+   */
+  locationName?: string | null;
   assignedConnectionId: string | null;
+  /**
+   * A supervisor's advisory pre-assignment to a specific PACKER (#3340,
+   * ADR-074) — a distinct axis from `assignedConnectionId`, which is the
+   * HOLDER connection (the executor). `null` = unassigned.
+   */
+  assignedToUserId: string | null;
+  /**
+   * When the task most recently BECAME unassigned (#3424). `null` on an
+   * ASSIGNED row means "assigned right now" — render nothing. `null` on an
+   * UNASSIGNED row means the row predates this column: an UNKNOWN age, not
+   * a zero one — render nothing rather than "0m". Optional against an API
+   * that predates it, the `orderReference` precedent above.
+   */
+  unassignedSince?: string | null;
+  /**
+   * Whether a packer other than `assignedToUserId` may still claim this
+   * task. `true` is the advisory default; server-side enforcement of
+   * `false` lives at the pack bench, not here.
+   */
+  selfServeEligible: boolean;
   /**
    * The orchestration status. **Not the authority on heldness** — nothing
    * writes `on_hold`, so a held task reads `open` with a non-empty
@@ -86,6 +152,35 @@ export interface FulfillmentTask {
   externalWorkId: string | null;
   acceptedAt: string | null;
   cancelledAt: string | null;
+  /**
+   * When someone pushed this task ahead of ordinary deadline order (#2416),
+   * `null` when nobody did. `null` means NOT expedited, never "unknown".
+   * Optional against an API that predates it, the `orderReference` precedent
+   * above — `.nullish()` in the schema normalises an absent value to `null`.
+   *
+   * DISPLAY ONLY (#3247). Which of `expedite` / `release_expedite` is
+   * offered is read from `supportedActions` and from nothing else — a
+   * control derived from this field would be offered on a task the server
+   * would then refuse (the rule `features/bench` pinned first, in
+   * `bench-work-presentation.ts`).
+   */
+  expeditedAt?: string | null;
+  /**
+   * What the pack bench has done to the box (#3096, G02-3). `parcelClosedAt`
+   * is when the box was shut — NOT `status`, since packing is part of the
+   * executor's job rather than the end of it — and `packedByUserId` who shut
+   * it. `completedAt` is the separate "finished and off the bench" instant.
+   * All optional against an API that predates them.
+   */
+  parcelClosedAt?: string | null;
+  packedByUserId?: string | null;
+  completedAt?: string | null;
+  /**
+   * When the dispatch fact was settled with the sales channel, or `null` while
+   * it is not. RESOLVED, not acknowledged: a channel that takes no dispatch
+   * notice is settled too, so copy must not promise the channel confirmed it.
+   */
+  channelNotifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   lines: FulfillmentTaskLine[];
@@ -105,6 +200,31 @@ export interface FulfillmentTaskPage {
   total: number;
   limit: number;
   offset: number;
+}
+
+/**
+ * One shipment dispatched for a fulfilment task (#3292).
+ *
+ * Outbound only — `GET /fulfillment/works/:workId/shipments` never surfaces a
+ * `'return'`-direction row (#2373), so this shape carries no `direction`
+ * field to read the wrong way.
+ *
+ * `status` reuses `ShipmentStatus` from `features/shipments` — a stable,
+ * already-mirrored vocabulary with its own guard script and its own
+ * `ShipmentStatusBadge`, unlike the fulfilment-task axes this file's own
+ * docblock forbids mirroring. Reusing it is what lets this panel render
+ * status with the shipments feature's existing badge rather than a second
+ * copy of the same six colours.
+ */
+export interface FulfillmentTaskShipment {
+  id: string;
+  status: ShipmentStatus;
+  carrier: string | null;
+  trackingNumber: string | null;
+  hasLabel: boolean;
+  createdAt: string;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
 }
 
 /** Body of `POST /fulfillment/works/:workId/actions/:action`. */
@@ -131,12 +251,45 @@ export interface ApplyFulfillmentTaskActionRequest {
  * app may not mirror (see the module docblock), and the endpoint validates them
  * — so a value forwarded raw from the URL bar would 400 the whole page over a
  * typo, and a value this build invented would be silently dropped. Filtering is
- * by the two free-string params until a server-supplied facet list exists.
+ * by the free-string params until a server-supplied facet list exists.
+ *
+ * `active` is the one status-shaped filter this app sends, and it is an ALIAS
+ * the server resolves (#3096): "every status that still has work in it". The
+ * board asks for it by default so closed and cancelled parcels do not crowd the
+ * Unassigned lane, without this build knowing which statuses those are.
+ *
+ * `locationId` is accepted by the endpoint and still typed here, but no screen
+ * offers it since #3096: with one location it filters nothing, and it returns
+ * with multi-warehouse work.
  */
 export interface FulfillmentTaskFilters {
   orderId?: string;
   locationId?: string;
+  active?: boolean;
   /** Server-clamped; the response reports what was actually applied. */
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Body of `PATCH /fulfillment/works/:workId/assignment` (#3337, ADR-074;
+ * `expectedVersion` #3340 second follow-up).
+ *
+ * `assignedToUserId` / `selfServeEligible` are optional and independently
+ * applied — `undefined` means "leave alone". `assignedToUserId: null` clears
+ * an assignment; a string id sets or reassigns it.
+ *
+ * `expectedVersion` is a THIRD, independently optional field — a lost-update
+ * guard, not a staffing field. ADR-074 places assignment outside the
+ * legality matrix `applyAction` enforces (which SYSTEM may act), which says
+ * nothing about a stale-write guard (an orthogonal concern: has a PEER
+ * written since this caller read the row). This board always sends it,
+ * carrying the version the row was RENDERED with — never one re-read at
+ * click time, or a fresher value would make the 409 this guard exists to
+ * raise unreachable and hand the last writer the win.
+ */
+export interface UpdateFulfillmentWorkAssignmentRequest {
+  assignedToUserId?: string | null;
+  selfServeEligible?: boolean;
+  expectedVersion?: number;
 }

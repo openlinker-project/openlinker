@@ -92,6 +92,36 @@ export class UpdateOperationalSettingsDto {
   deletionAuditBudget?: number | null;
 
   @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: BOUNDS.syncJobRetentionDays.min,
+    maximum: BOUNDS.syncJobRetentionDays.absoluteMax,
+    description:
+      'Days a completed sync job is kept (#2946, D16). Bounded 30-365 days. `null` clears it back to the env var, then to the built-in default of 30.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(BOUNDS.syncJobRetentionDays.min)
+  @Max(BOUNDS.syncJobRetentionDays.absoluteMax)
+  syncJobRetentionDays?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: BOUNDS.syncJobDeadRetentionDays.min,
+    maximum: BOUNDS.syncJobDeadRetentionDays.absoluteMax,
+    description:
+      'Days a permanently-failed sync job is kept (#2946, D16). Bounded 30-365 days. `null` clears it back to the env var, then to the built-in default of 90.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(BOUNDS.syncJobDeadRetentionDays.min)
+  @Max(BOUNDS.syncJobDeadRetentionDays.absoluteMax)
+  syncJobDeadRetentionDays?: number | null;
+
+  @ApiPropertyOptional({
     type: String,
     nullable: true,
     example: '0 * * * *',

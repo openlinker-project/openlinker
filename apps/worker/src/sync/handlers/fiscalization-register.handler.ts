@@ -37,12 +37,17 @@
  *
  * PII: unlike invoicing's payload, this one carries NO buyer name/address (a
  * fiscal registration names no buyer — see the fiscalization controller's own
- * `rehydrateOrder` doc) — only an optional `recipient` (email/phone). Failure
- * logs still name only ids + error name, never `recipient` / `lines`.
+ * `rehydrateOrder` doc) — only an optional `recipient` (email/phone) and, since
+ * #3187, an optional `buyerTaxId`. Failure logs still name only ids + error
+ * name, never `recipient` / `lines` / `buyerTaxId`.
  *
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
+import {
+  POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
+  type IPostSaleInventoryRefreshService,
+} from '@openlinker/core/inventory';
 import type {
   SyncJobHandler,
   SyncJobHandlerResult,
@@ -61,6 +66,13 @@ import {
 } from '@openlinker/core/fiscalization';
 import type { RegisterTransactionCommand } from '@openlinker/core/fiscalization';
 import { isTaxRateEra } from '@openlinker/core/sales-documents';
+import {
+  IOrderRecordService,
+  IOrderRefundService,
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+import { readLiveOrderIssuanceDecision } from './live-order-issuance';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -79,6 +91,12 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
   constructor(
     @Inject(FISCAL_REGISTRATION_SERVICE_TOKEN)
     private readonly fiscalRegistrations: IFiscalRegistrationService,
+    @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
+    private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -90,10 +108,56 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     const command = this.toCommand(payload);
 
     try {
+      // DEF-26: a receipt for a cancelled or fully refunded order is not
+      // registered, the same gate `invoicing.issue` applies. A failed read
+      // throws inside this try and so retries rather than registering blind.
+      const decision = await readLiveOrderIssuanceDecision(
+        this.orderRecords,
+        this.orderRefunds,
+        payload.orderId,
+      );
+      if (decision.kind === 'block') {
+        this.logger.warn(
+          `fiscalization.register skipped: ${decision.reason} orderId=${payload.orderId} connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+
       // `register` never throws on a provider rejection (see file docstring) —
       // a resolved call is always a completed job, whatever the returned
       // record's own `status`/`failureMode` says.
-      await this.fiscalRegistrations.register(command);
+      const record = await this.fiscalRegistrations.register(command);
+      // A fiscal receipt moves warehouse stock on a master that files it as a
+      // stock document (Subiekt's PAf carries the release exactly as its FS/PA
+      // does), so the master's quantity is re-read once the receipt has
+      // committed. Keyed on the registration record, hence a distinct event
+      // from the order-scoped refresh; wrapped so it can never change the
+      // outcome of a registration that already happened.
+      //
+      // GATED ON `registered`, unlike the invoicing arm, because `register`
+      // resolves whatever the record's own status is - a rejected or in-doubt
+      // attempt returns normally. `resumeExisting` reuses the SAME record id,
+      // so an ungated enqueue here would spend `receipt:{id}` on an attempt
+      // that moved no stock and leave the later successful one with a key the
+      // forever-unique index has already consumed: the refresh would never
+      // fire and the drift would wait for the next sweep. Nothing is lost on
+      // the other branches - no stock moved, so there is nothing to re-read.
+      if (record.status === 'registered') {
+        try {
+          await this.postSaleInventoryRefresh.enqueue({
+            productIds: payload.lines
+              .map((line) => line.productId)
+              .filter((id): id is string => typeof id === 'string' && id !== ''),
+            keyScope: `receipt:${record.id}`,
+          });
+        } catch (error) {
+          this.logger.warn(
+            `post-receipt master inventory refresh could not be enqueued for orderId=${payload.orderId}: ` +
+              `${error instanceof Error ? error.name : 'unknown error'}. ` +
+              `The scheduled inventory sweep remains the backstop.`,
+          );
+        }
+      }
       return { outcome: 'ok' };
     } catch (error) {
       if (
@@ -196,6 +260,10 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
       }
     }
 
+    if (p.buyerTaxId !== undefined && !isNonEmptyString(p.buyerTaxId)) {
+      return fail('buyerTaxId');
+    }
+
     if (p.recipient !== undefined && p.recipient !== null) {
       const recipient = p.recipient;
       if (typeof recipient !== 'object') return fail('recipient');
@@ -245,6 +313,9 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     // era" (i.e. the guard applies) instead of silently exempting the order.
     if (isTaxRateEra(payload.taxRateEra)) {
       command.taxRateEra = payload.taxRateEra;
+    }
+    if (payload.buyerTaxId !== undefined) {
+      command.buyerTaxId = payload.buyerTaxId;
     }
 
     return command;

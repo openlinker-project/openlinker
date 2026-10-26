@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
-import { KpiCard } from './kpi-card';
+import { KpiCard, KpiGrid } from './kpi-card';
 
 function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -50,5 +50,40 @@ describe('KpiCard', () => {
   it('omits the sparkline for insufficient data', () => {
     const { container } = render(<KpiCard label="Trend" value={10} sparkline={[1]} />);
     expect(container.querySelector('.sparkline')).toBeNull();
+  });
+
+  it('should add the compact modifier when density is compact', () => {
+    const { container } = render(<KpiCard label="Unassigned" value={3} density="compact" />);
+    expect(container.firstChild).toHaveClass('kpi-card', 'kpi-card--compact');
+  });
+
+  it('should not add the compact modifier by default', () => {
+    const { container } = render(<KpiCard label="Unassigned" value={3} />);
+    expect(container.firstChild).not.toHaveClass('kpi-card--compact');
+  });
+});
+
+describe('KpiGrid', () => {
+  afterEach(cleanup);
+
+  it('should render its cards inside the grid container when given children', () => {
+    const { container } = render(
+      <KpiGrid>
+        <KpiCard label="A" value={1} />
+        <KpiCard label="B" value={2} />
+      </KpiGrid>
+    );
+    const grid = container.firstChild as HTMLElement;
+    expect(grid).toHaveClass('kpi-grid');
+    expect(grid.querySelectorAll('.kpi-card')).toHaveLength(2);
+  });
+
+  it('should expose a named group when an aria-label is given', () => {
+    render(
+      <KpiGrid aria-label="Board summary">
+        <KpiCard label="A" value={1} />
+      </KpiGrid>
+    );
+    expect(screen.getByRole('group', { name: 'Board summary' })).toBeInTheDocument();
   });
 });

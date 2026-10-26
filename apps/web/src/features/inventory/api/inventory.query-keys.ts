@@ -1,4 +1,5 @@
 import type { InventoryFilters, InventoryPagination } from './inventory.types';
+import type { InventoryLocationFilters, InventoryLocationListPagination } from './inventory-locations.types';
 
 export const inventoryQueryKeys = {
   all: ['inventory'] as const,
@@ -14,4 +15,22 @@ export const inventoryQueryKeys = {
   // but the hook never fires for empty input so it's never used.
   availability: (variantIds: readonly string[]) =>
     ['inventory', 'availability', [...variantIds].sort().join(',')] as const,
+  /**
+   * The shared prefix of every locations-registry key below (`activeLocations`
+   * included, since it shares the `['inventory', 'locations']` root) — the
+   * one key a create/update/delete mutation invalidates against (#3065), the
+   * `sales-document-rules` `all` shape applied to this sub-domain rather than
+   * the whole `inventory` root, which would also drop the unrelated stock
+   * list/detail/availability caches.
+   */
+  locationsAll: () => ['inventory', 'locations'] as const,
+  locations: (filters?: InventoryLocationFilters, pagination?: InventoryLocationListPagination) =>
+    ['inventory', 'locations', 'list', filters ?? {}, pagination ?? {}] as const,
+  locationDetail: (id: string) => ['inventory', 'locations', 'detail', id] as const,
+  // #2319/#3072 — the diagnostic reads only `maxGroups`, no connection axis
+  // (the readiness gate is install-wide, not per connection).
+  duplicatePositions: (maxGroups?: number) =>
+    ['inventory', 'duplicate-positions', maxGroups ?? null] as const,
+  // #3240 — install-wide live read, same axis-free shape as duplicatePositions.
+  provenanceBackfillStatus: () => ['inventory', 'provenance-backfill-status'] as const,
 };

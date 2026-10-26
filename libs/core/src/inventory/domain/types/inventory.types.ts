@@ -44,7 +44,12 @@ export const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
  *
  * `return_restock` is #2370's (`W2-33`) sole value — the units an operator put
  * back on the shelf after a return. `manual_correction` is the operator-driven
- * stock-take correction named in #2368.
+ * stock-take correction named in #2368. `order_sale` is #3453's — the units a
+ * routed order sold, lowered in the product master that owns each line because,
+ * with the OMS on, the order is never created there and so the master's own
+ * order flow never lowers them. `order_sale_reversal` is #3479's — the exact
+ * inverse, raised back into the same master when a routed, not-yet-dispatched
+ * order carrying an `order_sale` decrement is cancelled.
  *
  * **Narrowed from `string` (#2368).** The field already existed as free text and
  * was written by nobody and read by nobody in this tree. An audit-bearing value
@@ -54,7 +59,12 @@ export const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
  * implementers: an adapter reading `adjustment.reason` as a string still
  * compiles, because a narrower type is still assignable to a string read.
  */
-export const InventoryAdjustmentReasonValues = ['return_restock', 'manual_correction'] as const;
+export const InventoryAdjustmentReasonValues = [
+  'return_restock',
+  'manual_correction',
+  'order_sale',
+  'order_sale_reversal',
+] as const;
 
 /**
  * Reason type derived from {@link InventoryAdjustmentReasonValues}.
@@ -215,6 +225,15 @@ export interface InventoryFilters {
    * unattributed rows would misreport whose stock the operator is looking at.
    */
   sourceConnectionId?: string;
+  /**
+   * Leave out positions marked stale (the master no longer reports them).
+   * Absent keeps every row, so existing callers read what they always did.
+   *
+   * The OMS router sets it (#3481): it acts on the quantity, so a row the
+   * #2322 / #3206 repairs staled, or one of a product deleted at the master
+   * (#1689), must not count units that no longer exist.
+   */
+  excludeStale?: boolean;
 }
 
 /**
@@ -417,6 +436,27 @@ export interface DuplicatePositionGroup {
   /** Rows on this key with `isStale = false`. */
   liveRowCount: number;
   rows: DuplicatePositionRow[];
+  /**
+   * Display enrichment (#3239) — resolved by `InventoryQueryService` from the
+   * raw ids above, batched across the whole report's unique ids. The
+   * repository never sets these; they exist so a real product/connection/
+   * location name reaches the operator without a second query per row.
+   *
+   * `null` on `productName` means the product could not be resolved (e.g.
+   * deleted) — `Product.name` is non-null, so `productName` alone carries
+   * the resolution signal. `sku` is `Product.sku`'s own `string | null`
+   * shape (a resolved product may genuinely carry no SKU), so `sku: null`
+   * does NOT by itself mean "product not found" — check `productName` for
+   * that. `connectionName` and `locationName` stay `null` for the documented
+   * sentinel states — `sourceConnectionId === null | 'legacy'` (not yet
+   * backfilled by #2317) and `locationId === null` (ADR-058 decision 2, the
+   * master declines to locate) — which must never be resolved to a
+   * fabricated name.
+   */
+  productName: string | null;
+  sku: string | null;
+  connectionName: string | null;
+  locationName: string | null;
 }
 
 /**
@@ -445,6 +485,64 @@ export interface DuplicatePositionReport {
 }
 
 /**
+ * Live status of the #2317 provenance backfill (`inventory.provenance.backfill`
+ * — {@link LEGACY_SOURCE_CONNECTION_ID}) (#3240).
+ *
+ * This is the SECOND, independent readiness condition for the #2325
+ * `SET NOT NULL` + unique-index migration — {@link DuplicatePositionReport}'s
+ * `groupCount: 0` is the first. A scan taken while the backfill is still
+ * mid-run can read `groupCount: 0` and then flip non-zero once NULL rows
+ * collapse to `'legacy'` and reveal a collision the scan could not see yet,
+ * so #2325 must not proceed on `groupCount: 0` alone.
+ *
+ * **`remainingNull` is always resolved LIVE, on every call — never a
+ * stored/cached count.** The backfill's own scan is frontier-as-query, not a
+ * scan offset (see `inventory-provenance-backfill.handler.ts`'s header), so
+ * there is no offset here to go stale — but the pass DOES persist two
+ * `connection_cursors` keys under the nil-UUID system connection:
+ * `sweepRemainingCountCursorKey` (the last page's count, written for
+ * observability, never read back to answer this call) and
+ * `sweepCompletedAtCursorKey` (the LATCH — see `completed` below). Reading
+ * `remainingNull` live rather than from that first key is what keeps this
+ * count immune to the latch going stale.
+ *
+ * **`completed` is `remainingNull === 0` — a point-in-time observation, never
+ * a standing guarantee.** It is derived from the same live count above, so it
+ * inherits that count's staleness: a caller with no connection axis can
+ * insert a fresh provenance-less row a moment later, and #2325 must re-count
+ * immediately before it acts rather than trust a previously-observed `true`.
+ *
+ * `completed` on its own also cannot tell "still draining" apart from
+ * "latched, and stuck". The backfill handler self-latches: once it stamps
+ * `sweepCompletedAtCursorKey` it skips every future tick without re-counting,
+ * and that stamp is never cleared automatically. A later mutation can
+ * reintroduce a NULL row after the latch was set — the exact scenario that
+ * makes `remainingNull` worth reading live — leaving `remainingNull > 0` with
+ * the pass permanently latched off and nothing draining it. `latchedAt` is
+ * what distinguishes the two: present ⇒ latched, so
+ * `remainingNull > 0 && latchedAt !== null` means the pass needs to be
+ * re-armed — see the handler's own docblock for the operator escape hatch.
+ */
+export interface ProvenanceBackfillStatus {
+  /** UNCAPPED count of `inventory_items` rows still missing provenance. */
+  remainingNull: number;
+  /**
+   * `remainingNull === 0`. A point-in-time read of the same live count, not a
+   * durable guarantee — see the interface docblock.
+   */
+  completed: boolean;
+  /**
+   * The persisted `sweepCompletedAtCursorKey` stamp, or `null` if the backfill
+   * has never latched (an empty-string cursor row is normalised to `null` —
+   * it means the same thing to the handler that wrote it). Non-null while
+   * `remainingNull > 0` means the pass has stopped running and will not
+   * resume on its own — re-arm it by deleting the cursor row (see
+   * `inventory-provenance-backfill.handler.ts`).
+   */
+  latchedAt: string | null;
+}
+
+/**
  * One live inventory position a reservation could be taken against (#2344).
  *
  * The resolution counterpart to {@link VariantStockRow}, and deliberately NOT a
@@ -457,6 +555,29 @@ export interface DuplicatePositionReport {
  * Only live (`isStale = false`) rows are ever reported — a stale position must
  * not accept new promises, matching § 6I's claim predicate.
  */
+/**
+ * One live position with its OWNER and quantity (#3453).
+ *
+ * {@link InventoryPositionCandidate} answers "which rows could a reservation
+ * name"; this answers "which connection's book does this stock belong to", which
+ * is what a sale decrement needs to decide where to write. Kept as its own shape
+ * rather than widening the candidate, because the reservation path must not start
+ * depending on provenance by accident.
+ *
+ * `sourceConnectionId` is returned verbatim, including `null` and
+ * {@link LEGACY_SOURCE_CONNECTION_ID}: an unattributed owner is a refusal the
+ * caller must be able to SEE, not a row filtered out of sight.
+ */
+export interface InventoryOwnerPosition {
+  inventoryItemId: string;
+  productId: string;
+  productVariantId: string | null;
+  locationId: string | null;
+  sourceConnectionId: string | null;
+  availableQuantity: number;
+  reservedQuantity: number;
+}
+
 export interface InventoryPositionCandidate {
   productId: string;
   /** `null` for a product-level position (no variant). */

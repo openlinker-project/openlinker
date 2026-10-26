@@ -36,8 +36,12 @@ export type {
   CategoryParameterLike,
   SuppliedParameterLike,
   OfferValidationContribution,
+  BenchReceiptArtefactLike,
+  BenchReceiptSectionProps,
   InvoiceDetailSectionProps,
   InvoiceCorrectionFlowProps,
+  InvoiceIssueOptionsProps,
+  InvoiceIssueOptionsLine,
 } from './plugin.types';
 export { readConfigString, readOptionalConfigString } from './config-readers';
 export { PluginRegistryProvider, PluginRegistryContext } from './plugin-registry-context';

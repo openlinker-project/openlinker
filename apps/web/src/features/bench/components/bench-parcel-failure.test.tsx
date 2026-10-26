@@ -27,14 +27,12 @@ import {
   soundsDistinguishable,
 } from '../lib/bench-scan-sound';
 import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
+import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchParcelView } from './bench-parcel';
 
 function scan(value: string): void {
   act(() => {
-    for (const char of value) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    dispatchScannerBurst(value);
   });
 }
 
@@ -48,6 +46,13 @@ function line(over: Partial<BenchParcelLine> = {}): BenchParcelLine {
     gtin: null,
     requiredQuantity: 2,
     verifiedQuantity: 0,
+    imageUrl: null,
+    attributes: null,
+    binCode: null,
+    weightGrams: null,
+    lengthMm: null,
+    widthMm: null,
+    heightMm: null,
     ...over,
   };
 }
@@ -58,13 +63,22 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     version: 4,
     orderReference: 'OL-4471',
     buyerName: 'Anna Nowak',
+    totalAmount: null,
+    currency: null,
+    carrierName: null,
+    dispatchByAt: null,
     parcelIndex: 1,
     parcelTotal: 2,
     refusal: null,
     holdReason: null,
     closedAt: null,
     packedByUserId: null,
+    assignedToUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
     lines: [line()],
+    packerNotes: [],
     ...over,
   };
 }
@@ -74,7 +88,7 @@ const PACKER = {
   username: 'Marta Kowalczyk',
   email: null,
   role: 'packer',
-  permissions: [],
+  permissions: ['bench:write', 'bench:read'],
   analyticsConsent: true,
 } as const;
 
@@ -99,7 +113,7 @@ function mount(data: BenchParcel, bench: Partial<Record<string, unknown>> = {}) 
     apiClient,
     ...renderWithProviders(<BenchParcelView workId="w-1" onClose={vi.fn()} />, {
       apiClient,
-      sessionAdapter: createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
+      sessionAdapter: createAuthenticatedSessionAdapter({ ...PACKER, permissions: ['bench:write', 'bench:read'] }),
     }),
   };
 }
@@ -583,7 +597,7 @@ describe('bench under failure (#2421)', () => {
 
       // Shown-and-refused, not hidden: a control that vanishes reads as a
       // missing feature and the packer hunts for it.
-      const confirm = await screen.findByRole('button', { name: /confirm this line/i });
+      const confirm = await screen.findByRole('button', { name: /confirm this item/i });
       expect(confirm).toBeDisabled();
       expect(screen.getByText(/Not while the bench is out of touch/i)).toBeInTheDocument();
       await user.click(confirm);

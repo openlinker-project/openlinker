@@ -137,6 +137,35 @@ export interface KsefConnectionConfig {
   payment?: KsefPaymentConfig;
   /** Per-line issuance defaults (#1525). Optional. */
   invoiceDefaults?: KsefInvoiceDefaultsConfig;
+  /**
+   * Interim cross-border escape hatch (#1586). When a command's buyer country
+   * differs from the seller's own country, issuance refuses by default (the
+   * pipeline cannot yet select the correct WDT/export/`np`/OSS tax band and
+   * would otherwise emit a silently-wrong domestic-rate document). Setting this
+   * to `true` suppresses that refusal - the operator asserts they have handled
+   * the tax banding out of band. Optional; absent/`false` = refuse cross-border.
+   * Removed once a real per-order band-selection function lands.
+   */
+  allowCrossBorder?: boolean;
+  /**
+   * The seller's standing fiscal annotations (DEF-20): properties of the
+   * seller rather than of one sale - cash accounting, self-billing, the margin
+   * scheme, the exemption grounds. Every invoice of this connection starts from
+   * them, the automatic ones included; a manual issue may override any of them.
+   * Optional; absent = every annotation "does not apply".
+   */
+  annotationsDefault?: KsefAnnotationsDefaultConfig;
+}
+
+/** Seller-level defaults for the FA(3) `Adnotacje` block (DEF-20 / DEF-22). */
+export interface KsefAnnotationsDefaultConfig {
+  cashAccounting?: boolean;
+  selfBilling?: boolean;
+  marginScheme?: boolean;
+  /** `travel-services` | `used-goods` | `works-of-art` | `collectors-items`. */
+  marginKind?: string;
+  /** Grounds cited on `zw` lines; `kind` = `statute` | `directive` | `other`. */
+  exemptionBasis?: { kind: string; text: string };
 }
 
 /**

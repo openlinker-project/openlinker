@@ -8,6 +8,8 @@
  */
 import { PrestashopAdapterFactory } from '../prestashop-adapter.factory';
 import { PrestashopShopCurrencyResolver } from '../../infrastructure/provisioners/prestashop-shop-currency.resolver';
+import { PrestashopSalesCountryResolver } from '../../infrastructure/provisioners/prestashop-sales-country.resolver';
+import { PrestashopTaxRateResolver } from '../../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { PrestashopCredentials } from '@openlinker/integrations-prestashop';
@@ -365,6 +367,68 @@ describe('PrestashopAdapterFactory', () => {
       expect(ordersUrls.filter((u) => u.includes('date_upd'))).toHaveLength(1);
       expect(ordersUrls.filter((u) => u.includes('[id_ASC]'))).toHaveLength(0);
     }, 20000);
+
+    // ADR-077: the sales country is a fact about the shop (its
+    // PS_COUNTRY_DEFAULT, its country ids), cached per connection id for an
+    // hour. A repointed connection must not keep the previous shop's answer.
+    it('should drop the sales-country cache when the connection is repointed at another shop', async () => {
+      const clearSpy = jest.spyOn(PrestashopSalesCountryResolver.prototype, 'clearCache');
+      // An explicit currency keeps the build free of any shop read.
+      mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
+
+      try {
+        await factory.createAdapters(
+          createTestConnection({ currency: 'PLN' }),
+          mockIdentifierMapping,
+          mockCredentialsResolver,
+          mockFetchImpl
+        );
+        await factory.createAdapters(
+          createTestConnection({ currency: 'PLN' }),
+          mockIdentifierMapping,
+          mockCredentialsResolver,
+          mockFetchImpl
+        );
+        // Same shop twice: nothing to drop.
+        expect(clearSpy).not.toHaveBeenCalled();
+
+        await factory.createAdapters(
+          createTestConnection({ baseUrl: 'https://other-shop.example.com', currency: 'PLN' }),
+          mockIdentifierMapping,
+          mockCredentialsResolver,
+          mockFetchImpl
+        );
+
+        expect(clearSpy).toHaveBeenCalledTimes(1);
+        expect(clearSpy).toHaveBeenCalledWith('test-connection-id');
+      } finally {
+        clearSpy.mockRestore();
+      }
+    });
+
+    it('should drop the catalogue tax-rate cache when the connection is repointed at another shop', async () => {
+      const clearSpy = jest.spyOn(PrestashopTaxRateResolver.prototype, 'clearCache');
+      mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
+
+      try {
+        await factory.createAdapters(
+          createTestConnection({ currency: 'PLN' }),
+          mockIdentifierMapping,
+          mockCredentialsResolver,
+          mockFetchImpl
+        );
+        await factory.createAdapters(
+          createTestConnection({ baseUrl: 'https://other-shop.example.com', currency: 'PLN' }),
+          mockIdentifierMapping,
+          mockCredentialsResolver,
+          mockFetchImpl
+        );
+
+        expect(clearSpy).toHaveBeenCalledWith('test-connection-id');
+      } finally {
+        clearSpy.mockRestore();
+      }
+    });
   });
 
   describe('validateAndParseConfig', () => {

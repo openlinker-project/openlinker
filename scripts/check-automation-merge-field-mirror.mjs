@@ -70,20 +70,65 @@ const FRONTEND_FILE = join(
 const MIRRORED_DECLARATION = 'AUTOMATION_MERGE_FIELDS';
 const DOCS_REF = 'docs/specs/product-spec-oms-wave2-operator-experience.md §5.3b';
 
-/** Slice out the body of `export const <name> = [ ... ] as const;`, comments stripped. */
+/**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `[`
+ * or `]` written inside a comment can never unbalance the depth-aware bracket
+ * scan below. Length-preserving: any index found in the blanked string is a
+ * valid index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Slice out the body of `export const <name> = [ ... ] as const;`, comments
+ * stripped.
+ *
+ * The depth-aware bracket scan below runs on a comment-BLANKED copy of the
+ * content, not the raw text: a `[` or `]` written inside a comment (e.g. an
+ * entry's own `renders` prose mentioning "an array like `foo[]`") would
+ * otherwise unbalance the depth count and close the array early (#3002) - the
+ * exact truncation this function's own docblock already guards against for a
+ * NESTED ARRAY, just from a comment instead of real source.
+ */
 function declarationBody(content, name) {
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
   const declMatch = declRe.exec(content);
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
+  const blanked = blankComments(content);
   // Brace-aware scan: the frontend entries are objects, so the first `]` is the
   // right one only because no entry contains a nested array. Scan anyway, so a
   // future nested shape does not silently truncate the list.
   let depth = 0;
   let closeBracket = -1;
-  for (let i = openBracket; i < content.length; i += 1) {
-    const ch = content[i];
+  for (let i = openBracket; i < blanked.length; i += 1) {
+    const ch = blanked[i];
     if (ch === '[') depth += 1;
     else if (ch === ']') {
       depth -= 1;
@@ -179,10 +224,22 @@ async function main() {
   const frontend = parseFrontendFields(frontendContent);
 
   const fatal = [];
-  if (!backend)
+  if (!backend) {
     fatal.push(`${BACKEND_FILE}: no 'export const ${MIRRORED_DECLARATION} = [...]' found`);
-  if (!frontend)
+  } else if (backend.values.length === 0) {
+    fatal.push(
+      `${BACKEND_FILE}: '${MIRRORED_DECLARATION}' parsed to ZERO values - the PARSER is broken ` +
+        '(a bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
+  }
+  if (!frontend) {
     fatal.push(`${FRONTEND_FILE}: no 'export const ${MIRRORED_DECLARATION} = [...]' found`);
+  } else if (frontend.values.length === 0) {
+    fatal.push(
+      `${FRONTEND_FILE}: '${MIRRORED_DECLARATION}' parsed to ZERO values - the PARSER is broken ` +
+        '(a bracket inside a comment likely truncated the array), not the mirror legitimately empty',
+    );
+  }
   if (fatal.length > 0) {
     console.error('✗ check-automation-merge-field-mirror: could not locate the declaration.\n');
     for (const f of fatal) console.error(`  ${f}`);
@@ -265,6 +322,43 @@ function selfCheck() {
   expect('a backend field missing from the composer fails', diffFields(['a', 'b'], ['a']).ok, false);
   expect('a reordered list fails', diffFields(['a', 'b'], ['b', 'a']).ok, false);
   expect('a missing declaration returns null', parseBackendFields('const other = [];', name), null);
+
+  // #3002: a `]` (or `[`) inside a comment BETWEEN the real brackets must not
+  // unbalance the depth-aware scan and close the array early. Red-first
+  // against the pre-fix scan on RAW content: an unbalanced `]` in a comment
+  // would decrement `depth` to 0 and stop right there.
+  const lineCommentWithBracket = parseBackendFields(
+    backendFile("  'order.reference', // closes early ]\n  'rule.name',"),
+    name,
+  );
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    lineCommentWithBracket?.values.join(','),
+    'order.reference,rule.name',
+  );
+
+  const blockCommentWithBracket = parseBackendFields(
+    backendFile("  'order.reference', /* closes early ] */\n  'rule.name',"),
+    name,
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    blockCommentWithBracket?.values.join(','),
+    'order.reference,rule.name',
+  );
+
+  const commentedBeforeDecl = `// mentions a bracket like foo(): closes early ]\n${backendFile("  'order.reference',")}`;
+  expect(
+    'a "]" inside a comment BEFORE the declaration does not shift the reported line',
+    parseBackendFields(commentedBeforeDecl, name)?.line,
+    3, // leading comment (1) + the helper's own `/** header */` (2) + the decl (3)
+  );
+
+  expect(
+    'a declaration whose every entry is commented out parses to zero values',
+    parseBackendFields(backendFile("  // 'order.reference',\n"), name)?.values.length,
+    0,
+  );
 
   if (failures.length > 0) {
     console.error('✗ check-automation-merge-field-mirror --self-check failed:\n');

@@ -33,6 +33,17 @@ export class ReturnLine {
     public readonly externalLineId: string | null,
     /** Nullable by design — no `order_records` lines table exists to point at. */
     public readonly resolvedOrderLineId: string | null,
+    /**
+     * Catalogue identity denormalized from the resolved order line at the
+     * moment `resolvedOrderLineId` was claimed (#3450) — `OrderItem.productId`
+     * / `OrderItem.variantId`, carried onto the line so restock target
+     * resolution (`ReturnCustodyService`) never needs a live order-snapshot
+     * read of its own. `resolvedVariantId` can be null even when
+     * `resolvedProductId` is set, because `OrderItem.variantId` is itself
+     * optional on the source order line.
+     */
+    public readonly resolvedProductId: string | null,
+    public readonly resolvedVariantId: string | null,
     public readonly offerId: string | null,
     public readonly sku: string | null,
     public readonly name: string | null,

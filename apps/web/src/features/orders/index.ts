@@ -27,6 +27,10 @@ export { ordersQueryKeys } from './api/orders.query-keys';
 // consumes; `features/automation` imports them from this barrel like any other
 // cross-feature consumer.
 export { useOrdersQuery } from './hooks/use-orders-query';
+// #3293 — the fulfilment work detail page's "Payment" panel resolves the
+// task's own order (`task.orderId`) through this SAME hook rather than a
+// second one, so there is exactly one read of "one order by id" in the app.
+export { useOrderQuery } from './hooks/use-order-query';
 // #2254 — the invoice panel needs the parsed lines to decide WHICH remedy a
 // missing rate calls for; the reason alone cannot say.
 export { parseOrderSnapshot } from './api/order-snapshot.schema';
@@ -36,7 +40,7 @@ export {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
 } from './api/orders.types';
-export type { ParsedOrderItem } from './api/order-snapshot.schema';
+export type { ParsedOrderItem, ParsedOrderTotals } from './api/order-snapshot.schema';
 export type {
   OrderRecord,
   OrderFilters,
@@ -69,9 +73,34 @@ export {
 export { StockAtRiskBadge } from './components/stock-at-risk-badge';
 export { StockAtRiskCallout } from './components/stock-at-risk-callout';
 export type { OrderReservationShortfall } from './api/orders.types';
+// #3307 — the merged /sales-documents list renders the SAME per-record shape
+// the order-detail panel and the /orders row already do (ADR-065), so the new
+// list feature imports it here rather than hand-mirroring a second copy of a
+// multi-field discriminated union.
+export type {
+  SalesDocumentIdentity,
+  SalesDocumentInvoiceView,
+  SalesDocumentReceiptView,
+  SalesDocumentRecordView,
+} from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
+// #3188: the invoices LIST renders the same three buyer-tax-id states the
+// order detail does, by rendering the same component rather than a second
+// copy of the vocabulary. Consumed from `pages/`, which sits above both
+// features, so no feature-to-feature edge is created.
+export { OrderBuyerTaxIdValue } from './components/order-buyer-tax-id-value';
 export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';
+
+// #3096 — the fulfilment task detail is built from the order page's own
+// modules rather than new variations of them: the product identity a line
+// renders, and the shipment, sales-document and totals panels its right-hand
+// column stacks. One component per idea, so the two pages cannot drift.
+export { OrderLineItemIdentity } from './components/order-line-item-identity';
+export type { OrderLineItemIdentityProps } from './components/order-line-item-identity';
+export { OrderShipmentPanel } from './components/order-shipment-panel';
+export { SalesDocumentPanel } from './components/sales-document-panel';
+export { OrderTotalsPanel } from './components/order-totals-panel';
 
 // #2382 — the refund confirmation form and its vocabulary live in `orders`
 // because `refund_records` and `IOrderRefundService` do; the returns money panel
@@ -109,4 +138,5 @@ export { ActivityTimelineList } from './components/activity-timeline-list';
 // vocabulary at a different grain. It imports these rather than mirroring them:
 // a second frontend copy of one union would need a second guard script, and
 // `scripts/check-hold-reason-mirror.mjs` already pins this one against core.
+export { paymentMethodLabel } from './lib/payment-method-copy';
 export { HOLD_REASON_COPY, HoldReasonValues, holdReasonLabel } from './lib/order-hold.types';

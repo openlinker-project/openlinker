@@ -135,6 +135,12 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
+  describe('getDestinationCurrency (#3203)', () => {
+    it('declares PLN, matching Erli\'s PLN-only, no-currency-field wire shape', () => {
+      expect(adapter.getDestinationCurrency()).toBe('PLN');
+    });
+  });
+
   describe('Allegro category-catalog wiring (#1383, ADR-031)', () => {
     it('should NOT expose CategoryBrowser/CategoryParametersReader when constructed without a catalog client', () => {
       expect(isCategoryBrowser(adapter)).toBe(false);

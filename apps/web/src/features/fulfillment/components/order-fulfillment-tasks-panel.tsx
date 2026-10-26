@@ -19,6 +19,11 @@
  * because a request timed out — a false claim, on the surface whose whole job is
  * explaining why work is stopped.
  *
+ * With `hideWhenEmpty` (#3505 — routing is not switched on) the first three
+ * states render no section at all; only an order that actually has tasks shows
+ * them. The "unknown is never none" rule still holds: nothing is CLAIMED, the
+ * section is simply absent.
+ *
  * ## The version sent is the version RENDERED
  *
  * `expectedVersion` is read off the task object the button was rendered from,
@@ -27,60 +32,43 @@
  *
  * @module apps/web/src/features/fulfillment/components
  */
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { useToast } from '../../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
-import type {
-  ApplyFulfillmentTaskActionRequest,
-  FulfillmentTask,
-  FulfillmentTaskHold,
-} from '../api/fulfillment.types';
-import { useFulfillmentTaskActionMutation } from '../hooks/use-fulfillment-task-action-mutation';
+import { useFulfillmentTaskActionRunner } from '../hooks/use-fulfillment-task-action-runner';
 import { useOrderFulfillmentTasksQuery } from '../hooks/use-order-fulfillment-tasks-query';
-import {
-  describeFulfillmentActionError,
-  readFulfillmentConflict,
-} from '../lib/fulfillment-conflict';
-import { fulfillmentActionLabel } from '../lib/fulfillment-task.copy';
 import { FulfillmentTaskActions } from './fulfillment-task-actions';
-import {
-  FulfillmentTaskActionDialog,
-  type FulfillmentTaskActionMode,
-} from './fulfillment-task-action-dialog';
+import { FulfillmentTaskActionDialog } from './fulfillment-task-action-dialog';
 import { FulfillmentTaskCard } from './fulfillment-task-card';
 
 export interface OrderFulfillmentTasksPanelProps {
   internalOrderId: string;
-}
-
-interface PendingForm {
-  mode: FulfillmentTaskActionMode;
-  task: FulfillmentTask;
-  hold?: FulfillmentTaskHold;
   /**
-   * The failure of THIS form's own submit, if it has had one.
-   *
-   * Deliberately not `mutation.error`: one mutation object serves every task
-   * and every mode, so a dismissed force-cancel failure on task A was still
-   * `isError` when the hold dialog opened on task B — the dialog rendered
-   * "Could not put this fulfilment task on hold" before anything was
-   * submitted. A fabricated failure is the worst possible output from a panel
-   * whose job is explaining why work is stopped, so the error is scoped to the
-   * form that earned it and dies with it.
+   * Render nothing unless the order HAS fulfilment tasks (#3505) — for a
+   * caller that knows routing is not switched on. Then a loading, failed or
+   * empty read is not worth a section: the panel would be explaining a feature
+   * the install does not use. An order routed while routing WAS on still shows
+   * its tasks (and their actions), because hiding those would be a false
+   * "there are none".
    */
-  error?: unknown;
+  hideWhenEmpty?: boolean;
 }
 
 export function OrderFulfillmentTasksPanel({
   internalOrderId,
-}: OrderFulfillmentTasksPanelProps): ReactElement {
+  hideWhenEmpty = false,
+}: OrderFulfillmentTasksPanelProps): ReactElement | null {
   const query = useOrderFulfillmentTasksQuery(internalOrderId);
-  const mutation = useFulfillmentTaskActionMutation();
-  const { showToast } = useToast();
+  // The 409 contract, the busy/pending state and the dialog submit all live in
+  // the runner (#3257) — this panel was one of the two copies it replaced.
+  // `resolveOrderId` keeps the panel's own id as the context field rather than
+  // the task's; the two disagreed before the extraction and the field is inert
+  // either way (the mutation strips it), so the difference is preserved rather
+  // than quietly resolved.
+  const actions = useFulfillmentTaskActionRunner({ resolveOrderId: () => internalOrderId });
   const demoMode = useDemoMode();
   // `orders:write` is held by exactly `admin` + `operator`, which is precisely
   // the action route's `@Roles('admin', 'operator')`. Deliberately WITHOUT the
@@ -88,69 +76,6 @@ export function OrderFulfillmentTasksPanel({
   // admin-only and these are not, so ANDing it in would silently hide every
   // fulfilment action from the operators the route exists to serve.
   const write = useWriteAccess('orders:write', demoMode);
-
-  const [pendingForm, setPendingForm] = useState<PendingForm | null>(null);
-  /** Which task has an action in flight — so only its controls disable. */
-  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
-
-  const run = (
-    task: FulfillmentTask,
-    action: string,
-    body: Omit<ApplyFulfillmentTaskActionRequest, 'expectedVersion'>,
-    onDone?: () => void,
-    /**
-     * Present on the dialog path. A failure the dialog will render as its own
-     * Alert is NOT also toasted — the operator is still in the form and the
-     * remedy is usually in it (the `PlaceOrderHoldDialog` precedent). A
-     * conflict is the exception: the form closes, so the toast is the signal.
-     */
-    onFailure?: (error: unknown) => void
-  ): void => {
-    setBusyTaskId(task.id);
-    mutation.mutate(
-      {
-        workId: task.id,
-        action,
-        orderId: internalOrderId,
-        // The token as RENDERED — see the module docblock.
-        expectedVersion: task.version,
-        ...body,
-      },
-      {
-        onSuccess: () => {
-          showToast({ tone: 'success', description: `${fulfillmentActionLabel(action)} applied.` });
-          onDone?.();
-        },
-        onError: (error) => {
-          const conflict = readFulfillmentConflict(error);
-          // A version conflict is retryable against the REFRESHED task, so the
-          // form closes and the operator re-reads. Keeping it open would invite
-          // a resubmit carrying the same stale token.
-          const closesTheForm = conflict !== null || onFailure === undefined;
-          if (closesTheForm) {
-            showToast({
-              // A stale token is the guard working, not a fault: the surface
-              // has already refreshed itself and the operator can simply look
-              // again. An illegal action, and every other failure, is an error.
-              tone: conflict?.retryable === true ? 'warning' : 'error',
-              description: describeFulfillmentActionError(
-                error,
-                `Could not ${fulfillmentActionLabel(action).toLowerCase()} this fulfilment task.`
-              ),
-            });
-          }
-          if (conflict) {
-            onDone?.();
-            return;
-          }
-          onFailure?.(error);
-        },
-        onSettled: () => {
-          setBusyTaskId(null);
-        },
-      }
-    );
-  };
 
   const body = ((): ReactElement => {
     if (!internalOrderId) {
@@ -188,10 +113,12 @@ export function OrderFulfillmentTasksPanel({
 
     const tasks = query.data?.works ?? [];
     if (tasks.length === 0) {
+      // Only reachable with routing on (or its state unknown): with routing off
+      // the caller passes `hideWhenEmpty` and this section is not rendered.
       return (
         <p className="text-muted">
-          No fulfilment tasks &mdash; this order was not routed to one. That is normal unless
-          fulfilment routing is switched on.
+          No fulfilment tasks &mdash; this order was not routed. Routing is on, so check the
+          order&rsquo;s shipping address and the sourcing rules.
         </p>
       );
     }
@@ -208,18 +135,18 @@ export function OrderFulfillmentTasksPanel({
                   task={task}
                   visible={write.visible}
                   readOnly={write.demoReadOnly}
-                  busy={busyTaskId === task.id}
+                  busy={actions.busyTaskId === task.id}
                   onInvoke={(action) => {
-                    run(task, action, {});
+                    actions.run(task, action, {});
                   }}
                   onHold={() => {
-                    setPendingForm({ mode: 'hold', task });
+                    actions.openForm({ mode: 'hold', task });
                   }}
                   onReleaseHold={(hold) => {
-                    setPendingForm({ mode: 'release_hold', task, hold });
+                    actions.openForm({ mode: 'release_hold', task, hold });
                   }}
                   onForceCancel={() => {
-                    setPendingForm({ mode: 'force_cancel', task });
+                    actions.openForm({ mode: 'force_cancel', task });
                   }}
                 />
               }
@@ -235,39 +162,31 @@ export function OrderFulfillmentTasksPanel({
     );
   })();
 
+  // Decided after every hook above has run, so toggling the prop never changes
+  // the hook order.
+  const hasTasks = (query.data?.works.length ?? 0) > 0;
+  if (hideWhenEmpty && (query.isPending || query.isError || !hasTasks)) {
+    return null;
+  }
+
   return (
     <section className="detail-section" id="fulfilment-tasks" tabIndex={-1}>
       <h3 className="detail-section__title">Fulfilment tasks</h3>
       {body}
 
-      {pendingForm ? (
+      {actions.pendingForm ? (
         <FulfillmentTaskActionDialog
           // Remount per (task, mode, hold) so a draft never carries across.
-          key={`${pendingForm.task.id}:${pendingForm.mode}:${pendingForm.hold?.id ?? ''}`}
+          key={`${actions.pendingForm.task.id}:${actions.pendingForm.mode}:${actions.pendingForm.hold?.id ?? ''}`}
           open
-          mode={pendingForm.mode}
-          holdId={pendingForm.hold?.id}
-          submitting={busyTaskId === pendingForm.task.id}
-          error={pendingForm.error ?? null}
+          mode={actions.pendingForm.mode}
+          holdId={actions.pendingForm.hold?.id}
+          submitting={actions.busyTaskId === actions.pendingForm.task.id}
+          error={actions.pendingForm.error ?? null}
           onOpenChange={(open) => {
-            if (!open) setPendingForm(null);
+            if (!open) actions.closeForm();
           }}
-          onSubmit={(actionBody) => {
-            // Clear this form's previous failure on resubmit, so a corrected
-            // note does not keep the old Alert on screen while it is in flight.
-            setPendingForm((current) => (current ? { ...current, error: undefined } : current));
-            run(
-              pendingForm.task,
-              pendingForm.mode,
-              actionBody,
-              () => {
-                setPendingForm(null);
-              },
-              (error) => {
-                setPendingForm((current) => (current ? { ...current, error } : current));
-              }
-            );
-          }}
+          onSubmit={actions.submitForm}
         />
       ) : null}
     </section>

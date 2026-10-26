@@ -9,25 +9,54 @@ import type { ReactElement, ReactNode } from 'react';
  */
 export type AlertTone = 'conflict' | 'error' | 'info' | 'success' | 'warning';
 
+/**
+ * `compact` is the mockups' in-card banner (`.hold-banner`): a tighter inset,
+ * an 8 px radius, no inset rule, and a 14 px title in the tone's own colour.
+ * For a notice that sits INSIDE a card, where the full alert's chrome would
+ * box a box.
+ */
+export type AlertDensity = 'default' | 'compact';
+
 interface AlertProps {
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  density?: AlertDensity;
   title?: ReactNode;
   tone?: AlertTone;
+  /**
+   * For test introspection (the `Combobox` convention). Lands on the alert
+   * root so a spec can name ONE notice without a wrapper element - an alert
+   * is routinely a flex/grid child, so a spare `<div>` around it would change
+   * where it sits rather than only what it is called.
+   *
+   * See `docs/frontend-architecture.md` § Test-introspection `data-testid`
+   * prop for the convention and the running list of primitives that carry
+   * it — update that list rather than this comment when a new one adopts it.
+   */
+  'data-testid'?: string;
 }
 
 export function Alert({
   action,
   children,
   className = '',
+  density = 'default',
   title,
   tone = 'info',
+  'data-testid': dataTestId,
 }: AlertProps): ReactElement {
-  const classes = ['alert', `alert--${tone}`, className].filter(Boolean).join(' ');
+  const classes = [
+    'alert',
+    `alert--${tone}`,
+    density === 'compact' ? 'alert--compact' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div className={classes} role={tone === 'error' ? 'alert' : 'status'}>
+    <div className={classes} role={tone === 'error' ? 'alert' : 'status'} data-testid={dataTestId}>
       <div className="alert__content">
         {title ? <strong className="alert__title">{title}</strong> : null}
         <div className="alert__description">{children}</div>

@@ -27,7 +27,12 @@ export type PlatformType = string;
  */
 export const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
-export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth';
+/**
+ * `archived` is the soft delete (#3657): a connection that was disabled and
+ * then removed from view. The API leaves it out of `GET /connections` unless
+ * `?status=archived` is asked for, and its stored credential is gone.
+ */
+export type ConnectionStatus = 'active' | 'disabled' | 'error' | 'needs_reauth' | 'archived';
 
 /**
  * Well-known core capabilities — mirrors `CoreCapabilityValues` on the backend.
@@ -108,8 +113,21 @@ export interface Connection {
   platformType: PlatformType;
   status: ConnectionStatus;
   config: Record<string, unknown>;
-  /** True when credentials are stored in the database and can be rotated via PUT /credentials. */
+  /** True when credentials can be written via PUT /credentials (a stored database credential, or an empty slot on an adapter that needs one). */
   credentialsBacked: boolean;
+  /**
+   * True when a credential row is actually stored (#3657). `false` together
+   * with `credentialsBacked: true` is a restored archived connection whose
+   * credentials must be re-entered. Optional only so older hand-rolled test
+   * fixtures keep type-checking; read it through `hasMissingCredentials`.
+   */
+  credentialsStored?: boolean;
+  /**
+   * `false` for an adapter that may only be disabled, never archived - the
+   * OpenLinker OMS (#3657). Absent means an older API, which archived nothing,
+   * so read it through `canArchive`.
+   */
+  archivable?: boolean;
   adapterKey?: string;
   enabledCapabilities: string[];
   supportedCapabilities: string[];
@@ -125,6 +143,16 @@ export interface Connection {
    * field working without a mass edit.
    */
   defaultRateLimit?: ConnectionRateLimit | null;
+  /**
+   * Config values the adapter declared safe for every role (DEF-02), e.g. the
+   * KSeF environment, readable where `config` is hidden from non-admins.
+   */
+  publicConfig?: Record<string, string | number | boolean>;
+  /**
+   * Advisory notices on a create/update response (#1594, DEF-21), e.g. a
+   * second connection on the same seller tax number sharing a rate limit.
+   */
+  warnings?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -372,12 +400,52 @@ export interface ConnectionSyncStatus {
   historyWindowMs: number;
 }
 
+/**
+ * The three activity sources `GET /connections/:id/diagnostics` folds together
+ * (#3179). Mirrors `ConnectionDiagnosticsSourceValues` on the API side; the
+ * browser cannot import `@openlinker/core` (#591).
+ */
+export const ConnectionDiagnosticsSourceValues = [
+  'syncJobs',
+  'fiscalRegistrations',
+  'invoices',
+] as const;
+export type ConnectionDiagnosticsSource = (typeof ConnectionDiagnosticsSourceValues)[number];
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;
   connectionStatus: string;
   lastSucceededAt: string | null;
   lastFailedAt: string | null;
+  /** Newest-first across all three sources, not grouped by source. */
   recentErrors: string[];
   recentJobs: RecentJobSummary[];
+  /**
+   * Sources that could NOT be read for this response. While it is non-empty a
+   * null timestamp is unknown, never a confirmed "Never", and `recentErrors`
+   * is only what the readable sources reported.
+   *
+   * Optional because an API predating #3179 omits it entirely; absent is read
+   * as "nothing to report", which is exactly how that API behaved — it had no
+   * per-source degradation to report in the first place.
+   */
+  unreadableSources?: ConnectionDiagnosticsSource[];
+}
+
+/**
+ * A connection that can hold credentials but currently holds none - what a
+ * restored archived connection looks like until they are re-entered (#3657).
+ * `credentialsStored` absent means an API that predates the field, which only
+ * ever reported stored credentials as editable, so it reads as "not missing".
+ */
+export function hasMissingCredentials(
+  connection: Pick<Connection, 'credentialsBacked' | 'credentialsStored'>
+): boolean {
+  return connection.credentialsBacked && connection.credentialsStored === false;
+}
+
+/** Whether the Archive action applies: a disabled connection on an adapter that allows it (#3657). */
+export function canArchive(connection: Pick<Connection, 'status' | 'archivable'>): boolean {
+  return connection.status === 'disabled' && connection.archivable !== false;
 }

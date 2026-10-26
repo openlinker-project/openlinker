@@ -17,6 +17,7 @@ import {
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
   OrderDestinationNotFoundException,
@@ -27,6 +28,7 @@ import {
   OrderAlreadyOnHoldError,
   HoldAlreadyReleasedError,
   HoldReleaseNoteRequiredError,
+  TestFixturesDisabledException,
 } from '@openlinker/core/orders';
 import type {
   OrderRecordRepositoryPort,
@@ -36,6 +38,7 @@ import type {
   IOrderProvisioningResumeService,
   OrderHold,
   ISalesDocumentViewService,
+  IOrderTestFixtureService,
 } from '@openlinker/core/orders';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
@@ -50,6 +53,11 @@ import type {
   IFulfillmentRoutingService,
   IDeliveryRiderService,
 } from '@openlinker/core/mappings';
+import { SHIPMENT_QUERY_SERVICE_TOKEN } from '@openlinker/core/shipping';
+import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
+import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
+
+import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
@@ -62,6 +70,7 @@ describe('OrdersController', () => {
   let holdService: jest.Mocked<IOrderHoldService>;
   let provisioningResume: jest.Mocked<IOrderProvisioningResumeService>;
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
+  let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -82,6 +91,17 @@ describe('OrdersController', () => {
     new Date('2026-04-01T00:00:00Z'),
     new Date('2026-04-01T12:00:00Z')
   );
+
+  /**
+   * `OrderRecord`'s constructor is a long positional list; overriding one
+   * trailing field (like `buyerTaxId`, #3180) by re-listing every argument
+   * before it is exactly the fragility this helper avoids. `Object.create` on
+   * the real prototype keeps `buyerTaxIdState` (and every other getter) intact
+   * on the result — the `sales-document-view.service.spec.ts` precedent.
+   */
+  function orderRecordWith(overrides: Partial<OrderRecord>): OrderRecord {
+    return Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, mockOrder, overrides);
+  }
 
   beforeEach(async () => {
     const mockRepository: jest.Mocked<OrderRecordRepositoryPort> = {
@@ -104,6 +124,8 @@ describe('OrdersController', () => {
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
       updateFulfillmentBlock: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      updateFulfillmentRoutingSkipReason: jest.fn(),
       updateOmsAttention: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),
@@ -122,11 +144,14 @@ describe('OrdersController', () => {
       findDispatchDeadlineCandidates: jest.fn(),
       findCurrencyMismatchOrders: jest.fn(),
       findCurrencyMismatchOrdersByConnection: jest.fn(),
-      findNetExcludedOrderCandidates: jest.fn(),
+      findNetExcludedOrderCandidatesPage: jest.fn(),
       findProductMatchingErrorOrders: jest.fn(),
       findCurrencyMismatchOrderRefsAfter: jest.fn(),
       clearFxStampForRestatement: jest.fn(),
       countRemainingCurrencyMismatch: jest.fn(),
+      stampPreRolloutEraForTesting: jest.fn(),
+      findSearchTextReindexPage: jest.fn(),
+      rewriteSearchText: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -142,6 +167,7 @@ describe('OrdersController', () => {
     const mockInvoiceService: jest.Mocked<IInvoiceService> = {
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
+      listRecentByConnectionId: jest.fn(),
       // #2374 — the correction-proposal read.
       getLatestIssuedInvoiceForOrder: jest.fn().mockResolvedValue(null),
       getInFlightIssuance: jest.fn().mockResolvedValue(null),
@@ -154,6 +180,7 @@ describe('OrdersController', () => {
       issueCorrection: jest.fn(),
       listInvoices: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
+      listInvoicesKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
     };
 
     const mockFulfillmentRouting: jest.Mocked<IFulfillmentRoutingService> = {
@@ -164,7 +191,8 @@ describe('OrdersController', () => {
       resolveBatch: jest.fn().mockResolvedValue([]),
     };
 
-    const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
+    const mockSourceFulfillment = { read: jest.fn() };
+  const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
       // Default: no actionable hint. Batch mirrors the input length so the
       // controller's positional zip stays aligned.
       resolve: jest.fn().mockResolvedValue({ rider: 'none' }),
@@ -196,6 +224,15 @@ describe('OrdersController', () => {
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
       getForOrder: jest.fn().mockResolvedValue(null),
+      getReceiptHandoverArtefact: jest.fn().mockResolvedValue(null),
+      listSalesDocuments: jest.fn().mockResolvedValue({
+        items: [],
+        nextCursor: { invoice: null, fiscal: null },
+      }),
+    };
+    const mockTestFixtureService: jest.Mocked<IOrderTestFixtureService> = {
+      markPreRolloutEraForTesting: jest.fn().mockResolvedValue(true),
+      assertTestFixturesAllowed: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -234,12 +271,38 @@ describe('OrdersController', () => {
           useValue: mockDeliveryRider,
         },
         {
+          provide: SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,
+          useValue: mockSourceFulfillment,
+        },
+        {
           provide: RESERVATION_SHORTFALL_SERVICE_TOKEN,
           useValue: mockReservationShortfalls,
         },
         {
           provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
           useValue: mockSalesDocumentView,
+        },
+        {
+          provide: ORDER_TEST_FIXTURE_SERVICE_TOKEN,
+          useValue: mockTestFixtureService,
+        },
+        // #3528 / #2998 / #3532 — the three read seams the list and detail
+        // routes gained on this branch. Neutral defaults: no tracking match,
+        // no open returns, no tags — so every pre-existing expectation holds.
+        {
+          provide: SHIPMENT_QUERY_SERVICE_TOKEN,
+          useValue: { list: jest.fn().mockResolvedValue({ items: [], total: 0 }) },
+        },
+        {
+          provide: RETURNS_SERVICE_TOKEN,
+          useValue: { getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
+        },
+        {
+          provide: ORDER_TAG_SERVICE_TOKEN,
+          useValue: {
+            getForOrders: jest.fn().mockResolvedValue(new Map()),
+            listForOrder: jest.fn().mockResolvedValue([]),
+          },
         },
       ],
     }).compile();
@@ -254,6 +317,7 @@ describe('OrdersController', () => {
     holdService = module.get(ORDER_HOLD_SERVICE_TOKEN);
     provisioningResume = module.get(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
+    testFixtureService = module.get(ORDER_TEST_FIXTURE_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -605,7 +669,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true },
+        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true, parcelProfile: null },
       ]);
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -618,6 +682,7 @@ describe('OrdersController', () => {
         processorKind: 'ol_managed_carrier',
         processorConnectionId: 'conn-inpost',
         processorAvailable: true,
+        parcelProfile: null,
       });
       expect(result.items[1].deliveryResolution).toBeUndefined();
     });
@@ -645,7 +710,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([
         { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
@@ -688,7 +753,7 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
 
@@ -797,6 +862,16 @@ describe('OrdersController', () => {
         // the FE suppresses a sales-document block on exactly the records the
         // backend gate refuses to write one for.
         blocksIssuanceElsewhere: true,
+        // Tri-state, projected verbatim: `null` is "this provider does not
+        // report catalogue linkage", which the fixture's record is.
+        unlinkedCatalogueLines: null,
+        // Four-state, projected verbatim, and `null` is the honest answer for
+        // this fixture: the provider has no warehouse and was never asked. The
+        // NUMBER is legitimately absent on three of the four outcomes, which is
+        // why nothing downstream tests its nullability - only `'not-released'`
+        // is a claim. See `warehouseReleaseBadge`.
+        warehouseReleaseOutcome: null,
+        warehouseReleaseNumber: null,
       });
     });
 
@@ -859,6 +934,7 @@ describe('OrdersController', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
 
       const result = await controller.getOrder('ol_order_shipped');
@@ -872,6 +948,7 @@ describe('OrdersController', () => {
         processorKind: 'omp_fulfilled',
         processorConnectionId: null,
         processorAvailable: true,
+        parcelProfile: null,
       });
     });
 
@@ -902,6 +979,7 @@ describe('OrdersController', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
       deliveryRider.resolve.mockResolvedValue({
         rider: 'not-connected',
@@ -1272,6 +1350,8 @@ describe('OrdersController', () => {
         unresolvedReason: null,
         blockDetail: null,
         otherRecords: [],
+        matchedRule: null,
+        afterIssueAttention: null,
         ...overrides,
       };
     }
@@ -1332,6 +1412,7 @@ describe('OrdersController', () => {
             failureMode: null,
             failureReason: null,
             artefactCount: 0,
+            artefacts: [],
             identity: { ...identity, recordId: 'fis-1', documentNumber: 'DOC/1' },
           },
         })
@@ -1511,4 +1592,109 @@ describe('OrdersController', () => {
     });
   });
 
+  describe('buyer tax id on the DTO (#3180)', () => {
+    it('is absent from every LIST row, even when the column carries a value', async () => {
+      // Data minimisation, not query cost: the column is already loaded, so
+      // projecting it would be free — and it is the first buyer-identifying
+      // value on this DTO, on the hottest order read, with no list consumer.
+      // `toBeUndefined` alone would pass on a DTO that carried the key with an
+      // undefined value, so assert the key itself is missing.
+      repository.findMany.mockResolvedValue({
+        items: [orderRecordWith({ buyerTaxId: '5213796333' })],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0]).not.toHaveProperty('buyerTaxId');
+    });
+
+    it('projects the id verbatim when the column carries a value', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerTaxId: '5213796333' }));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerTaxId).toBe('5213796333');
+    });
+
+    it('projects null (asserted-none) as null, never as the present state', async () => {
+      // The column's `''` sentinel decodes to the domain `null` via
+      // `buyerTaxIdState` — this constructs the RAW column as a real read
+      // from the repository would, rather than the already-decoded value,
+      // so the test actually exercises the decode step.
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerTaxId: '' }));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerTaxId).toBeNull();
+    });
+
+    it('reads unknown (undefined) when the column is NULL — never IS NOT NULL semantics', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerTaxId: null }));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      // `undefined` here, and the key drops off the wire entirely once
+      // `JSON.stringify` runs over HTTP — the middle "asserted-none" state
+      // above is what a bare `IS NOT NULL` on the raw column would
+      // misidentify as this one.
+      expect(result.buyerTaxId).toBeUndefined();
+    });
+  });
+
+  describe('markPreRolloutEra (#2855, TEST-FIXTURE-ONLY)', () => {
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
+
+    it('checks the env gate BEFORE reading the order, and refuses fast when closed', async () => {
+      testFixtureService.assertTestFixturesAllowed.mockImplementation(() => {
+        throw new TestFixturesDisabledException();
+      });
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'TEST_FIXTURES_DISABLED' }),
+      });
+      expect(repository.findById).not.toHaveBeenCalled();
+      expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
+    });
+
+    it('404s without calling the service when the order does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.markPreRolloutEra('ol_order_missing', USER)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
+    });
+
+    it('returns { applied } from the service when the order exists, threading the actor', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockResolvedValue(true);
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).resolves.toEqual({
+        applied: true,
+      });
+      expect(testFixtureService.markPreRolloutEraForTesting).toHaveBeenCalledWith(
+        'ol_order_001',
+        'user-1'
+      );
+    });
+
+    it('maps TestFixturesDisabledException to a 403 with a machine-readable code', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(
+        new TestFixturesDisabledException()
+      );
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'TEST_FIXTURES_DISABLED' }),
+      });
+    });
+
+    it('re-throws an unmodelled error rather than swallowing it', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(new Error('boom'));
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toThrow('boom');
+    });
+  });
 });

@@ -1,5 +1,5 @@
 /**
- * resolveSalesDocumentRouting — unit spec (#2155, #2158, ADR-041 decisions 1, 2, 6, 9, 10)
+ * resolveSalesDocumentRouting - unit spec (#2155, #2158, ADR-041 decisions 1, 2, 6, 9, 10)
  *
  * @module libs/core/src/sales-documents/domain/domain-services
  */
@@ -8,8 +8,10 @@ import type { Order } from '@openlinker/core/orders/types';
 import { SalesDocumentUnresolvedReasonValues } from '../types/sales-document-reason.types';
 import type { SalesDocumentRoutingCandidate } from './resolve-sales-document-routing';
 import { resolveSalesDocumentRouting } from './resolve-sales-document-routing';
+import type { SalesDocumentCandidateConnectionInput } from './expand-sales-document-routing-candidates';
+import { expandSalesDocumentRoutingCandidates } from './expand-sales-document-routing-candidates';
 
-/** Minimal `Order` fixture — the resolver reads no field of it in this slice. */
+/** Minimal `Order` fixture - the resolver reads no field of it in this slice. */
 const ORDER: Order = {
   id: 'ol_order_1',
   status: 'pending',
@@ -25,6 +27,27 @@ function candidate(overrides: Partial<SalesDocumentRoutingCandidate>): SalesDocu
     documentKind: 'invoice',
     isPrimary: false,
     enabledCapabilities: ['Invoicing'],
+    selfRoutesDocumentKind: false,
+    ...overrides,
+  };
+}
+
+/**
+ * A `documentKind: 'both'` connection input, expanded through the REAL
+ * `expandSalesDocumentRoutingCandidates` rather than hand-built. That
+ * function copies one `isPrimary` onto BOTH resulting rows (#3195's own
+ * module doc), so a dual-role connection's two rows can never disagree on
+ * `isPrimary` the way `candidate()` calls used to hand-build them - see the
+ * dual-role describe block below for what that means for the resolver.
+ */
+function dualRoleConnection(
+  overrides: Partial<SalesDocumentCandidateConnectionInput> = {},
+): SalesDocumentCandidateConnectionInput {
+  return {
+    connectionId: 'conn-both',
+    documentKind: 'both',
+    isPrimary: false,
+    enabledCapabilities: ['Invoicing', 'Fiscalization'],
     selfRoutesDocumentKind: false,
     ...overrides,
   };
@@ -86,7 +109,7 @@ describe('resolveSalesDocumentRouting (ADR-041)', () => {
       reason: 'ambiguous-connection-no-primary',
     });
 
-    // Connections exist but none declares a documentKind — same outcome.
+    // Connections exist but none declares a documentKind - same outcome.
     const connections = [candidate({ documentKind: null }), candidate({ documentKind: null })];
     expect(resolveSalesDocumentRouting(ORDER, connections)).toEqual({
       kind: 'unresolved',
@@ -135,7 +158,7 @@ describe('resolveSalesDocumentRouting (ADR-041)', () => {
   });
 
   it('should route an open-world (unknown) kind without a structural capability check (decision 10)', () => {
-    // No entry in the well-known map — validity here is a runtime check
+    // No entry in the well-known map - validity here is a runtime check
     // against the target, never a type check, so this resolver cannot refuse
     // it structurally and must pass it through to the (future) gate.
     const custom = candidate({
@@ -170,7 +193,7 @@ describe('resolveSalesDocumentRouting (ADR-041)', () => {
     it('should skip the structural capability check for a self-routing candidate even when it also declares a documentKind', () => {
       // A self-routing candidate that ALSO happens to carry a documentKind
       // (e.g. stale operator config) still short-circuits to documentKind:
-      // null — decision 9 is unconditional once the guard applies, and there
+      // null - decision 9 is unconditional once the guard applies, and there
       // is nothing left to validate against `enabledCapabilities`.
       const selfRouting = candidate({
         connectionId: 'conn-self-routing',
@@ -280,5 +303,97 @@ describe('resolveSalesDocumentRouting (ADR-041)', () => {
         expect(RULE_ENGINE_ONLY_REASONS).not.toContain(decision.reason);
       }
     }
+  });
+
+  describe('a dual-role connection expanded into two candidate rows (#3195)', () => {
+    it('should route to the one eligible row when it is the only candidate, even though it shares a connectionId with no sibling here', () => {
+      const only = candidate({
+        connectionId: 'conn-both',
+        documentKind: 'invoice',
+        enabledCapabilities: ['Invoicing', 'Fiscalization'],
+      });
+
+      expect(resolveSalesDocumentRouting(ORDER, [only])).toEqual({
+        kind: 'route',
+        documentKind: 'invoice',
+        connectionId: 'conn-both',
+      });
+    });
+
+    it('should resolve unresolved/ambiguous-connection-no-primary when two rows share a connectionId and neither is primary - one connection, two candidates, still no unambiguous winner', () => {
+      const rows = [
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'invoice',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: false,
+        }),
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'fiscal-receipt',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: false,
+        }),
+      ];
+
+      expect(resolveSalesDocumentRouting(ORDER, rows)).toEqual({
+        kind: 'unresolved',
+        reason: 'ambiguous-connection-no-primary',
+      });
+    });
+
+    // The two tests below (review finding, #3320) REPLACE a pair that hand-
+    // built `candidate()` rows with `isPrimary: false` on one and `true` on
+    // the other, both sharing `connectionId: 'conn-both'`. That combination
+    // cannot be produced by `expandSalesDocumentRoutingCandidates`, which
+    // copies ONE `isPrimary` onto BOTH rows of a `'both'`-configured
+    // connection - so those tests certified a disambiguation path that does
+    // not exist (`docs/lessons.md`'s #2380 "hand-built a combination the real
+    // transition cannot produce" shape). Driving a real dual-role connection
+    // through the real expansion is what these two now do.
+
+    it('should resolve ambiguous-connection-no-primary for a lone dual-role connection marked primary - its own two rows are BOTH primary, never one', () => {
+      // A fresh install with ONE connection, "Both" ticked, marked primary:
+      // the intuitive expectation is that it just works. It does not - the
+      // resolver needs exactly ONE primary among ALL candidates, and this
+      // connection's own expansion contributes two.
+      const rows = expandSalesDocumentRoutingCandidates(dualRoleConnection({ isPrimary: true }));
+
+      expect(resolveSalesDocumentRouting(ORDER, rows)).toEqual({
+        kind: 'unresolved',
+        reason: 'ambiguous-connection-no-primary',
+      });
+    });
+
+    it('should stay ambiguous when a dual-role connection marked primary sits beside a normal single-role sibling that is NOT primary', () => {
+      const rows = [
+        ...expandSalesDocumentRoutingCandidates(dualRoleConnection({ isPrimary: true })),
+        candidate({
+          connectionId: 'conn-other',
+          documentKind: 'invoice',
+          enabledCapabilities: ['Invoicing'],
+          isPrimary: false,
+        }),
+      ];
+
+      // Three candidates, two of them primary (the dual-role connection's
+      // own pair) - still ambiguous, the sibling's non-primary flag changes
+      // nothing. This REPLACES a test that previously asserted the opposite
+      // ("routes to the dual-role connection") by hand-building an
+      // impossible one-true-one-false row pair - see the comment above.
+      expect(resolveSalesDocumentRouting(ORDER, rows)).toEqual({
+        kind: 'unresolved',
+        reason: 'ambiguous-connection-no-primary',
+      });
+    });
+
+    it('should resolve ambiguous-connection-no-primary for a lone dual-role connection NOT marked primary', () => {
+      const rows = expandSalesDocumentRoutingCandidates(dualRoleConnection({ isPrimary: false }));
+
+      expect(resolveSalesDocumentRouting(ORDER, rows)).toEqual({
+        kind: 'unresolved',
+        reason: 'ambiguous-connection-no-primary',
+      });
+    });
   });
 });

@@ -9,6 +9,7 @@
  * @module libs/core/src/invoicing
  */
 export * from './domain/types/invoicing.types';
+export * from './domain/domain-services/invoice-failure-classification.domain-service';
 export * from './domain/types/invoice-numbering.types';
 export * from './domain/types/numbering-audit.types';
 export {
@@ -23,15 +24,6 @@ export {
   parseTriggerModel,
 } from './domain/types/invoice-trigger.types';
 export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
-// One-invoice-per-order primary selection (#2047).
-export {
-  parseIsPrimaryInvoicing,
-  selectPrimaryInvoicingConnection,
-} from './domain/types/invoicing-primary.types';
-export type {
-  InvoicingConnectionCandidate,
-  InvoicingConnectionSelection,
-} from './domain/types/invoicing-primary.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
 // A missing per-line tax rate holds the document (#2248, ADR-063 § 6).
 export {
@@ -59,6 +51,7 @@ export * from './domain/entities/invoice-numbering-series.entity';
 export * from './domain/ports/invoicing.port';
 // Re-exports both `DocumentNumberConsumer` and `isDocumentNumberConsumer` (#1575).
 export * from './domain/ports/capabilities/document-number-consumer.capability';
+export * from './domain/ports/capabilities/buyer-identity-corrector.capability';
 // Re-exports both `RegulatoryStatusReader` and `isRegulatoryStatusReader`.
 export * from './domain/ports/capabilities/regulatory-status-reader.capability';
 // Re-exports both `PaymentStatusReader` and `isPaymentStatusReader` (#1354).
@@ -73,6 +66,7 @@ export * from './domain/ports/capabilities/offline-resubmitter.capability';
 export * from './domain/ports/capabilities/regulatory-record-locator.capability';
 export * from './domain/ports/capabilities/correction-issuer.capability';
 export * from './domain/ports/capabilities/regulatory-document-reader.capability';
+export * from './domain/ports/capabilities/regulatory-verification-link-reader.capability';
 export * from './domain/ports/capabilities/bank-accounts-reader.capability';
 export * from './domain/ports/capabilities/bank-account-default-setter.capability';
 export * from './domain/ports/capabilities/invoice-email-sender.capability';

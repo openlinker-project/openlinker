@@ -448,6 +448,64 @@ describe('OfferCreationRecordRepository', () => {
     });
   });
 
+  // #3505 (G01-2) — conditional on `pending`, so a record a concurrent attempt
+  // already settled is never overwritten by a dead job's cleanup.
+  describe('markFailedIfPending', () => {
+    const errors: OfferCreationError[] = [{ code: 'OFFER_CREATION_JOB_DEAD', message: 'died' }];
+
+    function stubUpdate(result: Promise<{ affected?: number }>): {
+      set: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+    } {
+      const builder = {
+        update: jest.fn(),
+        set: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        execute: jest.fn().mockReturnValue(result),
+      };
+      builder.update.mockReturnValue(builder);
+      builder.set.mockReturnValue(builder);
+      builder.where.mockReturnValue(builder);
+      builder.andWhere.mockReturnValue(builder);
+      (ormRepository as unknown as { createQueryBuilder: jest.Mock }).createQueryBuilder = jest
+        .fn()
+        .mockReturnValue(builder);
+      return builder;
+    }
+
+    it('should update only a pending row and return the updated record when it was pending', async () => {
+      const builder = stubUpdate(Promise.resolve({ affected: 1 }));
+      ormRepository.findOne.mockResolvedValue(buildOrm({ status: 'failed', errors }));
+
+      const result = await repository.markFailedIfPending('rec-uuid', errors);
+
+      expect(builder.set).toHaveBeenCalledWith({ status: 'failed', errors });
+      expect(builder.where).toHaveBeenCalledWith('id = :id', { id: 'rec-uuid' });
+      expect(builder.andWhere).toHaveBeenCalledWith('status = :pending', { pending: 'pending' });
+      expect(result?.status).toBe('failed');
+      expect(result?.errors).toEqual(errors);
+    });
+
+    it('should return null without reading when no pending row matched', async () => {
+      stubUpdate(Promise.resolve({ affected: 0 }));
+
+      const result = await repository.markFailedIfPending('rec-uuid', errors);
+
+      expect(result).toBeNull();
+      expect(ormRepository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should return null for a malformed id', async () => {
+      const malformed = new QueryFailedError('UPDATE', [], new Error('invalid input syntax'));
+      (malformed as unknown as { code: string }).code = '22P02';
+      stubUpdate(Promise.reject(malformed));
+
+      await expect(repository.markFailedIfPending('not-a-uuid', errors)).resolves.toBeNull();
+    });
+  });
+
   describe('resetForRetry (#742)', () => {
     it('sets status=pending and clears externalOfferId/errors/classificationReport; preserves request snapshot', async () => {
       const request = buildRequestSnapshot();

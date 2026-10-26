@@ -9,7 +9,22 @@
  * @module apps/api/src/bench/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BenchWorkStateValues, type BenchWorkState } from '../../application/types/bench-work.types';
+import {
+  BenchWorkAssignmentStateValues,
+  BenchWorkStateValues,
+  type BenchWorkAssignmentState,
+  type BenchWorkState,
+} from '../../application/types/bench-work.types';
+
+export class BenchWorkItemResponseDto {
+  @ApiProperty({ nullable: true, description: 'Null when the variant is not in the catalogue' })
+  name!: string | null;
+
+  @ApiProperty() quantity!: number;
+
+  @ApiProperty({ nullable: true, description: "The parent product's image, or null" })
+  imageUrl!: string | null;
+}
 
 export class BenchWorkResponseDto {
   @ApiProperty() workId!: string;
@@ -40,6 +55,14 @@ export class BenchWorkResponseDto {
   })
   parcelTotal!: number;
   @ApiProperty() lineCount!: number;
+
+  @ApiProperty({
+    type: [BenchWorkItemResponseDto],
+    description:
+      'What is in the box, capped at a few lines so one rail row stays glanceable. ' +
+      '`lineCount` above is the honest total, so a surface can say how many more there are.',
+  })
+  items!: BenchWorkItemResponseDto[];
   @ApiProperty({
     description:
       'Units to confirm against the box. This is NOT a readiness signal: OpenLinker cannot see a ' +
@@ -60,6 +83,28 @@ export class BenchWorkResponseDto {
     description: 'What is legal on this parcel now, decided server-side. Empty on a cancelled one.',
   })
   supportedActions!: string[];
+  @ApiProperty({
+    enum: BenchWorkAssignmentStateValues,
+    description:
+      "How this parcel's ADR-074 pre-assignment relates to the caller's own account — computed " +
+      "server-side against the viewer, never a raw other-packer id.",
+  })
+  assignmentState!: BenchWorkAssignmentState;
+  @ApiProperty({
+    description:
+      'May the caller claim (open, verify) this parcel? A UX affordance on top of the write ' +
+      "path's own re-check — never the source of truth for it.",
+  })
+  claimable!: boolean;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When an operator declared this parcel finished and off the bench, or null until that act. ' +
+      'The backend does not itself remove a completed parcel from this list — a closed-but-' +
+      'unhandled parcel already stays selectable here — so a consumer may use this field to move ' +
+      'such a row out of its own rendering of "to pack".',
+  })
+  completedAt!: string | null;
 }
 
 export class BenchRoutingReadinessResponseDto {
@@ -95,4 +140,36 @@ export class BenchWorkListResponseDto {
       'list can say so rather than quietly showing part of the work.',
   })
   total!: number;
+}
+
+export class BenchPackedTodayRowResponseDto {
+  @ApiProperty() workId!: string;
+  @ApiProperty() orderReference!: string;
+  @ApiPropertyOptional({ nullable: true }) buyerName!: string | null;
+  @ApiProperty() parcelIndex!: number;
+  @ApiProperty() parcelTotal!: number;
+  @ApiProperty() closedAt!: string;
+  @ApiPropertyOptional({ nullable: true }) packedByUserId!: string | null;
+}
+
+export class BenchPackedTodayListResponseDto {
+  @ApiProperty({ type: [BenchPackedTodayRowResponseDto] })
+  works!: BenchPackedTodayRowResponseDto[];
+  @ApiProperty() total!: number;
+}
+
+export class BenchMetricsResponseDto {
+  @ApiProperty({ description: 'Parcels this bench has closed today so far' })
+  packedToday!: number;
+  @ApiProperty({
+    description: 'Parcels closed by the same elapsed point yesterday, for the trend comparison',
+  })
+  packedYesterday!: number;
+  @ApiProperty({
+    description:
+      'The outstanding backlog across every connection routed to this packing executor ' +
+      '("all benches" — every executor connection, never a physical location this product has ' +
+      'no concept of).',
+  })
+  toPackAllBenches!: number;
 }

@@ -34,7 +34,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { EntityManager} from 'typeorm';
-import { DataSource, LessThan, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, LessThan, QueryFailedError, Repository } from 'typeorm';
 import { ReservationOrmEntity } from '../entities/reservation.orm-entity';
 import { Reservation } from '../../../domain/entities/reservation.entity';
 import type { ReservationRepositoryPort } from '../../../domain/ports/reservation-repository.port';
@@ -231,10 +231,18 @@ export class ReservationRepository implements ReservationRepositoryPort {
     return entity ? this.toDomainFromEntity(entity) : null;
   }
 
-  async listHeldByOrderRecordId(orderRecordId: string): Promise<readonly Reservation[]> {
+  async listHeldByOrderRecordId(
+    orderRecordId: string,
+    orderLineIds?: readonly string[]
+  ): Promise<readonly Reservation[]> {
+    if (orderLineIds !== undefined && orderLineIds.length === 0) return [];
     const entities = await this.translate(() =>
       this.repository.find({
-        where: { orderRecordId, status: 'held' },
+        where: {
+          orderRecordId,
+          status: 'held',
+          ...(orderLineIds !== undefined ? { orderLineId: In([...orderLineIds]) } : {}),
+        },
         order: { inventoryItemId: 'ASC' },
       }),
     );
@@ -426,6 +434,40 @@ export class ReservationRepository implements ReservationRepositoryPort {
     // the subtrahend and nothing else.
     const publishedClaim = claim.atpEffect === 'published' ? claim.quantity : 0;
 
+    // Lock the position row FIRST, as its own statement. `othersSum` is a
+    // correlated subquery against a DIFFERENT table (`reservations`), so
+    // folding it straight into the guarded UPDATE below is not enough:
+    // under READ COMMITTED, a blocked UPDATE that gets unblocked by a
+    // concurrent committer only re-fetches the ROW BEING UPDATED — the
+    // subquery against `reservations` still runs against the snapshot taken
+    // when THIS statement began, which predates the other transaction's
+    // commit ("it does not see effects of [concurrent] commands on any other
+    // rows in the database" — PostgreSQL docs § Read Committed Isolation).
+    // Two concurrent claims against one unit of stock could both read
+    // `othersSum = 0` and both pass the guard. Acquiring the lock as its own
+    // statement first means the guarded UPDATE below is a fresh statement —
+    // started only once we hold the lock — so its subquery snapshot is taken
+    // after any concurrent committer has already released it, and therefore
+    // does see their committed reservation.
+    //
+    // `FOR NO KEY UPDATE`, never `FOR UPDATE` (#3245). `reservations` carries a
+    // foreign key to `inventory_items`, so EVERY insert of a reservation takes a
+    // `FOR KEY SHARE` lock on the position row for its FK check, held to commit.
+    // `FOR KEY SHARE` is shared, so two concurrent claimers both hold it — and
+    // `FOR UPDATE` is the one row-lock mode that conflicts with it, so each then
+    // waits for the other's FK lock and the deadlock detector kills one. Ordering
+    // the claims cannot prevent that: both transactions are already AT the same
+    // row, in the same order, when they deadlock.
+    //
+    // `FOR NO KEY UPDATE` is exactly the strength the guarded UPDATE below takes
+    // on its own (it writes no key column), so this statement introduces no
+    // conflict class the transaction did not already have. It still conflicts
+    // with ITSELF, which is the whole requirement — a second claimer waits here
+    // and starts its guarded UPDATE only once the first has committed.
+    await this.raw(manager, `SELECT 1 FROM "inventory_items" WHERE "id" = $1 FOR NO KEY UPDATE`, [
+      claim.inventoryItemId,
+    ]);
+
     const rows = await this.raw<{ remainingAtp: number | string }>(
       manager,
       `UPDATE "inventory_items" AS "i"
@@ -506,6 +548,36 @@ export class ReservationRepository implements ReservationRepositoryPort {
    * The single translation boundary: no `QueryFailedError` leaves this class
    * (`docs/engineering-standards.md § Error Handling`). Already-named domain
    * errors pass through untouched.
+   *
+   * One class of failure is knowingly mislabelled here. A deadlock (`40P01`) or
+   * a serialization failure (`40001`) arrives as a `QueryFailedError` carrying
+   * no constraint name, so it lands as
+   * `ReservationLedgerConstraintError('unknown')` - which `claimOne` above
+   * documents as meaning "a guard that should have made this unreachable did not
+   * hold", i.e. a defect signal. It is the opposite of that: contention, whose
+   * correct answer is a retry. And because
+   * `OrderIngestionService.reserveOrderInventory` swallows a ledger failure
+   * best-effort, the visible outcome today is a paid order holding nothing while
+   * the log blames the ledger.
+   *
+   * #3245 removed the cycle that made this common - the FK's `FOR KEY SHARE`
+   * against `applyGuardedAdd`'s old `FOR UPDATE` - but it removed that cycle,
+   * not the class. The known survivor is `claimHeld` against `releaseHeld`,
+   * which take the same two rows in OPPOSITE order: `claimOne` reaches
+   * `inventory_items` first (the FK's lock on INSERT, then the position lock)
+   * and touches its `reservations` row only at `setQuantity`, while
+   * `releaseHeld` locks the `reservations` row first and `inventory_items`
+   * after. A claim whose next INSERT blocks on a mid-release row's index entry,
+   * and a release whose counter UPDATE blocks on that claim's position lock, is
+   * a real cycle - and nothing available orders it away: the `inventoryItemId`
+   * sort is scoped to one `claimHeld` call, and a per-order ingestion lock
+   * cannot order two DIFFERENT methods against each other.
+   *
+   * Splitting the SQLSTATE out into a distinct, retryable error - the
+   * `InventoryCrossSourcePositionConflictError` shape (#2320) - is the right
+   * fix and is deliberately not taken here: it widens what every caller of this
+   * ledger must handle, which is a far larger blast radius than a lock mode, and
+   * it carries no issue yet.
    */
   private async translate<T>(fn: () => Promise<T>): Promise<T> {
     try {

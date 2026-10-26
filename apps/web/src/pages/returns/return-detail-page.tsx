@@ -29,7 +29,7 @@
  *
  * @module apps/web/src/pages/returns
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Button } from '../../shared/ui/button';
@@ -38,24 +38,31 @@ import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list'
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { ApiError } from '../../shared/api/api-error';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../features/connections';
-import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
+// The barrel, not the deep hook path — every other in-tree consumer imports
+// it this way (`orphan-returns-worklist.tsx` among them), and `pages/` deep
+// imports are a documented gap, not an allowance (tech-lead review on
+// #3285, SUGGESTION).
+import { useDemoMode } from '../../features/system';
 import {
   RETURNS_ORPHAN_COPY,
   RETURNS_ROW_COPY,
   RETURN_DETAIL_COPY,
   RETURN_DETAIL_HEADER_COPY,
   RETURN_LINES_COPY,
+  RETURN_ORPHAN_BANNER_COPY,
   RETURN_SOURCE_PANEL_COPY,
   ReturnCustodyPanel,
   ReturnMoneyPanel,
-  ReturnProposalPanel,
+  CorrectionProposalPanel,
   useReturnProposalQuery,
   ReturnDeclineAction,
   ReturnRailsNote,
   ReturnActivityTimeline,
   ReturnOrphanBanner,
+  MatchReturnDialog,
   ReturnSourceStatus,
   ReturnDetailUnreadableError,
   describeUnreadableLines,
@@ -175,6 +182,9 @@ export function ReturnDetailPage(): ReactElement {
   const { returnId = '' } = useParams<{ returnId: string }>();
   const demoMode = useDemoMode();
   const writeAccess = useWriteAccess('orders:write', demoMode);
+  // #3078/#3085 — the match dialog's detail-page mount point. A single slot:
+  // only this return's own orphan banner can ever open it.
+  const [isMatchDialogOpen, setIsMatchDialogOpen] = useState(false);
 
   const query = useReturnQuery(returnId);
   // Gated on attribution: the proposal route answers 409 for an orphan, and the
@@ -279,8 +289,44 @@ export function ReturnDetailPage(): ReactElement {
         ) : null
       }
     >
+      {/* ONE `detail.bucket === 'orphan'` check for both the banner and its
+          dialog, folded into a single block — the two were adjacent, separate
+          conditions that could drift from each other for no reason (tech-lead
+          review on #3285, SUGGESTION). The dialog renders nothing while
+          `open` is false, so folding it in costs nothing. */}
       {detail.bucket === 'orphan' ? (
-        <ReturnOrphanBanner externalOrderId={detail.externalOrderId} />
+        <>
+          <ReturnOrphanBanner
+            externalOrderId={detail.externalOrderId}
+            action={
+              writeAccess.visible ? (
+                <ReadOnlyLock
+                  active={writeAccess.demoReadOnly}
+                  message={RETURN_ORPHAN_BANNER_COPY.matchActionReadOnly}
+                >
+                  <Button
+                    tone="secondary"
+                    disabled={writeAccess.demoReadOnly}
+                    onClick={() => {
+                      setIsMatchDialogOpen(true);
+                    }}
+                  >
+                    {RETURN_ORPHAN_BANNER_COPY.matchAction}
+                  </Button>
+                </ReadOnlyLock>
+              ) : null
+            }
+          />
+          <MatchReturnDialog
+            returnId={detail.id}
+            open={isMatchDialogOpen}
+            onOpenChange={setIsMatchDialogOpen}
+            writeAccess={writeAccess}
+            // Cache invalidation is the mechanism (useMatchReturnToOrderMutation
+            // already invalidates on settle) — no explicit refetch needed
+            // here (tech-lead review on #3285, SUGGESTION).
+          />
+        </>
       ) : null}
 
       <KeyValueList items={buildHeaderItems(detail, connection?.name ?? null)} />
@@ -305,13 +351,30 @@ export function ReturnDetailPage(): ReactElement {
 
       <ReturnMoneyPanel detail={detail} writeAccess={writeAccess} />
 
-      {/* Not fetched for an ORPHAN — the backend answers 409 (attribute it
-          first), and asking anyway would render an error for a state the page
-          already explains with its own banner. */}
-      {proposalQuery.data !== undefined ? (
-        <ReturnProposalPanel
+      {/* Section 5 of 8, at the shipped #correction anchor, between Money and
+          "What the channel says" (returns spec § 5.8). Not FETCHED for an
+          ORPHAN — the backend answers 409 (attribute it first) — but the
+          section still renders, with a fixed message rather than silently
+          disappearing: `credit-absent-orphan` keeps the page's section count
+          stable instead of making #correction a dead anchor. The orphan
+          shell is owned by the panel itself (`orphan` prop) — see that
+          component's docblock for why the page must not rebuild it. */}
+      {detail.bucket === 'orphan' ? (
+        <CorrectionProposalPanel
+          returnId={returnId}
+          outcome=""
+          proposal={null}
+          changeId={null}
+          writeAccess={writeAccess}
+          orphan
+        />
+      ) : proposalQuery.data !== undefined ? (
+        <CorrectionProposalPanel
+          returnId={returnId}
           outcome={proposalQuery.data.outcome}
           proposal={proposalQuery.data.proposal}
+          changeId={proposalQuery.data.changeId ?? null}
+          writeAccess={writeAccess}
         />
       ) : null}
 

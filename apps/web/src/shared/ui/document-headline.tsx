@@ -43,6 +43,12 @@ export interface DocumentHeadlineProps {
   /** Number, provider, or both. Rendered in the mono sub-line, or omitted. */
   identity?: ReactNode;
   className?: string;
+  /**
+   * Stable test hook for the headline itself (#3196). Opt-in: the sales-document
+   * panel passes the mockup's `sales-document-status`, and a headline with no
+   * hook renders exactly as before.
+   */
+  'data-testid'?: string;
 }
 
 export function DocumentHeadline({
@@ -51,11 +57,12 @@ export function DocumentHeadline({
   tone = 'idle',
   identity,
   className = '',
+  'data-testid': dataTestId,
 }: DocumentHeadlineProps): ReactElement {
   const classes = ['document-headline', className].filter(Boolean).join(' ');
 
   return (
-    <div className={classes}>
+    <div className={classes} data-testid={dataTestId}>
       <span className={`document-headline__main document-headline__main--${tone}`}>
         {/* Decorative: the kind is the very next word. */}
         <DocumentKindGlyph kind={kind} decorative />

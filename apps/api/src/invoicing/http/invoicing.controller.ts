@@ -92,6 +92,7 @@ import {
   RegulatoryDocumentKindValues,
   UnsupportedRegulatoryDocumentKindError,
   isRegulatoryDocumentReader,
+  isRegulatoryVerificationLinkReader,
   isRegulatoryResubmitter,
   BuyerProfile,
   isBankAccountsReader,
@@ -101,6 +102,9 @@ import {
   PAYMENT_STATUS_REFRESH_SERVICE_TOKEN,
   IPaymentStatusRefreshService,
   normalizeShippingLineName,
+  classifyInvoiceFailure,
+  classifyInvoiceFailureMode,
+  readAcknowledgementWarningCode,
 } from '@openlinker/core/invoicing';
 import type {
   InvoiceRecord,
@@ -115,17 +119,23 @@ import type {
   StoredDocument,
 } from '@openlinker/core/invoicing';
 import {
+  decodeBuyerTaxIdColumn,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
   IOrderRecordService,
+  IOrderRefundService,
+  toLiveOrderIssuanceFacts,
   orderFromReadySnapshot,
   OrderSnapshotUnavailableError,
   buildOrderSummary,
 } from '@openlinker/core/orders';
 import type { Order, OrderRecord, OrderSummary } from '@openlinker/core/orders';
+import { decideLiveOrderIssuance, type LiveOrderIssuanceDecision } from '@openlinker/core/sales-documents';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
+import { normalizeBuyerTaxId } from './dto/buyer-tax-id.dto';
 import { IssueInvoiceRequestDto } from './dto/issue-invoice-request.dto';
 import { IssueCorrectionRequestDto } from './dto/issue-correction-request.dto';
 import { GetInvoiceForOrderQueryDto } from './dto/get-invoice-for-order-query.dto';
@@ -203,6 +213,8 @@ export class InvoicingController {
     private readonly paymentStatusRefreshService: IPaymentStatusRefreshService,
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly refunds: IOrderRefundService,
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -411,6 +423,25 @@ export class InvoicingController {
       }
     }
 
+    // DEF-26: a cancelled or fully refunded order is not invoiced by default -
+    // but a person issuing by hand may know better (OpenLinker suggests, the
+    // operator decides), so the refusal names the code to acknowledge.
+    const liveDecision = await this.decideLiveIssuance(record);
+    if (
+      liveDecision.kind === 'block' &&
+      !(dto.acknowledgeWarnings ?? []).includes(liveDecision.reason)
+    ) {
+      throw new ConflictException({
+        message:
+          liveDecision.reason === 'order-cancelled'
+            ? 'This order is cancelled. Confirm to issue an invoice for it anyway.'
+            : 'This order is fully refunded. Confirm to issue an invoice for it anyway.',
+        error: 'OrderNotIssuable',
+        code: liveDecision.reason === 'order-cancelled' ? 'ORDER_CANCELLED' : 'ORDER_FULLY_REFUNDED',
+        warningCode: liveDecision.reason,
+      });
+    }
+
     // Rehydrate the typed Order and compose the command server-side. The client
     // never supplies buyer/lines — they are derived from the order snapshot.
     const order = this.rehydrateOrder(record.internalOrderId, record);
@@ -457,10 +488,17 @@ export class InvoicingController {
         // route too - this endpoint is exactly where an operator releases an
         // order the auto path skipped.
         taxRateEra: record.taxRateEra,
+        // #1580: operator-supplied buyer classification → provider JST/GV.
+        buyerIsPublicSectorEntity: dto.buyerIsPublicSectorEntity,
+        buyerIsTaxGroupMember: dto.buyerIsTaxGroupMember,
       });
     } catch (error) {
       throw this.toHttpException(error);
     }
+    if (dto.acknowledgeWarnings?.length) {
+      command = { ...command, acknowledgedWarnings: dto.acknowledgeWarnings };
+    }
+    command = this.withOperatorClassification(command, dto);
 
     let issued: InvoiceRecord;
     try {
@@ -483,10 +521,18 @@ export class InvoicingController {
    *
    * Best-effort: an invoice really was issued, so a failure to tidy the badge must
    * never turn a 201 into a 500. The next order transition re-decides it anyway.
+   *
+   * Clears the block ONLY (#3186 review). This path knows nothing about which
+   * routing rule chose the document kind, so it passes `preserve` rather than
+   * `null`: writing `null` here would drop "Why this kind?" off the order panel
+   * on the most ordinary configuration there is (`parseTriggerModel` defaults to
+   * `manual`, so rule decides -> gate blocks -> operator issues by hand), and
+   * the next unrelated transition would put it straight back. A surface fact
+   * that flaps on an unrelated action is worse than one that is simply absent.
    */
   private async clearSalesDocumentBlock(orderId: string): Promise<void> {
     try {
-      await this.orders.markSalesDocumentBlock(orderId, null);
+      await this.orders.markSalesDocumentBlock(orderId, null, { action: 'preserve' });
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(
@@ -627,7 +673,10 @@ export class InvoicingController {
       'deterministic key `invoice:{connectionId}:{orderId}` (same key the auto-issue ' +
       'trigger uses), so a re-submitted batch does not double-issue. Orders already ' +
       'issued / in progress are skipped; a per-order failure is captured without ' +
-      'aborting the rest. At most 100 order ids per request. Returns a per-id summary.',
+      'aborting the rest. At most 100 order ids per request. Returns a per-id summary ' +
+      '(partial-completion feedback). The provider adapter self-paces its own per-hour ' +
+      'rate-limit ceilings (#1594), so a large batch throttles itself rather than ' +
+      'relying solely on reactive backoff.',
   })
   @ApiResponse({ status: 200, description: 'Per-id issue summary', type: BulkIssueInvoicesResponseDto })
   @ApiResponse({ status: 400, description: 'Validation error (empty array, blank ids, or batch > 100)' })
@@ -647,7 +696,17 @@ export class InvoicingController {
 
     const issued = results.filter((r) => r.outcome === 'issued').length;
     const skipped = results.filter((r) => r.outcome === 'skipped').length;
-    return { issued, skipped, failed: results.length - issued - skipped, results };
+    // Partial-completion feedback (#1594): every id is processed and reported
+    // per-outcome (no all-or-nothing), with `total` as the progress denominator.
+    // Live streaming progress for very large batches is a documented follow-up;
+    // the max-100 cap bounds the synchronous call duration until then.
+    return {
+      total: results.length,
+      issued,
+      skipped,
+      failed: results.length - issued - skipped,
+      results,
+    };
   }
 
   /**
@@ -699,6 +758,20 @@ export class InvoicingController {
         if (existing.status === 'pending' || existing.isLeaseLive(new Date())) {
           return { orderId, outcome: 'skipped', reason: 'Invoice issuance is already in progress.' };
         }
+      }
+
+      // DEF-26: a batch never asks, so a cancelled or fully refunded order is
+      // skipped and named; the operator can still issue it one by one.
+      const liveDecision = await this.decideLiveIssuance(record);
+      if (liveDecision.kind === 'block') {
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason:
+            liveDecision.reason === 'order-cancelled'
+              ? 'The order is cancelled.'
+              : 'The order is fully refunded.',
+        };
       }
 
       const order = this.rehydrateOrder(record.internalOrderId, record);
@@ -830,6 +903,14 @@ export class InvoicingController {
       'connection adapter to implement the CorrectionIssuer sub-capability.',
   })
   @ApiResponse({ status: 201, description: 'Correction invoice issued', type: InvoiceRecordResponseDto })
+  @ApiResponse({
+    status: 409,
+    description:
+      'A same-key correction record exists that this request did not advance. ' +
+      '`CORRECTION_IN_PROGRESS` means another attempt is still in flight - retry later. ' +
+      '`CORRECTION_NEEDS_RECONCILIATION` means an earlier attempt ended without knowing ' +
+      'whether the provider created a document - retrying cannot settle it.',
+  })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
   @ApiResponse({ status: 422, description: 'Provider rejected the correction or adapter does not support corrections' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
@@ -910,19 +991,78 @@ export class InvoicingController {
         orderId: original.orderId,
         originalProviderInvoiceId: original.providerInvoiceId,
         documentType: dto.lines.length > 0 ? 'corrected' : undefined,
-        reason: dto.reason,
+        // DEF-32: an empty or absent reason is simply not sent.
+        reason: dto.reason ? dto.reason : undefined,
         lines: dto.lines.map((l) => ({
           originalLineNumber: l.originalLineNumber,
           newQuantity: l.newQuantity,
           newUnitPriceGross: l.newUnitPriceGross,
         })),
         idempotencyKey: dto.idempotencyKey,
+        ...(dto.acknowledgeWarnings?.length ? { acknowledgedWarnings: dto.acknowledgeWarnings } : {}),
         originalDocument,
         source,
+        // #1582: optional buyer-identity override (e.g. a wrong NIP on the
+        // original). Re-wrapped into the neutral BuyerProfile the adapter uses
+        // for the KOR; absent ⇒ the original snapshot's buyer is reused.
+        buyerOverride: dto.buyerOverride
+          ? new BuyerProfile(
+              dto.buyerOverride.name,
+              dto.buyerOverride.taxId ? normalizeBuyerTaxId(dto.buyerOverride.taxId) : null,
+              {
+                line1: dto.buyerOverride.address.line1,
+                line2: dto.buyerOverride.address.line2 ?? null,
+                city: dto.buyerOverride.address.city,
+                postalCode: dto.buyerOverride.address.postalCode,
+                countryIso2: dto.buyerOverride.address.countryIso2,
+              },
+              dto.buyerOverride.type,
+              // DEF-08: an identity correction fixes who the buyer is, not where
+              // their documents go, so the original's e-mail carries over.
+              originalDocument?.buyer.email ?? null,
+              dto.buyerOverride.isPublicSectorEntity,
+              dto.buyerOverride.isTaxGroupMember,
+            )
+          : undefined,
       });
     } catch (error) {
       throw this.toHttpException(error);
     }
+
+    // #3365 review: only an ISSUED record is a 201.
+    //
+    // `issueCorrection` returns the existing record unchanged on two resume
+    // arms, and answering 201 Created for either of them states something that
+    // did not happen. The sibling issue route already draws this line and says
+    // why (#1200: "a re-issue must NOT be reported as a fresh 201 success while
+    // an original attempt is in flight"); the correction route simply never
+    // applied it.
+    //
+    // A same-key replay of an ALREADY-ISSUED correction stays 201 with the
+    // original record, deliberately unlike the issue route's 409: that route
+    // keys on (order, connection), where a second document is a genuine
+    // conflict, while this one keys on the caller's idempotency key, where
+    // returning the original result IS the contract. A genuinely new correction
+    // that fails throws from the service and never reaches here.
+    if (issued.status !== 'issued') {
+      if (issued.isLeaseLive(new Date())) {
+        throw new ConflictException({
+          message:
+            `Correction for invoice ${original.id} is already being issued by an attempt that is ` +
+            `still in flight; nothing was issued by this request. Retry once it settles.`,
+          code: 'CORRECTION_IN_PROGRESS',
+        });
+      }
+      throw new ConflictException({
+        message:
+          `A correction record for invoice ${original.id} exists in a state this request cannot ` +
+          `advance (status=${issued.status}, failureMode=${issued.failureMode ?? 'unknown'}); ` +
+          `nothing was issued. The provider may or may not hold a document for it, so it needs ` +
+          `reconciling rather than retrying.`,
+        code: 'CORRECTION_NEEDS_RECONCILIATION',
+      });
+    }
+
     // #2100: a correction implies an issued original, so the gate's own
     // invoice-awareness already suppresses a block here. Clearing anyway is the
     // cheap belt-and-braces for a row that predates that suppression.
@@ -1300,7 +1440,7 @@ export class InvoicingController {
   private toTaxIdentifier(
     dto: IssueInvoiceRequestDto['buyerTaxId'],
   ): TaxIdentifier | null {
-    return dto ? { scheme: dto.scheme, value: dto.value } : null;
+    return dto ? normalizeBuyerTaxId(dto) : null;
   }
 
   /**
@@ -1331,9 +1471,8 @@ export class InvoicingController {
     record: InvoiceRecord,
     snapshot: IssuedLineSnapshot,
   ): OriginalDocumentSnapshot {
-    const b = snapshot.buyer;
     return {
-      buyer: new BuyerProfile(b.name, b.taxId, b.address, b.type),
+      buyer: BuyerProfile.fromSnapshot(snapshot.buyer),
       currency: snapshot.currency,
       documentType: record.documentType.length > 0 ? record.documentType : 'invoice',
       lines: snapshot.lines,
@@ -1344,7 +1483,13 @@ export class InvoicingController {
       // would silently produce an invalid document number / issue date instead
       // of surfacing the broken invariant.
       documentNumber: record.providerInvoiceNumber!,
-      issueDate: this.toIsoDateOnly(record.issuedAt!),
+      // The date the original PRINTED (DEF-33) when the snapshot has it: the
+      // UTC day of `issuedAt` is a different day for anything issued just after
+      // local midnight, and the correction must reference the original exactly.
+      issueDate: snapshot.issueDate ?? this.toIsoDateOnly(record.issuedAt!),
+      ...(snapshot.saleDate !== undefined ? { saleDate: snapshot.saleDate } : {}),
+      ...(snapshot.annotations ? { annotations: snapshot.annotations } : {}),
+      ...(snapshot.additionalParties?.length ? { additionalParties: snapshot.additionalParties } : {}),
     };
   }
 
@@ -1407,6 +1552,67 @@ export class InvoicingController {
    *   - capability/connection-resolution errors propagate UNCAUGHT (handled by
    *     the global filter — they are not invoice-issuance rejections).
    */
+  /**
+   * Thread what the operator stated about this sale onto the command (DEF-20 /
+   * DEF-30): annotation flags, parties besides seller and buyer, and per-line
+   * markers matched to the order's lines by `orderLineId`. A marker naming a
+   * line the order does not have is a request error, not a silent drop.
+   */
+  private withOperatorClassification(
+    command: IssueInvoiceCommand,
+    dto: IssueInvoiceRequestDto,
+  ): IssueInvoiceCommand {
+    let next = command;
+    if (dto.annotations) {
+      next = { ...next, annotations: { ...next.annotations, ...dto.annotations } };
+    }
+    if (dto.additionalParties?.length) {
+      next = {
+        ...next,
+        additionalParties: dto.additionalParties.map((party) => ({
+          role: party.role,
+          name: party.name,
+          taxId: party.taxId ? normalizeBuyerTaxId(party.taxId) : null,
+          ...(party.address
+            ? { address: { ...party.address, line2: party.address.line2 ?? null } }
+            : {}),
+        })),
+      };
+    }
+    if (dto.lineClassifications?.length) {
+      const byLine = new Map(dto.lineClassifications.map((c) => [c.orderLineId, c]));
+      const known = new Set(next.lines.map((line) => line.orderLineId).filter(Boolean));
+      const unknown = [...byLine.keys()].filter((id) => !known.has(id));
+      if (unknown.length > 0) {
+        throw new BadRequestException(
+          `lineClassifications name order lines this invoice does not carry: ${unknown.join(', ')}`,
+        );
+      }
+      next = {
+        ...next,
+        lines: next.lines.map((line) => {
+          const marker = line.orderLineId ? byLine.get(line.orderLineId) : undefined;
+          return marker
+            ? {
+                ...line,
+                ...(marker.gtuCode ? { gtuCode: marker.gtuCode } : {}),
+                ...(marker.procedureCode ? { procedureCode: marker.procedureCode } : {}),
+              }
+            : line;
+        }),
+      };
+    }
+    return next;
+  }
+
+  /** The shared live-order gate (DEF-26) for one order record. */
+  private async decideLiveIssuance(record: OrderRecord): Promise<LiveOrderIssuanceDecision> {
+    const summary = (await this.refunds.getRefundSummariesForOrders([record.internalOrderId])).get(
+      record.internalOrderId,
+    );
+    return decideLiveOrderIssuance(toLiveOrderIssuanceFacts(record, summary));
+  }
+
   private toHttpException(error: unknown): Error {
     if (error instanceof DuplicateInvoiceRecordException) {
       return new ConflictException('An invoice record with this idempotency key already exists');
@@ -1500,8 +1706,37 @@ export class InvoicingController {
     if (error instanceof AdapterNotFoundException) {
       return new BadGatewayException('Invoicing provider is unavailable');
     }
-    // Any other throw from the issuance path is an adapter rejection (the service
-    // rethrows the raw provider error). Do NOT return it verbatim — it may carry
+    // A TERMINAL rejection the adapter classified (#3772). The service has
+    // already stored this exact classification on the record - `classifyInvoiceFailure`
+    // is the one function both read - so the response and the record can never
+    // disagree. The body carries only the closed code and PII-free sentences:
+    // `failureReason` is a fixed constant for every code except
+    // `connection-setup-incomplete`, where it is the adapter's own sentence the
+    // adapter vouched for by opting in. The raw message is still logged, never
+    // returned, since it may echo provider or buyer data.
+    if (classifyInvoiceFailureMode(error) === 'rejected') {
+      const { failureCode, failureReason } = classifyInvoiceFailure(error);
+      const correlationId = `inv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      this.logger.warn(
+        `Invoice issuance rejected (${correlationId}, failureCode=${failureCode}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return new UnprocessableEntityException({
+        message: failureReason,
+        error: 'InvoiceIssueRejected',
+        failureCode,
+        ...(failureCode === 'connection-setup-incomplete' || failureCode === 'acknowledgement-required'
+          ? { failureReason }
+          : {}),
+        // The code the operator sends back in `acknowledgeWarnings` to proceed.
+        ...(failureCode === 'acknowledgement-required'
+          ? { warningCode: readAcknowledgementWarningCode(error) }
+          : {}),
+      });
+    }
+    // Any other throw from the issuance path is an adapter failure the service
+    // could not classify. Do NOT return it verbatim - it may carry
     // provider-echoed buyer PII. Log internally with a correlation id; return a
     // generic 422 referencing only that id.
     if (error instanceof Error) {
@@ -1532,8 +1767,11 @@ export class InvoicingController {
       status: record.status,
       providerInvoiceId: record.providerInvoiceId,
       providerInvoiceNumber: record.providerInvoiceNumber,
+      warehouseReleaseOutcome: record.warehouseReleaseOutcome,
+      warehouseReleaseNumber: record.warehouseReleaseNumber,
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
+      clearanceDetail: record.clearanceDetail,
       // W1 failure semantics (errorMessage stays omitted — PII).
       failureMode: record.failureMode,
       failureCode: record.failureCode,
@@ -1543,7 +1781,50 @@ export class InvoicingController {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
       orderSummary: orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null,
+      // #3188 - the three-state value the `taxId=with|without` filter was asking
+      // about. Decoded here for the same reason `fromDomain` decodes it: `''` is
+      // the asserted-none state, not an empty id.
+      buyerTaxId: decodeBuyerTaxIdColumn(record.buyerTaxId),
     };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get('invoices/:invoiceId/verification-link')
+  @ApiOperation({
+    summary: "The tax authority's public verification link for an invoice",
+    description:
+      'The link a QR verification code on a copy handed outside the authority system encodes ' +
+      "(KSeF: KOD I). Built by the provider adapter from the document it submitted, so its host, " +
+      'date and hash are the ones the authority checks (DEF-02 / DEF-03). `url` is null when the ' +
+      'provider offers no such link or the document is not cleared yet.',
+  })
+  @ApiResponse({ status: 200, description: '{ url: string | null }' })
+  @ApiResponse({ status: 404, description: 'Invoice not found' })
+  async getVerificationLink(
+    @Param('invoiceId', invoiceIdPipe()) invoiceId: string,
+  ): Promise<{ url: string | null }> {
+    const record = await this.invoiceService.getInvoiceById(invoiceId);
+    if (!record) {
+      throw new NotFoundException(`Invoice not found: ${invoiceId}`);
+    }
+    try {
+      const adapter = await this.integrationsService.getCapabilityAdapter<InvoicingPort>(
+        record.connectionId,
+        'Invoicing',
+      );
+      if (!isRegulatoryVerificationLinkReader(adapter)) {
+        return { url: null };
+      }
+      const link = await adapter.getVerificationLink(record);
+      return { url: link?.url ?? null };
+    } catch (error) {
+      // A connection that cannot be resolved has no link to offer; the panel
+      // then shows none rather than a guessed one.
+      this.logger.warn(
+        `No verification link for invoice ${invoiceId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { url: null };
+    }
   }
 
   @Roles('admin', 'operator', 'viewer')

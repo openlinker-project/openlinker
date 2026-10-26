@@ -32,8 +32,13 @@ export interface PrestashopProductWriteBody {
    * orphan instead of creating a duplicate (#1107 create-idempotency guard).
    */
   reference?: string;
-  /** Tax-excluded price; PS WS convention uses a decimal string. */
+  /**
+   * Tax-excluded price; PS WS convention uses a decimal string. Derived from
+   * the gross catalogue price with `id_tax_rules_group`'s rate (ADR-077).
+   */
   price: string;
+  /** The tax-rule group PrestaShop adds on top of `price` (ADR-077). */
+  id_tax_rules_group?: string;
   active: '0' | '1';
   id_category_default: string;
   associations?: {

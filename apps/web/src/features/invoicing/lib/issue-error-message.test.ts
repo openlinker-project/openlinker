@@ -8,7 +8,12 @@
  * surface the server message verbatim.
  */
 import { describe, it, expect } from 'vitest';
-import { resolveIssueErrorMessage, isCapabilityDisabledError } from './issue-error-message';
+import {
+  resolveIssueErrorMessage,
+  isCapabilityDisabledError,
+  isConnectionSetupIncompleteError,
+  readAcknowledgementRequest,
+} from './issue-error-message';
 import { ApiError } from '../../../shared/api/api-error';
 
 /** Identity `t` — returns the EN fallback so assertions read against real copy. */
@@ -86,5 +91,67 @@ describe('isCapabilityDisabledError', () => {
   it('false for a non-400 status and for non-ApiError values', () => {
     expect(isCapabilityDisabledError(new ApiError('x', 422, { error: 'CapabilityNotEnabledException' }))).toBe(false);
     expect(isCapabilityDisabledError(new Error('x'))).toBe(false);
+  });
+});
+
+describe('isConnectionSetupIncompleteError (#3772)', () => {
+  it('should recognise the 422 that names connection-setup-incomplete', () => {
+    expect(
+      isConnectionSetupIncompleteError(
+        new ApiError('No seller tax number', 422, {
+          error: 'InvoiceIssueRejected',
+          failureCode: 'connection-setup-incomplete',
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('should not match another rejection code, another status, or a non-API error', () => {
+    expect(
+      isConnectionSetupIncompleteError(
+        new ApiError('x', 422, { error: 'InvoiceIssueRejected', failureCode: 'provider-rejected' }),
+      ),
+    ).toBe(false);
+    expect(
+      isConnectionSetupIncompleteError(
+        new ApiError('x', 400, { error: 'InvoiceIssueRejected', failureCode: 'connection-setup-incomplete' }),
+      ),
+    ).toBe(false);
+    expect(isConnectionSetupIncompleteError(new Error('x'))).toBe(false);
+  });
+});
+
+
+describe('readAcknowledgementRequest (DEF-23/26)', () => {
+  it('should read a 422 acknowledgement-required with its code and sentence', () => {
+    const error = new ApiError('fallback', 422, {
+      error: 'InvoiceIssueRejected',
+      failureCode: 'acknowledgement-required',
+      failureReason: 'The buyer tax number differs from the original invoice.',
+      warningCode: 'ksef-buyer-tax-id-change',
+    });
+    expect(readAcknowledgementRequest(error)).toEqual({
+      warningCode: 'ksef-buyer-tax-id-change',
+      message: 'The buyer tax number differs from the original invoice.',
+    });
+  });
+
+  it('should read a 409 for a cancelled order', () => {
+    const error = new ApiError('This order is cancelled. Confirm to issue an invoice for it anyway.', 409, {
+      error: 'OrderNotIssuable',
+      code: 'ORDER_CANCELLED',
+      warningCode: 'order-cancelled',
+    });
+    expect(readAcknowledgementRequest(error)?.warningCode).toBe('order-cancelled');
+  });
+
+  it('should ignore a 409 that is not an overrulable refusal', () => {
+    const error = new ApiError('already issued', 409, { error: 'OrderAlreadyInvoiced', warningCode: 'x' });
+    expect(readAcknowledgementRequest(error)).toBeNull();
+  });
+
+  it('should ignore a 422 with another failure code', () => {
+    const error = new ApiError('nope', 422, { failureCode: 'provider-rejected' });
+    expect(readAcknowledgementRequest(error)).toBeNull();
   });
 });

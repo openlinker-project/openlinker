@@ -111,6 +111,20 @@ export class OperationalSettingsResponseDto {
   @ApiProperty({ type: ResolvedNumberSettingDto })
   deletionAuditBudget!: ResolvedNumberSettingDto;
 
+  @ApiProperty({
+    type: ResolvedNumberSettingDto,
+    description:
+      'Days a completed (`succeeded`) sync job is kept before the retention prune deletes it (#2946, D16). Bounded 30-365 days.',
+  })
+  syncJobRetentionDays!: ResolvedNumberSettingDto;
+
+  @ApiProperty({
+    type: ResolvedNumberSettingDto,
+    description:
+      'Days a permanently-failed (`dead`) sync job is kept — the only record an operator has that work was lost, kept longer than a succeeded job by default. Bounded 30-365 days.',
+  })
+  syncJobDeadRetentionDays!: ResolvedNumberSettingDto;
+
   @ApiProperty({ type: ResolvedCadenceSettingDto })
   deletionAuditCadence!: ResolvedCadenceSettingDto;
 
@@ -170,6 +184,8 @@ export class OperationalSettingsResponseDto {
     dto.inventorySweepBudget = { ...view.inventorySweepBudget };
     dto.sweepPageSize = { ...view.sweepPageSize };
     dto.deletionAuditBudget = { ...view.deletionAuditBudget };
+    dto.syncJobRetentionDays = { ...view.syncJobRetentionDays };
+    dto.syncJobDeadRetentionDays = { ...view.syncJobDeadRetentionDays };
     dto.deletionAuditCadence = { ...view.deletionAuditCadence };
     dto.catalogueSweepCadence = { ...view.catalogueSweepCadence };
     dto.inventorySweepCadence = { ...view.inventorySweepCadence };

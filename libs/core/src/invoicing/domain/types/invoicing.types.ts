@@ -11,6 +11,7 @@
  *
  * @module libs/core/src/invoicing/domain/types
  */
+import type { PaymentMethod } from '@openlinker/core/orders/types';
 import type { BuyerProfile } from '../entities/buyer-profile.entity';
 import type { InvoiceRecord } from '../entities/invoice-record.entity';
 
@@ -87,6 +88,35 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *     accurately, since the provider did reject it. Operator-fixable on the
  *     source order either way. Currency and ISO 4217 are country-agnostic
  *     vocabulary, so this stays ADR-026-clean.
+ *   - `sale-classification-required`: a TERMINAL `rejected` failure caused by a
+ *     missing per-connection sale classification (goods vs. services) — a
+ *     required-but-unconfigured PLUGIN SETTING, not an order-data problem
+ *     (#3031). Unlike `invalid-currency` this genuinely IS a provider-side
+ *     rejection (the adapter has no signal to refuse the call pre-emptively —
+ *     #2177/#2995 deliberately did not add a goods/service field to
+ *     `InvoiceLine`), so it can only be detected reactively, by an adapter
+ *     recognising its own provider's shape for "you must configure this" and
+ *     re-throwing with a `reason` one of {@link SALE_CLASSIFICATION_REJECTION_MARKERS}
+ *     matches. The operator-fixable remedy is a one-field connection config
+ *     change, which is why this must not collapse into `provider-rejected` —
+ *     that copy gives no clue there is a config knob to set at all.
+ *   - `connection-setup-incomplete`: a TERMINAL `rejected` failure the
+ *     ADAPTER raised before contacting the provider, because the connection
+ *     is missing a setting it needs (#3772) - e.g. an invoicing connection
+ *     with no seller tax number. Reached only when the adapter DECLARES it,
+ *     via `failureCause: 'connection-setup'` on its throwable, never by
+ *     matching words; and only for this code is `failureReason` the
+ *     adapter's own sentence, because declaring the cause is the adapter's
+ *     promise that the sentence comes from connection config, not buyer data.
+ *     Must not collapse into `provider-rejected`, whose copy asserts the
+ *     provider rejected a request it never received and sends the operator
+ *     to the order's data when the fix is on the connection.
+ *   - `acknowledgement-required`: a TERMINAL `rejected` failure the ADAPTER
+ *     raised before contacting the provider because the document rests on a
+ *     reading of the law OpenLinker cannot be sure of (OpenLinker suggests,
+ *     the operator decides). Declared via `failureCause: 'needs-acknowledgement'`
+ *     with a `warningCode`; `failureReason` is the adapter's own PII-free
+ *     sentence. Re-issuing with that code in `acknowledgedWarnings` proceeds.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -97,6 +127,9 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
 export const InvoiceFailureCodeValues = [
   'buyer-tax-id-invalid',
   'invalid-currency',
+  'sale-classification-required',
+  'connection-setup-incomplete',
+  'acknowledgement-required',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
@@ -129,6 +162,34 @@ export const CURRENCY_REJECTION_MARKERS = [
   'currency is required',
   'currency code',
 ] as const;
+
+/**
+ * Substrings (case-insensitive) that mark a `rejected` failure as a missing
+ * per-connection sale-classification (goods vs. services) setting, so
+ * `classifyFailureCode` can resolve `sale-classification-required` instead of
+ * the generic `provider-rejected` (#3031, follow-up to #2177/#2995).
+ *
+ * Unlike the currency markers this is a genuine POST-CALL provider rejection —
+ * core cannot know ahead of time whether the buyer's country needs the field,
+ * and #2995 deliberately declined to add a goods/service signal to
+ * `InvoiceLine` (a national VAT-classification concept ADR-026 keeps out of
+ * `libs/core`). An adapter that recognises its own provider's "you must
+ * configure a sale classification" response re-throws with a `reason`
+ * matching one of these markers instead of propagating the provider's raw
+ * (possibly buyer-PII-echoing) message.
+ *
+ * PUBLISHED for the same reason {@link CURRENCY_REJECTION_MARKERS} is: both
+ * ends of the structural read live in this repo (the reason text an adapter
+ * throws is OL-authored, never a verbatim provider string), so an adapter
+ * spec can assert its own message still matches one of these markers and a
+ * reword breaks the build rather than silently degrading the operator's
+ * failure reason. Neutral vocabulary only — "sale classification" names no
+ * country or tax system (ADR-026); it deliberately avoids inFakt's own wire
+ * field name (`sale_type`) so the marker itself never leaks one provider's
+ * naming into a cross-provider vocabulary, even though inFakt is the only
+ * shipped adapter that triggers it today.
+ */
+export const SALE_CLASSIFICATION_REJECTION_MARKERS = ['sale classification'] as const;
 
 /**
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps
@@ -172,6 +233,15 @@ export interface RegulatoryClearanceResult {
    * a reference a prior submit could not. `null`/absent until assigned.
    */
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing diagnostic the authority returned for the clearance
+   * verdict (#1582) - typically the provider's `description`/`details` on a
+   * `rejected` read, so an operator can see WHY the authority refused the
+   * document rather than only that it was rejected. Country/provider-agnostic
+   * (ADR-026): a free-text blob the adapter fills from its regime's rejection
+   * fields, never interpreted in core. Absent on non-rejection reads.
+   */
+  clearanceDetail?: string | null;
 }
 
 /**
@@ -200,12 +270,24 @@ export interface OfflineResubmitResult {
  * optional — an adapter uses the subset its provider's query surface supports.
  * Country/regulatory-agnostic: `sellerTaxId` is a scheme-tagged identifier value
  * the adapter interprets, never a named national id.
+ *
+ * `idempotencyKey` (#3389) is additive: `documentNumber` reliably survives a
+ * mid-submit crash only for a `DocumentNumberConsumer` provider (KSeF — core
+ * allocates the number BEFORE the request, so it is persisted before the crash
+ * can happen). A self-numbering provider (Subiekt — the authority assigns its
+ * own number only in the response) has no `documentNumber` to give for exactly
+ * the crash this capability exists to recover from, so its only reliable locate
+ * key is the OL-supplied idempotency key it stamped on the request. Optional so
+ * a caller/adapter written before this field existed is unaffected — `undefined`
+ * simply means "not available for this record" (a keyless issuance), never
+ * "excluded from the query" for an adapter that reads it.
  */
 export interface RegulatoryLocateCriteria {
   sellerTaxId?: string;
   documentNumber?: string;
   issuedFrom?: Date;
   issuedTo?: Date;
+  idempotencyKey?: string;
 }
 
 /**
@@ -291,12 +373,28 @@ export const BuyerTypeValues = ['company', 'private'] as const;
 export type BuyerType = (typeof BuyerTypeValues)[number];
 
 /**
- * Scheme-tagged tax identifier — EN 16931 BT-30 / ISO 6523 / Stripe `tax_ids`
- * shape. `scheme` is an OPEN string the adapter interprets (`pl-nip`, `eu-vat`,
+ * Tax identifier — EN 16931 BT-30 / ISO 6523 / Stripe `tax_ids` shape.
+ *
+ * `scheme` is an OPEN string the adapter interprets (`pl-nip`, `eu-vat`,
  * `de-ustid`); core never names a country's identifier system.
+ *
+ * It is OPTIONAL, and the absence is meaningful rather than a convenience
+ * (#3224, ADR-073 decision 1). An `Order` stores a bare tax number with no
+ * tag, so the auto-issue path has a value and no scheme — and minting one
+ * in core is exactly what ADR-073 forbids, because the tag names a country's
+ * identifier system and a mis-set one silently mislabels every document.
+ * ADR-073's own words: *"An adapter needing a tag supplies it."* The seller's
+ * identity already works this way (the KSeF adapter resolves `pl-nip` from its
+ * own connection config), so this is the same rule applied to the buyer.
+ *
+ * **An adapter must therefore treat an absent `scheme` as "untagged, decide
+ * for your own market", never as "not a tax id".** Dropping the value there
+ * silently omits the buyer's tax number from a document that legally needs it.
+ * A value the provider then refuses is surfaced verbatim (ADR-073 decision 5);
+ * core never pre-judges which identifiers a provider accepts.
  */
 export interface TaxIdentifier {
-  scheme: string;
+  scheme?: string;
   value: string;
 }
 
@@ -335,6 +433,70 @@ export interface InvoiceLine {
    * sources that do. Providers without a unit concept ignore it.
    */
   unit?: string;
+  /**
+   * The OL-internal product id this line sells, when the caller knows it - the
+   * same id `OrderItem.productId` carries, so a provider resolves it to its own
+   * catalogue key through `identifier_mappings` exactly as the order-creation
+   * path already does.
+   *
+   * OPTIONAL and provider-ignorable, the `unit` precedent above: a line that is
+   * not a catalogue item at all (a shipping charge, a manual adjustment) has no
+   * product and legitimately omits it, and a provider whose documents carry no
+   * catalogue concept never reads it.
+   *
+   * It exists because a document whose lines name a product only in free text
+   * is not linked to the goods: on Subiekt such a line is a "usługa
+   * jednorazowa" (one-time service) and therefore moves no stock, so the seller
+   * sells an item and their warehouse never registers it leaving. Carrying the
+   * id lets the provider emit a real catalogue line instead. NEVER a substitute
+   * for `name`, which stays the human-readable text the document prints.
+   */
+  productId?: string;
+
+  /**
+   * The OL-internal VARIANT id this line sells, when the caller knows it -
+   * the same id `OrderItem.variantId` carries.
+   *
+   * Optional and provider-ignorable on exactly the terms `productId` above is,
+   * and it exists because for some destinations `productId` is not enough to
+   * name a catalogue item. A Subiekt MODEL is one OL product standing for
+   * several towary, so its product-level external id is a grouping key
+   * (`model:{id}`) rather than a `tw_Symbol`; only the variant names goods the
+   * warehouse can release. Without it such a line does not degrade to free
+   * text - it is sent as the grouping key and the document fails outright.
+   *
+   * A provider whose catalogue has no variant concept ignores it and reads
+   * `productId`, exactly as before.
+   */
+  variantId?: string;
+  /**
+   * The order line (`OrderItem.id`) this invoice line was built from (#3312).
+   * Present only for a line minted from an `OrderItem` (`toInvoiceLine`) -
+   * absent for a synthesized line such as shipping (`toShippingLines`), since
+   * no single order item backs a delivery cost. Optional and additive: a
+   * snapshot issued before this field existed simply carries it as `undefined`
+   * on every line, which every reader must treat as "not resolvable this way",
+   * never as a guess.
+   */
+  orderLineId?: string;
+  /**
+   * Opaque per-line goods/services classification code (#1586 Phase 2). Neutral
+   * seam carrying an operator-asserted classification the provider maps onto its
+   * regime's line-level marker (a PL adapter maps it onto the FA(3) `GTU_xx`
+   * enumeration for flagged goods categories - fuel, alcohol, tobacco, certain
+   * electronics, scrap, etc.). Country-agnostic: core never interprets the code,
+   * it forwards it verbatim (ADR-026). Optional - absent means "no line-level
+   * classification", the common case; a provider with no such concept ignores it.
+   */
+  gtuCode?: string;
+  /**
+   * Opaque per-line transaction-procedure marker (#1586 Phase 2). Neutral seam
+   * carrying an operator-asserted procedure code the provider maps onto its
+   * regime's line-level procedure marker (a PL adapter maps it onto the FA(3)
+   * `Procedura` enumeration). Country-agnostic: forwarded verbatim, never
+   * interpreted in core (ADR-026). Optional and omitted when absent.
+   */
+  procedureCode?: string;
 }
 
 /**
@@ -360,6 +522,9 @@ export interface IssuedSnapshotBuyer {
    * never calls `sendByEmail`.
    */
   email: string | null;
+  /** Operator-supplied fiscal classification as issued (#1580); see {@link BuyerProfile}. */
+  isPublicSectorEntity?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /**
@@ -382,6 +547,18 @@ export interface IssuedLineSnapshot {
   currency: string;
   /** Lines exactly as issued (name/quantity/unitPriceGross/taxRate/unit). */
   lines: InvoiceLine[];
+  /**
+   * Issue date as printed, ISO `YYYY-MM-DD` (DEF-33). Absent on snapshots taken
+   * before the field existed and for adapters that report no dates; readers
+   * then fall back to the record's `issuedAt`.
+   */
+  issueDate?: string;
+  /** Sale date as printed, ISO `YYYY-MM-DD` (DEF-07); absent when not recorded. */
+  saleDate?: string;
+  /** Annotations the operator stated for this document (DEF-20), so a correction repeats them. */
+  annotations?: InvoiceAnnotations;
+  /** Parties besides seller and buyer this document named (DEF-30). */
+  additionalParties?: AdditionalParty[];
 }
 
 /**
@@ -405,6 +582,19 @@ export interface CorrectionReference {
   originalDocumentNumber: string;
   /** Issue date of the corrected original, ISO 8601 calendar `YYYY-MM-DD`. */
   originalIssueDate: string;
+  /** Sale date of the corrected original, when it carried one (DEF-07). */
+  originalSaleDate?: string;
+  /**
+   * The buyer as printed on the corrected original, present only when this
+   * correction CHANGES the buyer's data (DEF-23). A regime that must restate
+   * the corrected party (KSeF's `Podmiot2K`) reads it; others ignore it.
+   */
+  originalBuyer?: BuyerProfile;
+  /**
+   * `false` for a correction that changes no line, only the buyer (DEF-24).
+   * Absent means it changes lines, which is every correction before this field.
+   */
+  changesLines?: boolean;
   /** Free-text reason for the correction (return, refund, price adjustment, …). */
   reason: string;
   /** Post-correction ("after") line state; the top-level `lines` carry the original. */
@@ -520,6 +710,81 @@ export interface StoredDocument {
 }
 
 /**
+ * Neutral, operator-supplied fiscal annotation flags on an invoice (#1580,
+ * ADR-078). Country-agnostic (ADR-026): each flag is a generic commercial /
+ * fiscal concept a provider maps to its own regime — a KSeF adapter maps them
+ * to the FA(3) `Adnotacje` block. Every field is optional; an absent flag ⇒ the
+ * provider emits its own "does not apply" default. Core never interprets them.
+ *
+ * Note what is *deliberately absent*: reverse-charge and VAT-exemption are NOT
+ * boolean flags here. A provider derives both from the per-line tax codes it
+ * already receives ({@link InvoiceLine.taxRate}), so re-declaring them at the
+ * header level would risk contradicting the lines. `exemptionLegalBasis` is the
+ * sole exemption-adjacent field — it carries the free-text legal grounds a
+ * provider that annotates exemptions must cite.
+ */
+export interface InvoiceAnnotations {
+  /** Supply settled on a cash basis (KSeF: `P_16`). */
+  cashAccounting?: boolean;
+  /** Buyer issues the invoice on the seller's behalf (KSeF: `P_17`). */
+  selfBilling?: boolean;
+  /** The split-payment mechanism applies (KSeF: `P_18A`). */
+  splitPayment?: boolean;
+  /** Simplified intra-EU triangular transaction (KSeF: `P_23`). */
+  triangulation?: boolean;
+  /** The VAT margin scheme applies (KSeF: `PMarzy` / `P_PMarzy`). */
+  marginScheme?: boolean;
+  /**
+   * Which margin scheme applies, when `marginScheme` is set (DEF-31). A
+   * provider maps it to its own element; absent leaves the provider's default.
+   */
+  marginKind?: MarginSchemeKind;
+  /**
+   * Free-text legal grounds for a VAT-exempt sale (KSeF: `Zwolnienie` / `P_19`).
+   * When a provider annotates an exemption (e.g. because a line is exempt), it
+   * cites this text; supplying it also asserts the exemption annotation applies.
+   * Kept for callers that predate {@link exemptionBasis}; read as kind `other`.
+   */
+  exemptionLegalBasis?: string;
+  /**
+   * The exemption grounds with the kind of source they cite (DEF-22): a
+   * national statute, an EU directive, or another legal basis. Wins over
+   * `exemptionLegalBasis` when both are present.
+   */
+  exemptionBasis?: ExemptionBasis;
+}
+
+/** Neutral margin-scheme kinds (art. 119 / 120 of the PL VAT act; EU directive Title XII). */
+export const MarginSchemeKindValues = [
+  'travel-services',
+  'used-goods',
+  'works-of-art',
+  'collectors-items',
+] as const;
+export type MarginSchemeKind = (typeof MarginSchemeKindValues)[number];
+
+/** Which kind of source an exemption's grounds cite. */
+export const ExemptionBasisKindValues = ['statute', 'directive', 'other'] as const;
+export type ExemptionBasisKind = (typeof ExemptionBasisKindValues)[number];
+
+export interface ExemptionBasis {
+  kind: ExemptionBasisKind;
+  text: string;
+}
+
+/**
+ * A party on the document besides seller and buyer (DEF-30) - a subordinate
+ * unit of a public-sector buyer, a VAT-group member, a payer. `role` is opaque
+ * to core: the provider adapter that offered the choice owns its codes.
+ */
+export interface AdditionalParty {
+  role: string;
+  name: string;
+  taxId: TaxIdentifier | null;
+  address?: BuyerAddress;
+}
+
+/**
  * Command to issue a fiscal document. A pure description of *what* to issue;
  * the port does not decide whether/when/which-type — a future rules layer
  * composes this (ADR-026). `currency` is ISO 4217 (single-currency invoice).
@@ -536,6 +801,10 @@ export interface IssueInvoiceCommand {
   lines: InvoiceLine[];
   /** Neutral document type; well-known values in {@link DocumentTypeValues} (open-world). */
   documentType?: string;
+  /** Operator-supplied fiscal annotation flags (#1580); see {@link InvoiceAnnotations}. */
+  annotations?: InvoiceAnnotations;
+  /** Parties besides seller and buyer the document names (DEF-30). */
+  additionalParties?: AdditionalParty[];
   /**
    * Date of supply / sale, ISO 8601 calendar `YYYY-MM-DD` (#1525). Filled from
    * the order's marketplace placement timestamp (`Order.placedAt`) - NEVER from
@@ -543,6 +812,13 @@ export interface IssueInvoiceCommand {
    * not carry a placement date; adapters omit the corresponding wire field.
    */
   saleDate?: string;
+  /**
+   * The placement INSTANT behind `saleDate` (DEF-33). `saleDate` is the UTC
+   * calendar day, which is the wrong day for an order placed just after local
+   * midnight; an adapter that prints dates in its own zone derives the day from
+   * this instead. Absent wherever `saleDate` is.
+   */
+  saleInstant?: Date;
   /**
    * Single issuance instant (#1692). Set by the core `InvoiceService` so BOTH
    * the allocated document number's date variables/period AND the provider's
@@ -555,6 +831,22 @@ export interface IssueInvoiceCommand {
   /** Correction linkage + reason; present only for a correcting document. */
   correction?: CorrectionReference;
   idempotencyKey?: string;
+  /**
+   * Warning codes the operator explicitly accepted for THIS issuance. Where a
+   * guard rests on OpenLinker's reading of the law rather than on what the
+   * provider would technically accept, the adapter refuses once with a
+   * `warningCode` and the operator decides; re-issuing with the code here
+   * proceeds. Opaque to core - each adapter owns its codes.
+   */
+  acknowledgedWarnings?: readonly string[];
+  /**
+   * How the buyer pays, when the order's source positively said so (#3294).
+   * Absent means unknown: an adapter keeps its connection-level default rather
+   * than guessing, since a wrong payment form on a fiscal document is a legal
+   * statement. `online` is carried but names no form a provider can express
+   * without more detail, so adapters may keep their default for it.
+   */
+  paymentMethod?: PaymentMethod;
   /**
    * Optional neutral register / entity-scope label (#10). Routes numbering to
    * the connection's series for `(documentType, register)`; when absent the
@@ -596,6 +888,29 @@ export interface IssueInvoiceCommand {
    * has the record in hand.
    */
   taxRateEra?: string | null;
+  /**
+   * The buyer tax identity KNOWN AT ISSUE TIME, in the same three-state
+   * encoding `order_records.buyerTaxId` uses (#2599): `null`/absent = the
+   * source asserted nothing, `''` = it positively asserted the buyer has none,
+   * otherwise the id.
+   *
+   * Frozen onto {@link InvoiceRecord.buyerTaxId} so the invoice list can render
+   * the three states the order detail renders (#3188) without joining to the
+   * Order — and, more importantly, without MOVING: an invoice is an immutable
+   * fiscal document, while `order_records.buyerTaxId` is rewritten by every
+   * re-ingestion, so a joined read could later show a number the issued
+   * document does not carry.
+   *
+   * Carried on the command for the same reason {@link taxRateEra} above is:
+   * `InvoiceService` depends on no orders-context token, and adding one would
+   * be a new module edge into the context whose module already imports this
+   * one. Every issuance caller has the value in hand.
+   *
+   * It never reaches a provider and never appears on a document — the id the
+   * document carries is `buyer.taxId`, and the write path refuses to let this
+   * field contradict it.
+   */
+  buyerTaxIdAssertion?: string | null;
 }
 
 /**
@@ -655,6 +970,16 @@ export interface OriginalDocumentSnapshot {
   documentNumber: string;
   /** Issue date of the original, ISO 8601 calendar `YYYY-MM-DD`. */
   issueDate: string;
+  /**
+   * Sale date of the original as printed, ISO `YYYY-MM-DD` (DEF-07). A regime
+   * that keys anything on the tax point - an exchange rate, for one - must key
+   * a correction on the ORIGINAL's tax point, which is this date when present.
+   */
+  saleDate?: string;
+  /** The original's own annotations, repeated on its correction (DEF-20). */
+  annotations?: InvoiceAnnotations;
+  /** The original's additional parties, repeated on its correction (DEF-30). */
+  additionalParties?: AdditionalParty[];
 }
 
 /**
@@ -683,6 +1008,14 @@ export interface IssueCorrectionCommand {
   issuedAt?: Date;
   idempotencyKey?: string;
   /**
+   * Warning codes the operator explicitly accepted for THIS issuance. Where a
+   * guard rests on OpenLinker's reading of the law rather than on what the
+   * provider would technically accept, the adapter refuses once with a
+   * `warningCode` and the operator decides; re-issuing with the code here
+   * proceeds. Opaque to core - each adapter owns its codes.
+   */
+  acknowledgedWarnings?: readonly string[];
+  /**
    * Optional neutral register / entity-scope label (#10). Routes the correction's
    * numbering to the connection's series for `(documentType, register)`; when
    * absent the register-less default correction series is used.
@@ -707,6 +1040,17 @@ export interface IssueCorrectionCommand {
    * original's number. Absent for a self-numbering provider.
    */
   documentNumber?: string;
+  /**
+   * OPTIONAL buyer-identity override (#1582). When present, the adapter uses THIS
+   * buyer for the correcting document instead of the buyer captured on
+   * {@link OriginalDocumentSnapshot} - the fix path for a "wrong buyer identity
+   * (e.g. NIP) on the original" correction (a document already cleared by the
+   * authority cannot be deleted, only corrected). Mirrors how `originalDocument`
+   * is a caller-assembled reconstruction; reuses the neutral {@link BuyerProfile}
+   * shape (ADR-026 - no regime/provider vocabulary). Absent ⇒ the original
+   * snapshot's buyer is used unchanged.
+   */
+  buyerOverride?: BuyerProfile;
 }
 
 /**
@@ -750,6 +1094,13 @@ export interface IssuedDocumentLineAmounts {
   gross: number;
 }
 
+/** Calendar dates printed on an issued document, ISO `YYYY-MM-DD`. */
+export interface IssuedDocumentDates {
+  issueDate: string;
+  /** `null` when the document carries no separate sale date. */
+  saleDate: string | null;
+}
+
 export interface IssueInvoiceResult {
   record: InvoiceRecord;
   seller?: IssuedDocumentSeller;
@@ -760,6 +1111,14 @@ export interface IssueInvoiceResult {
    */
   documentLines?: IssuedDocumentLineAmounts[];
   /**
+   * The calendar dates the adapter actually printed on the document (DEF-07,
+   * DEF-33). An adapter that computes a date in its own time zone reports it
+   * here so core snapshots what the document says rather than re-deriving it
+   * from an instant in UTC; a later correction then references the original
+   * by the same dates. Absent keeps the pre-existing derivation.
+   */
+  documentDates?: IssuedDocumentDates;
+  /**
    * OPTIONAL machine-readable source document the adapter built and submitted to
    * the authority (PL/KSeF: the FA(3) XML). Core persists it as an opaque
    * {@link StoredDocument} at issue time so `GET .../document?kind=source` can
@@ -767,6 +1126,75 @@ export interface IssueInvoiceResult {
    * source document omit it.
    */
   sourceDocument?: StoredDocument;
+  /**
+   * How many of the document's lines the provider could NOT link to a record in
+   * its own catalogue, and therefore issued as free text.
+   *
+   * TRI-STATE, and the distinction is the point:
+   *   - `undefined` — this provider does not report linkage at all. Most do
+   *     not: a provider with no catalogue and no warehouse has nothing to say.
+   *   - `0` — every line was linked.
+   *   - `> 0` — that many lines were not, so anything the provider derives
+   *     from its catalogue does not reflect them. On a warehouse-backed
+   *     provider that means the goods left and the stock never moved.
+   *
+   * It exists because such a document looks completely normal — correct name,
+   * quantity, price and VAT on every line — while the seller's warehouse never
+   * registers the sale. The only previous signal was a log line.
+   *
+   * It is the provider's PRE-SUBMIT belief about linkage, not a confirmation
+   * from the provider that the lines were filed as linked. `0` therefore means
+   * "we sent a catalogue key for every line", NOT "the provider accepted every
+   * key" — a bridge or API can still drop one downstream.
+   */
+  unlinkedCatalogueLines?: number;
+  /**
+   * Whether the goods this document billed for actually LEFT the seller's
+   * warehouse in the provider's own books, and under which document number.
+   *
+   * TRI-STATE in the same spirit as {@link unlinkedCatalogueLines}, and for the
+   * same reason - a document that looks entirely normal while the warehouse
+   * never registers the sale:
+   *
+   *   - `undefined` — this provider does not report a release at all. Most do
+   *     not: a provider with no warehouse has nothing to say.
+   *   - `'not-applicable'` — there was nothing to release. A manually issued,
+   *     order-less invoice has no order document behind it.
+   *   - `'released'` — a release document exists; `number` names it.
+   *   - `'not-released'` — the caller expected one and the provider reported
+   *     none. THIS is the state the field exists for: the money is billed and
+   *     the stock has not moved.
+   *
+   * The distinction between the last two cannot come from the provider alone.
+   * A bridge that answers "no release document" cannot know whether one was
+   * due; the ADAPTER can, because it knows whether it handed the provider an
+   * order document to release against. So an adapter resolves the answer and
+   * reports it, rather than passing a raw wire value through.
+   *
+   * Like `unlinkedCatalogueLines`, this is the provider's belief at issue time,
+   * not a later confirmation.
+   */
+  warehouseRelease?: WarehouseRelease;
+}
+
+/** The four answers a provider can give about releasing a document's goods. */
+export const WarehouseReleaseOutcomeValues = [
+  'released',
+  'not-applicable',
+  'not-released',
+] as const;
+
+export type WarehouseReleaseOutcome = (typeof WarehouseReleaseOutcomeValues)[number];
+
+/** What a provider did about releasing the sold goods from its warehouse. */
+export interface WarehouseRelease {
+  readonly outcome: WarehouseReleaseOutcome;
+  /**
+   * The release document's own number, verbatim (Subiekt: `WZ 67/2026`).
+   * `null` on every outcome but `'released'` - and a surface must therefore
+   * branch on the outcome rather than on this being present.
+   */
+  readonly documentNumber: string | null;
 }
 
 /** Query for an issued document by either internal order id or provider id. */
@@ -823,6 +1251,14 @@ export interface CreateInvoiceRecordInput {
    * presence flag set on the write path; defaults `false` when omitted.
    */
   hasBuyerTaxId?: boolean;
+  /**
+   * The buyer tax identity frozen at issue time (#3188), three-state encoded as
+   * `order_records.buyerTaxId` is: `null` = not asserted, `''` = asserted-none,
+   * otherwise the id the document carries. Read it back through
+   * `decodeBuyerTaxIdColumn`, never with a bare `!== null` — that reports true
+   * for the asserted-none row.
+   */
+  buyerTaxId?: string | null;
   /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
   documentContent?: IssuedDocumentContent | null;
   /** Persisted machine-readable source document (e.g. FA(3) XML); `null` when not captured. */
@@ -856,6 +1292,11 @@ export interface InvoiceRecordFilters {
    * concept (not "nip"); maps to the denormalized `hasBuyerTaxId` column.
    */
   taxId?: 'with' | 'without';
+  /**
+   * Free-text match against `orderId`, `providerInvoiceNumber`, and
+   * `clearanceReference` (#3306). Case-insensitive, partial.
+   */
+  search?: string;
 }
 
 /** Pagination window for {@link InvoiceRecordRepositoryPort.findMany}. */
@@ -879,6 +1320,12 @@ export interface PaginatedInvoiceRecords {
  */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
+  /** See {@link IssueInvoiceResult.unlinkedCatalogueLines}. Written on the issued patch only. */
+  unlinkedCatalogueLines?: number | null;
+  /** See {@link WarehouseRelease}. Written on the issued patch only. */
+  warehouseReleaseOutcome?: WarehouseReleaseOutcome | null;
+  /** The release document's number, stored only on the `'released'` outcome. */
+  warehouseReleaseNumber?: string | null;
   /**
    * Authoritative provider identifier resolved at issue time (e.g. `subiekt`).
    * The pending row is created with `providerType: ''` (the connection's
@@ -898,6 +1345,14 @@ export interface InvoiceOutcomePatch {
   providerInvoiceNumber?: string | null;
   regulatoryStatus?: RegulatoryStatus;
   clearanceReference?: string | null;
+  /**
+   * Opaque operator-facing clearance diagnostic (#1582). Set from a
+   * `RegulatoryClearanceResult.clearanceDetail` (typically the authority's
+   * rejection description/details) so the projection can surface WHY a document
+   * was rejected. Country/provider-agnostic (ADR-026); omitted when a patch does
+   * not carry a fresh diagnostic so an unrelated outcome patch never resets it.
+   */
+  clearanceDetail?: string | null;
   /**
    * Neutral payment lifecycle (#1354). Set by the payment-status refresh
    * service from an authoritative `PaymentStatusReader` read; omitted otherwise
@@ -950,4 +1405,15 @@ export interface InvoiceOutcomePatch {
    * single terminal `issued` patch. `null` when not captured.
    */
   issuedLineSnapshot?: IssuedLineSnapshot | null;
+}
+
+/**
+ * Row-value keyset position for {@link InvoiceRecordRepositoryPort.findManyKeyset}
+ * (#3306) - `(createdAt, id)`, the same shape `findIssuedNonTerminal` already
+ * uses. `undefined` on the incoming request means "first page"; `null` on the
+ * outgoing page means "no more rows."
+ */
+export interface InvoiceRecordKeysetCursor {
+  createdAt: Date;
+  id: string;
 }

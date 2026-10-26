@@ -29,6 +29,7 @@ import { FulfillmentHandshakeService } from './application/services/fulfillment-
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
 import { FulfillmentRelayReconcileService } from './application/services/fulfillment-relay-reconcile.service';
+import { FulfillmentSaleDecrementReconcileService } from './application/services/fulfillment-sale-decrement-reconcile.service';
 import { FulfillmentVerificationService } from './application/services/fulfillment-verification.service';
 import { RoutingCommitService } from './application/services/routing-commit.service';
 import {
@@ -38,6 +39,7 @@ import {
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
   FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+  FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
@@ -96,6 +98,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
       provide: FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
       useExisting: FulfillmentRelayReconcileService,
     },
+    FulfillmentSaleDecrementReconcileService,
+    {
+      provide: FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
+      useExisting: FulfillmentSaleDecrementReconcileService,
+    },
     FulfillmentWorkQueryService,
     {
       provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
@@ -121,6 +128,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
     // Exported for the worker's dispatch-relay reconcile sweep (#2728).
     FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+    // Exported for the worker's sale-decrement reconcile sweep (#3629).
+    FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,
     // Exported for `ShippingModule` (#2402): the shipment bridge resolves an
     // order's work through this interface, never through the repository port.
@@ -132,6 +141,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_WORKLIST_SERVICE_TOKEN,
     // Exported for `BenchApiModule` (#2418): the pack bench verifies a parcel
     // through this interface. The repository port stays off the barrel.
+    // `ShippingApiModule` (pack-bench completion) imports this module for the same token, to
+    // best-effort stamp a shipment's linked work object's `labelPrintedAt`.
     FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   ],
 })

@@ -79,6 +79,14 @@ import { OfferCommercialSnapshotRepository } from './infrastructure/persistence/
 import { StaleOfferPauseService } from './application/services/stale-offer-pause.service';
 import { CoverageGapReadService } from './application/services/coverage-gap-read.service';
 import { StockAtRiskReadService } from './application/services/stock-at-risk-read.service';
+import { PriceChangeEpisodeOrmEntity } from './infrastructure/persistence/entities/price-change-episode.orm-entity';
+import { PriceChangeEpisodeRepository } from './infrastructure/persistence/repositories/price-change-episode.repository';
+import { PriceChangeDetectionService } from './application/services/price-change-detection.service';
+import { PriceChangeAutoAppliedLogOrmEntity } from './infrastructure/persistence/entities/price-change-auto-applied-log.orm-entity';
+import { PriceChangeAutoAppliedLogRepository } from './infrastructure/persistence/repositories/price-change-auto-applied-log.repository';
+import { PriceChangeApplyService } from './application/services/price-change-apply.service';
+import { PriceChangesService } from './application/services/price-changes.service';
+import { DestinationCurrencyResolutionService } from './application/services/destination-currency-resolution.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -126,6 +134,12 @@ import {
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
   DESTINATION_TAXONOMY_SERVICE_TOKEN,
   DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+  PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
+  PRICE_CHANGE_DETECTION_SERVICE_TOKEN,
+  PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
+  PRICE_CHANGE_APPLY_SERVICE_TOKEN,
+  PRICE_CHANGES_SERVICE_TOKEN,
+  DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -188,6 +202,8 @@ export {
       OfferCommercialSnapshotOrmEntity,
       ShopProductStatusSnapshotOrmEntity,
       DestinationCategoryOrmEntity,
+      PriceChangeEpisodeOrmEntity,
+      PriceChangeAutoAppliedLogOrmEntity,
     ]),
     IntegrationsModule,
     IdentifierMappingModule,
@@ -252,6 +268,36 @@ export {
     StaleOfferPauseService,
     CoverageGapReadService,
     StockAtRiskReadService,
+    PriceChangeEpisodeRepository,
+    {
+      provide: PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
+      useExisting: PriceChangeEpisodeRepository,
+    },
+    DestinationCurrencyResolutionService,
+    {
+      provide: DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
+      useExisting: DestinationCurrencyResolutionService,
+    },
+    PriceChangeDetectionService,
+    {
+      provide: PRICE_CHANGE_DETECTION_SERVICE_TOKEN,
+      useExisting: PriceChangeDetectionService,
+    },
+    PriceChangeAutoAppliedLogRepository,
+    {
+      provide: PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
+      useExisting: PriceChangeAutoAppliedLogRepository,
+    },
+    PriceChangeApplyService,
+    {
+      provide: PRICE_CHANGE_APPLY_SERVICE_TOKEN,
+      useExisting: PriceChangeApplyService,
+    },
+    PriceChangesService,
+    {
+      provide: PRICE_CHANGES_SERVICE_TOKEN,
+      useExisting: PriceChangesService,
+    },
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -485,6 +531,12 @@ export {
     STOCK_AT_RISK_READ_SERVICE_TOKEN,
     DESTINATION_TAXONOMY_SERVICE_TOKEN,
     DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+    PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
+    PRICE_CHANGE_DETECTION_SERVICE_TOKEN,
+    PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
+    PRICE_CHANGE_APPLY_SERVICE_TOKEN,
+    PRICE_CHANGES_SERVICE_TOKEN,
+    DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}

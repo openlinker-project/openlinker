@@ -9,7 +9,8 @@
  * @module apps/web/src/features/fiscalization/api
  */
 
-export type FiscalRegistrationStatus = 'pending' | 'registering' | 'registered' | 'failed';
+export const FiscalRegistrationStatusValues = ['pending', 'registering', 'registered', 'failed'] as const;
+export type FiscalRegistrationStatus = (typeof FiscalRegistrationStatusValues)[number];
 
 export type FiscalRegistrationFailureMode = 'rejected' | 'in-doubt';
 

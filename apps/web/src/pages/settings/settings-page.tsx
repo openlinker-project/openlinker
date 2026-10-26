@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { env } from '../../shared/config/env';
+import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { useSession } from '../../shared/auth/use-session';
 import { CurrencySettingsTile } from '../../features/currency-settings/components/currency-settings-tile';
 import { MailerSettingsTile } from '../../features/mailer-settings/components/mailer-settings-tile';
@@ -7,12 +8,17 @@ import { PosthogSettingsTile } from '../../features/posthog-settings/components/
 import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-tile';
 import { SalesDocumentsTile } from '../../features/sales-documents';
 import { WhoDecidesTile } from '../../features/fulfillment-authority';
+import { SourcingRulesTile } from '../../features/oms';
 import { SyncPacingTile } from '../../features/settings';
+import { InventoryLocationsTile } from '../../features/inventory';
+import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
   const { isReady, session } = useSession();
   const isAdmin = isReady && session.status === 'authenticated' && session.user?.role === 'admin';
+  // #3634 — both OMS routing tiles are withheld unless the build opts in.
+  const omsRoutingUi = isOmsRoutingUiEnabled();
 
   return (
     <PageLayout
@@ -27,10 +33,14 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Sales documents</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Sales documents routing</span> : null}
           {/* Ungated, unlike its admin-gated neighbours — see `WhoDecidesTile`'s docblock. */}
           <span className="toolbar-chip">Who decides what</span>
+          {omsRoutingUi && isAdmin ? <span className="toolbar-chip">Sourcing rules</span> : null}
           {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Order tags</span> : null}
+          {/* Role-ungated — see `InventoryLocationsTile`'s docblock. */}
+          {omsRoutingUi ? <span className="toolbar-chip">Inventory locations</span> : null}
           <span className="toolbar-chip">Upcoming</span>
         </div>
       }
@@ -112,8 +122,17 @@ export function SettingsPage(): ReactElement {
         {/* Deliberately NOT admin-gated — see `WhoDecidesTile`'s docblock. */}
         <WhoDecidesTile />
 
+        {/* ── Sourcing rules (admin-only, #3060) ────────────────────── */}
+        {omsRoutingUi && isAdmin ? <SourcingRulesTile /> : null}
+
         {/* ── Sync pacing (admin-only, #2653) ───────────────────────── */}
         {isAdmin ? <SyncPacingTile /> : null}
+
+        {/* ── Order tags (admin-only, #3532/#3533, D34) ─────────────── */}
+        {isAdmin ? <OrderTagsSettingsTile /> : null}
+
+        {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
+        {omsRoutingUi ? <InventoryLocationsTile /> : null}
 
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">
@@ -125,7 +144,8 @@ export function SettingsPage(): ReactElement {
             <span className="panel__meta">Coming soon</span>
           </div>
           <p className="muted-text panel-copy">
-            Sync failure alerts, manual-review triggers, and threshold notifications will be configurable here.
+            Sync failure alerts, manual-review triggers, and threshold notifications will be
+            configurable here.
           </p>
         </article>
 
@@ -156,7 +176,6 @@ export function SettingsPage(): ReactElement {
             Timezone, date format, and display density options will be available here.
           </p>
         </article>
-
       </div>
     </PageLayout>
   );

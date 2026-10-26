@@ -4,23 +4,84 @@
  * Covers `publishProduct` (create vs upsert body + status mapping), 4xx →
  * `ProductPublishRejectedException`, non-4xx propagation, and `provisionCategory`
  * (find-vs-create, hierarchical parent threading). HTTP client is mocked.
+ * Since ADR-077 the command's price is gross, so `publishProduct` first reads
+ * the store's price basis; the store is stubbed by path accordingly.
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/product-publisher/__tests__
  */
 import {
   ProductPublishRejectedException,
+  ProductPublishTargetNotFoundException,
   type PublishProductCommand,
 } from '@openlinker/core/listings';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 
 import { WooCommerceHttpResponseException } from '../../../http/woocommerce-http-response.exception';
 import type { IWooCommerceHttpClient } from '../../../http/woocommerce-http-client.interface';
+import type { WooCommerceTaxRate } from '../../product-master/woocommerce-product.types';
 import { WooCommerceProductPublisherAdapter } from '../woocommerce-product-publisher.adapter';
 
 const CONNECTION_ID = 'conn-wc-1';
 
 function makeHttpClient(): jest.Mocked<IWooCommerceHttpClient> {
   return { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() };
+}
+
+interface StoreStub {
+  calcTaxes?: 'yes' | 'no';
+  pricesIncludeTax?: 'yes' | 'no';
+  /** `woocommerce_default_country`; defaults to `'PL'`. */
+  country?: string;
+  classes?: string[];
+  rates?: Record<string, WooCommerceTaxRate[]>;
+  /**
+   * Answers to the `_fields=tax_class,tax_status` read of an existing product
+   * or variation, keyed by path; an exception is thrown for that read.
+   */
+  targets?: Record<
+    string,
+    { tax_class?: string; tax_status?: string } | WooCommerceHttpResponseException
+  >;
+}
+
+/** A store that does not calculate taxes: every price is written as it is. */
+const TAXES_OFF_STORE: StoreStub = { calcTaxes: 'no' };
+
+/**
+ * Routes the store's settings, tax table and target-product reads by path.
+ * Any other read answers `undefined`, as an un-stubbed `jest.fn()` did before
+ * the price-basis reads existed.
+ */
+function stubStore(http: jest.Mocked<IWooCommerceHttpClient>, store: StoreStub): void {
+  http.get.mockImplementation(
+    (path: string, params?: Record<string, string | number | boolean>) => {
+      if (path === '/wp-json/wc/v3/settings/general') {
+        return Promise.resolve([
+          { id: 'woocommerce_calc_taxes', value: store.calcTaxes ?? 'yes' },
+          { id: 'woocommerce_default_country', value: store.country ?? 'PL' },
+        ]);
+      }
+      if (path === '/wp-json/wc/v3/settings/tax') {
+        return Promise.resolve([
+          { id: 'woocommerce_prices_include_tax', value: store.pricesIncludeTax ?? 'no' },
+        ]);
+      }
+      if (path === '/wp-json/wc/v3/taxes/classes') {
+        return Promise.resolve(
+          ['standard', ...(store.classes ?? [])].map((slug) => ({ slug, name: slug })),
+        );
+      }
+      if (path === '/wp-json/wc/v3/taxes') {
+        return Promise.resolve(
+          params?.page === 1 ? (store.rates?.[String(params?.class)] ?? []) : [],
+        );
+      }
+      const target = store.targets?.[path];
+      if (target instanceof WooCommerceHttpResponseException) return Promise.reject(target);
+      if (target !== undefined) return Promise.resolve(target);
+      return Promise.resolve(undefined);
+    },
+  );
 }
 
 const connection: Connection = {
@@ -56,6 +117,7 @@ describe('WooCommerceProductPublisherAdapter', () => {
 
   beforeEach(() => {
     http = makeHttpClient();
+    stubStore(http, TAXES_OFF_STORE);
     adapter = new WooCommerceProductPublisherAdapter(http, connection);
   });
 
@@ -651,6 +713,346 @@ describe('WooCommerceProductPublisherAdapter', () => {
         date_on_sale_to_gmt: '2026-02-01T00:00:00Z',
         tax_class: 'reduced-rate',
       });
+    });
+  });
+
+  // ADR-077: `cmd.price` is GROSS. A store that taxes and enters prices without
+  // tax gets the net figure its own tax computation turns back into that gross.
+  describe('publishProduct — price basis (ADR-077)', () => {
+    const POLISH_RATES: Record<string, WooCommerceTaxRate[]> = {
+      standard: [{ country: 'PL', rate: '23.0000' }],
+      'reduced-rate': [{ country: 'PL', rate: '8.0000' }],
+    };
+    /** Taxes on, prices entered WITHOUT tax, standard 23% and reduced 8% for PL. */
+    const TAX_EXCLUSIVE_STORE: StoreStub = {
+      calcTaxes: 'yes',
+      pricesIncludeTax: 'no',
+      classes: ['reduced-rate'],
+      rates: POLISH_RATES,
+    };
+    const TARGET_FIELDS = { _fields: 'tax_class,tax_status' };
+    // 19.99 gross is 16.252033 net at 23% and 18.509259 net at 8% (6 dp).
+    const NET_AT_STANDARD = '16.252033';
+    const NET_AT_REDUCED = '18.509259';
+
+    const variantGroup = {
+      groupId: 'prod-1',
+      attributes: [{ name: 'Color', value: 'Red' }],
+      groupAttributeValues: { Color: ['Red', 'Blue'] },
+    };
+
+    function postedBody(index = 0): Record<string, unknown> {
+      return http.post.mock.calls[index][1] as Record<string, unknown>;
+    }
+
+    function putBody(index = 0): Record<string, unknown> {
+      return http.put.mock.calls[index][1] as Record<string, unknown>;
+    }
+
+    it.each<[string, StoreStub]>([
+      ['the store enters prices with tax', { ...TAX_EXCLUSIVE_STORE, pricesIncludeTax: 'yes' }],
+      ['the store does not calculate taxes', TAXES_OFF_STORE],
+    ])('should write the gross price and sale price as they are when %s', async (_label, store) => {
+      stubStore(http, store);
+      http.post.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({ commerce: { salePrice: { amount: 14.5, currency: 'PLN' } } }),
+      );
+
+      expect(postedBody()).toMatchObject({ regular_price: '19.99', sale_price: '14.5' });
+      expect(http.get).not.toHaveBeenCalledWith('/wp-json/wc/v3/taxes/classes');
+    });
+
+    it('should write net prices at the standard rate for the store country when the store enters prices without tax and the command names no class', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      http.post.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(
+        // 12.30 gross is exactly 10 net at 23%.
+        baseCommand({ commerce: { salePrice: { amount: 12.3, currency: 'PLN' } } }),
+      );
+
+      expect(postedBody()).toMatchObject({ regular_price: NET_AT_STANDARD, sale_price: '10' });
+      // A create has no existing product to read a class from.
+      expect(http.get).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^\/wp-json\/wc\/v3\/products/),
+        expect.anything(),
+      );
+    });
+
+    it('should write a net price at the rate of the class the command names', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      http.post.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand({ commerce: { taxClass: 'reduced-rate' } }));
+
+      expect(postedBody()).toMatchObject({
+        regular_price: NET_AT_REDUCED,
+        tax_class: 'reduced-rate',
+      });
+    });
+
+    it('should use the platformParams tax class when the commerce block names none', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      http.post.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand({ platformParams: { tax_class: 'reduced-rate' } }));
+
+      expect(postedBody()).toMatchObject({ regular_price: NET_AT_REDUCED });
+    });
+
+    it('should prefer the commerce tax class over the platformParams one when both are set', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      http.post.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          commerce: { taxClass: '' },
+          platformParams: { tax_class: 'reduced-rate' },
+        }),
+      );
+
+      expect(postedBody()).toMatchObject({ regular_price: NET_AT_STANDARD });
+    });
+
+    it('should write the gross price as it is when the command says the product is not taxed', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      http.post.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand({ commerce: { taxStatus: 'none' } }));
+
+      expect(postedBody()).toMatchObject({ regular_price: '19.99' });
+      expect(http.get).not.toHaveBeenCalledWith('/wp-json/wc/v3/taxes/classes');
+    });
+
+    it('should read the existing product tax class on upsert when the command names none', async () => {
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: {
+          '/wp-json/wc/v3/products/100': { tax_class: 'reduced-rate', tax_status: 'taxable' },
+        },
+      });
+      http.put.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand({ externalProductId: '100' }));
+
+      expect(http.get).toHaveBeenCalledWith('/wp-json/wc/v3/products/100', TARGET_FIELDS);
+      expect(putBody()).toMatchObject({ regular_price: NET_AT_REDUCED });
+    });
+
+    it('should write the gross price as it is on upsert when the existing product is not taxed', async () => {
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: { '/wp-json/wc/v3/products/100': { tax_class: '', tax_status: 'none' } },
+      });
+      http.put.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(baseCommand({ externalProductId: '100' }));
+
+      expect(putBody()).toMatchObject({ regular_price: '19.99' });
+    });
+
+    it('should not read the existing product on upsert when the command names both class and status', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      http.put.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({
+          externalProductId: '100',
+          commerce: { taxClass: 'reduced-rate', taxStatus: 'taxable' },
+        }),
+      );
+
+      expect(http.get).not.toHaveBeenCalledWith('/wp-json/wc/v3/products/100', TARGET_FIELDS);
+      expect(putBody()).toMatchObject({ regular_price: NET_AT_REDUCED });
+    });
+
+    it('should keep the command class and take only the status from the existing product when the command names only the class', async () => {
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: { '/wp-json/wc/v3/products/100': { tax_class: '', tax_status: 'taxable' } },
+      });
+      http.put.mockResolvedValue({ id: 100, status: 'publish' });
+
+      await adapter.publishProduct(
+        baseCommand({ externalProductId: '100', commerce: { taxClass: 'reduced-rate' } }),
+      );
+
+      expect(http.get).toHaveBeenCalledWith('/wp-json/wc/v3/products/100', TARGET_FIELDS);
+      expect(putBody()).toMatchObject({ regular_price: NET_AT_REDUCED });
+    });
+
+    it('should write a net price on a new grouped variation and none on the parent', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      http.post.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({ variantGroup: { ...variantGroup, externalParentProductId: null } }),
+      );
+
+      expect(postedBody(0)).not.toHaveProperty('regular_price');
+      expect(postedBody(1)).toMatchObject({ regular_price: NET_AT_STANDARD });
+    });
+
+    it("should resolve an existing variation's parent class through its parent on upsert", async () => {
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: {
+          '/wp-json/wc/v3/products/500/variations/501': { tax_class: 'parent' },
+          '/wp-json/wc/v3/products/500': { tax_class: 'reduced-rate', tax_status: 'taxable' },
+        },
+      });
+      http.put.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({
+          externalProductId: '501',
+          variantGroup: { ...variantGroup, externalParentProductId: '500' },
+        }),
+      );
+
+      expect(http.get).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/500/variations/501',
+        TARGET_FIELDS,
+      );
+      expect(http.get).toHaveBeenCalledWith('/wp-json/wc/v3/products/500', TARGET_FIELDS);
+      expect(http.put).toHaveBeenNthCalledWith(
+        2,
+        '/wp-json/wc/v3/products/500/variations/501',
+        expect.objectContaining({ regular_price: NET_AT_REDUCED }),
+      );
+    });
+
+    it("should take an existing variation's tax status from its parent when the variation states none", async () => {
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: {
+          '/wp-json/wc/v3/products/500/variations/501': { tax_class: 'parent' },
+          '/wp-json/wc/v3/products/500': { tax_class: '', tax_status: 'none' },
+        },
+      });
+      http.put.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({
+          externalProductId: '501',
+          variantGroup: { ...variantGroup, externalParentProductId: '500' },
+        }),
+      );
+
+      expect(putBody(1)).toMatchObject({ regular_price: '19.99' });
+    });
+
+    it("should convert a NEW variation under an existing parent at the parent's class", async () => {
+      // WooCommerce creates a variation with class 'parent', so it is taxed at
+      // the parent's class - converting at the standard rate would make the
+      // buyer pay the wrong gross.
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: {
+          '/wp-json/wc/v3/products/500': { tax_class: 'reduced-rate', tax_status: 'taxable' },
+        },
+      });
+      http.put.mockResolvedValue({ id: 500 });
+      http.post.mockResolvedValue({ id: 502 });
+
+      await adapter.publishProduct(
+        baseCommand({ variantGroup: { ...variantGroup, externalParentProductId: '500' } }),
+      );
+
+      expect(http.get).toHaveBeenCalledWith('/wp-json/wc/v3/products/500', TARGET_FIELDS);
+      expect(http.post).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products/500/variations',
+        expect.objectContaining({ regular_price: NET_AT_REDUCED }),
+      );
+    });
+
+    it("should not read the parent when an existing variation names its own class", async () => {
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: {
+          '/wp-json/wc/v3/products/500/variations/501': { tax_class: '', tax_status: 'taxable' },
+        },
+      });
+      http.put.mockResolvedValueOnce({ id: 500 }).mockResolvedValueOnce({ id: 501 });
+
+      await adapter.publishProduct(
+        baseCommand({
+          externalProductId: '501',
+          variantGroup: { ...variantGroup, externalParentProductId: '500' },
+        }),
+      );
+
+      expect(http.get).not.toHaveBeenCalledWith('/wp-json/wc/v3/products/500', TARGET_FIELDS);
+      expect(putBody(1)).toMatchObject({ regular_price: NET_AT_STANDARD });
+    });
+
+    it('should refuse terminally with TAX_RATE_UNRESOLVED when the class has no rate for the store country', async () => {
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+
+      await expect(
+        adapter.publishProduct(baseCommand({ commerce: { taxClass: 'luxury' } })),
+      ).rejects.toMatchObject({
+        name: 'ProductPublishRejectedException',
+        statusCode: 0,
+        errors: [expect.objectContaining({ code: 'TAX_RATE_UNRESOLVED' })],
+      });
+      expect(http.post).not.toHaveBeenCalled();
+      expect(http.put).not.toHaveBeenCalled();
+    });
+
+    it('should refuse terminally with TAX_RATE_UNRESOLVED when the store declares no base country', async () => {
+      stubStore(http, { ...TAX_EXCLUSIVE_STORE, country: '' });
+
+      const error: unknown = await adapter
+        .publishProduct(baseCommand())
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ProductPublishRejectedException);
+      const rejection = error as ProductPublishRejectedException;
+      expect(rejection.statusCode).toBe(0);
+      expect(rejection.errors[0].code).toBe('TAX_RATE_UNRESOLVED');
+      expect(rejection.errors[0].message).toContain('none is set');
+      expect(http.post).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a transient error reading the existing product so the job retries', async () => {
+      const err = new WooCommerceHttpResponseException(503, 'Service unavailable');
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: { '/wp-json/wc/v3/products/100': err },
+      });
+
+      const result = adapter.publishProduct(baseCommand({ externalProductId: '100' }));
+
+      await expect(result).rejects.toBe(err);
+      await expect(result).rejects.not.toBeInstanceOf(ProductPublishRejectedException);
+      expect(http.put).not.toHaveBeenCalled();
+    });
+
+    it('should report a vanished existing product as a target-not-found error when its tax read answers 404', async () => {
+      stubStore(http, {
+        ...TAX_EXCLUSIVE_STORE,
+        targets: {
+          '/wp-json/wc/v3/products/100': new WooCommerceHttpResponseException(404, 'Not found'),
+        },
+      });
+
+      await expect(
+        adapter.publishProduct(baseCommand({ externalProductId: '100' })),
+      ).rejects.toBeInstanceOf(ProductPublishTargetNotFoundException);
+      expect(http.put).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a failed store settings read so the job retries rather than writing a guessed price', async () => {
+      const err = new WooCommerceHttpResponseException(500, 'Internal Server Error');
+      stubStore(http, TAX_EXCLUSIVE_STORE);
+      // The general settings are the first read.
+      http.get.mockRejectedValueOnce(err);
+
+      await expect(adapter.publishProduct(baseCommand())).rejects.toBe(err);
+      expect(http.post).not.toHaveBeenCalled();
     });
   });
 

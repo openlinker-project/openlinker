@@ -67,6 +67,10 @@ export {
   PAYMENT_STATUS,
 } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
+// Type-only (#3294): a runtime export here needs a registered reason and a concrete
+// consumer in `scripts/check-types-sub-barrels.mjs`; add the values when invoicing
+// actually value-imports them.
+export type { PaymentMethod } from './domain/types/payment-method.types';
 export type { Order } from './domain/types/order.types';
 export { OrderStatusValues } from './domain/types/order.types';
 export type { OrderStatus } from './domain/types/order.types';
@@ -78,7 +82,15 @@ export type { OrderRecordStatus } from './domain/types/order-record.types';
 export { RefundReasonValues } from './domain/types/refund-record.types';
 export type { RefundReason } from './domain/types/refund-record.types';
 export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
-export { readBuyerTaxId, buyerHasTaxId } from './domain/types/buyer-tax-id.types';
+export {
+  readBuyerTaxId,
+  buyerHasTaxId,
+  // #3224: the auto-issue gate holds the raw three-state column and must
+  // decode it without reaching the main `orders` barrel, which re-exports
+  // `OrdersModule` and would close the CJS cycle this sub-barrel exists to
+  // break. Dependency-free leaf, same as its two siblings above.
+  decodeBuyerTaxIdColumn,
+} from './domain/types/buyer-tax-id.types';
 
 /**
  * `CoverageResolutionStatus` (epic #2452) — the `analytics_remediation_runs`

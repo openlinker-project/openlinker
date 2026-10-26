@@ -45,6 +45,10 @@ interface ParcelBody {
   version: number;
   parcelIndex: number;
   parcelTotal: number;
+  totalAmount: number | null;
+  currency: string | null;
+  carrierName: string | null;
+  dispatchByAt: string | null;
   refusal: string | null;
   closedAt: string | null;
   packedByUserId: string | null;
@@ -123,7 +127,7 @@ describe('Bench parcel (#2418)', () => {
     expect(body.lines[0].verifiedQuantity).toBe(0);
   });
 
-  it('carries no buyer address, email, phone or total — the reason /orders is closed', async () => {
+  it('carries no buyer address, email or phone — the reason /orders is closed (#2413, narrowed by #3409)', async () => {
     const http = harness.getHttp();
     const work = await seedParcel();
     const token = await loginAsPacker(http, harness.getDataSource());
@@ -135,6 +139,11 @@ describe('Bench parcel (#2418)', () => {
 
     // Asserted over the SERIALISED body rather than field by field: a nested
     // field added anywhere under this projection would escape a per-key check.
+    //
+    // `totalAmount` is DELIBERATELY no longer in this list — #3409 (epic
+    // #3401) reverses that one exclusion by explicit product decision. The
+    // address/email/phone exclusion is unchanged; see the positive assertion
+    // below for the reversed field.
     const serialised = JSON.stringify(res.body);
     for (const forbidden of [
       'shippingAddress',
@@ -143,11 +152,31 @@ describe('Bench parcel (#2418)', () => {
       'postcode',
       'customerEmail',
       'phone',
-      'totalAmount',
       'orderSnapshot',
     ]) {
       expect(serialised).not.toContain(forbidden);
     }
+  });
+
+  it('carries the order total, currency, carrier and dispatch deadline (#3409)', async () => {
+    const http = harness.getHttp();
+    const work = await seedParcel();
+    const token = await loginAsPacker(http, harness.getDataSource());
+
+    const res = await http
+      .get(`/v1/bench/work/${work.id}/parcel`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const body = res.body as ParcelBody;
+    // The seed order carries no total/currency/carrier/deadline, so the
+    // reversed fields must be present on the wire (not omitted) and null —
+    // proving the projection carries them at all, rather than merely not
+    // crashing.
+    expect(body).toHaveProperty('totalAmount', null);
+    expect(body).toHaveProperty('currency', null);
+    expect(body).toHaveProperty('carrierName', null);
+    expect(body).toHaveProperty('dispatchByAt', null);
   });
 
   it('shuts the box on the LAST verification, with nothing pressed (D18)', async () => {

@@ -24,6 +24,7 @@ import type {
   ProductListSort,
   PaginatedProducts,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
 } from '../../domain/types/product.types';
 import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
 import { effectiveTaxRate } from '../../domain/types/tax-rate.types';
@@ -73,6 +74,12 @@ export class ProductsService implements IProductsService {
 
     await this.variantRepository.upsertMany(variantsWithProductId);
     this.logger.debug(`Variants upserted for product: ${productId}`);
+  }
+
+  async fillVariantsPhysicalDimensionsIfAbsent(
+    fills: readonly VariantPhysicalDimensionsFill[]
+  ): Promise<number> {
+    return this.variantRepository.fillPhysicalDimensionsIfAbsent(fills);
   }
 
   async recordProductTaxRate(productId: string, rate: StoredTaxRate): Promise<void> {
@@ -200,6 +207,10 @@ export class ProductsService implements IProductsService {
 
   async countVariants(filters: ProductVariantListFilters): Promise<number> {
     return this.variantRepository.countMany(filters);
+  }
+
+  async clearPriceBasisPending(variantIds: readonly string[]): Promise<void> {
+    await this.variantRepository.clearPriceBasisPending(variantIds);
   }
 
   async markVariantsStaleExcept(

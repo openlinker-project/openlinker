@@ -10,6 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { OrderRecordService } from '../order-record.service';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { OrderCancellationSignalRepositoryPort } from '../../../domain/ports/order-cancellation-signal-repository.port';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
 import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
@@ -24,6 +25,7 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from '../../../orders.tokens';
 
 describe('OrderRecordService', () => {
@@ -41,6 +43,7 @@ describe('OrderRecordService', () => {
   let fxStamp: jest.Mocked<IOrderFxStampService>;
   let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
   let reportingCurrencySettings: jest.Mocked<IReportingCurrencySettingsService>;
+  let cancellationSignalRepository: jest.Mocked<OrderCancellationSignalRepositoryPort>;
 
   const originalEnv = process.env.OL_STORE_PII;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -98,6 +101,14 @@ describe('OrderRecordService', () => {
       listSelectableCurrencies: jest.fn(),
     } as unknown as jest.Mocked<IReportingCurrencySettingsService>;
 
+    // #2069 — defaults to "no signal" so every pre-existing cancellation
+    // assertion (`incoming.status === 'cancelled'`) keeps its original
+    // meaning unless a test opts into a signal being present.
+    cancellationSignalRepository = {
+      record: jest.fn().mockResolvedValue(true),
+      consume: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<OrderCancellationSignalRepositoryPort>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRecordService,
@@ -120,6 +131,10 @@ describe('OrderRecordService', () => {
         {
           provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
           useValue: reportingCurrencySettings,
+        },
+        {
+          provide: ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
+          useValue: cancellationSignalRepository,
         },
       ],
     }).compile();
@@ -218,7 +233,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -303,6 +325,41 @@ describe('OrderRecordService', () => {
       });
     });
 
+    // #3365 regression, and the SECOND field this allowlist has lost. Same
+    // shape as #2254 above, same way it was found - every unit test passed
+    // while a live PrestaShop order reached the destination adapter with no
+    // gross price and was refused for not reporting one it HAD reported.
+    it('serialises the source-reported gross unit price into the snapshot (#3365)', async () => {
+      const order = createMockOrder();
+      order.items[0].unitPriceGross = 1843.77;
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      expect(snapshotItems[0]).toMatchObject({ unitPriceGross: 1843.77 });
+    });
+
+    it('keeps the gross key absent when the source reported none (#3365)', async () => {
+      const order = createMockOrder();
+      expect(order.items[0].unitPriceGross).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      // Absent, never `undefined`: the document gate reads absence as "this
+      // source does not report gross", and a present-but-empty key would have
+      // to be re-checked by every consumer.
+      expect('unitPriceGross' in snapshotItems[0]).toBe(false);
+    });
+
     it('keeps every tax key absent when the order line carries no rate (#2254)', async () => {
       const order = createMockOrder();
       expect(order.items[0].taxRate).toBeUndefined();
@@ -350,6 +407,22 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot['deliverySmart']).toBe(true);
     });
 
+    it('should serialise Order.fulfilledBySource into the snapshot only when asserted (#3636)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistOrder(asserted, 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(
+        true
+      );
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
+    });
+
     it('should omit deliverySmart from the snapshot when the Order does not carry it (#738)', async () => {
       const order = createMockOrder();
       // createMockOrder() leaves deliverySmart unset — assert conditional
@@ -363,6 +436,121 @@ describe('OrderRecordService', () => {
 
       const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
+    });
+
+    it('should keep the payment method in the snapshot and on the record (#3294)', async () => {
+      const order = createMockOrder();
+      order.paymentMethod = 'cash_on_delivery';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot['paymentMethod']).toBe('cash_on_delivery');
+      expect(callArg.paymentMethod).toBe('cash_on_delivery');
+      expect(callArg.paymentMethodOrUnknown).toBe('cash_on_delivery');
+    });
+
+    it('should land the payment method in its own constructor slot, leaving the placeholders before it null (#3294)', async () => {
+      // persistOrder reaches the positional constructor's last argument through
+      // three null placeholders owned by other writers; a shifted slot would
+      // still type-check, so this pins where each value lands.
+      const order = createMockOrder();
+      order.paymentMethod = 'bank_transfer';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.paymentMethod).toBe('bank_transfer');
+      expect(callArg.salesDocumentMatchedRuleId).toBeNull();
+      expect(callArg.fulfillmentRoutingSkipReason).toBeNull();
+      expect(callArg.fulfillmentBlock).toBeNull();
+    });
+
+    it('should leave the payment method absent when the source reported none (#3294)', async () => {
+      const order = createMockOrder();
+      expect(order.paymentMethod).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      // Absent from the snapshot (not `undefined`, not `'unknown'`) and null on
+      // the record, which reads back as `unknown` without inventing a value.
+      expect(callArg.orderSnapshot).not.toHaveProperty('paymentMethod');
+      expect(callArg.paymentMethod).toBeNull();
+      expect(callArg.paymentMethodOrUnknown).toBe('unknown');
+    });
+
+    it('should warn, and still persist, when the payment facts contradict each other (#3294)', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      const order = createMockOrder();
+      order.paymentMethod = 'online';
+      order.codToCollect = { amount: '10.00', currency: 'PLN' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      // Reported, never thrown: the order is the fact, the contradiction a defect.
+      expect(repository.upsertWithLineItems).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('cod-amount-without-cod-method')
+      );
+    });
+
+    it('should warn once per order and log repeats of the same contradiction at debug (#3294)', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      const debugSpy = jest.spyOn(service['logger'], 'debug').mockImplementation(() => undefined);
+      const order = createMockOrder();
+      order.paymentMethod = 'online';
+      order.codToCollect = { amount: '10.00', currency: 'PLN' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+      await service.persistOrder(order, 'source-connection-123', 'event-2');
+
+      const contradictionWarns = warnSpy.mock.calls.filter(([msg]) =>
+        String(msg).includes('order_payment_facts_contradictory')
+      );
+      expect(contradictionWarns).toHaveLength(1);
+      expect(debugSpy).toHaveBeenCalledWith(
+        expect.stringContaining('order_payment_facts_contradictory')
+      );
+    });
+
+    it('should stay quiet when the payment facts agree (#3294)', async () => {
+      const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      const order = createMockOrder();
+      order.paymentMethod = 'cash_on_delivery';
+      order.paymentStatus = 'cod';
+      order.codToCollect = { amount: '10.00', currency: 'PLN' };
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('order_payment_facts_contradictory')
+      );
+    });
+
+    it('should keep an explicit unknown payment method as reported (#3294)', async () => {
+      const order = createMockOrder();
+      order.paymentMethod = 'unknown';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot['paymentMethod']).toBe('unknown');
+      expect(callArg.paymentMethodOrUnknown).toBe('unknown');
     });
 
     it('should denormalize the buyer tax id from the billing address (#2599)', async () => {
@@ -578,7 +766,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('should store no buyer tax id at all when PII storage is disabled (#2599)', async () => {
@@ -710,7 +905,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -781,7 +983,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
@@ -802,7 +1011,14 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
@@ -840,7 +1056,14 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -904,7 +1127,14 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -943,6 +1173,26 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot['deliverySmart']).toBe(false);
     });
 
+    it('should serialise IncomingOrder.fulfilledBySource into the awaiting-mapping snapshot only when asserted (#3636)', async () => {
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockIncomingOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistIncomingSnapshot(asserted, 'ol_order_abc', null, 'conn-123', null);
+      expect(repository.upsert.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(true);
+
+      await service.persistIncomingSnapshot(
+        createMockIncomingOrder(),
+        'ol_order_abc',
+        null,
+        'conn-123',
+        null
+      );
+      expect(repository.upsert.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
+    });
+
     it('should omit deliverySmart from the snapshot when IncomingOrder does not carry it (#738)', async () => {
       const incoming = createMockIncomingOrder();
       expect(incoming.deliverySmart).toBeUndefined();
@@ -979,7 +1229,14 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -1030,7 +1287,14 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -1067,6 +1331,109 @@ describe('OrderRecordService', () => {
       await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
 
       expect(repository.markCancelled).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('persistIncomingSnapshot — consuming the early-cancellation signal (#2069)', () => {
+    beforeEach(() => {
+      process.env.OL_STORE_PII = 'true';
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
+    });
+
+    it('consumes the signal keyed on (sourceConnectionId, incoming.externalOrderId)', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(null);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(cancellationSignalRepository.consume).toHaveBeenCalledWith(
+        'conn-123',
+        incoming.externalOrderId
+      );
+    });
+
+    it('marks the order cancelled with the SIGNAL instant (not now) when a signal exists and the incoming order is not itself reported cancelled', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      const signalCancelledAt = new Date('2026-08-01T10:00:00.000Z');
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(signalCancelledAt);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).toHaveBeenCalledWith('ol_order_abc', signalCancelledAt);
+    });
+
+    it('does not call markCancelled when no signal exists and the order is not cancelled (regression guard, byte-for-byte pre-#2069 behavior)', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(null);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).not.toHaveBeenCalled();
+    });
+
+    it('calls markCancelled exactly once — never twice — when a signal exists AND incoming.status is already cancelled, preferring the signal instant', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'cancelled';
+      const signalCancelledAt = new Date('2026-08-01T10:00:00.000Z');
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(signalCancelledAt);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).toHaveBeenCalledTimes(1);
+      expect(repository.markCancelled).toHaveBeenCalledWith('ol_order_abc', signalCancelledAt);
+    });
+
+    it('runs consume() AFTER the snapshot upsert, so a failed upsert never consumes the signal', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      repository.upsert.mockRejectedValue(new Error('db unavailable'));
+
+      await expect(
+        service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null)
+      ).rejects.toThrow('db unavailable');
+
+      expect(cancellationSignalRepository.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordEarlyCancellationSignal (#2069)', () => {
+    beforeEach(() => {
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
+    });
+
+    it('delegates to the repository verbatim', async () => {
+      const cancelledAt = new Date('2026-08-01T10:00:00.000Z');
+
+      await service.recordEarlyCancellationSignal('conn-123', 'ext-order-1', cancelledAt);
+
+      expect(cancellationSignalRepository.record).toHaveBeenCalledWith(
+        'conn-123',
+        'ext-order-1',
+        cancelledAt
+      );
     });
   });
 
@@ -1314,31 +1681,67 @@ describe('OrderRecordService', () => {
         detail: '2 invoicing connections, none marked primary',
       } as const;
 
-      await service.markSalesDocumentBlock('ol_order_abc', block);
+      await service.markSalesDocumentBlock('ol_order_abc', block, {
+        action: 'set',
+        matchedRuleId: null,
+      });
 
-      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', block);
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', block, {
+        action: 'set',
+        matchedRuleId: null,
+      });
     });
 
     it('should pass null through — the clear is the ordinary path, not an edge case', async () => {
-      await service.markSalesDocumentBlock('ol_order_abc', null);
+      await service.markSalesDocumentBlock('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
 
-      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null);
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
     });
 
     it('should not accumulate: repeated calls with the same reason are plain absolute-sets', async () => {
       const block = { reason: 'trigger-model-manual' } as const;
+      const matchedRule = { action: 'set', matchedRuleId: null } as const;
 
-      await service.markSalesDocumentBlock('ol_order_abc', block);
-      await service.markSalesDocumentBlock('ol_order_abc', block);
-      await service.markSalesDocumentBlock('ol_order_abc', block);
+      await service.markSalesDocumentBlock('ol_order_abc', block, matchedRule);
+      await service.markSalesDocumentBlock('ol_order_abc', block, matchedRule);
+      await service.markSalesDocumentBlock('ol_order_abc', block, matchedRule);
 
       // The gate is level-evaluated and fires on EVERY transition, so this method
       // is called repeatedly for one order. It must stay an absolute-set (one row,
       // one state) rather than anything append-shaped.
       expect(repository.updateSalesDocumentBlock).toHaveBeenCalledTimes(3);
       for (const call of repository.updateSalesDocumentBlock.mock.calls) {
-        expect(call).toEqual(['ol_order_abc', block]);
+        expect(call).toEqual(['ol_order_abc', block, matchedRule]);
       }
+    });
+
+    it('should pass the matched rule id through (#3186)', async () => {
+      await service.markSalesDocumentBlock('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: 'rule-1',
+      });
+
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: 'rule-1',
+      });
+    });
+
+    it('should forward a preserve instruction verbatim, never collapsing it to null (#3186 review)', async () => {
+      // The manual-issue clear path decides the block alone. Collapsing this to
+      // `null` would wipe the rule that chose the document kind on the default
+      // `manual` trigger model, and the next transition would put it back.
+      await service.markSalesDocumentBlock('ol_order_abc', null, { action: 'preserve' });
+
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, {
+        action: 'preserve',
+      });
     });
   });
 

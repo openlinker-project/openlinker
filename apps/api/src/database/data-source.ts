@@ -16,7 +16,9 @@
  */
 
 import { DataSource } from 'typeorm';
+import type { DataSourceOptions } from 'typeorm';
 import { apiPluginMigrations } from '../plugin-migrations';
+import { ensureMigrationPrerequisites } from './ensure-migration-prerequisites';
 
 // Load environment variables
 // Try to load dotenv if available (optional dependency)
@@ -42,6 +44,24 @@ try {
 }
 
 /**
+ * DataSource subclass that guarantees the migration chain's prerequisites (#2684)
+ * before `runMigrations()` ever reaches the first migration. TypeORM's
+ * `migration:run` CLI command loads this module's default export and calls
+ * `.runMigrations()` on it directly (`MigrationRunCommand.handler`), so this
+ * override reaches every invocation — dev (ts-node), production (compiled JS,
+ * see docs/migrations.md § Running Migrations), and the docker-compose demo
+ * stack's one-shot bootstrap service — with no separate wrapper script needed.
+ */
+class BootstrappedDataSource extends DataSource {
+  override async runMigrations(
+    ...args: Parameters<DataSource['runMigrations']>
+  ): ReturnType<DataSource['runMigrations']> {
+    await ensureMigrationPrerequisites(this);
+    return super.runMigrations(...args);
+  }
+}
+
+/**
  * TypeORM DataSource for CLI operations
  *
  * Used by TypeORM CLI commands:
@@ -50,7 +70,7 @@ try {
  * - typeorm migration:revert
  * - typeorm migration:show
  */
-export default new DataSource({
+const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
@@ -77,4 +97,6 @@ export default new DataSource({
 
   // Logging (useful for migration debugging)
   logging: process.env.NODE_ENV === 'development',
-});
+};
+
+export default new BootstrappedDataSource(dataSourceOptions);

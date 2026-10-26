@@ -7,6 +7,8 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
+import type { IOrderRecordService, IOrderRefundService, OrderRecord } from '@openlinker/core/orders';
+import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import { FiscalizationRegisterHandler, MAX_FISCAL_LINES } from '../fiscalization-register.handler';
 import {
   MissingIdempotencyKeyException,
@@ -57,11 +59,14 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('FiscalizationRegisterHandler', () => {
   let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
   let handler: FiscalizationRegisterHandler;
+  let orderRecords: jest.Mocked<IOrderRecordService>;
+  let orderRefunds: jest.Mocked<IOrderRefundService>;
+  let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
     fiscalRegistrations = {
-      register: jest.fn().mockResolvedValue({} as never),
+      register: jest.fn().mockResolvedValue({ id: 'fiscal-record-1' } as never),
       // The three reads added with asynchronous registration (#2525/#2526).
       // This handler is the path that PERFORMS the work, so none of them is
       // exercised here; they are present because the interface has them.
@@ -70,11 +75,27 @@ describe('FiscalizationRegisterHandler', () => {
       getRegistrationProgress: jest.fn(),
       getByOrderId: jest.fn(),
       getByOrderIds: jest.fn().mockResolvedValue([]),
+      listRecentByConnectionId: jest.fn().mockResolvedValue([]),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
       getInFlightRegistration: jest.fn().mockResolvedValue(null),
+      listRegistrationsKeyset: jest.fn(),
     };
-    handler = new FiscalizationRegisterHandler(fiscalRegistrations);
+    postSaleInventoryRefresh = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
+    orderRecords = {
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+    orderRefunds = {
+      getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as jest.Mocked<IOrderRefundService>;
+    handler = new FiscalizationRegisterHandler(
+      fiscalRegistrations,
+      postSaleInventoryRefresh,
+      orderRecords,
+      orderRefunds,
+    );
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
@@ -253,6 +274,35 @@ describe('FiscalizationRegisterHandler', () => {
     });
   });
 
+  describe("the buyer's tax number (#3187, ADR-073 decision 1)", () => {
+    it('carries the tax number onto the command when present', async () => {
+      await handler.execute(makeJob(makePayload({ buyerTaxId: '5213796333' })));
+      expect(fiscalRegistrations.register).toHaveBeenCalledWith(
+        expect.objectContaining({ buyerTaxId: '5213796333' }),
+      );
+    });
+
+    it('omits the field for an ordinary order', async () => {
+      await handler.execute(makeJob(makePayload()));
+      const command = fiscalRegistrations.register.mock.calls[0]?.[0];
+      expect(command && 'buyerTaxId' in command).toBe(false);
+    });
+
+    it('rejects a present-but-non-string buyerTaxId as a business_failure (no register call)', async () => {
+      const result = await handler.execute(
+        makeJob(makePayload({ buyerTaxId: 42 as unknown as string })),
+      );
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(fiscalRegistrations.register).not.toHaveBeenCalled();
+    });
+
+    it('rejects a present-but-empty buyerTaxId as a business_failure', async () => {
+      const result = await handler.execute(makeJob(makePayload({ buyerTaxId: '' })));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(fiscalRegistrations.register).not.toHaveBeenCalled();
+    });
+  });
+
   describe('retryable failures', () => {
     it('FiscalRegistrationContendedException is retryable (wrapped, thrown)', async () => {
       fiscalRegistrations.register.mockRejectedValue(
@@ -271,7 +321,94 @@ describe('FiscalizationRegisterHandler', () => {
     });
   });
 
+  describe('post-receipt master inventory refresh', () => {
+    it('enqueues a refresh keyed on the registered record id, with productIds from the payload lines, when status is registered', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'registered',
+      } as never);
+
+      await handler.execute(
+        makeJob(
+          makePayload({
+            lines: [
+              {
+                name: 'Widget',
+                quantity: 1,
+                unitPriceGross: 10,
+                taxRate: '',
+                sku: null,
+                productId: 'ol_product_1',
+              },
+              // A line with no product (e.g. a manual charge) carries no
+              // productId — must be filtered out, not passed through blank.
+              { name: 'Shipping', quantity: 1, unitPriceGross: 5, taxRate: '', sku: null },
+              {
+                name: 'Gadget',
+                quantity: 1,
+                unitPriceGross: 20,
+                taxRate: '',
+                sku: null,
+                productId: '',
+              },
+            ],
+          }),
+        ),
+      );
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith({
+        productIds: ['ol_product_1'],
+        keyScope: 'receipt:fiscal-record-99',
+      });
+    });
+
+    it('does not enqueue when the record did not reach registered (nothing moved to re-read)', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'failed',
+        failureMode: 'rejected',
+      } as never);
+
+      await handler.execute(makeJob(makePayload()));
+
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('a rejecting enqueue does not change the returned outcome', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'registered',
+      } as never);
+      postSaleInventoryRefresh.enqueue.mockRejectedValue(new Error('queue unavailable'));
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'ok' });
+    });
+  });
+
   it('is defined', () => {
     expect(FiscalizationRegisterHandler).toBeDefined();
+  });
+
+  describe('live order gate (DEF-26)', () => {
+    it('does not register a receipt for a cancelled order', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        status: 'processing',
+        isCancelled: true,
+        totalAmount: 100,
+      } as unknown as OrderRecord);
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(fiscalRegistrations.register).not.toHaveBeenCalled();
+    });
+
+    it('registers as usual when the order record is absent', async () => {
+      await handler.execute(makeJob(makePayload()));
+
+      expect(fiscalRegistrations.register).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -13,7 +13,9 @@
  * @module apps/api/src/users
  * @implements {IUserManagementService}
  */
+import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
 import {
   CannotSelfModifyException,
@@ -23,11 +25,27 @@ import {
   UserNotDeactivatedException,
   UserNotPendingException,
   UserNotPendingConfirmationException,
+  UserNotAwaitingFirstSignInException,
+  UserAlreadyExistsException,
   UserRepositoryPort,
   USER_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
 import type { User, UserRole, UserStatus } from '@openlinker/core/users';
-import type { IUserManagementService } from './user-management.service.interface';
+import type {
+  CreatedUser,
+  CreateUserInput,
+  IUserManagementService,
+} from './user-management.service.interface';
+
+// Same cost `RegistrationService` and `BootstrapAdminService` use.
+const BCRYPT_COST = 10;
+
+/**
+ * Bytes of CSPRNG output behind a temporary password: 12 bytes is 16
+ * base64url characters (96 bits) — far beyond guessing, and short enough to
+ * read aloud or type from a note at a packing bench.
+ */
+const TEMPORARY_PASSWORD_BYTES = 12;
 
 @Injectable()
 export class UserManagementService implements IUserManagementService {
@@ -40,10 +58,57 @@ export class UserManagementService implements IUserManagementService {
 
   async listUsers(opts?: {
     status?: UserStatus;
+    role?: UserRole;
     page?: number;
     pageSize?: number;
   }): Promise<{ users: User[]; total: number }> {
     return this.userRepository.findAll(opts);
+  }
+
+  async createUser(input: CreateUserInput): Promise<CreatedUser> {
+    // Pre-checks name the colliding field for the admin; the unique
+    // constraints behind `save` stay the guarantee against a concurrent create.
+    if (await this.userRepository.findByUsername(input.username)) {
+      throw new UserAlreadyExistsException(input.username, 'username');
+    }
+    if (input.email !== null && (await this.userRepository.findByEmail(input.email))) {
+      throw new UserAlreadyExistsException(input.email, 'email');
+    }
+
+    const temporaryPassword = randomBytes(TEMPORARY_PASSWORD_BYTES).toString('base64url');
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
+
+    const user = await this.userRepository.save({
+      username: input.username,
+      email: input.email,
+      passwordHash,
+      role: input.role,
+      status: 'active',
+      displayName: input.displayName,
+      mustChangePassword: true,
+    });
+
+    // Never the password, and never the email: an id and a role are enough to
+    // trace the act.
+    this.logger.log(`User created by admin: ${user.id} with role ${user.role}`);
+    return { id: user.id, temporaryPassword };
+  }
+
+  async reissueTemporaryPassword(userId: string): Promise<CreatedUser> {
+    const user = await this.requireUser(userId);
+    // Only an account still owing its first sign-in: re-issuing for one that
+    // has set its own password would overwrite a credential the person chose.
+    if (!user.mustChangePassword) {
+      throw new UserNotAwaitingFirstSignInException(userId);
+    }
+    const temporaryPassword = randomBytes(TEMPORARY_PASSWORD_BYTES).toString('base64url');
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
+    // Hash and flag in ONE statement, like the create path.
+    await this.userRepository.updatePasswordHash(userId, passwordHash, {
+      mustChangePassword: 'force',
+    });
+    this.logger.log(`One-time password re-issued by admin: ${userId}`);
+    return { id: userId, temporaryPassword };
   }
 
   async approveUser(userId: string, role: UserRole): Promise<void> {
@@ -119,6 +184,37 @@ export class UserManagementService implements IUserManagementService {
       await this.userRepository.deleteById(userId);
     }
     this.logger.log(`User deleted: ${userId}`);
+  }
+
+  async setPackStationLabel(userId: string, packStationLabel: string | null): Promise<void> {
+    await this.requireUser(userId);
+    // One spelling for "no label": a blank or whitespace-only value collapses
+    // to `null` here rather than reaching the column as `''`, so every reader
+    // tests one thing.
+    const trimmed = packStationLabel === null ? null : packStationLabel.trim();
+    const normalised = trimmed === null || trimmed.length === 0 ? null : trimmed;
+    await this.userRepository.updatePackStationLabel(userId, normalised);
+    // The LABEL is logged, not the value's absence-vs-presence alone: it is
+    // operator configuration, carries no authentication weight, and an
+    // operator asking "why does bench 3 say the wrong printer" needs the
+    // change to be findable.
+    this.logger.log(`Pack station label set: ${userId} -> ${normalised ?? '(cleared)'}`);
+  }
+
+  async recordBenchActivity(userId: string): Promise<void> {
+    // Best-effort, by the interface's own contract. No `requireUser` read
+    // first: this runs on the bench's hot paths, the write is already
+    // primary-key-scoped, and an id that names nobody simply updates no rows.
+    try {
+      await this.userRepository.touchLastActive(userId);
+    } catch (error) {
+      // Swallowed deliberately, and logged at `warn` rather than `error`: the
+      // cost of losing a heartbeat is a swimlane that reads offline for a few
+      // minutes, and the cost of rethrowing is a packer who cannot pack.
+      this.logger.warn(
+        `Bench activity heartbeat failed for ${userId}: ${(error as Error).message}`
+      );
+    }
   }
 
   async confirmEmail(userId: string): Promise<void> {

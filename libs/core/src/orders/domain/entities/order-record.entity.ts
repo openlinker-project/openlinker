@@ -12,18 +12,23 @@ import type { OrderRecordStatus } from '../types/order-record.types';
 import type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
+import type { PaymentMethod } from '../types/payment-method.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
 import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
-import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
+import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
   TaxRateEra,
 } from '@openlinker/core/sales-documents';
+import { OrderStatusValues } from '../types/order.types';
+import type { OrderStatus } from '../types/order.types';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -372,8 +377,86 @@ export class OrderRecord {
      * a PrestaShop order would be routed as gross while the operator-facing
      * surface still reports it `net-priced`.
      */
-    public readonly totalTaxTreatment: PriceTaxTreatment | null = null
+    public readonly totalTaxTreatment: PriceTaxTreatment | null = null,
+    /**
+     * The `sales_document_rules` row that decided this order's document kind
+     * (#3186), or `null` when no rule engine match produced the route (a
+     * country default, the pre-#2170 single-primary fallback, or no route at
+     * all). Independent of `salesDocumentBlockReason` — a rule can decide the
+     * kind while issuance is still blocked for an unrelated reason, so the two
+     * columns are never coupled to one another's null-ness.
+     *
+     * Level-triggered like the three `salesDocumentBlock*` fields above, but by
+     * ONE caller: `AutoIssueTriggerService` re-decides it on every order
+     * transition and `updateSalesDocumentBlock` writes the answer through,
+     * `null` included — so an edited or deleted rule stops being named as the
+     * reason on the very next transition rather than outliving the decision it
+     * made. A caller that decided only the block (the manual-issue clear) says
+     * `{action: 'preserve'}` instead and leaves this column untouched. No FK:
+     * a reference by value, like every other cross-aggregate reference in this
+     * tree (`order_changes.orderId`, `refund_records`'s siblings).
+     *
+     * Deliberately NOT round-tripped through `toOrm` — same reason as
+     * `salesDocumentBlockReason`: `persistOrder` runs BEFORE the auto-issue
+     * gate on every ingestion, so mapping it here would null the column and
+     * then immediately re-set it, racing a peer transition's own write.
+     *
+     * Appended LAST for the same reason every field above it was: this is a
+     * positional constructor, so a field inserted mid-list would silently
+     * shift every argument after it at each construction site.
+     */
+    public readonly salesDocumentMatchedRuleId: string | null = null,
+    /**
+     * Why OpenLinker deliberately did not route this order to the pack bench
+     * while the OMS is on (#3455; also #3487 / #3488), or `null` when it was
+     * routed, has not been decided, or the OMS is off. Not a hold - a skipped
+     * order follows today's path - which is what separates it from the
+     * `fulfillmentBlock*` columns.
+     *
+     * Level-triggered by the ingestion intercept and NOT round-tripped through
+     * `toOrm`, for the `salesDocumentBlockReason` reason: `persistOrder` runs
+     * before the intercept on every ingestion. Appended LAST: positional
+     * constructor.
+     */
+    public readonly fulfillmentRoutingSkipReason: FulfillmentRoutingSkipReason | null = null,
+    /**
+     * Why fulfilment routing HOLDS this order with no work object explaining it
+     * (#2396), or `null`. #3485 made it readable: with the OMS on, a refused,
+     * address-less or failed route waits in OpenLinker, and the operator needs
+     * to see why. Read from `fulfillmentBlockReason` / `fulfillmentBlockDetail`;
+     * an unrecognised reason reads as `null`.
+     *
+     * NOT round-tripped through `toOrm` — sole writer `updateFulfillmentBlock`,
+     * for the `salesDocumentBlockReason` reason. Appended LAST: positional
+     * constructor.
+     */
+    public readonly fulfillmentBlock: FulfillmentBlock | null = null,
+    /**
+     * How the buyer pays (#3294), denormalized from the ingested order so a
+     * query never expands JSONB. `null` means the source reported nothing - the
+     * state of every row that predates the column, which is deliberately not
+     * back-filled (ADR-039's precedent for a field that predates its own
+     * migration). Read through {@link paymentMethodOrUnknown}, never bare: a
+     * `null` and an explicit `'unknown'` mean the same thing to every consumer.
+     *
+     * Written only on the `'ready'` path (`upsertWithLineItems`), like the
+     * analytics scalars. Appended LAST: positional constructor.
+     */
+    public readonly paymentMethod: PaymentMethod | null = null
   ) {}
+
+  /**
+   * The payment method with the unreported case folded into `'unknown'`
+   * (#3294). Pure derivation of an already-loaded field (ADR-011).
+   *
+   * The only intended read of {@link paymentMethod}: it keeps "the source did
+   * not say" and "the adapter could not map it" from ever being told apart by a
+   * caller, because no caller may act differently on the difference - and
+   * neither may pre-fill a COD amount or choose an invoice payment form.
+   */
+  get paymentMethodOrUnknown(): PaymentMethod {
+    return this.paymentMethod ?? 'unknown';
+  }
 
   /**
    * The buyer tax id in its three domain states, decoded from the column's
@@ -544,6 +627,66 @@ export class OrderRecord {
     const { total, currency } = value as Record<string, unknown>;
     return typeof total === 'number' && Number.isFinite(total) && typeof currency === 'string'
       ? { amount: total, currency }
+      : undefined;
+  }
+
+  /**
+   * Typed, fail-safe read of the order's own lines (#3171) from the snapshot.
+   * Pure derivation of an already-loaded field (ADR-011): no I/O, no mutation.
+   * Mirrors {@link codToCollect} / {@link nativeTotals} - centralises the
+   * `orderSnapshot.items` key + narrowing in the owning context, so a
+   * cross-context consumer binds to a typed contract rather than the snapshot's
+   * JSON layout.
+   *
+   * `id` is the address the rest of the platform already keys on: it is the
+   * value `reservations.orderLineId`, `shipment_lines.lineId`,
+   * `FulfillmentWorkLine.orderLineId` and `ReturnLine.resolvedOrderLineId` all
+   * hold - un-FK-able by construction, because `order_records` has no lines
+   * table.
+   *
+   * An element missing any REQUIRED member of {@link OrderItem} is dropped
+   * rather than coerced, and a malformed or absent `items` yields `[]`. A
+   * partial line is worse than a missing one for every consumer: they join on
+   * `id` and arithmetic on `quantity` / `price`, so a line carrying `undefined`
+   * in either would silently resolve or compute wrong. `[]` therefore means
+   * "no usable lines", never "the order has none" - a caller that must tell
+   * those apart reads `orderSnapshot.items` itself.
+   */
+  get orderItems(): OrderItem[] {
+    const value = this.orderSnapshot.items;
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.filter((item): item is OrderItem => {
+      if (typeof item !== 'object' || item === null) {
+        return false;
+      }
+      const { id, productId, quantity, price } = item as Record<string, unknown>;
+      return (
+        typeof id === 'string' &&
+        id.length > 0 &&
+        typeof productId === 'string' &&
+        typeof quantity === 'number' &&
+        Number.isFinite(quantity) &&
+        typeof price === 'number' &&
+        Number.isFinite(price)
+      );
+    });
+  }
+
+  /**
+   * Typed, fail-safe read of the order's neutral lifecycle status (#1596) from
+   * the snapshot. Pure derivation of an already-loaded field (ADR-011): no I/O,
+   * no mutation. Mirrors {@link paymentStatus} — lets the #1596 auto-issuance
+   * race gate re-check the order's LIVE status against a typed contract rather
+   * than the snapshot's internal JSON layout. Returns `undefined` when the
+   * source didn't populate status or the stored value isn't a recognised
+   * `OrderStatus`.
+   */
+  get status(): OrderStatus | undefined {
+    const value = this.orderSnapshot.status;
+    return typeof value === 'string' && (OrderStatusValues as readonly string[]).includes(value)
+      ? (value as OrderStatus)
       : undefined;
   }
 }

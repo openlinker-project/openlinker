@@ -90,7 +90,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    // #3365 - a run that executed NOTHING must not report success. Opt-in via
+    // E2E_REQUIRE_EXECUTED; see the reporter's own header for why it is not
+    // always on and why it does not police the skip ratio.
+    ['./src/reporters/require-executed.reporter.ts'],
+  ],
   // Backstop, not the primary bound. Specs here chain several individually
   // bounded waits — job pollers (120 s), order ingestion (180 s), regulatory
   // clearance (300 s) — and a 90 s ceiling sat BELOW those budgets, so a test
@@ -194,6 +201,19 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // Subiekt GT: models as product variants, and images that load (#3365).
+      // Opt-in via E2E_TEST_SUBIEKT, because the dependency is a live Subiekt
+      // GT on Windows behind a hand-deployed bridge that no CI runner has -
+      // the specs skip cleanly without it. `retries: 0`: the suite triggers a
+      // real catalogue sweep, and a silent retry would run a second one over a
+      // stack that is still draining the first.
+      name: 'subiekt',
+      testMatch: /subiekt\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Access-control coverage — independent of golden-path/full-flow. Depends
       // only on `setup` for the admin storageState the UI-reflection spec's
       // admin-session assertions consume; the viewer/guest browser cases build
@@ -215,6 +235,17 @@ export default defineConfig({
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // KSeF legal completeness (#1578, DEF-01..39). Runs against KSeF TEST on
+      // a cloned stack. `retries: 0`: every scenario issues or corrects a real
+      // document, and a silent retry would issue a second one. `screenshot:
+      // 'on'` plus the named `shot()` captures give a reviewer every state.
+      name: 'ksef-legal',
+      testMatch: /ksef-legal\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE, screenshot: 'on' },
     },
     {
       // Invoicing suite (#1573) — inFakt provider run, payment marking (both
@@ -305,6 +336,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // One price followed from PrestaShop to a live Allegro offer, recorded at
+      // every hop (net vs gross). Creates a PS product and a real sandbox offer,
+      // so `retries: 0`.
+      name: 'pricing',
+      testMatch: /pricing\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Category-blocker states in the bulk publish wizard (#2240). Every OL
       // route the wizard touches is stubbed in-test, so it needs no seeded
       // catalogue and no Allegro connection. `retries: 1` (nothing is mutated).
@@ -340,6 +381,19 @@ export default defineConfig({
       // silent retry could re-flip the reporting currency mid-run.
       name: 'analytics',
       testMatch: /analytics\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Pack bench + Assign Packing Work (#3342/#3343) — mockup parity for
+      // both OMS staffing screens. MUTATING: seeds `fulfillment_works` rows
+      // directly via Postgres (see `support/bench-seed.ts`'s header for why)
+      // and provisions throwaway `packer` accounts through the real
+      // register+approve flow. `retries: 0`: a silent retry would
+      // re-provision a packer and re-seed mid-assertion.
+      name: 'bench',
+      testMatch: /bench\/.*\.spec\.ts/,
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },

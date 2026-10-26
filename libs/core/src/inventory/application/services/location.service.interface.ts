@@ -39,6 +39,21 @@ export interface ILocationService {
   /** @returns the location, or `null` when no row carries that id */
   getLocation(id: string): Promise<InventoryLocation | null>;
 
+  /**
+   * Batched by-id read — ONE query for a page of ids (#3426).
+   *
+   * The seam a SIBLING CONTEXT resolves location names through. `fulfillment`
+   * is a registered zero-sibling-edge leaf (ADR-053) and may not read
+   * `inventory` at all, so the Assign Packing Work board composes this join in
+   * `apps/api` — and a cross-context caller reaches an `I*Service`, never a
+   * `*RepositoryPort`. Hence a pass-through method rather than letting that
+   * caller take `LOCATION_REPOSITORY_TOKEN`.
+   *
+   * An id with no row is ABSENT from the result rather than present as a
+   * `null` hole; callers key a `Map` off it.
+   */
+  getLocationsByIds(ids: readonly string[]): Promise<InventoryLocation[]>;
+
   listLocations(
     filters: InventoryLocationFilters,
     pagination: InventoryLocationPagination

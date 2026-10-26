@@ -23,10 +23,17 @@ import {
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
-import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type {
+  HeldOrderRef,
+  OrderRecordRepositoryPort,
+} from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
+import {
+  isFulfillmentRoutingSkipReason,
+  type FulfillmentRoutingSkipReason,
+} from '../../../domain/types/fulfillment-routing-eligibility.types';
 import { SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
 import type {
@@ -41,6 +48,7 @@ import type {
   OrderRecordSortDirection,
   FailedSyncValueSummary,
   OrderLifecyclePhaseSummary,
+  SalesDocumentMatchedRuleWrite,
 } from '../../../domain/types/order-record.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
@@ -52,9 +60,17 @@ import {
   netSalesLineNetAmountSql,
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import {
+  isFulfillmentBlockReason,
+  type FulfillmentBlock,
+  type FulfillmentBlockReason,
+} from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
+import type {
+  OrderSearchTextReindexRow,
+  OrderSearchTextRewrite,
+} from '../../../domain/types/order-search-text-reindex.types';
 import {
   AuthorityAttentionCountedReasonValues,
   buildAuthorityAttentionPayload,
@@ -65,13 +81,17 @@ import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
 } from '@openlinker/core/fulfillment-authority';
+import { getEnvBoolean } from '@openlinker/shared/config';
+import { deriveOrderSearchText, normalizeOrderSearchText } from '../../../domain/order-search-text';
 import {
   SalesDocumentAttentionReasonValues,
+  SalesDocumentUncountedUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
   isTaxRateEra,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
+import { isPaymentMethod } from '../../../domain/types/payment-method.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
@@ -82,10 +102,22 @@ import type {
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
-  NetExcludedOrderCandidate,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
   PaginatedProductMatchingErrorOrders,
   CoverageConnectionAggregateRow,
 } from '../../../domain/types/coverage-detection.types';
+
+/**
+ * Default page size for {@link OrderRecordRepository.findNetExcludedOrderCandidatesPage}
+ * (#2834) — bounds every individual SQL statement's row count instead of the
+ * pre-#2834 single unbounded `getRawMany()`. Mirrors the scale already
+ * documented on the port method (10-100 orders/day persona, per #1985's
+ * ADR-039 note) — a window under this size costs exactly one round trip,
+ * which is the overwhelmingly common case. Not env-configurable: this is a
+ * request-scoped internal batch size, not an operator-tunable sweep cadence.
+ */
+const NET_EXCLUDED_CANDIDATE_PAGE_SIZE = 500;
 
 /**
  * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
@@ -265,6 +297,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       });
     }
 
+    // #3534, D35 — the export's own date axis, `placedAt` rather than
+    // `createdAt`. An order with a NULL `placedAt` never matches either bound
+    // (the ordinary SQL comparison-with-NULL behaviour), which is correct:
+    // "placed within this range" cannot be answered for an order with no
+    // known placement instant.
+    if (filters.placedFrom) {
+      qb.andWhere('rec."placedAt" >= :placedFrom', {
+        placedFrom: filters.placedFrom,
+      });
+    }
+
+    if (filters.placedTo) {
+      qb.andWhere('rec."placedAt" <= :placedTo', {
+        placedTo: filters.placedTo,
+      });
+    }
+
     if (filters.syncStatus) {
       // JSONB containment: find orders where any destination has this status
       // 'order' is a reserved word in PostgreSQL so the alias is 'rec'
@@ -376,7 +425,90 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       });
     }
 
+    if (filters.hasOpenReturn !== undefined) {
+      // #2998 — "open" is `returns`' own `all_open` segment predicate, resolved
+      // to an id list by the caller BEFORE this query runs (`orders` may not
+      // import `returns`). An empty list is a legitimate "nothing is open
+      // right now": `true` then matches no row (never all rows), `false`
+      // matches every row (never none).
+      const openIds = filters.openReturnOrderIds ?? [];
+      if (openIds.length > 0) {
+        qb.andWhere(
+          filters.hasOpenReturn
+            ? 'rec."internalOrderId" IN (:...openReturnOrderIds)'
+            : 'rec."internalOrderId" NOT IN (:...openReturnOrderIds)',
+          { openReturnOrderIds: openIds }
+        );
+      } else if (filters.hasOpenReturn) {
+        qb.andWhere('1 = 0');
+      }
+      // `hasOpenReturn: false` with an empty id list adds no arm — every row
+      // already qualifies, and `NOT IN (empty list)` is a SQL trap best avoided.
+    }
+
+    if (filters.tagId !== undefined) {
+      // #3532 — same-context join, unlike the tracking-number / open-return
+      // axes above (both tables live in `orders`).
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM order_tag_assignments ota WHERE ota."internalOrderId" = rec."internalOrderId" AND ota."tagId" = :tagId)',
+        { tagId: filters.tagId }
+      );
+    }
+
+    if (filters.untagged) {
+      qb.andWhere(
+        'NOT EXISTS (SELECT 1 FROM order_tag_assignments ota WHERE ota."internalOrderId" = rec."internalOrderId")'
+      );
+    }
+
+    if (filters.packed !== undefined) {
+      // #2997 — "is it packed" as an operator-facing scan axis, exactly like
+      // `cancelled` / `salesDocumentBlocked` above. Plain indexed IS [NOT]
+      // NULL test on `packedAt` (#2287), so this stays on the cheap side of
+      // `docs/engineering-standards.md § When A Paginated Total Is Expensive`
+      // and needs no second-stage treatment.
+      qb.andWhere(filters.packed ? 'rec."packedAt" IS NOT NULL' : 'rec."packedAt" IS NULL');
+    }
+
+    if (filters.search !== undefined) {
+      // #3527 — free-text search over the denormalized, diacritic-folded
+      // `searchText` column, GIN-trigram-indexed. Normalizing the incoming
+      // query with the SAME function that wrote the column is what keeps the
+      // two from drifting apart (the `DestinationCategory.search` precedent).
+      //
+      // A query that normalizes to nothing (blank, or pure punctuation/
+      // diacritics the fold strips entirely) is treated as "don't filter"
+      // rather than "match nothing" — the same posture an absent `search`
+      // already has, and the one a blank search box should have.
+      const normalized = normalizeOrderSearchText(filters.search);
+      if (normalized.length > 0) {
+        const pattern = `%${OrderRecordRepository.escapeLikePattern(normalized)}%`;
+        const trackingOrderIds = filters.searchTrackingOrderIds ?? [];
+        if (trackingOrderIds.length > 0) {
+          // #3528 — the tracking-number search resolves a shipment's owning
+          // order BEFORE `orders` is ever asked (`orders` must not import
+          // `shipping`, which already depends on `orders`), so by the time
+          // this filter runs it is just a plain id list. ORed with the text
+          // match, never ANDed: both are alternate ways ONE query can match
+          // an order, not two conditions the order must satisfy together.
+          qb.andWhere(
+            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" IN (:...searchTrackingOrderIds))',
+            { searchPattern: pattern, searchTrackingOrderIds: trackingOrderIds }
+          );
+        } else {
+          qb.andWhere('rec."searchText" LIKE :searchPattern ESCAPE \'\\\'', {
+            searchPattern: pattern,
+          });
+        }
+      }
+    }
+
     return qb;
+  }
+
+  /** Escape LIKE metacharacters so a search term is matched literally. */
+  private static escapeLikePattern(value: string): string {
+    return value.replace(/[\\%_]/g, (char) => `\\${char}`);
   }
 
   /** {@link buildFilteredQuery} plus this list's ordering and page window. */
@@ -974,6 +1106,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return (result.affected ?? 0) > 0;
   }
 
+  /** See the port's JSDoc — TEST-FIXTURE-ONLY (#2855). */
+  async stampPreRolloutEraForTesting(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({ taxRateEra: 'pre-rollout' })
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+      .andWhere('"taxRateEra" IS DISTINCT FROM \'pre-rollout\'')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
   /**
    * Remaining mismatched population in scope, split by terminal marker
    * (#2468) — see the port's JSDoc for why the marker is the only evidence
@@ -1010,25 +1154,103 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
-   * Data Coverage tax A/B/C detector's base population (#2465) — see the
-   * port's JSDoc for the predicate rationale. Mirrors
+   * One keyset page for the `searchText` reindex pass (#3507 G03-14) — see the
+   * port's JSDoc. `getRawMany` over three named columns rather than `getMany`:
+   * the pass needs nothing else, and hydrating full entities would pull every
+   * out-of-band column for a row it may not even rewrite (the #2826
+   * `findNetExcludedOrderCandidatesPage` reasoning). Keyset on the text primary
+   * key, never `OFFSET`, so a concurrent insert cannot shift a page boundary.
+   */
+  async findSearchTextReindexPage(
+    afterInternalOrderId: string | null,
+    limit: number
+  ): Promise<OrderSearchTextReindexRow[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."orderSnapshot"', 'order_snapshot')
+      .addSelect('rec."searchText"', 'search_text')
+      .orderBy('rec."internalOrderId"', 'ASC')
+      .limit(limit);
+
+    if (afterInternalOrderId !== null) {
+      qb.where('rec."internalOrderId" > :afterInternalOrderId', { afterInternalOrderId });
+    }
+
+    const rows = await qb.getRawMany<{
+      internal_order_id: string;
+      order_snapshot: unknown;
+      search_text: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      orderSnapshot:
+        typeof row.order_snapshot === 'object' && row.order_snapshot !== null
+          ? (row.order_snapshot as Record<string, unknown>)
+          : {},
+      searchText: row.search_text ?? '',
+    }));
+  }
+
+  /**
+   * Conditional per-row rewrite for the reindex pass (#3507 G03-14) — see the
+   * port's JSDoc for the `expectedSearchText` guard. One statement per row,
+   * not one `UPDATE ... FROM (VALUES ...)`: the query builder has no
+   * parameterised form of the latter, and a page is bounded by the caller's
+   * budget anyway.
+   *
+   * `updatedAt` is assigned to ITSELF on purpose. A query-builder `update()`
+   * appends `"updatedAt" = CURRENT_TIMESTAMP` for an `@UpdateDateColumn`
+   * unless the column is already in the SET list; naming it with its own value
+   * is how this derived-data repair leaves the row's real timestamp alone.
+   */
+  async rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number> {
+    let rewritten = 0;
+    for (const rewrite of rewrites) {
+      const result = await this.repository
+        .createQueryBuilder()
+        .update(OrderRecordOrmEntity)
+        .set({ searchText: rewrite.searchText, updatedAt: () => '"updatedAt"' })
+        .where('"internalOrderId" = :internalOrderId', {
+          internalOrderId: rewrite.internalOrderId,
+        })
+        .andWhere('"searchText" = :expectedSearchText', {
+          expectedSearchText: rewrite.expectedSearchText,
+        })
+        .execute();
+      rewritten += result.affected ?? 0;
+    }
+    return rewritten;
+  }
+
+  /**
+   * Data Coverage tax A/B/C detector's base population, ONE BOUNDED PAGE at
+   * a time (#2465, re-bounded by #2834) — see the port's JSDoc for the
+   * predicate rationale and the keyset-pagination contract. Mirrors
    * `getDailyOrderAggregates`'s `netExcludedAndNotCancelled` fragment
-   * EXACTLY (non-cancelled, current-era stamped, `NOT` net-eligible) so
-   * `candidates.length` is always the same figure as `netExcludedCount`
-   * for the identical filters/currency.
+   * EXACTLY (non-cancelled, current-era stamped, `NOT` net-eligible) so the
+   * sum of every page's `items.length` is always the same figure as
+   * `netExcludedCount` for the identical filters/currency.
    *
    * Reads only the four columns {@link NetExcludedOrderCandidate} needs via
    * `getRawMany`, not `getMany` (#2826) — the full `OrderRecordOrmEntity`
    * additionally carries `orderSnapshot` (an arbitrary-size JSONB column)
-   * that this classification pass never reads, so hydrating it for every
-   * candidate in the window was pure waste on top of an already-unpaged
-   * read (unpaged by design — see this method's port-level doc comment).
+   * that this classification pass never reads.
+   *
+   * Fetches `limit + 1` rows rather than issuing a separate `COUNT(*)` to
+   * decide whether another page follows — the standard "peek one extra row"
+   * keyset-pagination idiom. `nextCursor` is derived from the LAST row of
+   * the page actually returned (never the peeked extra row, which is
+   * trimmed off before mapping).
    */
-  async findNetExcludedOrderCandidates(
+  async findNetExcludedOrderCandidatesPage(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    includeBackfilledPreRollout = false
-  ): Promise<NetExcludedOrderCandidate[]> {
+    includeBackfilledPreRollout = false,
+    cursor: NetExcludedOrderCandidateCursor | null = null,
+    limit: number = NET_EXCLUDED_CANDIDATE_PAGE_SIZE
+  ): Promise<NetExcludedOrderCandidatePage> {
     const { netEligible } = this.buildNetSalesOrderFragments(includeBackfilledPreRollout);
     const netExcludedAndNotCancelled = `rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT ${netEligible}`;
 
@@ -1039,23 +1261,43 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect('rec."placedAt"', 'placed_at')
       .addSelect('rec."taxRateEra"', 'tax_rate_era')
       .andWhere(netExcludedAndNotCancelled, { currentReportingCurrency })
-      .orderBy('rec."placedAt"', 'DESC');
+      .orderBy('rec."placedAt"', 'DESC')
+      .addOrderBy('rec."internalOrderId"', 'DESC')
+      .take(limit + 1);
 
     this.applySalesAnalyticsScope(qb, filters);
+
+    if (cursor) {
+      qb.andWhere(
+        '(rec."placedAt" < :cursorPlacedAt OR (rec."placedAt" = :cursorPlacedAt AND rec."internalOrderId" < :cursorInternalOrderId))',
+        { cursorPlacedAt: cursor.placedAt, cursorInternalOrderId: cursor.internalOrderId }
+      );
+    }
 
     const rows = await qb.getRawMany<{
       internal_order_id: string;
       source_connection_id: string;
-      placed_at: Date | null;
+      placed_at: Date;
       tax_rate_era: string | null;
     }>();
 
-    return rows.map((row) => ({
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+
+    const items = page.map((row) => ({
       internalOrderId: row.internal_order_id,
       sourceConnectionId: row.source_connection_id,
       placedAt: row.placed_at,
       taxRateEra: row.tax_rate_era,
     }));
+
+    const lastRow = page.at(-1);
+    const nextCursor: NetExcludedOrderCandidateCursor | null =
+      hasMore && lastRow
+        ? { placedAt: lastRow.placed_at, internalOrderId: lastRow.internal_order_id }
+        : null;
+
+    return { items, nextCursor };
   }
 
   /**
@@ -1392,9 +1634,48 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
 
-  private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
-    (reason) => `'${reason}'`
-  ).join(', ')})`;
+  private static readonly IS_SALES_DOCUMENT_BLOCKED =
+    OrderRecordRepository.buildSalesDocumentBlockedPredicate();
+
+  /**
+   * The counted/filtered "this order is blocked" predicate.
+   *
+   * Two clauses, and the second one is the #3365 review fix.
+   * `'unresolved-routing'` is attention-worthy as a GATE reason and stays in
+   * `SalesDocumentAttentionReasonValues` - `'ambiguous-connection-no-primary'`
+   * is a real misconfiguration. But it is also the gate reason for
+   * `'no-connection-declares-document-kind'`, which fires exactly when NO
+   * connection declares `config.salesDocument.documentKind` - the state every
+   * install is in until an operator opts into routing, since #2156 deliberately
+   * never back-fills that key. Counting it put a red "Invoicing blocked N" on a
+   * healthy install, the same defect `'trigger-model-manual'` is already
+   * excluded for.
+   *
+   * The whole thing is BRACKETED because it composes into `NOT (...)` and into
+   * callers that may add their own `OR` group, and an unbracketed `a AND b`
+   * beside an `OR` re-associates into a different question (#2320's lesson, one
+   * table over).
+   *
+   * The second clause is OMITTED rather than emitted empty when the exclusion
+   * list is: `NOT IN ()` is a Postgres PARSE error, which would take down the
+   * orders list, the summary aggregate and the filter chip together rather than
+   * merely counting wrong.
+   */
+  private static buildSalesDocumentBlockedPredicate(): string {
+    const counted = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
+      (reason) => `'${reason}'`
+    ).join(', ')})`;
+
+    if (SalesDocumentUncountedUnresolvedReasonValues.length === 0) {
+      return `(${counted})`;
+    }
+
+    const excluded = `COALESCE(rec."salesDocumentUnresolvedReason", '') NOT IN (${SalesDocumentUncountedUnresolvedReasonValues.map(
+      (reason) => `'${reason}'`
+    ).join(', ')})`;
+
+    return `(${counted} AND ${excluded})`;
+  }
 
   /**
    * Does this order carry at least one COUNTED OMS inert state (#2352)?
@@ -1476,8 +1757,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * the same field `toSalesDocumentOrderFacts` reads. `NULLIF(btrim(...), '')`
    * makes a blank indistinguishable from absent, so both are excluded rather
    * than one of them becoming a market with an empty name.
+   *
+   * Wrapped in `upper(...)` (#3176): a source's own country code is stored
+   * verbatim in the snapshot and is never rewritten, so a lowercase `pl`
+   * alongside `PL` would otherwise group as a SECOND market here - the same
+   * scope `SalesDocumentRulesService.normaliseCountry` applies on the
+   * configured side, so the two stay comparable without touching stored data.
    */
-  private static readonly ROUTING_COUNTRY_EXPR = `NULLIF(btrim(rec."orderSnapshot"#>>'{shippingAddress,country}'), '')`;
+  private static readonly ROUTING_COUNTRY_EXPR = `NULLIF(upper(btrim(rec."orderSnapshot"#>>'{shippingAddress,country}')), '')`;
 
   private static readonly CUSTOMER_EXPR = `lower(rec."orderSnapshot"#>>'{shippingAddress,lastName}')`;
   // Guarded so a malformed (non-array) `items` value sorts as NULL rather than
@@ -1495,7 +1782,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * default (soonest ship-by first, NULLs last); the JSONB-derived keys back the
    * sortable table columns. `dir` overrides the per-key default direction when
    * the FE supplies one (a header click). Every branch adds a stable
-   * `createdAt DESC` tiebreaker so equal sort keys keep a deterministic order.
+   * `createdAt DESC` tiebreaker so equal sort keys keep a deterministic order,
+   * and a final `internalOrderId ASC` tiebreak (#3316 review) makes the order
+   * fully deterministic even when two rows also share `createdAt`.
    */
   private applySort(
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
@@ -1506,48 +1795,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : fallback;
     switch (sort) {
       case 'dispatchBy':
-        qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST').addOrderBy('rec.createdAt', 'DESC');
+        qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'total':
-        qb.orderBy(OrderRecordRepository.TOTAL_EXPR, d('DESC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.TOTAL_EXPR, d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'items':
-        qb.orderBy(OrderRecordRepository.ITEMS_EXPR, d('DESC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.ITEMS_EXPR, d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'customer':
-        qb.orderBy(OrderRecordRepository.CUSTOMER_EXPR, d('ASC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.CUSTOMER_EXPR, d('ASC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'status':
-        qb.orderBy(OrderRecordRepository.HEALTH_ORDINAL, d('ASC')).addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.HEALTH_ORDINAL, d('ASC'))
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'fulfillment':
-        qb.orderBy(OrderRecordRepository.FULFILLMENT_ORDINAL, d('ASC')).addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.FULFILLMENT_ORDINAL, d('ASC'))
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'payment':
-        qb.orderBy(OrderRecordRepository.PAYMENT_EXPR, d('ASC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.PAYMENT_EXPR, d('ASC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'createdAt':
       default:
-        // No-sort default stays createdAt DESC (unchanged for non-list callers).
-        qb.orderBy('rec.createdAt', d('DESC'));
+        // No-sort default stays createdAt DESC (unchanged for non-list callers),
+        // with the same final tiebreak so this branch is deterministic too.
+        qb.orderBy('rec.createdAt', d('DESC')).addOrderBy('rec.internalOrderId', 'ASC');
         return;
     }
   }
@@ -2000,18 +2286,24 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
-   * Set or clear the sales-document block (#2100). Narrow absolute-set on the three
-   * `salesDocumentBlock*` columns only — no read-modify-write, so it can't race a
-   * concurrent write to any other column on the same row (mirrors
+   * Set or clear the sales-document block (#2100) and the matched routing rule
+   * (#3186). Narrow absolute-set on the FOUR `salesDocumentBlock*` /
+   * `salesDocumentMatchedRuleId` columns only — no read-modify-write, so it
+   * can't race a concurrent write to any other column on the same row (mirrors
    * {@link updateItemResolutionFailure}).
    *
    * Unlike {@link markCancelled}, this is deliberately last-write-wins rather than
    * first-write-wins: the gate re-decides on every transition, so the NEWEST answer
-   * is the truthful one and an older reason must not survive it.
+   * is the truthful one and an older reason must not survive it. `matchedRule`
+   * moves the same way, in the SAME statement, but is guarded and compared
+   * INDEPENDENTLY of the three block columns — a rule can decide the kind while
+   * issuance stays blocked for an unrelated reason, so neither's null-ness may be
+   * inferred from the other's.
    */
   async updateSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void> {
     // The no-op guard lives HERE, in the WHERE clause, rather than in the caller
     // (#2100 review). A caller-side comparison had to hold a record it read before
@@ -2034,11 +2326,35 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // watching. `releasedAt` is stamped on blocked -> none and cleared whenever a
     // block starts, so the pair always describes the CURRENT episode rather than
     // an arbitrary mix of two.
+    //
+    // `preserve` (#3186 review) drops the rule column out of BOTH the SET list
+    // and the no-op guard rather than writing back a value read a moment ago:
+    // the manual-issue clear path has no opinion on which rule chose the kind,
+    // and a read-then-write there would reintroduce exactly the race this
+    // statement's caller-free guard exists to avoid. Only `$n` placeholders are
+    // composed below — never a value — so the statement stays fully bound.
+    const params: Array<string | null> = [
+      block?.reason ?? null,
+      block?.unresolvedReason ?? null,
+      block?.detail ?? null,
+    ];
+    let matchedRuleAssignment = '';
+    let matchedRuleGuard = '';
+    if (matchedRule.action === 'set') {
+      params.push(matchedRule.matchedRuleId);
+      const placeholder = `$${params.length}`;
+      matchedRuleAssignment = `"salesDocumentMatchedRuleId" = ${placeholder},`;
+      matchedRuleGuard = `OR "salesDocumentMatchedRuleId" IS DISTINCT FROM ${placeholder}`;
+    }
+    params.push(internalOrderId);
+    const orderIdPlaceholder = `$${params.length}`;
+
     await this.repository.query(
       `UPDATE "order_records"
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
                 ELSE "salesDocumentBlockedAt"
@@ -2049,16 +2365,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
                 ELSE "salesDocumentBlockReleasedAt"
               END,
               "updatedAt" = now()
-        WHERE "internalOrderId" = $4
+        WHERE "internalOrderId" = ${orderIdPlaceholder}
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
-            OR "salesDocumentBlockDetail" IS DISTINCT FROM $3)`,
-      [
-        block?.reason ?? null,
-        block?.unresolvedReason ?? null,
-        block?.detail ?? null,
-        internalOrderId,
-      ]
+            OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
+            ${matchedRuleGuard})`,
+      params
     );
   }
 
@@ -2088,11 +2400,74 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       `UPDATE "order_records"
           SET "fulfillmentBlockReason" = $1,
               "fulfillmentBlockDetail" = $2,
+              "fulfillmentBlockedAt" = CASE
+                WHEN $1::text IS NULL THEN NULL
+                WHEN "fulfillmentBlockReason" IS NULL THEN now()
+                ELSE "fulfillmentBlockedAt"
+              END,
               "updatedAt" = now()
         WHERE "internalOrderId" = $3
           AND ("fulfillmentBlockReason" IS DISTINCT FROM $1
             OR "fulfillmentBlockDetail" IS DISTINCT FROM $2)`,
       [block?.reason ?? null, block?.detail ?? null, internalOrderId]
+    );
+  }
+
+  /**
+   * #3485 — keyset page for `fulfillment.work.rerouteSweep`. Served by the
+   * primary key at v1 volumes; see the port for why it is keyset and why it is
+   * keyed on `internalOrderId` rather than `updatedAt`.
+   */
+  async listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<HeldOrderRef[]> {
+    if (reasons.length === 0 || page.limit <= 0) return [];
+
+    const query = this.repository
+      .createQueryBuilder('rec')
+      .select('rec.internalOrderId', 'internalOrderId')
+      .addSelect('rec.fulfillmentBlockedAt', 'fulfillmentBlockedAt')
+      .where('rec.fulfillmentBlockReason IN (:...reasons)', { reasons: [...reasons] })
+      .orderBy('rec.internalOrderId', 'ASC')
+      .limit(page.limit);
+
+    if (page.afterOrderId !== null) {
+      query.andWhere('rec.internalOrderId > :after', { after: page.afterOrderId });
+    }
+
+    const rows = await query.getRawMany<{
+      internalOrderId: string;
+      fulfillmentBlockedAt: Date | string | null;
+    }>();
+    return rows.map((row) => ({
+      orderId: row.internalOrderId,
+      blockedAt: row.fulfillmentBlockedAt === null ? null : new Date(row.fulfillmentBlockedAt),
+    }));
+  }
+
+  /**
+   * #3455 — the sole writer of `fulfillmentRoutingSkipReason`, level-triggered by
+   * the ingestion intercept: it stores the answer INCLUDING `null`, which is what
+   * clears a stale reason once the order is routed or the OMS is switched off.
+   *
+   * The same `IS DISTINCT FROM` guard as {@link updateFulfillmentBlock}, for the
+   * same reason: the overwhelmingly common `null -> null` path (every ingestion
+   * on an install with the OMS off) must not bump `updatedAt`, a live filter axis.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  async updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "fulfillmentRoutingSkipReason" = $1,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $2
+          AND "fulfillmentRoutingSkipReason" IS DISTINCT FROM $1`,
+      [reason, internalOrderId]
     );
   }
 
@@ -2503,6 +2878,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // columns (#2396 - sole writer `updateFulfillmentBlock`; `persistOrder` runs
     // BEFORE the intercept on every ingestion, so a round-trip would null the
     // reason the previous transition wrote and then re-add none),
+    // `fulfillmentRoutingSkipReason` (#3455 - sole writer
+    // `updateFulfillmentRoutingSkipReason`, same reason as `fulfillmentBlock*`),
     // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
@@ -2603,6 +2980,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // Serialized explicitly rather than relying on the driver's object
     // handling, so the jsonb column receives a document in every case.
     add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), { cast: '::jsonb' });
+    // #3507 G03-1 — derived from the snapshot written one line up, so it
+    // belongs to the SHARED half: both paths rewrite the snapshot, so both
+    // must rewrite the text, or `ON CONFLICT` keeps the previous buyer's
+    // corpus (and a first INSERT keeps the column default `''`, leaving the
+    // order unsearchable). `toOrm` stamping the entity is not enough on its
+    // own — this statement enumerates its columns, the `buyerTaxId` trap below.
+    add('searchText', entity.searchText ?? '');
     add('recordStatus', entity.recordStatus);
     add('mappingFailureReason', entity.mappingFailureReason);
     add('dispatchByAt', entity.dispatchByAt);
@@ -2631,6 +3015,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // `persistIncomingSnapshot` has no resolved shipping address to hash, and
       // writing it there would NULL a hash a previous ready-path write settled.
       add('shippingAddressHash', entity.shippingAddressHash ?? null);
+      // #3294, added here for the reason `buyerTaxId` and `shippingAddressHash`
+      // are: this statement enumerates its own columns, so a column the caller
+      // stamps on the entity but never adds here is simply not written.
+      // Ready-path only, so an `awaiting_mapping` re-ingestion cannot null a
+      // value a previous ready-path write settled.
+      add('paymentMethod', entity.paymentMethod ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -2733,6 +3123,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `awaiting_mapping` re-ingestion reaching `toOrm` would write `null` over
     // a hash a previous ready-path ingestion had settled.
     entity.shippingAddressHash = orderRecord.shippingAddressHash;
+    // #3294 - stamped here, NOT in the shared `toOrm`, for the same
+    // single-writer reason: `persistOrder` also reaches the shared path on an
+    // `awaiting_mapping` re-ingestion, which would write `null` over a value a
+    // previous ready-path ingestion had settled.
+    entity.paymentMethod = orderRecord.paymentMethod;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -2938,7 +3333,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       readAuthorityAttentionEntries(entity.omsAttention),
       entity.buyerTaxId ?? null,
       entity.shippingAddressHash ?? null,
-      (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null
+      (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null,
+      entity.salesDocumentMatchedRuleId ?? null,
+      // #3455 - coerced, never cast: an unrecognised persisted value reads as
+      // "no recorded reason" rather than reaching the UI as an unknown literal.
+      isFulfillmentRoutingSkipReason(entity.fulfillmentRoutingSkipReason)
+        ? entity.fulfillmentRoutingSkipReason
+        : null,
+      // #3485 - coerced like the skip reason: a reason this build does not
+      // recognise (written by a newer release, then rolled back) reads as no
+      // block at all, never as an unknown literal.
+      isFulfillmentBlockReason(entity.fulfillmentBlockReason)
+        ? { reason: entity.fulfillmentBlockReason, detail: entity.fulfillmentBlockDetail ?? null }
+        : null,
+      // #3294 - coerced, never cast: a value this build does not recognise
+      // (written by a newer release, then rolled back) reads as "not reported"
+      // rather than reaching a consumer as an unmapped literal.
+      isPaymentMethod(entity.paymentMethod) ? entity.paymentMethod : null
     );
   }
 
@@ -2975,12 +3386,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   reappear as not-shipped in the ship-by SLA buckets and list filter.
    * - `cancelledAt` (#1984) - sole writer `markCancelled` (COALESCE-based,
    *   atomic).
-   * - The three `salesDocument*` columns (#2100) - sole writer
+   * - The FOUR `salesDocument*` columns (#2100 / #3186) - sole writer
    *   `updateSalesDocumentBlock`, with a reason of their own on top of the
    *   shared one: `persistOrder` runs BEFORE the auto-issue gate on every
    *   ingestion, so round-tripping them here would null the columns and then
    *   immediately re-set them - a visible flicker for any concurrent read, and
-   *   a stomp against a reason a peer transition just wrote.
+   *   a stomp against a reason a peer transition just wrote. The fourth,
+   *   `salesDocumentMatchedRuleId` (#3186), moves in the SAME statement as the
+   *   other three for the identical reason, even though it can be non-null
+   *   while the block reason is null (a rule decided the kind; nothing is
+   *   currently blocking issuance).
    * - `omsAttention` (#2352) - sole writer `updateOmsAttention`. It carries the
    *   sharpest version of the same hazard: the column is an ARRAY shared by
    *   three unrelated producers, and its writer's entire contract is that it
@@ -3046,6 +3461,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
+    // #3527 — recomputed on EVERY write from the snapshot this same call maps,
+    // never round-tripped from a prior value: there is no separate writer to
+    // forget, because the snapshot it derives from is itself rewritten whole
+    // on every ingestion. See `deriveOrderSearchText`'s own docblock.
+    //
+    // #3507 G03-14 — the PII mode is read HERE, at the call site, so the
+    // domain function stays pure. `getEnvBoolean('OL_STORE_PII', true)` is the
+    // same flag-and-default `getPiiConfig().storePii` resolves, but without
+    // `getPiiConfig()`'s throw on an unset `OL_PII_HASH_SALT` — that throw is
+    // unrelated to this flag and would fail every order write on an install
+    // that never configured a salt (the `routing-ship-to.types.ts` /
+    // `OrderIngestionService` precedent).
+    entity.searchText = deriveOrderSearchText(orderRecord.orderSnapshot, {
+      storePii: getEnvBoolean('OL_STORE_PII', true),
+    });
     // The five analytics scalars (#1985/#2832) are deliberately NOT mapped here -
     // see the class comment above and `upsertWithLineItems`, their sole writer.
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,

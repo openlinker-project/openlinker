@@ -67,6 +67,12 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
     if (input.deletionAuditBudget !== undefined) {
       payload.deletionAuditBudget = input.deletionAuditBudget;
     }
+    if (input.syncJobRetentionDays !== undefined) {
+      payload.syncJobRetentionDays = input.syncJobRetentionDays;
+    }
+    if (input.syncJobDeadRetentionDays !== undefined) {
+      payload.syncJobDeadRetentionDays = input.syncJobDeadRetentionDays;
+    }
     if (input.deletionAuditCadence !== undefined) {
       payload.deletionAuditCadence = input.deletionAuditCadence;
     }
@@ -92,6 +98,8 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       entity.inventorySweepBudget,
       entity.sweepPageSize,
       entity.deletionAuditBudget,
+      entity.syncJobRetentionDays,
+      entity.syncJobDeadRetentionDays,
       entity.deletionAuditCadence,
       entity.updatedAt,
       entity.updatedBy

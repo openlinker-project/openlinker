@@ -91,6 +91,13 @@ const SKIP_DIRS = new Set([
 const READ_CONCURRENCY = 32;
 
 /**
+ * A floor on how many text files a run must have found (#2792). This repo
+ * carries thousands of matching files; a low double-digit floor is enough to
+ * catch a broken walk while never coming close to a legitimate file count.
+ */
+const MIN_TEXT_FILES = 100;
+
+/**
  * Byte offsets of every `0x00` in a buffer. Pure - the whole detection lives
  * here so `--self-check` can exercise it without touching the filesystem.
  */
@@ -179,6 +186,20 @@ async function main() {
       );
     }
     console.error('');
+    process.exit(1);
+  }
+
+  // A scan that found almost nothing is a broken walk, not a clean repo
+  // (#2792) — this repo has thousands of text files, so a floor well below
+  // that still catches ROOT resolving somewhere wrong or SKIP_DIRS/
+  // TEXT_EXTENSIONS drifting into a scan of almost nothing.
+  if (files.length < MIN_TEXT_FILES) {
+    console.error(
+      `✗ check-nul-bytes: only ${files.length} text file(s) were scanned under ${ROOT} (expected ` +
+        `at least ${MIN_TEXT_FILES}).\n\n  The walk found almost nothing, so a clean result means ` +
+        `the scan is broken rather than\n  the tree. Check that ${ROOT} is the repository root and ` +
+        `that TEXT_EXTENSIONS/SKIP_DIRS have not drifted.`
+    );
     process.exit(1);
   }
 

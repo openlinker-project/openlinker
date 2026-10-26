@@ -64,14 +64,32 @@ export const ParcelVerificationRefusalValues = [
   /**
    * The work is not one this bench may pack — story D2's shared rule said so.
    *
-   * The one member DECLARED here and produced nowhere in this context: the rule
-   * that answers it is `deriveBenchWorkState`, which lives in `apps/api/src/bench`
-   * because it reads a bench's own executor scope, and `BenchParcelService` is
-   * its only writer. Every other member below is produced by the core
-   * verification service. Stated because the asymmetry otherwise reads as a
-   * value nothing emits (#2905 review).
+   * The rule that answers it is `deriveBenchWorkState`, which lives in
+   * `apps/api/src/bench` because it reads a bench's own executor scope, and
+   * `BenchParcelService` is its only writer. It is one of TWO members
+   * declared here and produced nowhere in this context — every other member
+   * below is produced by the core verification service. Stated because the
+   * asymmetry otherwise reads as a value nothing emits (#2905 review).
    */
   'not-packable',
+  /**
+   * Locked to a packer other than the one asking (ADR-074's
+   * `selfServeEligible: false`).
+   *
+   * The second member DECLARED here and produced nowhere in this context —
+   * the rule lives in `BenchParcelService`, because it depends on the
+   * CALLER's own identity (`FulfillmentWorkView.assignedToUserId` versus the
+   * actor), which the core verification service has no actor to compare
+   * against. A distinct value rather than reusing `not-packable`: that one is
+   * a fact about the PARCEL (its status, its holds) and is viewer-independent
+   * — this one is a fact about the ACTOR, and the parcel is perfectly
+   * packable, by someone else. Reusing `not-packable` would tell an excluded
+   * packer the parcel cannot be packed when the remedy is "ask your
+   * supervisor to reassign it" — a different action entirely — and leave
+   * #3341's rendering with no way to distinguish the two (#2341's rule: two
+   * states with different remedies need distinguishable codes).
+   */
+  'assigned-to-another-packer',
   /** The box is already closed. Reopen it first (E6). */
   'parcel-closed',
   /** No such line on this work. */
@@ -95,9 +113,85 @@ export const ParcelReopenRefusalValues = [
   'shipped',
   /** Nothing to reopen — the parcel is not closed. */
   'not-closed',
+  /**
+   * The work is not one this bench may pack — the same ADR-074 assignment
+   * rule `verifyUnit` and `voidLastVerification` read. DECLARED here and
+   * produced nowhere in this context, for the same reason
+   * `ParcelVerificationRefusalValues` states it: the rule answers from
+   * `isClaimableByViewer`, which reads a bench's own scope and belongs to
+   * `apps/api/src/bench`. A packer excluded by a locked assignment may not
+   * reopen another packer's parcel any more than they may scan or undo one on
+   * it (#3435 review).
+   */
+  'not-packable',
 ] as const;
 
 export type ParcelReopenRefusal = (typeof ParcelReopenRefusalValues)[number];
+
+/**
+ * Why an undo-last-scan was refused (#3405, mockup-parity epic #3401).
+ *
+ * A DIFFERENT, lighter-weight correction than `reopenParcel`: undo targets the
+ * single most-recent ACTIVE verification on an OPEN parcel — a misclick caught
+ * within the same gesture, offered as an inline "Undo" beside the just-scanned
+ * line rather than the full close-then-reopen ceremony. It never touches a
+ * closed box; `reopenParcel` stays the only path there, and the two refusal
+ * unions are deliberately kept separate rather than sharing one, because
+ * `'shipped'` cannot apply to an open parcel and `'not-closed'` describes the
+ * wrong direction entirely.
+ */
+export const ParcelUndoRefusalValues = [
+  /**
+   * The box already shut. Undo is scoped to an open parcel on purpose —
+   * silently reopening one as a side effect of "undo" would let a packer
+   * un-close a box without ever seeing the reopen confirmation E6 exists to
+   * force. Reopen it first.
+   */
+  'parcel-closed',
+  /** Nothing active to undo — no verification has been recorded yet. */
+  'nothing-to-undo',
+  /**
+   * The work is not one this bench may pack — the same ADR-074 assignment
+   * rule `verifyUnit` reads. DECLARED here and produced nowhere in this
+   * context, for the same reason `ParcelVerificationRefusalValues` states it:
+   * the rule answers from `isClaimableByViewer`, which reads a bench's own
+   * scope and belongs to `apps/api/src/bench`, not to this core service. A
+   * packer excluded by a locked assignment must be refused before undoing
+   * another packer's recorded scan, exactly as before recording their own
+   * (#3435 review).
+   */
+  'not-packable',
+] as const;
+
+export type ParcelUndoRefusal = (typeof ParcelUndoRefusalValues)[number];
+
+/**
+ * Undo the single most recent scan on this parcel (#3405).
+ *
+ * Scoped to the WORK, not a line: the packer is undoing the physical action
+ * they just took, wherever it landed, not correcting one specific line's
+ * count. `actorUserId` is who is undoing it — carried into the void row's
+ * `voidedByUserId` exactly as a reopen's actor is.
+ */
+export interface UndoLastVerificationInput {
+  readonly workId: string;
+  readonly actorUserId: string | null;
+}
+
+/** What `voidLastVerification` answers. */
+export type UndoLastVerificationResult =
+  | {
+      /** The most recent active unit was voided. */
+      readonly outcome: 'voided';
+      /** Which line's count just went down, so the bench can highlight it. */
+      readonly workLineId: string;
+      readonly state: ParcelVerificationState;
+    }
+  | {
+      readonly outcome: 'refused';
+      readonly reason: ParcelUndoRefusal;
+      readonly state: ParcelVerificationState;
+    };
 
 /**
  * One unit, verified into the box.
@@ -227,6 +321,22 @@ export interface ReopenParcelInput {
   readonly expectedVersion?: number;
 }
 
+/**
+ * One row of the per-unit ledger, as recorded (#3411, mockup-parity epic
+ * #3401) — never interpreted into "verified" vs. "undone" here, which is a
+ * presentation decision the caller makes from `voidedAt`'s presence. This is
+ * the SAME ledger `countParcelVerifications` aggregates; this read is its
+ * unaggregated counterpart for a "recent activity" log.
+ */
+export interface ParcelVerificationEvent {
+  readonly workLineId: string;
+  readonly verifiedByUserId: string | null;
+  readonly verifiedAt: Date;
+  /** `null` while the unit still counts. Non-null means voided — by a reopen or by #3405's undo. */
+  readonly voidedAt: Date | null;
+  readonly voidedByUserId: string | null;
+}
+
 /** What `reopenParcel` answers. */
 export type ReopenParcelResult =
   | { readonly outcome: 'reopened'; readonly state: ParcelVerificationState }
@@ -235,3 +345,96 @@ export type ReopenParcelResult =
       readonly reason: ParcelReopenRefusal;
       readonly state: ParcelVerificationState;
     };
+
+/**
+ * Why a completion was refused (pack-bench completion).
+ *
+ * Closed, and — like `ParcelVerificationRefusalValues`' `'not-packable'` —
+ * NARROWER than what a caller may render: `apps/api/src/bench` widens this
+ * with its own `'not-claimable-by-viewer'` (the ADR-074 pre-assignment lock),
+ * produced nowhere in this context because it depends on WHO is asking, which
+ * this core service never learns. The three below are the ones a bare
+ * conditional UPDATE on this aggregate can distinguish.
+ */
+export const FulfillmentCompletionRefusalValues = [
+  /** The parcel is not packed yet — a completion cannot precede a close. */
+  'not-closed',
+  /** Somebody already declared this parcel completed. */
+  'already-completed',
+  /** The token was stale — somebody moved the work first. Re-read and retry. */
+  'version-conflict',
+] as const;
+
+export type FulfillmentCompletionRefusal = (typeof FulfillmentCompletionRefusalValues)[number];
+
+/**
+ * Declare a parcel finished and off the bench (pack-bench completion) — a distinct, explicit
+ * completion act from D18's silent auto-close on the last verification.
+ *
+ * `expectedVersion` is REQUIRED, unlike `ReopenParcelInput`'s optional one:
+ * there is no unguarded path to this write, because a completion is the
+ * terminal act on the parcel and a lost race here is a box that leaves the
+ * bench twice in the record.
+ */
+export interface CompleteInput {
+  readonly workId: string;
+  readonly completedByUserId: string;
+  readonly expectedVersion: number;
+}
+
+/**
+ * What `complete` answers.
+ *
+ * Deliberately carries no `state`: unlike `verifyUnit` / `reopenParcel`, a
+ * completion never changes the verification ledger or its counters, so there is
+ * nothing this service can add that the caller's own re-read of the work
+ * object does not already answer more cheaply.
+ */
+export type CompleteResult =
+  | { readonly outcome: 'completed' }
+  | { readonly outcome: 'refused'; readonly reason: FulfillmentCompletionRefusal };
+
+/**
+ * Why an undo was refused (#3340 follow-up).
+ *
+ * Narrower than `FulfillmentCompletionRefusal`: `'already-completed'` has no
+ * counterpart here (there is nothing "already" about undoing — the parcel is
+ * either completed or it is not), and `'not-closed'` cannot happen either — a
+ * completion implies the parcel was already closed, so undoing it never asks
+ * that question. `apps/api/src/bench` widens this with its own
+ * `'not-claimable-by-viewer'`, the `FulfillmentCompletionRefusalValues` /
+ * `BenchCompletionRefusalValues` precedent — this service never learns a
+ * viewer id.
+ */
+export const FulfillmentCompletionUndoRefusalValues = [
+  /** The parcel was never completed, or a peer already undid it. */
+  'not-completed',
+  /** The token was stale — somebody moved the work first. Re-read and retry. */
+  'version-conflict',
+] as const;
+
+export type FulfillmentCompletionUndoRefusal =
+  (typeof FulfillmentCompletionUndoRefusalValues)[number];
+
+/**
+ * Undo a declared completion (#3340 follow-up) — the operator's own mistake,
+ * not `reopenParcel`'s territory: it must leave `parcelClosedAt` and the whole
+ * verification ledger untouched, since the box itself was correctly packed.
+ *
+ * `expectedVersion` is REQUIRED, mirroring `CompleteInput`'s own reasoning:
+ * there is no unguarded path to this write.
+ */
+export interface UndoCompletionInput {
+  readonly workId: string;
+  readonly expectedVersion: number;
+}
+
+/**
+ * What `undoCompletion` answers.
+ *
+ * Deliberately carries no `state`, the `CompleteResult` precedent: undoing a
+ * completion never changes the verification ledger or its counters either.
+ */
+export type UndoCompletionResult =
+  | { readonly outcome: 'undone' }
+  | { readonly outcome: 'refused'; readonly reason: FulfillmentCompletionUndoRefusal };

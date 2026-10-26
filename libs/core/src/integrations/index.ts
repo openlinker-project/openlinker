@@ -33,7 +33,10 @@ export { WebhookProvisioningPort } from './domain/ports/webhook-provisioning.por
 export { WebhookEventTranslatorPort } from './domain/ports/webhook-event-translator.port';
 export { InboundWebhookDecoderPort } from './domain/ports/inbound-webhook-decoder.port';
 export { EmailNormalizerPort } from './domain/ports/email-normalizer.port';
-export { ConnectionConfigShapeValidatorPort } from './domain/ports/connection-config-shape-validator.port';
+export {
+  ConnectionConfigShapeValidatorPort,
+  ConnectionConfigValidationContext,
+} from './domain/ports/connection-config-shape-validator.port';
 export { ConnectionCredentialsShapeValidatorPort } from './domain/ports/connection-credentials-shape-validator.port';
 export { ConnectionCredentialsRewriterPort } from './domain/ports/connection-credentials-rewriter.port';
 export { OAuthCompletionPort } from './domain/ports/oauth-completion.port';
@@ -57,6 +60,7 @@ export {
   VariantGroupingModelValues,
   resolveVariantGroupingModel,
   resolveRequiresCredentials,
+  resolveArchivable,
 } from './domain/types/adapter.types';
 export { ConnectionTestResult } from './domain/types/connection-test.types';
 export { EntityClaimQuery } from './application/types/entity-claim.types';

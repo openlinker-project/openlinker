@@ -8,6 +8,7 @@
  * @module libs/core/src/identifier-mapping/domain/types
  */
 import type { PricingRule } from './pricing-rule.types';
+import type { PriceSyncModeConfig } from './price-sync-mode.types';
 
 /**
  * Platform type identifier (e.g., 'prestashop', 'allegro', 'shopify')
@@ -27,8 +28,21 @@ export type PlatformType = string;
  * surface a precise "re-authentication required" affordance, and — like every
  * non-`active` status — the scheduler's `status: 'active'` filter stops
  * enqueuing jobs against it. A successful re-auth flips it back to `active`.
+ *
+ * `archived` is the soft delete (#3657): reachable only from `disabled`, and
+ * only through `ConnectionService.archive`, which also removes the stored
+ * credential. The row stays so identifier mappings, category mappings and
+ * history keep their `connectionId` namespace and name. An archived connection
+ * is excluded from `ConnectionPort.list()` unless a caller asks for
+ * `status: 'archived'` explicitly, and it can be restored to `disabled`.
  */
-export const ConnectionStatusValues = ['active', 'disabled', 'error', 'needs_reauth'] as const;
+export const ConnectionStatusValues = [
+  'active',
+  'disabled',
+  'error',
+  'needs_reauth',
+  'archived',
+] as const;
 
 /**
  * Connection status type
@@ -70,7 +84,7 @@ export interface ConnectionConfig {
      * (#2047). One sale is one invoice, so when several connections have
      * `Invoicing` enabled the auto-issue trigger honours exactly the primary and
      * issues NOTHING when the primary is ambiguous (unset, or set on more than
-     * one). Read via `parseIsPrimaryInvoicing`; a missing value is `false`, which
+     * one). Read via `readSalesDocumentRouting`; a missing value is `false`, which
      * keeps a single-connection install behaving exactly as before.
      */
     isPrimary?: boolean;
@@ -90,8 +104,40 @@ export interface ConnectionConfig {
    * catalog price (no explicit per-item price override). A missing value
    * preserves the pre-#1843 raw passthrough. Read via `readPricingRule` and
    * applied via `applyPricingRule` (`pricing-rule.types.ts`).
+   *
+   * Since #3142 (ADR-072 decision 2), the value may ALSO be the
+   * default + per-source-override shape (`{ default, sourceOverrides }`),
+   * for recurring price propagation's per-(destination, source) rules. Both
+   * shapes are read through `readPricingRuleConfig` /
+   * `readPricingRuleForSource`, which coerce a legacy flat `PricingRule` into
+   * `{ default: <that rule>, sourceOverrides: {} }` at read time — no
+   * backfill migration. `default` is BOTH optional AND nullable in the
+   * nested shape: optional so a HEADLESS `{ sourceOverrides }` container —
+   * one carrying per-source overrides but no destination-level default —
+   * round-trips (`readPricingRuleConfig` recognises the shape by `'default'
+   * in candidate || 'sourceOverrides' in candidate`, so this type must admit
+   * the same set the reader — and its validator counterpart in
+   * `ConnectionService` — actually accept, or a legitimate config value
+   * fails to type-check; PR #3158 review, BLOCKING fix), and nullable
+   * because a stored `null` means "no rule configured", the honest
+   * storage-side reflection of `PricingRuleConfig`'s own type
+   * (`pricing-rule.types.ts`) — writing a synthesized `{type: 'passthrough'}`
+   * in place of `null` would be a real behaviour change (`applyPricingRule`
+   * applies rounding for a configured `passthrough` rule but not for
+   * `null`), so this type must accept `null` or a caller cannot honestly
+   * persist "unconfigured" (#3163 review, finding 3).
    */
-  pricingRule?: PricingRule;
+  pricingRule?:
+    | PricingRule
+    | { default?: PricingRule | null; sourceOverrides?: Record<string, PricingRule> };
+  /**
+   * Per-(destination connection, feeding source connection) price-sync mode
+   * (#3142, ADR-072 decision 3) — whether a detected price change waits for
+   * operator review (`manual`, the default) or publishes immediately
+   * (`automatic`). Read via `readPriceSyncModeForSource`
+   * (`price-sync-mode.types.ts`).
+   */
+  priceSyncMode?: PriceSyncModeConfig;
   /**
    * Per-connection outbound rate limit (#1810). Applied via
    * `HostServices.http` (`HttpTransportFactoryPort.forConnection(connection)`) —
@@ -128,6 +174,43 @@ export interface ConnectionConfig {
    */
   salesDocument?: {
     documentKind?: string;
+  };
+  /**
+   * Operator-declared location for this connection's currently-unlocated
+   * stock (#3206). Neither shipped `InventoryMasterPort` adapter reports a
+   * `locationId` (PrestaShop only via the rarely-enabled Advanced Stock
+   * Management module; WooCommerce has no native multi-location at all), so
+   * ADR-058 decision (2) means every position from such a master is
+   * permanently pooled (`locationId IS NULL`) — which makes the OMS
+   * fulfilment router structurally sterile even once locations exist,
+   * because it skips every pooled row.
+   *
+   * This is NOT the sync inventing a location the master declined to give —
+   * that remains forbidden. It is the OPERATOR supplying, once and
+   * explicitly, the fact the master will never supply: "all of this
+   * connection's currently-unlocated stock physically lives here." A real
+   * adapter-reported location always wins over this value; see
+   * `readStockLocationOverride` (`@openlinker/core/inventory`'s
+   * `stock-location-override.types.ts`) for where it is consumed and why
+   * that ordering is enforced in exactly one place.
+   *
+   * An operator with genuinely multiple physical warehouses behind one
+   * connection must NOT use this — it asserts a single location for ALL of
+   * that connection's stock, which would misattribute the rest.
+   */
+  stockLocationOverride?: string;
+  /**
+   * Per-connection opt-in to buy a shipping label automatically the moment a
+   * routed `FulfillmentWork` is accepted by this connection (#3340/#2729) —
+   * the missing half of the invoicing `triggerModel` precedent above. Off by
+   * default: this spends the operator's money per parcel, so an absent or
+   * malformed value stays disabled rather than defaulting on. Read via
+   * `readAutoDispatchConfig` (`auto-dispatch.types.ts`).
+   */
+  autoDispatch?: {
+    enabled?: boolean;
+    parcelTemplate?: string;
+    defaultWeightGrams?: number;
   };
   [key: string]: unknown;
 }
@@ -183,6 +266,13 @@ export interface ConnectionUpdate {
    */
   adapterKey?: string;
   enabledCapabilities?: string[];
+  /**
+   * Written only by `ConnectionService` (archive clears it to `''`, credential
+   * re-entry after a restore sets a fresh `db:` ref). Deliberately absent from
+   * the HTTP update DTO: the ref points at an encrypted row and must never be
+   * chosen by a caller.
+   */
+  credentialsRef?: string;
 }
 
 /**
@@ -192,8 +282,26 @@ export interface ConnectionUpdate {
  */
 export interface ConnectionFilters {
   platformType?: PlatformType;
+  /**
+   * Exact match. When absent, archived connections are EXCLUDED (#3657) - every
+   * other status is returned. `status: 'archived'` is the only way to list them.
+   */
   status?: ConnectionStatus;
 }
 
+/**
+ * Why a connection cannot be archived while something still points at it
+ * (#3657 review). One value today; the union leaves room for the next
+ * referrer that gains a refusal without changing the 409 body's shape.
+ *
+ * - `master-catalog-referenced` — another non-archived connection names it as
+ *   `config.masterCatalogConnectionId`.
+ */
+export const ConnectionInUseReasonValues = ['master-catalog-referenced'] as const;
+export type ConnectionInUseReason = (typeof ConnectionInUseReasonValues)[number];
 
-
+/** A connection that still references the one being archived. */
+export interface ConnectionReferrer {
+  id: string;
+  name: string;
+}

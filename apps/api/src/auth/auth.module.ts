@@ -2,8 +2,9 @@
  * Authentication & Authorization Module
  *
  * Provides JWT-based authentication and role-based authorization for the
- * OpenLinker API. Registers JwtAuthGuard, RolesGuard, and the demo-only
- * AnalyticsConsentGuard (#1938) as global APP_GUARDs
+ * OpenLinker API. Registers JwtAuthGuard, RolesGuard, the demo-only
+ * AnalyticsConsentGuard (#1938) and PasswordChangeRequiredGuard (#3456) as
+ * global APP_GUARDs
  * so all routes are protected by default. Use @Public() to opt out of auth
  * and @Roles() to restrict by role.
  *
@@ -28,6 +29,7 @@ import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
 import { AuthController } from './auth.controller';
 import { BootstrapAdminService } from './bootstrap-admin.service';
 import { AnalyticsConsentGuard } from './guards/analytics-consent.guard';
+import { PasswordChangeRequiredGuard } from './guards/password-change-required.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PasswordResetService } from './password-reset.service';
@@ -95,6 +97,8 @@ import { UsersApiModule } from '../users/users.module';
     // Demo-only consent gate (#1938) — runs last, so `req.user` is resolved
     // and role checks have already had their say.
     { provide: APP_GUARD, useClass: AnalyticsConsentGuard },
+    // Admin-issued one-time password (#3456) — every role, every deployment.
+    { provide: APP_GUARD, useClass: PasswordChangeRequiredGuard },
   ],
   // MAILER_TOKEN is exported so sibling modules (#1626 forgot-password
   // delivery) can inject MailerPort without duplicating the provider

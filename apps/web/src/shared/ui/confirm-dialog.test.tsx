@@ -141,4 +141,20 @@ describe('ConfirmDialog', () => {
 
     expect(screen.getByRole('button', { name: 'Confirm' })).toHaveFocus();
   });
+
+  it('focuses the Cancel button instead when initialFocus="cancel"', () => {
+    render(
+      <ConfirmDialog
+        open
+        initialFocus="cancel"
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+        title="Turn on a deployment-wide setting?"
+        description="This affects every operator and every date range."
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Confirm' })).not.toHaveFocus();
+  });
 });

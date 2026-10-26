@@ -12,6 +12,7 @@ import {
 import { OrderDetailPage } from './order-detail-page';
 import type { OrderRecord } from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
+import type { AuthorityAnswerRow, AuthorityStatus } from '../../features/fulfillment-authority';
 
 const sampleOrder: OrderRecord = {
   internalOrderId: 'ol_order_abc123',
@@ -731,5 +732,149 @@ describe('OrderDetailPage — the returns panel (#2640)', () => {
 
     expect(await screen.findByText('Returns could not be loaded')).toBeInTheDocument();
     expect(screen.queryByText('No returns on this order')).not.toBeInTheDocument();
+  });
+});
+
+describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => {
+  afterEach(cleanup);
+
+  it('renders the id verbatim on the "order-buyer-tax-id" hook when present', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue({ ...sampleOrder, buyerTaxId: '5213796333' }) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    const el = screen.getByTestId('order-buyer-tax-id');
+    expect(el).toHaveTextContent('5213796333');
+    expect(screen.queryByTestId('order-buyer-tax-id-none')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-buyer-tax-id-unknown')).not.toBeInTheDocument();
+  });
+
+  it('renders a distinct pill on "order-buyer-tax-id-none" when the source asserted the buyer has none', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue({ ...sampleOrder, buyerTaxId: null }) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None — asserted');
+    expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
+  });
+
+  it('renders muted "not asserted" copy on "order-buyer-tax-id-unknown" when the field is absent from the payload', async () => {
+    // `sampleOrder` carries no `buyerTaxId` key at all — the wire shape for
+    // "the source asserted nothing", and also what OL_STORE_PII=false reads.
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByTestId('order-buyer-tax-id-unknown')).toHaveTextContent(
+      'Not asserted by the source',
+    );
+    expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-buyer-tax-id-none')).not.toBeInTheDocument();
+  });
+
+  // #3505 — the fulfilment-tasks section is OMS chrome: with routing off an
+  // order with no tasks gets no section at all.
+  describe('fulfilment tasks section and routing state', () => {
+    afterEach(cleanup);
+
+    function authorityStatus(sourcingState: 'default' | 'resolved'): AuthorityStatus {
+      return {
+        rows: [
+          {
+            question: 'sourcing',
+            state: sourcingState,
+            answer: { kind: 'nobody-to-route' } as AuthorityAnswerRow['answer'],
+            why: { kind: 'default', code: 'a2-single-origin-nothing-to-choose' },
+            source: sourcingState === 'default' ? 'default' : 'operator-config',
+            inactiveClaimantConnectionIds: [],
+          },
+        ],
+        attention: { counted: [], routine: [], affectedOrderCount: 0 },
+        presets: [],
+        applied: null,
+      };
+    }
+
+    function renderWithRouting(
+      sourcingState: 'default' | 'resolved',
+      listByOrder: ReturnType<typeof vi.fn>,
+    ): void {
+      const api = createMockApiClient({
+        orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+        fulfillmentAuthority: {
+          getStatus: vi.fn().mockResolvedValue(authorityStatus(sourcingState)),
+        } as never,
+        fulfillment: { listByOrder } as never,
+      });
+      renderDetail(api);
+    }
+
+    it('should render no fulfilment tasks section when routing is off and the order has no tasks', async () => {
+      const listByOrder = vi
+        .fn()
+        .mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('default', listByOrder);
+
+      await screen.findByText('ol_order_abc123');
+      await waitFor(() => {
+        expect(listByOrder).toHaveBeenCalled();
+      });
+      expect(screen.queryAllByRole('heading', { name: 'Fulfilment tasks' })).toHaveLength(0);
+    });
+
+    it('should render the empty fulfilment tasks section when routing is on and the order has no tasks', async () => {
+      const listByOrder = vi
+        .fn()
+        .mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('resolved', listByOrder);
+
+      // Exactly one: the panel and `OrderReturnsPanel` once shared a React key,
+      // which duplicated this section as soon as it could render nothing.
+      expect(await screen.findByRole('heading', { name: 'Fulfilment tasks' })).toBeInTheDocument();
+      expect(await screen.findByText(/No fulfilment tasks/)).toBeInTheDocument();
+    });
+  });
+});
+
+describe('OrderDetailPage - packing affordance for a destination that packs itself (#2118)', () => {
+  afterEach(cleanup);
+
+  it('shows the Mark packed control when no destination declares it packs for itself', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(await screen.findByText('Packing')).toBeInTheDocument();
+  });
+
+  it('hides the Mark packed control when the order went to a destination that packs itself', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: {
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            { ...sampleConnection, config: { fulfilmentOwnedByDestination: true } },
+          ]),
+      },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    await waitFor(() => expect(screen.queryByText('Packing')).not.toBeInTheDocument());
   });
 });

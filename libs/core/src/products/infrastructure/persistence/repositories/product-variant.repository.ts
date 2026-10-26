@@ -23,6 +23,7 @@ import type {
   ProductVariantListFilters,
   ProductPagination,
   PaginatedProductVariants,
+  VariantPhysicalDimensionsFill,
 } from '../../../domain/types/product.types';
 import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
 import { readTaxRateUnknownReason } from '../../../domain/types/tax-rate.types';
@@ -287,6 +288,19 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
    * `id NOT IN ()` is invalid SQL. Already-stale rows are skipped so `staleAt`
    * keeps the first-marked timestamp.
    */
+  async clearPriceBasisPending(variantIds: readonly string[]): Promise<void> {
+    if (variantIds.length === 0) {
+      return;
+    }
+    await this.repository
+      .createQueryBuilder()
+      .update(ProductVariantOrmEntity)
+      .set({ priceBasisPending: false })
+      .where('id IN (:...ids)', { ids: [...variantIds] })
+      .andWhere('priceBasisPending = true')
+      .execute();
+  }
+
   async markStaleExceptVariants(
     productId: string,
     keepVariantIds: readonly string[]
@@ -370,12 +384,18 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       price: entity.price !== null ? Number(entity.price) : undefined,
       isStale: entity.isStale,
       staleAt: entity.staleAt,
+      priceBasisPending: entity.priceBasisPending,
       // #2255 — read surface for the variant table's rate column. An absent
       // override is rendered as "inherited from the product", never as a gap.
       taxRate: entity.taxRate,
       taxRateCountry: entity.taxRateCountry,
       taxRateReadAt: entity.taxRateReadAt,
       taxRateUnknownReason: readTaxRateUnknownReason(entity.taxRateUnknownReason),
+      // #3403 — operator-authored, read-only at this layer (see toOrmEntity).
+      weightGrams: entity.weightGrams,
+      lengthMm: entity.lengthMm,
+      widthMm: entity.widthMm,
+      heightMm: entity.heightMm,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -398,6 +418,8 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     // intend to mark stale use markStaleExceptVariants, not upsert.
     entity.isStale = variant.isStale ?? false;
     entity.staleAt = variant.staleAt ?? null;
+    // `priceBasisPending` (ADR-077) is deliberately absent: it is cleared only
+    // by `clearPriceBasisPending`, once the corrected price was reported.
     // Adapters may omit timestamps on first insert; TypeORM's @CreateDateColumn
     // and @UpdateDateColumn populate them in that case.
     if (variant.createdAt) entity.createdAt = variant.createdAt;
@@ -406,7 +428,92 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     // upsert carries no rate, so writing them here would blank an override
     // `recordTaxRate` had just written. Same single-writer rule as the
     // product side.
+    //
+    // The four #3403 physical-dimension columns are absent for the SAME
+    // reason: they are operator-authored, never sync-derived, and a master
+    // re-sync must not silently blank a value someone typed in.
+    // `recordPhysicalDimensions` is their dedicated writer.
     return entity;
+  }
+
+  /**
+   * Record operator-authored physical dimensions (#3403, mockup-parity epic
+   * #3401). The dedicated single writer for these four columns — the
+   * `recordTaxRate` precedent — so the master-sync upsert (`toOrmEntity`,
+   * above) can never blank a value an operator typed in. `null` clears a
+   * field back to "not recorded".
+   */
+  async recordPhysicalDimensions(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<void> {
+    await this.repository.update({ id: variantId }, dims);
+  }
+
+  /**
+   * Fill-when-NULL counterpart of `recordPhysicalDimensions` (#3650). One
+   * statement for all the given variants, with a per-column COALESCE, so the
+   * "is it still empty" test and the write are atomic: a concurrent operator
+   * write between a read and this update can never be clobbered. The WHERE
+   * clause restricts the statement to rows where at least one supplied column
+   * is still NULL, which keeps a steady-state sweep from rewriting every row
+   * (and bumping `updatedAt`).
+   *
+   * Raw SQL because TypeORM's update builder has no `UPDATE ... FROM`, which is
+   * what lets one statement carry a different value set per variant. Every
+   * value travels as a bound `$n` parameter; only the fixed column names are
+   * spelled into the text.
+   */
+  async fillPhysicalDimensionsIfAbsent(
+    fills: readonly VariantPhysicalDimensionsFill[]
+  ): Promise<number> {
+    const columns = ['weightGrams', 'lengthMm', 'widthMm', 'heightMm'] as const;
+    const rows = fills.filter((fill) => columns.some((c) => typeof fill[c] === 'number'));
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    // A non-numeric field is bound as NULL, which the COALESCE and the WHERE
+    // below both read as "not supplied" - so it can never blank a column.
+    const params: (string | number | null)[] = [];
+    const tuples = rows.map((fill) => {
+      params.push(fill.variantId);
+      const slots = [`$${params.length}::text`];
+      for (const column of columns) {
+        const value = fill[column];
+        params.push(typeof value === 'number' ? value : null);
+        slots.push(`$${params.length}::int`);
+      }
+      return `(${slots.join(', ')})`;
+    });
+    const assignments = columns.map((c) => `"${c}" = COALESCE(pv."${c}", v."${c}")`).join(', ');
+    const fillable = columns
+      .map((c) => `(pv."${c}" IS NULL AND v."${c}" IS NOT NULL)`)
+      .join(' OR ');
+
+    const result = (await this.repository.query(
+      `UPDATE "product_variants" AS pv
+          SET ${assignments}, "updatedAt" = now()
+         FROM (VALUES ${tuples.join(', ')})
+           AS v("id", "weightGrams", "lengthMm", "widthMm", "heightMm")
+        WHERE pv."id" = v."id"
+          AND (${fillable})
+    RETURNING pv."id"`,
+      params
+    )) as unknown;
+
+    // node-postgres surfaces an UPDATE as `[rows, affectedCount]` through
+    // TypeORM's raw query (`InventoryRepository.markSameSourceOrphanPositionsStale`
+    // documents the same shape);
+    // normalised so a driver returning the plain row array still counts right.
+    const outer = Array.isArray(result) ? result : [];
+    const returned: unknown[] = Array.isArray(outer[0]) ? outer[0] : outer;
+    return returned.length;
   }
 
   /**

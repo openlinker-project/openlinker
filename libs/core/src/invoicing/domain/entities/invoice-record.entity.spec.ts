@@ -15,7 +15,7 @@ function makeRecord(
     'ol_invoice_1',
     'conn_1',
     'ol_order_1',
-    'subiekt',
+    'subiekt-gt',
     'invoice',
     status,
     null,

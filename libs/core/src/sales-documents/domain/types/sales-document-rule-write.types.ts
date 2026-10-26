@@ -35,3 +35,33 @@ export interface SalesDocumentThresholdInput {
   readonly versionEffectiveFrom: Date;
   readonly versionEffectiveTo: Date | null;
 }
+
+/**
+ * The draft a composer is about to save, asked about BEFORE it is written
+ * (#3190) - so a read-shaped input among write types, deliberately: it is the
+ * same draft `SalesDocumentRuleInput` carries, minus the fields the question
+ * does not depend on, and keeping the two beside each other is what stops them
+ * drifting apart.
+ *
+ * `conditions` is `unknown[]` rather than the narrowed array, because the
+ * detector reports an entry it cannot read as `unreadable-condition` - one of
+ * its three outcomes - and narrowing here would drop that entry and turn
+ * "could not decide" into a clean answer about a rule the operator did not
+ * write.
+ */
+export interface SalesDocumentRuleOverlapCheckInput {
+  readonly country: string;
+  readonly conditions: readonly unknown[];
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+  /**
+   * Set when editing, so a rule is never reported as colliding with itself.
+   *
+   * No production caller supplies it today: the composer is create-only and
+   * there is no `updateRule`. It ships ahead of that consumer on purpose -
+   * the same dialog's `onOpenRule` is the edit flow's entry point, and a
+   * self-collision on the first edit is the defect this field exists to
+   * prevent rather than one to discover later.
+   */
+  readonly excludeRuleId?: string;
+}

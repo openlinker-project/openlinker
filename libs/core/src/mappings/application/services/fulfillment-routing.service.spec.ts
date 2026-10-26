@@ -19,6 +19,7 @@ import {
 } from '../../domain/types/fulfillment-routing.types';
 import { IncompatibleProcessorException } from '../../domain/exceptions/incompatible-processor.exception';
 import { DuplicateRoutingRuleException } from '../../domain/exceptions/duplicate-routing-rule.exception';
+import { InvalidParcelProfileException } from '../../domain/exceptions/invalid-parcel-profile.exception';
 
 const SOURCE = 'conn-allegro';
 const PS = 'conn-prestashop';
@@ -33,6 +34,7 @@ function makeRule(overrides: Partial<FulfillmentRoutingRule> = {}): FulfillmentR
     overrides.processorConnectionId ?? PS,
     overrides.createdAt ?? new Date(),
     overrides.updatedAt ?? new Date(),
+    overrides.parcelProfile ?? null,
   );
 }
 
@@ -109,6 +111,7 @@ describe('FulfillmentRoutingService', () => {
         processorConnectionId: INPOST,
         source: 'rule',
         processorAvailable: true,
+        parcelProfile: null,
       });
     });
 
@@ -129,6 +132,7 @@ describe('FulfillmentRoutingService', () => {
         processorConnectionId: INPOST,
         source: 'rule',
         processorAvailable: false,
+        parcelProfile: null,
       });
     });
 
@@ -145,6 +149,7 @@ describe('FulfillmentRoutingService', () => {
         processorConnectionId: null,
         source: 'default',
         processorAvailable: true,
+        parcelProfile: null,
       });
     });
 
@@ -178,9 +183,9 @@ describe('FulfillmentRoutingService', () => {
       ]);
 
       expect(results).toEqual([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST, source: 'rule', processorAvailable: true },
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true },
+        { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST, source: 'rule', processorAvailable: true, parcelProfile: null },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
+        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
       ]);
     });
 
@@ -200,7 +205,7 @@ describe('FulfillmentRoutingService', () => {
       ]);
 
       expect(results).toEqual([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST, source: 'rule', processorAvailable: false },
+        { processorKind: 'ol_managed_carrier', processorConnectionId: INPOST, source: 'rule', processorAvailable: false, parcelProfile: null },
       ]);
       // The active set is loaded once for the whole batch, not per order.
       expect(connectionPort.list).toHaveBeenCalledTimes(1);
@@ -233,8 +238,61 @@ describe('FulfillmentRoutingService', () => {
         { sourceConnectionId: SOURCE, sourceDeliveryMethodId: null },
       ]);
 
-      expect(results).toEqual([{ processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true }]);
+      expect(results).toEqual([{ processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null }]);
       expect(repository.findBySourceConnectionId).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('parcel profile (#3651)', () => {
+    it('should carry the matched rule parcel profile on the resolution', async () => {
+      const parcelProfile = {
+        parcelTemplate: null,
+        lengthMm: 300,
+        widthMm: 200,
+        heightMm: 100,
+        defaultWeightGrams: 250,
+      };
+      repository.findRule.mockResolvedValue(
+        makeRule({ processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier, processorConnectionId: INPOST, parcelProfile }),
+      );
+      connectionPort.list.mockResolvedValue([{ id: INPOST } as Connection]);
+
+      const result = await service.resolve({ sourceConnectionId: SOURCE, sourceDeliveryMethodId: 'method-x' });
+
+      expect(result.parcelProfile).toEqual(parcelProfile);
+    });
+
+    it('should refuse a rule that sets only part of the box before writing anything', async () => {
+      declareCapabilities(PS, ['OrderProcessorManager']);
+
+      await expect(
+        service.replaceRules(SOURCE, [
+          {
+            sourceDeliveryMethodId: 'method-x',
+            processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled,
+            processorConnectionId: PS,
+            parcelProfile: { lengthMm: 300 },
+          },
+        ]),
+      ).rejects.toBeInstanceOf(InvalidParcelProfileException);
+      expect(repository.replaceForConnection).not.toHaveBeenCalled();
+    });
+
+    it('should accept a rule without a profile and a rule with a complete box', async () => {
+      declareCapabilities(PS, ['OrderProcessorManager']);
+      repository.replaceForConnection.mockResolvedValue([]);
+
+      await service.replaceRules(SOURCE, [
+        { sourceDeliveryMethodId: 'a', processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled, processorConnectionId: PS },
+        {
+          sourceDeliveryMethodId: 'b',
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OmpFulfilled,
+          processorConnectionId: PS,
+          parcelProfile: { lengthMm: 1, widthMm: 2, heightMm: 3 },
+        },
+      ]);
+
+      expect(repository.replaceForConnection).toHaveBeenCalled();
     });
   });
 

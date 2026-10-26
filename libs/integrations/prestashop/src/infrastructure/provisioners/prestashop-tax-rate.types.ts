@@ -39,10 +39,33 @@ export const PrestashopTaxRateUnknownReasonValues = [
 ] as const;
 export type PrestashopTaxRateUnknownReason = (typeof PrestashopTaxRateUnknownReasonValues)[number];
 
+/**
+ * How the resolved rate was found (ADR-077). The rate itself is the same answer
+ * the resolver always gave; this says how much it can be trusted for a SPECIFIC
+ * country.
+ *
+ * - `country`: a rule for exactly the asked country.
+ * - `catch-all`: an `id_country = 0` row. PrestaShop's own price computation
+ *   only matches exact countries, so the shop may not charge this rate there.
+ * - `only-rule`: no country was asked, or the asked country has no rule, and
+ *   the group's single remaining tax was taken. For an asked country this is a
+ *   rate from ANOTHER country (e.g. the PL rule for a US-default shop).
+ * - `no-tax-group`: the product is in PrestaShop's "No tax" group (rate 0).
+ */
+export const PrestashopTaxRuleMatchValues = [
+  'country',
+  'catch-all',
+  'only-rule',
+  'no-tax-group',
+] as const;
+export type PrestashopTaxRuleMatch = (typeof PrestashopTaxRuleMatchValues)[number];
+
 export interface PrestashopTaxRateResolved {
   readonly kind: 'resolved';
   /** Rate as a fraction, e.g. `0.23` for 23%. `0` means genuinely untaxed. */
   readonly rate: number;
+  /** See {@link PrestashopTaxRuleMatch}. */
+  readonly matchedBy: PrestashopTaxRuleMatch;
 }
 
 export interface PrestashopTaxRateUnknown {

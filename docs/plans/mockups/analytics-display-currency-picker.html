@@ -885,8 +885,28 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
 </div>
 
 <!-- ═══════ Confirm dialog — tax rate override ═══════ -->
+<!--
+  Shipped as the second `ConfirmDialog` in `analytics-settings-dialog.tsx`
+  (#2857). Recorded divergences from this mockup, per
+  `docs/frontend-architecture.md` § UX Mockups (#2993 review, IMPORTANT 2):
+    - `role="dialog"`, not `alertdialog` — every ConfirmDialog in the app
+      renders through the shared Radix `Dialog` primitive, which is a
+      `role="dialog"`; no dialog anywhere in the app uses `alertdialog`, so
+      this mockup is corrected to match the real component convention rather
+      than the shipped dialog being made to diverge from every other one.
+    - The warning callout omits the illustrative "(23%, 8%, 5%)" rate list —
+      the shipped dialog has no per-connection rate breakdown to hand.
+    - The scope line reports a live order COUNT only ("Affects N orders"),
+      never a product count — no read backing "6 products" exists on this
+      dialog's data.
+    - The description paragraph is the checkbox's OWN stated-consequence
+      sentence, reused verbatim (a `TAX_INCLUDE_CONSEQUENCE` shared between
+      the checkbox and this dialog, so the two can't drift) rather than the
+      shorter sentence below — the "you can turn it off any time; nothing is
+      permanently changed" framing lives there instead.
+-->
 <div class="dialog__overlay dialog__overlay--taxconfirm" onclick="document.body.dataset.state='native'"></div>
-<div class="dialog__content dialog__content--taxconfirm" role="alertdialog" aria-modal="true" aria-label="Confirm including tax-rate-guessed orders">
+<div class="dialog__content dialog__content--taxconfirm" role="dialog" aria-modal="true" aria-label="Confirm including tax-rate-guessed orders">
   <h2 class="dialog__title">Turn on including orders with a guessed tax rate?</h2>
   <div class="confirm-callout">
     &#9888;&nbsp; These tax rates (23%, 8%, 5% — depending on the product) come from TODAY’S catalog, not the order date. If any of them changed since, Net Sales for those orders will be less accurate.

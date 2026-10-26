@@ -108,6 +108,38 @@ export class OfferCreationRecordRepository implements OfferCreationRecordReposit
     return this.toDomain(saved);
   }
 
+  async markFailedIfPending(
+    id: string,
+    errors: OfferCreationError[]
+  ): Promise<OfferCreationRecord | null> {
+    let affected: number | undefined;
+    try {
+      // One conditional UPDATE rather than read-then-save: a concurrent attempt
+      // that settled the record between a read and a write must win.
+      const result = await this.repository
+        .createQueryBuilder()
+        .update(OfferCreationRecordOrmEntity)
+        .set({ status: OFFER_CREATION_STATUS.Failed, errors })
+        .where('id = :id', { id })
+        .andWhere('status = :pending', { pending: OFFER_CREATION_STATUS.Pending })
+        .execute();
+      affected = result.affected;
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        'code' in error &&
+        error.code === '22P02' // PostgreSQL invalid input syntax error code
+      ) {
+        return null;
+      }
+      throw error;
+    }
+    if (!affected) {
+      return null;
+    }
+    return this.findById(id);
+  }
+
   async updateExternalOfferId(id: string, externalOfferId: string): Promise<OfferCreationRecord> {
     const entity = await this.repository.findOne({ where: { id } });
     if (!entity) {

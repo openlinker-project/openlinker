@@ -75,7 +75,7 @@ export class EparagonyApiError extends Error {
     // extracted - a generic `JSON.stringify(err)` upstream must never be able
     // to leak it back out.
     responseBody: EparagonyErrorBody | string | null,
-    options?: { failureMode?: EparagonyFailureMode; reason?: string },
+    options?: { failureMode?: EparagonyFailureMode; reason?: string }
   ) {
     super(message);
     this.name = 'EparagonyApiError';
@@ -83,7 +83,7 @@ export class EparagonyApiError extends Error {
     this.failureMode = options?.failureMode ?? defaultFailureMode(statusCode, this.errorCode);
     this.reason = (options?.reason ?? defaultReason(statusCode, this.errorCode)).slice(
       0,
-      MAX_REASON_LENGTH,
+      MAX_REASON_LENGTH
     );
     Error.captureStackTrace(this, this.constructor);
   }
@@ -105,10 +105,7 @@ export class EparagonyApiError extends Error {
 /** 4xx codes that mean "may have been seen", never a clean refusal. */
 const AMBIGUOUS_CLIENT_ERROR_CODES: readonly number[] = [408, 409, 422, 425, 429];
 
-function defaultFailureMode(
-  statusCode: number,
-  errorCode: number | null,
-): EparagonyFailureMode {
+function defaultFailureMode(statusCode: number, errorCode: number | null): EparagonyFailureMode {
   const isClientError = statusCode >= 400 && statusCode < 500;
   if (!isClientError) {
     return 'in-doubt';
@@ -129,21 +126,21 @@ function defaultFailureMode(
 function defaultReason(statusCode: number, errorCode: number | null): string {
   const suffix = errorCode === null ? '' : ` (code ${errorCode})`;
   if (statusCode === 401 || statusCode === 403) {
-    return `The e-receipt provider rejected the connection's credentials or granted scopes${suffix}.`;
+    return `The provider rejected the connection's credentials or granted scopes${suffix}.`;
   }
   if (statusCode === 422) {
-    return `The e-receipt provider reports this registration key was already used with different data${suffix}.`;
+    return `The provider reports this registration key was already used with different data${suffix}.`;
   }
   if (statusCode === 409) {
-    return `The e-receipt provider reports a conflict for this request; it may have already been registered${suffix}.`;
+    return `The provider reports a conflict for this request; it may have already been registered${suffix}.`;
   }
   if (statusCode === 429) {
-    return `The e-receipt provider rate-limited the request${suffix}.`;
+    return `The provider rate-limited the request${suffix}.`;
   }
   if (statusCode >= 500) {
-    return `The e-receipt provider returned a server error${suffix}.`;
+    return `The provider returned a server error${suffix}.`;
   }
-  return `The e-receipt provider rejected the document${suffix}.`;
+  return `The provider rejected the document${suffix}.`;
 }
 
 /**

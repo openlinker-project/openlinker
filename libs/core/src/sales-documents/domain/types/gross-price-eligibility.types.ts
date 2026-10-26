@@ -26,12 +26,33 @@
  * keeps reading `taxTreatment` (the LINE-level signal) and ignores
  * `totalTaxTreatment` entirely.
  *
- * This is a PERMANENT limitation of a net-line-price source (PrestaShop,
- * WooCommerce — both hardcode `taxTreatment: 'exclusive'`) under the current
- * architecture, not a gap waiting for this refusal to be relaxed. It clears
- * only if the source adapter itself starts reporting gross line prices (a
- * platform-specific mapper change, out of scope for `libs/core`) — never by
- * teaching core to convert.
+ * **#3365: the adapters now report them, and this is the escape hatch this
+ * module always named.** The paragraph that stood here called the refusal a
+ * PERMANENT limitation of a net-line-price source, and said in the same breath
+ * that it "clears only if the source adapter itself starts reporting gross line
+ * prices (a platform-specific mapper change, out of scope for `libs/core`)".
+ * That is exactly what happened, and the premise underneath the word
+ * "permanent" turned out to be factually wrong for both sources:
+ *
+ * - PrestaShop stores `order_detail.unit_price_tax_incl` and returns it on the
+ *   same webservice read OpenLinker already makes; the mapper simply discarded
+ *   it. Verified live: `product_price = 1499.000000` beside
+ *   `unit_price_tax_incl = 1843.770000` on one row, the latter matching that
+ *   order's own `total_paid_tax_incl`.
+ * - WooCommerce reports `total` and `total_tax` per line; their sum is what the
+ *   buyer paid.
+ *
+ * So the rule is UNCHANGED and the guard is merely narrowed: core still never
+ * converts, and `net * (1 + rate)` appears nowhere. What it now distinguishes
+ * is "this source prices net" (not by itself a reason to refuse) from "this
+ * source prices net AND told us nothing gross" (still a refusal, and still
+ * for the original reason).
+ *
+ * Two properties keep the narrowing honest. EVERY line must carry a gross
+ * price - a document mixing real gross lines with net ones relabelled gross is
+ * the precise corruption this guard exists to prevent, just partial. And gross
+ * SHIPPING is required too when the order charges any, because a shipping line
+ * composed from the net figure mislabels it exactly as a product line would.
  *
  * WHY HERE. Both document contexts need the identical answer and the
  * identical operator-facing wording, and a fiscal receipt is not an invoice,
@@ -60,17 +81,39 @@ export interface GrossPriceEligibilityOrder {
   id: string;
   totals: {
     taxTreatment?: string;
+    /** Shipping as `taxTreatment` describes it - net on a net-priced source. */
+    shipping?: number;
+    /** Gross shipping when the source reported one (#3365). */
+    shippingGross?: number;
   };
+  /**
+   * The order's lines, needed only to ask whether every one of them carries a
+   * source-reported gross price. Deliberately the narrowest shape that answers
+   * that - no id, no quantity, no rate - so this leaf keeps depending on
+   * nothing (see the note above about `taxTreatment` being a bare `string`).
+   */
+  items?: ReadonlyArray<{ unitPriceGross?: number }>;
 }
 
 /**
- * The two document kinds this guard serves. Closed rather than a bare
- * `string` — both current call sites (`invoicing`, `fiscalization`) are the
- * whole of what this leaf's two document contexts are, so a third value
- * would be a compile-time signal that a new caller showed up, not silent
- * wording drift.
+ * What the caller was trying to do. Closed rather than a bare `string`, so a
+ * new value is a compile-time signal that a new caller showed up rather than
+ * silent wording drift.
+ *
+ * The first two are this leaf's own document contexts. The third (#3365) is a
+ * DESTINATION order mirror - an ERP's order document, which is not a fiscal
+ * document but carries the same gross-amount field and therefore breaks in the
+ * same way on a net figure. It is deliberately neutral: naming a platform here
+ * is what ADR-026 keeps out of `libs/core`. It exists so the rule lives in ONE
+ * place; before it, a destination adapter carried its own copy of the same
+ * `taxTreatment === 'exclusive'` test, which would have stayed narrow-minded
+ * while this one was widened.
  */
-export const NetPricedOrderRefusalActionValues = ['invoiced', 'fiscally registered'] as const;
+export const NetPricedOrderRefusalActionValues = [
+  'invoiced',
+  'fiscally registered',
+  'recorded in the destination system',
+] as const;
 export type NetPricedOrderRefusalAction = (typeof NetPricedOrderRefusalActionValues)[number];
 
 /**
@@ -82,10 +125,11 @@ export type NetPricedOrderRefusalAction = (typeof NetPricedOrderRefusalActionVal
  *
  * `action` names what the caller was trying to do, in a form that reads
  * naturally both as "cannot be {action}" and as "can be {action}". The
- * message deliberately does not say "today" — the constraint is permanent
- * under the current architecture (see the module docblock above) and names
- * the source platform as the thing that would have to change, not a future
- * OpenLinker release.
+ * message still does not say "today", and for the same reason as before: what
+ * it names is a fact about the SOURCE, not a missing OpenLinker feature. It no
+ * longer calls that fact permanent (see the module docblock) - since #3365 a
+ * source reporting gross figures clears it, which is what both shipped sources
+ * now do.
  */
 export function describeNetPricedOrderRefusal(
   order: GrossPriceEligibilityOrder,
@@ -94,9 +138,41 @@ export function describeNetPricedOrderRefusal(
   if (order.totals.taxTreatment !== 'exclusive') {
     return null;
   }
+
+  const items = order.items ?? [];
+  // An order with no lines cannot be rescued by a per-line gross price, so the
+  // original refusal stands. It is also not this guard's job to complain about
+  // emptiness - the document composers have their own say on that.
+  const everyLineHasGross =
+    items.length > 0 && items.every((item) => isUsableAmount(item.unitPriceGross));
+  const shippingCharged = isUsableAmount(order.totals.shipping) && order.totals.shipping > 0;
+  const shippingCovered = !shippingCharged || isUsableAmount(order.totals.shippingGross);
+
+  if (everyLineHasGross && shippingCovered) {
+    return null;
+  }
+
+  // The sentence names WHICH half is missing, because the two have different
+  // remedies: a source that reports no gross at all is a platform fact an
+  // operator cannot act on, while a gap on shipping alone points at one field.
+  const missing = !everyLineHasGross
+    ? `and its source reported no gross (tax-inclusive) price for ${
+        items.length === 0 ? 'this order' : 'every line'
+      }`
+    : `and its source reported no gross (tax-inclusive) shipping amount, although the order charges shipping`;
+
+  // The sentence keeps BOTH readings the action union is shaped for - "cannot
+  // be {action}" opening it and "can be {action}" closing it - so the value
+  // still reads naturally in either direction.
   return (
     `Order ${order.id} cannot be ${action}: its source reports net (tax-exclusive) line prices, ` +
-    `and OpenLinker never computes or infers tax to convert them to gross for a fiscal document — ` +
-    `only a source that reports gross (tax-inclusive) line prices can be ${action}.`
+    `${missing}. OpenLinker never computes or infers tax to convert a net amount to gross for a ` +
+    `fiscal document — only an order carrying a gross (tax-inclusive) figure its own source ` +
+    `reported can be ${action}.`
   );
+}
+
+/** A money figure this guard is willing to rely on: present, numeric, finite. */
+function isUsableAmount(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }

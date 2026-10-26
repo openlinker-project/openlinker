@@ -46,12 +46,20 @@ import {
   type ShopCategory,
   type ShopCategoryBrowser,
   type ShopProductManagerPort,
+  type ShopProductPriceUpdater,
   type ShopProductStatusReadResult,
   type ShopProductStatusReader,
   type ShopPublicationStatus,
+  type UpdateShopProductPriceCommand,
 } from '@openlinker/core/listings';
 
 import { WOOCOMMERCE_DESCRIPTION_FORMAT } from './woocommerce-description-format';
+import { WooCommerceTaxClassResolver } from '../order-processor/woocommerce-tax-class.resolver';
+import {
+  effectiveTaxClass,
+  isStoredPriceGross,
+  toNetPrice,
+} from '../../tax/woocommerce-price-basis';
 
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
@@ -60,6 +68,7 @@ import type {
   WooCommerceAttributeTermResponse,
   WooCommerceCategoryResponse,
   WooCommercePriceCommerceFields,
+  WooCommercePriceOnlyUpdateRequest,
   WooCommerceProductAttribute,
   WooCommerceProductPublishRequest,
   WooCommerceProductResponse,
@@ -106,7 +115,8 @@ export class WooCommerceProductPublisherAdapter
     CategoryProvisioner,
     ShopCategoryBrowser,
     ShopAttributeReader,
-    ShopProductStatusReader
+    ShopProductStatusReader,
+    ShopProductPriceUpdater
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
 
@@ -132,16 +142,155 @@ export class WooCommerceProductPublisherAdapter
   }
 
 
+  /** Store tax settings + class x country rates, read once per instance (ADR-077). */
+  private readonly taxClassResolver: WooCommerceTaxClassResolver;
+
   constructor(
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly connection: Connection,
-  ) {}
+  ) {
+    this.taxClassResolver = new WooCommerceTaxClassResolver(httpClient);
+  }
 
   async publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
-    if (cmd.variantGroup) {
-      return this.publishGroupedVariant(cmd, cmd.variantGroup);
+    // `cmd.price` is gross (ADR-077); a store that enters prices without tax
+    // gets the net figure its own tax computation turns back into that gross.
+    const shopCmd = await this.toStorePriceBasis(cmd);
+    if (shopCmd.variantGroup) {
+      return this.publishGroupedVariant(shopCmd, shopCmd.variantGroup);
     }
-    return this.publishSimpleProduct(cmd);
+    return this.publishSimpleProduct(shopCmd);
+  }
+
+  /**
+   * The command with its prices in the store's own basis (ADR-077).
+   *
+   * Unchanged when the store does not tax, enters prices with tax, or the
+   * product's tax status means it is not taxed. Otherwise the regular and sale
+   * prices become net at the store's rate for the product's tax class in the
+   * store's base country. The class and status are the command's own when it
+   * sets them (they are written onto the product), else the existing product's
+   * on an upsert, else WooCommerce's defaults (standard, taxable).
+   *
+   * @throws ProductPublishRejectedException (status 0, terminal) when the store
+   *   has no single rate for that class - writing the gross figure there would
+   *   charge the buyer tax twice.
+   */
+  private async toStorePriceBasis(cmd: PublishProductCommand): Promise<PublishProductCommand> {
+    const basis = await this.taxClassResolver.readPriceBasis();
+    if (isStoredPriceGross(basis, undefined)) {
+      return cmd;
+    }
+    const platformTaxClass =
+      typeof cmd.platformParams?.['tax_class'] === 'string'
+        ? cmd.platformParams['tax_class']
+        : undefined;
+    let taxClass: string | undefined = cmd.commerce?.taxClass ?? platformTaxClass;
+    let taxStatus: string | undefined = cmd.commerce?.taxStatus;
+    const isUpsert = cmd.externalProductId != null && cmd.externalProductId !== '';
+    if (isUpsert && (taxClass === undefined || taxStatus === undefined)) {
+      const parentId = cmd.variantGroup?.externalParentProductId ?? undefined;
+      let current: { taxClass: string | undefined; taxStatus: string | undefined };
+      try {
+        current = await this.readTargetTaxFields(String(cmd.externalProductId), parentId);
+      } catch (err) {
+        // Same classification as the write itself: a vanished target is a
+        // `TargetNotFound`, a transient error stays retryable.
+        throw this.toPublishError(err, true, cmd.externalProductId);
+      }
+      taxClass ??= current.taxClass;
+      taxStatus ??= current.taxStatus;
+    } else if (
+      !isUpsert &&
+      (taxClass === undefined || taxStatus === undefined) &&
+      cmd.variantGroup?.externalParentProductId
+    ) {
+      // A NEW variation under an existing parent: WooCommerce defaults its
+      // class to 'parent', so it is taxed at the parent's class, not standard.
+      const parentId = String(cmd.variantGroup.externalParentProductId);
+      let parent: { taxClass: string | undefined; taxStatus: string | undefined };
+      try {
+        parent = await this.readTargetTaxFields(parentId, undefined);
+      } catch (err) {
+        throw this.toPublishError(err, true, parentId);
+      }
+      taxClass ??= effectiveTaxClass(undefined, parent.taxClass);
+      taxStatus ??= parent.taxStatus;
+    }
+    if (isStoredPriceGross(basis, taxStatus)) {
+      return cmd;
+    }
+    const rate = await this.storeRateFor(effectiveTaxClass(taxClass), basis.storeCountry);
+    const toNet = (gross: number): number => Number(toNetPrice(gross, rate));
+    return {
+      ...cmd,
+      price: { ...cmd.price, amount: toNet(cmd.price.amount) },
+      ...(cmd.commerce?.salePrice
+        ? {
+            commerce: {
+              ...cmd.commerce,
+              salePrice: { ...cmd.commerce.salePrice, amount: toNet(cmd.commerce.salePrice.amount) },
+            },
+          }
+        : {}),
+    };
+  }
+
+  /** The store's rate for a line tax class, or a terminal publish refusal. */
+  private async storeRateFor(lineTaxClass: string, storeCountry: string | null): Promise<number> {
+    const table = await this.taxClassResolver.load();
+    const rate =
+      table !== null && storeCountry !== null ? table.rateFor(lineTaxClass, storeCountry) : null;
+    if (rate === null) {
+      throw new ProductPublishRejectedException(this.connection.adapterKey ?? DEFAULT_ADAPTER_KEY, 0, [
+        {
+          code: 'TAX_RATE_UNRESOLVED',
+          message:
+            `This store enters prices without tax, and its tax class ` +
+            `'${lineTaxClass || 'standard'}' has no single rate for ` +
+            `${storeCountry ?? 'its base country (none is set)'}. OpenLinker sends the price a ` +
+            `buyer pays, so it needs that rate to write the store's net price. Set one rate for ` +
+            `the class in WooCommerce > Settings > Tax, or switch the store to prices entered ` +
+            `with tax.`,
+        },
+      ]);
+    }
+    return rate;
+  }
+
+  /**
+   * The `tax_class` / `tax_status` an existing product or variation carries,
+   * with a variation's `parent` class resolved through its parent.
+   */
+  private async readTargetTaxFields(
+    externalProductId: string,
+    externalParentProductId: string | undefined,
+  ): Promise<{ taxClass: string | undefined; taxStatus: string | undefined }> {
+    type TaxFields = { tax_class?: string; tax_status?: string };
+    const fields = { _fields: 'tax_class,tax_status' };
+    if (externalParentProductId) {
+      const variation = await this.httpClient.get<TaxFields>(
+        `${PRODUCTS_PATH}/${encodeURIComponent(externalParentProductId)}/variations/` +
+          encodeURIComponent(externalProductId),
+        fields,
+      );
+      if (variation.tax_class === undefined || variation.tax_class === 'parent') {
+        const parent = await this.httpClient.get<TaxFields>(
+          `${PRODUCTS_PATH}/${encodeURIComponent(externalParentProductId)}`,
+          fields,
+        );
+        return {
+          taxClass: effectiveTaxClass(variation.tax_class, parent.tax_class),
+          taxStatus: variation.tax_status ?? parent.tax_status,
+        };
+      }
+      return { taxClass: variation.tax_class, taxStatus: variation.tax_status };
+    }
+    const product = await this.httpClient.get<TaxFields>(
+      `${PRODUCTS_PATH}/${encodeURIComponent(externalProductId)}`,
+      fields,
+    );
+    return { taxClass: product.tax_class, taxStatus: product.tax_status };
   }
 
   /** Pre-#1836 single-variant / simple-product path — unchanged. */
@@ -252,6 +401,61 @@ export class WooCommerceProductPublisherAdapter
     }
 
     return { externalProductId: String(raw.id), status: cmd.status };
+  }
+
+  /**
+   * Price-only write (#3505, G01-10, `ShopProductPriceUpdater`): a sparse PUT
+   * carrying `regular_price` (and `sale_price` only when the command has one).
+   *
+   * Deliberately NOT `buildProductBody`: that body always sends
+   * `manage_stock: true` + `stock_quantity`, and name/description whenever
+   * content is present, so a price change through `publishProduct` overwrote
+   * the shop's stock — and turned stock management on for a product the shop
+   * did not manage — plus its title and description. A variation of a grouped
+   * publish lives under its parent (`products/{parentId}/variations/{id}`),
+   * the same addressing `getShopVariationStatus` uses.
+   */
+  async updateShopProductPrice(cmd: UpdateShopProductPriceCommand): Promise<void> {
+    // The amounts are gross (ADR-077). A store entering prices without tax gets
+    // net at the target product's own class rate, read from the product since
+    // this command carries no tax class.
+    let toStore = (amount: string): string => amount;
+    const basis = await this.taxClassResolver.readPriceBasis();
+    if (!isStoredPriceGross(basis, undefined)) {
+      let current: { taxClass: string | undefined; taxStatus: string | undefined };
+      try {
+        current = await this.readTargetTaxFields(
+          cmd.externalProductId,
+          cmd.externalParentProductId,
+        );
+      } catch (err) {
+        throw this.toPublishError(err, true, cmd.externalProductId);
+      }
+      if (!isStoredPriceGross(basis, current.taxStatus)) {
+        const rate = await this.storeRateFor(effectiveTaxClass(current.taxClass), basis.storeCountry);
+        toStore = (amount: string): string => toNetPrice(Number(amount), rate);
+      }
+    }
+    const body: WooCommercePriceOnlyUpdateRequest = { regular_price: toStore(cmd.price.amount) };
+    if (cmd.salePrice) body.sale_price = toStore(cmd.salePrice.amount);
+
+    const productPath = `${PRODUCTS_PATH}/${encodeURIComponent(cmd.externalProductId)}`;
+    const path = cmd.externalParentProductId
+      ? `${PRODUCTS_PATH}/${encodeURIComponent(cmd.externalParentProductId)}/variations/` +
+        encodeURIComponent(cmd.externalProductId)
+      : productPath;
+
+    this.logger.debug(
+      `Updating price only for product=${cmd.externalProductId}` +
+        `${cmd.externalParentProductId ? ` parent=${cmd.externalParentProductId}` : ''} ` +
+        `connection=${this.connection.id}`,
+    );
+
+    try {
+      await this.httpClient.put<WooCommerceProductResponse>(path, body);
+    } catch (err) {
+      throw this.toPublishError(err, true, cmd.externalProductId);
+    }
   }
 
   /**

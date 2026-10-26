@@ -21,6 +21,9 @@ import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { PrestashopWebserviceClient } from '../http/prestashop-webservice.client';
 import type { PrestashopCredentials } from '../../domain/types/prestashop-credentials.types';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
+import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
+import { PrestashopCountryResolver } from '../provisioners/prestashop-country-resolver';
+import { PrestashopSalesCountryResolver } from '../provisioners/prestashop-sales-country.resolver';
 
 export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
   constructor(
@@ -80,7 +83,7 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
       return {
         success: true,
         status: 200,
-        message: 'OK',
+        message: `OK. ${await this.describeSalesCountry(connection, client)}`,
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
@@ -99,6 +102,56 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
         message: err.message ?? 'PrestaShop probe failed',
         latencyMs: Date.now() - startedAt,
       };
+    }
+  }
+
+  /**
+   * One sentence on the country catalogue prices are read for (ADR-077) - the
+   * operator-facing place a wrong one shows up. Without a country, or with a
+   * country no tax rule names, products in taxed groups report no price, and
+   * the product master only says so in the worker log.
+   *
+   * Best-effort: the connection itself already proved to work, so a failure
+   * here only weakens the note, never the result.
+   */
+  private async describeSalesCountry(
+    connection: Connection,
+    client: IPrestashopWebserviceClient
+  ): Promise<string> {
+    try {
+      const configured = (connection.config as Record<string, unknown>).salesCountryIso2;
+      const country = await new PrestashopSalesCountryResolver(
+        new PrestashopCountryResolver()
+      ).resolve(
+        connection.id,
+        typeof configured === 'string' && configured.trim().length > 0 ? configured : undefined,
+        client
+      );
+      if (country === null) {
+        return (
+          'Warning: no sales country could be resolved, so catalogue prices will be unavailable. ' +
+          'Set "salesCountryIso2" on the connection (for example PL).'
+        );
+      }
+      const source = country.source === 'setting' ? 'connection setting' : 'shop default country';
+      if (!country.taxesEnabled) {
+        return `Prices are read for ${country.iso2} (${source}); taxes are switched off in the shop.`;
+      }
+      const rules = await client.listResources(
+        'tax_rules',
+        { custom: { id_country: country.countryId } },
+        1
+      );
+      if (rules.length === 0) {
+        return (
+          `Warning: prices are read for ${country.iso2} (${source}), but no tax rule in the shop ` +
+          `names ${country.iso2}, so taxed products will report no price. Set "salesCountryIso2" ` +
+          `to the country you sell in.`
+        );
+      }
+      return `Prices are read for ${country.iso2} (${source}).`;
+    } catch {
+      return 'The sales country could not be checked.';
     }
   }
 }

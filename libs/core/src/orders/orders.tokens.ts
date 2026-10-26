@@ -31,6 +31,28 @@ export const ORDER_REFUND_SERVICE_TOKEN = Symbol('IOrderRefundService');
 export const ORDER_LINE_ITEM_REPOSITORY_TOKEN = Symbol('OrderLineItemRepositoryPort');
 // Tax-rate backfill sweep for pre-#2245 lines (#2440).
 export const TAX_RATE_BACKFILL_SERVICE_TOKEN = Symbol('ITaxRateBackfillService');
+// Durable early-cancellation signal for an order OL has not yet ingested
+// (#2069). Keyed on (sourceConnectionId, externalOrderId) — see
+// OrderCancellationSignalRepositoryPort for why no internal id exists yet.
+export const ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN = Symbol(
+  'OrderCancellationSignalRepositoryPort'
+);
+// Personal orders-list column presets + the D32 workspace default (#3530).
+export const ORDER_COLUMN_PRESET_REPOSITORY_TOKEN = Symbol('OrderColumnPresetRepositoryPort');
+export const ORDER_COLUMN_PRESET_SERVICE_TOKEN = Symbol('IOrderColumnPresetService');
+// Internal order notes (#3531).
+export const ORDER_NOTE_REPOSITORY_TOKEN = Symbol('OrderNoteRepositoryPort');
+export const ORDER_NOTE_SERVICE_TOKEN = Symbol('IOrderNoteService');
+// Order tags/labels + server-side filter (#3532).
+export const ORDER_TAG_REPOSITORY_TOKEN = Symbol('OrderTagRepositoryPort');
+export const ORDER_TAG_SERVICE_TOKEN = Symbol('IOrderTagService');
+// Test-fixture-only writes unreachable via any real ingestion flow (#2855).
+export const ORDER_TEST_FIXTURE_SERVICE_TOKEN = Symbol('IOrderTestFixtureService');
+// Orders CSV/XLSX export runs (#3534, D35).
+export const ORDER_EXPORT_REPOSITORY_TOKEN = Symbol('OrderExportRepositoryPort');
+export const ORDER_EXPORT_SERVICE_TOKEN = Symbol('IOrderExportService');
+// `order_records.searchText` re-derivation under the current PII mode (#3507 G03-14).
+export const ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN = Symbol('IOrderSearchTextReindexService');
 
 
 

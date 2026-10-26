@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/sales-documents/components
  */
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { useConnectionsQuery } from '../../connections';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -26,6 +26,11 @@ import {
   describeBuyerTaxIdRuleCount,
   usesBuyerTaxIdCondition,
 } from '../lib/describe-sales-document-tax-id-coverage';
+import {
+  describeSalesDocumentDestinationWarning,
+  describeSalesDocumentDestinationWarningTitle,
+  findSalesDocumentDestinationWarnings,
+} from '../lib/find-sales-document-destination-warnings';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
 
 interface SalesDocumentRulesListProps {
@@ -36,11 +41,49 @@ function ruleResultLabel(rule: SalesDocumentRule): string {
   return rule.documentKind === 'invoice' ? 'Invoice' : 'Receipt';
 }
 
+/** One place minting the row's DOM id, so the anchor and the lookup cannot drift. */
+function ruleCardDomId(ruleId: string): string {
+  return `rule-card-${ruleId}`;
+}
+
 export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps): ReactElement {
   const rulesQuery = useSalesDocumentRulesQuery(country);
   const connectionsQuery = useConnectionsQuery();
   const deleteRule = useDeleteSalesDocumentRuleMutation();
   const [composerOpen, setComposerOpen] = useState(false);
+  const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
+
+  // Scroll only once the composer has closed AND the browser has painted that
+  // close. Radix locks the body with `react-remove-scroll`, which restores the
+  // scroll position when the lock releases, so a scroll issued inside the click
+  // handler - or even in the effect that follows it - can be undone. One frame
+  // later the dialog is gone and the lock with it.
+  //
+  // Focus MOVES to the row, in the same frame (#3190 review). Scroll plus an
+  // outline is a sighted-only, colour-only affordance: Radix returns focus to
+  // the `+ Add rule` trigger on close, so a keyboard or screen-reader user
+  // ended up exactly where they started with nothing to say anything had
+  // happened. `preventScroll` because `scrollIntoView` above has already
+  // chosen the position - letting focus scroll again would fight it. The
+  // `connection-mappings-page.tsx` reveal is the in-repo precedent for the
+  // pair.
+  useEffect(() => {
+    if (composerOpen || highlightedRuleId === null) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const row = document.getElementById(ruleCardDomId(highlightedRuleId));
+      row?.scrollIntoView({ block: 'center' });
+      row?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [composerOpen, highlightedRuleId]);
+
+  // The accent is an attention cue for one arrival, not a persistent mark on
+  // the row: a highlight that never clears reads as a property of the rule.
+  // Cleared when the composer opens again, so the next rival starts from a
+  // list with nothing already accented.
+  useEffect(() => {
+    if (composerOpen) setHighlightedRuleId(null);
+  }, [composerOpen]);
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
 
@@ -59,6 +102,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
   const rules = rulesQuery.data ?? [];
   const connections = connectionsQuery.data ?? [];
   const taxIdRuleCount = countRulesUsingBuyerTaxId(rules);
+  const destinationWarnings = findSalesDocumentDestinationWarnings(rules, connections);
 
   return (
     <div className="page-section">
@@ -67,7 +111,12 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
           Rules for {country === '*' ? '★ Rest of world' : country}
         </p>
         <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-          <Button className="button--sm" disabled={!write.canWrite} onClick={() => setComposerOpen(true)}>
+          <Button
+            className="button--sm"
+            data-testid="rules-add"
+            disabled={!write.canWrite}
+            onClick={() => setComposerOpen(true)}
+          >
             + Add rule
           </Button>
         </ReadOnlyLock>
@@ -79,21 +128,41 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
       {taxIdRuleCount > 0 ? (
         <Alert tone="warning" title={describeBuyerTaxIdRuleCount(taxIdRuleCount)}>
-          A buyer-tax-ID condition matches only an order whose source actually recorded that
-          fact. PrestaShop reports it only when the buyer filled in a VAT number on the address;
-          Allegro and Erli report it only when the buyer requested a VAT invoice; WooCommerce
-          reports it only if the store runs a supported VAT-number plugin. An order whose source
-          didn&apos;t assert a tax ID never matches this rule.
+          A buyer-tax-ID condition matches only an order whose source actually recorded that fact.
+          PrestaShop reports it only when the buyer filled in a VAT number on the address; Allegro
+          and Erli report it only when the buyer requested a VAT invoice; WooCommerce reports it
+          only if the store runs a supported VAT-number plugin. An order whose source didn&apos;t
+          assert a tax ID never matches this rule.
         </Alert>
       ) : null}
 
-      {rules.map((rule) => {
-        const connectionName = connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
+      {rules.map((rule, ruleIndex) => {
+        const connectionName =
+          connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
         const isDeletingThisRule = deleteRule.isPending && deleteRule.variables === rule.id;
         const deleteFailedForThisRule =
           deleteRule.isError && deleteRule.variables === rule.id ? deleteRule.error : null;
         return (
-          <div key={rule.id} className="rule-card">
+          <div
+            key={rule.id}
+            id={ruleCardDomId(rule.id)}
+            // `rule-row-{n}` is the literal hook
+            // `docs/plans/mockups/sales-document-rule-composer.html` declares
+            // for a rule row (#3196). The id-keyed `rule-card-{ruleId}` it
+            // replaces survives as this element's `id` — which is what the
+            // reveal effect above and this component's unit spec already use —
+            // so nothing lost an addressing route, and an element can carry
+            // only one `data-testid`.
+            data-testid={`rule-row-${ruleIndex}`}
+            // Programmatically focusable, never in the tab order (#3190
+            // review): the reveal effect above moves focus here so the row is
+            // announced, and a row is not a control an operator should have to
+            // tab through on the way to the next one.
+            tabIndex={-1}
+            className={
+              highlightedRuleId === rule.id ? 'rule-card rule-card--highlighted' : 'rule-card'
+            }
+          >
             <div className="rule-card__flow">
               {rule.conditions.map((condition, index) => (
                 <span key={index} className="condition-chip">
@@ -108,7 +177,9 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
               </span>
             </div>
             <div className="rule-card__meta">
-              {rule.provenance ? <span className="provenance-tag">from: {rule.provenance}</span> : null}
+              {rule.provenance ? (
+                <span className="provenance-tag">from: {rule.provenance}</span>
+              ) : null}
               {usesBuyerTaxIdCondition(rule) ? (
                 <span
                   className="provenance-tag"
@@ -138,9 +209,38 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
         );
       })}
 
+      {destinationWarnings.length > 0 ? (
+        <div data-testid="rules-destination-warning">
+          <Alert
+            tone="warning"
+            title={describeSalesDocumentDestinationWarningTitle(destinationWarnings.length)}
+          >
+            {destinationWarnings.map((warning) => (
+              <p key={warning.connectionId}>{describeSalesDocumentDestinationWarning(warning)}</p>
+            ))}
+          </Alert>
+        </div>
+      ) : null}
+
       {rules.length === 0 ? <p className="muted-text">No rules yet for this country.</p> : null}
 
-      <SalesDocumentRuleComposerDialog country={country} open={composerOpen} onOpenChange={setComposerOpen} />
+      <SalesDocumentRuleComposerDialog
+        country={country}
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        onOpenRule={(ruleId) => {
+          // Reveal the rival the composer just named (#3190). Highlight, scroll
+          // AND focus: on a long list the row is usually off-screen, and a
+          // highlight nobody can see is the same as no affordance at all.
+          //
+          // Scrolling here would be wasted. The dialog is still mounted, and
+          // Radix locks the body with `react-remove-scroll`, which restores the
+          // scroll position when the lock releases - so a scroll issued now is
+          // either a no-op or undone a frame later. Record the intent; the
+          // effect below scrolls once the dialog has actually closed.
+          setHighlightedRuleId(ruleId);
+        }}
+      />
     </div>
   );
 }

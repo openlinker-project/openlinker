@@ -15,8 +15,17 @@
  *   - `failed+rejected` maps to Issued node with error tone + stop the lane there
  *   - `in-doubt` maps to Issued node with warning tone + stop there (no Retry shown)
  *   - Terminal clearance success is `accepted` — never render "Cleared" as success
- *   - `pending-submission` (#1585) renders an active "Awaiting KSeF" node — never
- *     a "Submitted" done check (nothing has been transmitted to the authority)
+ *   - `pending-submission` (#1585) renders an active "Awaiting submission" node
+ *     — never a "Submitted" done check (nothing has been transmitted to the
+ *     authority). Regulator-neutral by construction (#3183, ADR-026): this
+ *     component is shared across every `InvoicingPort` adapter's invoices, not
+ *     only KSeF's, so its copy names no regulator — a per-provider surface
+ *     wanting branded wording contributes its own component the way the KSeF
+ *     plugin's `KsefInvoiceDetailSection` does for `RegulatoryStatusBadge`.
+ *     That same lane carries the `clearance-ladder-waiting` /
+ *     `clearance-node-waiting` hooks (#3192), emitted for `pending-submission`
+ *     and nothing else. They are hooks on the SHIPPED lane, deliberately not a
+ *     second ladder drawn beside it.
  *
  * @module apps/web/src/features/invoicing/components
  */
@@ -38,7 +47,22 @@ interface TlNode {
   subLabel?: string;
   timestamp?: string | null;
   state: NodeState;
+  /**
+   * Test hook for a node whose PRESENCE is the assertion (#3192). Set on the
+   * waiting node alone: a hook on every node would name a position in a list
+   * rather than a state, and the lane's shape changes per status.
+   */
+  testId?: string;
 }
+
+/**
+ * The clearance lane while a document sits with its provider, issued and not
+ * yet sent on (#3192). Both hooks are emitted only for `pending-submission`,
+ * so a spec asserting either is asserting the state and not merely that a
+ * lane exists.
+ */
+const CLEARANCE_WAITING_LADDER_TEST_ID = 'clearance-ladder-waiting';
+const CLEARANCE_WAITING_NODE_TEST_ID = 'clearance-node-waiting';
 
 /** Bullet marker rendered as a small inline-svg circle icon. */
 function TlBullet({ state }: { state: NodeState }): ReactElement {
@@ -83,7 +107,10 @@ function TlBullet({ state }: { state: NodeState }): ReactElement {
 
 function TlNodeRow({ node }: { node: TlNode }): ReactElement {
   return (
-    <li className={`invoice-tl-node invoice-tl-node--${node.state}`}>
+    <li
+      className={`invoice-tl-node invoice-tl-node--${node.state}`}
+      data-testid={node.testId}
+    >
       <TlBullet state={node.state} />
       <div className="invoice-tl-node__content">
         <span className="invoice-tl-node__label">{node.label}</span>
@@ -197,15 +224,21 @@ function buildClearanceLane(
   // effect but has NOT been transmitted to the authority yet (the authority was
   // unreachable at issuance; a sweep will resubmit). It must NEVER fall through to
   // the "Submitted" done node below — that would tell the operator the document
-  // reached KSeF when nothing was sent. Render a single active "Awaiting KSeF"
-  // node instead ("in motion, no action owed").
+  // reached the authority when nothing was sent. Render a single active
+  // "Awaiting submission" node instead ("in motion, no action owed") — no
+  // regulator name here, since this lane renders for every `InvoicingPort`
+  // adapter's invoices, not only KSeF's (#3183, ADR-026).
   if (status === 'pending-submission') {
     return [
       {
-        label: t('invoice.tl.pendingSubmission', 'Awaiting KSeF submission'),
-        subLabel: t('invoice.tl.pendingSubmissionHint', 'Issued offline — not yet sent to KSeF'),
+        label: t('invoice.tl.pendingSubmission', 'Awaiting submission'),
+        subLabel: t(
+          'invoice.tl.pendingSubmissionHint',
+          'Issued offline — not yet sent for clearance',
+        ),
         timestamp: invoice.updatedAt,
         state: 'active',
+        testId: CLEARANCE_WAITING_NODE_TEST_ID,
       },
     ];
   }
@@ -267,6 +300,7 @@ export function InvoiceTimeline({ invoice, className }: InvoiceTimelineProps): R
 
   const issuanceNodes = buildIssuanceLane(invoice, t);
   const clearanceNodes = buildClearanceLane(invoice, t);
+  const awaitingSubmission = invoice?.regulatoryStatus === 'pending-submission';
 
   return (
     <div className={`invoice-timeline ${className ?? ''}`.trim()}>
@@ -289,6 +323,7 @@ export function InvoiceTimeline({ invoice, className }: InvoiceTimelineProps): R
           <ol
             className="invoice-tl-list"
             aria-label={t('invoice.tl.clearanceLane', 'Regulatory clearance')}
+            data-testid={awaitingSubmission ? CLEARANCE_WAITING_LADDER_TEST_ID : undefined}
           >
             {clearanceNodes.map((node, i) => (
               <TlNodeRow key={i} node={node} />

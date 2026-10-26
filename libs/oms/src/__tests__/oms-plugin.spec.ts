@@ -13,6 +13,10 @@ describe('omsAdapterManifest', () => {
     expect(omsAdapterManifest.platformType).toBe(OMS_PLATFORM_TYPE);
   });
 
+  it('should declare itself non-archivable so it can only be disabled (#3657)', () => {
+    expect(omsAdapterManifest.archivable).toBe(false);
+  });
+
   it('should declare requiresCredentials false', () => {
     // The whole point of ADR-055's credential-less row. If this flips, the
     // create guard refuses the connection.

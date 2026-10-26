@@ -55,3 +55,22 @@ export class ApiError extends Error {
     return new ApiError(`Request timed out: ${path}`, 0, { timeout: true, path });
   }
 }
+
+/**
+ * True when `error` is a mutation failure a caller has NOT already surfaced
+ * through its own recovery UI (a field error, a dedicated "in use" state) —
+ * so a generic "Could not save" alert is the only place it will be shown.
+ *
+ * `isMapped` names the caller's own recognised-and-handled statuses (e.g.
+ * `(e) => e.isConflict()`); anything else — a non-`ApiError`, or an `ApiError`
+ * `isMapped` doesn't recognise — is unmapped and must still reach the user
+ * somewhere, which is exactly what this predicate is for.
+ *
+ * Extracted after #3068 tech-review found `LocationDialog` and
+ * `LocationDeleteDialog` computing this same "is this the one I already
+ * handled" check inline, with the same shape and no shared source — a third
+ * mutation dialog would otherwise have copied it a third time.
+ */
+export function isUnmappedApiError(error: unknown, isMapped: (apiError: ApiError) => boolean): boolean {
+  return !(error instanceof ApiError && isMapped(error));
+}

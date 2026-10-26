@@ -58,6 +58,40 @@ export class DuplicatePositionGroupResponseDto {
 
   @ApiProperty({ type: [DuplicatePositionRowResponseDto], description: 'Newest first' })
   rows!: DuplicatePositionRowResponseDto[];
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Product display name (#3239). Null when the product could not be resolved.',
+  })
+  productName!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'Product SKU (#3239). Null both when the product could not be resolved AND when a ' +
+      'resolved product simply carries no SKU — check `productName` to tell the two apart.',
+  })
+  sku!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'Connection display name (#3239). Always null when `sourceConnectionId` is null or ' +
+      "'legacy' (not yet covered by the #2317 backfill) — never a fabricated name for either.",
+  })
+  connectionName!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'Location display name (#3239). Always null when `locationId` is null — ADR-058 ' +
+      'decision 2, the master declines to locate its stock — never a fabricated name.',
+  })
+  locationName!: string | null;
 }
 
 export class DuplicatePositionsResponseDto {

@@ -12,22 +12,28 @@
 import type { RouteObject } from 'react-router-dom';
 
 import { plugins } from '../../plugins';
+import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
 import { analyticsIndexRoute, analyticsLegacyRedirectRoute } from './analytics.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
+import { connectionPricingSyncRoute } from './connection-pricing-sync.route';
 import { editConnectionRoute } from './edit-connection.route';
 import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
+import { duplicatePositionsRoute } from './duplicate-positions.route';
 import { customersRoute } from './customers.route';
 import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
+import { inventoryLocationsRoute } from './inventory-locations.route';
+import { orderTagsSettingsRoute } from './order-tags-settings.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
 import { invoicesRoute } from './invoices.route';
+import { salesDocumentsListRoute } from './sales-documents-list.route';
 import { jobsLogsRoute } from './jobs-logs.route';
 import { newConnectionRoute } from './new-connection.route';
 import { advancedNewConnectionRoute } from './advanced-new-connection.route';
@@ -41,9 +47,11 @@ import {
 } from './prompt-templates-legacy-redirects.route';
 import { automationsRoute } from './automations.route';
 import { returnsRoute } from './returns.route';
-import { fulfillmentRoute } from './fulfillment.route';
+import { assignPackingWorkLegacyRedirectRoute, fulfillmentRoute } from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
+import { sourcingRulesRoute } from './sourcing-rules.route';
+import { omsOnboardingRoute } from './oms-onboarding.route';
 import { whoDecidesRoute } from './who-decides.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
@@ -51,48 +59,61 @@ import { usersRoute } from './users.route';
 import { webhookDeliveriesRoute } from './webhook-deliveries.route';
 
 /**
- * Authenticated route children of `rootRoute`. Exported solely so the
- * route-lazy contract test can walk the full tree; this is NOT a runtime
- * API for other modules to consume. The runtime composition is the
- * `rootRoute.children` array at the bottom of this file.
+ * Authenticated route children of `rootRoute`, for a given state of the OMS
+ * routing UI flag (#3634). Exported solely so the route contract tests can walk
+ * the full tree with the flag on; this is NOT a runtime API for other modules
+ * to consume. The runtime composition is `coreChildren` below.
  */
-export const coreChildren: RouteObject[] = [
-  analyticsIndexRoute,
-  analyticsLegacyRedirectRoute,
-  insightsRoute,
-  ordersRoute,
-  productsRoute,
-  cursorsRoute,
-  customersRoute,
-  listingsRoute,
-  shipmentsRoute,
-  returnsRoute,
-  fulfillmentRoute,
-  automationsRoute,
-  invoicesRoute,
-  connectionsRoute,
-  adaptersRoute,
-  newConnectionRoute,
-  advancedNewConnectionRoute,
-  connectionDetailRoute,
-  connectionCategoryMappingsRoute,
-  connectionMappingsRoute,
-  editConnectionRoute,
-  jobsLogsRoute,
-  webhookDeliveriesRoute,
-  settingsRoute,
-  operationalSettingsRoute,
-  salesDocumentsRoute,
-  whoDecidesRoute,
-  promptTemplatesListRoute,
-  promptTemplateDetailRoute,
-  promptTemplatesLegacyListRedirectRoute,
-  promptTemplateLegacyDetailRedirectRoute,
-  aiProviderSettingsRoute,
-  mcpTokensRoute,
-  usersRoute,
-  devUiRoute,
-];
+export function buildCoreChildren(omsRoutingUiEnabled: boolean): RouteObject[] {
+  return [
+    analyticsIndexRoute,
+    analyticsLegacyRedirectRoute,
+    insightsRoute,
+    ordersRoute,
+    productsRoute,
+    cursorsRoute,
+    duplicatePositionsRoute,
+    customersRoute,
+    listingsRoute,
+    shipmentsRoute,
+    returnsRoute,
+    fulfillmentRoute,
+    assignPackingWorkLegacyRedirectRoute,
+    automationsRoute,
+    invoicesRoute,
+    salesDocumentsListRoute,
+    connectionsRoute,
+    ...(omsRoutingUiEnabled ? [inventoryLocationsRoute] : []),
+    orderTagsSettingsRoute,
+    adaptersRoute,
+    newConnectionRoute,
+    advancedNewConnectionRoute,
+    connectionDetailRoute,
+    connectionCategoryMappingsRoute,
+    connectionMappingsRoute,
+    connectionPricingSyncRoute,
+    editConnectionRoute,
+    jobsLogsRoute,
+    webhookDeliveriesRoute,
+    settingsRoute,
+    operationalSettingsRoute,
+    salesDocumentsRoute,
+    ...(omsRoutingUiEnabled ? [sourcingRulesRoute] : []),
+    omsOnboardingRoute,
+    whoDecidesRoute,
+    promptTemplatesListRoute,
+    promptTemplateDetailRoute,
+    promptTemplatesLegacyListRedirectRoute,
+    promptTemplateLegacyDetailRedirectRoute,
+    aiProviderSettingsRoute,
+    mcpTokensRoute,
+    usersRoute,
+    devUiRoute,
+  ];
+}
+
+/** The route tree as registered for this build. */
+export const coreChildren: RouteObject[] = buildCoreChildren(isOmsRoutingUiEnabled());
 
 const pluginChildren: RouteObject[] = plugins.flatMap((plugin) => plugin.build?.routes ?? []);
 

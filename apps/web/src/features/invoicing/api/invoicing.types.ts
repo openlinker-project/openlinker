@@ -41,6 +41,16 @@ export type FailureMode = (typeof FailureModeValues)[number];
 export const FailureCodeValues = [
   'buyer-tax-id-invalid',
   'invalid-currency',
+  // A missing per-connection sale classification (goods vs. services) — a
+  // one-field config gap, not an order-data problem (#3031).
+  'sale-classification-required',
+  // The adapter refused before contacting the provider because the
+  // connection is missing a setting (#3772). The only code whose
+  // `failureReason` is the adapter's own sentence naming that setting.
+  'connection-setup-incomplete',
+  // The document rests on a reading of the law OpenLinker is not sure of; the
+  // operator decides by re-issuing with the returned `warningCode` acknowledged.
+  'acknowledgement-required',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
@@ -100,6 +110,11 @@ export interface InvoiceRecord {
   providerInvoiceNumber: string | null;
   regulatoryStatus: RegulatoryStatus;
   clearanceReference: string | null;
+  /** Operator-facing clearance diagnostic (e.g. the authority rejection reason);
+   *  non-null typically only on a `rejected` document (#1582). Optional so
+   *  pre-existing fixtures/records without it stay assignable; the API always
+   *  returns the key (string|null). */
+  clearanceDetail?: string | null;
   pdfUrl: string | null;
   failureMode: FailureMode | null;
   failureCode: FailureCode | null;
@@ -107,6 +122,18 @@ export interface InvoiceRecord {
   issuedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Buyer tax id as it stood when this document was ISSUED (#3188) — THREE
+   * states, the same shape the order detail renders: the key is ABSENT when
+   * nothing was asserted, `null` when the source asserted the buyer has none,
+   * and a string when the document carries one. Never collapse the two
+   * absences: they decide different fiscal documents.
+   *
+   * Frozen server-side at issue, not joined from the order, so it cannot drift
+   * away from the document after a re-ingestion. `undefined` on every invoice
+   * issued before the column existed.
+   */
+  buyerTaxId?: string | null;
   /**
    * Batched order-identity projection (#1995). Only populated by `GET
    * /invoices` (the list endpoint) — single-invoice reads carry `null` (not
@@ -126,11 +153,57 @@ export interface InvoiceRecord {
 /** `POST /invoices` request body. No `idempotencyKey` in v1 (the controller
  *  owns failed-row dedup — plan §1.1/§7). `buyerTaxId` typed but not surfaced
  *  in the v1 UI. */
-export interface IssueInvoiceInput {
+/**
+ * What an operator may state about ONE sale when issuing by hand (DEF-20).
+ * Neutral vocabulary mirroring the API's `InvoiceAnnotationsDto`; the
+ * provider maps each field to its regime. Every field overrides the
+ * connection's default for this sale only.
+ */
+export interface IssueInvoiceAnnotationsInput {
+  cashAccounting?: boolean;
+  selfBilling?: boolean;
+  /** Split payment applies. OpenLinker never sets this on its own. */
+  splitPayment?: boolean;
+  triangulation?: boolean;
+  marginScheme?: boolean;
+  marginKind?: 'travel-services' | 'used-goods' | 'works-of-art' | 'collectors-items';
+  exemptionBasis?: { kind: 'statute' | 'directive' | 'other'; text: string };
+}
+
+export interface IssueInvoiceAdditionalPartyInput {
+  /** The provider's role code (KSeF: TRolaPodmiotu3, e.g. 8 or 10). */
+  role: string;
+  name: string;
+  taxId?: { scheme: string; value: string };
+  address?: {
+    line1: string;
+    line2?: string;
+    city: string;
+    postalCode: string;
+    countryIso2: string;
+  };
+}
+
+export interface IssueInvoiceLineClassificationInput {
+  orderLineId: string;
+  gtuCode?: string;
+  procedureCode?: string;
+}
+
+/** The per-issue options a provider plugin collects (DEF-20). */
+export interface IssueInvoiceOptions {
+  annotations?: IssueInvoiceAnnotationsInput;
+  additionalParties?: IssueInvoiceAdditionalPartyInput[];
+  lineClassifications?: IssueInvoiceLineClassificationInput[];
+}
+
+export interface IssueInvoiceInput extends IssueInvoiceOptions {
   connectionId: string;
   orderId: string;
   documentType?: string;
   buyerTaxId?: { scheme: string; value: string };
+  /** Warning codes the operator has read and chosen to proceed past. */
+  acknowledgeWarnings?: string[];
 }
 
 /**
@@ -245,6 +318,8 @@ export interface BulkIssueInvoicesResult {
   issued: number;
   skipped: number;
   failed: number;
+  /** How many orders the request named (#1594, DEF-21); absent on an older API. */
+  total?: number;
   results: BulkIssueInvoiceResult[];
 }
 
@@ -255,12 +330,35 @@ export interface CorrectionLineInput {
   newUnitPriceGross?: number;
 }
 
-/** `POST /invoices/:invoiceId/correct` request body (#1241). Mirrors
- *  `IssueCorrectionCommand` minus the server-resolved fields. */
+/** Optional buyer-identity override on a correction (#1582) - the fix path for a
+ *  wrong buyer NIP/identity on the original. Neutral shape; absent ⇒ the original
+ *  document's buyer is reused. */
+export interface CorrectionBuyerOverrideInput {
+  name: string;
+  taxId?: { scheme: string; value: string };
+  address: {
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    countryIso2: string;
+  };
+  type: 'company' | 'private';
+  isPublicSectorEntity?: boolean;
+  isTaxGroupMember?: boolean;
+}
+
+/** `POST /invoices/:invoiceId/correct` request body (#1241, #1582). Mirrors
+ *  `IssueCorrectionCommand` minus the server-resolved fields. `reason` is
+ *  REQUIRED and non-empty (art. 106j ust. 2 pkt 5 / FA(3) XSD minLength=1). */
 export interface IssueCorrectionInput {
+  /** Recommended, never forced (DEF-32): absent means the operator chose to give none. */
   reason?: string;
   lines: CorrectionLineInput[];
   idempotencyKey?: string;
+  buyerOverride?: CorrectionBuyerOverrideInput;
+  /** Warning codes the operator has read and chosen to proceed past. */
+  acknowledgeWarnings?: string[];
 }
 
 /**

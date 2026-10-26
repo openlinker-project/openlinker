@@ -11,7 +11,7 @@
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import {
   FulfillmentRequestStatusValues,
   FulfillmentWorkStatusValues,
@@ -56,6 +56,28 @@ export class ListFulfillmentWorksQueryDto {
   @IsArray()
   @IsIn(FulfillmentRequestStatusValues, { each: true })
   requestStatus?: FulfillmentRequestStatus[];
+
+  @ApiPropertyOptional({
+    description:
+      'true restricts to work that still has something to do — every status outside the ' +
+      "domain's terminal set (closed, cancelled, incomplete) (#3096). An alias the server " +
+      'resolves, so a client need not mirror the status vocabulary to ask for it. Combined ' +
+      'with status, the two intersect.',
+  })
+  @IsOptional()
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => {
+    // A query string carries text, so `?active=true` arrives as the string
+    // "true". Read from the RAW object, not the transformed value: an implicit
+    // Boolean conversion would already have turned "false" into `true`. Only
+    // the two literal spellings map; anything else is passed through for
+    // `@IsBoolean` to reject rather than silently read as false.
+    const raw = obj.active;
+    if (raw === 'true' || raw === true) return true;
+    if (raw === 'false' || raw === false) return false;
+    return raw;
+  })
+  @IsBoolean()
+  active?: boolean;
 
   @ApiPropertyOptional({ description: 'Restrict to work sourced from one location' })
   @IsOptional()

@@ -15,7 +15,7 @@
  *
  * @module plugins/ksef/components
  */
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -54,6 +54,11 @@ export function KsefSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  // DEF-21: a second connection on the same seller NIP shares KSeF's rate
+  // limit; the create response says so, and the notice stays until read.
+  const [createdWithWarnings, setCreatedWithWarnings] = useState<{ id: string; warnings: string[] } | null>(
+    null,
+  );
 
   const form = useForm<KsefSetupFormValues, undefined, KsefSetupFormSubmission>({
     defaultValues: KSEF_SETUP_DEFAULT_VALUES,
@@ -85,6 +90,10 @@ export function KsefSetupForm(): ReactElement {
         title: 'Connection created',
         description: `KSeF connection "${created.name}" was created.`,
       });
+      if (created.warnings && created.warnings.length > 0) {
+        setCreatedWithWarnings({ id: created.id, warnings: created.warnings });
+        return;
+      }
       void navigate('/connections');
     } catch {
       return;
@@ -101,6 +110,22 @@ export function KsefSetupForm(): ReactElement {
       {createConnection.error ? (
         <Alert tone="error" title="Unable to create connection">
           {createConnection.error.message}
+        </Alert>
+      ) : null}
+      {createdWithWarnings ? (
+        <Alert
+          tone="warning"
+          title="Connection created, with something to check"
+          data-testid="connection-save-warnings"
+          action={
+            <Button tone="secondary" onClick={() => void navigate(`/connections/${createdWithWarnings.id}`)}>
+              Go to connection
+            </Button>
+          }
+        >
+          {createdWithWarnings.warnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
         </Alert>
       ) : null}
 

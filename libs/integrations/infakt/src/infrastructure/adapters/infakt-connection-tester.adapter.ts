@@ -121,7 +121,20 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
       };
     }
     // Anything else (raw fetch/undici error, credential-resolution failure)
-    // collapses to a fixed string — never let an internal detail leak.
+    // collapses to a fixed string — never let an internal detail leak to the
+    // operator-facing result. But a maintainer debugging this needs SOME
+    // trail server-side (#2176) — a raw transport error (e.g. a baseUrl
+    // override that resolves to a garbage host) previously left zero log
+    // lines anywhere. Log the underlying error's message (and its `cause`,
+    // when present — undici wraps DNS/connect failures that way) at warn
+    // level; never the operator-facing `message` field above.
+    const detail = error instanceof Error ? error.message : String(error);
+    const rawCause = error instanceof Error ? error.cause : undefined;
+    const cause =
+      rawCause !== undefined
+        ? ` (cause: ${rawCause instanceof Error ? rawCause.message : String(rawCause)})`
+        : '';
+    this.logger.warn(`Infakt probe failed: ${detail}${cause}`);
     return { success: false, status: undefined, message: 'Infakt probe failed', latencyMs };
   }
 }

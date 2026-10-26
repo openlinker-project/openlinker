@@ -16,3 +16,6 @@ export { OrderChangeOrmEntity } from './infrastructure/persistence/entities/orde
 // Consumer: apps/api/test/integration/orders/top-products-ranking.int-spec.ts (#1988) —
 // direct fixture seeding of order_line_items alongside order_records.
 export { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
+// Consumer: apps/api/test/integration/orders/order-early-cancellation-signal.int-spec.ts (#2069) —
+// asserts the signal row is written and consumed against the real table.
+export { OrderCancellationSignalOrmEntity } from './infrastructure/persistence/entities/order-cancellation-signal.orm-entity';

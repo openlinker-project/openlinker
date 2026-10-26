@@ -10,6 +10,12 @@
  * slightly different in each state, but it is ONE rule: a record exists, so the
  * connection is settled.
  *
+ * #3766 - a SETTLED document (issued, connection still live) renders no box at
+ * all: the headline above the slot already names the connection, so the box
+ * only repeated it. What is left is the "Why this document?" disclosure, which
+ * the panel places last in the slot. Every other state keeps the box, because
+ * there the hint is operational status the operator needs to see.
+ *
  * @module apps/web/src/features/invoicing/components
  */
 import type { ReactElement } from 'react';
@@ -43,7 +49,12 @@ function resolveEyebrow(status: InvoiceDisplayStatus, t: Translate): string {
   return t('invoice.lock.issuedBy', 'Issued by');
 }
 
-function resolveHint(status: InvoiceDisplayStatus, isStale: boolean, t: Translate): string {
+function resolveHint(
+  status: InvoiceDisplayStatus,
+  isStale: boolean,
+  connectionName: string,
+  t: Translate,
+): string {
   if (isStale) {
     return t(
       'invoice.lock.hintStale',
@@ -74,10 +85,12 @@ function resolveHint(status: InvoiceDisplayStatus, isStale: boolean, t: Translat
       'No provider change and no one-click retry while the outcome is unknown.',
     );
   }
+  // #3766 - also carries the one-document rule the removed "This order already
+  // has a document" alert used to state, so the rule stays one click away.
   return t(
     'invoice.lock.hintIssued',
-    'This order is invoiced here. Every further action on it - correction, resend, email, mark paid - goes to this connection.',
-  );
+    'Issued by {{connection}}. Every further action on it - correction, resend, email, mark paid - goes to this connection. One sale gets one document, so a receipt cannot be added on top of this invoice.',
+  ).replace('{{connection}}', connectionName);
 }
 
 /** Glyph + stripe tone follow the lifecycle: settled, in-flight, or unusable. */
@@ -99,7 +112,7 @@ export function InvoiceConnectionLock({
 }: InvoiceConnectionLockProps): ReactElement {
   const { t } = useTranslation();
   const glyph = status === 'failed' && !isStale ? '↻' : '🔒';
-  const hint = resolveHint(status, isStale, t);
+  const hint = resolveHint(status, isStale, connectionName, t);
   // #2807 review — the mockup keeps the routing/lock rationale for a SETTLED
   // document behind a collapsed "Why this document?" disclosure (secondary,
   // sitting beside the correction/override actions), not as an always-visible
@@ -108,6 +121,15 @@ export function InvoiceConnectionLock({
   // (a running attempt, a failed retry's numbering note, an in-doubt caution,
   // a stale connection's limitation) — those stay visible.
   const isSettled = !isStale && status !== 'pending' && status !== 'issuing' && status !== 'failed' && status !== 'in-doubt';
+
+  if (isSettled) {
+    return (
+      <details className="sales-document-panel__routing-disclosure" data-testid="invoice-why-this-document">
+        <summary>{t('salesDocument.panel.whyThisDocument', 'Why this document?')}</summary>
+        <p className="panel-copy">{hint}</p>
+      </details>
+    );
+  }
 
   return (
     <div
@@ -120,17 +142,10 @@ export function InvoiceConnectionLock({
       </span>
       <span className="invoice-connection-lock__eyebrow">{resolveEyebrow(status, t)}</span>
       <span className="invoice-connection-lock__value">
-        {connectionName}
+        <span className="invoice-connection-lock__name">{connectionName}</span>
         <span className="invoice-connection-lock__tag mono-text">{tag}</span>
       </span>
-      {isSettled ? (
-        <details className="sales-document-panel__routing-disclosure invoice-connection-lock__why">
-          <summary>{t('salesDocument.panel.whyThisDocument', 'Why this document?')}</summary>
-          <span className="invoice-connection-lock__hint">{hint}</span>
-        </details>
-      ) : (
-        <span className="invoice-connection-lock__hint">{hint}</span>
-      )}
+      <span className="invoice-connection-lock__hint">{hint}</span>
     </div>
   );
 }

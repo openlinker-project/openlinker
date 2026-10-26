@@ -1,0 +1,2347 @@
+<title>Sourcing Rules</title>
+<!-- apps/web SELF-HOSTS these faces (index.css:36); a single-file mockup cannot,
+     so it links Google Fonts and every face declares a real fallback stack. The
+     consequence for whoever takes the E2E baseline: an OFFLINE run falls back to
+     system-ui and produces different screenshots. Take the baseline online, or
+     accept the fallback consistently across the wave. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* ============================================================
+   TOKENS — lifted verbatim from apps/web/src/index.css (#775)
+   ============================================================ */
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-inverse: oklch(96% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-link: oklch(50% 0.14 250);
+
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+
+  --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem;
+  --space-5:1.5rem; --space-6:2rem; --space-7:3rem;
+  --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .6);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / .16), 0 8px 16px rgb(15 18 26 / .08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+  --duration-fast: 120ms; --ease-out: cubic-bezier(.16,1,.3,1);
+  --tracking-caps: .08em; --tracking-tight: -.012em;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+    --text-inverse: oklch(20% 0.012 80); --text-on-primary: oklch(16% 0.012 50);
+    --text-link: oklch(76% 0.14 245);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    /* Status — every value verbatim from index.css:439-492. The base
+       --status-* tones are remapped too, not only the soft/border/fg trio:
+       .rule-state--plain's tick and .button--danger read the BASE token, so
+       omitting them left a light-theme tone painted on a dark surface. */
+    --status-success: oklch(68% 0.16 150);
+    --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85);
+    --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25);
+    --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245);
+    --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290);
+    --status-review-soft: oklch(28% 0.06 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+    --status-disabled: oklch(65% 0.010 270);
+    --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .04);
+    /* Both overlay tokens must be remapped or five dialogs keep a LIGHT
+       scrim and a light drop shadow over a dark page. */
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+  --text-inverse: oklch(20% 0.012 80); --text-on-primary: oklch(16% 0.012 50);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+* { box-sizing: border-box; }
+/* A class selector (e.g. .form-field, .alert) and the [hidden] attribute
+   selector share specificity, so without this, JS setting `.hidden = true`
+   on an element that also carries a display-setting class does nothing —
+   the element stays visibly rendered. This must win over every such class. */
+[hidden] { display: none !important; }
+body {
+  margin: 0; min-width: 320px; background: var(--bg-canvas); color: var(--text-primary);
+  font-family: var(--font-sans); font-size: .8125rem; line-height: 1.5;
+}
+a { color: var(--accent-primary-hover); text-decoration: underline; text-underline-offset: .16em; }
+a:hover { color: var(--accent-primary); }
+h1,h2,h3,p { margin: 0; }
+button { font-family: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+.shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0,1fr); grid-template-rows: auto 1fr; }
+@media (min-width: 1024px) { .shell { grid-template-columns: 240px minmax(0,1fr); } }
+.shell-sidebar { display: none; }
+@media (min-width: 1024px) {
+  .shell-sidebar { display: flex; flex-direction: column; background: var(--bg-shell); border-right: 1px solid var(--border-subtle); padding: 12px 0; position: sticky; top: 0; height: 100vh; }
+}
+.shell-brand { display: flex; align-items: center; gap: 8px; padding: 4px 16px 16px; }
+.shell-brand__mark { width: 26px; height: 26px; border-radius: 6px; background: var(--accent-primary); display: grid; place-items: center; color: var(--text-on-primary); font-weight: 700; font-size: 13px; }
+.shell-brand__name { font-weight: 600; font-size: 14px; letter-spacing: -.02em; }
+.shell-nav { flex: 1; overflow-y: auto; padding: 0 12px; }
+.shell-nav__group { margin-bottom: 16px; }
+.shell-nav__label { margin: 0 0 4px; padding: 0 8px; font-size: 10px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; color: var(--text-muted); }
+.shell-nav__list { list-style: none; padding: 0; margin: 0; display: grid; gap: 1px; }
+.shell-nav__link { display: flex; align-items: center; padding: 6px 8px; border-radius: 6px; color: var(--text-secondary); font-size: 13px; font-weight: 500; text-decoration: none; }
+.shell-nav__link:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.shell-nav__link--active { background: var(--bg-surface-muted); color: var(--text-primary); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent-primary); }
+.shell-topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 16px; background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
+.shell-crumbs { font-size: 13px; color: var(--text-secondary); }
+.shell-crumbs b { color: var(--text-primary); font-weight: 500; }
+.shell-main { min-width: 0; }
+.shell-content { padding: 20px 32px 48px; max-width: 1180px; }
+
+/* ============================================================
+   PAGE HEADER / TYPE
+   ============================================================ */
+.back-link { display: inline-flex; align-items: center; gap: .375rem; font-size: .8125rem; color: var(--text-muted); text-decoration: none; padding: .25rem 0; margin-bottom: 2px; }
+.back-link:hover { color: var(--text-primary); }
+.eyebrow { margin: 0; font-size: .76rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-primary-hover); }
+.page-header { display: grid; gap: .45rem; margin-bottom: 20px; }
+.page-header__row { display: flex; align-items: start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page-title { font-size: 1.75rem; font-weight: 600; letter-spacing: -.02em; }
+.page-description { color: var(--text-secondary); font-size: .875rem; max-width: 62ch; }
+.page-example { color: var(--text-muted); font-size: .8125rem; max-width: 62ch; margin-top: 4px; }
+.page-header__actions { display: flex; gap: 8px; flex-shrink: 0; }
+.section-title { font-size: 1.0625rem; font-weight: 600; letter-spacing: -.012em; }
+
+/* ============================================================
+   BUTTON
+   ============================================================ */
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md);
+  padding: 0 var(--space-4); height: 2rem; background: var(--accent-primary); color: var(--text-on-primary);
+  font-family: inherit; font-size: .8125rem; font-weight: 500; cursor: pointer; text-decoration: none;
+  white-space: nowrap; box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+.button:hover { background: var(--accent-primary-hover); border-color: var(--accent-primary-hover); }
+.button:active { background: var(--accent-primary-active); }
+.button--secondary { border-color: var(--border-default); background: var(--bg-surface); color: var(--text-primary); }
+.button--secondary:hover { background: var(--bg-surface-muted); border-color: var(--border-strong); }
+.button--ghost { border-color: transparent; background: transparent; color: var(--text-secondary); box-shadow: none; }
+.button--ghost:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.button--danger { border-color: color-mix(in oklab, var(--status-error) 80%, black); background: var(--status-error); color: #fff; }
+.button--danger:hover { background: color-mix(in oklab, var(--status-error) 90%, black); }
+.button:disabled { cursor: not-allowed; opacity: .5; box-shadow: none; }
+.button--sm { height: 1.75rem; padding: 0 var(--space-3); font-size: .75rem; }
+.button--xs { height: 1.5rem; padding: 0 var(--space-2); font-size: .6875rem; border-radius: var(--radius-sm); }
+.button--icon { padding: 0; width: 2rem; }
+.button--icon.button--sm { width: 1.75rem; }
+.button.is-loading { position: relative; color: transparent; pointer-events: none; }
+.button.is-loading::after {
+  content: ''; position: absolute; width: 13px; height: 13px; border-radius: 999px;
+  border: 2px solid color-mix(in oklab, var(--text-on-primary) 35%, transparent); border-top-color: var(--text-on-primary);
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .button.is-loading::after { animation-duration: 1.4s; } }
+
+/* ============================================================
+   STATUS BADGE / CHIP
+   ============================================================ */
+.status-badge {
+  display: inline-flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border); border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft); color: var(--status-disabled-fg);
+  font-family: var(--font-mono); font-size: .6875rem; font-weight: 500; letter-spacing: .02em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.status-badge__dot { width: .375rem; height: .375rem; border-radius: 999px; background: currentColor; opacity: .75; }
+.status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+.status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.status-badge--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
+.status-badge--info { border-color: var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-fg); }
+.status-badge--review { border-color: var(--status-review-border); background: var(--status-review-soft); color: var(--status-review-fg); }
+.status-badge--neutral { border-color: var(--status-disabled-border); background: var(--status-disabled-soft); color: var(--status-disabled-fg); }
+.status-badge--compact { padding: 1px var(--space-2); font-size: .625rem; }
+
+/* Active is the expected, finished state on a healthy list — plain ink + a tick, never a
+   tinted badge (#2507: colour marks the exception, not the normal case). */
+.rule-state--plain { display: inline-flex; align-items: center; gap: 5px; font-size: .75rem; color: var(--text-secondary); font-weight: 500; }
+.rule-state--plain .tick { color: var(--status-success); font-weight: 700; }
+
+.chip { display: inline-flex; align-items: center; gap: .25rem; height: 1.375rem; padding: 0 .5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-surface-muted); color: var(--text-secondary); font-size: .75rem; font-weight: 500; cursor: pointer; }
+.chip.chip--active { background: var(--accent-primary-soft); border-color: var(--accent-primary-border); color: var(--accent-primary-hover); font-weight: 600; }
+
+/* ============================================================
+   FILTER BAR
+   ============================================================ */
+.filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.filter-bar__label { font-family: var(--font-mono); font-size: .6875rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-right: 2px; }
+
+/* ============================================================
+   ALERT
+   ============================================================ */
+.alert { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); border: 1px solid; margin-bottom: 20px; align-items: flex-start; transition: background 200ms var(--ease-out), border-color 200ms var(--ease-out), color 200ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .alert { transition: none; } }
+.alert--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.alert--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.alert--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.alert__glyph { flex-shrink: 0; font-size: 1rem; line-height: 1.4; }
+.alert__content { display: grid; gap: 2px; }
+.alert__title { font-weight: 600; color: var(--text-primary); font-size: .8125rem; }
+.alert__description { font-size: .8125rem; color: var(--text-secondary); }
+.alert__actions { margin-left: auto; flex-shrink: 0; align-self: center; }
+
+/* ============================================================
+   DATA TABLE — rule list
+   ============================================================ */
+.data-table__container { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs); }
+.data-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+.data-table thead th { padding: var(--space-3) var(--space-4); text-align: left; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-family: var(--font-mono); font-size: .6875rem; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; background: var(--bg-shell); }
+.data-table tbody td { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); vertical-align: top; }
+.data-table tbody tr:hover { background: color-mix(in oklab, var(--bg-shell) 55%, transparent); }
+.data-table tbody tr.rule-row--dragging { opacity: .4; }
+.data-table tbody tr.rule-row--dropzone { box-shadow: inset 0 2px 0 var(--accent-primary); }
+.data-table tbody tr.rule-row--unrecognised { background: color-mix(in oklab, var(--status-disabled-soft) 60%, transparent); }
+.data-table tbody tr.rule-row--governing { box-shadow: inset 3px 0 0 var(--accent-primary); background: color-mix(in oklab, var(--accent-primary-soft) 45%, transparent); }
+.data-table tbody tr.rule-row--highlight { background: var(--accent-primary-soft) !important; transition: background 900ms var(--ease-out); }
+.data-table__empty-cell { padding: var(--space-5) var(--space-3); color: var(--text-muted); text-align: center; }
+
+.rule-position { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+/* Not draggable — v1 reorders via the arrow buttons only (see the "no DnD
+   library" decision). A grab cursor here would promise an interaction this
+   glyph doesn't back; it's a static "this row is reorderable" indicator. */
+.rule-position__handle { cursor: default; color: var(--text-disabled); font-size: 13px; user-select: none; line-height: 1; padding: 2px; opacity: .4; transition: opacity 120ms var(--ease-out), color 120ms var(--ease-out); }
+.rule-position:hover .rule-position__handle, .rule-position:focus-within .rule-position__handle { opacity: 1; color: var(--text-muted); }
+.rule-position__num { font-family: var(--font-mono); font-weight: 600; color: var(--text-secondary); min-width: 1.2em; }
+/* Buttons stay visually small (a settings-page row shouldn't get bulky) but
+   each carries a real >=24px hit target via padding, with a hairline gap
+   between up/down so two opposite actions are never edge-to-edge — at the
+   original 11x11px/0-gap size a fingertip could not reliably choose
+   between "move up" and "move down". */
+.rule-position__nudge { display: flex; flex-direction: column; gap: 2px; opacity: 0; pointer-events: none; transition: opacity 120ms var(--ease-out); }
+.rule-position:focus-within .rule-position__nudge, .rule-position:hover .rule-position__nudge { opacity: 1; pointer-events: auto; }
+.rule-position__nudge button { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 12px; border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 9px; line-height: 1; padding: 4px 6px; }
+.rule-position__nudge button:hover { color: var(--text-primary); }
+.rule-position__jump { display: flex; gap: 3px; margin-left: 4px; opacity: 0; pointer-events: none; transition: opacity 120ms var(--ease-out); }
+.rule-position:hover .rule-position__jump, .rule-position:focus-within .rule-position__jump { opacity: 1; pointer-events: auto; }
+.rule-position__jump button { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; min-height: 24px; border: none; background: none; color: var(--text-disabled); cursor: pointer; font-size: 9px; line-height: 1; padding: 4px 2px; }
+.rule-position__jump button:hover { color: var(--text-muted); }
+
+.rule-cell__kind { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-primary); }
+.rule-cell__kind-badge { font-family: var(--font-mono); font-size: .625rem; text-transform: uppercase; letter-spacing: .06em; padding: 1px 5px; border-radius: var(--radius-xs); background: var(--bg-strong); color: var(--text-secondary); }
+.rule-cell__desc { color: var(--text-muted); font-size: .75rem; margin-top: 2px; }
+.rule-cell__priority-list { margin-top: 4px; display: grid; gap: 2px; }
+.rule-cell__priority-entry { font-family: var(--font-mono); font-size: .6875rem; color: var(--text-secondary); display: flex; align-items: center; gap: 5px; }
+.rule-cell__priority-entry--stale { color: var(--status-warning-fg); }
+.rule-cell__priority-entry .status-badge { font-size: .5625rem; padding: 0 4px; }
+.rule-cell__audit { border: none; background: none; padding: 0; color: var(--text-muted); cursor: help; font-size: .75rem; margin-left: 5px; }
+.rule-cell__audit:hover, .rule-cell__audit:focus-visible { color: var(--text-muted); }
+.rule-cell__governs { display: flex; align-items: center; gap: 4px; font-size: .75rem; color: var(--accent-primary-active); font-weight: 600; margin-top: 3px; }
+.rule-cell__governs .dot { width: .375rem; height: .375rem; border-radius: 999px; background: currentColor; flex-shrink: 0; }
+
+.rule-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.rule-actions .button--icon[disabled], .rule-actions .button--icon.is-locked { opacity: .4; cursor: not-allowed; }
+
+/* ============================================================
+   TOOLTIP / POPOVER PRIMITIVE (Tier 1: native title on every icon
+   control — applied inline. Tier 2: this component, for anything
+   longer than one clause — the ceiling mechanic, the status legend.)
+   ============================================================ */
+.info-popover { position: relative; display: inline-flex; vertical-align: middle; }
+.info-popover__trigger { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: none; background: none; padding: 0; margin: 0; border-radius: 999px; color: var(--text-muted); cursor: help; font-size: .75rem; line-height: 1; }
+.info-popover__trigger:hover, .info-popover__trigger:focus-visible { color: var(--accent-primary-hover); background: var(--accent-primary-soft); }
+.info-popover__panel { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; width: max-content; max-width: min(300px, calc(100vw - 40px)); padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface-elevated); box-shadow: var(--shadow-overlay); font-size: .75rem; color: var(--text-secondary); line-height: 1.5; opacity: 0; visibility: hidden; transform: translateY(-4px); transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out); pointer-events: none; }
+.info-popover:hover .info-popover__panel, .info-popover:focus-within .info-popover__panel, .info-popover.is-open .info-popover__panel { opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto; }
+.info-popover__panel b { color: var(--text-primary); }
+@media (prefers-reduced-motion: reduce) { .info-popover__panel { transition: none; } }
+
+/* ============================================================
+   LADDER / CEILING PANEL
+   ============================================================ */
+.ladder-panel { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); padding: var(--space-4); margin-bottom: 14px; }
+.ladder-panel__head { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.ladder-panel__eyebrow { font-family: var(--font-mono); font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.ceiling-callout { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--accent-primary-border); background: var(--accent-primary-soft); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 10px; }
+.ceiling-callout--pulse { animation: ceilingPulse 900ms var(--ease-out); }
+@keyframes ceilingPulse { 0% { background: var(--accent-primary-border); } 100% { background: var(--accent-primary-soft); } }
+@media (prefers-reduced-motion: reduce) { .ceiling-callout--pulse { animation: none; } }
+.ceiling-callout__glyph { flex-shrink: 0; color: var(--accent-primary-hover); font-size: 1rem; line-height: 1.3; }
+.ceiling-sentence { font-size: .8125rem; color: var(--text-primary); line-height: 1.5; }
+.ceiling-sentence b { font-weight: 600; }
+.ceiling-sentence a { color: var(--accent-primary-active); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.ceiling-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--bg-surface); border: 1px solid var(--accent-primary-border); font-weight: 600; font-size: .75rem; }
+.ladder { display: flex; gap: 8px; }
+.ladder__rung { flex: 1; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 12px; background: var(--bg-surface-muted); }
+.ladder__rung-label { display: flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
+.ladder__rung-dots { letter-spacing: 1px; font-size: .625rem; }
+.ladder__rung-desc { font-size: .6875rem; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+.ladder__rung--active { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); }
+.ladder__rung--active .ladder__rung-label { color: var(--accent-primary-hover); }
+.fallback-note { display: flex; gap: 8px; align-items: flex-start; font-size: .8125rem; color: var(--status-info-fg); background: var(--status-info-soft); border: 1px solid var(--status-info-border); border-radius: var(--radius-md); margin-bottom: 20px; padding: 10px 12px; }
+.fallback-note .alert__glyph { color: var(--status-info-fg); }
+
+/* Closed by default — a named gap the operator can find is honest; a named
+   gap taking permanent space on a page they'll open weekly is clutter. */
+.limitations { margin-top: 16px; }
+.limitations summary { cursor: pointer; font-size: .75rem; color: var(--text-muted); }
+.limitations summary:hover { color: var(--text-secondary); }
+.limitations ul { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: .75rem; color: var(--text-secondary); line-height: 1.5; }
+.limitations li b { color: var(--text-primary); }
+
+/* Splitting column — a severity ladder, not a status; kept off the
+   shared status-badge palette so it never competes with a real
+   warning (e.g. "Unrecognised") elsewhere on the same row. */
+.split-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); background: var(--bg-surface-muted); font-size: .75rem; font-weight: 500; color: var(--text-secondary); cursor: help; }
+.split-chip__dots { font-size: .625rem; letter-spacing: 1px; color: var(--text-muted); }
+.fallback-note b { font-weight: 700; }
+
+/* ============================================================
+   FORM / DIALOG
+   ============================================================ */
+.form-field { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.form-field:last-child { margin-bottom: 0; }
+.form-field__label { font-size: .8125rem; font-weight: 500; }
+.form-field__description { margin: 0; color: var(--text-muted); font-size: .75rem; }
+.form-field__error { margin: 0; color: var(--status-error-fg); font-size: .75rem; display: flex; gap: 4px; align-items: center; }
+input[type=text], input[type=number], input[type=date], select, textarea {
+  width: 100%; height: 2rem; border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: 0 var(--space-3); background: var(--bg-surface); color: var(--text-primary); font-family: inherit; font-size: .8125rem;
+}
+select { padding-right: 28px; background-image: linear-gradient(45deg,transparent 50%,var(--text-secondary) 50%),linear-gradient(135deg,var(--text-secondary) 50%,transparent 50%); background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 8px) calc(50% - 2px); background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; appearance: none; }
+select:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
+option:disabled { color: var(--text-disabled); }
+input[aria-invalid=true], select[aria-invalid=true] { border-color: var(--status-error); }
+.form-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+@media (max-width: 480px) { .form-field-row { grid-template-columns: 1fr; } }
+.radio-tiles { display: flex; gap: 8px; }
+.radio-tile { flex: 1; border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 10px 12px; cursor: pointer; }
+.radio-tile input { margin: 0 6px 0 0; }
+.radio-tile--active { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.radio-tile__label { font-size: .8125rem; font-weight: 500; }
+.radio-tile__desc { font-size: .6875rem; color: var(--text-muted); margin-top: 2px; }
+
+.dialog-backdrop { position: fixed; inset: 0; display: none; place-items: center; padding: 24px; background: var(--overlay-scrim); z-index: 40; overflow-y: auto; }
+.dialog-backdrop.is-open { display: grid; }
+/* Capped height + an internal scroll region on the body, not the backdrop —
+   this is what keeps Cancel/Save reachable on any viewport, rather than
+   depending on the backdrop's own scroll (which centered-grid overflow can
+   make unreliable, and which hides the footer off-screen with no cue). */
+.dialog { width: min(100%, 30rem); max-height: min(88vh, 820px); display: flex; flex-direction: column; border: 1px solid var(--border-default); border-radius: var(--radius-xl); padding: 20px; background: var(--bg-surface); box-shadow: var(--shadow-overlay); align-self: start; margin: auto; }
+.dialog--wide { width: min(100%, 38rem); }
+.dialog__header, .dialog__actions { flex-shrink: 0; }
+.dialog__header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px; }
+.dialog__title { font-size: 1.0625rem; font-weight: 600; }
+.dialog__subtitle { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
+.dialog__meta { font-size: .6875rem; color: var(--text-disabled); margin-top: 3px; }
+.dialog__close { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 4px; }
+.dialog__body { margin: 12px 0; overflow-y: auto; min-height: 0; }
+.dialog__actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+.dialog__actions--split { justify-content: space-between; }
+
+/* Sectioned dialog — replaces "wall of fields" with legible, named zones. */
+.dialog-section { padding: 16px 0; border-top: 1px solid var(--border-subtle); }
+.dialog-section:first-child { padding-top: 4px; border-top: none; }
+.dialog-section__head { font-family: var(--font-mono); font-size: .6875rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; }
+
+/* A constantly-updating plain-language readout of the form so far — the
+   "what am I building" thread that ties sections ①②③ together. */
+.dialog-summary { background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px 12px; font-size: .8125rem; color: var(--text-secondary); margin-bottom: 16px; }
+.dialog-summary b { color: var(--text-primary); }
+
+/* A section that only exists for some rule types animates INTO view, so
+   its appearance reads as caused by the dropdown above rather than as a
+   layout jump. */
+.form-field--reveal { animation: revealSection 180ms var(--ease-out); }
+@keyframes revealSection { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .form-field--reveal { animation: none; } }
+
+/* ============================================================
+   PRIORITY LOCATION BUILDER
+   ============================================================ */
+.loc-search { position: relative; }
+.loc-search__results { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); box-shadow: var(--shadow-overlay); }
+.loc-search__results li { margin: 0; }
+.loc-search__results button { width: 100%; text-align: left; border: none; background: none; padding: 6px 8px; border-radius: var(--radius-sm); font-size: .8125rem; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.loc-search__results button:hover { background: var(--bg-surface-muted); }
+.loc-search__empty { padding: 8px; font-size: .75rem; color: var(--text-muted); }
+
+.priority-rows { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }
+.priority-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--bg-surface); }
+.priority-row + .priority-row { border-top: 1px solid var(--border-subtle); }
+.priority-row__pos { font-family: var(--font-mono); font-size: .75rem; font-weight: 600; color: var(--text-muted); min-width: 1.1em; }
+.priority-row__name { flex: 1; font-size: .8125rem; }
+.priority-row__stale { flex: 1; font-size: .75rem; color: var(--status-warning-fg); }
+.priority-row__nudge { display: flex; flex-direction: column; gap: 0; }
+.priority-row__nudge button { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 9px; line-height: 1; padding: 1px 2px; }
+.priority-row__nudge button:disabled { opacity: .3; cursor: default; }
+.priority-row__nudge button:hover:not(:disabled) { color: var(--text-primary); }
+.priority-row__remove { border: none; background: none; color: var(--text-disabled); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; }
+.priority-row__remove:hover { color: var(--status-error-fg); }
+.priority-row--empty { color: var(--text-muted); font-size: .75rem; font-style: normal; padding: 12px 10px; justify-content: center; }
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.toast { position: fixed; bottom: 20px; right: 20px; z-index: 60; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: var(--radius-md); background: var(--bg-surface-elevated); border: 1px solid var(--border-default); box-shadow: var(--shadow-overlay); font-size: .8125rem; color: var(--text-primary); opacity: 0; transform: translateY(6px); transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out); pointer-events: none; max-width: 340px; }
+.toast.is-visible { opacity: 1; transform: translateY(0); }
+.toast--warning { border-color: var(--status-warning-border); }
+.toast--error { border-color: var(--status-error-border); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* ============================================================
+   DRY RUN
+   ============================================================ */
+.line-item-row { display: grid; grid-template-columns: 1fr 84px auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.dry-run__trace { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.dry-run__step { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 12px; background: var(--bg-surface); }
+.dry-run__step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.dry-run__step-num { font-family: var(--font-mono); font-size: .6875rem; color: var(--text-muted); }
+.dry-run__step-detail { font-size: .75rem; color: var(--text-secondary); line-height: 1.5; }
+.dry-run__step-eliminated { font-size: .6875rem; color: var(--status-warning-fg); margin-top: 3px; }
+.dry-run__verdict { border-radius: var(--radius-lg); padding: 12px 14px; margin-top: 10px; }
+.dry-run__verdict--ok { background: var(--status-success-soft); border: 1px solid var(--status-success-border); }
+.dry-run__verdict--fail { background: var(--status-warning-soft); border: 1px solid var(--status-warning-border); }
+.dry-run__verdict-title { font-weight: 600; font-size: .8125rem; color: var(--text-primary); }
+.dry-run__pii-line { font-size: .6875rem; color: var(--text-muted); margin-top: 10px; }
+.dry-run__stale-note { font-size: .6875rem; color: var(--text-disabled); margin-top: 4px; }
+.dry-run__prefill { font-size: .75rem; }
+.dry-run__prefill-panel { margin-top: 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px; display: none; gap: 4px; }
+.dry-run__prefill-panel.is-open { display: grid; }
+.dry-run__prefill-panel button { text-align: left; border: none; background: none; padding: 6px 8px; border-radius: var(--radius-sm); font-size: .75rem; cursor: pointer; color: var(--text-primary); }
+.dry-run__prefill-panel button:hover { background: var(--bg-surface-muted); }
+
+/* ============================================================
+   EMPTY / LOADING / ERROR STATES
+   ============================================================ */
+.state-card { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-soft); padding: 32px 28px; text-align: left; }
+.state-card--error { border-color: var(--status-error-border); }
+.state-card--warning { border-color: var(--status-warning-border); }
+.state-card__title { font-size: 1.0625rem; font-weight: 600; margin-top: 4px; }
+.state-card__message { color: var(--text-secondary); font-size: .8125rem; margin-top: 6px; max-width: 52ch; }
+.state-card__actions { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+.state-card__actions .button--ghost { color: var(--text-muted); }
+.skeleton-line { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 37%, var(--bg-surface-muted) 63%); background-size: 400% 100%; animation: skeleton 1.4s ease infinite; }
+@keyframes skeleton { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .skeleton-line { animation: none; } }
+
+/* ============================================================
+   GALLERY / DEMO CHROME (not part of the OL product — mockup harness)
+   ============================================================ */
+.demo-toolbar { position: sticky; top: 52px; z-index: 9; display: flex; align-items: center; gap: 10px; padding: 10px 32px; background: var(--bg-surface-elevated); border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+.demo-toolbar__label { font-family: var(--font-mono); font-size: .6875rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-right: 4px; }
+.gallery-section { margin-top: 44px; padding-top: 28px; border-top: 1px dashed var(--border-strong); }
+.gallery-section__title { font-size: 1.0625rem; font-weight: 600; margin-bottom: 4px; }
+.gallery-section__desc { font-size: .8125rem; color: var(--text-muted); margin-bottom: 16px; max-width: 68ch; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.gallery-card { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); overflow: hidden; }
+.gallery-card__label { font-family: var(--font-mono); font-size: .6875rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); padding: 0; border-bottom: 1px solid var(--border-subtle); background: var(--bg-shell); }
+.gallery-card__switch { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; border: none; background: none; padding: 8px 12px; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.gallery-card__switch:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.gallery-card__state { font-family: var(--font-mono); font-size: .625rem; text-transform: none; letter-spacing: 0; color: var(--text-disabled); flex-shrink: 0; }
+.gallery-card__switch:hover .gallery-card__state { color: var(--accent-primary-hover); }
+.gallery-card--selected { border-color: var(--accent-primary-border); box-shadow: 0 0 0 1px var(--accent-primary-border); }
+.gallery-card--selected .gallery-card__label { background: var(--accent-primary-soft); color: var(--accent-primary-hover); }
+.gallery-card__body { padding: 16px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+</style>
+
+<div class="shell">
+  <aside class="shell-sidebar">
+    <div class="shell-brand">
+      <span class="shell-brand__mark">OL</span>
+      <span class="shell-brand__name">OpenLinker</span>
+    </div>
+    <nav class="shell-nav">
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Operations</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Analytics</a></li>
+          <li><a class="shell-nav__link" href="#">Orders</a></li>
+          <li><a class="shell-nav__link" href="#">Products</a></li>
+          <li><a class="shell-nav__link" href="#">Listings</a></li>
+          <li><a class="shell-nav__link" href="#">Shipments</a></li>
+          <li><a class="shell-nav__link" href="#">Fulfilment</a></li>
+        </ul>
+      </div>
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Diagnostics</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Jobs &amp; Logs</a></li>
+          <li><a class="shell-nav__link" href="#">Webhooks</a></li>
+          <li><a class="shell-nav__link" href="#">Cursors</a></li>
+        </ul>
+      </div>
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Platform</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Connections</a></li>
+          <li><a class="shell-nav__link" href="#">Adapters</a></li>
+          <li><a class="shell-nav__link" href="#">Settings</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <div class="shell-main">
+    <!-- No sidebar item points here — the only entry point is the "Sourcing rules"
+         tile on /settings (mirroring the Inventory Locations / Who Decides tiles),
+         so nothing in the Platform group is active and the crumb is 2-level:
+         {group:'Platform', title:'Sourcing rules'}. -->
+    <div class="shell-topbar">
+      <div class="shell-crumbs">Platform / <b>Sourcing rules</b></div>
+    </div>
+
+    <div class="demo-toolbar" role="group" aria-label="Mockup state switcher — not part of the product">
+      <span class="demo-toolbar__label">Mockup · view state</span>
+      <button class="chip chip--active" data-state="populated" onclick="setState('populated')">Populated (5 rules)</button>
+      <button class="chip" data-state="no-locations" onclick="setState('no-locations')">No locations</button>
+      <button class="chip" data-state="empty" onclick="setState('empty')">Empty</button>
+      <button class="chip" data-state="loading" onclick="setState('loading')">Loading</button>
+      <button class="chip" data-state="error" onclick="setState('error')">Error</button>
+      <span style="margin-left:auto; font-size:.6875rem; color:var(--text-muted); font-family:var(--font-mono);">try: nudge a row, filter by status, add/edit a rule, run a test</span>
+    </div>
+
+    <!-- Every dialog is reachable by name, not only by driving the UI to it:
+         an implementation ticket or E2E spec cites the body[data-state] value,
+         and this row is the button that sets it. -->
+    <div class="demo-toolbar" style="top:calc(52px + 41px);" role="group" aria-label="Mockup state switcher, dialogs — not part of the product">
+      <span class="demo-toolbar__label">Dialog state</span>
+      <button class="chip" data-state="rule-create" onclick="openCreate()">rule-create</button>
+      <button class="chip" data-state="rule-edit" onclick="openEdit('r3')">rule-edit <span style="opacity:.7">(kind locked)</span></button>
+      <button class="chip" data-state="confirm-loosen" onclick="demoLoosenConfirm()">confirm-loosen</button>
+      <button class="chip" data-state="confirm-delete" onclick="requestDelete('r3', 'Priority list')">confirm-delete</button>
+      <button class="chip" data-state="rule-unrecognised-locked" onclick="openDialog('lockedDialogBackdrop')">rule-unrecognised-locked</button>
+      <button class="chip" data-state="dry-run" onclick="openDryRun()">dry-run</button>
+    </div>
+
+    <div class="shell-content">
+      <a class="back-link" href="#">&larr; Settings</a>
+      <header class="page-header">
+        <div class="page-header__row">
+          <div>
+            <!-- Deliberately not the fulfilment-routing kicker this page used to carry:
+                 that name belongs to the ADR-012 dispatch
+                 surface (`connections/:id/routing-rules`, rendered as the connection
+                 Mappings tab labelled "Fulfillment"), which decides WHICH CARRIER
+                 ships a parcel. This screen decides which LOCATION sources it. The
+                 backend keeps the two apart on purpose (fulfillment-router.port.ts),
+                 so the kicker must not hand the collision back at the one layer an
+                 operator actually sees. -->
+            <p class="eyebrow">Sourcing &middot; OpenLinker OMS</p>
+            <h1 class="page-title">Sourcing rules</h1>
+            <p class="page-description">These rules decide which of your locations ships each order, and whether an order is allowed to go out as more than one parcel. They run top to bottom: each one either rules out locations that can't do the job, or ranks whichever locations are left.</p>
+            <p class="page-example"><b>For example</b> — rule out any location with no stock, then rank what's left by postcode closeness to the buyer. Every order then ships from whichever qualifying location scores closest, automatically, with no one picking it by hand.</p>
+            <p class="page-example">These rules never pick a <b>carrier</b>. Which courier collects the parcel is configured per connection under <b>Fulfillment</b> on its Mappings tab — a different screen, with a different job.</p>
+          </div>
+          <div class="page-header__actions">
+            <button class="button button--secondary button--sm" onclick="openDryRun()">Test against an order</button>
+            <button class="button button--sm" id="addRuleBtn" onclick="openCreate()">+ Add rule</button>
+          </div>
+        </div>
+      </header>
+
+      <div id="zeroLocationsSlot"></div>
+
+      <div id="rulesetChrome">
+        <div class="ladder-panel">
+          <div class="ladder-panel__head">
+            <span class="ladder-panel__eyebrow">Splitting limit</span>
+            <span class="info-popover" tabindex="0">
+              <button type="button" class="info-popover__trigger" aria-label="Why does this box exist?" onclick="this.closest('.info-popover').classList.toggle('is-open')">ⓘ</button>
+              <span class="info-popover__panel" role="tooltip">Each rule can set its own cap on splitting. When more than one rule is active, OpenLinker always uses the <b>strictest cap</b> — so a single strict rule can quietly cancel out several others that would have allowed more splitting. This box always shows the cap in effect right now, and which rule is responsible for it.</span>
+            </span>
+          </div>
+          <div class="ceiling-callout">
+            <span class="ceiling-callout__glyph" aria-hidden="true">⇕</span>
+            <p class="ceiling-sentence" id="ceilingSentence"></p>
+          </div>
+          <div class="ladder" id="ladder">
+            <div class="ladder__rung" data-rung="no-split">
+              <div class="ladder__rung-label">No split <span class="ladder__rung-dots" aria-hidden="true">●○○</span></div>
+              <div class="ladder__rung-desc">The whole order ships from a single location — or not at all.</div>
+            </div>
+            <div class="ladder__rung" data-rung="line-split">
+              <div class="ladder__rung-label">Line split <span class="ladder__rung-dots" aria-hidden="true">●●○</span></div>
+              <div class="ladder__rung-desc">Different items can ship from different locations. Each item still ships whole, from one place.</div>
+            </div>
+            <div class="ladder__rung" data-rung="quantity-split">
+              <div class="ladder__rung-label">Quantity split <span class="ladder__rung-dots" aria-hidden="true">●●●</span></div>
+              <div class="ladder__rung-desc">Even a single item's quantity can be split — e.g. 2 units from one location, 3 from another.</div>
+            </div>
+          </div>
+        </div>
+
+        <p class="fallback-note"><span class="alert__glyph" aria-hidden="true">ⓘ</span> <span>If none of your locations can fulfil an order, those items aren't shipped — they're flagged for a <b>refund or return</b> instead.</span></p>
+
+        <div class="filter-bar" role="group" aria-label="Filter by status">
+          <span class="filter-bar__label">Status</span>
+          <span class="info-popover" tabindex="0" style="margin-right:6px;">
+            <button type="button" class="info-popover__trigger" aria-label="What do these statuses mean?" onclick="this.closest('.info-popover').classList.toggle('is-open')">ⓘ</button>
+            <span class="info-popover__panel" role="tooltip"><b>Active</b> — running now.<br><b>Scheduled</b> — saved, but its start date hasn't arrived yet.<br><b>Retired</b> — kept for your records, no longer used. <em>Retired rules are not loaded with the page</em>: choosing this filter (or "All") re-fetches the list including them.<br><b>Unrecognised</b> — needs attention; see the rule for details.</span>
+          </span>
+          <button class="chip chip--active" data-status="Active" onclick="toggleStatusFilter('Active')">Active</button>
+          <button class="chip" data-status="Scheduled" onclick="toggleStatusFilter('Scheduled')">Scheduled</button>
+          <button class="chip" data-status="Retired" onclick="toggleStatusFilter('Retired')" title="Retired rules aren't returned by default — picking this re-fetches with includeSuperseded=true">Retired</button>
+          <button class="chip" data-status="Unrecognised" onclick="toggleStatusFilter('Unrecognised')">Unrecognised</button>
+          <button class="chip" data-status="All" onclick="toggleStatusFilter('All')">All</button>
+        </div>
+
+        <div id="alertSlot"></div>
+
+        <section id="tableSection">
+          <div class="data-table__container">
+            <table class="data-table" aria-label="Sourcing rules, in the order they run">
+              <thead>
+                <tr>
+                  <th style="width:64px;" title="Rules run in this order. Use the arrows to reorder.">Step</th>
+                  <th>Rule</th>
+                  <th style="width:140px;" title="How far this rule lets an order be divided across locations.">Splitting</th>
+                  <th style="width:150px;">Active window</th>
+                  <th style="width:110px;">Status</th>
+                  <th style="width:96px;" class="sr-only-header"><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="ruleBody"></tbody>
+            </table>
+          </div>
+          <p id="filteredNote" style="font-size:.75rem; color:var(--text-muted); margin-top:8px;"></p>
+        </section>
+
+        <details class="limitations">
+          <summary>What this doesn't do yet</summary>
+          <ul>
+            <li><b>Stock isn't reserved.</b> "In stock" checks whether any units exist right now, not whether they're already promised to another order — two orders racing for the last unit can both pass this check.</li>
+            <li><b>No shipping cost or carrier rate.</b> Rules rank by postcode closeness, item coverage, or the order you set — never by which location is cheaper to ship from.</li>
+            <li><b>Every save is live immediately.</b> There's no draft or second-person approval step before a rule change starts deciding real orders.</li>
+            <li><b>The rule list is fixed.</b> You can't rank or filter by a custom location attribute (capacity, operating hours, 3PL contract terms) — only by what's built in above.</li>
+            <li><b>Bringing a retired rule back is an edit, not a button.</b> You revive one by opening it and clearing its end date. If a rule of the same type and name is already running, the save is refused rather than silently taking over — retire that one first.</li>
+            <li><b>"Test against an order" isn't wired to anything.</b> The dry-run read it needs (<code>FulfillmentRouterPort.evaluate()</code>) is declared in core with no caller — tracked as <b>#2954</b>. The panel is designed here; it doesn't work yet.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     CREATE / EDIT DIALOG — sectioned ①②③, replaces the flat form
+     ============================================================ -->
+<div class="dialog-backdrop" id="ruleDialogBackdrop">
+  <div class="dialog dialog--wide" role="dialog" aria-modal="true" aria-labelledby="ruleDialogTitle">
+    <div class="dialog__header">
+      <div>
+        <h2 class="dialog__title" id="ruleDialogTitle">Add sourcing rule</h2>
+        <p class="dialog__subtitle" id="ruleDialogSubtitle">This will be rule 6 — everything above it is checked first.</p>
+        <p class="dialog__meta" id="ruleDialogMeta" hidden></p>
+      </div>
+      <button class="dialog__close" title="Close" aria-label="Close" onclick="closeDialog('ruleDialogBackdrop')">&times;</button>
+    </div>
+    <div class="dialog__body">
+
+      <p class="dialog-summary" id="dialogSummary"></p>
+
+      <div class="dialog-section">
+        <p class="dialog-section__head">① What triggers this rule</p>
+        <div class="form-field">
+          <!-- On EDIT these radios are disabled, and it is not cosmetic:
+               UpdateSourcingRuleDto carries position/name/afterAction/
+               priorityLocationIds/effectiveFrom/effectiveTo and deliberately NOT
+               `kind`, because kind is half the identity under the unique index
+               (SourcingRuleAdminService.updateRule says so in place). A form that
+               lets Filter/Sort be flipped is offering a change the PATCH cannot
+               carry: whatever the implementer sends is dropped or 400s. -->
+          <div class="radio-tiles" id="kindTiles">
+            <label class="radio-tile radio-tile--active" id="kindTileFilter">
+              <input type="radio" name="kind" value="filter" checked onchange="onKindChange(this)">
+              <span class="radio-tile__label">Filter</span>
+              <div class="radio-tile__desc">Rules out locations that can't do the job.</div>
+            </label>
+            <label class="radio-tile" id="kindTileSort">
+              <input type="radio" name="kind" value="sort" onchange="onKindChange(this)">
+              <span class="radio-tile__label">Sort</span>
+              <div class="radio-tile__desc">Ranks whichever locations are left.</div>
+            </label>
+          </div>
+          <p class="form-field__description" id="kindLockedNote" hidden>
+            <b>Can't be changed.</b> A rule's type is part of what identifies it, so switching Filter and Sort isn't an edit — it's a different rule. Delete this one and add a new rule instead.
+          </p>
+        </div>
+        <div class="form-field" style="margin-bottom:0;">
+          <label class="form-field__label" for="ruleName">Rule</label>
+          <select id="ruleName" onchange="onNameChange(this)"></select>
+          <p class="form-field__description" id="ruleNameHint"></p>
+          <div class="alert alert--warning" id="countryServedWarning" hidden style="margin:8px 0 0;">
+            <span class="alert__glyph" aria-hidden="true">⚠</span>
+            <div class="alert__content"><p class="alert__description" style="margin:0;">If you run one warehouse that ships to several countries, this rule will rule it out for every order NOT placed in that warehouse's own country — including orders you'd normally be happy to ship. It's built for "one warehouse per country," not "one warehouse serving many."</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dialog-section">
+        <p class="dialog-section__head">② Configure it</p>
+        <p class="form-field__description" id="configPlaceholder" style="margin:0;">This rule type needs no extra setup — skip to ③.</p>
+        <div class="form-field" id="configBuilder" style="margin-bottom:0;" hidden>
+          <label class="form-field__label">Location order (highest priority first)</label>
+          <p class="form-field__description" style="margin:0 0 6px;">Only "Priority list" uses this — it's why this section is empty for every other rule.</p>
+          <div class="loc-search">
+            <input type="text" id="locSearchInput" placeholder="Search locations to add…" autocomplete="off"
+                   oninput="onLocSearchInput(event)" onfocus="onLocSearchInput(event)">
+            <ul class="loc-search__results" id="locSearchResults" hidden></ul>
+          </div>
+          <ul class="priority-rows" id="priorityRows"></ul>
+          <p class="form-field__description">Any location you don't add here is used last, after everything on this list.</p>
+        </div>
+      </div>
+
+      <div class="dialog-section">
+        <p class="dialog-section__head">③ What happens next</p>
+        <div class="form-field">
+          <label class="form-field__label" for="ruleAfterAction">Splitting</label>
+          <select id="ruleAfterAction" onchange="updateDialogCeilingPreview()">
+            <option value="no-split">No split — ship the whole order from one location, or not at all</option>
+            <option value="line-split" selected>Line split — different items can come from different locations, but each item still ships whole</option>
+            <option value="quantity-split">Quantity split — even one item's quantity can be split across locations</option>
+          </select>
+        </div>
+        <div class="alert" id="dialogCeilingPreview" style="margin-bottom:16px;"></div>
+        <div class="form-field-row" style="margin-bottom:0;">
+          <div class="form-field">
+            <label class="form-field__label" for="ruleFrom">Starts on <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
+            <input type="date" id="ruleFrom" onchange="updateDialogCeilingPreview()" />
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="ruleTo">Ends on <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
+            <input type="date" id="ruleTo" onchange="updateDialogCeilingPreview()" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-field" id="dialogErrorField" hidden style="margin-top:12px;" role="alert">
+        <p class="form-field__error" id="dialogErrorText">⚠ The end date must be after the start date — otherwise this rule would never actually run.</p>
+      </div>
+    </div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('ruleDialogBackdrop')">Cancel</button>
+      <button class="button" id="saveRuleBtn" onclick="saveRule()">Save rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     LOOSENING CONFIRM GATE
+     ============================================================ -->
+<div class="dialog-backdrop" id="loosenConfirmBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="loosenConfirmTitle">
+    <div class="dialog__header">
+      <div><h2 class="dialog__title" id="loosenConfirmTitle">Allow more splitting than today?</h2></div>
+      <button class="dialog__close" title="Close" aria-label="Close" onclick="closeDialog('loosenConfirmBackdrop')">&times;</button>
+    </div>
+    <div class="dialog__body">
+      <p style="font-size:.8125rem; color:var(--text-secondary);" id="loosenConfirmText"></p>
+    </div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('loosenConfirmBackdrop')">Cancel</button>
+      <button class="button" onclick="confirmLoosenSave()">Save anyway</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     UNRECOGNISED-RULE EDIT ATTEMPT (locked)
+     ============================================================ -->
+<div class="dialog-backdrop" id="lockedDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="lockedDialogTitle">
+    <div class="dialog__header">
+      <div>
+        <h2 class="dialog__title" id="lockedDialogTitle">Can't edit this rule</h2>
+      </div>
+      <button class="dialog__close" title="Close" aria-label="Close" onclick="closeDialog('lockedDialogBackdrop')">&times;</button>
+    </div>
+    <div class="dialog__body">
+      <div class="alert alert--warning" style="margin-bottom:0;">
+        <span class="alert__glyph">⚠</span>
+        <div class="alert__content">
+          <p class="alert__title">OpenLinker doesn't recognise this rule anymore</p>
+          <p class="alert__description">It's saved, but it isn't actually being used — orders route as if it weren't here. Editing it would make it look active again, which wouldn't be true. Delete it and set up a new rule instead.</p>
+        </div>
+      </div>
+    </div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('lockedDialogBackdrop')">Close</button>
+      <button class="button button--danger" onclick="closeDialog('lockedDialogBackdrop'); requestDelete('r-unrecognised', 'seller-tier')">Delete rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DELETE CONFIRM
+     ============================================================ -->
+<div class="dialog-backdrop" id="deleteDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="deleteDialogTitle">
+    <div class="dialog__header">
+      <div>
+        <h2 class="dialog__title" id="deleteDialogTitle">Delete this rule?</h2>
+        <p class="dialog__subtitle" id="deleteDialogSubtitle">Every rule below it moves up one step.</p>
+      </div>
+      <button class="dialog__close" title="Close" aria-label="Close" onclick="closeDialog('deleteDialogBackdrop')">&times;</button>
+    </div>
+    <div class="dialog__body">
+      <div class="alert alert--warning" id="deleteDialogWarning" hidden style="margin-bottom:14px;">
+        <span class="alert__glyph" aria-hidden="true">⚠</span>
+        <div class="alert__content"><p class="alert__description" id="deleteDialogWarningText" style="margin:0;"></p></div>
+      </div>
+      <p style="font-size:.8125rem; color:var(--text-secondary);">This deletes the rule for good, including its history. If you just want to stop using it, retire it instead — it stays on the list, and you can bring it back later.</p>
+    </div>
+    <div class="dialog__actions dialog__actions--split">
+      <button class="button button--secondary" onclick="retireInstead()">Retire instead</button>
+      <div style="display:flex; gap:8px;">
+        <button class="button button--secondary" onclick="closeDialog('deleteDialogBackdrop')">Cancel</button>
+        <button class="button button--danger" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TEST AGAINST AN ORDER (dry run)
+     ============================================================ -->
+<div class="dialog-backdrop" id="dryRunBackdrop">
+  <div class="dialog dialog--wide" role="dialog" aria-modal="true" aria-labelledby="dryRunTitle">
+    <div class="dialog__header">
+      <div>
+        <h2 class="dialog__title" id="dryRunTitle">Test against an order</h2>
+        <p class="dialog__subtitle">See where a sample order would ship from, using your saved rules. Nothing is created, shipped, or changed.</p>
+        <!-- The one sentence that stops this dialog reading as implementable.
+             FulfillmentRouterPort.evaluate() is declared and has NO caller anywhere
+             in the tree, so nothing serves this panel today. It is designed here so
+             that the issue which wires it has a spec — not because it is available. -->
+        <div class="alert alert--warning" style="margin:10px 0 0;">
+          <span class="alert__glyph" aria-hidden="true">&#9888;</span>
+          <div class="alert__content">
+            <p class="alert__title">Not built yet — no backend serves this panel</p>
+            <p class="alert__description">This is the design for <b>#2954</b> (the dry-run surface). <code>FulfillmentRouterPort.evaluate()</code> is declared in core and has no caller anywhere in the tree, so there is nothing to wire it to yet. The trace below is a local simulation over this mockup's own seed data — read it as the intended shape, not as a working read.</p>
+          </div>
+        </div>
+      </div>
+      <button class="dialog__close" title="Close" aria-label="Close" onclick="closeDialog('dryRunBackdrop')">&times;</button>
+    </div>
+    <div class="dialog__body">
+      <div class="dialog-section" style="padding-top:0;">
+        <p class="dialog-section__head">Build a test order</p>
+        <p class="dry-run__prefill"><a href="#" onclick="togglePrefill(event)">Prefill from a recent order</a></p>
+        <div class="dry-run__prefill-panel" id="prefillPanel">
+          <button type="button" onclick="applyPrefill('PL')">Order #40218 — Poland, 2 items</button>
+          <button type="button" onclick="applyPrefill('DE')">Order #40203 — Germany, 1 item</button>
+          <button type="button" onclick="applyPrefill('PL2')">Order #40190 — Poland, 3 items, low stock</button>
+        </div>
+        <div class="form-field-row">
+          <div class="form-field">
+            <label class="form-field__label" for="dryCountry">Delivery country</label>
+            <select id="dryCountry">
+              <option value="PL">Poland</option>
+              <option value="DE">Germany</option>
+              <option value="FR">France</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-field__label" for="dryPostcode">Delivery postcode <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
+            <input type="text" id="dryPostcode" placeholder="e.g. 00-001" />
+          </div>
+        </div>
+        <p class="form-field__description" style="margin:-4px 0 10px;">Only used by the "Nearest" rule — leave blank to test as if a postcode weren't available.</p>
+
+        <label class="form-field__label">Items in this order</label>
+        <div id="dryLines"></div>
+        <button class="button button--secondary button--xs" type="button" onclick="addDryLine()">+ Add item</button>
+      </div>
+
+      <div class="dialog-section">
+        <p class="dialog-section__head">Result</p>
+        <div id="dryRunEmpty" style="font-size:.75rem; color:var(--text-muted);">Add at least one item, then run the test.</div>
+        <div id="dryRunResult" hidden></div>
+      </div>
+    </div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('dryRunBackdrop')">Close</button>
+      <button class="button" onclick="runDryRun()">Run test</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STATE GALLERY
+     ============================================================ -->
+<div class="shell-content" style="max-width:1180px; margin: 0 auto; padding: 0 32px 64px;">
+  <section class="gallery-section">
+    <h2 class="gallery-section__title">Component states, for review</h2>
+    <p class="gallery-section__desc">Every state this screen can be in, rendered at once. The toolbar above switches the live view through the first five and opens each dialog by name; the rest — validation, locked rules, ceiling consequences, and the reorder interaction — only show up inside real usage, so they're pinned here too.</p>
+    <p class="gallery-section__desc" style="margin-bottom:16px;"><b>Addressing these states.</b> Every card below carries a <code>data-state</code> value, shown on its own label, and its label <em>is</em> the switcher button: clicking it stamps that value onto <code>body[data-state]</code>. An implementation ticket or E2E spec cites the value (e.g. <code>gallery-priority-stale</code>) rather than describing "the screen where X happens", so there is exactly one unambiguous way to find a state.</p>
+
+    <div class="gallery-grid">
+      <div class="gallery-card" data-state="gallery-no-locations">
+        <p class="gallery-card__label">No locations — blocking state</p>
+        <div class="gallery-card__body">
+          <div class="state-card state-card--warning">
+            <p class="eyebrow" style="color:var(--status-warning-fg);">No locations</p>
+            <h3 class="state-card__title">No locations to route to yet</h3>
+            <p class="state-card__message">Sourcing rules choose between your locations — there are none yet. Create one to get started.</p>
+            <div class="state-card__actions">
+              <button class="button button--sm">Create a default location</button>
+              <a href="#" style="font-size:.75rem;" title="Inventory locations (#3063 / #3120) — the sibling screen in this same wave">Manage locations</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-empty">
+        <p class="gallery-card__label">Empty — no rules yet</p>
+        <div class="gallery-card__body">
+          <div class="state-card">
+            <p class="eyebrow">No rules</p>
+            <h3 class="state-card__title">Nothing decides where an order ships from yet</h3>
+            <p class="state-card__message">Without a rule, this connection can't be given any order to fulfil. Add a rule to start narrowing down which locations qualify.</p>
+            <div class="state-card__actions"><button class="button button--sm">+ Add rule</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-loading">
+        <p class="gallery-card__label">Loading</p>
+        <div class="gallery-card__body">
+          <div style="display:grid; gap:10px;">
+            <div class="skeleton-line" style="width:100%; height:36px; border-radius:10px;"></div>
+            <div class="skeleton-line" style="width:100%; height:36px; border-radius:10px;"></div>
+            <div class="skeleton-line" style="width:100%; height:36px; border-radius:10px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-error">
+        <p class="gallery-card__label">Error — couldn't load</p>
+        <div class="gallery-card__body">
+          <div class="state-card state-card--error">
+            <p class="eyebrow" style="color:var(--status-error-fg);">Error</p>
+            <h3 class="state-card__title">Couldn't load sourcing rules</h3>
+            <p class="state-card__message">Couldn't load your sourcing rules right now (503 Service Unavailable). Nothing has changed — this is just a loading problem.</p>
+            <div class="state-card__actions"><button class="button button--secondary button--sm">Retry</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-wrong-connection">
+        <p class="gallery-card__label">Wrong connection — page-level gate</p>
+        <div class="gallery-card__body">
+          <div class="alert alert--error" style="margin:0;">
+            <span class="alert__glyph">✕</span>
+            <div class="alert__content">
+              <p class="alert__title">This isn't your OpenLinker OMS connection</p>
+              <p class="alert__description">Sourcing rules only apply to your OpenLinker OMS connection — anything you set up here would never actually be used. Enable the OMS, then manage its rules from that connection instead.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-validation-priority-misuse">
+        <p class="gallery-card__label">Validation — priority list on the wrong rule</p>
+        <div class="gallery-card__body">
+          <div class="form-field" style="margin:0;">
+            <label class="form-field__label">Rule</label>
+            <select aria-invalid="true"><option>Nearest — closest to the delivery postcode</option></select>
+            <p class="form-field__error">⚠ "Nearest" doesn't use a location order, so this list must be left empty.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-name-claimed">
+        <p class="gallery-card__label">Rule name already claimed</p>
+        <div class="gallery-card__body">
+          <div class="form-field" style="margin:0;">
+            <label class="form-field__label">Rule</label>
+            <select disabled><option>Country served — already active as Rule 2</option></select>
+            <p class="form-field__description">Retire the existing "Country served" rule first, or edit that rule instead.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-priority-stale">
+        <p class="gallery-card__label">Priority list — stale reference</p>
+        <div class="gallery-card__body">
+          <ul class="priority-rows" style="margin:0;">
+            <li class="priority-row"><span class="priority-row__pos">1</span><span class="priority-row__name">Warsaw — Main warehouse</span></li>
+            <li class="priority-row"><span class="priority-row__pos">2</span><span class="priority-row__stale">⚠ No location exists for this entry — it ranks nothing.</span><button class="priority-row__remove" title="Remove" aria-label="Remove">×</button></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-delete-governing">
+        <p class="gallery-card__label">Deleting the governing rule</p>
+        <div class="gallery-card__body">
+          <p style="font-size:.8125rem; font-weight:600; margin-bottom:8px;">Delete "Priority list"?</p>
+          <div class="alert alert--warning" style="margin:0;">
+            <span class="alert__glyph" aria-hidden="true">⚠</span>
+            <div class="alert__content"><p class="alert__description" style="margin:0;">Deleting this removes your only limit on splitting: orders could start splitting more than they do today (up to <b>Quantity split</b>). No other active rule currently prevents that.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-scheduled">
+        <p class="gallery-card__label">Scheduled — not evaluated yet</p>
+        <div class="gallery-card__body">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Scheduled</span>
+            <span style="font-size:.75rem; color:var(--text-muted); font-family:var(--font-mono);">starts 2026-11-01</span>
+          </div>
+          <p style="font-size:.75rem; color:var(--text-muted); margin-top:8px;">You can still see and reorder it now — it just won't apply to orders until its start date.</p>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-retired">
+        <p class="gallery-card__label">Retired — window closed</p>
+        <div class="gallery-card__body">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="status-badge status-badge--neutral">Retired</span>
+            <span style="font-size:.75rem; color:var(--text-muted); font-family:var(--font-mono);">closed 2026-08-15</span>
+          </div>
+          <p style="font-size:.75rem; color:var(--text-muted); margin-top:8px;">Kept for your records instead of deleted — you can still see it alongside whatever replaced it.</p>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-unrecognised">
+        <p class="gallery-card__label">Unrecognised — locked</p>
+        <div class="gallery-card__body">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Unrecognised</span>
+          </div>
+          <p style="font-size:.75rem; color:var(--text-muted); margin-top:8px;">It's saved, but this version of OpenLinker no longer uses it. You can't edit it — only delete it — since saving an edit would wrongly suggest it's active again.</p>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-active">
+        <p class="gallery-card__label">Active — plain ink, no badge</p>
+        <div class="gallery-card__body">
+          <span class="rule-state--plain"><span class="tick">✓</span>Active</span>
+          <p style="font-size:.75rem; color:var(--text-muted); margin-top:8px;">The expected state on a healthy ruleset renders in text, not colour — colour is reserved for a state someone has to act on.</p>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-governing">
+        <p class="gallery-card__label">Governs the ceiling</p>
+        <div class="gallery-card__body" style="padding:0;">
+          <table class="data-table" style="width:100%;">
+            <tbody>
+              <tr class="rule-row--governing"><td style="padding:10px 12px;">
+                <div style="font-size:.8125rem; font-weight:600;">Priority list</div>
+                <div class="rule-cell__governs">sets today's splitting limit</div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-reorder-saved">
+        <p class="gallery-card__label">Reorder — saved</p>
+        <div class="gallery-card__body">
+          <div class="toast is-visible" style="position:static; transform:none;">Order saved. Splitting limit unchanged.</div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-revive-conflict">
+        <p class="gallery-card__label">Reviving a retired rule — refused</p>
+        <div class="gallery-card__body">
+          <div class="form-field" style="margin:0;">
+            <label class="form-field__label" for="reviveDemoTo">Ends on <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
+            <input type="date" id="reviveDemoTo" value="" aria-invalid="true" readonly>
+            <p class="form-field__error">&#9888; Can't bring this rule back: <b>Country served</b> is already running as Rule 2, and only one rule of each type and name can be active at a time. Retire that one first, or edit it instead of reviving this.</p>
+          </div>
+          <p style="font-size:.75rem; color:var(--text-muted); margin-top:8px;">Clearing the end date is how a retired rule comes back. It's the one collision the name picker can't prevent — the field it collides on is the date, not the name.</p>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-reorder-conflict">
+        <p class="gallery-card__label">Reorder — conflict</p>
+        <div class="gallery-card__body">
+          <div class="alert alert--error" style="margin:0;">
+            <span class="alert__glyph">✕</span>
+            <div class="alert__content">
+              <p class="alert__title">Couldn't save the new order</p>
+              <p class="alert__description">"Country served" was retired by someone else just now. The list has been refreshed.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gallery-card" data-state="gallery-settings-tile">
+        <p class="gallery-card__label">Entry point — the /settings tile (not part of this screen)</p>
+        <div class="gallery-card__body">
+          <div style="border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); padding:16px; max-width:320px;">
+            <p class="eyebrow" style="margin-bottom:2px;">Sourcing &middot; OpenLinker OMS</p>
+            <h3 style="margin:0 0 8px; font-size:.9375rem; font-weight:600;">Sourcing rules</h3>
+            <p style="margin:0 0 12px; font-size:.8125rem; color:var(--text-secondary);">The ordered ruleset the router uses to decide which location and holder fulfils each order.</p>
+            <button class="button button--secondary button--sm" disabled>Open</button>
+          </div>
+          <p style="margin-top:10px; font-size:.75rem; color:var(--text-muted); max-width:56ch;">This is the only way in — there's no sidebar item for this screen, only a link-out card on <code>/settings</code> (mirroring the "Who decides what" / "Inventory locations" tiles). The back-link above ("← Settings") and the two-level breadcrumb ("Platform / Sourcing rules") both point back here.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   SEED DATA
+   ============================================================ */
+const LOCATIONS = [
+  { id:'loc-warsaw', name:'Warsaw — Main warehouse', status:'active', country:'PL', postcode:'00-001' },
+  { id:'loc-krakow', name:'Kraków — Overflow', status:'active', country:'PL', postcode:'30-001' },
+  { id:'loc-wroclaw', name:'Wrocław — 3PL partner', status:'inactive', country:'PL', postcode:'50-001' },
+];
+
+// A tiny mock stock table so the dry run has something real to eliminate/rank against.
+const STOCK = {
+  'loc-warsaw':  { 'SKU-100': 6, 'SKU-200': 0 },
+  'loc-krakow':  { 'SKU-100': 1, 'SKU-200': 9 },
+  'loc-wroclaw': { 'SKU-100': 0, 'SKU-200': 0 },
+};
+
+const RULES_SEED = [
+  { id:'r1', kind:'filter', name:'in-stock', label:'In stock', afterAction:'no-split', from:null, to:null, recognised:true, updatedBy:'Anna K.', updatedAt:'2026-08-02' },
+  { id:'r2', kind:'filter', name:'country-served', label:'Country served', afterAction:'no-split', from:null, to:null, recognised:true, updatedBy:'Anna K.', updatedAt:'2026-08-02' },
+  { id:'r3', kind:'sort', name:'priority', label:'Priority list', afterAction:'line-split', from:null, to:null, recognised:true, priorityLocationIds:['loc-warsaw','loc-krakow','loc-poznan-deleted'], updatedBy:'Marek T.', updatedAt:'2026-09-03' },
+  { id:'r4', kind:'sort', name:'nearest', label:'Nearest', afterAction:'line-split', from:'2026-11-01', to:null, recognised:true, updatedBy:'Marek T.', updatedAt:'2026-08-20' },
+  { id:'r-unrecognised', kind:'filter', name:'seller-tier', label:'seller-tier', afterAction:'no-split', from:null, to:null, recognised:false, updatedBy:null, updatedAt:null },
+];
+
+const NAME_HINTS = {
+  'in-stock': 'Rules out any location with no stock of at least one item in this order.',
+  'country-served': "Only keeps a location if it's registered in the same country the order ships to — that's about where the location physically is, not which countries it's set up to ship to.",
+  'not-blocked-by-reject': 'Rules out a location that already turned this order down.',
+  'priority': 'Ranks locations in the order you choose below.',
+  'nearest': 'Ranks by how close the postcode is to the delivery address — not the real driving or shipping distance. With PII storage off there is no postcode to compare, so it quietly falls back to ranking by country alone.',
+  'most-complete': 'Prefers the location that can fulfil the most items in this order.',
+  'least-splits': 'Prefers a single location that can fulfil the whole order, to avoid splitting it.',
+};
+
+const NAME_OPTIONS = {
+  filter: [
+    { value:'in-stock', label:'In stock — rules out a location with no stock for this order' },
+    { value:'country-served', label:'Country served — kept only if the location is in the delivery country' },
+    { value:'not-blocked-by-reject', label:'Not blocked — rules out a location that already turned this order down' },
+  ],
+  sort: [
+    { value:'priority', label:'Priority list — ranked in the order you choose' },
+    { value:'nearest', label:'Nearest — closest postcode to the delivery address' },
+    { value:'most-complete', label:'Most complete — can fulfil the most items in the order' },
+    { value:'least-splits', label:'Fewest splits — prefers one location for the whole order' },
+  ],
+};
+
+const NAME_LABEL = {}; // value -> short label, built once below
+Object.values(NAME_OPTIONS).flat().forEach(o => { NAME_LABEL[o.value] = o.label.split(' — ')[0]; });
+
+const AFTER_LABEL = { 'no-split':'No split', 'line-split':'Line split', 'quantity-split':'Quantity split' };
+const AFTER_DOTS = { 'no-split':'●○○', 'line-split':'●●○', 'quantity-split':'●●●' };
+const AFTER_DESC = {
+  'no-split': "The whole order ships from a single location — or not at all.",
+  'line-split': "Different items can ship from different locations. Each item still ships whole, from one place.",
+  'quantity-split': "Even a single item's quantity can be split — e.g. 2 units from one location, 3 from another.",
+};
+const AFTER_RANK = { 'quantity-split':0, 'line-split':1, 'no-split':2 };
+const KIND_DESC = { filter: 'Filter — rules out locations that can’t do the job.', sort: 'Sort — ranks whichever locations are left.' };
+
+let rules = JSON.parse(JSON.stringify(RULES_SEED));
+let pendingDeleteId = null;
+let editingId = null;
+let priorityDraft = [];
+let dialogLoosens = false;
+let statusFilters = new Set(['Active']);
+let dryLines = [{ sku:'SKU-100', qty:1 }, { sku:'SKU-200', qty:1 }];
+
+function fmtDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function locationName(id) {
+  const l = LOCATIONS.find(x => x.id === id);
+  return l ? l.name : null;
+}
+
+/* ============================================================
+   RULE STATUS + CEILING RESOLUTION
+   ============================================================ */
+function ruleStatus(r) {
+  if (!r.recognised) return { tone:'warning', label:'Unrecognised' };
+  const today = new Date().toISOString().slice(0,10);
+  if (r.from && r.from > today) return { tone:'info', label:'Scheduled' };
+  if (r.to && r.to < today) return { tone:'neutral', label:'Retired' };
+  return { tone:'success', label:'Active' };
+}
+function isLiveRule(r) {
+  // "live" mirrors the backend's effectiveTo IS NULL slot — Active + Scheduled both claim the (kind,name) slot.
+  const s = ruleStatus(r).label;
+  return r.recognised && s !== 'Retired';
+}
+
+// Resolves the strictest after-action across every ACTIVE rule, and which rule(s) govern it.
+// quantity-split never "governs" anything — it's the default, nothing-changed case.
+function resolveCeiling(rulesArr) {
+  let ceiling = 'quantity-split';
+  let governing = [];
+  rulesArr.forEach(r => {
+    if (ruleStatus(r).label !== 'Active') return;
+    const rank = AFTER_RANK[r.afterAction];
+    if (rank > AFTER_RANK[ceiling]) { ceiling = r.afterAction; governing = (r.afterAction === 'quantity-split') ? [] : [r]; }
+    else if (rank === AFTER_RANK[ceiling] && r.afterAction !== 'quantity-split') { governing.push(r); }
+  });
+  return { ceiling, governing };
+}
+// Every governing rule name is always a real, clickable link — never plain
+// text that merely looks the same as the clickable version (a tie between
+// two rules must not silently downgrade into dead-looking prose).
+function governingLinks(governing) {
+  return governing.map(r => `<a href="#" onclick="highlightRule('${r.id}'); return false;">Rule ${rules.indexOf(r) + 1} (“${escapeHtml(r.label)}”)</a>`);
+}
+function joinNames(names) {
+  if (names.length <= 2) return names.join(' and ');
+  return names.slice(0, 2).join(', ') + ` +${names.length - 2} more`;
+}
+
+let lastCeiling = null;
+function renderCeilingPanel() {
+  const { ceiling, governing } = resolveCeiling(rules);
+  document.querySelectorAll('#ladder .ladder__rung').forEach(el => {
+    el.classList.toggle('ladder__rung--active', el.dataset.rung === ceiling);
+  });
+  const sentenceEl = document.getElementById('ceilingSentence');
+  const chip = `<span class="ceiling-chip">${AFTER_LABEL[ceiling]}</span>`;
+  if (!governing.length) {
+    sentenceEl.innerHTML = `Right now, orders can be split like this: ${chip} — that's just the default, since none of your active rules restrict it further.`;
+  } else {
+    const single = governing.length === 1;
+    const names = joinNames(governingLinks(governing));
+    sentenceEl.innerHTML = `Right now, orders can be split like this: ${chip}. ${names} ${single ? 'sets' : 'set'} this limit — every other active rule would allow more.`;
+  }
+  // A single orchestrated flash when the answer itself changes — not on every
+  // render, so an unrelated re-render (e.g. filtering the table) stays quiet.
+  const callout = document.querySelector('.ceiling-callout');
+  if (callout && lastCeiling !== null && lastCeiling !== ceiling) {
+    callout.classList.remove('ceiling-callout--pulse');
+    void callout.offsetWidth;
+    callout.classList.add('ceiling-callout--pulse');
+  }
+  lastCeiling = ceiling;
+}
+function highlightRule(id) {
+  const row = document.querySelector(`tr[data-id="${id}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.add('rule-row--highlight');
+  setTimeout(() => row.classList.remove('rule-row--highlight'), 1600);
+}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+function showToast(msg, tone) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast is-visible' + (tone ? ' toast--' + tone : '');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => el.classList.remove('is-visible'), 2600);
+}
+
+/* ============================================================
+   TABLE RENDER
+   ============================================================ */
+function toggleStatusFilter(status) {
+  if (status === 'All') {
+    statusFilters = new Set(['All']);
+  } else {
+    statusFilters.delete('All');
+    if (statusFilters.has(status)) {
+      if (statusFilters.size > 1) statusFilters.delete(status);
+    } else {
+      statusFilters.add(status);
+    }
+    if (statusFilters.size === 0) statusFilters.add('Active');
+  }
+  document.querySelectorAll('.filter-bar .chip').forEach(c => {
+    c.classList.toggle('chip--active', statusFilters.has(c.dataset.status));
+  });
+  renderRules();
+}
+
+function renderRules() {
+  const body = document.getElementById('ruleBody');
+  body.innerHTML = '';
+  const { governing } = resolveCeiling(rules);
+  const governingIds = new Set(governing.map(r => r.id));
+  const showAll = statusFilters.has('All');
+  const visible = rules.filter(r => showAll || statusFilters.has(ruleStatus(r).label));
+
+  visible.forEach((r) => {
+    const idx = rules.indexOf(r);
+    const tr = document.createElement('tr');
+    const isGoverning = governingIds.has(r.id);
+    tr.className = 'rule-row' + (r.recognised ? '' : ' rule-row--unrecognised') + (isGoverning ? ' rule-row--governing' : '');
+    tr.dataset.id = r.id;
+
+    const status = ruleStatus(r);
+    const windowText = r.from || r.to
+      ? [r.from ? 'from ' + fmtDate(r.from) : null, r.to ? 'to ' + fmtDate(r.to) : null].filter(Boolean).join(' · ')
+      : 'Always';
+
+    let statusHtml;
+    if (status.label === 'Active') {
+      statusHtml = `<span class="rule-state--plain"><span class="tick" aria-hidden="true">✓</span>Active</span>`;
+    } else if (status.label === 'Scheduled') {
+      statusHtml = `<span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Scheduled</span>`;
+    } else if (status.label === 'Retired') {
+      statusHtml = `<span class="status-badge status-badge--neutral">Retired</span>`;
+    } else {
+      statusHtml = `<span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Unrecognised</span>`;
+    }
+
+    const priorityHtml = r.priorityLocationIds ? `<div class="rule-cell__priority-list">${r.priorityLocationIds.map((id, i) => {
+      const name = locationName(id);
+      const loc = LOCATIONS.find(l => l.id === id);
+      if (!name) return `<span class="rule-cell__priority-entry rule-cell__priority-entry--stale" title="This location was deleted after this rule was saved. It ranks nothing until you remove or replace it.">${i+1}. ⚠ No location exists for this entry</span>`;
+      const inactive = loc.status === 'inactive' ? ` <span class="status-badge status-badge--neutral status-badge--compact" title="This location is inactive. It stays in the list, but may not actually receive orders.">Inactive</span>` : '';
+      return `<span class="rule-cell__priority-entry">${i+1}. ${escapeHtml(name)}${inactive}</span>`;
+    }).join('')}</div>` : '';
+
+    const auditTitle = r.updatedBy ? `Last edited by ${escapeHtml(r.updatedBy)} on ${fmtDate(r.updatedAt)}` : 'No edit history recorded';
+    const governsCaption = isGoverning ? `<div class="rule-cell__governs"><span class="dot" aria-hidden="true"></span>Sets today's splitting limit</div>` : '';
+    const editTitle = r.recognised ? `Edit ${escapeHtml(r.label)}` : `Can't edit — this rule is no longer recognised`;
+    const editLocked = r.recognised ? '' : ' is-locked';
+
+    tr.innerHTML = `
+      <td>
+        <div class="rule-position">
+          <span class="rule-position__handle" aria-hidden="true" title="Use the arrows to reorder">⠿</span>
+          <span class="rule-position__num">${idx + 1}</span>
+          <span class="rule-position__nudge">
+            <button type="button" title="Move up" aria-label="Move up" onclick="moveRule('${r.id}', -1)" ${idx===0?'disabled':''}>▲</button>
+            <button type="button" title="Move down" aria-label="Move down" onclick="moveRule('${r.id}', 1)" ${idx===rules.length-1?'disabled':''}>▼</button>
+          </span>
+          <span class="rule-position__jump">
+            <button type="button" title="Move to top" aria-label="Move to top" onclick="jumpRule('${r.id}', 'top')" ${idx===0?'disabled':''}>⤒</button>
+            <button type="button" title="Move to bottom" aria-label="Move to bottom" onclick="jumpRule('${r.id}', 'bottom')" ${idx===rules.length-1?'disabled':''}>⤓</button>
+          </span>
+        </div>
+      </td>
+      <td>
+        <div class="rule-cell__kind">
+          <span class="rule-cell__kind-badge" title="${escapeHtml(KIND_DESC[r.kind] || '')}">${r.kind}</span>
+          ${escapeHtml(r.label)}
+          <button type="button" class="rule-cell__audit" title="${auditTitle}" aria-label="${auditTitle}">ⓘ</button>
+        </div>
+        ${governsCaption}
+        <div class="rule-cell__desc">${escapeHtml(NAME_HINTS[r.name] || '')}</div>
+        ${priorityHtml}
+      </td>
+      <td>
+        <span class="split-chip" title="${escapeHtml(AFTER_DESC[r.afterAction])}"><span class="split-chip__dots" aria-hidden="true">${AFTER_DOTS[r.afterAction]}</span>${AFTER_LABEL[r.afterAction]}</span>
+      </td>
+      <td style="font-size:.75rem; color:var(--text-secondary); font-family:var(--font-mono);">${windowText}</td>
+      <td>${statusHtml}</td>
+      <td>
+        <div class="rule-actions">
+          <button class="button button--ghost button--icon button--sm${editLocked}" title="${editTitle}" aria-label="${editTitle}" onclick="${r.recognised ? `openEdit('${r.id}')` : `openDialog('lockedDialogBackdrop')`}">✎</button>
+          ${r.recognised ? `<button class="button button--ghost button--icon button--sm" title="Duplicate ${escapeHtml(r.label)}" aria-label="Duplicate ${escapeHtml(r.label)}" onclick="duplicateRule('${r.id}')">⧉</button>` : ''}
+          <button class="button button--ghost button--icon button--sm" title="Delete ${escapeHtml(r.label)}" aria-label="Delete ${escapeHtml(r.label)}" onclick="requestDelete('${r.id}', '${escapeHtml(r.label)}')">🗑</button>
+        </div>
+      </td>
+    `;
+    body.appendChild(tr);
+  });
+
+  const note = document.getElementById('filteredNote');
+  const hiddenCount = rules.length - visible.length;
+  // ListSourcingRulesQueryDto.includeSuperseded defaults false and listRules adds
+  // `(effectiveTo IS NULL OR effectiveTo > now)` unless it is set — so a Retired
+  // rule is NOT in the default response. Selecting Retired/All is a re-fetch with
+  // includeSuperseded=true, not a narrowing of rows already on the client, and the
+  // page has to say so or it implies history it never asked for.
+  const showsRetired = statusFilters.has('All') || statusFilters.has('Retired');
+  const parts = [];
+  if (hiddenCount > 0) parts.push(`${hiddenCount} rule${hiddenCount === 1 ? '' : 's'} hidden by the status filter above.`);
+  parts.push(showsRetired
+    ? 'Including retired rules — loaded with includeSuperseded=true.'
+    : 'Retired rules are not loaded. Choose "Retired" or "All" to fetch them.');
+  note.textContent = parts.join(' ');
+
+  document.getElementById('tableSection').style.display = rules.length ? '' : 'none';
+  renderCeilingPanel();
+}
+
+function moveRule(id, dir) {
+  const before = resolveCeiling(rules).ceiling;
+  const i = rules.findIndex(r => r.id === id);
+  const j = i + dir;
+  if (j < 0 || j >= rules.length) return;
+  [rules[i], rules[j]] = [rules[j], rules[i]];
+  renderRules();
+  announceReorder(before);
+}
+function jumpRule(id, where) {
+  const before = resolveCeiling(rules).ceiling;
+  const i = rules.findIndex(r => r.id === id);
+  const [moved] = rules.splice(i, 1);
+  if (where === 'top') rules.unshift(moved); else rules.push(moved);
+  renderRules();
+  announceReorder(before);
+}
+function announceReorder(beforeCeiling) {
+  const { ceiling: after, governing } = resolveCeiling(rules);
+  showToast(after === beforeCeiling ? 'Order saved. Splitting limit unchanged.' : `Order saved. Splitting limit is now: ${AFTER_LABEL[after]}.`);
+  // The reorder that CAUSED a new limit is exactly the moment a first-time
+  // user needs the "which rule is responsible" link most — surface it
+  // without making them re-find and re-click the sentence themselves.
+  if (after !== beforeCeiling && governing.length === 1) highlightRule(governing[0].id);
+}
+
+/* ============================================================
+   ZERO-LOCATIONS / EMPTY / LOADING / ERROR STATE SWITCHER
+   ============================================================ */
+// The state an E2E task sets and asserts on lives on <body>, never only on the
+// switcher button: a class on a chip says which button is pressed, not which
+// state the page is in, so a spec had nothing addressable to key on.
+// `docs/frontend-architecture.md` § UX Mockups requires the value; the exemplar
+// (analytics-display-currency-picker.html) drives everything from body[data-state].
+let currentViewState = 'populated';
+
+function setBodyState(name) {
+  document.body.dataset.state = name;
+}
+
+function setState(name) {
+  currentViewState = name;
+  setBodyState(name);
+  document.querySelectorAll('.demo-toolbar .chip').forEach(c => c.classList.toggle('chip--active', c.dataset.state === name));
+  const section = document.getElementById('tableSection');
+  const alertSlot = document.getElementById('alertSlot');
+  const zeroSlot = document.getElementById('zeroLocationsSlot');
+  const chrome = document.getElementById('rulesetChrome');
+  alertSlot.innerHTML = '';
+  zeroSlot.innerHTML = '';
+  chrome.style.display = '';
+  document.getElementById('addRuleBtn').disabled = false;
+
+  if (name === 'populated') {
+    rules = JSON.parse(JSON.stringify(RULES_SEED));
+    section.innerHTML = `<div class="data-table__container"><table class="data-table" aria-label="Sourcing rules, in the order they run"><thead><tr><th style="width:64px;" title="Rules run in this order. Use the arrows to reorder.">Step</th><th>Rule</th><th style="width:140px;" title="How far this rule lets an order be divided across locations.">Splitting</th><th style="width:150px;">Active window</th><th style="width:110px;">Status</th><th style="width:96px;" class="sr-only-header"><span class="sr-only">Actions</span></th></tr></thead><tbody id="ruleBody"></tbody></table></div><p id="filteredNote" style="font-size:.75rem; color:var(--text-muted); margin-top:8px;"></p>`;
+    renderRules();
+    return;
+  }
+  if (name === 'no-locations') {
+    chrome.style.display = 'none';
+    document.getElementById('addRuleBtn').disabled = true;
+    zeroSlot.innerHTML = `<div class="state-card state-card--warning">
+      <p class="eyebrow" style="color:var(--status-warning-fg);">No locations</p>
+      <h3 class="state-card__title">No locations to route to yet</h3>
+      <p class="state-card__message">Sourcing rules choose between your locations — there are none yet. Create one to get started.</p>
+      <div class="state-card__actions">
+        <button class="button button--sm" onclick="setState('populated')">Create a default location</button>
+        <a href="#" style="font-size:.75rem;" title="Inventory locations (#3063 / #3120) — the sibling screen in this same wave">Manage locations</a>
+      </div>
+    </div>`;
+    return;
+  }
+  if (name === 'empty') {
+    section.innerHTML = `<div class="state-card">
+      <p class="eyebrow">No rules</p>
+      <h3 class="state-card__title">Nothing decides where an order ships from yet</h3>
+      <p class="state-card__message">Without a rule, this connection can't be given any order to fulfil. Add a rule to start narrowing down which locations qualify.</p>
+      <div class="state-card__actions"><button class="button button--sm" onclick="openCreate()">+ Add rule</button></div>
+    </div>`;
+    return;
+  }
+  if (name === 'loading') {
+    section.innerHTML = `<div style="display:grid; gap:10px;">
+      <div class="skeleton-line" style="width:100%; height:44px; border-radius:10px;"></div>
+      <div class="skeleton-line" style="width:100%; height:44px; border-radius:10px;"></div>
+      <div class="skeleton-line" style="width:100%; height:44px; border-radius:10px;"></div>
+      <div class="skeleton-line" style="width:60%; height:44px; border-radius:10px;"></div>
+    </div>`;
+    return;
+  }
+  if (name === 'error') {
+    section.innerHTML = `<div class="state-card state-card--error">
+      <p class="eyebrow" style="color:var(--status-error-fg);">Error</p>
+      <h3 class="state-card__title">Couldn't load sourcing rules</h3>
+      <p class="state-card__message">Couldn't load your sourcing rules right now (503 Service Unavailable). Nothing has changed — this is just a loading problem.</p>
+      <div class="state-card__actions"><button class="button button--secondary button--sm" onclick="setState('populated')">Retry</button></div>
+    </div>`;
+    return;
+  }
+}
+
+/* ============================================================
+   DIALOG PLUMBING
+   ============================================================ */
+// Focus trap: without this, Tab walks straight past the dialog's own last
+// field onto the table underneath — a keyboard user can silently end up
+// operating (or deleting) a DIFFERENT, live rule while believing they're
+// still filling in the form the backdrop is still showing on top of.
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+let lastFocusedBeforeDialog = null;
+
+// One addressable state per dialog. The rule dialog is TWO states, because
+// create and edit differ in the one way that matters to a spec: whether the
+// kind radios are locked.
+const DIALOG_STATE = {
+  ruleDialogBackdrop: () => (editingId ? 'rule-edit' : 'rule-create'),
+  loosenConfirmBackdrop: () => 'confirm-loosen',
+  lockedDialogBackdrop: () => 'rule-unrecognised-locked',
+  deleteDialogBackdrop: () => 'confirm-delete',
+  dryRunBackdrop: () => 'dry-run',
+};
+
+function openDialog(id) {
+  const el = document.getElementById(id);
+  lastFocusedBeforeDialog = document.activeElement;
+  if (DIALOG_STATE[id]) setBodyState(DIALOG_STATE[id]());
+  el.classList.add('is-open');
+  const focusables = el.querySelectorAll(FOCUSABLE_SELECTOR);
+  (focusables[0] || el).focus();
+  el.addEventListener('keydown', trapDialogKeydown);
+}
+function closeDialog(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('is-open');
+  el.removeEventListener('keydown', trapDialogKeydown);
+  // Back to whichever view state was underneath — never a hardcoded 'populated',
+  // which would silently rewrite the page state a tester had selected.
+  if (DIALOG_STATE[id] && !document.querySelector('.dialog-backdrop.is-open')) setBodyState(currentViewState);
+  if (lastFocusedBeforeDialog && document.contains(lastFocusedBeforeDialog)) lastFocusedBeforeDialog.focus();
+  lastFocusedBeforeDialog = null;
+}
+function trapDialogKeydown(e) {
+  const el = e.currentTarget;
+  if (e.key === 'Escape') { closeDialog(el.id); return; }
+  if (e.key !== 'Tab') return;
+  const focusables = Array.from(el.querySelectorAll(FOCUSABLE_SELECTOR)).filter(f => f.offsetParent !== null);
+  if (!focusables.length) return;
+  const first = focusables[0], last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+// Both dismiss paths route through closeDialog(), or the body state would keep
+// naming a dialog that is no longer on screen.
+document.querySelectorAll('.dialog-backdrop').forEach(bd => {
+  bd.addEventListener('click', (e) => { if (e.target === bd) closeDialog(bd.id); });
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.dialog-backdrop.is-open').forEach(bd => closeDialog(bd.id)); });
+
+/* ============================================================
+   CREATE / EDIT DIALOG
+   ============================================================ */
+function buildNameSelect(kind, keepValue) {
+  const select = document.getElementById('ruleName');
+  const claimed = {};
+  rules.forEach((r) => {
+    if (r.id === editingId) return;
+    if (!isLiveRule(r)) return;
+    claimed[r.kind + ':' + r.name] = rules.indexOf(r) + 1;
+  });
+  select.innerHTML = NAME_OPTIONS[kind].map(opt => {
+    const pos = claimed[kind + ':' + opt.value];
+    // The row being edited keeps its OWN name selectable even when a live
+    // sibling claims that slot — otherwise the disabled-option fallback below
+    // silently re-selects a different name, and "edit the retired Country
+    // served rule" opens a form that says "In stock". The collision is real,
+    // but it belongs on SAVE (the revive 409), not on the identity field.
+    const disabled = !!pos && opt.value !== keepValue;
+    const label = disabled ? `${opt.label} — already active as Rule ${pos}` : opt.label;
+    return `<option value="${opt.value}" ${disabled ? 'disabled' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+}
+
+function openCreate() {
+  editingId = null;
+  document.getElementById('ruleDialogTitle').textContent = 'Add sourcing rule';
+  document.getElementById('ruleDialogSubtitle').textContent = `This will be rule ${rules.length + 1} — everything above it is checked first.`;
+  document.getElementById('ruleDialogMeta').hidden = true;
+  document.querySelector('input[name=kind][value=filter]').checked = true;
+  setKindLocked(false);
+  onKindChange(document.querySelector('input[name=kind][value=filter]'));
+  document.getElementById('ruleAfterAction').value = 'no-split';
+  document.getElementById('ruleFrom').value = '';
+  document.getElementById('ruleTo').value = '';
+  document.getElementById('dialogErrorField').hidden = true;
+  document.getElementById('ruleFrom').removeAttribute('aria-invalid');
+  document.getElementById('ruleTo').removeAttribute('aria-invalid');
+  document.getElementById('saveRuleBtn').disabled = false;
+  document.getElementById('saveRuleBtn').classList.remove('is-loading');
+  updateDialogCeilingPreview();
+  openDialog('ruleDialogBackdrop');
+}
+
+// Every rule name can only be live once at a time (the backend refuses a
+// second live rule with the same kind+name), so "duplicate" can't offer an
+// identical copy — what it CAN save the operator is the tedious part
+// (rebuilding a location order from an empty search box every time): it
+// starts a new rule of the same kind, carrying over the splitting setting,
+// dates, and priority list, and leaves the name for the operator to pick
+// (their original name will correctly show as "already active").
+function duplicateRule(id) {
+  const r = rules.find(x => x.id === id);
+  if (!r) return;
+  openCreate();
+  // A duplicate is a CREATE, so kind is genuinely choosable here (openCreate
+  // has already unlocked the radios) — only the edit path is constrained.
+  const kindInput = document.querySelector(`input[name=kind][value="${r.kind}"]`);
+  kindInput.checked = true;
+  onKindChange(kindInput);
+  document.getElementById('ruleAfterAction').value = r.afterAction;
+  document.getElementById('ruleFrom').value = r.from || '';
+  document.getElementById('ruleTo').value = r.to || '';
+  if (r.priorityLocationIds && r.priorityLocationIds.length) {
+    priorityDraft = r.priorityLocationIds.filter(pid => LOCATIONS.some(l => l.id === pid));
+    renderPriorityBuilder();
+  }
+  updateDialogCeilingPreview();
+  showToast(`Started a new rule from "${r.label}" — pick a name to finish it.`);
+}
+
+function openEdit(id) {
+  const r = rules.find(x => x.id === id);
+  if (!r) return;
+  editingId = id;
+  document.getElementById('ruleDialogTitle').textContent = 'Edit sourcing rule';
+  document.getElementById('ruleDialogSubtitle').textContent = `Rule ${rules.indexOf(r) + 1} of ${rules.length} — checked in this order.`;
+  const metaEl = document.getElementById('ruleDialogMeta');
+  if (r.updatedBy) {
+    metaEl.hidden = false;
+    metaEl.textContent = `Last edited by ${r.updatedBy} on ${fmtDate(r.updatedAt)}`;
+  } else {
+    metaEl.hidden = true;
+  }
+  document.querySelector(`input[name=kind][value=${r.kind}]`).checked = true;
+  // Locked BEFORE onKindChange, so the name list is built for the row's own kind
+  // and the ceiling preview can never be computed over a kind PATCH can't send.
+  setKindLocked(true);
+  onKindChange(document.querySelector(`input[name=kind][value=${r.kind}]`), r.name);
+  document.getElementById('ruleAfterAction').value = r.afterAction;
+  document.getElementById('ruleFrom').value = r.from || '';
+  document.getElementById('ruleTo').value = r.to || '';
+  priorityDraft = r.priorityLocationIds ? [...r.priorityLocationIds] : [];
+  renderPriorityBuilder();
+  document.getElementById('dialogErrorField').hidden = true;
+  document.getElementById('ruleFrom').removeAttribute('aria-invalid');
+  document.getElementById('ruleTo').removeAttribute('aria-invalid');
+  document.getElementById('saveRuleBtn').disabled = false;
+  document.getElementById('saveRuleBtn').classList.remove('is-loading');
+  updateDialogCeilingPreview();
+  openDialog('ruleDialogBackdrop');
+}
+
+// Disables the radios, dims the tiles, and shows the reason. Called from both
+// dialog entry points so the two can never disagree about which state applies.
+function setKindLocked(locked) {
+  document.querySelectorAll('input[name=kind]').forEach(i => { i.disabled = locked; });
+  document.getElementById('kindLockedNote').hidden = !locked;
+  document.querySelectorAll('#kindTiles .radio-tile').forEach(t => {
+    t.style.cursor = locked ? 'not-allowed' : 'pointer';
+    t.style.opacity = locked && !t.classList.contains('radio-tile--active') ? '.5' : '';
+  });
+}
+
+function onKindChange(input, presetName) {
+  const isFilter = input.value === 'filter';
+  document.getElementById('kindTileFilter').classList.toggle('radio-tile--active', isFilter);
+  document.getElementById('kindTileSort').classList.toggle('radio-tile--active', !isFilter);
+  buildNameSelect(isFilter ? 'filter' : 'sort', presetName);
+  const select = document.getElementById('ruleName');
+  const wanted = presetName || (isFilter ? 'in-stock' : 'priority');
+  select.value = wanted;
+  // Assigning .value silently selects a DISABLED option too — the browser
+  // only refuses it through the dropdown UI, never through JS — so this
+  // must check the option's own disabled state, not just whether it "took".
+  const selectedOpt = select.options[select.selectedIndex];
+  if (!selectedOpt || selectedOpt.disabled || select.value !== wanted) {
+    const firstEnabled = Array.from(select.options).findIndex(o => !o.disabled);
+    select.selectedIndex = firstEnabled === -1 ? 0 : firstEnabled;
+  }
+  onNameChange(select);
+}
+
+function onNameChange(select) {
+  document.getElementById('ruleNameHint').textContent = NAME_HINTS[select.value] || '';
+  // "Country served" is a proven trap for the single-hub-serves-many-
+  // countries topology — it silently makes every order in a country the
+  // location isn't itself registered in unfulfillable. A quiet gray hint
+  // wasn't loud enough for a rule that breaks this quietly; this one gets
+  // the same visual weight as a genuine warning.
+  document.getElementById('countryServedWarning').hidden = select.value !== 'country-served';
+  const showConfig = select.value === 'priority';
+  const placeholder = document.getElementById('configPlaceholder');
+  const builder = document.getElementById('configBuilder');
+  const wasHidden = builder.hidden;
+  placeholder.hidden = showConfig;
+  builder.hidden = !showConfig;
+  if (showConfig && wasHidden) {
+    // Reveal, don't teleport — the section appearing should read as caused
+    // by this dropdown, not as an unrelated layout jump.
+    builder.classList.remove('form-field--reveal');
+    void builder.offsetWidth;
+    builder.classList.add('form-field--reveal');
+  }
+  if (showConfig && !editingId) { priorityDraft = []; }
+  if (showConfig) renderPriorityBuilder();
+  updateDialogCeilingPreview();
+}
+
+/* ---------- priority-location sub-builder ---------- */
+function renderPriorityBuilder() {
+  const list = document.getElementById('priorityRows');
+  if (!priorityDraft.length) {
+    list.innerHTML = `<li class="priority-row priority-row--empty">No locations added yet — this rule will rank nothing until you add at least one.</li>`;
+  } else {
+    list.innerHTML = priorityDraft.map((id, idx) => {
+      const loc = LOCATIONS.find(l => l.id === id);
+      if (!loc) {
+        return `<li class="priority-row">
+          <span class="priority-row__pos">${idx+1}</span>
+          <span class="priority-row__stale">⚠ No location exists for this entry — it ranks nothing.</span>
+          <button type="button" class="priority-row__remove" title="Remove" aria-label="Remove" onclick="removePriorityAt(${idx})">×</button>
+        </li>`;
+      }
+      const inactive = loc.status === 'inactive' ? ` <span class="status-badge status-badge--neutral status-badge--compact" title="This location is inactive. It stays in the list, but may not actually receive orders.">Inactive</span>` : '';
+      return `<li class="priority-row">
+        <span class="priority-row__pos">${idx+1}</span>
+        <span class="priority-row__name">${escapeHtml(loc.name)}${inactive}</span>
+        <span class="priority-row__nudge">
+          <button type="button" title="Move up" aria-label="Move up" onclick="movePriority(${idx},-1)" ${idx===0?'disabled':''}>▲</button>
+          <button type="button" title="Move down" aria-label="Move down" onclick="movePriority(${idx},1)" ${idx===priorityDraft.length-1?'disabled':''}>▼</button>
+        </span>
+        <button type="button" class="priority-row__remove" title="Remove ${escapeHtml(loc.name)}" aria-label="Remove ${escapeHtml(loc.name)}" onclick="removePriorityAt(${idx})">×</button>
+      </li>`;
+    }).join('');
+  }
+}
+function addPriorityLocation(id) {
+  if (priorityDraft.includes(id)) return;
+  priorityDraft.push(id);
+  renderPriorityBuilder();
+  updateDialogSummary();
+  const input = document.getElementById('locSearchInput');
+  input.value = '';
+  hideLocResults();
+  input.focus();
+}
+function removePriorityAt(idx) { priorityDraft.splice(idx, 1); renderPriorityBuilder(); updateDialogSummary(); }
+function movePriority(idx, dir) {
+  const j = idx + dir;
+  if (j < 0 || j >= priorityDraft.length) return;
+  [priorityDraft[idx], priorityDraft[j]] = [priorityDraft[j], priorityDraft[idx]];
+  renderPriorityBuilder();
+}
+function onLocSearchInput(e) {
+  const q = e.target.value.trim().toLowerCase();
+  const results = LOCATIONS.filter(l => !priorityDraft.includes(l.id) && l.name.toLowerCase().includes(q));
+  const box = document.getElementById('locSearchResults');
+  if (!results.length) {
+    box.innerHTML = `<li class="loc-search__empty">No matching locations</li>`;
+  } else {
+    box.innerHTML = results.map(l => `<li><button type="button" onmousedown="event.preventDefault(); addPriorityLocation('${l.id}')">${escapeHtml(l.name)}${l.status === 'inactive' ? ' <span class="status-badge status-badge--neutral status-badge--compact">Inactive</span>' : ''}</button></li>`).join('');
+  }
+  box.hidden = false;
+}
+function hideLocResults() { document.getElementById('locSearchResults').hidden = true; }
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('locSearchInput');
+  if (input) input.addEventListener('blur', () => setTimeout(hideLocResults, 150));
+});
+
+/* ---------- live in-dialog ceiling preview ---------- */
+function buildDraftRule() {
+  // On the edit path the row's own kind is authoritative: PATCH cannot change it,
+  // so a preview computed off the form could promise a ceiling change the save
+  // is incapable of producing.
+  const editing = editingId ? rules.find(r => r.id === editingId) : null;
+  const kind = editing ? editing.kind : document.querySelector('input[name=kind]:checked').value;
+  const name = document.getElementById('ruleName').value;
+  return {
+    id: editingId || '__draft__',
+    kind, name,
+    afterAction: document.getElementById('ruleAfterAction').value,
+    from: document.getElementById('ruleFrom').value || null,
+    to: document.getElementById('ruleTo').value || null,
+    recognised: true,
+    label: NAME_LABEL[name] || name,
+  };
+}
+// The always-visible "here's what you're building" sentence that threads
+// sections ①②③ together — without it, each section only explains itself,
+// never the rule as a whole.
+function updateDialogSummary() {
+  const el = document.getElementById('dialogSummary');
+  if (!el) return;
+  const draft = buildDraftRule();
+  const kindWord = draft.kind === 'filter' ? 'filter' : 'sort';
+  let extra = '';
+  if (draft.name === 'priority') {
+    extra = priorityDraft.length ? `, ranking ${priorityDraft.length} location${priorityDraft.length === 1 ? '' : 's'} in the order you set` : ', with no locations ranked yet';
+  }
+  const verb = editingId ? 'editing' : 'creating';
+  el.innerHTML = `You're ${verb} a <b>${kindWord}</b> rule: <b>${escapeHtml(draft.label)}</b>${extra} — <b>${AFTER_LABEL[draft.afterAction]}</b> allowed.`;
+}
+
+function updateDialogCeilingPreview() {
+  const el = document.getElementById('dialogCeilingPreview');
+  updateDialogSummary();
+  if (!el) return;
+  const draft = buildDraftRule();
+  const before = resolveCeiling(rules).ceiling;
+  const after = resolveCeiling([...rules.filter(r => r.id !== draft.id), draft]).ceiling;
+  let tone = 'info', text;
+  dialogLoosens = false;
+  const intro = `Every rule can set its own cap on splitting (see "Splitting limit" on the previous page). `;
+  if (AFTER_RANK[after] === AFTER_RANK[before]) {
+    text = `${intro}Based on what you've set here, splitting stays the same overall: <b>${AFTER_LABEL[after]}</b>.`;
+  } else if (AFTER_RANK[after] > AFTER_RANK[before]) {
+    text = `${intro}Based on what you've set here, this makes splitting stricter overall: <b>${AFTER_LABEL[after]}</b> (currently ${AFTER_LABEL[before]}).`;
+  } else {
+    tone = 'warning';
+    dialogLoosens = true;
+    text = `${intro}Based on what you've set here, this would allow <b>more</b> splitting overall: <b>${AFTER_LABEL[after]}</b> instead of today's ${AFTER_LABEL[before]} — no other active rule currently limits it that tightly.`;
+  }
+  el.className = 'alert alert--' + tone;
+  el.style.marginBottom = '16px';
+  el.innerHTML = `<span class="alert__glyph" aria-hidden="true">ⓘ</span><div class="alert__content"><p class="alert__description" style="margin:0;">${text}</p></div>`;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('input[name=kind]').forEach(i => i.addEventListener('change', updateDialogCeilingPreview));
+});
+
+function showDialogError(html, focusEl) {
+  document.getElementById('dialogErrorText').innerHTML = html;
+  document.getElementById('dialogErrorField').hidden = false;
+  if (focusEl) focusEl.focus();
+}
+
+function saveRule() {
+  const fromEl = document.getElementById('ruleFrom');
+  const toEl = document.getElementById('ruleTo');
+  const from = fromEl.value || null;
+  const to = toEl.value || null;
+  if (from && to && to <= from) {
+    showDialogError('&#9888; The end date must be after the start date — otherwise this rule would never actually run.', toEl);
+    fromEl.setAttribute('aria-invalid', 'true');
+    toEl.setAttribute('aria-invalid', 'true');
+    return;
+  }
+
+  // Reviving a retired rule is clearing (or extending) its end date. The backend
+  // supports it and refuses with a 409 when a live sibling already claims the
+  // same kind+name — the one refusal the name-select's prevention can't cover,
+  // because the field it collides on is the DATE, not the name.
+  const editing = editingId ? rules.find(r => r.id === editingId) : null;
+  if (editing && ruleStatus(editing).label === 'Retired') {
+    const revived = { ...editing, from, to };
+    if (isLiveRule(revived)) {
+      const rival = rules.find(r =>
+        r.id !== editingId && isLiveRule(r) && r.kind === editing.kind && r.name === editing.name);
+      if (rival) {
+        showDialogError(
+          `&#9888; Can't bring this rule back: <b>${escapeHtml(rival.label)}</b> is already running as Rule ${rules.indexOf(rival) + 1}, `
+          + `and only one rule of each type and name can be active at a time. Retire that one first, or edit it instead of reviving this.`,
+          toEl);
+        toEl.setAttribute('aria-invalid', 'true');
+        return;
+      }
+    }
+  }
+
+  document.getElementById('dialogErrorField').hidden = true;
+  fromEl.removeAttribute('aria-invalid');
+  toEl.removeAttribute('aria-invalid');
+
+  if (dialogLoosens) {
+    const draft = buildDraftRule();
+    const before = resolveCeiling(rules).ceiling;
+    const after = resolveCeiling([...rules.filter(r => r.id !== draft.id), draft]).ceiling;
+    document.getElementById('loosenConfirmText').innerHTML =
+      `No other active rule is currently limiting splitting to ${AFTER_LABEL[before]}. Once you save, orders may be split more than they are today (up to: <b>${AFTER_LABEL[after]}</b>). Make sure that's what you want.`;
+    openDialog('loosenConfirmBackdrop');
+    return;
+  }
+  performSaveRule();
+}
+// Reachable by name from the dialog switcher. The real path needs an edit that
+// would raise the ceiling; this fills the same copy from the current ruleset so
+// the state is addressable without driving the whole form.
+function demoLoosenConfirm() {
+  const before = resolveCeiling(rules).ceiling;
+  const loosest = 'quantity-split';
+  document.getElementById('loosenConfirmText').innerHTML =
+    `No other active rule is currently limiting splitting to ${AFTER_LABEL[before]}. Once you save, orders may be split more than they are today (up to: <b>${AFTER_LABEL[loosest]}</b>). Make sure that's what you want.`;
+  openDialog('loosenConfirmBackdrop');
+}
+
+function confirmLoosenSave() {
+  closeDialog('loosenConfirmBackdrop');
+  performSaveRule();
+}
+function performSaveRule() {
+  const btn = document.getElementById('saveRuleBtn');
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+
+  const existing = editingId ? rules.find(r => r.id === editingId) : null;
+  // Mirrors the two real request bodies: CreateSourcingRuleDto carries `kind`
+  // (and a REQUIRED `position` — ordering is stated, never derived from
+  // insertion time, so an implementer must SEND it; appending is this page's
+  // choice of value, not a licence to omit the field), while
+  // UpdateSourcingRuleDto carries no `kind` at all.
+  const kind = existing ? existing.kind : document.querySelector('input[name=kind]:checked').value;
+  const nameSelect = document.getElementById('ruleName');
+  const name = nameSelect.value;
+
+  const payload = {
+    kind, name,
+    label: NAME_LABEL[name] || name,
+    afterAction: document.getElementById('ruleAfterAction').value,
+    from: document.getElementById('ruleFrom').value || null,
+    to: document.getElementById('ruleTo').value || null,
+    recognised: true,
+    priorityLocationIds: name === 'priority' ? [...priorityDraft] : undefined,
+    updatedBy: 'You',
+    updatedAt: new Date().toISOString().slice(0, 10),
+  };
+
+  // Simulated network latency so the loading state is actually visible in the mockup.
+  setTimeout(() => {
+    if (editingId) {
+      const idx = rules.findIndex(r => r.id === editingId);
+      rules[idx] = { ...rules[idx], ...payload };
+    } else {
+      rules.push({ id: 'r-' + Date.now(), ...payload });
+    }
+    renderRules();
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+    closeDialog('ruleDialogBackdrop');
+    showToast(editingId ? 'Rule saved.' : 'Rule added.');
+  }, 260);
+}
+
+/* ============================================================
+   DELETE / RETIRE
+   ============================================================ */
+function requestDelete(id, label) {
+  pendingDeleteId = id;
+  document.getElementById('deleteDialogTitle').textContent = `Delete "${label}"?`;
+  document.getElementById('deleteDialogSubtitle').textContent = 'Every rule below it moves up one step.';
+  const { governing } = resolveCeiling(rules);
+  const isGoverning = governing.some(r => r.id === id);
+  const warning = document.getElementById('deleteDialogWarning');
+  if (isGoverning) {
+    const after = resolveCeiling(rules.filter(r => r.id !== id)).ceiling;
+    document.getElementById('deleteDialogWarningText').innerHTML =
+      `Deleting this removes your only limit on splitting: orders could start splitting more than they do today (up to <b>${AFTER_LABEL[after]}</b>). No other active rule currently prevents that.`;
+    warning.hidden = false;
+  } else {
+    warning.hidden = true;
+  }
+  openDialog('deleteDialogBackdrop');
+}
+function confirmDelete() {
+  rules = rules.filter(r => r.id !== pendingDeleteId);
+  renderRules();
+  closeDialog('deleteDialogBackdrop');
+  showToast('Rule deleted.');
+}
+function retireInstead() {
+  const r = rules.find(x => x.id === pendingDeleteId);
+  if (r) {
+    // "Ends on" is inclusive (a rule is still active THROUGH that date, for
+    // a scheduled future retirement) — so stamping TODAY here would leave
+    // this rule reading, and behaving, as Active for the rest of the day,
+    // directly contradicting the toast that just told the operator it's
+    // off. Retiring means "stop now," which this table only has one way to
+    // express with date-only granularity: back-date to yesterday.
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    r.to = yesterday.toISOString().slice(0, 10);
+    r.updatedBy = 'You';
+    r.updatedAt = new Date().toISOString().slice(0, 10);
+    renderRules();
+    showToast('Rule retired — kept for history.');
+  }
+  closeDialog('deleteDialogBackdrop');
+}
+
+/* ============================================================
+   TEST AGAINST AN ORDER (dry run)
+   ============================================================ */
+function togglePrefill(e) {
+  e.preventDefault();
+  document.getElementById('prefillPanel').classList.toggle('is-open');
+}
+function applyPrefill(scenario) {
+  document.getElementById('prefillPanel').classList.remove('is-open');
+  if (scenario === 'PL') {
+    document.getElementById('dryCountry').value = 'PL';
+    document.getElementById('dryPostcode').value = '00-001';
+    dryLines = [{ sku:'SKU-100', qty:2 }, { sku:'SKU-200', qty:1 }];
+  } else if (scenario === 'DE') {
+    document.getElementById('dryCountry').value = 'DE';
+    document.getElementById('dryPostcode').value = '';
+    dryLines = [{ sku:'SKU-200', qty:3 }];
+  } else {
+    document.getElementById('dryCountry').value = 'PL';
+    document.getElementById('dryPostcode').value = '31-000';
+    dryLines = [{ sku:'SKU-100', qty:5 }, { sku:'SKU-100', qty:1 }, { sku:'SKU-200', qty:9 }];
+  }
+  renderDryLines();
+  document.getElementById('dryRunResult').hidden = true;
+  document.getElementById('dryRunEmpty').hidden = false;
+}
+
+function renderDryLines() {
+  const wrap = document.getElementById('dryLines');
+  wrap.innerHTML = dryLines.map((l, i) => `
+    <div class="line-item-row">
+      <input type="text" value="${escapeHtml(l.sku)}" placeholder="e.g. SKU-100" oninput="dryLines[${i}].sku=this.value.toUpperCase()">
+      <input type="number" min="1" value="${l.qty}" oninput="dryLines[${i}].qty=Number(this.value)||1">
+      <button class="button button--ghost button--icon button--sm" title="Remove item" aria-label="Remove item" onclick="removeDryLine(${i})">×</button>
+    </div>
+  `).join('');
+  const emptyEl = document.getElementById('dryRunEmpty');
+  if (emptyEl && !emptyEl.hidden) {
+    emptyEl.textContent = dryLines.some(l => l.sku)
+      ? 'Run the test to see where this order would ship from.'
+      : 'Add at least one item, then run the test.';
+  }
+}
+function addDryLine() { dryLines.push({ sku:'', qty:1 }); renderDryLines(); }
+function removeDryLine(i) { dryLines.splice(i, 1); renderDryLines(); if (!dryLines.length) addDryLine(); }
+
+// Mirrors the "Nearest" rule's real, documented proxy: exact postcode match,
+// then how much of the postcode is shared, then same-country only. Higher
+// is closer/better.
+function proximityScore(loc, postcode, countryCode) {
+  if (postcode && loc.postcode && loc.postcode === postcode) return 1000;
+  if (postcode && loc.postcode) {
+    let shared = 0;
+    while (shared < postcode.length && shared < loc.postcode.length && postcode[shared] === loc.postcode[shared]) shared++;
+    if (shared > 0) return 500 + shared;
+  }
+  if (loc.country === countryCode) return 100;
+  return 0;
+}
+function coverageCount(locId, lines) {
+  const stock = STOCK[locId] || {};
+  return lines.filter(l => (stock[l.sku] || 0) >= l.qty).length;
+}
+function coversWholeOrder(locId, lines) {
+  const stock = STOCK[locId] || {};
+  const demand = {};
+  lines.forEach(l => { demand[l.sku] = (demand[l.sku] || 0) + l.qty; });
+  return Object.keys(demand).every(sku => (stock[sku] || 0) >= demand[sku]);
+}
+
+function runDryRun() {
+  const lines = dryLines.filter(l => l.sku);
+  if (!lines.length) return;
+  const country = document.getElementById('dryCountry');
+  const countryLabel = country.options[country.selectedIndex].text;
+  const countryCode = country.value;
+  const postcode = document.getElementById('dryPostcode').value.trim();
+
+  let candidates = LOCATIONS.map(l => ({ ...l }));
+  const trace = [];
+  const sortComparators = [];
+  const activeRules = rules.filter(r => ruleStatus(r).label === 'Active');
+
+  activeRules.forEach((r) => {
+    const before = candidates.map(c => c.id);
+    if (r.kind === 'filter') {
+      if (r.name === 'in-stock') {
+        candidates = candidates.filter(c => lines.some(l => (STOCK[c.id] || {})[l.sku] > 0));
+      } else if (r.name === 'country-served') {
+        let unknown = 0;
+        candidates = candidates.filter(c => {
+          if (!c.country) { unknown++; return true; }
+          return c.country === countryCode;
+        });
+        var countryUnknown = unknown;
+      } else if (r.name === 'not-blocked-by-reject') {
+        // no rejection history in this mock — nothing to exclude
+      }
+      const eliminated = before.filter(id => !candidates.some(c => c.id === id)).map(locationName);
+      let detail;
+      if (r.name === 'in-stock') {
+        detail = eliminated.length ? `Ruled out ${eliminated.join(', ')} — no stock for any of these items.` : 'Nothing ruled out — every location has stock for at least one item.';
+      } else if (r.name === 'country-served') {
+        detail = `Only kept if the location's own country matches the delivery country.` + (eliminated.length ? ` Ruled out ${eliminated.join(', ')}.` : ' Nothing ruled out.') + (typeof countryUnknown !== 'undefined' && countryUnknown ? ` ${countryUnknown} location(s) with no country set weren't ruled out.` : '');
+      } else {
+        detail = 'No location has turned this order down yet, so nothing was ruled out.';
+      }
+      trace.push({ rule: r, eliminated, detail });
+    } else {
+      let detail, cmp;
+      if (r.name === 'priority') {
+        const order = (r.priorityLocationIds || []).filter(id => candidates.some(c => c.id === id));
+        cmp = (a, b) => {
+          const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        };
+        candidates.sort(cmp);
+        detail = order.length ? `Ranked by the location order you set: ${order.map(locationName).join(' > ')}.` : "No location order was set, so this rule didn't rank anything.";
+      } else if (r.name === 'nearest') {
+        cmp = (a, b) => proximityScore(b, postcode, countryCode) - proximityScore(a, postcode, countryCode);
+        candidates.sort(cmp);
+        if (!postcode) {
+          detail = 'No postcode provided — ranked by country only, since this rule needs a postcode to judge distance more closely.';
+        } else {
+          detail = `Ranked by closeness to postcode ${escapeHtml(postcode)} (an exact match first, then how much of the postcode matches, then country).`;
+        }
+      } else if (r.name === 'most-complete') {
+        cmp = (a, b) => coverageCount(b.id, lines) - coverageCount(a.id, lines);
+        candidates.sort(cmp);
+        detail = 'Ranked by how many items each location can fully cover.';
+      } else {
+        cmp = (a, b) => (coversWholeOrder(b.id, lines) ? 1 : 0) - (coversWholeOrder(a.id, lines) ? 1 : 0);
+        candidates.sort(cmp);
+        detail = 'Ranked by whether one location alone can cover the whole order.';
+      }
+      sortComparators.push(cmp);
+      // A sort rule stacked below one that already gave every candidate a
+      // distinct rank has nothing left to break ties on and silently does
+      // nothing, forever — say so here instead of leaving it undetectable.
+      const after = candidates.map(c => c.id);
+      if (before.length > 1 && before.join() === after.join()) {
+        detail += ' This rule changed nothing here — the rule(s) above it already gave every location a distinct place.';
+      }
+      trace.push({ rule: r, eliminated: [], detail });
+    }
+  });
+
+  // A tie is only real if EVERY sort rule that actually ran agrees the top
+  // two are equal — if any rule broke the tie, trusting that rule's answer
+  // is correct, not a gap to warn about.
+  const isTied = candidates.length > 1 && sortComparators.every(cmp => cmp(candidates[0], candidates[1]) === 0);
+  renderDryRunResult(candidates, trace, countryLabel, postcode, isTied);
+}
+
+function renderDryRunResult(candidates, trace, countryLabel, postcode, isTied) {
+  document.getElementById('dryRunEmpty').hidden = true;
+  const resultEl = document.getElementById('dryRunResult');
+  resultEl.hidden = false;
+
+  const { ceiling } = resolveCeiling(rules);
+  let verdictHtml;
+  if (!candidates.length) {
+    verdictHtml = `<div class="dry-run__verdict dry-run__verdict--fail">
+      <div class="dry-run__verdict-title">No location can fulfil this order</div>
+      <div style="font-size:.75rem; color:var(--text-secondary); margin-top:2px;">These items would be flagged for a refund or return instead — none of your locations qualified.</div>
+    </div>`;
+  } else if (ceiling === 'no-split') {
+    verdictHtml = `<div class="dry-run__verdict dry-run__verdict--ok">
+      <div class="dry-run__verdict-title">Ships from: ${escapeHtml(candidates[0].name)}, whole order</div>
+      ${isTied ? `<div style="font-size:.75rem; color:var(--status-warning-fg); margin-top:2px;">⚠ Still tied with ${candidates.length - 1} other location(s) after every rule ran — ${escapeHtml(candidates[0].name)} won on an internal order you don't control here. Add a "Priority list" rule if you need to pick the winner yourself.</div>` : ''}
+    </div>`;
+  } else {
+    verdictHtml = `<div class="dry-run__verdict dry-run__verdict--ok">
+      <div class="dry-run__verdict-title">Best match: ${escapeHtml(candidates[0].name)}</div>
+      <div style="font-size:.75rem; color:var(--text-secondary); margin-top:2px;">Your rules allow ${AFTER_LABEL[ceiling].toLowerCase()}, so a real order could still be split across ${candidates.length > 1 ? 'this and ' + (candidates.length - 1) + ' other qualifying location(s)' : 'this location alone'} depending on stock at the moment it's placed.</div>
+    </div>`;
+  }
+
+  const traceHtml = trace.map((step, i) => `
+    <li class="dry-run__step">
+      <div class="dry-run__step-head">
+        <span class="dry-run__step-num">Rule ${rules.indexOf(step.rule) + 1}</span>
+        <span class="rule-cell__kind-badge rule-cell__kind-badge--${step.rule.kind}">${step.rule.kind}</span>
+        <b style="font-size:.8125rem;">${escapeHtml(step.rule.label)}</b>
+      </div>
+      <div class="dry-run__step-detail">${step.detail}</div>
+    </li>
+  `).join('');
+
+  resultEl.innerHTML = `
+    ${verdictHtml}
+    <p style="font-size:.75rem; color:var(--text-muted); margin:12px 0 4px;">Here's how we got that answer — each rule below either ruled out locations or ranked what was left, in the order they run:</p>
+    <ul class="dry-run__trace">${traceHtml}</ul>
+    <p class="dry-run__pii-line">This test only used: ${escapeHtml(countryLabel)}, postcode ${postcode ? escapeHtml(postcode) : 'not provided'} — your rules never see the buyer's name or address.</p>
+    <p class="dry-run__stale-note">This test always uses your saved rules — not any unsaved changes you're currently editing.</p>
+  `;
+}
+
+function openDryRun() {
+  renderDryLines();
+  document.getElementById('dryRunResult').hidden = true;
+  const emptyEl = document.getElementById('dryRunEmpty');
+  emptyEl.hidden = false;
+  emptyEl.textContent = dryLines.some(l => l.sku)
+    ? 'Run the test to see where this order would ship from.'
+    : 'Add at least one item, then run the test.';
+  document.getElementById('prefillPanel').classList.remove('is-open');
+  openDialog('dryRunBackdrop');
+}
+
+/* A click-to-open popover with no dismiss path stays open indefinitely and
+   ends up floating over whatever the user does next — the touch-device
+   norm here (no hover to rely on), so it needs an outside-click AND an
+   Escape close, not just the same trigger toggling it again. */
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.info-popover.is-open').forEach(p => {
+    if (!p.contains(e.target)) p.classList.remove('is-open');
+  });
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.info-popover.is-open').forEach(p => p.classList.remove('is-open'));
+});
+
+/* ============================================================
+   GALLERY CARD STATE SWITCHER
+   A card's label is its own switcher button: one addressable value per card,
+   with no toolbar row of seventeen chips nobody could scan.
+   ============================================================ */
+function jumpToGalleryState(value) {
+  setBodyState(value);
+  document.querySelectorAll('.gallery-card').forEach(c => {
+    c.classList.toggle('gallery-card--selected', c.dataset.state === value);
+  });
+  const card = document.querySelector(`.gallery-card[data-state="${value}"]`);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.gallery-card[data-state]').forEach(card => {
+    const label = card.querySelector('.gallery-card__label');
+    if (!label) return;
+    const value = card.dataset.state;
+    const text = label.textContent.trim();
+    label.innerHTML = '';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'gallery-card__switch';
+    btn.title = `Stamp body[data-state="${value}"]`;
+    btn.onclick = () => jumpToGalleryState(value);
+    btn.innerHTML = `<span>${text}</span><code class="gallery-card__state">${value}</code>`;
+    label.appendChild(btn);
+  });
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+setBodyState(currentViewState);
+renderRules();
+</script>

@@ -3,7 +3,7 @@ import {
   useActiveLocationCountQuery,
   useBootstrapLocationsMutation,
 } from '../../inventory';
-import { useWhoDecidesStatusQuery } from '../../fulfillment-authority';
+import { useOmsRoutingState } from '../../fulfillment-authority';
 import { useWriteAccess, useIsAdmin } from '../../../shared/auth/use-permission';
 import { useDemoMode } from '../../system';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
@@ -59,7 +59,7 @@ const ADMIN_ONLY_ACTION_MESSAGE =
 
 export function RouterReadinessPanel(): ReactElement {
   const countQuery = useActiveLocationCountQuery();
-  const statusQuery = useWhoDecidesStatusQuery();
+  const omsRouting = useOmsRoutingState();
   const bootstrap = useBootstrapLocationsMutation();
 
   const demoMode = useDemoMode();
@@ -107,13 +107,12 @@ export function RouterReadinessPanel(): ReactElement {
   // shipped status projection rather than re-derived from connection config —
   // a second reader of that config in the browser would be a mirror of a rule
   // that lives in core.
-  const sourcingRow = statusQuery.data?.rows.find((row) => row.question === 'sourcing');
   // Three states, not two. "Not known yet" is not "not claimed": while this read
   // is in flight — or if it failed — asserting the pre-enable copy would tell an
   // operator whose routing is already ON that it cannot be switched on. Same
   // principle `AccessGate` applies to the session-hydration window.
   const routingClaimed: boolean | undefined =
-    sourcingRow !== undefined ? sourcingRow.state !== 'default' : undefined;
+    omsRouting === 'on' ? true : omsRouting === 'off' ? false : undefined;
 
   // Nothing to say: the precondition is met and nothing claims routing on this
   // install. Rendering "routing can be switched on" on every connection's health

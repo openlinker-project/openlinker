@@ -114,7 +114,16 @@ export class OrderRecordOrmEntity {
    * Instant the source reported this order cancelled (#1984). `null` = never
    * cancelled (or a historical row the backfill migration could not derive a
    * proxy timestamp for). Independent of `recordStatus`. Indexed for the
-   * future exclusion predicate (#1987/#1988: `WHERE "cancelledAt" IS NULL`).
+   * exclusion predicate `WHERE "cancelledAt" IS NULL`, which
+   * `OrderSyncService.syncOrder` applies before destination provisioning
+   * (#2284) — no longer future. #2069 closed the remaining gap: a
+   * cancellation that arrives before the order is ever ingested has no row
+   * here yet to write against, so it is recorded as a durable signal keyed
+   * on `(sourceConnectionId, externalOrderId)` instead
+   * (`OrderCancellationSignalRepositoryPort`), consumed by
+   * `OrderRecordService.persistIncomingSnapshot` the moment this row is
+   * first created — so a not-yet-ingested order's later create still sees
+   * this column set before `OrderSyncService` ever reads it.
    */
   @Column({ type: 'timestamptz', nullable: true })
   @Index()
@@ -171,6 +180,21 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   salesDocumentBlockDetail!: string | null;
+
+  /**
+   * The `sales_document_rules` row that decided this order's document kind
+   * (#3186), when a rule engine match produced the route — `null` when it
+   * didn't (a country default, the pre-#2170 single-primary fallback, or no
+   * route at all). No FK: rules are fully editable/deletable, so this is a
+   * reference by value like `order_changes.orderId` and its siblings, not a
+   * relation OpenLinker enforces.
+   *
+   * Level-triggered and written ONLY by `updateSalesDocumentBlock`, alongside
+   * the three columns above, and only when that call carries `{action: 'set'}`
+   * — see that method's own doc comment.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  salesDocumentMatchedRuleId!: string | null;
 
   /**
    * When the CURRENT hold started (#2248 / #2245 F4).
@@ -292,6 +316,22 @@ export class OrderRecordOrmEntity {
   shippingAddressHash!: string | null;
 
   /**
+   * How the buyer pays (#3294) - one of `PaymentMethodValues`, or `NULL` when
+   * the source reported nothing. Existing rows are `NULL` and are not
+   * back-filled (ADR-039). A plain `varchar` with no CHECK, like every other
+   * vocabulary column here: the integration harness builds schema by
+   * `synchronize`, which would not emit one, so a constraint present only in
+   * the migration would hold in production and silently not in tests; the read
+   * path coerces instead.
+   *
+   * Written only on the `'ready'` path (`upsertWithLineItems`), like the
+   * analytics scalars and `shippingAddressHash` above, so an
+   * `awaiting_mapping` re-ingestion cannot null a settled value.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  paymentMethod!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert
@@ -361,6 +401,22 @@ export class OrderRecordOrmEntity {
    * A fact, not a state — independent of `recordStatus` / `fulfillmentState` /
    * `slaState`. Indexed because "is it packed" is an operator-facing scan axis,
    * mirroring `cancelledAt`.
+   *
+   * **This is THE single order-level packed fact (#2072).** A person (the
+   * toggle) or a WMS (`POST /orders/:id/packed`) asserts it directly. When
+   * line-grain packing exists (#2080) it is DERIVED from the lines — completing
+   * the last line sets it — so line data stays an optional detail ledger
+   * underneath this one answer and never a rival to it. Keeping one answer is
+   * what avoids an order that is "packed" and "3 of 5 packed" at once.
+   *
+   * **Authority precondition.** Nothing reads this to make a decision today, so
+   * two writers (OpenLinker's own workbench and an external WMS) cannot corrupt
+   * anything — the worst case is a stale timestamp a human can see and correct,
+   * and no OL-vs-external exclusivity mechanism is built. The moment a feature
+   * makes `packed` GATE something (a dispatch block, an automatic status
+   * transition, an SLA calculation), authority becomes load-bearing and
+   * exclusivity must be designed BEFORE that feature ships, at configuration
+   * time rather than by runtime arbitration.
    */
   @Column({ type: 'timestamptz', nullable: true })
   @Index()
@@ -474,18 +530,28 @@ export class OrderRecordOrmEntity {
    * `fulfillment-block-reason.types.ts`.
    *
    * Plain `text` with no check constraint, matching `salesDocumentBlockReason`:
-   * the union is enforced in TypeScript. `isFulfillmentBlockReason` exists for
-   * the read surface to coerce with — note that nothing reads the column YET
-   * (the operator surface is a later issue), so this is a guard made available,
-   * not one currently running. Whoever adds that read must call it: a value
-   * written by a newer release and then rolled back has to read as "nothing
-   * recognised" rather than widening the union at runtime.
+   * the union is enforced in TypeScript. Since #3485 the column is READ:
+   * `OrderRecordRepository.toDomain` coerces it with `isFulfillmentBlockReason`
+   * onto `OrderRecord.fulfillmentBlock`, so a value written by a newer release
+   * and then rolled back reads as "nothing recognised" rather than widening the
+   * union at runtime.
    *
-   * **No index, deliberately** — same call as `omsAttention` above: nothing
-   * filters on it yet, and the consuming issue adds one against its own data.
+   * **No index, deliberately.** #3485's `fulfillment.work.rerouteSweep` filters
+   * on it, keyset-paged by `internalOrderId`; at v1 volumes (a handful of held
+   * orders) the primary key serves that page. A partial index on the reroutable
+   * reasons is the follow-up if held-order counts grow.
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockReason!: string | null;
+
+  /**
+   * When the current fulfilment hold began (#3485 review). Stamped only on
+   * none -> held by `updateFulfillmentBlock`, so it survives a change of reason.
+   * `null` for a row held before the column existed. Not round-tripped through
+   * `toOrm` (single writer).
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  fulfillmentBlockedAt!: Date | null;
 
   /**
    * PII-free elaboration of the reason above (ids and causes only). Free text,
@@ -494,6 +560,52 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   fulfillmentBlockDetail!: string | null;
+
+  /**
+   * Denormalized, diacritic-folded free-text search corpus (#3527) — order
+   * number, buyer name, buyer email and every line SKU, space-joined; under
+   * `OL_STORE_PII=false` the order number and SKUs only (#3507 G03-14).
+   * Recomputed on EVERY write by `OrderRecordRepository.toOrm` (via
+   * `deriveOrderSearchText`) and written by both halves of the
+   * frozen-attribution upsert (#3507 G03-1), never incrementally maintained:
+   * the snapshot it derives from is itself rewritten wholesale on every
+   * ingestion, so a separate write path would only be a second place to
+   * forget. The one out-of-band writer is `OrderSearchTextReindexService`,
+   * which re-derives rows stored before the PII flag was turned off.
+   *
+   * `NOT NULL DEFAULT ''` rather than nullable — the `DestinationCategory.
+   * searchText` precedent — so the trigram index and the `LIKE` predicate
+   * never have to special-case a NULL. An order with no matchable text
+   * (no order number captured, no buyer stored, no SKUs) legitimately carries
+   * `''`, which no non-empty query can match.
+   *
+   * Backed by `IDX_order_records_searchText_trgm`, a GIN `gin_trgm_ops` index
+   * (`docs/architecture-overview.md § Listings, destination taxonomy read
+   * model` — the same precedent). The repository matches with `LIKE`, never
+   * the `%` similarity operator, so correctness never depends on `pg_trgm`
+   * being installed.
+   *
+   * Not domain data — deliberately absent from `OrderRecord` and from
+   * `toDomain`, exactly as `DestinationCategory` drops its own `searchText`:
+   * it is an index-serving derivation of fields the domain entity already
+   * carries inside `orderSnapshot`.
+   */
+  @Column({ type: 'text', default: '' })
+  searchText!: string;
+
+  /**
+   * Why OpenLinker deliberately did NOT route this order while the OMS is on
+   * (#3455; also #3487 / #3488). `null` means routed, not yet decided, or the OMS
+   * is off. Distinct from `fulfillmentBlockReason`: a skipped order is not held,
+   * it follows today's path.
+   *
+   * Sole writer `updateFulfillmentRoutingSkipReason`, level-triggered by the
+   * ingestion intercept and outside the ingestion write set. Plain `text` with no
+   * check constraint - the union is enforced in TypeScript and coerced on read by
+   * `isFulfillmentRoutingSkipReason`. No index: nothing filters on it yet.
+   */
+  @Column({ type: 'text', nullable: true })
+  fulfillmentRoutingSkipReason!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

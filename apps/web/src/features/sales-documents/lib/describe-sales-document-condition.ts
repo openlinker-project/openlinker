@@ -20,5 +20,11 @@ export function describeSalesDocumentCondition(condition: SalesDocumentCondition
     return `order country is ${condition.stringValue ?? '?'}`;
   }
   const comparison = condition.op === 'gte' ? '≥' : '<';
-  return `total ${comparison} ${condition.thresholdRef ?? '?'}`;
+  // #3189: a real amount and currency, where this used to print the raw
+  // `thresholdRef` slug - an internal key the operator never chose and could
+  // not read. `?` is kept for a condition this build cannot understand rather
+  // than guessing a figure.
+  const amount = condition.amount ?? '?';
+  const currency = condition.currency ?? '';
+  return `total ${comparison} ${amount}${currency ? ` ${currency}` : ''}`;
 }

@@ -23,7 +23,8 @@ import type {
   InvoiceFailureCode,
   InvoiceFailureMode,
 
-  InvoiceRecord} from '@openlinker/core/invoicing';
+  InvoiceRecord,
+  WarehouseReleaseOutcome} from '@openlinker/core/invoicing';
 import {
   InvoiceFailureCodeValues,
   InvoiceFailureModeValues,
@@ -31,8 +32,10 @@ import {
   InvoiceStatusValues,
   RegulatoryStatus,
   RegulatoryStatusValues,
+  WarehouseReleaseOutcomeValues,
 } from '@openlinker/core/invoicing';
 import type { OrderSummary } from '@openlinker/core/orders';
+import { decodeBuyerTaxIdColumn , BuyerTaxId} from '@openlinker/core/orders';
 import { OrderSummaryProjectionDto } from '../../../orders/http/dto/order-summary-projection.dto';
 
 export class InvoiceRecordResponseDto {
@@ -63,6 +66,21 @@ export class InvoiceRecordResponseDto {
   providerInvoiceNumber!: string | null;
 
   @ApiProperty({
+    enum: WarehouseReleaseOutcomeValues,
+    nullable: true,
+    description:
+      'Whether the goods this document billed for left the warehouse in the provider own books. Only `not-released` is a claim that something is wrong: `released` is the ordinary success and its number is below, `not-applicable` means there was nothing to release, and null means this provider has no warehouse and never reports. Read the OUTCOME, never the number nullability - the number is legitimately absent on three of the four.',
+  })
+  warehouseReleaseOutcome!: WarehouseReleaseOutcome | null;
+
+  @ApiProperty({
+    description:
+      'The release document number the provider created or detected (Subiekt: the WZ). Null unless the outcome is `released`.',
+    nullable: true,
+  })
+  warehouseReleaseNumber!: string | null;
+
+  @ApiProperty({
     enum: RegulatoryStatusValues,
     description: 'Neutral CTC clearance lifecycle status',
   })
@@ -70,6 +88,14 @@ export class InvoiceRecordResponseDto {
 
   @ApiProperty({ description: 'Authority-assigned clearance reference', nullable: true })
   clearanceReference!: string | null;
+
+  @ApiProperty({
+    description:
+      'Operator-facing clearance diagnostic (e.g. the authority rejection reason); ' +
+      'null unless a rejection detail was captured (#1582)',
+    nullable: true,
+  })
+  clearanceDetail!: string | null;
 
   @ApiProperty({ description: 'URL of the rendered document PDF', nullable: true })
   pdfUrl!: string | null;
@@ -126,6 +152,23 @@ export class InvoiceRecordResponseDto {
   })
   otherInvoicingConnectionIds?: string[];
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Buyer tax id as it stood when this document was ISSUED (#3188) - THREE states, ' +
+      'not two, matching the order detail exactly (#2599/#3180): the key is ABSENT when ' +
+      'nothing was asserted, `null` when the source positively asserted the buyer has ' +
+      'none, and a non-empty string, verbatim and unformatted, when the document carries ' +
+      'one. FROZEN at issue rather than joined from the order, because an invoice is an ' +
+      'immutable fiscal document while the order`s own column is rewritten by every ' +
+      're-ingestion - a joined read could later show a number the issued document does ' +
+      'not carry. It never claims more than the document does: an assertion carrying an ' +
+      'id the document does not carry reads as not-asserted. `null` on every row issued ' +
+      'before the column existed, since there is nothing to backfill it from. This is the ' +
+      'value the `taxId=with|without` filter was already asking about and could not show.',
+  })
+  buyerTaxId?: BuyerTaxId;
+
   /**
    * @param orderSummary Batched order-identity projection (#1995), or `null`
    *   when not resolved for this call site. Required (not defaulted) so a
@@ -144,8 +187,11 @@ export class InvoiceRecordResponseDto {
     dto.status = record.status;
     dto.providerInvoiceId = record.providerInvoiceId;
     dto.providerInvoiceNumber = record.providerInvoiceNumber;
+    dto.warehouseReleaseOutcome = record.warehouseReleaseOutcome;
+    dto.warehouseReleaseNumber = record.warehouseReleaseNumber;
     dto.regulatoryStatus = record.regulatoryStatus;
     dto.clearanceReference = record.clearanceReference;
+    dto.clearanceDetail = record.clearanceDetail;
     dto.pdfUrl = record.pdfUrl;
     dto.failureMode = record.failureMode;
     dto.failureCode = record.failureCode;
@@ -154,6 +200,9 @@ export class InvoiceRecordResponseDto {
     dto.createdAt = record.createdAt.toISOString();
     dto.updatedAt = record.updatedAt.toISOString();
     dto.orderSummary = orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null;
+    // Decoded, never passed raw: `''` is the asserted-none state and a consumer
+    // reading the column directly would misread it as an empty id.
+    dto.buyerTaxId = decodeBuyerTaxIdColumn(record.buyerTaxId);
     return dto;
   }
 }

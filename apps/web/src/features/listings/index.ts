@@ -6,6 +6,11 @@
  * create-offer wizard and the listings API request type) import from here.
  */
 export type { CreateOfferRequest } from './api/listings.types';
+// #3148 — the bulk-batch-progress mechanism, reused verbatim by
+// features/price-changes' BulkPublishProgress (ADR-072 decision 9).
+export { useBulkBatchQuery, BULK_BATCH_POLL_INTERVAL_MS } from './hooks/use-bulk-batch-query';
+export { TERMINAL_BULK_BATCH_STATUSES } from './api/bulk-listings.types';
+export type { BulkBatchSummary, BulkBatchStatus } from './api/bulk-listings.types';
 export {
   selectPublishDestinations,
   publishDestinationKind,

@@ -84,8 +84,8 @@ test.describe('shipping — InPost cancellation + regeneration', () => {
       }
     }
     if (cancelled) {
-      expect(cancelled.status, 'shipment status advanced to cancelled').toBe('cancelled');
-      expect(cancelled.cancelledAt, 'cancelledAt was stamped').toBeTruthy();
+      expect(cancelled.shipment.status, 'shipment status advanced to cancelled').toBe('cancelled');
+      expect(cancelled.shipment.cancelledAt, 'cancelledAt was stamped').toBeTruthy();
 
       // Cancelling an already-cancelled shipment is rejected, not a silent no-op.
       let recancelled: ApiError | undefined;

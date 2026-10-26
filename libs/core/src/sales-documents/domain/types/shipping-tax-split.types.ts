@@ -195,3 +195,71 @@ export function minorUnitExponentFor(currency: string | null | undefined): numbe
   if (FOUR_DECIMAL_CURRENCIES.has(code)) return 4;
   return DEFAULT_MINOR_UNIT_EXPONENT;
 }
+
+/**
+ * How far a composed document's lines may drift from the order's own total
+ * before the disagreement is a refusal rather than rounding: one minor unit of
+ * the currency the buyer paid in.
+ *
+ * Wide enough to absorb IEEE-754 accumulation across a normal basket and the
+ * per-line rounding the source already did; narrow enough that a folded
+ * discount, a coupon or a zero-defaulted snapshot field cannot hide inside it.
+ *
+ * Deriving it rather than fixing it at `0.01` matters in both directions: a
+ * 3-decimal currency (KWD) would otherwise tolerate ten of its own minor units
+ * of unexplained drift, and a 0-decimal one (JPY) would reject a whole-yen
+ * basket carrying float dust.
+ *
+ * WHY HERE. Both document kinds ask this question and must get the identical
+ * answer - a figure an invoice refuses and a receipt accepts is two different
+ * claims about one sale - and a fiscal receipt is not an invoice, so neither
+ * context could own it for the other. That is the same argument that already
+ * put {@link splitShippingAcrossRates} and {@link minorUnitExponentFor} in
+ * this leaf. It first lived privately in the fiscalization mapper and moved
+ * here when the invoicing mapper needed it too (#3365).
+ *
+ * NOT tax arithmetic - it compares two sets of gross figures the source itself
+ * reported, and rewrites neither.
+ */
+export function totalReconciliationEpsilon(currency: string | null | undefined): number {
+  return 10 ** -minorUnitExponentFor(currency);
+}
+
+/**
+ * The same question, for a document whose UNIT prices were rounded before being
+ * multiplied back out.
+ *
+ * A composer that stores a per-unit price has to round it to the currency's
+ * minor unit, and then the document's own arithmetic multiplies that rounded
+ * figure by the quantity - so the error the document carries is up to half a
+ * minor unit PER UNIT, not per document. `WooCommerceOrderSourceAdapter` does
+ * exactly this (`roundCurrency((lineNet + lineTax) / quantity)`), and it is the
+ * normal way to express a line, not a defect.
+ *
+ * A flat one-minor-unit tolerance therefore refuses ordinary orders as soon as
+ * the basket is big enough: three lines that each round up by half a grosz
+ * already drift past `0.01`, and the operator is told their own shop's order
+ * contradicts itself. The bound scales with TOTAL QUANTITY because that is what
+ * the mechanism scales with - `Σ(quantity) × halfMinorUnit` is the exact worst
+ * case of the round-then-multiply round trip, not a fudge factor chosen to make
+ * a failing case pass.
+ *
+ * It never goes BELOW {@link totalReconciliationEpsilon}, so a single-unit order
+ * behaves exactly as it did before this existed.
+ *
+ * What it deliberately does NOT widen to cover: a whole-order discount applied
+ * to the order and to none of its lines. That gap is a fixed amount with no
+ * relation to quantity, so it cannot hide inside a quantity-scaled bound - which
+ * is the property that keeps this a tolerance for arithmetic rather than a
+ * licence to state a total the lines do not support.
+ */
+export function quantityScaledReconciliationEpsilon(
+  currency: string | null | undefined,
+  totalQuantity: number
+): number {
+  const minorUnit = totalReconciliationEpsilon(currency);
+  if (!Number.isFinite(totalQuantity) || totalQuantity <= 1) {
+    return minorUnit;
+  }
+  return Math.max(minorUnit, (minorUnit / 2) * totalQuantity);
+}

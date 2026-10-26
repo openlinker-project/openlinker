@@ -64,12 +64,12 @@ import type {
   ConnectionFilters,
   ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
   resolveVariantGroupingModel,
+  resolveRequiresCredentials,
+  resolveArchivable,
 } from '@openlinker/core/integrations';
 import type { VariantGroupingModel } from '@openlinker/core/integrations';
 import {
@@ -77,6 +77,10 @@ import {
   type IDemoModeService,
 } from '../../auth/demo-mode.service.interface';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import {
+  IConnectionDiagnosticsService,
+  CONNECTION_DIAGNOSTICS_SERVICE_TOKEN,
+} from '../application/interfaces/connection-diagnostics.service.interface';
 
 @ApiBearerAuth()
 @ApiTags('connections')
@@ -86,8 +90,6 @@ export class ConnectionController {
 
   constructor(
     private readonly connectionService: ConnectionService,
-    @Inject(SYNC_JOB_REPOSITORY_TOKEN)
-    private readonly syncJobRepository: SyncJobRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
@@ -97,16 +99,24 @@ export class ConnectionController {
     @Inject(RATE_LIMIT_STATUS_SERVICE_TOKEN)
     private readonly rateLimitStatusService: IRateLimitStatusService,
     @Inject(DEMO_MODE_SERVICE_TOKEN)
-    private readonly demoModeService: IDemoModeService
+    private readonly demoModeService: IDemoModeService,
+    @Inject(CONNECTION_DIAGNOSTICS_SERVICE_TOKEN)
+    private readonly connectionDiagnosticsService: IConnectionDiagnosticsService
   ) {}
 
   private async toResponse(
     connection: Connection,
-    user?: AuthenticatedUser
+    user?: AuthenticatedUser,
+    warnings?: string[]
   ): Promise<ConnectionResponseDto> {
     let supported: string[] = [];
     let variantGrouping: VariantGroupingModel = resolveVariantGroupingModel(undefined);
     let defaultRateLimit: ConnectionRateLimit | null = null;
+    // Unknown adapter: assume credentials are needed, the safe default of
+    // resolveRequiresCredentials itself.
+    let requiresCredentials = true;
+    let archivable = true;
+    let publicConfigKeys: readonly string[] = [];
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
@@ -115,6 +125,9 @@ export class ConnectionController {
       supported = metadata.supportedCapabilities;
       variantGrouping = resolveVariantGroupingModel(metadata);
       defaultRateLimit = metadata.defaultRateLimit ?? null;
+      requiresCredentials = resolveRequiresCredentials(metadata);
+      archivable = resolveArchivable(metadata);
+      publicConfigKeys = metadata.publicConfigKeys ?? [];
     } catch (error) {
       // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
       // supportedCapabilities empty (and variantGrouping/defaultRateLimit at
@@ -132,7 +145,11 @@ export class ConnectionController {
       variantGrouping,
       defaultRateLimit,
       user?.role,
-      this.demoModeService.isDemoModeEnabled()
+      this.demoModeService.isDemoModeEnabled(),
+      requiresCredentials,
+      archivable,
+      warnings,
+      publicConfigKeys
     );
   }
 
@@ -152,7 +169,8 @@ export class ConnectionController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.create(dto);
-    return this.toResponse(connection, user);
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -217,7 +235,8 @@ export class ConnectionController {
       }),
     };
     const connection = await this.connectionService.update(id, patch);
-    return this.toResponse(connection, user);
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -231,9 +250,17 @@ export class ConnectionController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async getDiagnostics(@Param('id') id: string): Promise<ConnectionDiagnosticsResponseDto> {
-    const connection = await this.connectionService.get(id);
-    const recentJobs = await this.syncJobRepository.findRecentByConnectionId(id, 10);
-    return ConnectionDiagnosticsResponseDto.fromDomain(connection, recentJobs);
+    // Thin by design: the three-source fan-out and its per-source degradation
+    // policy live in ConnectionDiagnosticsService (#3179), alongside the other
+    // composed connection reads.
+    const reads = await this.connectionDiagnosticsService.getDiagnostics(id);
+    return ConnectionDiagnosticsResponseDto.fromDomain(
+      reads.connection,
+      reads.recentJobs,
+      reads.recentFiscalRegistrations,
+      reads.recentInvoices,
+      reads.unreadableSources
+    );
   }
 
   @Roles('admin')
@@ -421,6 +448,56 @@ export class ConnectionController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
     const connection = await this.connectionService.disable(id);
+    return this.toResponse(connection, user);
+  }
+
+  @Roles('admin')
+  @Patch(':id/archive')
+  @ApiOperation({
+    summary: 'Archive (soft delete) a disabled connection',
+    description:
+      'Hides the connection from every list and picker and removes its stored credential. Mappings and history are kept, and history still shows the connection name. Only a disabled connection can be archived. Idempotent on an archived connection (#3657).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Connection archived',
+    type: ConnectionResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Connection is not disabled, its adapter cannot be archived, or another connection still uses it as its catalog (reason "master-catalog-referenced", with the referrers listed)',
+  })
+  async archive(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConnectionResponseDto> {
+    const connection = await this.connectionService.archive(id);
+    return this.toResponse(connection, user);
+  }
+
+  @Roles('admin')
+  @Patch(':id/restore')
+  @ApiOperation({
+    summary: 'Restore an archived connection',
+    description:
+      'Returns an archived connection to disabled. Its credential is not restored: re-enter it with PUT /connections/:id/credentials (or the platform re-auth flow) before enabling (#3657).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Connection restored to disabled',
+    type: ConnectionResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection is not archived' })
+  async restore(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConnectionResponseDto> {
+    const connection = await this.connectionService.restore(id);
     return this.toResponse(connection, user);
   }
 }

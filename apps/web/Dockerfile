@@ -18,7 +18,14 @@
 # is what makes a demo deployment's links visually distinguishable from
 # production's. All three default to empty, which yields the plain
 # production card — see apps/web/.env.example.
-FROM node:22.23.1-alpine3.24 AS build
+#
+# VITE_OL_OMS_ROUTING_UI_ENABLED=true exposes the OMS routing configuration
+# screens (inventory locations, sourcing rules); unset keeps them hidden (#3634).
+#
+# VITE_OL_SEO_INDEXABLE=true (together with VITE_OG_SITE_URL) makes the build
+# indexable by search engines, with a canonical and demo title. Unset — the
+# default for every self-hosted instance — emits `noindex` (#3709).
+FROM node:22.23.4-alpine3.24 AS build
 
 # Pinned to match the repo's packageManager field (package.json).
 RUN npm install -g pnpm@10.33.4
@@ -49,8 +56,25 @@ ARG VITE_OG_BADGE_TEXT=
 ENV VITE_OG_BADGE_TEXT=$VITE_OG_BADGE_TEXT
 ARG VITE_OG_SITE_URL=
 ENV VITE_OG_SITE_URL=$VITE_OG_SITE_URL
+ARG VITE_OL_OMS_ROUTING_UI_ENABLED=
+ENV VITE_OL_OMS_ROUTING_UI_ENABLED=$VITE_OL_OMS_ROUTING_UI_ENABLED
+ARG VITE_OL_SEO_INDEXABLE=
+ENV VITE_OL_SEO_INDEXABLE=$VITE_OL_SEO_INDEXABLE
 
 RUN pnpm --filter @openlinker/web build
+
+# X-Robots-Tag for the nginx stage (#3709). The meta tag only covers HTML, so a
+# non-indexable build also sends the header, which reaches every response
+# (assets, robots.txt, the og:image). The decision is read back from the BUILT
+# index.html rather than re-deriving it from the build args here: og-meta.ts
+# stays the one place the rule lives. It fails closed - only an explicit
+# `index, follow` meta leaves the header out, so a changed or missing tag
+# still yields `noindex`.
+RUN if grep -q '<meta name="robots" content="index, follow"' apps/web/dist/index.html; then \
+      : > apps/web/x-robots-tag.conf; \
+    else \
+      echo 'add_header X-Robots-Tag "noindex, nofollow" always;' > apps/web/x-robots-tag.conf; \
+    fi
 
 # Runtime stage — nginx serving the static bundle, as a non-root user (#1411).
 # nginxinc/nginx-unprivileged is the official image built for exactly this:
@@ -59,6 +83,10 @@ RUN pnpm --filter @openlinker/web build
 FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+# Outside conf.d/ on purpose: nginx auto-includes conf.d/*.conf at http level,
+# where a bare add_header would apply on its own; nginx.conf includes it by
+# path inside each block instead.
+COPY --from=build /app/apps/web/x-robots-tag.conf /etc/nginx/snippets/x-robots-tag.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 
 EXPOSE 8080

@@ -15,7 +15,6 @@ import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { useRegisterMutation } from '../hooks/use-register-mutation';
 import { registerFormSchema, type RegisterFormValues } from './register-form.schema';
-import { ApiError } from '../../../shared/api/api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -95,9 +94,16 @@ export function RegisterForm({
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {register.error ? (
         <Alert tone="error" title="Registration failed">
-          {register.error instanceof ApiError && register.error.isConflict()
-            ? 'This email is already registered.'
-            : register.error.message}
+          {/*
+            The 409 branch used to hardcode 'This email is already
+            registered.' It was wrong twice (#3156 review): it told an
+            anonymous visitor that a specific email exists — the enumeration
+            claim the server just stopped making — and a USERNAME-only
+            collision returns the same 409, so the user was told to change an
+            email that was never the problem and looped. The server's own
+            message names neither field, so render it.
+          */}
+          {register.error.message}
         </Alert>
       ) : null}
 
