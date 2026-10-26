@@ -25,7 +25,10 @@
  *     like `118`; the vendor positively saying it holds none (`92`/`100`) means
  *     nothing was created, which is `rejected`; anything else - the read failed,
  *     or answered with something unrecognised - stays `in-doubt`. Never
- *     `rejected` without that positive answer.
+ *     `rejected` without that positive answer. Because the header is derived
+ *     from the exact body, the `rejected` arm signals a broken assumption and
+ *     is logged as `eparagony_idempotency_key_body_mismatch`; its copy does
+ *     not promise that Retry fixes it.
  *   - everything else propagates with the classification `EparagonyApiError`
  *     already gave it.
  *
@@ -45,11 +48,17 @@ const REPLAYED_KEY_STATUS = 422;
 /**
  * Operator copy for a replayed key the vendor then confirmed created nothing.
  * Fixed text plus the numeric code only, like every `EparagonyApiError` reason.
+ *
+ * It deliberately does NOT promise that Retry fixes it: the header is derived
+ * from the exact body, so a retry re-sends the same key, meets the same `422`
+ * and lands here again. Reaching this arm means the vendor disagrees with how
+ * we derive the key (see `settleReplayedKey`), which an operator cannot repair.
+ * Kept under the 200-character reason cap even with the widest numeric code.
  */
 export function replayedKeyNothingCreatedReason(errorCode: number | null): string {
   return (
-    'eparagony refused the request as a repeat of an earlier attempt with different data, and ' +
-    'holds no document for this sale, so nothing was issued. Retry to send it again' +
+    'eparagony reports this request key was used with different data, which OpenLinker never ' +
+    'sends. Nothing was issued. Retrying will not help - check the connection or contact support' +
     `${codeSuffix(errorCode)}.`
   );
 }
@@ -153,9 +162,17 @@ async function settleReplayedKey(
     // The vendor positively reports no document under the token every request
     // for this sale carried - so the earlier request it remembers created
     // nothing, and neither did this one.
-    logger.warn(
-      `eparagony.pl refused a replayed key for order ${orderId} and holds no document ` +
-        `${documentToken}; nothing was created [connectionId=${connectionId}]`,
+    //
+    // Logged at `error` with its own token because this arm should be
+    // unreachable: the key is a function of the exact body, so "same key,
+    // different data" means the vendor canonicalises bodies differently from
+    // us (key order, number formatting) or the hash collided. Either is a
+    // broken assumption rather than a routine refusal, and a retry re-derives
+    // the identical key, so it repeats until someone looks.
+    logger.error(
+      `eparagony_idempotency_key_body_mismatch: eparagony.pl refused a replayed key for order ` +
+        `${orderId} and holds no document ${documentToken}; nothing was created, and a retry ` +
+        `will re-send the same key [connectionId=${connectionId}]`,
     );
     throw new EparagonyApiError(
       `eparagony.pl refused a replayed Idempotency-Key for document ${documentToken} and holds ` +

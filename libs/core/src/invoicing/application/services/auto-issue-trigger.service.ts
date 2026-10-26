@@ -495,6 +495,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // reporting a reason would badge every order on an install that simply
       // does not do invoicing or fiscalization. The one exception is a rule
       // that still routes this order somewhere - see the method.
+      //
+      // Cost, for a profiler reader: this adds ONE rule-engine read per order
+      // transition on an install with no capable connection (four
+      // country-scoped lookups run in parallel, sized by the operator's own
+      // rule count rather than by order volume), and none for an order with
+      // no delivery country. Accepted because the rules are the only place
+      // that can say this order should still get a document, and skipping the
+      // read would bring back the silent decline ADR-041 §54 forbids.
       return this.reportWhenNothingCanIssue(order, sourceEventId);
     }
 

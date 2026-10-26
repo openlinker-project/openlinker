@@ -123,7 +123,9 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
     }
 
     const jobs: SyncJobRequest[] = [];
-    const routedJobTypes = new Set<string>();
+    // job type -> the domain whose event claimed it, so a dropped duplicate can
+    // name the event it lost to.
+    const routedJobTypes = new Map<string, string>();
     const ungated: string[] = [];
     canonicals.forEach((canonical, index) => {
       const resolution = this.routingPolicy.resolve(
@@ -139,14 +141,18 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
       // The job type is the discriminator of every non-primary key, so two
       // events routing to the same job type would fold onto one key anyway.
       // Keeping the first makes that explicit instead of leaving it to the
-      // unique index to decide inside the transaction.
-      if (routedJobTypes.has(resolution.job.jobType)) {
-        this.logger.debug(
-          `Inbound event ${event.eventId}: duplicate ${resolution.job.jobType} from ${canonical.domain} dropped`
+      // unique index to decide inside the transaction. Logged at `warn`, not
+      // `debug`: no shipped translator emits two events for one job type, so
+      // reaching this branch means a translator is fanning out wrongly and
+      // silently losing an event, which should surface without debug logging.
+      const claimedBy = routedJobTypes.get(resolution.job.jobType);
+      if (claimedBy !== undefined) {
+        this.logger.warn(
+          `Inbound event ${event.eventId} (connection ${connection.id}, adapter ${metadata.adapterKey}): translated event #${index} (${canonical.domain}) dropped - it routes to ${resolution.job.jobType}, already claimed by the ${claimedBy} event. A translator should emit at most one event per job type.`
         );
         return;
       }
-      routedJobTypes.add(resolution.job.jobType);
+      routedJobTypes.set(resolution.job.jobType, canonical.domain);
       // The key follows the event's POSITION in the translator's list, not its
       // position among the jobs that happened to resolve. If it followed the
       // resolved order, a primary event ungated on the first delivery would

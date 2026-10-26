@@ -306,8 +306,27 @@ describe('EparagonyFiscalizationAdapter', () => {
 
       await expect(makeAdapter(client).registerTransaction(makeCommand())).rejects.toMatchObject({
         failureMode: 'rejected',
-        reason: expect.stringContaining('holds no document for this sale, so nothing was issued'),
+        reason: expect.stringContaining('Nothing was issued'),
       });
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('eparagony_idempotency_key_body_mismatch'),
+      );
+    });
+
+    it('should not promise that a retry fixes a replayed key the vendor holds nothing under', async () => {
+      // The header is derived from the exact body, so a retry re-sends the same
+      // key and meets the same 422 - the copy must not offer Retry as the fix.
+      const client = makeClient([new EparagonyApiError('unknown token', 404, { errorCode: 92 })]);
+      client.post.mockRejectedValue(new EparagonyApiError('conflict', 422, { errorCode: 3 }));
+
+      const failure: unknown = await makeAdapter(client)
+        .registerTransaction(makeCommand())
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toMatchObject({ reason: expect.stringContaining('Retrying will not help') });
+      expect(failure).not.toMatchObject({ reason: expect.stringContaining('Retry to send it again') });
     });
 
     it('should keep a replayed request key in doubt when the token status cannot be read', async () => {

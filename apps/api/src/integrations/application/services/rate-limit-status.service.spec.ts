@@ -150,6 +150,7 @@ describe('RateLimitStatusService', () => {
         inFlight: 3,
         queued: 2,
         lastAcquiredAt: null,
+        sharedBucket: true,
       });
     });
 
@@ -179,6 +180,28 @@ describe('RateLimitStatusService', () => {
       await subject.getStatus(connectionId);
 
       expect(rateLimiterRegistry.getStatus).toHaveBeenCalledWith(connectionId);
+    });
+
+    it('should not report a shared bucket when the manifest resolver answers none', async () => {
+      connectionPort.get.mockResolvedValue(connection());
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        ...sharedManifest,
+        resolveRateLimitBucketKey: () => undefined,
+      });
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+
+      expect(await subject.getStatus(connectionId)).not.toHaveProperty('sharedBucket');
+    });
+
+    it('should report a shared bucket even when no policy resolves for it', async () => {
+      connectionPort.get.mockResolvedValue(connection({ baseUrl: 'sklep1.shoparena.pl' }));
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        ...sharedManifest,
+        defaultRateLimit: undefined,
+      });
+
+      expect(await subject.getStatus(connectionId)).toEqual({ enabled: false, sharedBucket: true });
+      expect(rateLimiterRegistry.getStatus).not.toHaveBeenCalled();
     });
   });
 
