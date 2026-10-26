@@ -2908,6 +2908,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const sections: Record<string, unknown> = {};
     if (input.address !== undefined) sections.address = input.address;
     if (input.deliveryMethod !== undefined) sections.deliveryMethod = input.deliveryMethod;
+    // Replaced wholesale by the top-level `||`: a second discount never stacks (#3543).
+    if (input.discount !== undefined) sections.discount = input.discount;
 
     let searchText: string | null = null;
     if (input.address !== undefined) {

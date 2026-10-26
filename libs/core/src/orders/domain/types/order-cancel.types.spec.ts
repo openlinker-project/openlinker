@@ -14,6 +14,10 @@ import {
   OrderAmendmentRequestKindValues,
   OrderCorrectionChangeKindValues,
   isOrderCorrectionChangeKind,
+  isOrderOperatorEditKind,
+  discountEditTargetRef,
+  discountRefundTargetRef,
+  discountCorrectionTargetRef,
   cancelCorrectionTargetRef,
   cancelRequestTargetRef,
   isOrderAmendmentRequestKind,
@@ -50,6 +54,33 @@ describe('order change kinds (#3540)', () => {
     expect(isOrderCorrectionChangeKind('order.cancel_request')).toBe(false);
     expect(isOrderAmendmentRequestKind('return.decline')).toBe(false);
     expect(isOrderAmendmentRequestKind('order.cancel_request')).toBe(true);
+  });
+
+  it('should NOT count the discount kinds as amending - they are an edit and two proposals, not a request to a channel (#3543)', () => {
+    for (const kind of ['order.discount_change', 'order.discount_refund', 'order.discount_correction']) {
+      expect(isOrderAmendmentRequestKind(kind)).toBe(false);
+      expect(OrderChangeKindValues).toContain(kind);
+    }
+    expect(isOrderOperatorEditKind('order.discount_change')).toBe(true);
+    expect(isOrderCorrectionChangeKind('order.discount_refund')).toBe(true);
+    expect(isOrderCorrectionChangeKind('order.discount_correction')).toBe(true);
+    expect(isOrderCorrectionChangeKind('order.discount_change')).toBe(false);
+  });
+
+  it('should keep the three discount targetRef namespaces disjoint from each other and from the edit and cancel ones', () => {
+    const refs = [
+      discountEditTargetRef('o1'),
+      discountRefundTargetRef('o1', 'chg-1'),
+      discountCorrectionTargetRef('o1', 'inv-1'),
+      cancelCorrectionTargetRef('o1', 'inv-1'),
+    ];
+    expect(refs).toEqual([
+      'edit:discount:o1',
+      'refund:discount:o1:chg-1',
+      'correction:discount:o1:inv-1',
+      'correction:cancel:o1:inv-1',
+    ]);
+    expect(new Set(refs).size).toBe(refs.length);
   });
 
   it('should keep every mutation kind a member of the full vocabulary', () => {

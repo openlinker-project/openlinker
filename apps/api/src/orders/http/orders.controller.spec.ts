@@ -4,6 +4,7 @@
  * @module apps/api/src/orders/http
  */
 import type { TestingModule } from '@nestjs/testing';
+import { RefundCeilingExceededException } from '@openlinker/core/orders';
 import { Test } from '@nestjs/testing';
 import { ParseUUIDPipe } from '@nestjs/common';
 import {
@@ -1968,22 +1969,60 @@ describe('OrdersController', () => {
         invoiceRecordId: 'inv-2',
         invoiceStatus: 'issued',
         documentNumber: 'FK/1',
+        refundRecordId: null,
       });
 
-      const result = await controller.confirmChange('ol_order_001', 'change-9', USER);
+      const result = await controller.confirmChange('ol_order_001', 'change-9', {}, USER);
 
       expect(orderCancellation.confirmChange).toHaveBeenCalledWith({
         internalOrderId: 'ol_order_001',
         changeId: 'change-9',
         actorUserId: 'user-1',
+        acknowledgeAboveCeiling: false,
       });
       expect(result.status).toBe('confirmed');
+    });
+
+    it('should forward acknowledgeAboveCeiling from the body (#3543)', async () => {
+      orderCancellation.confirmChange.mockResolvedValue({
+        changeId: 'change-9',
+        kind: 'order.discount_refund',
+        status: 'confirmed',
+        invoiceRecordId: null,
+        invoiceStatus: null,
+        documentNumber: null,
+        refundRecordId: 'refund-1',
+      });
+
+      await controller.confirmChange('ol_order_001', 'change-9', { acknowledgeAboveCeiling: true }, USER);
+
+      expect(orderCancellation.confirmChange).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true })
+      );
+    });
+
+    it('should map an exceeded refund ceiling to 409 refund_ceiling_exceeded with the figures (#3543)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_001', '50.00', '45.00', '12.50', 'PLN')
+      );
+
+      await expect(
+        controller.confirmChange('ol_order_001', 'x', {}, USER)
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'refund_ceiling_exceeded',
+          ceiling: '50.00',
+          alreadyRefunded: '45.00',
+          requested: '12.50',
+          currency: 'PLN',
+        }),
+      });
     });
 
     it('should map a foreign or unknown change to 404', async () => {
       orderCancellation.confirmChange.mockRejectedValue(new OrderCancellationNotFoundError('nope'));
 
-      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toBeInstanceOf(
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toBeInstanceOf(
         NotFoundException
       );
     });
@@ -1993,7 +2032,7 @@ describe('OrdersController', () => {
         new OrderCancellationRefusedError('CHANGE_ALREADY_CONFIRMED', 'done')
       );
 
-      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toMatchObject({
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
         response: expect.objectContaining({ error: 'CHANGE_ALREADY_CONFIRMED' }),
       });
     });
@@ -2003,7 +2042,7 @@ describe('OrdersController', () => {
         new CancelCorrectionFailedError('provider said no', 'provider-rejected')
       );
 
-      await expect(controller.confirmChange('ol_order_001', 'x', USER)).rejects.toMatchObject({
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
         response: expect.objectContaining({ error: 'CORRECTION_FAILED' }),
       });
     });

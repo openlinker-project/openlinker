@@ -4,7 +4,7 @@
  * @module apps/api/src/orders/http
  */
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import type { IOrderRecordService } from '@openlinker/core/orders';
+import { RefundCeilingExceededException, type IOrderRecordService } from '@openlinker/core/orders';
 
 import {
   OrderEditInvalidError,
@@ -26,6 +26,8 @@ const result: OrderEditResult = {
     lines: [],
     deliveryMethod: null,
     totals: null,
+    discount: null,
+    discountProposals: [],
     cod: null,
     unmatchedLineEdits: [],
     history: [],
@@ -43,6 +45,7 @@ describe('OrderEditsController (#3542)', () => {
       editAddress: jest.fn().mockResolvedValue(result),
       editLines: jest.fn().mockResolvedValue(result),
       editDeliveryMethod: jest.fn().mockResolvedValue(result),
+      editDiscount: jest.fn(),
       getEditsView: jest.fn(),
     };
     orderRecords = { getOrderRecord: jest.fn() };
@@ -109,5 +112,85 @@ describe('OrderEditsController (#3542)', () => {
     orderRecords.getOrderRecord.mockResolvedValue(null);
 
     await expect(controller.getEdits('missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  describe('discount (#3543)', () => {
+    const discountResult: OrderEditResult = {
+      ...result,
+      discount: {
+        discount: null,
+        paymentBranch: 'paid',
+        amountToCollect: null,
+        refundIntent: null,
+        refundIntentFailed: false,
+        correctionProposal: null,
+        correctionUnavailableReason: null,
+      },
+    };
+
+    it('should take the actor from the session and pass amount, percent, ack and dryRun through', async () => {
+      edits.editDiscount.mockResolvedValue(discountResult);
+
+      await controller.editDiscount(
+        'ol_order_1',
+        { amount: '12.50', acknowledgeAboveCeiling: true, dryRun: true },
+        user
+      );
+
+      expect(edits.editDiscount).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        actorUserId: 'user-1',
+        dryRun: true,
+        amount: '12.50',
+        percent: null,
+        acknowledgeAboveCeiling: true,
+      });
+    });
+
+    it('should map an exceeded refund ceiling to 409 refund_ceiling_exceeded with the figures', async () => {
+      edits.editDiscount.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_1', '50.00', '45.00', '12.50', 'PLN')
+      );
+
+      await expect(controller.editDiscount('ol_order_1', { amount: '12.50' }, user)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'refund_ceiling_exceeded',
+          ceiling: '50.00',
+          alreadyRefunded: '45.00',
+          requested: '12.50',
+        }),
+      });
+    });
+
+    it.each(['DISCOUNT_EXCEEDS_TOTAL', 'ORDER_HAS_FISCAL_RECEIPT', 'INVOICE_NOT_SETTLED'] as const)(
+      'should map %s to a 409 carrying the code',
+      async (code) => {
+        edits.editDiscount.mockRejectedValue(new OrderEditRefusedError(code, 'no'));
+
+        await expect(controller.editDiscount('ol_order_1', { amount: '1' }, user)).rejects.toMatchObject({
+          response: expect.objectContaining({ error: code }),
+        });
+      }
+    );
+
+    it('should answer the spec shape: discount, both totals, amount to collect, refund intent, correction', async () => {
+      edits.editDiscount.mockResolvedValue({
+        ...discountResult,
+        view: {
+          ...result.view,
+          totals: { currency: 'PLN', channelTotal: 50, total: 45, difference: 5, taxRestated: false },
+        },
+      });
+
+      const response = await controller.editDiscount('ol_order_1', { percent: 10 }, user);
+
+      expect(response.totals).toEqual({ currency: 'PLN', channelTotal: 50, total: 45, difference: 5 });
+      expect(response).toMatchObject({
+        discount: null,
+        amountToCollect: null,
+        refundIntent: null,
+        correctionProposal: null,
+      });
+    });
   });
 });

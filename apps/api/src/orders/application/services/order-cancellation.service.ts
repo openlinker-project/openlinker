@@ -67,16 +67,19 @@ import {
   classifyInvoiceFailure,
   INVOICE_SERVICE_TOKEN,
   type IInvoiceService,
+  type CorrectionLine,
   type InvoiceRecord,
 } from '@openlinker/core/invoicing';
 import {
   CANCEL_ABANDONED_LABEL_NOT_VOIDABLE,
   cancelRequestTargetRef,
+  DuplicateRefundRecordException,
   isOrderCancelReason,
   ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN,
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
   OPERATOR_ORDER_ORIGIN_ID,
   orderCancelReasonRequiresNote,
   orderStockRestoreDedupeKey,
@@ -85,6 +88,7 @@ import {
   type IOrderLifecycleRelayService,
   type OrderCancelCorrectionPayload,
   type IOrderRecordService,
+  type IOrderRefundService,
   type OrderChange,
   type OrderLifecycleRelayTargetResult,
   type OrderRecord,
@@ -158,6 +162,43 @@ const VOIDABLE_SHIPMENT_STATUSES: readonly string[] = [
   SHIPMENT_STATUS.Generated,
 ];
 
+const CANCEL_CORRECTION_SPEC: CorrectionKindSpec = {
+  noun: 'correction',
+  expiredHint: 'Correct the invoice from the invoice page instead.',
+  idempotencyPrefix: 'cancel-correction',
+  toCorrectionLine: (line) => ({
+    originalLineNumber: line['originalLineNumber'] as number,
+    newQuantity: line['newQuantity'] as number,
+  }),
+};
+
+const DISCOUNT_CORRECTION_SPEC: CorrectionKindSpec = {
+  noun: 'correction',
+  expiredHint: 'Correct the invoice from the invoice page instead.',
+  idempotencyPrefix: 'discount-correction',
+  toCorrectionLine: (line) => ({
+    originalLineNumber: line['originalLineNumber'] as number,
+    newUnitPriceGross: line['newUnitPriceGross'] as number,
+  }),
+};
+
+
+/** Shape persisted in `order.discount_refund.payload` (#3543). */
+interface DiscountRefundPayload {
+  readonly amount: string;
+  readonly currency: string;
+  readonly reason: 'other';
+  readonly note: string | null;
+}
+
+/** What differs between the two correction kinds when one is confirmed. */
+interface CorrectionKindSpec {
+  readonly noun: string;
+  readonly expiredHint: string;
+  readonly idempotencyPrefix: string;
+  readonly toCorrectionLine: (line: Record<string, unknown>) => CorrectionLine;
+}
+
 @Injectable()
 export class OrderCancellationService implements IOrderCancellationService {
   private readonly logger = new Logger(OrderCancellationService.name);
@@ -184,7 +225,9 @@ export class OrderCancellationService implements IOrderCancellationService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly lock: SyncLockPort,
     @Inject(ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN)
-    private readonly effects: IOrderCancellationEffectsService
+    private readonly effects: IOrderCancellationEffectsService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly refunds: IOrderRefundService
   ) {}
 
   async cancelOrder(input: CancelOrderInput): Promise<CancelOrderResult> {
@@ -560,7 +603,11 @@ export class OrderCancellationService implements IOrderCancellationService {
 
     switch (change.kind) {
       case 'order.cancel_correction':
-        return this.confirmCancelCorrection(change, input);
+        return this.confirmCorrection(change, input, CANCEL_CORRECTION_SPEC);
+      case 'order.discount_correction':
+        return this.confirmCorrection(change, input, DISCOUNT_CORRECTION_SPEC);
+      case 'order.discount_refund':
+        return this.confirmDiscountRefund(change, input);
       case 'order.cancel_request':
       case 'return.decline':
       case 'return.authorize':
@@ -569,6 +616,7 @@ export class OrderCancellationService implements IOrderCancellationService {
       case 'order.address_change':
       case 'order.line_quantity_change':
       case 'order.delivery_method_change':
+      case 'order.discount_change':
         throw new OrderCancellationRefusedError(
           'CHANGE_KIND_NOT_CONFIRMABLE',
           `A change of kind ${change.kind} is not confirmed here.`
@@ -576,31 +624,12 @@ export class OrderCancellationService implements IOrderCancellationService {
     }
   }
 
-  private async confirmCancelCorrection(
+  private async confirmCorrection(
     change: OrderChange,
-    input: ConfirmOrderChangeInput
+    input: ConfirmOrderChangeInput,
+    spec: CorrectionKindSpec
   ): Promise<ConfirmOrderChangeResult> {
-    switch (change.status) {
-      case 'confirmed':
-        throw new OrderCancellationRefusedError(
-          'CHANGE_ALREADY_CONFIRMED',
-          'This correction was already confirmed.'
-        );
-      case 'expired':
-        throw new OrderCancellationRefusedError(
-          'CHANGE_EXPIRED',
-          'This correction proposal expired. Correct the invoice from the invoice page instead.'
-        );
-      case 'declined':
-      case 'canceled':
-        throw new OrderCancellationRefusedError(
-          'CHANGE_NOT_OPEN',
-          `This correction proposal is ${change.status} and can no longer be confirmed.`
-        );
-      case 'pending':
-      case 'requested':
-        break;
-    }
+    this.assertOpenToConfirm(change, spec.noun, spec.expiredHint);
 
     const payload = this.readCorrectionPayload(change);
     const invoice = await this.invoices.getInvoiceById(payload.invoiceRecordId);
@@ -646,13 +675,10 @@ export class OrderCancellationService implements IOrderCancellationService {
         originalProviderInvoiceId: invoice.providerInvoiceId,
         documentType: 'corrected',
         reason: payload.reason,
-        lines: payload.lines.map((line) => ({
-          originalLineNumber: line.originalLineNumber,
-          newQuantity: line.newQuantity,
-        })),
+        lines: (payload.lines as ReadonlyArray<Record<string, unknown>>).map(spec.toCorrectionLine),
         // Derived from the change id, never wall-clock: a retried confirm re-sends
         // the SAME key, so the provider sees one correction however many clicks.
-        idempotencyKey: `cancel-correction:${change.id}`,
+        idempotencyKey: `${spec.idempotencyPrefix}:${change.id}`,
         originalDocument: buildOriginalDocumentFromIssuedRecord(invoice, invoice.issuedLineSnapshot),
       });
     } catch (error) {
@@ -684,6 +710,102 @@ export class OrderCancellationService implements IOrderCancellationService {
       invoiceRecordId: issued.id,
       invoiceStatus: issued.status,
       documentNumber: issued.providerInvoiceNumber,
+      refundRecordId: null,
+    };
+  }
+
+  /** `pending | requested` may be confirmed; every other status says why not. */
+  private assertOpenToConfirm(change: OrderChange, noun: string, expiredHint: string): void {
+    switch (change.status) {
+      case 'confirmed':
+        throw new OrderCancellationRefusedError(
+          'CHANGE_ALREADY_CONFIRMED',
+          `This ${noun} was already confirmed.`
+        );
+      case 'expired':
+        throw new OrderCancellationRefusedError(
+          'CHANGE_EXPIRED',
+          `This ${noun} proposal expired. ${expiredHint}`
+        );
+      case 'declined':
+      case 'canceled':
+        throw new OrderCancellationRefusedError(
+          'CHANGE_NOT_OPEN',
+          `This ${noun} proposal is ${change.status} and can no longer be confirmed.`
+        );
+      case 'pending':
+      case 'requested':
+        break;
+    }
+  }
+
+  /**
+   * `order.discount_refund` (#3543): confirming means "the seller has refunded the
+   * difference on the channel" (ADR-056: OpenLinker executes no refund). It writes
+   * the `RefundRecord` through the ceiling-guarded `recordRefund`, under a key
+   * derived from the change id so a retried confirm cannot record it twice, then
+   * confirms the row. Payment stays "Paid" until exactly this point.
+   */
+  private async confirmDiscountRefund(
+    change: OrderChange,
+    input: ConfirmOrderChangeInput
+  ): Promise<ConfirmOrderChangeResult> {
+    this.assertOpenToConfirm(
+      change,
+      'refund',
+      'Record the refund from the order page if you refunded the buyer.'
+    );
+    const payload = this.readDiscountRefundPayload(change);
+    const idempotencyKey = `discount-refund:${change.id}`;
+
+    let refundRecordId: string | null;
+    try {
+      const refund = await this.refunds.recordRefund({
+        internalOrderId: input.internalOrderId,
+        amount: payload.amount,
+        currency: payload.currency,
+        reason: payload.reason,
+        note: payload.note,
+        recordedAt: new Date(),
+        idempotencyKey,
+        executedBy: 'operator_out_of_band',
+        acknowledgeAboveCeiling: input.acknowledgeAboveCeiling === true,
+      });
+      refundRecordId = refund.id;
+    } catch (error) {
+      if (!(error instanceof DuplicateRefundRecordException)) throw error;
+      // An earlier attempt wrote the record and died before confirming the row.
+      const existing = await this.refunds.getRefundsForOrder(input.internalOrderId);
+      refundRecordId = existing.find((refund) => refund.idempotencyKey === idempotencyKey)?.id ?? null;
+    }
+
+    await this.changes.confirm(change.id, input.actorUserId);
+    await this.changes.claimApplied(change.id);
+
+    return {
+      changeId: change.id,
+      kind: change.kind,
+      status: 'confirmed',
+      invoiceRecordId: null,
+      invoiceStatus: null,
+      documentNumber: null,
+      refundRecordId,
+    };
+  }
+
+  private readDiscountRefundPayload(change: OrderChange): DiscountRefundPayload {
+    const raw = change.payload;
+    if (!raw || typeof raw['amount'] !== 'string' || typeof raw['currency'] !== 'string') {
+      throw new OrderCancellationRefusedError(
+        'CHANGE_NOT_OPEN',
+        'This refund proposal is unreadable and cannot be confirmed.'
+      );
+    }
+    return {
+      amount: raw['amount'],
+      currency: raw['currency'],
+      reason: 'other',
+      note: typeof raw['note'] === 'string' ? raw['note'] : null,
     };
   }
 
