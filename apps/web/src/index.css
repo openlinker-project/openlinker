@@ -18636,6 +18636,46 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   max-width: 32ch;
 }
 
+/* KOD I not-cleared placeholder (#3547, M24 `not-cleared`): a dashed frame
+ * the size of the QR in the FA(3) preview, beside why the code is not there
+ * yet. Dashed so it reads as "not here yet" rather than as a broken image. */
+.ksef-verification-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+
+.ksef-verification-pending__frame {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  padding: var(--space-2);
+  box-sizing: border-box;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.ksef-verification-pending__text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.ksef-verification-pending__text strong {
+  color: var(--text-primary);
+}
+
 /* ── Inline Disclosure (#1303) ───────────────────────────────────────
  * Native <details>/<summary> "collapsed value + Change affordance"
  * pattern. First use: Infakt's default-payment-method field, which

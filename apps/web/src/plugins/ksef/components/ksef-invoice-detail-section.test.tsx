@@ -12,11 +12,14 @@
  *   - View FA(3): calls `invoicing.downloadDocument(id, 'rendered')` + shows inline frame
  *   - Download XML: calls `invoicing.downloadDocument(id, 'source')`
  *   - Slot is registered on the KSeF plugin descriptor
+ *   - KOD I (#3547): a placeholder while the document waits for its KSeF number,
+ *     and the server-built verification link reaching the QR once accepted
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 import type { InvoiceRecord } from '../../../features/invoicing';
+import type { RegulatoryStatus } from '../../../features/invoicing';
 import { KsefInvoiceDetailSection } from './ksef-invoice-detail-section';
 
 function makeInvoice(over: Partial<InvoiceRecord> = {}): InvoiceRecord {
@@ -303,6 +306,122 @@ describe('KsefInvoiceDetailSection', () => {
       await waitFor(() =>
         expect(downloadDocument).toHaveBeenCalledWith('inv_1', 'source'),
       );
+    });
+  });
+  describe('KOD I verification code (#3547)', () => {
+    const PLACEHOLDER = 'Verification code (KOD I)';
+    const QR_LABEL = 'KSeF invoice verification QR code';
+    const FA3_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<Faktura>
+  <Podmiot1><DaneIdentyfikacyjne><NIP>1111111111</NIP><Nazwa>Seller Ltd</Nazwa></DaneIdentyfikacyjne></Podmiot1>
+  <Podmiot2><DaneIdentyfikacyjne><NIP>2222222222</NIP><Nazwa>Buyer Ltd</Nazwa></DaneIdentyfikacyjne></Podmiot2>
+  <Fa><P_1>2026-01-01</P_1><P_2>FV/2026/001</P_2><P_15>123.00</P_15></Fa>
+</Faktura>`;
+
+    it.each<RegulatoryStatus>(['pending-submission', 'submitted', 'cleared'])(
+      'should show the KOD I placeholder when the document is %s and has no KSeF number yet',
+      (regulatoryStatus) => {
+        renderWithProviders(
+          <KsefInvoiceDetailSection
+            invoice={makeInvoice({ regulatoryStatus, clearanceReference: null })}
+            connection={sampleConnection}
+          />,
+        );
+
+        expect(screen.getByRole('note')).toHaveTextContent(PLACEHOLDER);
+        expect(screen.queryByRole('img', { name: QR_LABEL })).not.toBeInTheDocument();
+      },
+    );
+
+    it('should say the invoice has not reached KSeF yet while it is pending submission', () => {
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'pending-submission', clearanceReference: null })}
+          connection={sampleConnection}
+        />,
+      );
+
+      expect(screen.getByRole('note')).toHaveTextContent('has not reached KSeF yet');
+      expect(screen.getByRole('note')).not.toHaveTextContent('KSeF has received this invoice');
+    });
+
+    it('should say KSeF has received the invoice once it is submitted', () => {
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'submitted', clearanceReference: null })}
+          connection={sampleConnection}
+        />,
+      );
+
+      expect(screen.getByRole('note')).toHaveTextContent('KSeF has received this invoice');
+    });
+
+    it.each<RegulatoryStatus>(['accepted', 'rejected'])(
+      'should not show the KOD I placeholder when the document is %s',
+      (regulatoryStatus) => {
+        renderWithProviders(
+          <KsefInvoiceDetailSection
+            invoice={makeInvoice({ regulatoryStatus })}
+            connection={sampleConnection}
+          />,
+        );
+
+        expect(screen.queryByText(PLACEHOLDER)).not.toBeInTheDocument();
+      },
+    );
+
+    it('should render the QR from the server-built link once the invoice is accepted', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:fa3-source');
+      URL.revokeObjectURL = vi.fn();
+      const getVerificationLink = vi.fn().mockResolvedValue({
+        url: 'https://qr-test.ksef.mf.gov.pl/invoice/1111111111/01-01-2026/abc_DEF-123',
+      });
+      const downloadDocument = vi
+        .fn()
+        .mockResolvedValue(new Blob([FA3_XML], { type: 'application/xml' }));
+      const apiClient = createMockApiClient({
+        invoicing: { downloadDocument, getVerificationLink },
+      });
+
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
+          connection={sampleConnection}
+        />,
+        { apiClient },
+      );
+
+      await waitFor(() => expect(getVerificationLink).toHaveBeenCalledWith('inv_1'));
+      fireEvent.click(screen.getByRole('button', { name: 'View' }));
+
+      expect(await screen.findByRole('img', { name: QR_LABEL })).toBeInTheDocument();
+    });
+
+    it('should render no QR when the server returns no verification link', async () => {
+      URL.createObjectURL = vi.fn(() => 'blob:fa3-source');
+      URL.revokeObjectURL = vi.fn();
+      const getVerificationLink = vi.fn().mockResolvedValue({ url: null });
+      const downloadDocument = vi
+        .fn()
+        .mockResolvedValue(new Blob([FA3_XML], { type: 'application/xml' }));
+      const apiClient = createMockApiClient({
+        invoicing: { downloadDocument, getVerificationLink },
+      });
+
+      renderWithProviders(
+        <KsefInvoiceDetailSection
+          invoice={makeInvoice({ regulatoryStatus: 'accepted' })}
+          connection={sampleConnection}
+        />,
+        { apiClient },
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'View' }));
+      await waitFor(() => expect(screen.getByText('FV/2026/001')).toBeInTheDocument());
+      expect(screen.queryByRole('img', { name: QR_LABEL })).not.toBeInTheDocument();
+      // Not a promise of a QR that will never come: the waiting placeholder is
+      // only for a document without its KSeF number.
+      expect(screen.queryByText(PLACEHOLDER)).not.toBeInTheDocument();
     });
   });
 });

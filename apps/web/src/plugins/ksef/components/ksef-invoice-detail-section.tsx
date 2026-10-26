@@ -19,6 +19,8 @@
  *   - FA(3) document: view rendered HTML inline + download source XML (#1228, B5),
  *     gated on `regulatoryStatus === 'accepted'`
  *   - Inline `.doc-preview` area for the FA(3) rendered document
+ *   - While the document waits for its KSeF number, a dashed placeholder where
+ *     the KOD I verification QR will appear (#3547, M24 `not-cleared`)
  *
  * @module plugins/ksef/components
  */
@@ -33,6 +35,7 @@ import {
   useInvoiceSourceDocument,
   useInvoiceVerificationLinkQuery,
 } from '../../../features/invoicing';
+import type { RegulatoryStatus } from '../../../features/invoicing';
 import { KsefFa3View } from './ksef-fa3-view';
 import { KSEF_REGULATORY_STATUS_LABELS } from '../lib/ksef-regulatory-status-labels';
 import { Button } from '../../../shared/ui/button';
@@ -47,6 +50,17 @@ import {
 } from '../../../shared/ui/dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useTranslation } from '../../../shared/i18n';
+
+/**
+ * Clearance statuses in which a document is still waiting for its KSeF number,
+ * so the KOD I QR cannot exist yet (#3547). `cleared` is listed for safety: no
+ * current provider emits it, and it is not the terminal `accepted`.
+ */
+const AWAITING_KSEF_NUMBER_STATUSES: ReadonlyArray<RegulatoryStatus> = [
+  'pending-submission',
+  'submitted',
+  'cleared',
+];
 
 export function KsefInvoiceDetailSection({
   invoice,
@@ -69,6 +83,11 @@ export function KsefInvoiceDetailSection({
   // UPO and FA(3) are available only once the authority has accepted the invoice —
   // that's the terminal success state where the UPO document and issued FA(3) exist.
   const isAccepted = invoice.regulatoryStatus === 'accepted';
+  // #3547: KOD I exists only once KSeF has assigned the number. Until then the
+  // operator sees why the QR is missing instead of an empty space. `rejected`
+  // is deliberately absent: such a document never gets a KSeF number, and the
+  // rejection detail above already says what happened.
+  const isAwaitingKsefNumber = AWAITING_KSEF_NUMBER_STATUSES.includes(invoice.regulatoryStatus);
   // DEF-02 / DEF-03 / DEF-15: the QR link is built by the server from the
   // submitted document, so it is right for every role and needs no browser crypto.
   const verificationLink = useInvoiceVerificationLinkQuery(invoice.id, isAccepted);
@@ -256,6 +275,37 @@ export function KsefInvoiceDetailSection({
             <span className="text-muted">—</span>
           )}
         </div>
+
+        {isAwaitingKsefNumber ? (
+          // M24 `not-cleared`: a dashed frame where the KOD I QR will be, beside
+          // the reason it is not there yet. The copy states what OpenLinker
+          // actually does: the status is re-checked in the background, and this
+          // page shows the code once that check has seen the number.
+          <div className="ksef-verification-pending" role="note">
+            <div className="ksef-verification-pending__frame">
+              {t(
+                'invoice.ksef.verificationPendingFrame',
+                'Verification code appears once KSeF assigns the number',
+              )}
+            </div>
+            <div className="ksef-verification-pending__text">
+              <strong>
+                {t('invoice.ksef.verificationPendingLabel', 'Verification code (KOD I)')}
+              </strong>
+              <span>
+                {invoice.regulatoryStatus === 'pending-submission'
+                  ? t(
+                      'invoice.ksef.verificationPendingNotSent',
+                      'This invoice has not reached KSeF yet. OpenLinker sends it again automatically, and the code appears here once KSeF assigns its number.',
+                    )
+                  : t(
+                      'invoice.ksef.verificationPendingHint',
+                      'KSeF has received this invoice and has not assigned its number yet. OpenLinker checks for it automatically; the code appears here once the number is assigned.',
+                    )}
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         {isAccepted ? (
           <>
