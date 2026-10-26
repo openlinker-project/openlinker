@@ -1918,6 +1918,9 @@ describe('InvoiceService', () => {
         { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
         'company',
       );
+      // DEF-09 refuses an override for a provider that cannot carry it, so the
+      // snapshot is only reachable through one that declares it can.
+      Object.assign(correctionAdapter, { honoursBuyerOverride: true });
 
       await service.issueCorrection(makeCorrectionCmd({ buyerOverride: override }));
 

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, renderHook, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ReactElement } from 'react';
 import {
@@ -7,6 +7,7 @@ import {
   countCodePoints,
   useCorrectionReason,
 } from './correction-reason-field';
+import { renderWithProviders } from '../../../test/test-utils';
 
 afterEach(() => cleanup());
 
@@ -69,7 +70,7 @@ describe('useCorrectionReason', () => {
 
 describe('CorrectionReasonField', () => {
   it('should label the field as recommended and show a counter', () => {
-    render(<Harness onConfirm={() => undefined} />);
+    renderWithProviders(<Harness onConfirm={() => undefined} />);
     const textarea = screen.getByLabelText(/Reason for correction/i);
     expect(screen.getByText('(recommended)')).toBeTruthy();
     fireEvent.change(textarea, { target: { value: 'abc' } });
@@ -78,7 +79,7 @@ describe('CorrectionReasonField', () => {
   });
 
   it('should show the warning after an empty submit and clear it once the operator types', () => {
-    render(<Harness onConfirm={() => undefined} />);
+    renderWithProviders(<Harness onConfirm={() => undefined} />);
     fireEvent.click(screen.getByRole('button', { name: 'submit' }));
     expect(screen.getByRole('status').textContent).toMatch(/submit again/i);
 
@@ -87,7 +88,7 @@ describe('CorrectionReasonField', () => {
   });
 
   it('should mark the control invalid past the cap', () => {
-    render(<Harness onConfirm={() => undefined} />);
+    renderWithProviders(<Harness onConfirm={() => undefined} />);
     const textarea = screen.getByLabelText(/Reason for correction/i);
     fireEvent.change(textarea, { target: { value: 'a'.repeat(CORRECTION_REASON_MAX_LENGTH + 1) } });
     expect(textarea.getAttribute('aria-invalid')).toBe('true');

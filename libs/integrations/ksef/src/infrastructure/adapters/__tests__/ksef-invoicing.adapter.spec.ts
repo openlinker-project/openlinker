@@ -630,7 +630,14 @@ describe('KsefInvoicingAdapter', () => {
         'company',
       );
 
-      await adapter(http, builder).issueCorrection(correctionCommand({ buyerOverride: override }));
+      // The override changes the buyer's tax number, which DEF-23 makes the
+      // operator confirm first; this test is about what the KOR carries after.
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({
+          buyerOverride: override,
+          acknowledgedWarnings: [KSEF_BUYER_TAX_ID_CHANGE_WARNING],
+        }),
+      );
 
       const built = lastInput();
       // The KOR carries the OVERRIDE buyer, not the original snapshot's buyer.
