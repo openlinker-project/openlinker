@@ -40,6 +40,7 @@
  * @module libs/core/src/sales-documents/domain/types
  * @see docs/architecture/adrs/065-sales-document-read-surface.md
  */
+import type { SalesDocumentAfterIssueAttention } from './live-order-issuance-gate.types';
 import type {
   FiscalArtefactSummary,
   FiscalRegistrationFailureMode,
@@ -313,4 +314,12 @@ export interface SalesDocumentView {
    * kind was chosen.
    */
   readonly matchedRule: SalesDocumentMatchedRuleView | null;
+  /**
+   * DEF-26: the sale changed after its document was made - cancelled, or
+   * refunded in whole or in part - so the document may need a correction.
+   * DERIVED on every read from the live order and its refunds, never stored;
+   * `null` when there is no live document or nothing changed. A suggestion
+   * only: whether a correction is due is the operator's call.
+   */
+  readonly afterIssueAttention: SalesDocumentAfterIssueAttention | null;
 }

@@ -213,6 +213,10 @@ describe('InfaktInvoiceCorrectionFlow', () => {
     const qtyInputs = await screen.findAllByLabelText(/New qty, line/i);
     fireEvent.change(qtyInputs[0], { target: { value: '3' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'partial return' },
+    });
+
     fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
 
     await waitFor(() => {
@@ -276,6 +280,9 @@ describe('InfaktInvoiceCorrectionFlow', () => {
     expect(qtyInputs).toHaveLength(2);
     fireEvent.change(qtyInputs[1], { target: { value: '0' } });
 
+    fireEvent.change(await screen.findByLabelText(/Reason for correction/i), {
+      target: { value: 'Partial return' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: /Issue KOR/i }));
 
     await waitFor(() => {

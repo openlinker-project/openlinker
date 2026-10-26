@@ -54,6 +54,8 @@ import type {
 import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+  decideLiveOrderIssuance,
+  deriveAfterIssueAttention,
   chooseSalesDocumentDecision,
   expandSalesDocumentRoutingCandidates,
   readSalesDocumentRouting,
@@ -74,7 +76,9 @@ import type {
 import type { ISalesDocumentViewService } from '../interfaces/sales-document-view.service.interface';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { ORDER_RECORD_REPOSITORY_TOKEN, ORDER_REFUND_SERVICE_TOKEN } from '../../orders.tokens';
+import { IOrderRefundService } from '../interfaces/order-refund.service.interface';
+import { toLiveOrderIssuanceFacts } from '../../domain/live-order-issuance-facts';
 import { PriceTaxTreatmentValues } from '../../domain/types/order.types';
 import { buyerHasTaxId } from '../../domain/types/buyer-tax-id.types';
 import type {
@@ -119,6 +123,8 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     private readonly connections: ConnectionPort,
     @Inject(SALES_DOCUMENT_RULES_SERVICE_TOKEN)
     private readonly salesDocumentRules: ISalesDocumentRulesService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly refunds: IOrderRefundService,
   ) {}
 
   async getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>> {
@@ -265,10 +271,11 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
       return new Map();
     }
 
-    const [records, invoiceRecords, fiscalRecords] = await Promise.all([
+    const [records, invoiceRecords, fiscalRecords, refundSummaries] = await Promise.all([
       this.orderRecords.findByIds(uniqueIds),
       this.invoices.listInvoicesForOrders(uniqueIds),
       this.fiscalRegistrations.getByOrderIds(uniqueIds),
+      this.refunds.getRefundSummariesForOrders(uniqueIds),
     ]);
 
     const rankedByOrderId = groupRankedRecords(invoiceRecords, fiscalRecords);
@@ -313,6 +320,14 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
           !includeMatchedRule || record.salesDocumentMatchedRuleId === null
             ? null
             : (matchedRulesById.get(record.salesDocumentMatchedRuleId) ?? null),
+        // DEF-26: the same live-order gate the issue paths ask, applied to an
+        // order that already has a document.
+        afterIssueAttention: deriveAfterIssueAttention(
+          decideLiveOrderIssuance(
+            toLiveOrderIssuanceFacts(record, refundSummaries.get(record.internalOrderId) ?? null),
+          ),
+          winner?.blocksFurtherIssuance === true,
+        ),
       });
     }
     return views;
