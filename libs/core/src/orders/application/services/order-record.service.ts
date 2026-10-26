@@ -26,6 +26,7 @@ import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import { OrderRecordNotFoundException } from '../../domain/exceptions/order-record-not-found.exception';
+import { NoBuyerNoteException } from '../../domain/exceptions/no-buyer-note.exception';
 import type {
   FailedSyncValueSummary,
   OrderHealthSummaryFilters,
@@ -135,10 +136,16 @@ export class OrderRecordService implements IOrderRecordService {
       return null;
     }
     try {
+      // B-7: the order's OWN stable instant. `placedAt ?? now` made a source
+      // without `placedAt` (WooCommerce) count every later order and grow on
+      // each re-import. First-seen time (the stored record's `createdAt`) never
+      // moves; `now` is only right for an order never seen before.
+      const existing = order.placedAt ? null : await this.repository.findById(order.id);
+      const instant = order.placedAt ?? existing?.createdAt ?? now;
       return await this.repository.countEarlierOrdersForCustomer(
         order.customerId,
         order.id,
-        order.placedAt ?? now
+        instant
       );
     } catch (error) {
       this.logger.warn(
@@ -1136,6 +1143,15 @@ export class OrderRecordService implements IOrderRecordService {
    * thrown for the second.
    */
   async markBuyerNoteRead(internalOrderId: string, readByUserId: string): Promise<OrderRecord> {
+    const current = await this.repository.findById(internalOrderId);
+    if (!current) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    // B-8: there is nothing to read; refuse rather than stamping a marker on an
+    // order that carries no note.
+    if (!current.hasBuyerNote) {
+      throw new NoBuyerNoteException(internalOrderId);
+    }
     await this.repository.markBuyerNoteRead(internalOrderId, new Date(), readByUserId);
     const record = await this.repository.findById(internalOrderId);
     if (!record) {

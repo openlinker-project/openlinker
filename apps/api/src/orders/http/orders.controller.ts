@@ -73,6 +73,7 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   IOrderRecordService,
   OrderRecordNotFoundException,
+  NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
@@ -721,13 +722,23 @@ export class OrdersController {
     dto.buyerNote = order.buyerNoteState;
     dto.buyerNoteReadAt = order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null;
     dto.buyerNoteReadByUserId = order.buyerNoteReadByUserId;
-    dto.buyerNoteAcknowledgements = (
-      await this.fulfillmentWorkQuery.listBuyerNoteAcknowledgements(order.internalOrderId)
-    ).map((ack) => ({
-      workId: ack.workId,
-      acknowledgedAt: ack.acknowledgedAt.toISOString(),
-      acknowledgedByUserId: ack.acknowledgedByUserId,
-    }));
+    // B-10: the acknowledgements are a supplementary read from another context;
+    // a failure there must not turn the whole order detail into a 500. `null`
+    // means "could not load", distinct from `[]` (loaded, none acknowledged).
+    try {
+      dto.buyerNoteAcknowledgements = (
+        await this.fulfillmentWorkQuery.listBuyerNoteAcknowledgements(order.internalOrderId)
+      ).map((ack) => ({
+        workId: ack.workId,
+        acknowledgedAt: ack.acknowledgedAt.toISOString(),
+        acknowledgedByUserId: ack.acknowledgedByUserId,
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Could not load buyer note acknowledgements for order ${order.internalOrderId}: ${(error as Error).message}`
+      );
+      dto.buyerNoteAcknowledgements = null;
+    }
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
@@ -925,16 +936,30 @@ export class OrdersController {
   })
   @ApiResponse({ status: 200, description: 'Order with the read marker set', type: OrderRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 409, description: 'NO_BUYER_NOTE - the order carries no buyer note to read' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async markBuyerNoteRead(
     @Param('internalOrderId') internalOrderId: string,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<OrderRecordResponseDto> {
     try {
-      return this.toDto(await this.orderRecordService.markBuyerNoteRead(internalOrderId, user.id));
+      const record = await this.orderRecordService.markBuyerNoteRead(internalOrderId, user.id);
+      const dto = this.toDto(record);
+      // B-9: the endpoint's contract is to return the marker it just set (or the
+      // existing one on a replay); `toDto` is the list projection and omits it.
+      dto.buyerNoteReadAt = record.buyerNoteReadAt ? record.buyerNoteReadAt.toISOString() : null;
+      dto.buyerNoteReadByUserId = record.buyerNoteReadByUserId;
+      return dto;
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
         throw new NotFoundException(error.message);
+      }
+      if (error instanceof NoBuyerNoteException) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'NO_BUYER_NOTE',
+          message: error.message,
+        });
       }
       throw error;
     }

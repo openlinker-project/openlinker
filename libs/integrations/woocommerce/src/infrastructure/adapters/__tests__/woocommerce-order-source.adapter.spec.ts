@@ -399,6 +399,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
     it.each([
       ['a text', '  Ring twice ', 'Ring twice'],
       ['the empty string core sends for none', '', null],
+      ['an HTML-escaped text with a line break (N-26)', 'Tom &amp; Jerry<br>door 5', 'Tom & Jerry\ndoor 5'],
     ])('should report the buyer note from customer_note: %s (#3538)', async (_label, note, expected) => {
       const order = makeOrder({ customer_note: note });
       const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
