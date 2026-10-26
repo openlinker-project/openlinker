@@ -455,6 +455,8 @@ export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-cov
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
+export { projectOrderForRouting } from './domain/project-order-for-routing';
+export type { OrderRoutingProjection } from './domain/project-order-for-routing';
 export type { OrderFromReadySnapshotOptions } from './domain/order-from-ready-snapshot';
 
 // Order-identity list projection for Shipments/Invoices (#1995).
