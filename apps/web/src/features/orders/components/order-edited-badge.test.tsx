@@ -35,6 +35,8 @@ const edits: OrderEditsView = {
       currency: 'PLN',
       amount: '15.00',
       invoiceRecordId: null,
+      documentNumber: null,
+      lines: null,
     },
   ],
   cod: null,

@@ -65,10 +65,6 @@ export function OrderEditedNotice({
   const refund = edits.discountProposals.find((p) => p.kind === 'order.discount_refund') ?? null;
   const correction =
     edits.discountProposals.find((p) => p.kind === 'order.discount_correction') ?? null;
-  const sessionCorrection =
-    correction !== null && sessionDiscount?.correctionProposal?.changeId === correction.changeId
-      ? sessionDiscount.correctionProposal
-      : null;
   const unavailable = correction === null ? (sessionDiscount?.correctionUnavailableReason ?? null) : null;
   const totals = edits.totals;
   const lowered = edits.lines.length;
@@ -163,11 +159,11 @@ export function OrderEditedNotice({
           onOpenChange={setCorrectionOpen}
           internalOrderId={internalOrderId}
           kind="order.discount_correction"
-          priceLines={sessionCorrection?.lines ?? null}
+          priceLines={correction.lines}
           proposal={{
             changeId: correction.changeId,
             invoiceRecordId: correction.invoiceRecordId ?? '',
-            documentNumber: sessionCorrection?.documentNumber ?? null,
+            documentNumber: correction.documentNumber,
             currency: correction.currency,
             lines: [],
           }}

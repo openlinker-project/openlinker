@@ -335,7 +335,7 @@
         <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--default" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order received<span class="order-activity__by">system · ingest</span></p><p class="order-activity__description">Ingested and ready for sync.</p></div><time class="order-activity__time">25 Sep 2026, 09:14</time></li>
         <li class="order-activity__item"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order synced to PrestaShop · ceramikanowak.pl<span class="order-activity__by">system · attempt 1</span></p><p class="order-activity__description">External order <span class="mono-text">#4821</span></p></div><time class="order-activity__time">25 Sep 2026, 09:15</time></li>
 
-        <li class="order-activity__item" data-mk-show="edit-saved"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order edited in OpenLinker<span class="order-activity__by">operator · admin</span></p><p class="order-activity__description">Shipping address changed (street); KUB-350-BIA quantity 3 → 2; discount 15.00 PLN (late dispatch). Not sent to Allegro. “Klientka prosi o nr mieszkania i tylko 2 kubki.”</p></div><time class="order-activity__time">25 Sep 2026, 09:41</time></li>
+        <li class="order-activity__item" data-mk-show="edit-saved"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order edited in OpenLinker<span class="order-activity__by">operator · admin</span></p><p class="order-activity__description">Shipping address changed (street); KUB-350-BIA quantity 3 → 2; discount 15.00 PLN. Not sent to Allegro.</p></div><time class="order-activity__time">25 Sep 2026, 09:41</time></li>
         <li class="order-activity__item" data-mk-show="edit-saved"><span class="order-activity__dot order-activity__dot--warning" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Refund not confirmed yet<span class="order-activity__by">waiting on you</span></p><p class="order-activity__description">Refund 54.00 PLN on Allegro, then use Confirm refund.</p></div><span class="order-activity__time order-activity__time--pending">waiting</span></li>
 
         <li class="order-activity__item" data-mk-show="edit-blocked"><span class="order-activity__dot order-activity__dot--success" aria-hidden="true"></span><div class="order-activity__body"><p class="order-activity__title">Order packed<span class="order-activity__by">operator</span></p><p class="order-activity__description">Marked packed by akowalczyk.</p></div><time class="order-activity__time">25 Sep 2026, 11:20</time></li>
@@ -514,7 +514,7 @@
             <p class="dialog-section__head">Discount <span class="mk-pin">13</span></p>
             <div class="form-field-row">
               <div class="form-field"><label class="form-field__label" for="ef-disc">Amount</label><span class="oc-inline"><input class="control control--narrow" id="ef-disc" type="number" min="0" step="0.01" value="15.00" data-testid="order-edit-discount-amount"> <span class="muted-text">PLN, gross</span></span></div>
-              <div class="form-field"><label class="form-field__label" for="ef-disc-reason">Reason</label><select class="control control--select" id="ef-disc-reason"><option>Late dispatch</option><option>Damaged packaging</option><option>Goodwill</option><option>Other</option></select></div>
+              
             </div>
             <p class="form-field__description" style="margin-top:var(--space-2)">Lowers the invoice total. The buyer isn’t refunded automatically — you refund on Allegro.</p>
           </div>
@@ -551,8 +551,7 @@
               <tbody>
                 <tr><td>Shipping address</td><td><del>ul. Długa 12</del></td><td><ins>ul. Długa 12/4</ins></td></tr>
                 <tr><td><span class="order-line-item__product-info"><span class="order-line-item__name">Kubek ceramiczny 350 ml, biały</span><span class="order-line-item__sku mono-text">KUB-350-BIA</span></span></td><td class="mono-text"><del>3</del></td><td class="mono-text"><ins>2</ins></td></tr>
-                <tr><td>Discount</td><td><del>none</del></td><td><span class="order-line-item__product-info"><ins class="mono-text">−15.00 PLN</ins><span class="order-line-item__sku">Late dispatch</span></span></td></tr>
-                <tr><td>Order total</td><td class="mono-text"><del>348.99 PLN</del></td><td class="mono-text"><ins>294.99 PLN</ins></td></tr>
+                <tr><td>Order total</td><td class="mono-text"><del>348.99 PLN</del></td><td class="mono-text"><ins>309.99 PLN</ins></td></tr>
               </tbody>
             </table>
           </div>
@@ -561,21 +560,17 @@
           <p class="dialog-section__head">Where this change is used <span class="mk-pin">14</span></p>
           <ul class="oc-impact" data-testid="order-edit-impact">
             <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Shipping label<span class="oc-impact__sub">InPost Kurier</span></span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">The label is bought with the new address.</span></li>
-            <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Invoice<span class="oc-impact__sub">inFakt · not issued yet</span></span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">Issued for 2 × KUB-350-BIA with a 15.00 PLN discount: 294.99 PLN.</span></li>
+            <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Invoice<span class="oc-impact__sub">inFakt · not issued yet</span></span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">Issued for 2 × KUB-350-BIA: 309.99 PLN.</span></li>
             <li class="oc-impact__row"><span class="oc-impact__head"><span class="oc-impact__what">Pack bench</span><span class="status-badge status-badge--success status-badge--compact">Uses change</span></span><span class="oc-impact__how">The packer is asked for 2 × KUB-350-BIA.</span></li>
             <li class="oc-impact__row oc-impact__row--off"><span class="oc-impact__head"><span class="oc-impact__what">PrestaShop<span class="oc-impact__sub">order #4821</span></span><span class="status-badge status-badge--neutral status-badge--compact">Stock only</span></span><span class="oc-impact__how">The order isn’t changed. 1 × KUB-350-BIA is added back to stock there.</span></li>
             <li class="oc-impact__row oc-impact__row--off"><span class="oc-impact__head"><span class="oc-impact__what">Allegro<span class="oc-impact__sub">ceramika_nowak</span></span><span class="status-badge status-badge--neutral status-badge--compact">Not sent</span></span><span class="oc-impact__how">Not sent. Allegro still shows 3 × Kubek, 348.99 PLN and the old address.</span></li>
           </ul>
         </div>
-        <div class="alert alert--warning" role="status" data-testid="order-edit-money">
-          <div class="alert__content"><strong class="alert__title">Refund 54.00 PLN on Allegro</strong>
-            <div class="alert__description">OpenLinker doesn’t move money. After you refund in Allegro Sales Center, use Confirm refund on this order so the invoice and what the buyer paid agree.</div></div>
+        <div class="alert alert--info" role="status" data-testid="order-edit-discount-deferred">
+          <div class="alert__content"><strong class="alert__title">The discount is reviewed separately</strong>
+            <div class="alert__description">Save the quantity change first, then apply the discount. The discount stays filled in, so you can review it right after.</div></div>
         </div>
-        <div class="form-field" style="margin-top:var(--space-3)">
-          <label class="form-field__label" for="er-note">Note for the timeline (optional)</label>
-          <textarea class="control" id="er-note" rows="2">Klientka prosi o nr mieszkania i tylko 2 kubki.</textarea>
-        </div>
-        <div class="dialog__footer dialog__footer--split">
+                <div class="dialog__footer dialog__footer--split">
           <button type="button" class="button button--ghost" data-go="edit-form" data-testid="order-edit-back">Back to editing</button>
           <span class="dialog__footer-group">
             <button type="button" class="button button--secondary" data-go="order" data-testid="order-edit-discard">Discard</button>

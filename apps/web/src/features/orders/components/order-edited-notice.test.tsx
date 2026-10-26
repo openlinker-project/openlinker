@@ -59,6 +59,8 @@ const refundProposal = {
   currency: 'PLN',
   amount: '15.00',
   invoiceRecordId: null,
+  documentNumber: null,
+  lines: null,
 };
 const correctionProposal = {
   changeId: 'change_correction',
@@ -68,6 +70,10 @@ const correctionProposal = {
   currency: 'PLN',
   amount: null,
   invoiceRecordId: 'inv_1',
+  documentNumber: 'FV/412/09/2026',
+  lines: [
+    { originalLineNumber: 1, name: 'Kubek', previousUnitPriceGross: 39, newUnitPriceGross: 36 },
+  ],
 };
 
 function renderNotice(
@@ -191,24 +197,9 @@ describe('OrderEditedNotice (#3544)', () => {
     });
   });
 
-  it('should review the discount correction with the repriced lines this session holds', async () => {
-    const sessionDiscount = {
-      correctionProposal: {
-        changeId: 'change_correction',
-        invoiceRecordId: 'inv_1',
-        documentNumber: 'FV/412/09/2026',
-        currency: 'PLN',
-        lines: [
-          { originalLineNumber: 1, name: 'Kubek', previousUnitPriceGross: 39, newUnitPriceGross: 36 },
-        ],
-      },
-      correctionUnavailableReason: null,
-      refundIntentFailed: false,
-    } as unknown as OrderDiscountResult;
-    renderNotice({
-      edits: edits({ discountProposals: [correctionProposal] }),
-      sessionDiscount,
-    });
+  it('should review the discount correction with the persisted repriced lines, after a reload too', async () => {
+    // No session discount response: everything shown comes from the server's open proposal.
+    renderNotice({ edits: edits({ discountProposals: [correctionProposal] }) });
     const user = userEvent.setup();
 
     await user.click(await screen.findByTestId('order-edit-review-correction'));
@@ -216,15 +207,7 @@ describe('OrderEditedNotice (#3544)', () => {
     const dialog = await screen.findByTestId('order-edit-correction-dialog');
     expect(dialog).toHaveTextContent('FV/412/09/2026');
     expect(screen.getByTestId('order-correction-lines')).toHaveTextContent('36.00');
-  });
-
-  it('should say the repriced lines are not kept after a reload', async () => {
-    renderNotice({ edits: edits({ discountProposals: [correctionProposal] }) });
-    const user = userEvent.setup();
-
-    await user.click(await screen.findByTestId('order-edit-review-correction'));
-
-    expect(await screen.findByTestId('order-correction-lines-unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('order-correction-lines-unavailable')).not.toBeInTheDocument();
   });
 
   it('should explain a correction that could not be drafted, and a refund that could not be opened', async () => {

@@ -5,9 +5,8 @@
  * going to zero and the document they correct - and confirms it. Since #3544 it
  * serves the second correction kind too, `order.discount_correction`: the same
  * confirm act, but the lines carry a new unit price instead of a new quantity,
- * and only the session that saved the discount holds them (the server's list of
- * open proposals names the document, not the lines), so a reloaded page shows
- * the document and says so rather than inventing figures. Confirming
+ * and the server persists them with the proposal (`discountProposals[].lines`),
+ * so a reloaded page or a second admin sees the same lines. Confirming
  * issues the correcting invoice, which cannot be withdrawn once a tax authority
  * has it, so the dialog says that before the button and never confirms on its own.
  *
@@ -162,12 +161,7 @@ export function OrderCorrectionProposalDialog({
                 </tbody>
               </table>
             </div>
-          ) : (
-            <p className="muted-text" data-testid="order-correction-lines-unavailable">
-              The repriced lines were shown when the discount was saved and are not kept on this page.
-              Confirming issues the correction OpenLinker drafted then.
-            </p>
-          )
+          ) : null
         ) : (
           <div className="data-table__container" data-testid="order-correction-lines">
             <table className="data-table">
