@@ -11,7 +11,7 @@
  *   4. OAuth redirect — final review; submit redirects to Allegro's consent
  *      screen so the access token can come back through the callback page
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
@@ -101,6 +101,18 @@ export function AllegroSetupForm(): ReactElement {
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
+  // A submit before the last step is Enter in a field, or the click that
+  // advanced to the last step landing on the Create button that replaced Next.
+  // Either way it means "Next", never "Create" (the review step must be seen).
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (stepIndex < STEP_LABELS.length - 1) {
+      event.preventDefault();
+      void goNext();
+      return;
+    }
+    void onSubmit(event);
+  }
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
       const redirectUri = `${window.location.origin}/integrations/allegro/connect/callback`;
@@ -135,7 +147,7 @@ export function AllegroSetupForm(): ReactElement {
         />
       }
     >
-      <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
+      <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
         <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
 
         {reauthConnectionId ? (
@@ -305,11 +317,11 @@ export function AllegroSetupForm(): ReactElement {
           </div>
           <div className="wizard-actions__group">
             {stepIndex < STEP_LABELS.length - 1 ? (
-              <Button type="button" onClick={() => void goNext()}>
+              <Button key="next" type="button" onClick={() => void goNext()}>
                 Next
               </Button>
             ) : (
-              <Button type="submit" disabled={startOAuth.isPending}>
+              <Button key="submit" type="submit" disabled={startOAuth.isPending}>
                 {startOAuth.isPending ? 'Connecting…' : 'Connect with Allegro'}
               </Button>
             )}

@@ -553,6 +553,8 @@ export function createMockApiClient(
       // #2558 — default so a rejected-clearance resend affordance doesn't hit
       // `undefined` in a test that doesn't override it.
       resendToAuthority: vi.fn().mockResolvedValue(null),
+      // DEF-02 / DEF-03: no verification link unless a test supplies one.
+      getVerificationLink: vi.fn().mockResolvedValue({ url: null }),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {

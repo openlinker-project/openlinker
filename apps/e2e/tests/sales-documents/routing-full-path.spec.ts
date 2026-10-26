@@ -637,6 +637,9 @@ test.describe('sales documents: routing full path (#3196)', () => {
     await lineNumberInput.fill('1');
     const priceInput = dialog.getByLabel(/New gross, line 1/i);
     await priceInput.fill('80.00');
+    // DEF-13: a correction states why it was issued. The field is recommended
+    // rather than required, so it is filled here the way an operator would.
+    await dialog.getByLabel(/Reason for correction/i).fill('Price reduced after a complaint');
 
     const submitButton = dialog.getByRole('button', { name: 'Issue correction' });
     await expect(submitButton).toBeEnabled();

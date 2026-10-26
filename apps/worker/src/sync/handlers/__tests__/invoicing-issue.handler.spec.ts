@@ -17,6 +17,7 @@ import { BuyerProfile } from '@openlinker/core/invoicing';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
 import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
+import type { IOrderRecordService, IOrderRefundService, OrderRecord } from '@openlinker/core/orders';
 import type {
   InvoicingIssuePayloadV1,
   SyncJob as SyncJobEntity,
@@ -66,8 +67,18 @@ function makeJob(payload: unknown): SyncJobEntity {
   } as SyncJobEntity;
 }
 
+function makeOrderRecord(
+  status: string | undefined,
+  isCancelled = false,
+): OrderRecord | null {
+  if (status === undefined) return null;
+  return { status, isCancelled } as unknown as OrderRecord;
+}
+
 describe('InvoicingIssueHandler', () => {
   let invoiceService: jest.Mocked<IInvoiceService>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
+  let orderRefundService: jest.Mocked<IOrderRefundService>;
   let handler: InvoicingIssueHandler;
   let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
@@ -94,9 +105,17 @@ describe('InvoicingIssueHandler', () => {
     postSaleInventoryRefresh = {
       enqueue: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
+    orderRecordService = {
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+    orderRefundService = {
+      getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as jest.Mocked<IOrderRefundService>;
     handler = new InvoicingIssueHandler(
       invoiceService as unknown as IInvoiceService,
       postSaleInventoryRefresh,
+      orderRecordService,
+      orderRefundService,
     );
     warnSpy = jest
       .spyOn(
@@ -224,6 +243,80 @@ describe('InvoicingIssueHandler', () => {
         expect(msg).not.toContain(BUYER_SENTINEL);
         expect(msg).not.toContain('ul. Testowa');
       }
+    });
+  });
+
+  describe('live order-status gate (#1596)', () => {
+    it('skips issuance when the live order status is cancelled', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('cancelled'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain('order-cancelled');
+    });
+
+    it('skips issuance when the live order status is refunded', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('refunded'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('skips issuance when the order carries cancelledAt even though its snapshot status lags', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('processing', true));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain('order-cancelled');
+    });
+
+    it('proceeds with issuance when the live order status is still eligible (e.g. processing)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(makeOrderRecord('processing'));
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('proceeds with issuance when the order record is absent (graceful degradation)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('issues the full sale when only part of the order was refunded (DEF-26)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        ...makeOrderRecord('refunded'),
+        totalAmount: 100,
+      } as never);
+      orderRefundService.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['order-1', { count: 1, totalAmount: '40.00', currency: 'PLN' }]]),
+      );
+
+      const result = await handler.execute(makeJob(makePayload({ orderId: 'order-1' })));
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(invoiceService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips issuance when the recorded refunds cover the whole order (DEF-26)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        ...makeOrderRecord('processing'),
+        totalAmount: 100,
+      } as never);
+      orderRefundService.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['order-1', { count: 2, totalAmount: '100.00', currency: 'PLN' }]]),
+      );
+
+      const result = await handler.execute(makeJob(makePayload({ orderId: 'order-1' })));
+
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('re-checks the order by payload.orderId', async () => {
+      await handler.execute(makeJob(makePayload({ orderId: 'order-42' })));
+      expect(orderRecordService.getOrderRecord).toHaveBeenCalledWith('order-42');
     });
   });
 

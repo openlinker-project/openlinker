@@ -35,7 +35,10 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { createKsefHttpClient } from '../http/ksef-http-client.factory';
+import type { IKsefHttpClient } from '../http/ksef-http-client.interface';
+import { normalizePlNip } from './nip-checksum';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
+import { KsefPermissionDeniedException } from '../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
 import { KsefSessionCryptoException } from '../../domain/exceptions/ksef-session-crypto.exception';
@@ -86,7 +89,7 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
         };
       }
 
-      const contextNip = config?.seller?.nip?.trim();
+      const contextNip = typeof config?.seller?.nip === 'string' ? normalizePlNip(config.seller.nip) : '';
       if (!contextNip) {
         return {
           success: false,
@@ -104,17 +107,18 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
       // here would import the plugin module the plugin already imports this
       // adapter from — a cycle PrestaShop avoids by injecting the value.
       const fetchImpl = this.http.forConnection(connection);
-      const { handshake } = createKsefHttpClient({
+      const { handshake, httpClient } = createKsefHttpClient({
         connectionId: connection.id,
         env,
         authMaterial,
         fetchImpl,
       });
       await handshake.authenticate(authMaterial);
+      const issuance = await this.probeIssuancePermission(httpClient, contextNip, credentials.secret);
 
       return {
         success: true,
-        message: 'KSeF token authenticated successfully',
+        message: ISSUANCE_PROBE_MESSAGES[issuance],
         latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
@@ -122,7 +126,87 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
     }
   }
 
+  /**
+   * DEF-17: a token without the issuance grant authenticates perfectly well, so
+   * the handshake alone told an operator "OK" and the first invoice then failed.
+   *
+   * A KSeF token carries its OWN permission list, read at
+   * `GET /tokens/{referenceNumber}` (`requestedPermissions`); the reference is
+   * the token's first `|`-separated segment. That is asked first. The personal
+   * grants query (`POST /permissions/query/personal/grants`) does NOT list a
+   * token's permissions - an entity owner's own token came back empty there on
+   * KSeF TEST and was reported as missing InvoiceWrite while it issued fine -
+   * so it is only the fallback for a secret that carries no reference.
+   *
+   * The answer is a SUGGESTION, never a refusal: a test reports what KSeF said,
+   * and an inconclusive read says so instead of failing a token that may be
+   * fine. Neither call is one of the three rate-limited session writes.
+   */
+  private async probeIssuancePermission(
+    httpClient: IKsefHttpClient,
+    contextNip: string,
+    secret: string,
+  ): Promise<IssuanceProbe> {
+    const referenceNumber = secret.includes('|') ? secret.split('|')[0].trim() : '';
+    if (referenceNumber !== '') {
+      try {
+        const response = await httpClient.get<TokenStatusResponse>(
+          `/tokens/${encodeURIComponent(referenceNumber)}`,
+          { idempotent: true },
+        );
+        const permissions = response.data?.requestedPermissions;
+        if (Array.isArray(permissions)) {
+          return permissions.includes('InvoiceWrite') ? 'granted' : 'missing';
+        }
+      } catch (error) {
+        this.logger.debug(
+          `KSeF token-status probe inconclusive: ${error instanceof Error ? error.name : String(error)}`,
+        );
+      }
+    }
+    try {
+      const response = await httpClient.post<PersonalGrantsResponse>(
+        '/permissions/query/personal/grants',
+        {
+          contextIdentifier: { type: 'Nip', value: contextNip },
+          permissionTypes: ['InvoiceWrite'],
+          permissionState: 'Active',
+        },
+        { idempotent: true, queryParams: { pageSize: 10 } },
+      );
+      const data = response.data;
+      if (!data || !Array.isArray(data.permissions)) {
+        return 'unknown';
+      }
+      const granted =
+        data.permissions.some((p) => p?.permissionScope === 'InvoiceWrite') ||
+        (Array.isArray(data.ownerPermissions) && data.ownerPermissions.includes('InvoiceWrite'));
+      // An empty grants list says nothing about a token's own scope, so only a
+      // positive answer is trusted here.
+      return granted ? 'granted' : 'unknown';
+    } catch (error) {
+      this.logger.debug(
+        `KSeF permission probe inconclusive: ${error instanceof Error ? error.name : String(error)}`,
+      );
+      return 'unknown';
+    }
+  }
+
   private toFailure(error: unknown, latencyMs: number): ConnectionTestResult {
+    if (error instanceof KsefPermissionDeniedException) {
+      // Authenticated, but the token is not authorized for the action. KSeF has
+      // no token-scope introspection endpoint, so this runtime 403 is the earliest
+      // machine-detectable least-privilege signal - surface it distinctly with an
+      // operator-actionable hint rather than a generic auth failure.
+      return {
+        success: false,
+        status: 403,
+        message:
+          'KSeF token authenticated but is not authorized - ensure the token was ' +
+          'generated with the "wystawianie faktur" (invoice issuance) permission',
+        latencyMs,
+      };
+    }
     if (
       error instanceof KsefAuthenticationException ||
       error instanceof KsefApiException ||
@@ -139,3 +223,26 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
     return { success: false, message: 'KSeF connection test failed', latencyMs };
   }
 }
+
+type IssuanceProbe = 'granted' | 'missing' | 'unknown';
+
+/** Subset of KSeF's `TokenStatusResponse` the probe reads. */
+interface TokenStatusResponse {
+  requestedPermissions?: string[];
+}
+
+/** Subset of KSeF's `QueryPersonalPermissionsResponse` the probe reads. */
+interface PersonalGrantsResponse {
+  permissions?: { permissionScope?: string }[];
+  ownerPermissions?: string[] | null;
+}
+
+const ISSUANCE_PROBE_MESSAGES: Record<IssuanceProbe, string> = {
+  granted: 'KSeF token authenticated successfully and may issue invoices',
+  missing:
+    'KSeF token authenticated, but KSeF does not list the "wystawianie faktur" (InvoiceWrite) permission ' +
+    'for it - issuing may be refused. Generate a token with that permission if invoices fail with 403.',
+  unknown:
+    'KSeF token authenticated successfully; KSeF did not answer the permission check, so whether it may ' +
+    'issue invoices was not verified',
+};

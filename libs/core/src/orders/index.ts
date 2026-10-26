@@ -173,6 +173,7 @@ export {
   FulfillmentRollupStateOrNull,
 } from './domain/types/order-fulfillment.types';
 export { deriveSlaState } from './domain/order-sla';
+export { toLiveOrderIssuanceFacts } from './domain/live-order-issuance-facts';
 // Per-order reporting-currency snapshot (#2124, ADR-040).
 export type { OrderFxIntent, OrderFxStamp } from './domain/types/order-fx.types';
 export type { StampedReportingCurrencyCount } from './domain/types/order-fx-read.types';

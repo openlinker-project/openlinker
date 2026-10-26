@@ -18501,6 +18501,57 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   flex-direction: column;
   gap: var(--space-1);
 }
+/* DEF-18 / DEF-20 / DEF-22: the seller's tax treatment on the KSeF connection form. */
+/* Same section rhythm as the rate-limit and stock/price sections beside it. */
+.ksef-tax-treatment {
+  margin: 0;
+  min-width: 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ksef-tax-treatment legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ksef-tax-treatment > p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+.ksef-tax-treatment .checkbox-row,
+.ksef-issue-options .checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.ksef-tax-treatment .checkbox-row input,
+.ksef-issue-options .checkbox-row input {
+  margin-top: 0.2em;
+  flex: none;
+}
+/* DEF-29 / DEF-30: annotations that apply and parties besides seller and buyer. */
+.ksef-fa3-view__annotations {
+  font-size: 0.8125rem;
+}
+.ksef-fa3-view__annotations ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 .ksef-fa3-view__table-wrap { overflow-x: auto; }
 .ksef-fa3-view__table {
   width: 100%;
@@ -18548,6 +18599,41 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+/* ── KSeF verification (QR) code (#1579) ─────────────────────────────
+ * KOD I verification-code footer: the QR (dark-on-light, kept theme-fixed
+ * for scannability) plus the KSeF number caption. Sits at the bottom of
+ * the rendered FA(3) document.
+ */
+.ksef-fa3-view__verification {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ksef-fa3-view__verification-qr {
+  flex: 0 0 auto;
+  /* The QR SVG carries its own white background; frame it so it stays
+     readable on any theme surface. */
+  padding: var(--space-2);
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.ksef-fa3-view__verification-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.8125rem;
+}
+
+.ksef-fa3-view__verification-hint {
+  color: var(--text-secondary);
+  max-width: 32ch;
 }
 
 /* ── Inline Disclosure (#1303) ───────────────────────────────────────
@@ -30660,4 +30746,73 @@ legend.analytics-settings-dialog__label {
   .setup-stepper--vertical .setup-stepper__indicator { width: 1.75rem; height: 1.75rem; }
   .setup-stepper--vertical .setup-stepper__label { white-space: normal; font-size: 0.9375rem; padding-top: 2px; line-height: 1.3; }
   .setup-stepper--vertical .setup-stepper__connector { display: none; }
+}
+
+/* DEF-32: shared correction-reason field */
+.correction-reason__hint {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.correction-reason__warning {
+  margin: var(--space-1) 0 0;
+  color: var(--status-warning-strong);
+}
+
+.acknowledge-warning__note {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* DEF-20: KSeF per-issue options */
+.ksef-issue-options {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ksef-issue-options__lead {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.ksef-issue-options__hint {
+  display: block;
+  font-size: 0.8125rem;
+}
+
+.ksef-issue-options__lines td:first-child {
+  white-space: nowrap;
+}
+
+.ksef-issue-options__lines select {
+  min-width: 7.5rem;
+}
+
+.ksef-issue-options__party {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.ksef-issue-options__lines {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ksef-issue-options__lines caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: var(--space-1);
+}
+
+.ksef-issue-options__lines th,
+.ksef-issue-options__lines td {
+  text-align: left;
+  padding: var(--space-1) var(--space-2) var(--space-1) 0;
+}
+
+.ksef-issue-options__lines-scroll {
+  overflow-x: auto;
 }

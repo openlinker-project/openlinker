@@ -46,6 +46,12 @@ function buildRouter(options: {
   inventoryFilters?: Array<Record<string, unknown>>;
   /** #3476 — whether the OMS connection has `FulfillmentExecutor` enabled. */
   holderCanExecute?: boolean;
+  /** #3475 — published holds per (location, variant) the ledger would report. */
+  reserved?: ReadonlyArray<{ locationId: string; productVariantId: string; reserved: number }>;
+  /** #3475 — records every call made to the ledger read. */
+  reservedCalls?: Array<{ variantIds: readonly string[]; excludeOrderRecordId?: string }>;
+  /** #3475 — make the ledger read fail. */
+  reservedFails?: boolean;
 }): OlFulfillmentRouter {
   const locations = options.locations ?? [{ id: 'loc-a', countryIso2: 'PL', postcode: '00-001' }];
 
@@ -83,6 +89,16 @@ function buildRouter(options: {
               },
             }));
       return await Promise.resolve({ items: rows, total: rows.length });
+    },
+    listPublishedReservedByLocation: async (
+      variantIds: readonly string[],
+      readOptions?: { excludeOrderRecordId?: string }
+    ) => {
+      options.reservedCalls?.push({ variantIds, ...readOptions });
+      if (options.reservedFails === true) {
+        throw new Error('ledger unavailable');
+      }
+      return await Promise.resolve(options.reserved ?? []);
     },
   } as unknown as Parameters<typeof createOlFulfillmentRouter>[0]['inventory'];
 
@@ -365,6 +381,90 @@ describe('OlFulfillmentRouter', () => {
       if (plan.status !== 'resolved') throw new Error('expected resolved');
       expect(plan.unfulfillable).toEqual([]);
       expect(plan.assignments.map((assignment) => assignment.locationId)).toEqual(['loc-b']);
+    });
+  });
+
+  describe('promised stock (#3475)', () => {
+    const stockOf = (availableQuantity: number): FakeStock[] => [
+      { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity },
+    ];
+
+    it('should not route units that published holds have already claimed', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: stockOf(3),
+        reserved: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', reserved: 2 }],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:promised-1' });
+
+      // 3 on the shelf, 2 promised: 1 free, and the line wants 2.
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments).toEqual([
+        expect.objectContaining({ orderLineId: 'line-1', locationId: 'loc-a', quantity: 1 }),
+      ]);
+      expect(plan.unfulfillable).toEqual([
+        expect.objectContaining({ orderLineId: 'line-1', quantity: 1 }),
+      ]);
+    });
+
+    it('should route to the location whose stock is not promised', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        locations: [
+          { id: 'loc-a', countryIso2: 'PL', postcode: '00-001' },
+          { id: 'loc-b', countryIso2: 'PL', postcode: '00-001' },
+        ],
+        stock: [
+          { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 2 },
+          { locationId: 'loc-b', productVariantId: 'ol_variant_1', availableQuantity: 2 },
+        ],
+        reserved: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', reserved: 2 }],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:promised-2' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.unfulfillable).toEqual([]);
+      expect(plan.assignments.map((assignment) => assignment.locationId)).toEqual(['loc-b']);
+    });
+
+    it('should floor a location at zero when holds exceed its mirrored stock', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: stockOf(1),
+        reserved: [{ locationId: 'loc-a', productVariantId: 'ol_variant_1', reserved: 5 }],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:promised-3' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments).toEqual([]);
+    });
+
+    it('should leave the order itself out of what it counts as promised', async () => {
+      const reservedCalls: Array<{ variantIds: readonly string[]; excludeOrderRecordId?: string }> = [];
+      const router = buildRouter({ rules: [filter('in-stock')], stock: stockOf(2), reservedCalls });
+
+      await router.route(input(), { idempotencyKey: 'route:promised-4' });
+
+      // Its own hold is written before routing runs (#3480).
+      expect(reservedCalls).toEqual([
+        { variantIds: ['ol_variant_1'], excludeOrderRecordId: input().orderId },
+      ]);
+    });
+
+    it('should fail rather than route on raw stock when the ledger cannot be read', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: stockOf(5),
+        reservedFails: true,
+      });
+
+      await expect(router.route(input(), { idempotencyKey: 'route:promised-5' })).rejects.toThrow(
+        'ledger unavailable'
+      );
+      await expect(router.evaluate(input())).rejects.toThrow('ledger unavailable');
     });
   });
 
