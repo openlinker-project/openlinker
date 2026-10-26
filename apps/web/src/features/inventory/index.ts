@@ -21,6 +21,12 @@ export type {
   PaginatedInventory,
   InventoryFilters,
   InventoryPagination,
+  StockView,
+  StockViewVariant,
+  StockViewChannel,
+  StockViewHold,
+  StockViewPosition,
+  StockProvenance,
 } from './api/inventory.types';
 
 export type {
@@ -69,3 +75,9 @@ export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availa
 // Query-key factory re-exported so the bulk wizard's chunked per-variant
 // availability fan-out (#1741) shares cache entries with the batch hook above.
 export { inventoryQueryKeys } from './api/inventory.query-keys';
+
+// #3569 - the M25 stock panel on the product detail page. `onAdjust` is the
+// seam the correction dialog (M6) mounts behind.
+export { StockPanel, type StockPanelProps, type StockAdjustTarget } from './components/stock-panel';
+export { useStockViewQuery } from './hooks/use-stock-view-query';
+export { deriveAtpStatus, type AtpStatus } from './lib/stock-view';

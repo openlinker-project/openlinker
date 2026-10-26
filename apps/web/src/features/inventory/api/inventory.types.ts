@@ -133,3 +133,82 @@ export interface ProvenanceBackfillStatus {
    */
   latchedAt: string | null;
 }
+
+/**
+ * Stock view (#3621 / #3569) - mirrors `StockViewResponseDto` on
+ * `GET /inventory/stock-view?productId=`. One read answers the whole M25
+ * panel: master figures, available to promise with its provenance, the held
+ * split, positions, holds and per-channel "will publish" / "channel shows".
+ *
+ * `null` is never zero anywhere in this shape: `availableToPromise: null`
+ * means OpenLinker does not know, `holds: null` means they could not be read,
+ * `channelShows.quantity: null` means no snapshot has been seen yet.
+ */
+export const StockProvenanceValues = ['computed', 'authority', 'unknown'] as const;
+export type StockProvenance = (typeof StockProvenanceValues)[number];
+
+export type StockChannelsStatus = 'ok' | 'partial' | 'unavailable';
+
+export interface StockViewThreshold {
+  hours: number;
+  ms: number;
+  source: 'setting' | 'env' | 'default';
+}
+
+export interface StockViewPosition {
+  locationId: string | null;
+  locationName: string | null;
+  sourceConnectionId: string | null;
+  sourceConnectionName: string | null;
+  isStale: boolean;
+  availableQuantity: number;
+  reservedQuantity: number;
+  updatedAt: string;
+}
+
+export interface StockViewHold {
+  orderRecordId: string;
+  orderNumber: string | null;
+  quantity: number;
+  atpEffect: 'published' | 'diagnostic';
+  expiresAt: string;
+}
+
+export interface StockViewChannel {
+  connectionId: string;
+  connectionName: string;
+  platformType: string;
+  rule: { stockSafetyBuffer: number; stockZeroThreshold: number } | null;
+  willPublish: { quantity: number | null; provenance: StockProvenance };
+  channelShows: { quantity: number | null; observedAt: string | null };
+}
+
+export interface StockViewVariant {
+  productVariantId: string;
+  sku: string | null;
+  attributes: Record<string, string>;
+  masterAvailable: number;
+  masterReserved: number;
+  availableToPromise: number | null;
+  provenance: StockProvenance;
+  observedAt: string | null;
+  stalenessMs: number | null;
+  olHeldNotReflected: number | null;
+  heldCounted: number | null;
+  heldRecordedOnly: number | null;
+  livePositionCount: number;
+  isStaleSync: boolean;
+  positions: StockViewPosition[];
+  holds: StockViewHold[] | null;
+  channels: StockViewChannel[];
+}
+
+export interface StockView {
+  productId: string;
+  productName: string;
+  productSku: string | null;
+  staleSyncThreshold: StockViewThreshold;
+  channelsStatus: StockChannelsStatus;
+  variants: StockViewVariant[];
+  generatedAt: string;
+}

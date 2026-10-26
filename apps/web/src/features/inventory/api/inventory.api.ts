@@ -13,6 +13,7 @@ import type {
   InventoryAvailabilityResponse,
   DuplicatePositionsReport,
   ProvenanceBackfillStatus,
+  StockView,
 } from './inventory.types';
 import { normalizeCountryIso2 } from './inventory-locations.types';
 import type {
@@ -33,6 +34,12 @@ export interface InventoryApi {
    * list exceeds the server-side cap (200 IDs per request).
    */
   availability: (productVariantIds: readonly string[]) => Promise<InventoryAvailabilityResponse>;
+  /**
+   * `GET /inventory/stock-view?productId=` (#3621 / #3569) - the M25 read model:
+   * available to promise with provenance, the held split, positions, holds and
+   * per-channel figures for every variant of one product, in one call.
+   */
+  stockView: (productId: string) => Promise<StockView>;
   /**
    * Active inventory locations (#2407). Only `total` is read — `limit: 1`
    * bounds the payload while `total` answers the question, so a hundred
@@ -127,6 +134,10 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
   return {
     list(filters, pagination): Promise<PaginatedInventory> {
       return request<PaginatedInventory>(`/inventory${buildQuery(filters, pagination)}`);
+    },
+    stockView(productId): Promise<StockView> {
+      const params = new URLSearchParams({ productId });
+      return request<StockView>(`/inventory/stock-view?${params.toString()}`);
     },
     availability(productVariantIds): Promise<InventoryAvailabilityResponse> {
       const params = new URLSearchParams({ productVariantIds: productVariantIds.join(',') });

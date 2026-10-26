@@ -89,6 +89,7 @@ import {
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
 } from '../../features/products';
+import { deriveAtpStatus } from '../../features/inventory';
 import { deriveProductStaleness } from '../../features/products/lib/product-staleness';
 import { ListingsCoveragePills } from './listings-coverage-pills';
 import { ProductRowDetail } from './product-row-detail';
@@ -721,6 +722,39 @@ export function ProductsListPage(): ReactElement {
   );
 
   const renderStockCell = useCallback((product: Product): ReactNode => {
+    // #3569 - available to promise leads when the list carries it. `null` is
+    // "OpenLinker does not know", so it is never drawn as 0 or as Out of stock.
+    if (product.availableToPromise !== undefined) {
+      const atpStatus = deriveAtpStatus(product.availableToPromise);
+      return (
+        <span className="products-cell-stack" data-testid={`stock-list-cell-${product.sku ?? product.id}`}>
+          {product.availableToPromise === null ? (
+            <span className="av-unknown" title="OpenLinker doesn't know. Not zero.">
+              Unknown
+            </span>
+          ) : (
+            <span>
+              <span className="products-stock-value mono tabular">{product.availableToPromise}</span>{' '}
+              <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                to promise
+              </span>
+            </span>
+          )}
+          {atpStatus === 'unknown' ? (
+            <StatusBadge tone="neutral" withDot compact>
+              Unknown
+            </StatusBadge>
+          ) : (
+            <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
+              {STOCK_STATUS_LABEL[atpStatus]}
+            </StatusBadge>
+          )}
+          {product.totalAvailable !== undefined ? (
+            <span className="text-muted products-cell-sub tabular">master {product.totalAvailable}</span>
+          ) : null}
+        </span>
+      );
+    }
     if (product.totalAvailable === undefined) {
       return <span className="text-muted">-</span>;
     }
@@ -1130,6 +1164,7 @@ export function ProductsListPage(): ReactElement {
       <div className="toolbar products-toolbar">
         <Input
           aria-label="Search products by name or SKU"
+          data-testid="stock-list-search"
           placeholder="Search by name or SKU…"
           value={searchInput}
           onChange={(e) => {
@@ -1196,6 +1231,7 @@ export function ProductsListPage(): ReactElement {
           {STOCK_CHIPS.map((chip) => (
             <Chip
               key={chip.value}
+              data-testid={`stock-list-chip-${chip.value}`}
               tone={chip.value === 'low' ? 'warning' : 'error'}
               active={stock === chip.value}
               onClick={() => {
@@ -1487,7 +1523,21 @@ export function ProductsListPage(): ReactElement {
                       {formatPrice(product.price, product.currency)}
                     </span>
                   ) : null}
-                  {product.totalAvailable !== undefined ? (
+                  {product.availableToPromise !== undefined ? (
+                    <StatusBadge
+                      tone={
+                        deriveAtpStatus(product.availableToPromise) === 'unknown'
+                          ? 'neutral'
+                          : STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.availableToPromise as number)]
+                      }
+                      withDot
+                      compact
+                    >
+                      {product.availableToPromise === null
+                        ? 'Unknown'
+                        : `${product.availableToPromise} to promise · ${STOCK_STATUS_LABEL[deriveStockStatus(product.availableToPromise)]}`}
+                    </StatusBadge>
+                  ) : product.totalAvailable !== undefined ? (
                     <StatusBadge
                       tone={STOCK_STATUS_BADGE_TONE[deriveStockStatus(product.totalAvailable)]}
                       withDot

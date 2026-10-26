@@ -509,6 +509,17 @@ export function createMockApiClient(
       listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
+      // #3569 - the honest default is a stock view that names no variants, so a
+      // page test that never opts in sees the "unknown" state, not invented stock.
+      stockView: vi.fn().mockResolvedValue({
+        productId: '',
+        productName: '',
+        productSku: null,
+        staleSyncThreshold: { hours: 6, ms: 21_600_000, source: 'default' },
+        channelsStatus: 'ok',
+        variants: [],
+        generatedAt: '2026-01-15T10:00:00.000Z',
+      }),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {
