@@ -35,6 +35,7 @@ import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type { ApplyOrderEditInput } from '../types/order-edits.types';
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
@@ -133,7 +134,8 @@ export interface OrderRecordRepositoryPort {
    * {@link markCancelled}), the three `salesDocument*` columns (#2100,
    * {@link updateSalesDocumentBlock}) and the six FX snapshot columns (#2124,
    * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) and the two packed
-   * columns (#2287, {@link markPacked} / {@link clearPacked}) - are NOT part of
+   * columns (#2287, {@link markPacked} / {@link clearPacked}) and the
+   * operator-edit overlay `orderEdits` (#3542, {@link applyOrderEdit}) - are NOT part of
    * the write set, so a re-ingestion of the same order cannot reset them. The
    * returned record therefore reports all of them as empty (`[]` / `null`)
    * whatever the row holds; re-read via {@link findById} when their live value
@@ -784,6 +786,16 @@ export interface OrderRecordRepositoryPort {
    * {@link markPacked}.
    */
   clearPacked(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Merge one operator edit into the order's overlay (#3542). The sole writer of
+   * `orderEdits`; `orderSnapshot` stays the channel original.
+   *
+   * Returns the re-read record, or `null` when nothing was written: no such
+   * order, the order is not `ready`, or `expectedRev` is stale. The caller
+   * re-reads to tell which.
+   */
+  applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
 
   /**
    * Record that the source amended this order after ingestion (#2283) — writes

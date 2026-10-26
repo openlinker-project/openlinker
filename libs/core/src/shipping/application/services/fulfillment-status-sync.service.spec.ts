@@ -141,6 +141,7 @@ describe('FulfillmentStatusSyncService', () => {
       markPacked: jest.fn(),
       markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),

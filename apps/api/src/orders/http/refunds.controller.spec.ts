@@ -58,6 +58,7 @@ describe('RefundsController', () => {
       markPacked: jest.fn(),
       markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),

@@ -14,6 +14,7 @@ import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
 import type { PaymentMethod } from '../types/payment-method.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
+import type { OrderEdits } from '../types/order-edits.types';
 import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
 import { decodeBuyerNoteColumn } from '../types/buyer-note.types';
 import type { BuyerNote } from '../types/buyer-note.types';
@@ -512,7 +513,21 @@ export class OrderRecord {
      * nothing else tells the operator the text moved under them. Written only
      * by the ingestion upsert's CASE; never round-tripped from the entity.
      */
-    public readonly buyerNoteChangedAt: Date | null = null
+    public readonly buyerNoteChangedAt: Date | null = null,
+    /**
+     * The channel's own snapshot (#3542), when {@link orderSnapshot} is the
+     * EFFECTIVE view (overlay merged in). `null` means the two are the same
+     * object - an order with no edits, and every record `persistOrder` builds.
+     * Read through {@link channelSnapshot}, never bare. Appended LAST:
+     * positional constructor.
+     */
+    private readonly channelSnapshotRaw: Record<string, unknown> | null = null,
+    /**
+     * What an operator changed after import (#3542), already merged into
+     * {@link orderSnapshot}. Sole writer `applyOrderEdit`; excluded from every
+     * ingestion statement so a re-poll cannot erase it. Appended LAST.
+     */
+    public readonly orderEdits: OrderEdits | null = null
   ) {}
 
   /**
@@ -523,6 +538,23 @@ export class OrderRecord {
    */
   get buyerNoteState(): BuyerNote {
     return decodeBuyerNoteColumn(this.buyerNote);
+  }
+
+  /**
+   * The snapshot exactly as the channel reported it (#3542). The persisted
+   * column is always this; {@link orderSnapshot} is this with the operator's
+   * edits merged over it. Use it for what the channel charged or changed
+   * (source-amendment diff, FX stamp, analytics) and for anything WRITTEN back
+   * to the column - a read-modify-write through the effective view would
+   * persist an edit into the channel original.
+   */
+  get channelSnapshot(): Record<string, unknown> {
+    return this.channelSnapshotRaw ?? this.orderSnapshot;
+  }
+
+  /** Whether an operator has edited this order in OpenLinker (#3542). */
+  get isEditedInOpenLinker(): boolean {
+    return this.orderEdits !== null;
   }
 
   /**
@@ -700,7 +732,9 @@ export class OrderRecord {
    * convert.
    */
   get nativeTotals(): { amount: number; currency: string } | undefined {
-    const value = this.orderSnapshot.totals;
+    // The CHANNEL's figure on purpose (#3542): the FX stamp states what the
+    // buyer was charged, and an operator edit does not change that.
+    const value = this.channelSnapshot.totals;
     if (typeof value !== 'object' || value === null) {
       return undefined;
     }

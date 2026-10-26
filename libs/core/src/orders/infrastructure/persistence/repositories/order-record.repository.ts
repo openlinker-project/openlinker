@@ -97,6 +97,11 @@ import type {
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { deriveOrderSearchText, normalizeOrderSearchText } from '../../../domain/order-search-text';
 import {
+  applyOrderEditsToSnapshot,
+  readOrderEdits,
+  type ApplyOrderEditInput,
+} from '../../../domain/types/order-edits.types';
+import {
   SalesDocumentAttentionReasonValues,
   SalesDocumentUncountedUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
@@ -1255,6 +1260,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .select('rec."internalOrderId"', 'internal_order_id')
       .addSelect('rec."orderSnapshot"', 'order_snapshot')
+      .addSelect('rec."orderEdits"', 'order_edits')
       .addSelect('rec."searchText"', 'search_text')
       .orderBy('rec."internalOrderId"', 'ASC')
       .limit(limit);
@@ -1266,17 +1272,24 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const rows = await qb.getRawMany<{
       internal_order_id: string;
       order_snapshot: unknown;
+      order_edits: unknown;
       search_text: string | null;
     }>();
 
-    return rows.map((row) => ({
-      internalOrderId: row.internal_order_id,
-      orderSnapshot:
+    // #3542: the corpus is rebuilt from the EFFECTIVE order. A reindex over the
+    // raw column would rewrite an edited order's text from the channel's address
+    // and make the edited one unsearchable.
+    return rows.map((row) => {
+      const channel =
         typeof row.order_snapshot === 'object' && row.order_snapshot !== null
           ? (row.order_snapshot as Record<string, unknown>)
-          : {},
-      searchText: row.search_text ?? '',
-    }));
+          : {};
+      return {
+        internalOrderId: row.internal_order_id,
+        orderSnapshot: applyOrderEditsToSnapshot(channel, readOrderEdits(row.order_edits)),
+        searchText: row.search_text ?? '',
+      };
+    });
   }
 
   /**
@@ -2877,6 +2890,72 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Merge one operator edit into the overlay (#3542). THE sole writer of
+   * `orderEdits`; see `order-edits.types.ts`.
+   *
+   * One atomic UPDATE: the sections are merged by the database against the
+   * committed row (the lines section per line, so a second edit of other lines
+   * keeps the first), `rev` is bumped, and for an address edit the derived
+   * `shippingAddressHash` / `searchText` are restamped in the same statement.
+   * Guarded on the expected `rev` and on `recordStatus = 'ready'`, so a stale
+   * writer or a not-yet-resolved order affects no row - `null` is the answer, and
+   * the caller re-reads to tell which.
+   *
+   * `orderSnapshot` is never touched: it stays the channel original.
+   */
+  async applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null> {
+    const sections: Record<string, unknown> = {};
+    if (input.address !== undefined) sections.address = input.address;
+    if (input.deliveryMethod !== undefined) sections.deliveryMethod = input.deliveryMethod;
+
+    let searchText: string | null = null;
+    if (input.address !== undefined) {
+      const current = await this.repository.findOne({
+        where: { internalOrderId: input.internalOrderId },
+        select: ['internalOrderId', 'orderSnapshot'],
+      });
+      if (current === null) return null;
+      searchText = deriveOrderSearchText(
+        applyOrderEditsToSnapshot(current.orderSnapshot, {
+          v: 1,
+          rev: 0,
+          address: input.address,
+        }),
+        { storePii: getEnvBoolean('OL_STORE_PII', true) }
+      );
+    }
+
+    const rows = (await this.repository.query(
+      `UPDATE "order_records"
+       SET "orderEdits" = COALESCE("orderEdits", '{"v":1}'::jsonb)
+             || $1::jsonb
+             || jsonb_build_object('rev', COALESCE(("orderEdits"->>'rev')::int, 0) + 1)
+             || CASE WHEN $2::jsonb IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object(
+                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END,
+           "shippingAddressHash" = COALESCE($3::text, "shippingAddressHash"),
+           "searchText" = COALESCE($4::text, "searchText"),
+           "updatedAt" = now()
+       WHERE "internalOrderId" = $5
+         AND "recordStatus" = 'ready'
+         AND COALESCE(("orderEdits"->>'rev')::int, 0) = $6
+       RETURNING "internalOrderId"`,
+      [
+        JSON.stringify(sections),
+        input.lines === undefined ? null : JSON.stringify(input.lines),
+        input.address?.hash ?? null,
+        searchText,
+        input.internalOrderId,
+        input.expectedRev,
+      ]
+    )) as unknown;
+
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const entity = await this.repository.findOne({ where: { internalOrderId: input.internalOrderId } });
+    return entity === null ? null : this.toDomain(entity);
+  }
+
+  /**
    * Record a source-side amendment (#2283). Narrow absolute-set on the two
    * amendment columns only, in `updateSalesDocumentBlock`'s shape: raw
    * parameterized statement, no read-modify-write, last-write-wins.
@@ -3153,6 +3232,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // that run just wrote and then re-add none),
     // `fulfillmentRoutingSkipReason` (#3455 - sole writer
     // `updateFulfillmentRoutingSkipReason`, same reason as `fulfillmentBlock*`),
+    // `orderEdits` (#3542 - sole writer `applyOrderEdit`; the overlay that keeps
+    // an operator's edit alive across this very statement),
     // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
@@ -3259,7 +3340,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // corpus (and a first INSERT keeps the column default `''`, leaving the
     // order unsearchable). `toOrm` stamping the entity is not enough on its
     // own — this statement enumerates its columns, the `buyerTaxId` trap below.
-    add('searchText', entity.searchText ?? '');
+    // #3542: with an address edit on the row the stored text already carries the
+    // EDITED address's name, and the incoming one is built from the channel's
+    // original - so the stored value is kept. Evaluated by the database against
+    // the committed row, so it cannot race the edit's own write.
+    add('searchText', entity.searchText ?? '', {
+      update: `"searchText" = CASE WHEN "order_records"."orderEdits" ? 'address'
+           THEN "order_records"."searchText" ELSE EXCLUDED."searchText" END`,
+    });
     add('recordStatus', entity.recordStatus);
     add('mappingFailureReason', entity.mappingFailureReason);
     add('dispatchByAt', entity.dispatchByAt);
@@ -3287,7 +3375,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // the entity but never adds here is simply not written. Ready-path only -
       // `persistIncomingSnapshot` has no resolved shipping address to hash, and
       // writing it there would NULL a hash a previous ready-path write settled.
-      add('shippingAddressHash', entity.shippingAddressHash ?? null);
+      // #3542: the hash of an operator-edited address is the writer's, not the
+      // channel's - keep it while the overlay holds an address (same CASE as
+      // `searchText`).
+      add('shippingAddressHash', entity.shippingAddressHash ?? null, {
+        update: `"shippingAddressHash" = CASE WHEN "order_records"."orderEdits" ? 'address'
+           THEN "order_records"."shippingAddressHash" ELSE EXCLUDED."shippingAddressHash" END`,
+      });
       // #3294, added here for the reason `buyerTaxId` and `shippingAddressHash`
       // are: this statement enumerates its own columns, so a column the caller
       // stamps on the entity but never adds here is simply not written.
@@ -3395,6 +3489,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     for (const property of orderRecordColumnProperties()) {
       if (writeSet.has(property)) {
+        continue;
+      }
+      // #3542: `orderEdits` is the one non-written column that is NOT reset. It
+      // is read back from the same statement's RETURNING, so it is atomic with
+      // the upsert - which is what lets `persistOrder` hand ingestion the overlay
+      // that applied to THIS write rather than one read a moment earlier.
+      if (property === 'orderEdits') {
         continue;
       }
       entity[property] = EMPTY_COLUMN_DEFAULTS[property]?.() ?? null;
@@ -3593,12 +3694,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderNumber: a.externalOrderNumber,
     }));
 
+    // #3542 - the overlay is merged HERE, once, so every reader of
+    // `record.orderSnapshot` and of its getters sees the effective order and the
+    // few that need the channel's own figures read `record.channelSnapshot`. Only
+    // a `ready` record can carry edits: an `awaiting_mapping` snapshot is a raw
+    // IncomingOrder whose shape the merge does not describe.
+    const orderEdits = entity.recordStatus === 'ready' ? readOrderEdits(entity.orderEdits) : null;
+    const effectiveSnapshot = applyOrderEditsToSnapshot(entity.orderSnapshot, orderEdits);
+
     return new OrderRecord(
       entity.internalOrderId,
       entity.customerId,
       entity.sourceConnectionId,
       entity.sourceEventId,
-      entity.orderSnapshot,
+      effectiveSnapshot,
       syncStatus,
       (entity.recordStatus as OrderRecordStatus) ?? 'ready',
       entity.createdAt,
@@ -3693,7 +3802,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.shippingCountry ?? null,
       entity.billingCountry ?? null,
       entity.buyerOrderCount ?? null,
-      entity.buyerNoteChangedAt ?? null
+      entity.buyerNoteChangedAt ?? null,
+      orderEdits === null ? null : entity.orderSnapshot,
+      orderEdits
     );
   }
 
@@ -3812,7 +3923,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.customerId = orderRecord.customerId;
     entity.sourceConnectionId = orderRecord.sourceConnectionId;
     entity.sourceEventId = orderRecord.sourceEventId;
-    entity.orderSnapshot = orderRecord.orderSnapshot;
+    // The CHANNEL snapshot, never the effective one (#3542): writing the merged
+    // view back would persist an operator edit into the channel original, where
+    // the next re-ingestion would treat it as the source's own words.
+    entity.orderSnapshot = orderRecord.channelSnapshot;
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
@@ -3828,7 +3942,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // unrelated to this flag and would fail every order write on an install
     // that never configured a salt (the `routing-ship-to.types.ts` /
     // `OrderIngestionService` precedent).
-    entity.searchText = deriveOrderSearchText(orderRecord.orderSnapshot, {
+    entity.searchText = deriveOrderSearchText(orderRecord.channelSnapshot, {
       storePii: getEnvBoolean('OL_STORE_PII', true),
     });
     // The five analytics scalars (#1985/#2832) are deliberately NOT mapped here -

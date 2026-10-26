@@ -166,6 +166,7 @@ describe('OrdersController', () => {
       markBuyerNoteRead: jest.fn(),
       countEarlierOrdersForCustomer: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
@@ -188,6 +189,7 @@ describe('OrdersController', () => {
       markPacked: jest.fn(),
       markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 

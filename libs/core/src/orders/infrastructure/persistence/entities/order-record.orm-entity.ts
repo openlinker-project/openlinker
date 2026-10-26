@@ -404,6 +404,19 @@ export class OrderRecordOrmEntity {
   buyerOrderCount!: number | null;
 
   /**
+   * What an operator changed on the order after import (#3542, D9) - see
+   * `order-edits.types.ts`. `NULL` means never edited.
+   *
+   * Sole writer `OrderRecordRepository.applyOrderEdit`. It is named in NEITHER
+   * half of the ingestion upsert (`buildFrozenAttributionUpsert`), which is the
+   * whole mechanism: ingestion rewrites `orderSnapshot` wholesale on every poll
+   * and webhook, and a column it never names survives that. `orderSnapshot`
+   * itself therefore stays the channel original at all times.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  orderEdits!: Record<string, unknown> | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

@@ -546,7 +546,28 @@ export {
   isOrderCorrectionChangeKind,
   cancelRequestTargetRef,
   cancelCorrectionTargetRef,
+  OrderOperatorEditKindValues,
+  isOrderOperatorEditKind,
+  addressEditTargetRef,
+  lineQuantityEditTargetRef,
+  deliveryMethodEditTargetRef,
 } from './domain/types/order-change.types';
+// #3542 — the operator-edit overlay and its pure merge.
+export {
+  readOrderEdits,
+  applyOrderEditsToSnapshot,
+  applyOrderEditsToOrder,
+  effectiveLineQuantity,
+  describeEditedTotals,
+} from './domain/types/order-edits.types';
+export type {
+  OrderEdits,
+  OrderAddressEdit,
+  OrderLineEdit,
+  OrderDeliveryMethodEdit,
+  OrderEditedTotals,
+  ApplyOrderEditInput,
+} from './domain/types/order-edits.types';
 // #3540 — why an operator cancels an order.
 export {
   OrderCancelReasonValues,
@@ -573,6 +594,7 @@ export type {
 export type {
   OrderAmendmentRequestKind,
   OrderCorrectionChangeKind,
+  OrderOperatorEditKind,
   OrderChangeKind,
   OrderChangeStatus,
   CreateOrderChangeInput,

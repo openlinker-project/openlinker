@@ -75,6 +75,7 @@ import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-p
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import { buildVariantSales } from '../../domain/variant-sales-aggregation';
+import type { ApplyOrderEditInput } from '../../domain/types/order-edits.types';
 import type {
   TopProductFilters,
   TopProductsResult,
@@ -1198,6 +1199,11 @@ export class OrderRecordService implements IOrderRecordService {
           `${(error as Error).message}`
       );
     }
+  }
+
+  /** Merge one operator edit into the overlay (#3542); the repository owns the atomicity. */
+  async applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null> {
+    return this.repository.applyOrderEdit(input);
   }
 
   /**
