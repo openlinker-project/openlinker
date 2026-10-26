@@ -68,6 +68,7 @@ import {
 import { BenchParcelNotAtThisBenchError } from '../application/services/bench-parcel.service';
 import type {
   BenchActivityEntryView,
+  BenchBuyerNoteAcknowledgementResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
@@ -82,6 +83,7 @@ import { VerifyUnitDto } from './dto/verify-unit.dto';
 import { toParcelResponseDto } from './dto/bench-parcel.mapper';
 import {
   BenchActivityEntryResponseDto,
+  BenchBuyerNoteAcknowledgementResultResponseDto,
   BenchClaimResultResponseDto,
   BenchCompleteResultResponseDto,
   BenchUndoCompletionResultResponseDto,
@@ -226,6 +228,31 @@ export class BenchParcelController {
     }
     const result = await this.run(() => this.parcels.claimParcel(workId, user.id));
     return this.toClaimDto(result);
+  }
+
+  @Post(':workId/buyer-note/acknowledge')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: "Acknowledge this parcel's buyer note",
+    description:
+      'Records who read the buyer\'s checkout note at the bench, and when, for THIS parcel (#3538, D12). ' +
+      'Per parcel: on a split order the note shows on every parcel and each is acknowledged separately. ' +
+      'Fill-once and idempotent - a repeat answers `already-acknowledged` and keeps the first packer. ' +
+      'It gates nothing: scanning never waits on it, and it is not a parcel close (ADR-071). Refused ' +
+      '`no-buyer-note` when the order has none and `not-claimable-by-viewer` under the same ADR-074 lock a scan enforces.',
+  })
+  @ApiResponse({ status: 201, type: BenchBuyerNoteAcknowledgementResultResponseDto })
+  @ApiResponse({ status: 401, description: 'An acknowledgement must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async acknowledgeBuyerNote(
+    @Param('workId') workId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchBuyerNoteAcknowledgementResultResponseDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('An acknowledgement must name the packer');
+    }
+    const result = await this.run(() => this.parcels.acknowledgeBuyerNote(workId, user.id));
+    return this.toBuyerNoteAcknowledgementDto(result);
   }
 
   @Post(':workId/complete')
@@ -427,6 +454,16 @@ export class BenchParcelController {
   }
 
   private toReopenDto(result: BenchReopenResultView): BenchReopenResultResponseDto {
+    return {
+      outcome: result.outcome,
+      reason: result.reason,
+      parcel: this.toParcelDto(result.parcel),
+    };
+  }
+
+  private toBuyerNoteAcknowledgementDto(
+    result: BenchBuyerNoteAcknowledgementResultView
+  ): BenchBuyerNoteAcknowledgementResultResponseDto {
     return {
       outcome: result.outcome,
       reason: result.reason,

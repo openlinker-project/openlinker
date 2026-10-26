@@ -203,6 +203,40 @@ export interface BenchParcelView {
    * no flagged note exists for this order, which is the ordinary case.
    */
   readonly packerNotes: readonly BenchPackerNoteView[];
+  /**
+   * The buyer's checkout note, verbatim (#3538, D12) - READ ONLY, and a
+   * deliberate new disclosure to the packer role: packers act on "no receipt in
+   * the box" style instructions. `null` for every state with no text to show:
+   * the buyer left none, the source could not say, or the deployment runs with
+   * `OL_STORE_PII=false` and stores no note text. The bench does not tell those
+   * apart - a packer can only act on words they can read.
+   *
+   * It is the ORDER's note, so it shows on every parcel of a split order.
+   */
+  readonly buyerNote: string | null;
+  /**
+   * When THIS parcel's buyer note was first acknowledged at the bench, or
+   * `null` (#3538). Per parcel: a split order's second parcel is acknowledged
+   * separately. Never blocks scanning and is not a parcel close (ADR-071).
+   */
+  readonly buyerNoteAcknowledgedAt: string | null;
+  /** Who acknowledged it - a raw user id, like `packedByUserId`. */
+  readonly buyerNoteAcknowledgedByUserId: string | null;
+  /**
+   * The acknowledgements of the order's OTHER parcels (#3538), for the `multi`
+   * state: a packer opening parcel 2 can see parcel 1's note was already read.
+   * Only acknowledged siblings appear; this parcel is never in the list.
+   */
+  readonly otherParcelBuyerNoteAcknowledgements: readonly BenchSiblingBuyerNoteAcknowledgementView[];
+}
+
+/** One sibling parcel's buyer-note acknowledgement (#3538). */
+export interface BenchSiblingBuyerNoteAcknowledgementView {
+  readonly workId: string;
+  /** 1-based, in the same order `parcelIndex` uses. */
+  readonly parcelIndex: number;
+  readonly acknowledgedAt: string;
+  readonly acknowledgedByUserId: string | null;
 }
 
 /** One note flagged "Show to packer" (D12) — text, author, time, nothing else. */
@@ -549,6 +583,27 @@ export const BenchClaimRefusalValues = [
   'claimed-by-someone-else',
 ] as const;
 export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
+
+/**
+ * Why acknowledging the buyer note was refused (#3538). `'not-claimable-by-viewer'`
+ * is the same ADR-074 lock every other bench write checks; `'no-buyer-note'`
+ * means there is nothing on this order to acknowledge.
+ */
+export const BenchBuyerNoteAcknowledgementRefusalValues = [
+  'not-claimable-by-viewer',
+  'no-buyer-note',
+] as const;
+
+export type BenchBuyerNoteAcknowledgementRefusal =
+  (typeof BenchBuyerNoteAcknowledgementRefusalValues)[number];
+
+/** What acknowledging one parcel's buyer note answers (#3538). */
+export interface BenchBuyerNoteAcknowledgementResultView {
+  /** `already-acknowledged` is an ordinary replay, never an error. */
+  readonly outcome: 'acknowledged' | 'already-acknowledged' | 'refused';
+  readonly reason: BenchBuyerNoteAcknowledgementRefusal | null;
+  readonly parcel: BenchParcelView;
+}
 
 /** What claiming ONE chosen parcel answers (#3412). */
 export interface BenchClaimResultView {

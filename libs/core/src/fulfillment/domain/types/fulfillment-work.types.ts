@@ -317,9 +317,33 @@ export interface FulfillmentWork {
    */
   readonly completedByUserId: string | null;
 
+  /**
+   * When this parcel's buyer note was FIRST acknowledged at the bench (#3538,
+   * D12), or `null` if never. The note belongs to the ORDER and shows on every
+   * parcel of a split order; each parcel is acknowledged separately, so who and
+   * when live here. Fill-in-when-NULL like `invoicePrintedAt`: a second packer
+   * opening the same parcel never moves it. Display-only - it gates nothing and
+   * never blocks scanning.
+   */
+  readonly buyerNoteAcknowledgedAt: Date | null;
+
+  /** Who acknowledged it; set in the SAME statement as `buyerNoteAcknowledgedAt`. */
+  readonly buyerNoteAcknowledgedByUserId: string | null;
+
   readonly lines: readonly FulfillmentWorkLine[];
   readonly createdAt: Date;
   readonly updatedAt: Date;
+}
+
+/**
+ * One parcel's buyer-note acknowledgement (#3538): who read the note at the
+ * bench and when, per work object. Only works that WERE acknowledged are
+ * reported, so an unacknowledged parcel is simply absent (never a `null` row).
+ */
+export interface FulfillmentBuyerNoteAcknowledgement {
+  readonly workId: string;
+  readonly acknowledgedAt: Date;
+  readonly acknowledgedByUserId: string | null;
 }
 
 /**
