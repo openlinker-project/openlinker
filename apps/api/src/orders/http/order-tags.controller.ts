@@ -26,6 +26,7 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -41,13 +42,23 @@ import {
   CreateOrderTagDto,
   UpdateOrderTagDto,
   BulkAssignOrderTagDto,
+  BulkRemoveOrderTagDto,
 } from './dto/create-order-tag.dto';
-import { OrderTagResponseDto, BulkAssignOrderTagResponseDto } from './dto/order-tag-response.dto';
+import type {
+  BulkOrderTagResultDto} from './dto/order-tag-response.dto';
+import {
+  OrderTagResponseDto,
+  BulkAssignOrderTagResponseDto,
+  BulkRemoveOrderTagResponseDto,
+} from './dto/order-tag-response.dto';
+import { dedupeOrderIds, unexpectedRowFailure } from './bulk-row-result';
 
 @ApiBearerAuth()
 @ApiTags('orders')
 @Controller('order-tags')
 export class OrderTagsController {
+  private readonly logger = new Logger(OrderTagsController.name);
+
   constructor(
     @Inject(ORDER_TAG_SERVICE_TOKEN)
     private readonly service: IOrderTagService
@@ -135,17 +146,78 @@ export class OrderTagsController {
       'already carries it is reported in `alreadyTagged`, not re-assigned.',
   })
   @ApiResponse({ status: 200, type: BulkAssignOrderTagResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (more than 100 order ids)' })
   @ApiResponse({ status: 404, description: 'No such tag.' })
   async bulkAssign(
     @Param('tagId') tagId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: BulkAssignOrderTagDto
   ): Promise<BulkAssignOrderTagResponseDto> {
+    const orderIds = dedupeOrderIds(dto.orderIds);
     try {
-      return await this.service.bulkAssign(tagId, dto.orderIds, user.id);
+      const result = await this.service.bulkAssign(tagId, orderIds, user.id);
+      const added = new Set(result.addedOrderIds);
+      return {
+        tagId,
+        added: result.added,
+        alreadyTagged: result.alreadyTagged,
+        failed: 0,
+        results: orderIds.map((orderId) => ({
+          orderId,
+          outcome: added.has(orderId) ? 'added' : 'already-tagged',
+        })),
+      };
     } catch (error) {
-      throw this.mapNotFound(error, tagId);
+      if (error instanceof OrderTagNotFoundError) {
+        throw this.mapNotFound(error, tagId);
+      }
+      const results = this.failAll(orderIds, 'bulk tag assign', error);
+      return { tagId, added: 0, alreadyTagged: 0, failed: results.length, results };
     }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':tagId/bulk-remove')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Remove one tag from every named order (bulk action bar). Idempotent - an order that ' +
+      'does not carry it is reported in `notTagged`. At most 100 order ids.',
+  })
+  @ApiResponse({ status: 200, type: BulkRemoveOrderTagResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error (more than 100 order ids)' })
+  @ApiResponse({ status: 404, description: 'No such tag.' })
+  async bulkRemove(
+    @Param('tagId') tagId: string,
+    @Body() dto: BulkRemoveOrderTagDto
+  ): Promise<BulkRemoveOrderTagResponseDto> {
+    const orderIds = dedupeOrderIds(dto.orderIds);
+    try {
+      const result = await this.service.bulkUnassign(tagId, orderIds);
+      const removed = new Set(result.removedOrderIds);
+      return {
+        tagId,
+        removed: result.removedOrderIds.length,
+        notTagged: result.notTaggedOrderIds.length,
+        failed: 0,
+        results: orderIds.map((orderId) => ({
+          orderId,
+          outcome: removed.has(orderId) ? 'removed' : 'not-tagged',
+        })),
+      };
+    } catch (error) {
+      if (error instanceof OrderTagNotFoundError) {
+        throw this.mapNotFound(error, tagId);
+      }
+      const results = this.failAll(orderIds, 'bulk tag remove', error);
+      return { tagId, removed: 0, notTagged: 0, failed: results.length, results };
+    }
+  }
+
+  /** The write is one batched statement, so an unexpected error fails every row alike. */
+  private failAll(orderIds: readonly string[], action: string, error: unknown): BulkOrderTagResultDto[] {
+    const reason = unexpectedRowFailure(this.logger, action, orderIds.join(','), error);
+    return orderIds.map((orderId) => ({ orderId, outcome: 'failed' as const, reason }));
   }
 
   private mapNotFound(error: unknown, id: string): Error {

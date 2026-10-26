@@ -11,6 +11,7 @@ import { OrderTagNotFoundError } from '../../domain/exceptions/order-tag-not-fou
 import {
   ORDER_TAG_WORKSPACE_LIMIT,
   type BulkAssignOrderTagResult,
+  type BulkUnassignOrderTagResult,
   type OrderTag,
   type OrderTagColor,
   type OrderTagWithCount,
@@ -89,5 +90,16 @@ export class OrderTagService implements IOrderTagService {
       throw new OrderTagNotFoundError(tagId);
     }
     return this.repository.bulkAssign(tagId, internalOrderIds, assignedByUserId);
+  }
+
+  async bulkUnassign(
+    tagId: string,
+    internalOrderIds: readonly string[]
+  ): Promise<BulkUnassignOrderTagResult> {
+    const existing = await this.repository.findById(tagId);
+    if (!existing) {
+      throw new OrderTagNotFoundError(tagId);
+    }
+    return this.repository.bulkUnassign(tagId, internalOrderIds);
   }
 }

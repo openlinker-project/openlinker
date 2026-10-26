@@ -11,6 +11,7 @@ import { OrderTagAssignmentOrmEntity } from '../entities/order-tag-assignment.or
 import type { OrderTagRepositoryPort } from '../../../domain/ports/order-tag-repository.port';
 import type {
   BulkAssignOrderTagResult,
+  BulkUnassignOrderTagResult,
   CreateOrderTagInput,
   OrderTag,
   OrderTagColor,
@@ -146,7 +147,7 @@ export class OrderTagRepository implements OrderTagRepositoryPort {
     assignedByUserId: string
   ): Promise<BulkAssignOrderTagResult> {
     if (internalOrderIds.length === 0) {
-      return { tagId, added: 0, alreadyTagged: 0 };
+      return { tagId, added: 0, alreadyTagged: 0, addedOrderIds: [], alreadyTaggedOrderIds: [] };
     }
     const existing = await this.assignments.find({
       where: { tagId, internalOrderId: In([...internalOrderIds]) },
@@ -165,7 +166,35 @@ export class OrderTagRepository implements OrderTagRepositoryPort {
         .execute();
     }
 
-    return { tagId, added: toInsert.length, alreadyTagged: alreadyTaggedIds.size };
+    return {
+      tagId,
+      added: toInsert.length,
+      alreadyTagged: alreadyTaggedIds.size,
+      addedOrderIds: toInsert,
+      alreadyTaggedOrderIds: [...alreadyTaggedIds],
+    };
+  }
+
+  async bulkUnassign(
+    tagId: string,
+    internalOrderIds: readonly string[]
+  ): Promise<BulkUnassignOrderTagResult> {
+    if (internalOrderIds.length === 0) {
+      return { tagId, removedOrderIds: [], notTaggedOrderIds: [] };
+    }
+    const existing = await this.assignments.find({
+      where: { tagId, internalOrderId: In([...internalOrderIds]) },
+    });
+    const taggedIds = new Set(existing.map((row) => row.internalOrderId));
+    const removedOrderIds = internalOrderIds.filter((id) => taggedIds.has(id));
+    if (removedOrderIds.length > 0) {
+      await this.assignments.delete({ tagId, internalOrderId: In(removedOrderIds) });
+    }
+    return {
+      tagId,
+      removedOrderIds,
+      notTaggedOrderIds: internalOrderIds.filter((id) => !taggedIds.has(id)),
+    };
   }
 
   private toDomain(entity: OrderTagOrmEntity): OrderTag {

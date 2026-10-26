@@ -434,6 +434,7 @@ export type {
   OrderTagColor,
   OrderTagWithCount,
   BulkAssignOrderTagResult,
+  BulkUnassignOrderTagResult,
 } from './domain/types/order-tag.types';
 export { OrderTagColorValues, ORDER_TAG_WORKSPACE_LIMIT } from './domain/types/order-tag.types';
 export { OrderTagLimitReachedError } from './domain/exceptions/order-tag-limit-reached.error';
