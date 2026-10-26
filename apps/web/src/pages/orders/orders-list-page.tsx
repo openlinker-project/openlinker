@@ -536,7 +536,9 @@ export function OrdersListPage(): ReactElement {
     () => new Set(selectedOrders.map((o) => o.sourceConnectionId)).size,
     [selectedOrders],
   );
-  const bulkWrite = retryWrite.canWrite;
+  // Demo read-only viewers see the bulk actions locked, like Retry and Export.
+  const bulkVisible = retryWrite.visible;
+  const bulkLocked = retryWrite.demoReadOnly;
 
   function toggleSelectRow(order: OrderRecord): void {
     setSelectedIds((prev) => {
@@ -1431,38 +1433,46 @@ export function OrdersListPage(): ReactElement {
                     <Button tone="ghost" onClick={clearSelection}>
                       Clear
                     </Button>
-                    {bulkWrite ? (
-                      <BulkTagPopover
-                        selectedOrders={selectedOrders}
-                        disabledReason={selectionBlockReason}
-                      />
+                    {bulkVisible ? (
+                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                        <BulkTagPopover
+                          selectedOrders={selectedOrders}
+                          disabledReason={bulkLocked ? DEMO_READ_ONLY_ACTION_MESSAGE : selectionBlockReason}
+                        />
+                      </ReadOnlyLock>
                     ) : null}
-                    {bulkWrite ? (
-                      <Button
-                        tone="secondary"
-                        data-testid="orders-bulk-read"
-                        disabled={selectionBlockReason !== null || noteSplit.candidates.length === 0}
-                        title={
-                          selectionBlockReason ??
-                          (noteSplit.candidates.length === 0
-                            ? 'None of the selected orders has an unread buyer message'
-                            : undefined)
-                        }
-                        onClick={() => { setBulkReadOpen(true); }}
-                      >
-                        {BULK_ACTIONS_COPY.read.trigger}
-                      </Button>
+                    {bulkVisible ? (
+                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                        <Button
+                          tone="secondary"
+                          data-testid="orders-bulk-read"
+                          disabled={
+                            bulkLocked || selectionBlockReason !== null || noteSplit.candidates.length === 0
+                          }
+                          title={
+                            selectionBlockReason ??
+                            (noteSplit.candidates.length === 0
+                              ? 'None of the selected orders has an unread buyer message'
+                              : undefined)
+                          }
+                          onClick={() => { setBulkReadOpen(true); }}
+                        >
+                          {BULK_ACTIONS_COPY.read.trigger}
+                        </Button>
+                      </ReadOnlyLock>
                     ) : null}
-                    {bulkWrite && isAdmin ? (
-                      <Button
-                        tone="danger"
-                        data-testid="orders-bulk-cancel"
-                        disabled={selectionBlockReason !== null}
-                        title={selectionBlockReason ?? undefined}
-                        onClick={() => { setBulkCancelOpen(true); }}
-                      >
-                        {BULK_ACTIONS_COPY.cancel.trigger(selectedOrders.length)}
-                      </Button>
+                    {bulkVisible && isAdmin ? (
+                      <ReadOnlyLock active={bulkLocked} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                        <Button
+                          tone="danger"
+                          data-testid="orders-bulk-cancel"
+                          disabled={bulkLocked || selectionBlockReason !== null}
+                          title={selectionBlockReason ?? undefined}
+                          onClick={() => { setBulkCancelOpen(true); }}
+                        >
+                          {BULK_ACTIONS_COPY.cancel.trigger(selectedOrders.length)}
+                        </Button>
+                      </ReadOnlyLock>
                     ) : null}
                     {exportAccess.canWrite ? (
                       <Button
