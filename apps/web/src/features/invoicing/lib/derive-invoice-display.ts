@@ -74,6 +74,8 @@ const FAILURE_CODE_FALLBACK: Record<FailureCode, string> = {
     'This connection needs a sale classification (goods vs. services) configured before it can issue invoices. Set it in the connection’s configuration, then retry. Nothing was issued.',
   'connection-setup-incomplete':
     'This connection is missing a setting it needs to issue invoices. Complete the connection’s settings, then retry. Nothing was issued.',
+  'acknowledgement-required':
+    'This document needs your decision before it is issued. Read the warning, then issue again and confirm. Nothing was issued.',
   'provider-rejected':
     'The provider rejected the document. Check the order’s data, then retry. Nothing was issued.',
   'transport-timeout':

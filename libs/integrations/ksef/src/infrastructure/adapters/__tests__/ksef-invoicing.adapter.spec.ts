@@ -20,6 +20,7 @@ import type {
   BuyerProfile as BuyerProfileType,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
+  InvoiceLine,
   OriginalDocumentSnapshot,
   StoredDocument,
 } from '@openlinker/core/invoicing';
@@ -32,6 +33,11 @@ import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { KsefUnsupportedDocumentTypeException } from '../../../domain/exceptions/ksef-unsupported-document-type.exception';
 import { KsefInvalidCorrectionException } from '../../../domain/exceptions/ksef-invalid-correction.exception';
 import { KsefMissingDocumentNumberException } from '../../../domain/exceptions/ksef-missing-document-number.exception';
+import { KsefPermissionDeniedException } from '../../../domain/exceptions/ksef-permission-denied.exception';
+import { KsefCrossBorderUnsupportedException } from '../../../domain/exceptions/ksef-cross-border-unsupported.exception';
+import { classifyInvoiceFailure } from '@openlinker/core/invoicing';
+import { KsefAcknowledgementRequiredException } from '../../../domain/exceptions/ksef-acknowledgement-required.exception';
+import { KSEF_BUYER_TAX_ID_CHANGE_WARNING, KSEF_JST_WITHOUT_UNIT_WARNING } from '../ksef-invoicing.adapter';
 import { FakeKsefHttpClient } from '../../../testing/fake-ksef-http-client';
 import type { KsefSessionCryptoService } from '../../crypto/ksef-session-crypto.service';
 import type { SessionCryptoContext, EncryptedDocument } from '../../http/ksef-crypto.types';
@@ -42,6 +48,7 @@ import type {
   RawFa3Xml,
   SellerProfile,
 } from '../../fa3/domain/fa3-xml.types';
+import type { NbpExchangeRateResolverPort } from '../../fx/nbp-exchange-rate.types';
 
 const SELLER: SellerProfile = {
   nip: '1234567890',
@@ -228,6 +235,18 @@ class OutageKsefHttpClient extends FakeKsefHttpClient {
       return Promise.reject(failure);
     }
     return super.post<T>(path, body, options);
+  }
+
+  override get<T = unknown>(
+    path: string,
+    options?: Parameters<FakeKsefHttpClient['get']>[1],
+  ): Promise<{ data: T; status: number; headers: Record<string, string> }> {
+    const failure = this.failures.get(`GET ${path}`);
+    if (failure) {
+      this.calls.push({ method: 'GET', path, options });
+      return Promise.reject(failure);
+    }
+    return super.get<T>(path, options);
   }
 }
 
@@ -599,6 +618,45 @@ describe('KsefInvoicingAdapter', () => {
       expect(built?.correction?.correctedLines?.[0]?.quantity).toBe(1);
     });
 
+    it('should use the buyerOverride buyer for the KOR when supplied (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const override = new BuyerProfile(
+        'Corrected Buyer Sp. z o.o.',
+        { scheme: 'pl-nip', value: '5252248481' },
+        { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
+        'company',
+      );
+
+      // The override changes the buyer's tax number, which DEF-23 makes the
+      // operator confirm first; this test is about what the KOR carries after.
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({
+          buyerOverride: override,
+          acknowledgedWarnings: [KSEF_BUYER_TAX_ID_CHANGE_WARNING],
+        }),
+      );
+
+      const built = lastInput();
+      // The KOR carries the OVERRIDE buyer, not the original snapshot's buyer.
+      expect(built?.buyerName).toBe('Corrected Buyer Sp. z o.o.');
+      expect(built?.buyer).toEqual({ kind: 'nip', nip: '5252248481' });
+    });
+
+    it('should fall back to the original snapshot buyer when no buyerOverride is supplied (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(correctionCommand());
+
+      const built = lastInput();
+      expect(built?.buyerName).toBe('Klient Sp. z o.o.');
+      expect(built?.buyer).toEqual({ kind: 'nip', nip: '9876543210' });
+    });
+
     it('should use the core-allocated correction-series documentNumber as the KOR P_2 (#1575)', async () => {
       const http = new FakeKsefHttpClient();
       seedHappyPath(http);
@@ -755,6 +813,42 @@ describe('KsefInvoicingAdapter', () => {
 
       expect(result.regulatoryStatus).toBe('submitted');
       expect(result.clearanceReference).toBeNull();
+    });
+
+    it('should capture the authority rejection detail as clearanceDetail (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: {
+          status: {
+            code: 440,
+            description: 'Weryfikacja negatywna',
+            details: ['NIP nabywcy niepoprawny'],
+          },
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('rejected');
+      expect(result.clearanceDetail).toContain('440');
+      expect(result.clearanceDetail).toContain('Weryfikacja negatywna');
+      expect(result.clearanceDetail).toContain('NIP nabywcy niepoprawny');
+    });
+
+    it('should not set clearanceDetail on a non-rejection (submitted) read (#1582)', async () => {
+      const http = new FakeKsefHttpClient();
+      http.seed('GET', STATUS_PATH, {
+        data: { status: { code: 150, description: 'W trakcie przetwarzania' } },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await adapter(http).getClearanceStatus(record());
+
+      expect(result.regulatoryStatus).toBe('submitted');
+      expect(result.clearanceDetail ?? null).toBeNull();
     });
 
     it('should return rejected (terminal) on a known business-rejection code (440)', async () => {
@@ -1349,6 +1443,371 @@ describe('KsefInvoicingAdapter', () => {
       });
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('foreign-currency PLN/VAT conversion (art. 106e ust. 11, #1581)', () => {
+    function fakeResolver(): NbpExchangeRateResolverPort & { resolveRate: jest.Mock } {
+      return {
+        resolveRate: jest
+          .fn()
+          .mockResolvedValue({ rate: 4.5, rateDate: '2026-06-22', table: '119/A/NBP/2026' }),
+      };
+    }
+
+    function adapterWithFx(
+      http: FakeKsefHttpClient,
+      builder: IFa3XmlBuilder,
+      resolver: NbpExchangeRateResolverPort,
+    ): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', http, fakeCrypto(), builder, SELLER, {
+        now: () => new Date('2026-06-23T10:00:00.000Z'),
+        exchangeRateResolver: resolver,
+      });
+    }
+
+    it('should resolve the NBP rate and thread it onto the builder input for a non-PLN invoice', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(command({ currency: 'EUR' }));
+
+      // Tax point for a plain invoice with no saleDate = the issue date (now).
+      expect(resolver.resolveRate).toHaveBeenCalledWith('EUR', '2026-06-23');
+      expect(lastInput()?.exchangeRate).toEqual({
+        rate: 4.5,
+        rateDate: '2026-06-22',
+        table: '119/A/NBP/2026',
+      });
+    });
+
+    it('should key the correction rate to the ORIGINAL sale date when the snapshot has one (DEF-07)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueCorrection(
+        correctionCommand({
+          originalDocument: originalDocument({ currency: 'EUR', issueDate: '2026-05-03', saleDate: '2026-05-01' }),
+        }),
+      );
+
+      expect(resolver.resolveRate).toHaveBeenCalledWith('EUR', '2026-05-01');
+    });
+
+    it('should key the correction rate to the ORIGINAL issue date (immutable historical rate)', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(
+        command({
+          currency: 'EUR',
+          documentType: 'corrected',
+          correction: {
+            originalClearanceReference: null,
+            originalDocumentNumber: 'FV/2026/05/0042',
+            originalIssueDate: '2026-05-01',
+            reason: 'Return',
+            correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '23' }],
+          },
+        }),
+      );
+
+      // Not the KOR's own issue date (2026-06-23) — the original document's.
+      expect(resolver.resolveRate).toHaveBeenCalledWith('EUR', '2026-05-01');
+    });
+
+    it('should NOT resolve a rate for a PLN invoice', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+      const resolver = fakeResolver();
+
+      await adapterWithFx(http, builder, resolver).issueInvoice(command({ currency: 'PLN' }));
+
+      expect(resolver.resolveRate).not.toHaveBeenCalled();
+      expect(lastInput()?.exchangeRate).toBeUndefined();
+    });
+  });
+  describe('pre-submit refusals (DEF-01 / DEF-18 / DEF-37)', () => {
+    const foreignBuyer = (): BuyerProfileType =>
+      new BuyerProfile(
+        'Kunde GmbH',
+        { scheme: 'eu-vat', value: 'DE123456789' },
+        { line1: 'Hauptstr. 1', line2: null, city: 'Berlin', postalCode: '10115', countryIso2: 'DE' },
+        'company',
+      );
+
+    it('should classify a 403 on session open as a re-attemptable connection-setup refusal', async () => {
+      const http = new OutageKsefHttpClient().failOn(
+        'POST',
+        '/sessions/online',
+        new KsefPermissionDeniedException('Forbidden'),
+      );
+      seedHappyPath(http);
+
+      const error = await adapter(http).issueInvoice(command()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(KsefPermissionDeniedException);
+      expect(classifyInvoiceFailure(error)).toMatchObject({
+        failureMode: 'rejected',
+        failureCode: 'connection-setup-incomplete',
+      });
+    });
+
+    it('should keep a 403 AFTER the submit in-doubt, because the invoice may have landed', async () => {
+      const http = new OutageKsefHttpClient().failOn(
+        'GET',
+        `/sessions/${SESSION_REF}`,
+        new KsefPermissionDeniedException('Forbidden'),
+      );
+      seedHappyPath(http);
+
+      const error = await adapter(http).issueInvoice(command()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(KsefPermissionDeniedException);
+      expect(classifyInvoiceFailure(error).failureMode).toBe('in-doubt');
+    });
+
+    it('should refuse a cross-border invoice before any KSeF call, as rejected', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const error = await adapter(http)
+        .issueInvoice(command({ buyer: foreignBuyer(), lines: [{ name: 'W', quantity: 1, unitPriceGross: 10, taxRate: '' }] }))
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(KsefCrossBorderUnsupportedException);
+      expect(classifyInvoiceFailure(error).failureMode).toBe('rejected');
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should not apply the cross-border guard to a correction of an already-issued invoice', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const cmd = correctionCommand({
+        originalDocument: originalDocument({
+          buyer: foreignBuyer(),
+          lines: [{ name: 'W', quantity: 2, unitPriceGross: 10, taxRate: '' }],
+        }),
+      });
+
+      const withDefaultRate = new KsefInvoicingAdapter('conn-1', http, fakeCrypto(), fakeBuilder, SELLER, {
+        defaultTaxRate: '23',
+        now: () => new Date('2026-06-23T10:00:00.000Z'),
+      });
+
+      const { record } = await withDefaultRate.issueCorrection(cmd);
+
+      expect(record.status).toBe('issued');
+    });
+
+    it('should treat a legacy line without a taxRate as relying on the default, not crash', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const legacyLine = { name: 'W', quantity: 1, unitPriceGross: 10 } as unknown as InvoiceLine;
+
+      const error = await adapter(http)
+        .issueInvoice(command({ buyer: foreignBuyer(), lines: [legacyLine] }))
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(KsefCrossBorderUnsupportedException);
+    });
+  });
+  describe('document dates in the connection zone (DEF-33)', () => {
+    function adapterAt(http: FakeKsefHttpClient, builder: IFa3XmlBuilder): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', http, fakeCrypto(), builder, SELLER, {
+        now: () => new Date('2026-01-21T23:30:00.000Z'),
+      });
+    }
+
+    it('should print the Warsaw calendar day as the issue date, not the UTC day', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const result = await adapterAt(http, builder).issueInvoice(command());
+
+      expect(lastInput()?.issueDate).toBe('2026-01-22');
+      expect(result.documentDates).toEqual({ issueDate: '2026-01-22', saleDate: null });
+    });
+
+    it('should derive the sale date from the placement instant in the connection zone', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      const result = await adapterAt(http, builder).issueInvoice(
+        command({ saleDate: '2026-07-21', saleInstant: new Date('2026-07-21T22:30:00.000Z') }),
+      );
+
+      expect(lastInput()?.saleDate).toBe('2026-07-22');
+      expect(result.documentDates?.saleDate).toBe('2026-07-22');
+    });
+
+    it('should keep the command sale date when no instant is supplied', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapterAt(http, builder).issueInvoice(command({ saleDate: '2026-01-20' }));
+
+      expect(lastInput()?.saleDate).toBe('2026-01-20');
+    });
+  });
+  describe('buyer corrections (DEF-23 / DEF-24)', () => {
+    const movedBuyer = (nip: string, line1: string): BuyerProfileType =>
+      new BuyerProfile(
+        'Klient Sp. z o.o.',
+        { scheme: 'pl-nip', value: nip },
+        { line1, line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+      );
+
+    it('should restate the original buyer when only the address changes', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({ buyerOverride: movedBuyer('9876543210', 'ul. Nowa 9') }),
+      );
+
+      expect(lastInput()?.correction?.buyerBeforeCorrection?.address.line1).toBe('ul. Kupiecka 2');
+      expect(lastInput()?.buyerAddress.line1).toBe('ul. Nowa 9');
+    });
+
+    it('should ask for acknowledgement before changing the buyer tax number', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const error = await adapter(http)
+        .issueCorrection(correctionCommand({ buyerOverride: movedBuyer('1189981779', 'ul. Kupiecka 2') }))
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(KsefAcknowledgementRequiredException);
+      expect(classifyInvoiceFailure(error)).toMatchObject({
+        failureMode: 'rejected',
+        failureCode: 'acknowledgement-required',
+      });
+      expect(http.calls).toHaveLength(0);
+    });
+
+    it('should issue the tax-number change once the operator acknowledged it', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+
+      const { record } = await adapter(http).issueCorrection(
+        correctionCommand({
+          buyerOverride: movedBuyer('1189981779', 'ul. Kupiecka 2'),
+          acknowledgedWarnings: [KSEF_BUYER_TAX_ID_CHANGE_WARNING],
+        }),
+      );
+
+      expect(record.status).toBe('issued');
+    });
+
+    it('should ignore an override identical to the original buyer', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(correctionCommand({ buyerOverride: buyer() }));
+
+      expect(lastInput()?.correction?.buyerBeforeCorrection).toBeUndefined();
+    });
+
+    it('should build a buyer-only correction with no line changes', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapter(http, builder).issueCorrection(
+        correctionCommand({ lines: [], buyerOverride: movedBuyer('9876543210', 'ul. Nowa 9') }),
+      );
+
+      expect(lastInput()?.correction?.buyerOnly).toBe(true);
+      expect(lastInput()?.correction?.typKorekty).toBe('1');
+    });
+  });
+
+  describe('seller defaults and documented parties (DEF-20 / DEF-30)', () => {
+    function adapterWithDefaults(http: FakeKsefHttpClient, builder: IFa3XmlBuilder): KsefInvoicingAdapter {
+      return new KsefInvoicingAdapter('conn-1', http, fakeCrypto(), builder, SELLER, {
+        now: () => new Date('2026-06-23T10:00:00.000Z'),
+        annotationsDefault: { cashAccounting: true, marginScheme: false },
+      });
+    }
+
+    it('should start every invoice from the connection defaults', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapterWithDefaults(http, builder).issueInvoice(command());
+
+      expect(lastInput()?.cashAccounting).toBe(true);
+    });
+
+    it('should let the issue override a default', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const { builder, lastInput } = capturingBuilder();
+
+      await adapterWithDefaults(http, builder).issueInvoice(
+        command({ annotations: { cashAccounting: false, splitPayment: true } }),
+      );
+
+      expect(lastInput()?.cashAccounting).toBe(false);
+      expect(lastInput()?.splitPayment).toBe(true);
+    });
+
+    it('should ask before issuing a JST buyer without the documented subordinate unit', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const jst = new BuyerProfile(
+        'Gmina',
+        { scheme: 'pl-nip', value: '9876543210' },
+        { line1: 'Rynek 1', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+        null,
+        true,
+      );
+
+      const error = await adapter(http).issueInvoice(command({ buyer: jst })).catch((e: unknown) => e);
+      expect((error as { warningCode?: string }).warningCode).toBe(KSEF_JST_WITHOUT_UNIT_WARNING);
+
+      const { record } = await adapter(http).issueInvoice(
+        command({ buyer: jst, acknowledgedWarnings: [KSEF_JST_WITHOUT_UNIT_WARNING] }),
+      );
+      expect(record.status).toBe('issued');
+    });
+
+    it('should not ask when the subordinate unit is named', async () => {
+      const http = new FakeKsefHttpClient();
+      seedHappyPath(http);
+      const jst = new BuyerProfile(
+        'Gmina',
+        { scheme: 'pl-nip', value: '9876543210' },
+        { line1: 'Rynek 1', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+        null,
+        true,
+      );
+
+      const { record } = await adapter(http).issueInvoice(
+        command({
+          buyer: jst,
+          additionalParties: [{ role: '8', name: 'Szkoła', taxId: { scheme: 'pl-nip', value: '1189981779' } }],
+        }),
+      );
+
+      expect(record.status).toBe('issued');
     });
   });
 });

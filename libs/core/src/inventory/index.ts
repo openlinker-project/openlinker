@@ -30,6 +30,8 @@ export { LocationRepositoryPort } from './domain/ports/location-repository.port'
 export {
   ReservationLedgerReaderPort,
   SumReservedInput,
+  SumReservedByLocationInput,
+  LocatedReservedSum,
   ReservationAtpEffect,
   ReservationAtpEffectValues,
 } from './domain/ports/reservation-ledger-reader.port';

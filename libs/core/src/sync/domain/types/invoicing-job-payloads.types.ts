@@ -47,6 +47,13 @@ export interface InvoicingIssueBuyerV1 {
    * the key.
    */
   email?: string | null;
+  /**
+   * Fiscal buyer classification (#1580, DEF-08). Optional additive fields: the
+   * BuyerProfile carries them, and a field dropped in this flatten is a field
+   * the issued document silently loses.
+   */
+  isPublicSectorEntity?: boolean;
+  isTaxGroupMember?: boolean;
 }
 
 /**
@@ -72,6 +79,11 @@ export interface InvoicingIssuePayloadV1 {
    * `schemaVersion` bump (a v1 consumer that ignores it stays correct).
    */
   saleDate?: string;
+  /**
+   * ISO-8601 instant behind `saleDate` (DEF-33), so the adapter can take the
+   * calendar day in its own zone. Optional additive field, like `saleDate`.
+   */
+  saleInstant?: string;
   /** ISO-4217 currency. */
   currency: string;
   /** Plain invoice lines (numbers, no class). */

@@ -322,4 +322,108 @@ describe('KsefConnectionConfigShapeValidatorAdapter', () => {
       }
     });
   });
+  describe('seller.nip (#1595)', () => {
+    // 1189981779 has a correct mod-11 check digit; 1189981770 mutates it.
+    it('should resolve when seller.nip is a checksum-valid NIP', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { nip: '1189981779' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when seller.nip is absent', async () => {
+      await expect(validator.validate({ env: 'test', seller: {} })).resolves.toBeUndefined();
+    });
+
+    it('should reject a valid-format seller.nip with a bad checksum', async () => {
+      await expect(validator.validate({ env: 'test', seller: { nip: '1189981770' } })).rejects.toMatchObject({
+        errors: [{ path: 'seller.nip', message: 'has an invalid checksum' }],
+      });
+    });
+
+    it('should reject an invalid-format seller.nip', async () => {
+      await expect(validator.validate({ env: 'test', seller: { nip: '12345' } })).rejects.toMatchObject({
+        errors: [{ path: 'seller.nip', message: 'must be a 10-digit Polish NIP' }],
+      });
+    });
+
+    it('should reject a non-string seller.nip', async () => {
+      await expect(
+        validator.validate({ env: 'test', seller: { nip: 1189981779 } }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should treat an empty seller.nip as not set yet (DEF-19)', async () => {
+      await expect(validator.validate({ env: 'test', seller: { nip: '' } })).resolves.toBeUndefined();
+    });
+
+    it('should not re-judge a stored NIP the update leaves unchanged (DEF-19)', async () => {
+      const stored = { env: 'test', seller: { nip: '1189981770' } };
+
+      await expect(
+        validator.validate({ env: 'test', seller: { nip: '1189981770' }, payment: {} }, { previous: stored }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should still check a NIP the update changes, even with a previous config', async () => {
+      await expect(
+        validator.validate(
+          { env: 'test', seller: { nip: '1189981770' } },
+          { previous: { env: 'test', seller: { nip: '1189981779' } } },
+        ),
+      ).rejects.toMatchObject({ errors: [{ path: 'seller.nip', message: 'has an invalid checksum' }] });
+    });
+
+    it('should compare the stored NIP without separators', async () => {
+      await expect(
+        validator.validate(
+          { env: 'test', seller: { nip: '118-998-17-70' } },
+          { previous: { env: 'test', seller: { nip: '1189981770' } } },
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('allowCrossBorder (DEF-18)', () => {
+    it('should accept a boolean', async () => {
+      await expect(validator.validate({ env: 'test', allowCrossBorder: true })).resolves.toBeUndefined();
+      await expect(validator.validate({ env: 'test', allowCrossBorder: false })).resolves.toBeUndefined();
+    });
+
+    it('should reject a string, which the issuance path would silently ignore', async () => {
+      await expect(validator.validate({ env: 'test', allowCrossBorder: 'true' })).rejects.toMatchObject({
+        errors: [{ path: 'allowCrossBorder', message: 'must be true or false' }],
+      });
+    });
+  });
+
+
+  describe('annotationsDefault (DEF-20 / DEF-22)', () => {
+    it('should accept seller defaults with statutory exemption grounds', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          annotationsDefault: {
+            cashAccounting: true,
+            marginScheme: true,
+            marginKind: 'used-goods',
+            exemptionBasis: { kind: 'statute', text: 'art. 113 ust. 1 ustawy o VAT' },
+          },
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject an unknown margin kind and empty grounds', async () => {
+      await expect(
+        validator.validate({
+          env: 'test',
+          annotationsDefault: { marginKind: 'cars', exemptionBasis: { kind: 'statute', text: '' } },
+        }),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({ path: 'annotationsDefault.marginKind' }),
+          expect.objectContaining({ path: 'annotationsDefault.exemptionBasis.text' }),
+        ]),
+      });
+    });
+  });
 });
