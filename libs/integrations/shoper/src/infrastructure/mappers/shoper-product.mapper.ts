@@ -120,36 +120,66 @@ export function buildShoperImageUrl(host: string, image: ShoperMainImage): strin
   return `https://${host}/userdata/public/gfx/${image.unic_name}.${image.extension}`;
 }
 
+/** Shoper flags arrive as `"1"`, `1` or `true`; anything else is off. */
+function isShoperFlagSet(raw: string | number | boolean | null | undefined): boolean {
+  return raw === true || raw === 1 || raw === '1';
+}
+
+/** Sort key for `order`: a missing or unreadable value sorts after every real one. */
+function galleryOrder(raw: string | number | null | undefined): number {
+  const value = parseShoperNumber(raw);
+  return value === undefined ? Number.POSITIVE_INFINITY : value;
+}
+
+function gfxNumber(raw: string): number {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
 /**
- * Public URLs of a product's gallery, main image first, then in the shop's own
- * gallery order. Hidden images are left out (the shop does not show them to a
- * buyer, so they are not published either), as are rows whose file name is not
- * a plain file name. Duplicates collapse to their first position.
+ * The product gallery as the shop presents it: the main image first, then by
+ * `order`, then by `gfx_id` (a stable tie-break - two rows can share an `order`).
+ * A hidden row is left out; it is still reachable as a variant's own picture.
+ *
+ * `main_image` is the floor: when the gallery yields nothing visible (a shop
+ * that answers the header and the gallery inconsistently), the one picture the
+ * product payload itself names is kept rather than dropped. `null` only when
+ * there is genuinely no visible image.
  */
-export function buildShoperGalleryUrls(
+export function mapShoperProductGallery(
+  gallery: readonly ShoperProductImage[],
+  mainImage: ShoperMainImage | null,
   host: string,
-  images: readonly ShoperProductImage[],
-): string[] {
-  const position = (image: ShoperProductImage): number =>
-    parseShoperNumber(image.order) ?? Number.MAX_SAFE_INTEGER;
-  const isMain = (image: ShoperProductImage): number => (String(image.main) === '1' ? 0 : 1);
-  const sorted = images
-    .filter((image) => String(image.hidden) !== '1')
-    .slice()
+): string[] | null {
+  const mainGfx =
+    mainImage?.gfx_id === undefined || mainImage.gfx_id === null ? null : String(mainImage.gfx_id);
+  const isMain = (image: ShoperProductImage): boolean =>
+    isShoperFlagSet(image.main) || (mainGfx !== null && String(image.gfx_id) === mainGfx);
+
+  const ordered = gallery
+    .filter((image) => !isShoperFlagSet(image.hidden))
     .sort(
       (a, b) =>
-        isMain(a) - isMain(b) ||
-        position(a) - position(b) ||
-        (parseShoperNumber(a.gfx_id) ?? 0) - (parseShoperNumber(b.gfx_id) ?? 0),
+        Number(isMain(b)) - Number(isMain(a)) ||
+        galleryOrder(a.order) - galleryOrder(b.order) ||
+        gfxNumber(a.gfx_id) - gfxNumber(b.gfx_id),
     );
+
   const urls: string[] = [];
-  for (const image of sorted) {
+  for (const image of ordered) {
     const url = buildShoperImageUrl(host, image);
     if (url !== null && !urls.includes(url)) {
       urls.push(url);
     }
   }
-  return urls;
+  if (urls.length > 0) {
+    return urls;
+  }
+  if (mainImage === null || isShoperFlagSet(mainImage.hidden)) {
+    return null;
+  }
+  const mainUrl = buildShoperImageUrl(host, mainImage);
+  return mainUrl === null ? null : [mainUrl];
 }
 
 function weightInKilograms(raw: string | null, unit: string): number | undefined {
@@ -273,19 +303,28 @@ export function mapShoperStockToVariant(
   };
 }
 
-export function mapShoperProduct(raw: ShoperProduct, ctx: ShoperMapContext): Omit<Product, 'id'> {
+/**
+ * @param gallery - the product's `product-images` rows. Omitted when the caller
+ *   did not read them, which keeps the product's `main_image` as its only
+ *   image; pass `[]` for a product the caller knows has no gallery.
+ */
+export function mapShoperProduct(
+  raw: ShoperProduct,
+  ctx: ShoperMapContext,
+  gallery?: readonly ShoperProductImage[],
+): Omit<Product, 'id'> {
   const translation = pickShoperTranslation(raw.translations, ctx.language);
   const sku = nonEmpty(raw.code);
   const weight =
     raw.stock === null ? undefined : weightInKilograms(raw.stock.weight, ctx.weightUnit);
-  const imageUrl = raw.main_image === null ? null : buildShoperImageUrl(ctx.host, raw.main_image);
+  const images = mapShoperProductGallery(gallery ?? [], raw.main_image, ctx.host);
 
   return {
     name: nonEmpty(translation?.name) ?? sku ?? `product-${raw.product_id}`,
     sku,
     price: raw.stock === null ? null : (parseShoperNumber(raw.stock.price) ?? null),
     description: nonEmpty(translation?.description),
-    images: imageUrl === null ? null : [imageUrl],
+    images,
     currency: ctx.currency,
     categories: raw.categories.map(String),
     ...(weight === undefined ? {} : { weight }),

@@ -50,21 +50,36 @@ export interface ShoperProductTranslation {
 export interface ShoperMainImage {
   readonly unic_name: string;
   readonly extension: string;
+  /** The gallery row this is (`product-images.gfx_id`); live payloads carry it, older fixtures may not. */
+  readonly gfx_id?: string | number | null;
+  /** `"1"` when the image is hidden from the product gallery; see {@link ShoperProductImage}. */
+  readonly hidden?: string | number | null;
 }
 
 /**
- * A `GET /product-images` row (only what the mapper reads). Listing one
- * product's images takes the JSON filter form (`filters={"product_id":93}`);
- * the bracket form answers 500 on this resource (verified live, 7 Oct 2026).
- * `main` is `"1"` on the product's main image, `order` is its gallery position.
+ * A `GET /product-images` row, verified live (product 161, 26 Oct 2026):
+ * `{"gfx_id":"312","product_id":"161","unic_name":"312","extension":"jpg",
+ * "order":"1","hidden":"0","main":1,...}`. Numbers are strings except `main`,
+ * which arrived as a real `1` / `0`. A product's gallery is every row with its
+ * `product_id`; a variant stock points at one of them through `gfx_id`.
+ * Listing images takes the JSON filter form (`filters={"product_id":93}`); the
+ * bracket form answers 500 on this resource (verified live, 7 Oct 2026).
+ *
+ * `hidden` is the panel's "hide in the gallery": a common way to give a
+ * variant its own picture without it appearing on the product card, so a
+ * hidden row is left out of the PRODUCT gallery but stays usable as a
+ * variant's image (see `mapShoperProductGallery`). `order`, `hidden` and
+ * `main` are optional: a row that lacks one reads as "no position", "shown"
+ * and "not the main image".
  */
-export interface ShoperProductImage extends ShoperMainImage {
+export interface ShoperProductImage {
   readonly gfx_id: string;
   readonly product_id: string;
-  readonly main?: string | null;
-  readonly order?: string | null;
-  /** `"1"` for an image the shop does not show in the product gallery. */
-  readonly hidden?: string | null;
+  readonly unic_name: string;
+  readonly extension: string;
+  readonly order?: string | number | null;
+  readonly hidden?: string | number | null;
+  readonly main?: string | number | boolean | null;
 }
 
 /**

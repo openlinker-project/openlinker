@@ -9,6 +9,7 @@ import type {
   ShoperOption,
   ShoperOptionValue,
   ShoperProduct,
+  ShoperProductImage,
   ShoperStock,
 } from '../../domain/types/shoper-api.types';
 import type { ShoperMapContext } from '../mappers/shoper-product.mapper';
@@ -63,6 +64,20 @@ export function buildProduct(overrides: Partial<ShoperProduct> = {}): ShoperProd
     main_image: { unic_name: '207', extension: 'png' },
     stock: buildStock(),
     options: [],
+    ...overrides,
+  };
+}
+
+/** A `product-images` row, shaped like product 161's live gallery (26 Oct 2026). */
+export function buildImage(overrides: Partial<ShoperProductImage> = {}): ShoperProductImage {
+  return {
+    gfx_id: '312',
+    product_id: '161',
+    unic_name: '312',
+    extension: 'jpg',
+    order: '1',
+    hidden: '0',
+    main: 0,
     ...overrides,
   };
 }

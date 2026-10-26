@@ -476,9 +476,10 @@ connection to rotate the secret, since the old URL has already shown it to anyon
   short per-`(connection, stock)` `SyncLockPort` lock around the call, as #2617 does per offer.
 - Product `createdAt` / `updatedAt` are not set: Shoper sends zone-less local timestamps and parsing them with
   the process time zone would stamp a wrong instant.
-- `getProduct` (what the sync reads) returns the whole gallery from `product-images`: one extra call per product,
-  first 50 images, main image first, hidden images left out. If that read fails or is empty, the main image is kept.
-  `getProducts` (the list read) still returns the main image only.
+- `getProduct` (what the sync reads) returns the whole gallery from `product-images`: main image first, then the
+  shop's gallery order, hidden images left out. It costs one extra call per product (none for a product with no
+  main image), one filtered read per page on `getProducts` and one per chunk of 50 in the bulk prefetch. An empty
+  gallery keeps the main image; a failed read fails the product read rather than syncing the main image alone.
 - `getProduct` also reports `categoryBreadcrumb`, the path of the product's main category (`category_id`, else its
   first category). It is walked over the same category directory `getProductCategories` reads (memoised per adapter,
   and warmed by the bulk prefetch, so a batch page reads it once). A node with no name, a category the tree does

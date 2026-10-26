@@ -10,10 +10,12 @@ import {
   LIVE_VARIANT_STOCKS,
   MAP_CONTEXT,
   SHOP_HOST,
+  buildImage,
   buildProduct,
   buildStock,
   envelope,
 } from '../../../__tests__/shoper-test-data';
+import type { ShoperProductImage } from '../../../../domain/types/shoper-api.types';
 import { ShoperProductReader } from '../../../readers/shoper-product.reader';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperShopContextProvider } from '../../../shop-context/shoper-shop-context.provider';
@@ -25,7 +27,6 @@ import {
   isModifiedProductLister,
   isProductTaxRateReader,
 } from '@openlinker/core/products';
-import type { ShoperProductImage } from '../../../../domain/types/shoper-api.types';
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import type { ShoperMapContext } from '../../../mappers/shoper-product.mapper';
 import { ShoperProductMasterAdapter } from '../shoper-product-master.adapter';
@@ -101,12 +102,18 @@ function setup(
   return { adapter, get, mapping, taxTable };
 }
 
+/**
+ * Serves `routes` and rejects anything else. `/product-images` defaults to an
+ * empty gallery so a spec about something else need not stub it; the product's
+ * `main_image` then stays its only image (the mapper's floor).
+ */
 function respond(get: jest.Mock, routes: Record<string, unknown>): void {
+  const served: Record<string, unknown> = { '/product-images': envelope([]), ...routes };
   get.mockImplementation((path: string) => {
-    if (!(path in routes)) {
+    if (!(path in served)) {
       return Promise.reject(new Error(`unexpected GET ${path}`));
     }
-    return Promise.resolve({ status: 200, data: routes[path] });
+    return Promise.resolve({ status: 200, data: served[path] });
   });
 }
 
@@ -341,6 +348,7 @@ describe('ShoperProductMasterAdapter', () => {
 
       // The failed read is not kept: the next product reads the tree again.
       routes['/categories-tree'] = [{ id: 2, children: [{ id: 38, children: [] }] }];
+      respond(get, routes);
       const retried = await adapter.getProduct('ol_product_1');
 
       expect(retried.categoryBreadcrumb).toEqual([
@@ -412,15 +420,6 @@ describe('ShoperProductMasterAdapter', () => {
       expect(product).not.toHaveProperty('categoryBreadcrumb');
     });
 
-    it('should keep the main image when the gallery cannot be read', async () => {
-      const { adapter, get } = setup();
-      respond(get, { '/products/93': buildProduct() });
-
-      const product = await adapter.getProduct('ol_product_1');
-
-      expect(product.images).toEqual([`https://${SHOP_HOST}/userdata/public/gfx/207.png`]);
-    });
-
     it('should keep the main image when the gallery is empty', async () => {
       const { adapter, get } = setup();
       respond(get, { '/products/93': buildProduct(), '/product-images': envelope([]) });
@@ -456,6 +455,98 @@ describe('ShoperProductMasterAdapter', () => {
         ShoperNotMappedException,
       );
       expect(get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('gallery (/product-images)', () => {
+    const gfx = (id: string): string => `https://sklep729770.shoparena.pl/userdata/public/gfx/${id}.jpg`;
+    const GALLERY_93 = [
+      buildImage({ product_id: '93', gfx_id: '314', unic_name: '314', order: '3' }),
+      buildImage({ product_id: '93', gfx_id: '312', unic_name: '312', order: '1', main: 1 }),
+      buildImage({ product_id: '93', gfx_id: '313', unic_name: '313', order: '2' }),
+    ];
+
+    it('should report the whole gallery, main image first, read with one product-filtered request', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ main_image: { unic_name: '312', extension: 'jpg' } }),
+        '/product-images': envelope(GALLERY_93),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314')]);
+      expect(get).toHaveBeenCalledWith(
+        '/product-images',
+        expect.objectContaining({ filters: JSON.stringify({ product_id: 93 }), order: 'gfx_id ASC' }),
+      );
+      expect(get.mock.calls.filter(([path]) => path === '/product-images')).toHaveLength(1);
+    });
+
+    it('should not read the gallery of a product with no main image, which has no image at all', async () => {
+      const { adapter, get } = setup();
+      respond(get, { '/products/93': buildProduct({ main_image: null }) });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toBeNull();
+      expect(get.mock.calls.map((call: unknown[]) => String(call[0]))).not.toContain('/product-images');
+    });
+
+    it('should drop an image of another product if Shoper ignores the filter', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products/93': buildProduct({ main_image: { unic_name: '312', extension: 'jpg' } }),
+        '/product-images': envelope([
+          ...GALLERY_93,
+          buildImage({ product_id: '94', gfx_id: '400', unic_name: '400', order: '0', main: 1 }),
+        ]),
+      });
+
+      const product = await adapter.getProduct('ol_product_1');
+
+      expect(product.images).toEqual([gfx('312'), gfx('313'), gfx('314')]);
+    });
+
+    it('should propagate a failed gallery read instead of syncing the main image alone', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((path: string) =>
+        path === '/products/93'
+          ? Promise.resolve({ status: 200, data: buildProduct() })
+          : Promise.reject(new ShoperNetworkError('connection reset')),
+      );
+
+      await expect(adapter.getProduct('ol_product_1')).rejects.toThrow('connection reset');
+    });
+
+    it('should read a page of products and their galleries in one gallery request', async () => {
+      const { adapter, get } = setup();
+      respond(get, {
+        '/products': envelope([
+          buildProduct({ product_id: '93', main_image: { unic_name: '312', extension: 'jpg' } }),
+          buildProduct({ product_id: '94', main_image: { unic_name: '500', extension: 'jpg' } }),
+          buildProduct({ product_id: '95', main_image: null }),
+        ]),
+        '/product-images': envelope([
+          ...GALLERY_93,
+          buildImage({ product_id: '94', gfx_id: '500', unic_name: '500', main: 1 }),
+        ]),
+      });
+
+      const products = await adapter.getProducts({ limit: 3 });
+
+      expect(products.map((p) => p.images)).toEqual([
+        [gfx('312'), gfx('313'), gfx('314')],
+        [gfx('500')],
+        null,
+      ]);
+      const galleryCalls = (get.mock.calls as Array<[string, unknown]>).filter(
+        ([path]) => path === '/product-images',
+      );
+      expect(galleryCalls).toHaveLength(1);
+      expect(galleryCalls[0][1]).toEqual(
+        expect.objectContaining({ filters: JSON.stringify({ product_id: { in: [93, 94] } }) }),
+      );
     });
   });
 
@@ -847,15 +938,18 @@ describe('ShoperProductMasterAdapter', () => {
 
     it('should serve a window larger than one Shoper page from several pages', async () => {
       const { adapter, get } = setup();
-      get.mockImplementation((_path: string, query: { page: number; limit: number }) =>
+      get.mockImplementation((path: string, query: { page: number; limit: number }) =>
         Promise.resolve({
           status: 200,
-          data: envelope(
-            Array.from({ length: 50 }, (_, i) =>
-              buildProduct({ product_id: String((query.page - 1) * 50 + i + 1) }),
-            ),
-            { count: 200, pages: 4, page: query.page },
-          ),
+          data:
+            path === '/product-images'
+              ? envelope([])
+              : envelope(
+                  Array.from({ length: 50 }, (_, i) =>
+                    buildProduct({ product_id: String((query.page - 1) * 50 + i + 1) }),
+                  ),
+                  { count: 200, pages: 4, page: query.page },
+                ),
         }),
       );
 
@@ -1483,6 +1577,10 @@ describe('ShoperProductMasterAdapter', () => {
       return buildStock({ product_id: id, stock_id: `${id}0` });
     }
 
+    function imageOf(id: string): ShoperProductImage {
+      return buildImage({ product_id: id, gfx_id: `${id}1`, unic_name: `${id}1` });
+    }
+
     /** A shop holding `existing` products, one stock row each, answering both filter forms. */
     function bulkShop(get: jest.Mock, existing: readonly string[]): void {
       const has = new Set(existing);
@@ -1513,6 +1611,20 @@ describe('ShoperProductMasterAdapter', () => {
         if (path === '/product-stocks') {
           const id = String(query['filters[product_id]']);
           return Promise.resolve({ status: 200, data: envelope(has.has(id) ? [stockOf(id)] : []) });
+        }
+        if (path === '/product-images') {
+          const filter = JSON.parse(query.filters ?? '{}') as {
+            product_id: number | { in: number[] };
+          };
+          const ids =
+            typeof filter.product_id === 'number' ? [String(filter.product_id)] : inIds();
+          const rows = ids.filter((id) => has.has(id)).map(imageOf);
+          const page = query.page ?? 1;
+          const pages = Math.max(1, Math.ceil(rows.length / 50));
+          return Promise.resolve({
+            status: 200,
+            data: envelope(rows.slice((page - 1) * 50, page * 50), { pages, page }),
+          });
         }
         const single = /^\/products\/(\d+)$/.exec(path);
         if (single !== null) {
@@ -1563,8 +1675,9 @@ describe('ShoperProductMasterAdapter', () => {
         .filter(([p]) => p === '/products')
         .map(([, q]) => (JSON.parse(String(q.filters)) as InFilter).product_id.in);
       expect(productFilters.map((chunk) => chunk.length)).toEqual([50, 50, 20]);
-      // One stock row per product, so each chunk's stocks fit one page.
+      // One stock row and one image per product, so each chunk fits one page.
       expect(callsTo(get, '/product-stocks')).toBe(3);
+      expect(callsTo(get, '/product-images')).toBe(3);
 
       get.mockClear();
       for (const id of ids) {
@@ -1572,11 +1685,7 @@ describe('ShoperProductMasterAdapter', () => {
         await adapter.getProductVariants(`ol_${id}`);
         await adapter.readProductTaxRate({ productId: `ol_${id}` });
       }
-      // The product and its stocks come from the warm copies; only the
-      // per-product gallery read still reaches the shop.
-      expect((get.mock.calls as Array<[string]>).filter(([p]) => p !== '/product-images')).toEqual(
-        [],
-      );
+      expect(get).not.toHaveBeenCalled();
     });
 
     it('should leave a product the shop did not return unwarmed, so its own read reports the deletion', async () => {
@@ -1590,8 +1699,7 @@ describe('ShoperProductMasterAdapter', () => {
       await expect(adapter.getProduct('ol_3')).rejects.toBeInstanceOf(MasterProductNotFoundError);
       expect(get).toHaveBeenCalledWith('/products/3');
       await expect(adapter.getProduct('ol_1')).resolves.toMatchObject({ id: 'ol_1' });
-      expect(callsTo(get, '/products/3')).toBe(1);
-      expect(callsTo(get, '/products/1')).toBe(0);
+      expect(get).toHaveBeenCalledTimes(1);
     });
 
     it('should not ask for stocks when the shop returned none of the products', async () => {
