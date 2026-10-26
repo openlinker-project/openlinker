@@ -13,6 +13,7 @@
  * @see {@link IProductsService} for cross-context product reads (#718)
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
 import {
   coverImageUrl,
   IProductsService,
@@ -35,13 +36,22 @@ import {
   INVENTORY_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
+  RESERVATION_REPOSITORY_TOKEN,
 } from '../../inventory.tokens';
 import { IAvailabilityService } from './availability.service.interface';
 import { ILocationService } from './location.service.interface';
 import { SYSTEM_CONNECTION_ID } from './inventory.service';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
+import { ReservationRepositoryPort } from '../../domain/ports/reservation-repository.port';
 import { ReservationLedgerReaderPort } from '../../domain/ports/reservation-ledger-reader.port';
 import type { LocatedReservedSum } from '../../domain/ports/reservation-ledger-reader.port';
+import {
+  MAX_STOCK_VIEW_VARIANT_IDS,
+  STOCK_VIEW_HOLDS_PER_VARIANT,
+  type GetStockViewInput,
+  type StockViewHold,
+  type VariantStockView,
+} from '../../domain/types/stock-view.types';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
 import {
   LEGACY_SOURCE_CONNECTION_ID,
@@ -122,6 +132,8 @@ async function runWithConcurrency<T>(
 
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
+  private readonly logger = new Logger(InventoryQueryService.name);
+
   constructor(
     @Inject(INVENTORY_REPOSITORY_TOKEN)
     private readonly inventoryRepository: InventoryRepositoryPort,
@@ -136,7 +148,9 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(SYNC_CURSORS_SERVICE_TOKEN)
     private readonly cursors: ISyncCursorsService,
     @Inject(RESERVATION_LEDGER_READER_TOKEN)
-    private readonly reservationLedger: ReservationLedgerReaderPort
+    private readonly reservationLedger: ReservationLedgerReaderPort,
+    @Inject(RESERVATION_REPOSITORY_TOKEN)
+    private readonly reservations: ReservationRepositoryPort
   ) {}
 
   async listInventoryItems(
@@ -187,6 +201,142 @@ export class InventoryQueryService implements IInventoryQueryService {
         availableToPromise: atpById.get(id) ?? null,
       };
     });
+  }
+
+  async getStockViewByVariantIds(input: GetStockViewInput): Promise<readonly VariantStockView[]> {
+    const { variantIds, staleSyncThresholdMs } = input;
+    const now = input.now ?? new Date();
+    if (variantIds.length === 0) return [];
+    if (variantIds.length > MAX_STOCK_VIEW_VARIANT_IDS) {
+      throw new Error(
+        `getStockViewByVariantIds accepts at most ${String(MAX_STOCK_VIEW_VARIANT_IDS)} variantIds per call (got ${String(variantIds.length)})`
+      );
+    }
+
+    const scope = { kind: 'global' } as const;
+    const [positions, promisable, held, holds] = await Promise.all([
+      this.inventoryRepository.findPositionsByVariantIds(variantIds),
+      this.availabilityService.getPromisableQuantities({ variantIds, scope, now }),
+      this.readHeldSplit(variantIds),
+      this.readHolds(variantIds),
+    ]);
+
+    // One answer for the whole batch: unknown if the ATP seam OR the ledger
+    // split could not be read. `getPromisableQuantities` is already batch-wide
+    // unknown on its own failures, so checking any entry is checking all.
+    const batchUnknown = held === null || promisable.some((p) => p.provenance === 'unknown');
+
+    const positionsByVariant = new Map<string, InventoryItem[]>();
+    for (const position of positions) {
+      if (position.productVariantId === null) continue;
+      const list = positionsByVariant.get(position.productVariantId) ?? [];
+      list.push(position);
+      positionsByVariant.set(position.productVariantId, list);
+    }
+    const atpById = new Map(promisable.map((p) => [p.productVariantId, p]));
+
+    return variantIds.map((id) => {
+      const all = positionsByVariant.get(id) ?? [];
+      const live = all.filter((p) => !p.isStale);
+      const observedAt = live.reduce<Date | null>(
+        (newest, p) => (newest === null || p.updatedAt > newest ? p.updatedAt : newest),
+        null
+      );
+      const stalenessMs = observedAt === null ? null : now.getTime() - observedAt.getTime();
+      const atp = atpById.get(id);
+
+      return {
+        productVariantId: id,
+        masterAvailable: live.reduce((sum, p) => sum + p.availableQuantity, 0),
+        masterReserved: live.reduce((sum, p) => sum + p.reservedQuantity, 0),
+        availableToPromise: batchUnknown ? null : (atp?.quantity ?? null),
+        provenance: batchUnknown ? 'unknown' : (atp?.provenance ?? 'unknown'),
+        observedAt,
+        stalenessMs,
+        olHeldNotReflected: batchUnknown ? null : (atp?.olHeldNotReflected ?? null),
+        heldCounted: batchUnknown || held === null ? null : (held.counted.get(id) ?? 0),
+        heldRecordedOnly: batchUnknown || held === null ? null : (held.recordedOnly.get(id) ?? 0),
+        livePositionCount: live.length,
+        positions: all.map((p) => ({
+          locationId: p.locationId,
+          sourceConnectionId: p.sourceConnectionId,
+          isStale: p.isStale,
+          availableQuantity: p.availableQuantity,
+          reservedQuantity: p.reservedQuantity,
+          updatedAt: p.updatedAt,
+        })),
+        holds: holds === null ? null : (holds.get(id) ?? []),
+        isStaleSync: stalenessMs !== null && stalenessMs > staleSyncThresholdMs,
+      };
+    });
+  }
+
+  /**
+   * The newest live holds per variant, or `null` when they cannot be read -
+   * the chips are display, so a failure degrades them alone and never the
+   * numbers beside them.
+   */
+  private async readHolds(
+    variantIds: readonly string[]
+  ): Promise<ReadonlyMap<string, StockViewHold[]> | null> {
+    try {
+      const rows = await this.reservations.listHeldByVariantIds(
+        variantIds,
+        STOCK_VIEW_HOLDS_PER_VARIANT
+      );
+      const byVariant = new Map<string, StockViewHold[]>();
+      for (const row of rows) {
+        const list = byVariant.get(row.productVariantId) ?? [];
+        list.push({
+          orderRecordId: row.orderRecordId,
+          quantity: row.quantity,
+          atpEffect: row.atpEffect,
+          expiresAt: row.expiresAt,
+          createdAt: row.createdAt,
+        });
+        byVariant.set(row.productVariantId, list);
+      }
+      return byVariant;
+    } catch (error) {
+      this.logger.error(
+        `stock_view_holds_read_failed variants=${String(variantIds.length)} - listing no hold chips`,
+        (error as Error).stack
+      );
+      return null;
+    }
+  }
+
+  /**
+   * The two ledger sums behind `heldCounted` / `heldRecordedOnly`, or `null`
+   * when the ledger cannot be read - never an empty map, which would report a
+   * known zero for holds OpenLinker could not look at.
+   */
+  private async readHeldSplit(variantIds: readonly string[]): Promise<{
+    counted: ReadonlyMap<string, number>;
+    recordedOnly: ReadonlyMap<string, number>;
+  } | null> {
+    try {
+      const scope = { kind: 'global' } as const;
+      const [counted, recordedOnly] = await Promise.all([
+        this.reservationLedger.sumReservedByVariantIds({
+          variantIds,
+          scope,
+          atpEffect: 'published',
+        }),
+        this.reservationLedger.sumReservedByVariantIds({
+          variantIds,
+          scope,
+          atpEffect: 'diagnostic',
+        }),
+      ]);
+      return { counted, recordedOnly };
+    } catch (error) {
+      this.logger.error(
+        `stock_view_ledger_read_failed variants=${String(variantIds.length)} - reporting provenance 'unknown' for the whole batch`,
+        (error as Error).stack
+      );
+      return null;
+    }
   }
 
   async findAvailabilityByVariantIds(

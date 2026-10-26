@@ -244,6 +244,14 @@ export {
   SALE_DECREMENT_POSITION_LOCK_TTL_MS,
 } from './domain/types/inventory-sale-decrement.types';
 export {
+  StockViewPosition,
+  StockViewHold,
+  STOCK_VIEW_HOLDS_PER_VARIANT,
+  VariantStockView,
+  GetStockViewInput,
+  MAX_STOCK_VIEW_VARIANT_IDS,
+} from './domain/types/stock-view.types';
+export {
   AvailabilityScope,
   AvailabilityProvenance,
   AvailabilityProvenanceValues,

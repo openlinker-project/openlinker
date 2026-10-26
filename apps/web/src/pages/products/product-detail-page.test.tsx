@@ -271,7 +271,7 @@ describe('ProductDetailPage', () => {
     expect(within(kpiCard).getByText('-5')).toBeInTheDocument();
   });
 
-  it('should render the variant stock cell as out-of-stock (not low-stock) when available is exactly zero', async () => {
+  it('should render the stock panel as out-of-stock (not low-stock) when available to promise is exactly zero, and no stock column in the listings table', async () => {
     const mockApi = createMockApiClient({
       products: {
         getById: vi.fn().mockResolvedValue(multiVariantProduct),
@@ -280,6 +280,33 @@ describe('ProductDetailPage', () => {
         list: vi.fn().mockResolvedValue(
           paginatedInventory([inventoryItem({ availableQuantity: 0 })]),
         ),
+        stockView: vi.fn().mockResolvedValue({
+          productId: 'ol_product_abc123',
+          productName: 'Test Product',
+          productSku: 'SKU-001',
+          staleSyncThreshold: { hours: 6, ms: 21_600_000, source: 'default' },
+          channelsStatus: 'ok',
+          generatedAt: '2026-01-15T10:00:00.000Z',
+          variants: ['ol_product_var1', 'ol_product_var2'].map((id, index) => ({
+            productVariantId: id,
+            sku: index === 0 ? 'SKU-001-M' : 'SKU-001-L',
+            attributes: {},
+            masterAvailable: 0,
+            masterReserved: 0,
+            availableToPromise: 0,
+            provenance: 'computed',
+            observedAt: '2026-01-15T10:00:00.000Z',
+            stalenessMs: 0,
+            olHeldNotReflected: null,
+            heldCounted: 0,
+            heldRecordedOnly: 0,
+            livePositionCount: 1,
+            isStaleSync: false,
+            positions: [],
+            holds: [],
+            channels: [],
+          })),
+        }),
       },
     });
 
@@ -290,12 +317,13 @@ describe('ProductDetailPage', () => {
       { apiClient: mockApi, route: '/products/ol_product_abc123' },
     );
 
-    await screen.findByText(/SKU-001-M/);
-    const stockCell = container.querySelector('.stock-cell--error, .stock-cell--warning');
-    expect(stockCell).not.toBeNull();
-    expect(stockCell).toHaveClass('stock-cell--error');
-    expect(stockCell).not.toHaveClass('stock-cell--warning');
-    expect(stockCell).toHaveTextContent('0');
+    const atp = await screen.findByTestId('stock-atp-SKU-001-M');
+    await waitFor(() => {
+      expect(atp).toHaveTextContent('Out of stock');
+    });
+    expect(atp).not.toHaveTextContent('Low stock');
+    expect(screen.getByTestId('stock-master-SKU-001-M')).toHaveTextContent('0');
+    expect(container.querySelector('.stock-cell--error, .stock-cell--warning')).toBeNull();
   });
 
   it('should route the description through RichTextView instead of printing its tags (ADR-046)', async () => {

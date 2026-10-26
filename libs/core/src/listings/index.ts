@@ -459,6 +459,10 @@ export type {
   OfferStatusSyncOptions,
 } from './application/services/offer-status-sync.service.interface';
 export type { IOfferStatusReadService } from './application/services/offer-status-read.service.interface';
+export type {
+  IOfferCommercialReadService,
+  ChannelObservedQuantity,
+} from './application/services/offer-commercial-read.service.interface';
 export type { IOfferQuantityAckReconcileService } from './application/services/offer-quantity-ack-reconcile.service.interface';
 export type { IOfferStockRestoreService } from './application/interfaces/offer-stock-restore.service.interface';
 export type {

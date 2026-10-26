@@ -219,6 +219,30 @@ describe('ProductsListPage', () => {
     expect(within(table).getByText('reserved 2')).toBeInTheDocument();
   });
 
+  it('renders the stock badge from available to promise and never shows null as out of stock', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleProducts,
+          items: [
+            { ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' },
+            { ...sampleProducts.items[1]!, totalAvailable: 0, availableToPromise: null, atpProvenance: 'unknown' },
+          ],
+        }),
+      },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const table = screen.getByRole('table');
+    // Master says 40 (would read "In stock"); available to promise is 3.
+    expect(within(table).getByText('Low stock')).toBeInTheDocument();
+    expect(within(table).getByText('master 40')).toBeInTheDocument();
+    expect(within(table).getAllByText('Unknown').length).toBeGreaterThan(0);
+    expect(within(table).queryByText('Out of stock')).toBeNull();
+  });
+
   it('renders coverage pills only for connections the operator has (Allegro-only install)', async () => {
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },

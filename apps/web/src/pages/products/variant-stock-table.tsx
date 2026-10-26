@@ -2,9 +2,8 @@
  * Variant Stock Table (#1752)
  *
  * Full-width variants table for the product-detail Overview tab, rebuilt in the
- * products-cockpit row language: per-variant stock (available / reserved) with
- * an IN STOCK badge, per-channel coverage pills, a "+ Create offer" CTA on
- * listing gaps, master variant price, and an expandable per-variant drawer that
+ * products-cockpit row language: per-channel coverage pills, a "+ Create offer" CTA on
+ * listing gaps, master variant price (stock lives in the stock panel, #3569), and an expandable per-variant drawer that
  * shows rich per-listing detail (status, price, quantity, offer-id link,
  * category, marketplace URL) fetched lazily on expand. Below 640px the table
  * folds into stacked accordion cards.
@@ -20,22 +19,15 @@ import { useListingMarketplaceOfferQuery } from '../../features/listings/hooks/u
 import { useCategoryPathQuery } from '../../features/listings/hooks/use-category-path-query';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
 import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
-import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import { formatTaxRate } from '../../shared/format/format-tax-rate';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { usePlatforms } from '../../shared/plugins';
 import { findPlatformDisplayName, resolvePlatformLabel } from '../../features/mappings';
-import {
-  deriveStockStatus,
-  STOCK_STATUS_BADGE_TONE,
-  STOCK_STATUS_LABEL,
-} from '../../features/products';
 
 interface VariantStockTableProps {
   variants: ProductVariant[];
-  stockByVariant: Map<string, InventoryItem>;
   /** Product currency, used to format the master variant price. */
   currency: string | null;
   /**
@@ -72,7 +64,6 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
           <VariantStockCard
             key={variant.id}
             variant={variant}
-            stock={props.stockByVariant.get(variant.id)}
             currency={props.currency}
             taxRate={{
               productTaxRate: props.productTaxRate ?? null,
@@ -97,7 +88,6 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             <th aria-hidden="true"></th>
             <th>Variant</th>
             <th>Tax rate</th>
-            <th>Stock</th>
             <th>Listings</th>
             <th className="data-table__cell--right">Price</th>
           </tr>
@@ -109,7 +99,6 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
               variant={variant}
               productTaxRate={props.productTaxRate ?? null}
               productTaxRateUnknownReason={props.productTaxRateUnknownReason ?? null}
-              stock={props.stockByVariant.get(variant.id)}
               currency={props.currency}
               connections={props.connections}
               canCreateOffers={props.canCreateOffers}
@@ -175,15 +164,6 @@ function variantMetaLine(variant: ProductVariant): string | null {
     variant.ean ? `EAN ${variant.ean}` : null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;
-}
-
-function stockValueClass(availableQuantity: number): string {
-  const status = deriveStockStatus(availableQuantity);
-  if (status === 'out-of-stock' || status === 'oversold') {
-    return 'variant-stock-table__stock-value stock-cell--error';
-  }
-  if (status === 'low-stock') return 'variant-stock-table__stock-value stock-cell--warning';
-  return 'variant-stock-table__stock-value';
 }
 
 /** One TanStack Query per variant for its listings, plus the count callback. */
@@ -324,13 +304,9 @@ interface InheritedTaxRate {
 
 function VariantMetaGrid({
   variant,
-  available,
-  reserved,
   taxRate,
 }: {
   variant: ProductVariant;
-  available: number;
-  reserved: number;
   taxRate?: InheritedTaxRate;
 }): ReactElement {
   const hasAttrs = variantHasAttributes(variant);
@@ -359,13 +335,6 @@ function VariantMetaGrid({
         <span className="variant-drawer__meta-label">EAN / GTIN</span>
         <span className="variant-drawer__meta-value mono-text">
           {variant.ean ?? variant.gtin ?? '—'}
-        </span>
-      </div>
-      <div className="variant-drawer__meta-cell">
-        <span className="variant-drawer__meta-label">Stock</span>
-        <span className="variant-drawer__meta-value mono-text tabular">
-          {available}
-          <span className="variant-drawer__meta-muted"> / res {reserved}</span>
         </span>
       </div>
       {taxRate ? (
@@ -421,8 +390,6 @@ function ListingsSummary({
  */
 function VariantDetailBody({
   variant,
-  available,
-  reserved,
   connections,
   listings,
   total,
@@ -432,8 +399,6 @@ function VariantDetailBody({
   taxRate,
 }: {
   variant: ProductVariant;
-  available: number;
-  reserved: number;
   connections: readonly Connection[];
   listings: OfferMapping[];
   total: number;
@@ -452,12 +417,7 @@ function VariantDetailBody({
         </div>
       ) : null}
 
-      <VariantMetaGrid
-        variant={variant}
-        available={available}
-        reserved={reserved}
-        taxRate={taxRate}
-      />
+      <VariantMetaGrid variant={variant} taxRate={taxRate} />
 
       <div className="variant-drawer__listings">
         <div className="variant-drawer__label">Listings{total > 0 ? ` (${total})` : ''}</div>
@@ -493,14 +453,12 @@ function VariantDetailBody({
  */
 export function VariantDetailPanel({
   variant,
-  stock,
   productTaxRate,
   productTaxRateUnknownReason,
   connections,
   onListingsCount,
 }: {
   variant: ProductVariant;
-  stock: InventoryItem | undefined;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   connections: readonly Connection[];
@@ -511,8 +469,6 @@ export function VariantDetailPanel({
     <div className="variant-drawer variant-drawer--flush">
       <VariantDetailBody
         variant={variant}
-        available={stock?.availableQuantity ?? 0}
-        reserved={stock?.reservedQuantity ?? 0}
         connections={connections}
         listings={listings}
         total={total}
@@ -628,7 +584,6 @@ function VariantStockRow({
   variant,
   productTaxRate,
   productTaxRateUnknownReason,
-  stock,
   currency,
   connections,
   canCreateOffers,
@@ -638,7 +593,6 @@ function VariantStockRow({
   variant: ProductVariant;
   productTaxRate: string | null;
   productTaxRateUnknownReason?: TaxRateUnknownReason | null;
-  stock: InventoryItem | undefined;
   currency: string | null;
   connections: readonly Connection[];
   canCreateOffers: boolean;
@@ -648,9 +602,6 @@ function VariantStockRow({
   const [isOpen, setOpen] = useState(false);
   const { listings, total, isLoading, isError } = useVariantListings(variant, onListingsCount);
 
-  const available = stock?.availableQuantity ?? 0;
-  const reserved = stock?.reservedQuantity ?? 0;
-  const status = deriveStockStatus(available);
   const meta = variantMetaLine(variant);
 
   return (
@@ -683,17 +634,6 @@ function VariantStockRow({
           />
         </td>
         <td>
-          <span className="variant-stock-table__stock">
-            <span>
-              <span className={stockValueClass(available)}>{available}</span>
-              <span className="variant-stock-table__stock-reserved">/ res {reserved}</span>
-            </span>
-            <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-              {STOCK_STATUS_LABEL[status]}
-            </StatusBadge>
-          </span>
-        </td>
-        <td>
           <VariantCoverage
             listings={listings}
             connections={connections}
@@ -706,14 +646,12 @@ function VariantStockRow({
         </td>
       </tr>
       <tr className={`variant-stock-table__expand-row${isOpen ? ' is-open' : ''}`}>
-        <td colSpan={5}>
+        <td colSpan={4}>
           <div className="variant-stock-table__expand-content">
             <div className="variant-stock-table__expand-content-inner">
               <div className="variant-drawer">
                 <VariantDetailBody
                   variant={variant}
-                  available={available}
-                  reserved={reserved}
                   connections={connections}
                   listings={listings}
                   total={total}
@@ -734,7 +672,6 @@ function VariantStockRow({
 
 function VariantStockCard({
   variant,
-  stock,
   currency,
   taxRate,
   connections,
@@ -743,7 +680,6 @@ function VariantStockCard({
   onListingsCount,
 }: {
   variant: ProductVariant;
-  stock: InventoryItem | undefined;
   currency: string | null;
   taxRate: InheritedTaxRate;
   connections: readonly Connection[];
@@ -754,9 +690,6 @@ function VariantStockCard({
   const [isOpen, setOpen] = useState(false);
   const { listings, total, isLoading, isError } = useVariantListings(variant, onListingsCount);
 
-  const available = stock?.availableQuantity ?? 0;
-  const reserved = stock?.reservedQuantity ?? 0;
-  const status = deriveStockStatus(available);
   const meta = variantMetaLine(variant);
 
   return (
@@ -773,9 +706,6 @@ function VariantStockCard({
           {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
         </span>
         <span className="variant-card__aside">
-          <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-            {STOCK_STATUS_LABEL[status]}
-          </StatusBadge>
           <span className="variant-card__disclosure" aria-hidden="true">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 2l4 4-4 4" />
@@ -786,12 +716,6 @@ function VariantStockCard({
       {isOpen ? (
         <div className="variant-card__body">
           <div className="variant-card__grid">
-            <span className="variant-card__cell">
-              <span className="variant-card__cell-label">Available</span>
-              <span className="variant-card__cell-value">
-                {available} / res {reserved}
-              </span>
-            </span>
             <span className="variant-card__cell">
               <span className="variant-card__cell-label">Price</span>
               <span className="variant-card__cell-value">{formatPrice(variant.price, currency)}</span>
@@ -809,8 +733,6 @@ function VariantStockCard({
           <div className="variant-drawer">
             <VariantDetailBody
               variant={variant}
-              available={available}
-              reserved={reserved}
               connections={connections}
               listings={listings}
               total={total}

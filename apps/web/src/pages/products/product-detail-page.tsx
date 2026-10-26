@@ -14,9 +14,9 @@ import { useProductQuery } from '../../features/products/hooks/use-product-query
 import { ProductGallery } from '../../features/products/components/product-gallery';
 import { ProductSourceSection } from '../../features/products/components/product-source-section';
 import { useInventoryQuery } from '../../features/inventory/hooks/use-inventory-query';
-import { StockHistorySection } from '../../features/inventory';
+import { StockHistorySection, StockPanel } from '../../features/inventory';
 import { useConnectionsQuery, type Connection } from '../../features/connections';
-import { useWriteAccess } from '../../shared/auth/use-permission';
+import { usePermission, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
@@ -70,6 +70,7 @@ export function ProductDetailPage(): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
+  const canAdjustStock = usePermission('inventory:write');
   const [pickerOpen, setPickerOpen] = useState(false);
   const offerCreatorConnections = useMemo<Connection[]>(
     () =>
@@ -120,10 +121,6 @@ export function ProductDetailPage(): ReactElement {
   const product = query.data;
   const variants = product.variants ?? [];
   const inventoryItems = inventoryQuery.data?.items ?? [];
-
-  const stockByVariant = new Map(
-    inventoryItems.filter((item) => item.productVariantId !== null).map((item) => [item.productVariantId as string, item]),
-  );
 
   const totalAvailable = inventoryItems.reduce((sum, item) => sum + item.availableQuantity, 0);
   const oversoldCount = inventoryItems.filter((item) => item.availableQuantity < 0).length;
@@ -305,27 +302,36 @@ export function ProductDetailPage(): ReactElement {
               />
             ) : variants.length === 0 ? (
               <p className="text-muted">No variants found for this product.</p>
-            ) : isSingleVariant ? (
-              <VariantDetailPanel
-                variant={variants[0]!}
-                stock={stockByVariant.get(variants[0]!.id)}
-                productTaxRate={product.taxRate ?? null}
-                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
-                connections={offerCreatorConnections}
-                onListingsCount={handleListingsCount}
-              />
             ) : (
-              <VariantStockTable
-                variants={variants}
-                stockByVariant={stockByVariant}
-                currency={product.currency}
-                productTaxRate={product.taxRate ?? null}
-                productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
-                connections={offerCreatorConnections}
-                canCreateOffers={write.visible}
-                onCreateOffers={handleCreateOffers}
-                onListingsCount={handleListingsCount}
-              />
+              <>
+                <StockPanel
+                  productId={product.id}
+                  variants={variants}
+                  inventoryItems={inventoryItems}
+                  canAdjust={canAdjustStock}
+                />
+                <h4 className="av-subtitle">Listings &amp; prices</h4>
+                {isSingleVariant ? (
+                  <VariantDetailPanel
+                    variant={variants[0]!}
+                    productTaxRate={product.taxRate ?? null}
+                    productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
+                    connections={offerCreatorConnections}
+                    onListingsCount={handleListingsCount}
+                  />
+                ) : (
+                  <VariantStockTable
+                    variants={variants}
+                    currency={product.currency}
+                    productTaxRate={product.taxRate ?? null}
+                    productTaxRateUnknownReason={product.taxRateUnknownReason ?? null}
+                    connections={offerCreatorConnections}
+                    canCreateOffers={write.visible}
+                    onCreateOffers={handleCreateOffers}
+                    onListingsCount={handleListingsCount}
+                  />
+                )}
+              </>
             )}
           </section>
           <StockHistorySection productId={product.id} productName={product.name} variants={variants} />

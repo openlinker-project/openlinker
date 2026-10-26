@@ -21,6 +21,12 @@ export type {
   PaginatedInventory,
   InventoryFilters,
   InventoryPagination,
+  StockView,
+  StockViewVariant,
+  StockViewChannel,
+  StockViewHold,
+  StockViewPosition,
+  StockProvenance,
 } from './api/inventory.types';
 
 export type {
@@ -72,3 +78,9 @@ export { inventoryQueryKeys } from './api/inventory.query-keys';
 
 // #3568 - the product detail page mounts the stock history section.
 export { StockHistorySection, type StockHistoryVariant } from './components/stock-history-section';
+
+// #3569 - the M25 stock panel on the product detail page. `onAdjust` is the
+// seam the correction dialog (M6) mounts behind.
+export { StockPanel, type StockPanelProps, type StockAdjustTarget } from './components/stock-panel';
+export { useStockViewQuery } from './hooks/use-stock-view-query';
+export { deriveAtpStatus, type AtpStatus } from './lib/stock-view';

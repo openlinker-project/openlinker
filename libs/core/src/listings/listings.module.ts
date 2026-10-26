@@ -71,6 +71,7 @@ import { OfferStatusPollService } from './application/services/offer-status-poll
 import { OfferStatusSyncService } from './application/services/offer-status-sync.service';
 import { OfferQuantityAckReconcileService } from './application/services/offer-quantity-ack-reconcile.service';
 import { OfferStatusReadService } from './application/services/offer-status-read.service';
+import { OfferCommercialReadService } from './application/services/offer-commercial-read.service';
 import { OfferStockRestoreService } from './application/services/offer-stock-restore.service';
 import { OfferStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/offer-status-snapshot.orm-entity';
 import { OfferStatusSnapshotRepository } from './infrastructure/persistence/repositories/offer-status-snapshot.repository';
@@ -107,6 +108,7 @@ import {
   OFFER_STATUS_SYNC_SERVICE_TOKEN,
   OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
   OFFER_STATUS_READ_SERVICE_TOKEN,
+  OFFER_COMMERCIAL_READ_SERVICE_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
   OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN,
   SELLER_POLICIES_SERVICE_TOKEN,
@@ -250,6 +252,7 @@ export {
     OfferStatusSyncService,
     OfferQuantityAckReconcileService,
     OfferStatusReadService,
+    OfferCommercialReadService,
     OfferStatusSnapshotRepository,
     OfferCommercialSnapshotRepository,
     SellerPoliciesCacheRepository,
@@ -423,6 +426,10 @@ export {
       useExisting: OfferStatusReadService,
     },
     {
+      provide: OFFER_COMMERCIAL_READ_SERVICE_TOKEN,
+      useExisting: OfferCommercialReadService,
+    },
+    {
       provide: OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
       useExisting: OfferStatusSnapshotRepository,
     },
@@ -506,6 +513,7 @@ export {
     OFFER_STATUS_SYNC_SERVICE_TOKEN,
     OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
     OFFER_STATUS_READ_SERVICE_TOKEN,
+    OFFER_COMMERCIAL_READ_SERVICE_TOKEN,
     SELLER_POLICIES_SERVICE_TOKEN,
     SELLER_POLICIES_CACHE_TOKEN,
     RESPONSIBLE_PRODUCER_SERVICE_TOKEN,

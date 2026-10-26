@@ -26,6 +26,7 @@ export const OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN = Symbol(
   'IOfferQuantityAckReconcileService'
 );
 export const OFFER_STATUS_READ_SERVICE_TOKEN = Symbol('IOfferStatusReadService');
+export const OFFER_COMMERCIAL_READ_SERVICE_TOKEN = Symbol('IOfferCommercialReadService');
 export const OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol('OfferStatusSnapshotRepositoryPort');
 // Channel-side price/quantity snapshot (#2024)
 export const OFFER_COMMERCIAL_SNAPSHOT_REPOSITORY_TOKEN = Symbol(

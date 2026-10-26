@@ -35,6 +35,7 @@ export const OPERATIONAL_SETTING_KEYS = [
   'syncJobRetentionDays',
   'syncJobDeadRetentionDays',
   'inventoryMovementRetentionDays',
+  'stockStaleSyncThresholdHours',
 ] as const;
 
 export type OperationalSettingKey = (typeof OPERATIONAL_SETTING_KEYS)[number];
@@ -199,6 +200,21 @@ export const OPERATIONAL_SETTING_BOUNDS: Readonly<
     default: 365,
     envVar: 'OL_INVENTORY_MOVEMENT_RETENTION_DAYS',
   },
+  // #3621: how old a stock observation may get before the stock view calls it
+  // "Stale". The master's quantity is a mirror rewritten by every sync, so the
+  // age of the newest observation is the only honest statement of how far the
+  // number may have drifted. Advisory above 48 h: a view that tolerates two
+  // days of silence stops flagging a dead sync.
+  stockStaleSyncThresholdHours: {
+    min: 1,
+    recommendedMax: 48,
+    recommendedReason:
+      'How long a stock figure may go without a fresh read from the master before the stock view flags it as stale. Beyond two days the flag stops catching a sync that has quietly died.',
+    absoluteMax: 168,
+    absoluteReason: 'One week - past that the flag would never fire on a sync that stopped last weekend.',
+    default: 6,
+    envVar: 'OL_STOCK_STALE_SYNC_THRESHOLD_HOURS',
+  },
 };
 
 /** Hourly - the cadence `CORE_CAPABILITY_TASKS` ships for `master.product.reconcile`. */
@@ -280,6 +296,8 @@ export interface OperationalSettingsView {
   readonly syncJobDeadRetentionDays: ResolvedOperationalNumber;
   /** Days an `inventory_movements` ledger row is kept before the retention prune deletes it (#3565). */
   readonly inventoryMovementRetentionDays: ResolvedOperationalNumber;
+  /** Hours a stock observation may age before the stock view flags it stale (#3621). */
+  readonly stockStaleSyncThresholdHours: ResolvedOperationalNumber;
   readonly deletionAuditCadence: ResolvedOperationalSetting<string>;
   /**
    * How often each sweep runs (#2660 review).
@@ -330,6 +348,7 @@ export interface OperationalSettingsInput {
   readonly syncJobRetentionDays?: number | null;
   readonly syncJobDeadRetentionDays?: number | null;
   readonly inventoryMovementRetentionDays?: number | null;
+  readonly stockStaleSyncThresholdHours?: number | null;
   readonly deletionAuditCadence?: string | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.

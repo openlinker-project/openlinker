@@ -20,8 +20,12 @@ import type {
 } from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
-import { INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
-import type { IInventoryQueryService } from '@openlinker/core/inventory';
+import { AVAILABILITY_SERVICE_TOKEN, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
+import type {
+  IAvailabilityService,
+  IInventoryQueryService,
+  PromisableQuantity,
+} from '@openlinker/core/inventory';
 import { OFFER_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
 import type { IOfferMappingsService } from '@openlinker/core/listings';
 import { SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN } from '@openlinker/core/listings';
@@ -97,11 +101,22 @@ function createMockInventoryQuery(): jest.Mocked<IInventoryQueryService> {
     findAvailabilityByVariantIds: jest.fn(),
     findBinCodesByVariantIds: jest.fn(),
     getProductStockAggregates: jest.fn(),
+    getStockViewByVariantIds: jest.fn(),
     // Unused here — the mock satisfies the full IInventoryQueryService shape (#2319, #3240).
     getDuplicatePositionReport: jest.fn(),
     getProvenanceBackfillStatus: jest.fn(),
     resolveStockOwner: jest.fn(),
     listPublishedReservedByLocation: jest.fn(),
+  };
+}
+
+function createMockAvailability(): jest.Mocked<IAvailabilityService> {
+  return {
+    getPromisableQuantities: jest.fn(),
+    applyPublishControls: jest.fn(),
+    applyPublishControlsBatch: jest.fn(),
+    getAppliedReserve: jest.fn(),
+    getAppliedControls: jest.fn(),
   };
 }
 
@@ -158,6 +173,7 @@ describe('ProductsController', () => {
   let productsService: jest.Mocked<IProductsService>;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
   let inventoryQuery: jest.Mocked<IInventoryQueryService>;
+  let availability: jest.Mocked<IAvailabilityService>;
   let offerMappings: jest.Mocked<IOfferMappingsService>;
   let shopProductMappings: jest.Mocked<IShopProductMappingsService>;
   let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
@@ -166,6 +182,7 @@ describe('ProductsController', () => {
     const mockProductsService = createMockProductsService();
     const mockIdentifierMapping = createMockIdentifierMapping();
     const mockInventoryQuery = createMockInventoryQuery();
+    const mockAvailability = createMockAvailability();
     const mockOfferMappings = createMockOfferMappings();
     const mockShopProductMappings = createMockShopProductMappings();
     const mockTaxRateJournal = createMockTaxRateJournal();
@@ -176,6 +193,7 @@ describe('ProductsController', () => {
         { provide: PRODUCTS_SERVICE_TOKEN, useValue: mockProductsService },
         { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: mockIdentifierMapping },
         { provide: INVENTORY_QUERY_SERVICE_TOKEN, useValue: mockInventoryQuery },
+        { provide: AVAILABILITY_SERVICE_TOKEN, useValue: mockAvailability },
         { provide: OFFER_MAPPINGS_SERVICE_TOKEN, useValue: mockOfferMappings },
         { provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN, useValue: mockShopProductMappings },
         { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: mockTaxRateJournal },
@@ -191,6 +209,7 @@ describe('ProductsController', () => {
     productsService = module.get(PRODUCTS_SERVICE_TOKEN);
     identifierMapping = module.get(IDENTIFIER_MAPPING_SERVICE_TOKEN);
     inventoryQuery = module.get(INVENTORY_QUERY_SERVICE_TOKEN);
+    availability = module.get(AVAILABILITY_SERVICE_TOKEN);
     offerMappings = module.get(OFFER_MAPPINGS_SERVICE_TOKEN);
     shopProductMappings = module.get(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN);
     taxRateJournal = module.get(TAX_RATE_JOURNAL_SERVICE_TOKEN);
@@ -206,6 +225,8 @@ describe('ProductsController', () => {
     productsService.getVariantCountsByProductIds.mockResolvedValue(new Map());
     productsService.getStaleVariantCountsByProductIds.mockResolvedValue(new Map());
     identifierMapping.getExternalIds.mockResolvedValue([]);
+    productsService.getVariantsByProductIds.mockResolvedValue([]);
+    availability.getPromisableQuantities.mockResolvedValue([]);
   });
 
   describe('listProducts', () => {
@@ -389,6 +410,107 @@ describe('ProductsController', () => {
       expect(item.externalIds).toEqual([
         { externalId: '42', platformType: 'prestashop', connectionId: 'conn-src' },
       ]);
+    });
+
+    describe('available-to-promise column (#3621)', () => {
+      const atp = (
+        id: string,
+        quantity: number | null,
+        provenance: 'computed' | 'unknown' = 'computed'
+      ): PromisableQuantity => ({
+        productVariantId: id,
+        quantity,
+        provenance,
+        observedAt: null,
+        stalenessMs: null,
+        olHeldNotReflected: null,
+      });
+
+      it('should sum variant ATP into the product with ONE batched read for the page', async () => {
+        productsService.listProducts.mockResolvedValue({
+          items: [makeProduct(), makeProduct({ id: 'ol_product_2' })],
+          total: 2,
+        });
+        productsService.getVariantsByProductIds.mockResolvedValue([
+          makeVariant({ id: 'v1', productId: 'ol_product_1' }),
+          makeVariant({ id: 'v2', productId: 'ol_product_1' }),
+          makeVariant({ id: 'v3', productId: 'ol_product_2' }),
+        ]);
+        availability.getPromisableQuantities.mockResolvedValue([
+          atp('v1', 4),
+          atp('v2', 0),
+          atp('v3', 9),
+        ]);
+
+        const result = await controller.listProducts({});
+
+        expect(productsService.getVariantsByProductIds).toHaveBeenCalledTimes(1);
+        expect(availability.getPromisableQuantities).toHaveBeenCalledTimes(1);
+        expect(availability.getPromisableQuantities).toHaveBeenCalledWith({
+          variantIds: ['v1', 'v2', 'v3'],
+          scope: { kind: 'global' },
+        });
+        expect(result.items.map((i) => [i.availableToPromise, i.atpProvenance])).toEqual([
+          [4, 'computed'],
+          [9, 'computed'],
+        ]);
+      });
+
+      it('should chunk the availability read at 200 variants per call', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        const variants = Array.from({ length: 450 }, (_, i) =>
+          makeVariant({ id: `v${String(i)}`, productId: 'ol_product_1' })
+        );
+        productsService.getVariantsByProductIds.mockResolvedValue(variants);
+        availability.getPromisableQuantities.mockImplementation(({ variantIds }) =>
+          Promise.resolve(variantIds.map((id) => atp(id, 1)))
+        );
+
+        const result = await controller.listProducts({});
+
+        expect(availability.getPromisableQuantities.mock.calls.map((c) => c[0].variantIds.length))
+          .toEqual([200, 200, 50]);
+        expect(result.items[0].availableToPromise).toBe(450);
+      });
+
+      it('should report the product unknown, never a partial sum, when any variant is unknown', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        productsService.getVariantsByProductIds.mockResolvedValue([
+          makeVariant({ id: 'v1' }),
+          makeVariant({ id: 'v2' }),
+        ]);
+        availability.getPromisableQuantities.mockResolvedValue([
+          atp('v1', 5),
+          atp('v2', null, 'unknown'),
+        ]);
+
+        const result = await controller.listProducts({});
+
+        expect(result.items[0].availableToPromise).toBeNull();
+        expect(result.items[0].atpProvenance).toBe('unknown');
+      });
+
+      it('should report a product with no variants as unknown rather than zero', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+
+        const result = await controller.listProducts({});
+
+        expect(result.items[0].availableToPromise).toBeNull();
+        expect(result.items[0].atpProvenance).toBe('unknown');
+      });
+
+      it('should degrade the page to unknown instead of failing the list when the read throws', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        productsService.getVariantsByProductIds.mockRejectedValue(new Error('db down'));
+
+        const result = await controller.listProducts({});
+
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0].availableToPromise).toBeNull();
+        expect(result.items[0].atpProvenance).toBe('unknown');
+        // The raw master sum is untouched by an ATP failure.
+        expect(result.items[0].totalAvailable).toBe(0);
+      });
     });
 
     it('should zero-fill enrichment when a product has no aggregates, coverage, or variants (#1720)', async () => {

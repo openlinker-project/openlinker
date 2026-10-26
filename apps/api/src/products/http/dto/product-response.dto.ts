@@ -117,6 +117,23 @@ export class ProductResponseDto {
   totalAvailable?: number;
 
   @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Units OpenLinker will promise for the product (#3621, list only): the sum of its variants\' global-scope available-to-promise, ' +
+      'net of published reservation holds and with NO per-channel buffer applied. null means OpenLinker could not determine it ' +
+      '(any variant unknown, or the product has no variants) and is NEVER a zero. Independent of totalAvailable, which is the raw master sum.',
+  })
+  availableToPromise?: number | null;
+
+  @ApiPropertyOptional({
+    enum: ['computed', 'authority', 'unknown'],
+    description:
+      'Where availableToPromise came from (#3621, list only). unknown is paired with a null availableToPromise.',
+  })
+  atpProvenance?: 'computed' | 'authority' | 'unknown';
+
+  @ApiPropertyOptional({
     description: 'Total reserved quantity summed across the product inventory rows (#1720, list only)',
   })
   totalReserved?: number;

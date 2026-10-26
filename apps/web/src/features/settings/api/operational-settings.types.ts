@@ -39,6 +39,7 @@ export const OPERATIONAL_SETTING_KEYS = [
   'syncJobRetentionDays',
   'syncJobDeadRetentionDays',
   'inventoryMovementRetentionDays',
+  'stockStaleSyncThresholdHours',
 ] as const;
 
 export type OperationalSettingKey = (typeof OPERATIONAL_SETTING_KEYS)[number];
@@ -112,6 +113,8 @@ export interface OperationalSettingsView {
    * a page without the section rather than a thrown render.
    */
   inventoryMovementRetentionDays?: ResolvedNumberSetting;
+  /** Hours a stock observation may age before the stock view flags it stale (#3621). */
+  stockStaleSyncThresholdHours: ResolvedNumberSetting;
   deletionAuditCadence: ResolvedCadenceSetting;
   /**
    * How often each sweep runs. Read-only — there is no input for either.
@@ -152,6 +155,7 @@ export interface UpdateOperationalSettingsInput {
   syncJobRetentionDays?: number | null;
   syncJobDeadRetentionDays?: number | null;
   inventoryMovementRetentionDays?: number | null;
+  stockStaleSyncThresholdHours?: number | null;
   deletionAuditCadence?: string | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.
