@@ -47,6 +47,10 @@ export class ShipmentQueryService implements IShipmentQueryService {
     return this.shipments.findActiveByOrderId(orderId, 'outbound');
   }
 
+  async getOutboundByOrderId(orderId: string): Promise<readonly Shipment[]> {
+    return this.shipments.findByOrderId(orderId, 'outbound');
+  }
+
   /**
    * The contract — batching, the absent-vs-empty convention and why `direction`
    * is required — is documented once on

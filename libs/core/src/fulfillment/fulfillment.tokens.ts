@@ -107,3 +107,8 @@ export const FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN = Symbol(
 export const FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN = Symbol(
   'IFulfillmentRelayReconcileService'
 );
+
+/** Operator order cancel (#3540). `FulfillmentOrderCancellationService` binds here. */
+export const FULFILLMENT_ORDER_CANCELLATION_SERVICE_TOKEN = Symbol(
+  'IFulfillmentOrderCancellationService'
+);
