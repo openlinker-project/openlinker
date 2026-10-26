@@ -137,6 +137,10 @@ export interface OrderDiscountProposalEntry {
   readonly amount: string | null;
   /** Corrections: the document being corrected. */
   readonly invoiceRecordId: string | null;
+  /** Corrections: the document's number, as persisted when the proposal was drafted. */
+  readonly documentNumber: string | null;
+  /** Corrections: the repriced lines, as persisted, so a reloaded page can still show them. */
+  readonly lines: readonly DiscountCorrectionLine[] | null;
 }
 
 /**

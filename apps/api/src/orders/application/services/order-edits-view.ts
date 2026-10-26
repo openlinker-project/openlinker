@@ -21,6 +21,7 @@ import {
 } from '@openlinker/core/orders';
 
 import type {
+  DiscountCorrectionLine,
   OrderDiscountProposalEntry,
   OrderEditHistoryEntry,
   OrderEditsLineView,
@@ -29,6 +30,29 @@ import type {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** The persisted repriced lines of a correction proposal; malformed entries are dropped. */
+export function readDiscountCorrectionLines(value: unknown): DiscountCorrectionLine[] | null {
+  if (!Array.isArray(value)) return null;
+  const lines: DiscountCorrectionLine[] = [];
+  for (const raw of value) {
+    if (
+      isRecord(raw) &&
+      typeof raw.originalLineNumber === 'number' &&
+      typeof raw.name === 'string' &&
+      typeof raw.previousUnitPriceGross === 'number' &&
+      typeof raw.newUnitPriceGross === 'number'
+    ) {
+      lines.push({
+        originalLineNumber: raw.originalLineNumber,
+        name: raw.name,
+        previousUnitPriceGross: raw.previousUnitPriceGross,
+        newUnitPriceGross: raw.newUnitPriceGross,
+      });
+    }
+  }
+  return lines;
 }
 
 function readString(value: unknown): string | null {
@@ -81,6 +105,12 @@ export function buildDiscountProposals(changes: readonly OrderChange[]): OrderDi
       amount: change.kind === 'order.discount_refund' ? readString(payload.amount) : null,
       invoiceRecordId:
         change.kind === 'order.discount_correction' ? readString(payload.invoiceRecordId) : null,
+      documentNumber:
+        change.kind === 'order.discount_correction' ? readString(payload.documentNumber) : null,
+      lines:
+        change.kind === 'order.discount_correction'
+          ? readDiscountCorrectionLines(payload.lines)
+          : null,
     });
   }
   return out;

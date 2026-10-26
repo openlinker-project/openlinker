@@ -178,6 +178,7 @@ import type {
   ConfirmOrderChangeResult,
 } from '../application/types/order-cancellation.types';
 import { OrderChangeResponseDto } from './dto/order-change-response.dto';
+import { readDiscountCorrectionLines } from '../application/services/order-edits-view';
 import { CancelOrderRequestDto, ConfirmOrderChangeRequestDto } from './dto/cancel-order-request.dto';
 import type {
   CancelCorrectionProposalLineDto} from './dto/cancel-order-response.dto';
@@ -1639,6 +1640,8 @@ export class OrdersController {
     const raw = change.payload ?? {};
     const isCancel = change.kind === 'order.cancel_request';
     const isCorrection = change.kind === 'order.cancel_correction';
+    const isDiscountCorrection = change.kind === 'order.discount_correction';
+    const isDiscountRefund = change.kind === 'order.discount_refund';
     const rawLines = Array.isArray(raw['lines']) ? (raw['lines'] as unknown[]) : [];
     return {
       id: change.id,
@@ -1666,6 +1669,23 @@ export class OrdersController {
                   typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
                 currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
                 lines: rawLines as CancelCorrectionProposalLineDto[],
+              }
+            : null,
+        discountCorrection:
+          isDiscountCorrection && typeof raw['invoiceRecordId'] === 'string'
+            ? {
+                invoiceRecordId: raw['invoiceRecordId'],
+                documentNumber:
+                  typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
+                lines: readDiscountCorrectionLines(raw['lines']) ?? [],
+              }
+            : null,
+        discountRefund:
+          isDiscountRefund && typeof raw['amount'] === 'string'
+            ? {
+                amount: raw['amount'],
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
               }
             : null,
       },

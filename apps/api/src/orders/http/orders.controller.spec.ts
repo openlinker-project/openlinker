@@ -1807,7 +1807,12 @@ describe('OrdersController', () => {
         kind: 'order.cancel_request',
         open: true,
         confirmedAt: null,
-        payload: { cancelRequest: { reason: 'buyer-request', note: 'Called us' }, correction: null },
+        payload: {
+          cancelRequest: { reason: 'buyer-request', note: 'Called us' },
+          correction: null,
+          discountCorrection: null,
+          discountRefund: null,
+        },
       });
     });
 
@@ -1842,6 +1847,64 @@ describe('OrdersController', () => {
         currency: 'PLN',
         lines: [{ originalLineNumber: 1, name: 'Mug', previousQuantity: 2, newQuantity: 0 }],
       });
+    });
+  });
+
+  describe('listOrderChanges discount proposals (#3543)', () => {
+    const change = (overrides: Record<string, unknown>) =>
+      ({
+        id: 'change-d',
+        internalOrderId: 'ol_order_001',
+        status: 'requested',
+        requestedAt: new Date('2026-09-25T11:02:00.000Z'),
+        terminalisedAt: null,
+        declinedReason: null,
+        ...overrides,
+      }) as never;
+
+    it('should carry the repriced lines, document number and invoice id of a discount correction', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      const lines = [
+        { originalLineNumber: 1, name: 'Mug', previousUnitPriceGross: 39, newUnitPriceGross: 36 },
+      ];
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            kind: 'order.discount_correction',
+            payload: { invoiceRecordId: 'inv_1', documentNumber: 'FV/1', currency: 'PLN', lines },
+          }),
+          open: true,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.payload.discountCorrection).toEqual({
+        invoiceRecordId: 'inv_1',
+        documentNumber: 'FV/1',
+        currency: 'PLN',
+        lines,
+      });
+      expect(row.payload.correction).toBeNull();
+      expect(row.payload.discountRefund).toBeNull();
+    });
+
+    it('should carry the amount and currency of a discount refund intent', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            kind: 'order.discount_refund',
+            payload: { amount: '15.00', currency: 'PLN' },
+          }),
+          open: true,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.payload.discountRefund).toEqual({ amount: '15.00', currency: 'PLN' });
+      expect(row.payload.discountCorrection).toBeNull();
     });
   });
 
