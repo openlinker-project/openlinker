@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StockMovementsTable } from './stock-movements-table';
 import type { InventoryMovementRow } from '../api/inventory-movements.types';
 
@@ -46,7 +46,47 @@ function renderTable(rows: InventoryMovementRow[], layout: 'variant' | 'global' 
 }
 
 describe('StockMovementsTable', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('should label an order link with the order number and keep the id out of the text', () => {
+    renderTable([row({ sourceLabel: 'ORD-1042' })]);
+    const link = screen.getByRole('link', { name: 'ORD-1042' });
+    expect(link).toHaveAttribute('href', '/orders/ol_order_1');
+    expect(screen.queryByText('ol_order_1')).not.toBeInTheDocument();
+  });
+
+  it('should label a return link with the return number or fall back to Return', () => {
+    renderTable([row({ sourceKind: 'return', sourceRef: 'ol_return_9', sourceLabel: 'RET-7' })]);
+    expect(screen.getByRole('link', { name: 'RET-7' })).toHaveAttribute('href', '/returns/ol_return_9');
+    cleanup();
+    renderTable([row({ sourceKind: 'return', sourceRef: 'ol_return_9' })]);
+    const fallback = screen.getByRole('link', { name: 'Return' });
+    expect(fallback).toHaveAttribute('title', 'ol_return_9');
+  });
+
+  it('should carry the row test ids on mobile cards and the list root', () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: query.includes('max-width'),
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+    renderTable([row({ status: 'refused' })]);
+    expect(screen.getByTestId('stock-movements-table').tagName).toBe('UL');
+    const card = screen.getByTestId('stock-movement-row');
+    expect(card).toHaveAttribute('data-movement-type', 'sale');
+    expect(card).toHaveAttribute('data-movement-status', 'refused');
+  });
 
   it('should render an applied sale with delta, before and after and a linked order', () => {
     renderTable([row()]);
@@ -55,7 +95,7 @@ describe('StockMovementsTable', () => {
     expect(tr).toHaveAttribute('data-movement-status', 'applied');
     expect(within(tr).getByTestId('stock-movement-delta')).toHaveTextContent('-3');
     expect(within(tr).getByTestId('stock-movement-after')).toHaveTextContent('39');
-    expect(within(tr).getByRole('link', { name: 'ol_order_1' })).toHaveAttribute('href', '/orders/ol_order_1');
+    expect(within(tr).getByRole('link', { name: 'Order' })).toHaveAttribute('href', '/orders/ol_order_1');
     expect(within(tr).getByText('Sklep Gorski')).toBeInTheDocument();
   });
 
