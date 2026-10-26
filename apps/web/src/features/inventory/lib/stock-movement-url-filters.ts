@@ -24,6 +24,8 @@ export interface MovementUrlState {
   to: string;
   chip: MovementChip;
   productVariantId: string;
+  /** Scopes the list to one product (the stock panel's multi-variant link). */
+  productId: string;
   offset: number;
 }
 
@@ -43,6 +45,7 @@ export function readMovementUrlState(params: URLSearchParams): MovementUrlState 
     to: DATE_PATTERN.test(to) ? to : '',
     chip: chip === 'attention' || chip === 'promised' ? chip : 'all',
     productVariantId: params.get('productVariantId') ?? '',
+    productId: params.get('productId') ?? '',
     offset: Number.isInteger(offset) && offset > 0 ? offset : 0,
   };
 }
@@ -51,7 +54,12 @@ function isReason(value: string): value is InventoryMovementReason {
   return (InventoryMovementReasonValues as readonly string[]).includes(value);
 }
 
-/** True when anything narrows the list (what "Clear filters" would undo). */
+/**
+ * True when a filter the operator set narrows the list (what "Clear filters"
+ * would undo). The product / variant scope is NOT one: it comes from the link
+ * they followed, so an empty scoped list says "none recorded yet", not "your
+ * filters match nothing".
+ */
 export function hasActiveMovementFilters(state: MovementUrlState): boolean {
   return (
     state.search !== '' ||
@@ -59,9 +67,13 @@ export function hasActiveMovementFilters(state: MovementUrlState): boolean {
     state.master !== '' ||
     state.from !== '' ||
     state.to !== '' ||
-    state.chip !== 'all' ||
-    state.productVariantId !== ''
+    state.chip !== 'all'
   );
+}
+
+/** True when the list is scoped to one product or one variant by the URL. */
+export function hasMovementScope(state: MovementUrlState): boolean {
+  return state.productVariantId !== '' || state.productId !== '';
 }
 
 /**
@@ -83,6 +95,7 @@ export function toMovementFilters(state: MovementUrlState): InventoryMovementFil
   const promisedOnly = state.chip === 'promised' || state.type === 'reservation';
   const reason = state.type !== '' && isReason(state.type) ? state.type : undefined;
   return {
+    productId: state.productId || undefined,
     productVariantId: state.productVariantId || undefined,
     reasons: reason ? [reason] : undefined,
     sourceConnectionId: state.master || undefined,

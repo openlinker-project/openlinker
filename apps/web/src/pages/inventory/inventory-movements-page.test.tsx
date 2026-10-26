@@ -1,7 +1,8 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../test/test-utils';
+import type { SessionAdapter } from '../../shared/auth/session-adapter';
+import { createAuthenticatedSessionAdapter, createMockApiClient, renderWithProviders } from '../../test/test-utils';
 import { InventoryMovementsPage } from './inventory-movements-page';
 import type { InventoryMovementRow } from '../../features/inventory/api/inventory-movements.types';
 
@@ -33,6 +34,25 @@ function row(overrides: Partial<InventoryMovementRow> = {}): InventoryMovementRo
   };
 }
 
+function renderMovements(options: {
+  apiClient: ReturnType<typeof createMockApiClient>;
+  route?: string;
+  sessionAdapter?: SessionAdapter;
+}): void {
+  renderWithProviders(<InventoryMovementsPage />, {
+    ...options,
+    sessionAdapter: options.sessionAdapter ?? createAuthenticatedSessionAdapter(),
+  });
+}
+
+const PACKER = createAuthenticatedSessionAdapter({
+  id: 'user_p',
+  username: 'packer',
+  email: 'packer@example.com',
+  role: 'packer',
+  permissions: ['bench:write'],
+});
+
 const page = (items: InventoryMovementRow[]) => ({ items, limit: 20, offset: 0 });
 
 describe('InventoryMovementsPage', () => {
@@ -43,7 +63,7 @@ describe('InventoryMovementsPage', () => {
     const apiClient = createMockApiClient({
       inventory: { listMovements: vi.fn().mockResolvedValue(page([row(), row({ id: 'm2' })])), countMovements },
     });
-    renderWithProviders(<InventoryMovementsPage />, { apiClient });
+    renderMovements({ apiClient });
 
     expect(await screen.findAllByTestId('stock-movement-row')).toHaveLength(2);
     expect(screen.getByTestId('stock-movements-count')).toHaveTextContent('2 results');
@@ -58,7 +78,7 @@ describe('InventoryMovementsPage', () => {
         countMovements: vi.fn().mockReturnValue(new Promise(() => {})),
       },
     });
-    renderWithProviders(<InventoryMovementsPage />, { apiClient });
+    renderMovements({ apiClient });
 
     await screen.findAllByTestId('stock-movement-row');
     expect(screen.getByTestId('stock-movements-count')).toHaveTextContent('20+ results');
@@ -68,7 +88,7 @@ describe('InventoryMovementsPage', () => {
   it('should show the empty state and clear filters', async () => {
     const listMovements = vi.fn().mockResolvedValue(page([]));
     const apiClient = createMockApiClient({ inventory: { listMovements } });
-    renderWithProviders(<InventoryMovementsPage />, { apiClient, route: '/inventory/movements?type=manual_correction' });
+    renderMovements({ apiClient, route: '/inventory/movements?type=manual_correction' });
 
     expect(await screen.findByTestId('stock-movements-empty')).toBeInTheDocument();
     expect(listMovements).toHaveBeenCalledWith(
@@ -87,7 +107,7 @@ describe('InventoryMovementsPage', () => {
   it('should read filters from the URL and write the type filter back to it', async () => {
     const listMovements = vi.fn().mockResolvedValue(page([row()]));
     const apiClient = createMockApiClient({ inventory: { listMovements } });
-    renderWithProviders(<InventoryMovementsPage />, { apiClient, route: '/inventory/movements?from=2026-09-19' });
+    renderMovements({ apiClient, route: '/inventory/movements?from=2026-09-19' });
 
     await screen.findAllByTestId('stock-movement-row');
     expect(screen.getByTestId('stock-movements-filter-from')).toHaveValue('2026-09-19');
@@ -110,7 +130,7 @@ describe('InventoryMovementsPage', () => {
           ),
       },
     });
-    renderWithProviders(<InventoryMovementsPage />, { apiClient, route: '/inventory/movements?chip=attention' });
+    renderMovements({ apiClient, route: '/inventory/movements?chip=attention' });
 
     const alert = await screen.findByTestId('stock-movements-attention-alert');
     expect(alert).toHaveTextContent('2 movements need a look');
@@ -121,12 +141,66 @@ describe('InventoryMovementsPage', () => {
   it('should request only promised rows for the Promised only chip and offer no export', async () => {
     const listMovements = vi.fn().mockResolvedValue(page([]));
     const apiClient = createMockApiClient({ inventory: { listMovements } });
-    renderWithProviders(<InventoryMovementsPage />, { apiClient });
+    renderMovements({ apiClient });
 
     await userEvent.click(await screen.findByTestId('stock-movements-chip-promised'));
     await waitFor(() =>
       expect(listMovements).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'promised' }), expect.anything()),
     );
     expect(screen.queryByRole('button', { name: /export/i })).not.toBeInTheDocument();
+  });
+
+  it('should say a packer has no access, and send no read', async () => {
+    const listMovements = vi.fn();
+    const apiClient = createMockApiClient({ inventory: { listMovements } });
+    renderMovements({ apiClient, sessionAdapter: PACKER });
+
+    expect(await screen.findByText('Stock history is not available for your role')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(listMovements).not.toHaveBeenCalled();
+  });
+
+  it('should pass productId to the API and offer a Show all products escape', async () => {
+    const listMovements = vi.fn().mockResolvedValue(page([row()]));
+    const apiClient = createMockApiClient({ inventory: { listMovements } });
+    renderMovements({ apiClient, route: '/inventory/movements?productId=ol_product_1' });
+
+    await screen.findAllByTestId('stock-movement-row');
+    expect(listMovements).toHaveBeenCalledWith(
+      expect.objectContaining({ productId: 'ol_product_1' }),
+      expect.anything(),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Show all products' }));
+    await waitFor(() =>
+      expect(listMovements).toHaveBeenLastCalledWith(
+        expect.objectContaining({ productId: undefined }),
+        expect.anything(),
+      ),
+    );
+    expect(screen.queryByTestId('stock-movements-scope-product')).not.toBeInTheDocument();
+  });
+
+  it('should say nothing is recorded yet, not that filters match nothing, for a fresh variant', async () => {
+    const apiClient = createMockApiClient({
+      inventory: { listMovements: vi.fn().mockResolvedValue(page([])) },
+    });
+    renderMovements({ apiClient, route: '/inventory/movements?productVariantId=ol_variant_9' });
+
+    expect(await screen.findByTestId('stock-movements-empty')).toHaveTextContent(
+      'No stock movements recorded for this variant yet',
+    );
+    expect(screen.queryByTestId('stock-movements-clear-filters')).not.toBeInTheDocument();
+  });
+
+  it('should push a history entry when a filter changes so Back undoes it', async () => {
+    const apiClient = createMockApiClient({
+      inventory: { listMovements: vi.fn().mockResolvedValue(page([row()])) },
+    });
+    renderMovements({ apiClient });
+    await screen.findAllByTestId('stock-movement-row');
+    const before = window.history.length;
+
+    await userEvent.click(screen.getByTestId('stock-movements-chip-attention'));
+    await waitFor(() => expect(window.history.length).toBe(before + 1));
   });
 });
