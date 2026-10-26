@@ -144,6 +144,8 @@ export {
   isMissingNumberingSeriesError,
   isConnectionSetupIncompleteError,
   isConnectionSettingError,
+  readConnectionSettingErrorCode,
+  type ConnectionSettingFailureCode,
   isCapabilityDisabledError,
   resolveIssueErrorMessage,
   readAcknowledgementRequest,

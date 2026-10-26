@@ -118,6 +118,16 @@ function makeFiscalRecord(over: Partial<FiscalRegistrationRecord> = {}): FiscalR
 const notFound = (): ApiError =>
   new ApiError('No invoice for order', 404, { message: 'No invoice for order' });
 
+/** The panel's own live region - the one every wait/outcome is announced in. */
+function liveAnnouncement(): string {
+  return (document.querySelector('p.sr-only[role="status"]')?.textContent ?? '').replace(/\u200B$/, '');
+}
+
+/** How many times a sentence appears anywhere in the rendered page. */
+function occurrences(sentence: string): number {
+  return (document.body.textContent ?? '').split(sentence).length - 1;
+}
+
 describe('SalesDocumentPanel — capability gate', () => {
   it('renders nothing when no connection declares Invoicing or Fiscalization', async () => {
     const { container } = renderWithProviders(<SalesDocumentPanel order={order} />, {
@@ -456,6 +466,7 @@ describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
     );
     expect(document.querySelector('.document-headline__word')?.textContent).toContain('Not issued');
     expect(document.querySelector('.toast__title')).toBeNull();
+    expect(liveAnnouncement()).toBe('The connection is missing a setting.');
   });
 
   it('still names the setting after a reload, from the stored record alone', async () => {
@@ -537,6 +548,9 @@ describe('SalesDocumentPanel - provider refused a connection setting', () => {
     expect(screen.queryByText(/Nothing was sent to the provider/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(document.querySelector('.toast__title')).toBeNull();
+    // The screen-reader announcement follows the code like the Alert title
+    // does: the provider REFUSED this setting, it is not missing.
+    expect(liveAnnouncement()).toBe('The provider refused a setting on this connection.');
   });
 
   it('shows the stored provider reason beside the fixed copy of an order-side rejection', async () => {
@@ -561,6 +575,60 @@ describe('SalesDocumentPanel - provider refused a connection setting', () => {
       'Provider response: The provider rejected the document (code 57).',
     );
     expect(screen.queryByTestId('invoice-setup-incomplete')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['connection-setup-incomplete', 'This connection has no seller tax number set. Set it on the connection and re-issue.'],
+    ['connection-setting-rejected', TIN_REASON],
+  ] as const)(
+    'shows the stored reason once when it is the headline (%s)',
+    async (failureCode, reason) => {
+      renderWithProviders(<SalesDocumentPanel order={order} />, {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+          invoicing: {
+            getForOrder: vi.fn().mockResolvedValue(
+              makeInvoice({
+                status: 'failed',
+                failureMode: 'rejected',
+                failureCode,
+                failureReason: reason,
+                providerInvoiceNumber: null,
+              }),
+            ),
+          },
+        }),
+        ...adminSession,
+      });
+      expect(await screen.findByTestId('invoice-setup-incomplete')).toHaveTextContent(reason);
+      expect(screen.queryByTestId('invoice-failure-reason')).not.toBeInTheDocument();
+      expect(occurrences(reason)).toBe(1);
+    },
+  );
+
+  it('does not repeat a stored reason that is word for word the fixed headline', async () => {
+    const HEADLINE =
+      'The provider rejected the document. Check the order’s data, then retry. Nothing was issued.';
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: {
+          getForOrder: vi.fn().mockResolvedValue(
+            makeInvoice({
+              status: 'failed',
+              failureMode: 'rejected',
+              failureCode: 'provider-rejected',
+              failureReason: HEADLINE,
+              providerInvoiceNumber: null,
+            }),
+          ),
+        },
+      }),
+      ...adminSession,
+    });
+    expect(await screen.findByText(HEADLINE)).toBeInTheDocument();
+    expect(screen.queryByTestId('invoice-failure-reason')).not.toBeInTheDocument();
+    expect(occurrences(HEADLINE)).toBe(1);
   });
 });
 
