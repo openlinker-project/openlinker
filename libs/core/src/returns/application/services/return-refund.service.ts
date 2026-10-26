@@ -42,6 +42,15 @@
  * so the refusal path (and only the refusal path) runs one classifying read
  * before raising.
  *
+ * **7. Per-ORDER serialization is the CALLER's (B-1).** The ceiling context this
+ * service checks against is read by the caller, and the refund record that makes
+ * the money visible to the next ceiling read is written by the caller after this
+ * returns. Two returns of one order can therefore both pass unless the caller
+ * holds `IOrderRefundService.runUnderOrderRefundLock` across context read, this
+ * call AND the record write (passing `orderLockHeld` to `recordRefund`, which
+ * must not re-acquire: the lock is not re-entrant). This service takes only the
+ * per-return lock, never the order lock, so the two cannot deadlock.
+ *
  * **An orphan refunds nothing**, asserted through the ONE #2332 seam before
  * anything is written or locked.
  *
@@ -54,6 +63,7 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import {
+  assertRefundAmountPrecision,
   decideRefundCeiling,
   describeRefundCeilingVerdict,
   evaluateRefundCeiling,
@@ -125,6 +135,9 @@ export class ReturnRefundService implements IReturnRefundService {
       // Unreachable past the guard; narrows the type without a non-null assertion.
       throw new ReturnNotFoundError(returnId);
     }
+
+    // R-18: more fraction digits than the currency allows is refused, not rounded.
+    assertRefundAmountPrecision(input.amount, input.currency);
 
     // Enforcement point A (#3289): the order-level ceiling, BEFORE the lock, the
     // claim and the executor - past the claim the money rail has moved, and on

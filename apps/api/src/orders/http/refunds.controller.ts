@@ -24,6 +24,7 @@
  * @module apps/api/src/orders/http
  */
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -42,6 +43,7 @@ import {
   DuplicateRefundRecordException,
   RefundCeilingExceededException,
   RefundCurrencyMismatchException,
+  RefundAmountPrecisionException,
   RefundRecordContendedException,
   IOrderRefundService,
   IOrderRecordService,
@@ -127,6 +129,9 @@ export class RefundsController {
           code: error.code,
           message: error.message,
         });
+      }
+      if (error instanceof RefundAmountPrecisionException) {
+        throw new BadRequestException(error.message);
       }
       if (error instanceof RefundCurrencyMismatchException) {
         throw new ConflictException(error.message);

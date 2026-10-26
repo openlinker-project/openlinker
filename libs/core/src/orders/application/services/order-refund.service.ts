@@ -22,6 +22,7 @@ import { RefundRecordContendedException } from '../../domain/exceptions/refund-r
 import { RefundCurrencyMismatchException } from '../../domain/exceptions/refund-currency-mismatch.exception';
 import { RefundRecordRepositoryPort } from '../../domain/ports/refund-record-repository.port';
 import {
+  assertRefundAmountPrecision,
   describeRefundCeilingVerdict,
   evaluateRefundCeiling,
   REFUND_CEILING_ACKNOWLEDGED_LOG_TOKEN,
@@ -29,7 +30,10 @@ import {
 } from '../../domain/types/refund-ceiling.types';
 import type { CreateRefundRecordInput, RefundSummary } from '../../domain/types/refund-record.types';
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
-import type { IOrderRefundService } from '../interfaces/order-refund.service.interface';
+import type {
+  IOrderRefundService,
+  RecordRefundOptions,
+} from '../interfaces/order-refund.service.interface';
 import { ORDER_REFUND_LOCK_TTL_MS, orderRefundLockKey } from './order-refund-lock';
 import {
   ORDER_RECORD_SERVICE_TOKEN,
@@ -49,37 +53,61 @@ export class OrderRefundService implements IOrderRefundService {
     private readonly lock: SyncLockPort,
   ) {}
 
-  async recordRefund(input: CreateRefundRecordInput): Promise<RefundRecord> {
+  async recordRefund(
+    input: CreateRefundRecordInput,
+    options?: RecordRefundOptions
+  ): Promise<RefundRecord> {
+    assertRefundAmountPrecision(input.amount, input.currency);
+    if (options?.orderLockHeld === true) {
+      return this.recordRefundLocked(input);
+    }
+    return this.runUnderOrderRefundLock(input.internalOrderId, () =>
+      this.recordRefundLocked(input)
+    );
+  }
+
+  async runUnderOrderRefundLock<T>(
+    internalOrderId: string,
+    work: () => Promise<T>
+  ): Promise<T> {
     // The ceiling is a read-then-write, so it is serialized per order (#3289,
     // the #2047 invoice-issue-lock reasoning): unlocked, two concurrent writes
     // both read the old refunded sum and both pass.
-    const lockKey = orderRefundLockKey(input.internalOrderId);
+    const lockKey = orderRefundLockKey(internalOrderId);
     const token = await this.lock.acquire(lockKey, ORDER_REFUND_LOCK_TTL_MS);
     if (token === null) {
-      throw new RefundRecordContendedException(input.internalOrderId);
+      throw new RefundRecordContendedException(internalOrderId);
     }
     try {
-      const existing = await this.refundRepository.findByOrderId(input.internalOrderId);
-      const existingCurrency = existing[0]?.currency;
-      if (existingCurrency && existingCurrency !== input.currency) {
-        throw new RefundCurrencyMismatchException(
-          input.internalOrderId,
-          existingCurrency,
-          input.currency,
-        );
-      }
-
-      await this.enforceRefundCeiling(input);
-
-      const refund = await this.refundRepository.create(input);
-      this.logger.log(
-        `Recorded refund ${refund.id} for order ${input.internalOrderId}: ` +
-          `${input.amount} ${input.currency} (${input.reason})`,
-      );
-      return refund;
+      return await work();
     } finally {
       await this.lock.release(lockKey, token);
     }
+  }
+
+  private async recordRefundLocked(input: CreateRefundRecordInput): Promise<RefundRecord> {
+    const existing = await this.refundRepository.findByOrderId(input.internalOrderId);
+    const existingCurrency = existing[0]?.currency;
+    // Normalised like the ceiling predicate (B-3): "pln" and "PLN" are one currency.
+    if (
+      existingCurrency &&
+      existingCurrency.trim().toUpperCase() !== input.currency.trim().toUpperCase()
+    ) {
+      throw new RefundCurrencyMismatchException(
+        input.internalOrderId,
+        existingCurrency,
+        input.currency
+      );
+    }
+
+    await this.enforceRefundCeiling(input);
+
+    const refund = await this.refundRepository.create(input);
+    this.logger.log(
+      `Recorded refund ${refund.id} for order ${input.internalOrderId}: ` +
+        `${input.amount} ${input.currency} (${input.reason})`
+    );
+    return refund;
   }
 
   /**

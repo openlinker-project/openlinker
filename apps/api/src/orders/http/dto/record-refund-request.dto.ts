@@ -12,10 +12,10 @@ import { RefundReason, RefundReasonValues } from '@openlinker/core/orders';
 
 export class RecordRefundRequestDto {
   /** Decimal string, e.g. "49.99". 0 is valid (a goodwill return, no money moved). */
-  @ApiProperty({ example: '49.99', description: 'Decimal string amount, up to 2 decimal places' })
+  @ApiProperty({ example: '49.99', description: 'Decimal string amount, up to 3 decimal places (the currency limit is enforced by the service)' })
   @IsString()
-  @Matches(/^\d+(\.\d{1,2})?$/, {
-    message: 'amount must be a non-negative decimal string with up to 2 decimal places',
+  @Matches(/^\d+(\.\d{1,3})?$/, {
+    message: 'amount must be a non-negative decimal string with up to 3 decimal places (the currency limit is enforced by the service)',
   })
   amount!: string;
 

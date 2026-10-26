@@ -142,6 +142,33 @@ describe('OrderRefundService', () => {
       );
     });
 
+    it('should not re-acquire the order lock when the caller already holds it (B-1)', async () => {
+      await service.recordRefund({ ...input, amount: '10.00' }, { orderLockHeld: true });
+
+      expect(lock.acquire).not.toHaveBeenCalled();
+      expect(refundRepository.create).toHaveBeenCalled();
+    });
+
+    it('should hold the lock for the whole of runUnderOrderRefundLock and release it after (B-1)', async () => {
+      const result = await service.runUnderOrderRefundLock('ol_order_abc123', () => Promise.resolve('done'));
+
+      expect(result).toBe('done');
+      expect(lock.release).toHaveBeenCalledWith('order:refund:ol_order_abc123', 'tok');
+    });
+
+    it('should treat currencies that differ only by case as the same currency (B-3)', async () => {
+      refundRepository.findByOrderId.mockResolvedValue([{ currency: 'pln' } as never]);
+
+      await expect(service.recordRefund({ ...input, amount: '10.00' })).resolves.toBeDefined();
+    });
+
+    it('should reject an amount with more decimals than the currency allows (R-18)', async () => {
+      await expect(
+        service.recordRefund({ ...input, amount: '10.5', currency: 'JPY' })
+      ).rejects.toMatchObject({ code: 'refund_amount_precision' });
+      expect(refundRepository.create).not.toHaveBeenCalled();
+    });
+
     it('should throw RefundRecordContendedException without writing when the order lock is held', async () => {
       lock.acquire.mockResolvedValue(null);
 
