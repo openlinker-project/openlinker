@@ -137,6 +137,12 @@ export function BulkWizard({
   const connectionsQuery = useConnectionsQuery();
 
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  // Synchronous in-flight latch for the marketplace submit. `mutation.isPending`
+  // cannot do this job: it disables the confirm button only after a re-render,
+  // and a double click delivers its second click before that render, so both
+  // clicks reached `handleSubmit`, each minted its own key, and the backend got
+  // two distinct submissions (two batches, two offers per variant).
+  const submitInFlightRef = useRef(false);
 
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
@@ -477,12 +483,13 @@ export function BulkWizard({
   const handleSubmit = useCallback(
     async (publishImmediately: boolean) => {
       if (!config) return;
+      if (submitInFlightRef.current) return;
 
-      // Fresh idempotency key per confirm-click (#1741 review). A retry after a
-      // partial/failed submit must be a distinct request, otherwise the batch
-      // dedup gate would return the earlier partial batch instead of re-running.
-      // The confirm button is disabled while a submit is in flight, so this can
-      // never split a single deliberate click into two batches.
+      // Fresh idempotency key per deliberate confirm-click (#1741 review). A
+      // retry after a partial/failed submit must be a distinct request,
+      // otherwise the batch dedup gate would return the earlier partial batch
+      // instead of re-running. A second click while a submit is in flight never
+      // gets here (the latch above), so one double click cannot mint two keys.
       idempotencyKeyRef.current = crypto.randomUUID();
 
       // productIds = one primary/seed variant id per product that has >=1
@@ -582,6 +589,7 @@ export function BulkWizard({
         excludedVariantIds,
       };
 
+      submitInFlightRef.current = true;
       try {
         const result = await mutation.mutateAsync({
           idempotencyKey: idempotencyKeyRef.current,
@@ -596,6 +604,8 @@ export function BulkWizard({
         void navigate(`/listings/bulk-batches/${result.batchId}`);
       } catch {
         // Surfaced via mutation.error in the modal.
+      } finally {
+        submitInFlightRef.current = false;
       }
     },
     [config, rows, mutation, navigate, showToast, canGenerateDescription],

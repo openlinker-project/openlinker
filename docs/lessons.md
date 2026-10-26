@@ -46,6 +46,30 @@ document" answer.
 
 ---
 
+## A button disabled while a mutation is pending does not stop a double click - latch synchronously, and make the server honour the key
+
+**Context**: the bulk offer wizard's confirm dialog disabled "Create offers" on
+`mutation.isPending` and told the operator a double submit returns the existing batch.
+
+**Problem**: both halves of that promise were missing. `isPending` disables the button only after a
+re-render, and a double click delivers its second click before that render, so `handleSubmit` ran
+twice. It minted a fresh idempotency key on every call, so the two requests carried different
+keys - and the server never read `x-idempotency-key` at all. Two batches, two Allegro offers per
+variant (Allegro does not deduplicate product-offer creates).
+
+**Rule**: guard a submit handler with a synchronous `useRef` latch set before the first `await`,
+never with render state alone. Mint a per-attempt key only after the latch, so one double click
+cannot mint two. When a UI promises server-side idempotency, check the controller actually reads
+the header and that a unique index (not a read-then-insert) enforces it under a race; a copy line
+is not an implementation.
+
+**Applies to**: `apps/web/src/features/listings/components/bulk/bulk-wizard.tsx`,
+`BulkListingSubmitService`, any submit path that creates marketplace objects.
+
+**Source**: live double-click reproduction on the Shoper/Allegro e2e run, 2026-10-26.
+
+---
+
 ## A wait that sits in front of a request must honour that request's own cancellation
 
 **Context**: `HttpTransportFactory` waits for a rate-limit slot before calling `fetch`.
