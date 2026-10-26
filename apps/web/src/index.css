@@ -24451,6 +24451,14 @@ legend.analytics-settings-dialog__label {
   align-items: center;
 }
 
+/* ── Destination routing (#2703) ───────────────────────────────────────────
+   Same wrapper shape as the hold badge: the reason hint rides on a `title`
+   because `StatusBadge` takes none of its own.                                */
+.order-destination-routing-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
 /* Detail-page panel. Same shape as the packed control it sits beside: the fact
    on the left, the single write affordance on the right, wrapping on narrow
    screens rather than pushing the button off-canvas.                          */

@@ -25,6 +25,20 @@
  * there are none on any install today (no production caller populates
  * `OrderSyncRequest.destinationConnectionIds` yet).
  *
+ * The mismatch with the READ side is deliberate, not an oversight: the count and
+ * the filter match an explicit `IN (...)` list of the attention-worthy reasons
+ * (so a value written by a newer release is not counted), while this index is
+ * `IS NOT NULL`. Postgres can still use it - `reason IN (...)` implies
+ * `reason IS NOT NULL`, so the partial predicate is satisfied - and the index
+ * stays correct however the list is later edited.
+ *
+ * The mismatch with the READ side is deliberate, not an oversight: the count and
+ * the filter match an explicit `IN (...)` list of the attention-worthy reasons
+ * (so a value written by a newer release is not counted), while this index is
+ * `IS NOT NULL`. Postgres can still use it - `reason IN (...)` implies
+ * `reason IS NOT NULL`, so the partial predicate is satisfied - and the index
+ * stays correct however the list is later edited.
+ *
  * The index is declared on the ORM entity as well, because the integration
  * harness builds schema by `synchronize` and a migration-only index would hold
  * in production and silently not in tests.
@@ -36,8 +50,8 @@
  * Each time `main`'s migration tail (checked by `check-migration-timestamps.mjs`
  * against `origin/main`, which cannot see sibling PRs) overtook the number while
  * the PR waited in review. `1937400000000` sits above `main`'s tail
- * (`1937370001000`) AND above the values other open PRs had claimed at the time
- * (`1937370002000`, `1937390000000`). An offset protects against a sibling branch,
+ * (`1937370002000`) AND above the value another open PR had claimed at the time
+ * (`1937390000000`). An offset protects against a sibling branch,
  * not against the branch being outlived by the queue ahead of it; a late-merging
  * migration is renumbered rather than nudged.
  */
