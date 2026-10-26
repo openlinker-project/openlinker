@@ -50,7 +50,7 @@
  * Each time `main`'s migration tail (checked by `check-migration-timestamps.mjs`
  * against `origin/main`, which cannot see sibling PRs) overtook the number while
  * the PR waited in review. `1937405000000` sits above `main`'s tail
- * (`1937390000000`) AND above the value another open PR had claimed at the time
+ * (`1937390001000`) AND above the value another open PR had claimed at the time
  * (`1937400000000`, product-gpsr). An offset protects against a sibling branch,
  * not against the branch being outlived by the queue ahead of it; a late-merging
  * migration is renumbered rather than nudged.
