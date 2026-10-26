@@ -36,6 +36,38 @@ export const OrderWorkStageValues = [
 
 export type OrderWorkStage = (typeof OrderWorkStageValues)[number];
 
+/**
+ * The work statuses that take part in the packing flow (#3482). A work in any
+ * other status - `cancelled`, `incomplete`, or a value outside the union - is
+ * not "live" and makes no order look handled.
+ *
+ * ONE list for both sides of the rule: `stageOfFulfillmentWork` returns `null`
+ * for exactly the statuses absent here (pinned by its spec), and
+ * `OrderRecordRepository` builds its SQL `IN (...)` from this array, so the
+ * health count, the on-bench count and a row's `handledInOpenLinker` cannot
+ * disagree. A POSITIVE list on purpose: an unknown status is excluded in SQL
+ * just as the TypeScript `default` arm excludes it.
+ */
+export const PackingFlowFulfillmentWorkStatusValues = [
+  'open',
+  'scheduled',
+  'on_hold',
+  'in_progress',
+  'closed',
+] as const satisfies readonly FulfillmentWorkStatus[];
+
+/**
+ * The packing-flow statuses of a work still on the pack bench: everything but
+ * `closed`, which is packed. The bench never moves `status`, so a caller must
+ * ALSO require `parcelClosedAt IS NULL` (see `stageOfFulfillmentWork`).
+ */
+export const UnpackedFulfillmentWorkStatusValues = [
+  'open',
+  'scheduled',
+  'on_hold',
+  'in_progress',
+] as const satisfies readonly (typeof PackingFlowFulfillmentWorkStatusValues)[number][];
+
 export interface OrderWorkSummary {
   readonly stage: OrderWorkStage;
   /** How many live works the order has (a split order has several). */

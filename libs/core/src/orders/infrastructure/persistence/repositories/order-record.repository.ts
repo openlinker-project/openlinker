@@ -62,6 +62,8 @@ import {
 } from '../../../domain/types/net-sales-tax-rate.types';
 import {
   isFulfillmentBlockReason,
+  PackingFlowFulfillmentWorkStatusValues,
+  UnpackedFulfillmentWorkStatusValues,
   WaitingFulfillmentBlockReasonValues,
   type FulfillmentBlock,
   type FulfillmentBlockReason,
@@ -1655,6 +1657,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
   /**
+   * `'a', 'b'` for a SQL `IN (...)` over a core value array. The values are
+   * compile-time constants (status / reason literals), never user input, so
+   * inlining them keeps the predicates parameter-free (ADR-036).
+   */
+  private static sqlInList(values: readonly string[]): string {
+    return values.map((value) => `'${value}'`).join(', ');
+  }
+  /**
    * #3482 — the order has a live pack-bench work: OpenLinker handles it itself.
    *
    * A RAW TABLE NAME on purpose — ADR-036's sanctioned escape hatch for a
@@ -1662,13 +1672,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * to the `fulfillment` context, and its ORM entity must not be imported into
    * `orders`). Read-only and parameter-free. Depends on `fulfillment_works`
    * columns `orderId` (leads `IDX_fulfillment_works_grouping`, so this is an
-   * index lookup) and `status`. "Live" = not `cancelled` / `incomplete`, the
-   * same rule as `stageOfFulfillmentWork`, so this matches the row's
-   * `handledInOpenLinker` field exactly.
+   * index lookup) and `status`. "Live" is `PackingFlowFulfillmentWorkStatusValues`,
+   * the same list `stageOfFulfillmentWork` is pinned to, so this agrees with the
+   * row's `handledInOpenLinker` field status by status (an unknown status is out
+   * on both sides).
    */
   private static readonly IS_HANDLED_IN_OPENLINKER =
     `EXISTS (SELECT 1 FROM "fulfillment_works" fw WHERE fw."orderId" = rec."internalOrderId" ` +
-    `AND fw."status" NOT IN ('cancelled', 'incomplete'))`;
+    `AND fw."status" IN (${OrderRecordRepository.sqlInList(PackingFlowFulfillmentWorkStatusValues)}))`;
   /**
    * The `synced` side of the health partition (#3482).
    *
@@ -1684,20 +1695,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `AND rec."fulfillmentState" IN ('dispatched', 'delivered')))`;
   /**
    * #3482 — a live pack-bench work whose box is not shut: To pack or Packing.
-   * ADR-036 raw read as above; also depends on `parcelClosedAt`. `closed` is
-   * excluded with the terminal statuses because a closed work is packed.
+   * ADR-036 raw read as above; also depends on `parcelClosedAt`. The statuses are
+   * `UnpackedFulfillmentWorkStatusValues` (the packing flow minus `closed`, which
+   * is packed), pinned to `stageOfFulfillmentWork` like the list above.
    */
   private static readonly IS_ON_PACK_BENCH =
     `EXISTS (SELECT 1 FROM "fulfillment_works" fw WHERE fw."orderId" = rec."internalOrderId" ` +
-    `AND fw."status" NOT IN ('cancelled', 'incomplete', 'closed') AND fw."parcelClosedAt" IS NULL)`;
+    `AND fw."status" IN (${OrderRecordRepository.sqlInList(UnpackedFulfillmentWorkStatusValues)}) ` +
+    `AND fw."parcelClosedAt" IS NULL)`;
   /**
    * #3482 — held as "waiting in OpenLinker". The positive arm is the bare
    * `IN (...)`; only the negation needs `COALESCE`, for the reason
    * `NOT_DESTINATION_ROUTING_BLOCKED` documents (`NOT (NULL IN ...)` drops rows).
    */
-  private static readonly WAITING_IN_OPENLINKER_IN_LIST = WaitingFulfillmentBlockReasonValues.map(
-    (reason) => `'${reason}'`
-  ).join(', ');
+  private static readonly WAITING_IN_OPENLINKER_IN_LIST = OrderRecordRepository.sqlInList(
+    WaitingFulfillmentBlockReasonValues
+  );
   private static readonly IS_WAITING_IN_OPENLINKER = `rec."fulfillmentBlockReason" IN (${OrderRecordRepository.WAITING_IN_OPENLINKER_IN_LIST})`;
   private static readonly NOT_WAITING_IN_OPENLINKER = `COALESCE(rec."fulfillmentBlockReason", '') NOT IN (${OrderRecordRepository.WAITING_IN_OPENLINKER_IN_LIST})`;
   /**

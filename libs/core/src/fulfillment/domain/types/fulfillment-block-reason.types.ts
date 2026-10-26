@@ -116,7 +116,7 @@ export const REROUTABLE_FULFILLMENT_BLOCK_REASONS = [
  * states are absent - they are guards that resolve on their own, not something
  * waiting on anyone.
  *
- * One member per line: `scripts/check-waiting-reason-mirror.mjs` reads this array
+ * One member per line: `scripts/check-handled-in-openlinker-mirror.mjs` reads this array
  * textually and holds the frontend copy table to it.
  */
 export const WaitingFulfillmentBlockReasonValues = [

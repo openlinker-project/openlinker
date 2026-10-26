@@ -8,6 +8,8 @@
 import { FulfillmentWorkStatusValues } from './fulfillment-work-status.types';
 import type { FulfillmentWorkStatus } from './fulfillment-work-status.types';
 import {
+  PackingFlowFulfillmentWorkStatusValues,
+  UnpackedFulfillmentWorkStatusValues,
   stageOfFulfillmentWork,
   summarizeOrderWork,
   type FulfillmentWorkProgress,
@@ -80,6 +82,27 @@ describe('stageOfFulfillmentWork', () => {
       expect(() => stageOfFulfillmentWork(work(status))).not.toThrow();
     }
   });
+});
+
+describe('packing-flow status lists (#3482)', () => {
+  // The SQL predicates in OrderRecordRepository are built from these arrays, so
+  // they must agree with the TypeScript rule status by status.
+  it.each([...FulfillmentWorkStatusValues])(
+    'should list %s as packing-flow exactly when the rule gives it a stage',
+    (status) => {
+      const inFlow = (PackingFlowFulfillmentWorkStatusValues as readonly string[]).includes(status);
+      expect(stageOfFulfillmentWork(work(status)) !== null).toBe(inFlow);
+    }
+  );
+
+  it.each([...FulfillmentWorkStatusValues])(
+    'should list %s as unpacked exactly when an open box reads to-pack or packing',
+    (status) => {
+      const unpacked = (UnpackedFulfillmentWorkStatusValues as readonly string[]).includes(status);
+      const stage = stageOfFulfillmentWork(work(status));
+      expect(stage === 'to-pack' || stage === 'packing').toBe(unpacked);
+    }
+  );
 });
 
 describe('summarizeOrderWork', () => {
