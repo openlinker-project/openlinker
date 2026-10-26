@@ -25,6 +25,7 @@ export class OperationalSettings {
     public readonly deletionAuditBudget: number | null,
     public readonly syncJobRetentionDays: number | null,
     public readonly syncJobDeadRetentionDays: number | null,
+    public readonly inventoryMovementRetentionDays: number | null,
     public readonly deletionAuditCadence: string | null,
     public readonly updatedAt: Date,
     public readonly updatedBy: string | null

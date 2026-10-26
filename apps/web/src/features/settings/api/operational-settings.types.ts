@@ -38,6 +38,7 @@ export const OPERATIONAL_SETTING_KEYS = [
   'deletionAuditBudget',
   'syncJobRetentionDays',
   'syncJobDeadRetentionDays',
+  'inventoryMovementRetentionDays',
 ] as const;
 
 export type OperationalSettingKey = (typeof OPERATIONAL_SETTING_KEYS)[number];
@@ -105,6 +106,12 @@ export interface OperationalSettingsView {
   syncJobRetentionDays: ResolvedNumberSetting;
   /** Days a permanently-failed sync job is kept (#2946, D16). */
   syncJobDeadRetentionDays: ResolvedNumberSetting;
+  /**
+   * Days a stock movement (inventory history row) is kept (#3565). Optional on the
+   * way in, like every field a later issue added: an API that predates it renders
+   * a page without the section rather than a thrown render.
+   */
+  inventoryMovementRetentionDays?: ResolvedNumberSetting;
   deletionAuditCadence: ResolvedCadenceSetting;
   /**
    * How often each sweep runs. Read-only — there is no input for either.
@@ -144,6 +151,7 @@ export interface UpdateOperationalSettingsInput {
   deletionAuditBudget?: number | null;
   syncJobRetentionDays?: number | null;
   syncJobDeadRetentionDays?: number | null;
+  inventoryMovementRetentionDays?: number | null;
   deletionAuditCadence?: string | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.

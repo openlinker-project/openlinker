@@ -34,11 +34,13 @@ import { Select } from '../../shared/ui/select';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useSession } from '../../shared/auth/use-session';
 import { PacingValueField } from '../../features/settings/components/pacing-value-field';
+import { InventoryMovementRetentionSection } from '../../features/settings/components/inventory-movement-retention-section';
 import { SyncJobRetentionSection } from '../../features/settings/components/sync-job-retention-section';
 import { SyncPacingConfirmDialog } from '../../features/settings/components/sync-pacing-confirm-dialog';
 import { SyncPacingRail } from '../../features/settings/components/sync-pacing-rail';
 import { useCatalogueSizeQuery } from '../../features/settings/hooks/use-catalogue-size-query';
 import { useOperationalSettingsQuery } from '../../features/settings/hooks/use-operational-settings-query';
+import { useInventoryMovementRetentionDraft } from '../../features/settings/hooks/use-inventory-movement-retention-draft';
 import { useSyncJobRetentionDraft } from '../../features/settings/hooks/use-sync-job-retention-draft';
 import { useUpdateOperationalSettingsMutation } from '../../features/settings/hooks/use-update-operational-settings-mutation';
 import {
@@ -83,6 +85,7 @@ const SECTION_LINKS: readonly { id: string; label: string }[] = [
   { id: 'pacing-stock', label: 'Stock' },
   { id: 'pacing-deletions', label: 'Deleted products' },
   { id: 'pacing-retention', label: 'Job retention' },
+  { id: 'pacing-inventory-history', label: 'Stock history' },
 ];
 
 /**
@@ -151,6 +154,7 @@ export function OperationalSettingsPage(): ReactElement {
 
   const view = query.data ?? null;
   const retention = useSyncJobRetentionDraft(view);
+  const historyRetention = useInventoryMovementRetentionDraft(view);
   // Built from the pacing fields themselves (value + source), not from the
   // row's `updatedAt`: retention saves on its own from the same rail, and a
   // retention save bumping `updatedAt` must not discard a pacing edit.
@@ -718,6 +722,8 @@ export function OperationalSettingsPage(): ReactElement {
                 onChange={retention.setDraft}
               />
             ) : null}
+
+            <InventoryMovementRetentionSection view={view} retention={historyRetention} />
           </div>
 
           <SyncPacingRail

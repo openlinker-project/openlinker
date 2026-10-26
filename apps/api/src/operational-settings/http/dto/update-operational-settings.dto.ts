@@ -122,6 +122,21 @@ export class UpdateOperationalSettingsDto {
   syncJobDeadRetentionDays?: number | null;
 
   @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: BOUNDS.inventoryMovementRetentionDays.min,
+    maximum: BOUNDS.inventoryMovementRetentionDays.absoluteMax,
+    description:
+      'Days a stock movement is kept (#3565). Recommended maximum 730; above that set `acknowledgeAboveRecommended`. `null` clears it back to the env var, then to the built-in default of 365.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(BOUNDS.inventoryMovementRetentionDays.min)
+  @Max(BOUNDS.inventoryMovementRetentionDays.absoluteMax)
+  inventoryMovementRetentionDays?: number | null;
+
+  @ApiPropertyOptional({
     type: String,
     nullable: true,
     example: '0 * * * *',

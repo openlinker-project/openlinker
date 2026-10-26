@@ -26,6 +26,7 @@ const FIELDS: readonly OperationalSettingField[] = [
   'deletionAuditBudget',
   'syncJobRetentionDays',
   'syncJobDeadRetentionDays',
+  'inventoryMovementRetentionDays',
   'deletionAuditCadence',
 ];
 
