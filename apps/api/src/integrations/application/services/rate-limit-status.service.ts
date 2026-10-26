@@ -83,8 +83,15 @@ export class RateLimitStatusService implements IRateLimitStatusService {
     // (#2229).
     const resolveConcurrency = await this.resolveConcurrencyCeiling(connectionId, connection);
 
+    // Reported on both paths: whether the bucket is shared is a fact about
+    // the connection, not about whether a policy happens to resolve, and the
+    // frontend must be told it rather than guess it from `platformType`.
+    const shared = sharedBucketKey === undefined ? {} : { sharedBucket: true };
+
     if (!effective || (effective.requestsPerMinute === undefined && effective.maxConcurrent === undefined)) {
-      return resolveConcurrency ? { enabled: false, resolveConcurrency } : { enabled: false };
+      return resolveConcurrency
+        ? { enabled: false, resolveConcurrency, ...shared }
+        : { enabled: false, ...shared };
     }
 
     const live = this.rateLimiterRegistry.getStatus(sharedBucketKey ?? connectionId);
@@ -97,6 +104,7 @@ export class RateLimitStatusService implements IRateLimitStatusService {
       queued: live?.queued ?? 0,
       lastAcquiredAt: live?.lastAcquiredAt ?? null,
       ...(resolveConcurrency ? { resolveConcurrency } : {}),
+      ...shared,
     };
   }
 
