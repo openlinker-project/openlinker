@@ -18,12 +18,13 @@ const connection = new Connection(
 );
 
 describe('buildShoperSchedulerTasks', () => {
-  const [task, fulfillment, statusTask] = buildShoperSchedulerTasks();
+  const [task, fulfillment, sourceFulfillment, statusTask] = buildShoperSchedulerTasks();
 
-  it('should register the orders poll, the fulfilment read-back and the product-status reconcile, and nothing else', () => {
+  it('should register the orders poll, both fulfilment read-backs and the product-status reconcile, and nothing else', () => {
     expect(buildShoperSchedulerTasks().map((t) => t.taskId)).toEqual([
       'shoper-orders-poll',
       'shoper-fulfillment-status-sync',
+      'shoper-source-fulfillment-status-sync',
       'shoper-product-status-sync',
     ]);
   });
@@ -79,6 +80,39 @@ describe('buildShoperSchedulerTasks', () => {
       });
       expect(fulfillment.generateIdempotencyKey(connection, 't1')).toBe(
         'marketplace:conn-shoper-1:shoper:fulfillment:status:sync:t1',
+      );
+    });
+  });
+
+  describe('source fulfillment status sync', () => {
+    it('should read back shipments for a shop OL ingests orders from', () => {
+      expect(sourceFulfillment.platformType).toBe('shoper');
+      expect(sourceFulfillment.requiredCapability).toBe('OrderSource');
+      expect(sourceFulfillment.jobType).toBe('marketplace.sourceFulfillment.statusSync');
+      expect(sourceFulfillment.cronExpression).toBe(fulfillment.cronExpression);
+    });
+
+    it('should be switchable off through its own env var and default to on', () => {
+      expect(sourceFulfillment.enabledEnvVar).toBe(
+        'OL_SHOPER_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      );
+      expect(sourceFulfillment.enabledDefault).toBeUndefined();
+    });
+
+    it('should page with a cursor key distinct from the destination read-back', () => {
+      expect(sourceFulfillment.generatePayload(connection)).toEqual({
+        schemaVersion: 1,
+        limit: 100,
+        cursorKey: 'shoper.sourceFulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      });
+      const sourceKey = (sourceFulfillment.generatePayload(connection) as { cursorKey: string })
+        .cursorKey;
+      const destinationKey = (fulfillment.generatePayload(connection) as { cursorKey: string })
+        .cursorKey;
+      expect(sourceKey).not.toBe(destinationKey);
+      expect(sourceFulfillment.generateIdempotencyKey(connection, 't1')).toBe(
+        'marketplace:conn-shoper-1:shoper:source:fulfillment:status:sync:t1',
       );
     });
   });

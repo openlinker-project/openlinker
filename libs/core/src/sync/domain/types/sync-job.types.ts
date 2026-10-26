@@ -60,6 +60,12 @@ export const JobTypeValues = [
   'marketplace.shipment.statusSync',
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
+  // The source-side twin of the line above (ADR-012 amendment): asks an order's
+  // SOURCE whether somebody other than OL shipped it there, records the waybill
+  // it reports as a source-observed branch-1 row, and relays it to the order's
+  // destinations. A separate job type, not a payload flag, because the two read
+  // different connections for different orders under different cursors.
+  'marketplace.sourceFulfillment.statusSync',
   // OMS fulfilment progress ingress (#2400, ADR-054).
   //
   // **NOT the same job as `marketplace.fulfillment.statusSync` one line above,

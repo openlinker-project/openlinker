@@ -69,6 +69,7 @@ import { FulfillmentWorkAutoDispatchHandler } from './fulfillment-work-auto-disp
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
+import { MarketplaceSourceFulfillmentStatusSyncHandler } from './marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
 import { InventorySaleDecrementHandler } from './inventory-sale-decrement.handler';
 
@@ -137,7 +138,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
     private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
     private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
-    private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler
+    private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler,
+    // Appended LAST so the positional construction in the registration spec
+    // keeps every earlier handler in its slot.
+    private readonly marketplaceSourceFulfillmentStatusSyncHandler: MarketplaceSourceFulfillmentStatusSyncHandler
   ) {}
 
   onModuleInit(): void {
@@ -164,6 +168,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     // `fulfillment.work.rerouteSweep` (#3485) is a third, over orders held
     // because routing could not place them.
     // `fulfillment.work.autoDispatch` (#3340, closing #2729) and
+    // `marketplace.sourceFulfillment.statusSync` joined `bulk` beside its
+    // destination-side twin (ADR-012 amendment).
     // `inventory.saleDecrement` (#3453) are the newest `realtime` members —
     // both NEW job types. The tripwire in `handler-registration.service.spec.ts`
     // is the authority on these counts — this comment had drifted from it
@@ -325,6 +331,15 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.fulfillment.statusSync',
       this.marketplaceFulfillmentStatusSyncHandler,
+      'bulk'
+    );
+    // The source-side twin of the read-back above (ADR-012 amendment), laned
+    // the same and for the same reason: a paced scan whose subject is a parcel
+    // that has already shipped, so one tick of delay costs nobody a request,
+    // while every candidate costs a marketplace readback.
+    this.handlerRegistry.register(
+      'marketplace.sourceFulfillment.statusSync',
+      this.marketplaceSourceFulfillmentStatusSyncHandler,
       'bulk'
     );
     // `realtime`, on ADR-050's cost-of-starvation rule: a buyer is waiting to

@@ -109,6 +109,7 @@ export {
   MarketplaceShipmentSyncByExternalIdPayloadV1,
   ShippingShipmentNotifyDispatchedPayloadV1,
   MarketplaceFulfillmentStatusSyncPayloadV1,
+  MarketplaceSourceFulfillmentStatusSyncPayloadV1,
   OfferDescriptionTone,
 } from './domain/types/marketplace-job-payloads.types';
 export { OfferDescriptionToneValues } from './domain/types/marketplace-job-payloads.types';
