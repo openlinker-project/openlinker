@@ -352,7 +352,17 @@ When OpenLinker ships an order it pushed into Shoper, the lifecycle relay (ADR-0
 `dispatched` event like any other order participant, and the adapter records it as a **Shoper parcel**:
 
 - `POST /parcels { order_id, shipping_id, shipping_code, sent: true }`. `shipping_code` is the tracking number;
-  `shipping_id` is read from the Shoper order itself (`GET /orders/:id`), so it matches the method the order uses.
+  `shipping_id` is first the Shoper order's own method (`GET /orders/:id`), so the parcel carries the carrier the
+  buyer chose.
+- **Fallback method.** Shoper's API refuses a parcel for some carrier-integrated methods (InPost, DPD, ... on the
+  trial shop) with a `400` whose description is "Nie znaleziono wartości". On exactly that answer - Shoper created
+  nothing - the parcel is written once more under `defaults.parcelShippingId` if set, else the shop's first active
+  plain (`personal`) method, else the dispatch is `rejected` naming that config key. Any other `400`, a `5xx` or a
+  timeout is reported as `rejected` without a fallback, so a request that may have landed is never repeated.
+- **A refused method is remembered** per connection for 24 hours through the host cache
+  (`shoper:parcel-shipping-refusal:<connection>:<host>:<shipping id>`), so each method costs at most one refused
+  `POST` a day rather than one per dispatch. Without a cache the memory lasts one adapter bag, which degrades to
+  "try the order's method, then fall back" on every dispatch.
 - **No `products[]`.** Shoper then ships exactly the quantity still unshipped on each line, which is the whole
   order the first time (#3638). Creating the parcel advances the order status per the shop's own
   `shopping_parcel_send_status_id`; no separate status call is made.

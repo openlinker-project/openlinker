@@ -24,3 +24,32 @@ describe('ShoperApiError.isResourceNotFound', () => {
     expect(error.isResourceNotFound()).toBe(false);
   });
 });
+
+describe('ShoperApiError.isValueNotFound', () => {
+  it.each([
+    ['the exact live answer', 'Nie znaleziono wartości'],
+    ['different casing and spacing', '  nie  ZNALEZIONO wartości '],
+    ['the phrase without diacritics', 'Nie znaleziono wartosci'],
+    ['the phrase inside a longer description', 'Pole shipping_id: Nie znaleziono wartości.'],
+    ['a decomposed (NFD) diacritic', 'Nie znaleziono wartości'],
+  ])('should be true for a 400 carrying %s', (_label, description) => {
+    expect(new ShoperApiError(400, 'invalid_request', description).isValueNotFound()).toBe(true);
+  });
+
+  it.each([
+    ['a 400 with another description', new ShoperApiError(400, 'invalid_request', 'status_id invalid')],
+    ['a 400 with no description', new ShoperApiError(400, 'invalid_request')],
+    ['the phrase on a 404', new ShoperApiError(404, 'invalid_request', 'Nie znaleziono wartości')],
+    ['the phrase on a 500', new ShoperApiError(500, 'server_error', 'Nie znaleziono wartości')],
+  ])('should be false for %s', (_label, error) => {
+    expect(error.isValueNotFound()).toBe(false);
+  });
+
+  it('should keep the full description while bounding the message', () => {
+    const long = `Nie znaleziono wartości ${'x'.repeat(300)}`;
+    const error = new ShoperApiError(400, 'invalid_request', long);
+
+    expect(error.errorDescription).toBe(long);
+    expect(error.message.length).toBeLessThan(long.length);
+  });
+});

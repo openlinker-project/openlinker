@@ -25,12 +25,15 @@ import { mapShoperOrderStatus } from './shoper-incoming-order.mapper';
 import { toPositiveInt } from './shoper-order-input.mapper';
 
 /**
- * Shipping engines Shoper accepts a manually written parcel for. `POST /parcels`
- * answers 400 ("Nie znaleziono wartości") for every carrier-integrated method
- * (InPost, Paczka w Ruchu, DPD, DHL on the trial shop) and accepts the plain
- * `personal` one. Only `personal` has been confirmed live; another engine that
- * also accepts parcels must be confirmed against a real shop before it is added
- * here, because a wrong entry turns into a 400 on every dispatch.
+ * Shipping engines Shoper is known to accept a manually written parcel for.
+ * `POST /parcels` answers 400 ("Nie znaleziono wartości") for every
+ * carrier-integrated method (InPost, Paczka w Ruchu, DPD, DHL on the trial shop)
+ * and accepts the plain `personal` one. This list only decides the FALLBACK
+ * method: the order's own method is always tried first and Shoper's own answer
+ * decides it, so an engine missing here costs a fallback, never a refused parcel.
+ * Only `personal` has been confirmed live; another engine must be confirmed
+ * against a real shop before it is added, because a wrong entry here turns into
+ * a 400 on the fallback.
  */
 const PARCEL_WRITABLE_SHIPPING_ENGINES: ReadonlySet<string> = new Set(['personal']);
 
@@ -54,31 +57,30 @@ export function acceptsShoperManualParcel(shipping: ShoperShippingRow): boolean 
 }
 
 /**
- * The shipping method a new parcel is written under. The operator's explicit
- * choice wins; else the order's own method when Shoper accepts a parcel for it
- * (so the parcel matches what the buyer chose); else the shop's first active
- * plain method. Null when none qualifies.
+ * The shipping method a parcel falls back to once Shoper has refused the order's
+ * own method (or the order names none). The operator's explicit choice wins;
+ * else the shop's first active plain method, skipping any id in `excluded` (the
+ * method just refused). Null when none qualifies.
  *
  * `shippings` is only consulted when nothing is configured, so a caller that has
  * a configured id need not read the shop's methods at all.
  */
-export function selectShoperParcelShipping(input: {
+export function selectShoperParcelFallbackShipping(input: {
   readonly configuredShippingId: number | undefined;
-  readonly orderShippingId: number | null;
   readonly shippings: readonly ShoperShippingRow[];
+  readonly excluded?: ReadonlySet<number>;
 }): ShoperParcelShippingChoice | null {
   if (input.configuredShippingId !== undefined) {
     return { shippingId: input.configuredShippingId, source: 'config' };
   }
-  if (input.orderShippingId !== null) {
-    const own = input.shippings.find((row) => toPositiveInt(row.shipping_id) === input.orderShippingId);
-    if (own !== undefined && acceptsShoperManualParcel(own)) {
-      return { shippingId: input.orderShippingId, source: 'order' };
-    }
-  }
   for (const row of input.shippings) {
     const id = toPositiveInt(row.shipping_id);
-    if (id !== null && readShoperFlag(row.active) !== false && acceptsShoperManualParcel(row)) {
+    if (
+      id !== null &&
+      input.excluded?.has(id) !== true &&
+      readShoperFlag(row.active) !== false &&
+      acceptsShoperManualParcel(row)
+    ) {
       return { shippingId: id, source: 'fallback' };
     }
   }

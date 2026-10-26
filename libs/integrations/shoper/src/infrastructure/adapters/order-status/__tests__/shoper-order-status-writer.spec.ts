@@ -1,9 +1,12 @@
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { CachePort } from '@openlinker/shared';
+import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 
 import { ShoperApiError } from '../../../../domain/exceptions/shoper-api.error';
 import type { ShoperOrderStatusEntry } from '../../../../domain/types/shoper-order-status.types';
 import type { ShoperHttpClient } from '../../../http/shoper-http-client';
 import type { ShoperOrderReferenceProvider } from '../../../shop-context/shoper-order-reference.provider';
+import { ShoperParcelShippingRefusalProvider } from '../../../shop-context/shoper-parcel-shipping-refusal.provider';
 import { ShoperOrderStatusWriter } from '../shoper-order-status-writer';
 
 /** The trial shop's shippings: 1-5 carrier-integrated, 8 the plain `personal` one. */
@@ -34,7 +37,19 @@ interface Shop {
   order?: Record<string, unknown> | null;
   shippings?: readonly Record<string, unknown>[];
   config?: Record<string, unknown>;
+  /** The host cache the refusal memory reads through; absent = per-instance memory only. */
+  cache?: CachePort;
 }
+
+/** Shoper's live answer to a parcel under a carrier-integrated shipping method. */
+const methodRefused = (): ShoperApiError =>
+  new ShoperApiError(400, 'invalid_request', 'Nie znaleziono wartości');
+
+/** The `shipping_id` of every `POST /parcels`, in call order. */
+const postedShippingIds = (post: jest.Mock): unknown[] =>
+  post.mock.calls.map((call) => (call as [string, { shipping_id: number }])[1].shipping_id);
+
+const REFUSAL_KEY_PREFIX = 'shoper:parcel-shipping-refusal:conn-1';
 
 interface Harness {
   writer: ShoperOrderStatusWriter;
@@ -71,67 +86,176 @@ function setup(shop: Shop = {}): Harness {
     { get, post, put, delete: jest.fn() } as unknown as ShoperHttpClient,
     { id: 'conn-1', config: shop.config ?? {} } as unknown as Connection,
     reference as unknown as ShoperOrderReferenceProvider,
+    new ShoperParcelShippingRefusalProvider({ cache: shop.cache, keyPrefix: REFUSAL_KEY_PREFIX }),
   );
   return { writer, get, post, put, reference };
 }
 
 describe('ShoperOrderStatusWriter', () => {
   describe('dispatched', () => {
-    it('should write the parcel under the configured parcel shipping method without reading the order or the methods', async () => {
+    it("should write the parcel under the order's own shipping method when Shoper accepts it", async () => {
+      // The order uses 1 (InPost): it is tried first, whatever its engine, and a
+      // configured fallback is not consulted when Shoper takes the parcel.
       const h = setup({ config: { defaults: { parcelShippingId: 8 } } });
 
       await expect(
         h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: ' 6200000000001 ' }),
       ).resolves.toEqual({ outcome: 'applied' });
 
+      expect(h.post).toHaveBeenCalledTimes(1);
       expect(h.post).toHaveBeenCalledWith('/parcels', {
         order_id: 10,
-        shipping_id: 8,
+        shipping_id: 1,
         shipping_code: '6200000000001',
         sent: true,
       });
-      expect(h.get).not.toHaveBeenCalledWith('/orders/10');
       expect(h.get).not.toHaveBeenCalledWith('/shippings', expect.anything());
     });
 
-    it("should use the order's own shipping method when Shoper accepts a parcel for it", async () => {
-      const h = setup({ order: { order_id: '10', shipping_id: '8', status_id: '2' } });
+    it('should fall back to the configured method when Shoper refuses the order carrier', async () => {
+      const h = setup({ config: { defaults: { parcelShippingId: 8 } } });
+      h.post.mockRejectedValueOnce(methodRefused());
 
-      await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+      await expect(
+        h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
+      ).resolves.toEqual({ outcome: 'applied' });
 
-      expect(h.post).toHaveBeenCalledWith('/parcels', expect.objectContaining({ shipping_id: 8 }));
+      expect(postedShippingIds(h.post)).toEqual([1, 8]);
+      expect(h.get).not.toHaveBeenCalledWith('/shippings', expect.anything());
     });
 
-    it('should fall back to the first active plain method when the order uses an integrated carrier', async () => {
-      const h = setup({ order: { order_id: '10', shipping_id: '1', status_id: '2' } });
+    it('should fall back to the first active plain method when the order carrier is refused and nothing is configured', async () => {
+      const h = setup();
+      h.post.mockRejectedValueOnce(methodRefused());
 
       await expect(h.writer.write({ type: 'dispatched', externalOrderId: '10' })).resolves.toEqual({
         outcome: 'applied',
       });
 
       // 7 is personal but inactive, so 8 is the first usable one.
-      expect(h.post).toHaveBeenCalledWith('/parcels', { order_id: 10, shipping_id: 8, sent: true });
+      expect(h.post).toHaveBeenLastCalledWith('/parcels', { order_id: 10, shipping_id: 8, sent: true });
+      expect(postedShippingIds(h.post)).toEqual([1, 8]);
     });
 
-    it('should reject, naming the config key, when the shop has no plain method to use', async () => {
+    it('should go straight to the fallback for a carrier Shoper already refused, across adapter instances', async () => {
+      // Two writers over one host cache stand in for two `getCapabilityAdapter`
+      // bags: the refusal learnt by the first must spare the second the call.
+      const cache = new InMemoryCacheAdapter();
+      const first = setup({ cache, config: { defaults: { parcelShippingId: 8 } } });
+      first.post.mockRejectedValueOnce(methodRefused());
+      await first.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      const second = setup({ cache, config: { defaults: { parcelShippingId: 8 } } });
+      await expect(
+        second.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
+      ).resolves.toEqual({ outcome: 'applied' });
+
+      expect(postedShippingIds(second.post)).toEqual([8]);
+    });
+
+    it('should try the order carrier again on every bag when no cache is wired', async () => {
+      // A fresh bag per dispatch remembers nothing without the host cache.
+      for (let bagIndex = 0; bagIndex < 2; bagIndex += 1) {
+        const bag = setup({ config: { defaults: { parcelShippingId: 8 } } });
+        bag.post.mockRejectedValueOnce(methodRefused());
+
+        await expect(
+          bag.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
+        ).resolves.toEqual({ outcome: 'applied' });
+        expect(postedShippingIds(bag.post)).toEqual([1, 8]);
+      }
+    });
+
+    it('should remember a refusal within one bag even without a cache', async () => {
+      const h = setup({ config: { defaults: { parcelShippingId: 8 } } });
+      h.post.mockRejectedValueOnce(methodRefused());
+
+      await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+      h.post.mockClear();
+      await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(postedShippingIds(h.post)).toEqual([8]);
+    });
+
+    it('should try the order carrier when the cache cannot be read', async () => {
+      const cache: CachePort = {
+        get: jest.fn().mockRejectedValue(new Error('redis down')),
+        set: jest.fn().mockRejectedValue(new Error('redis down')),
+        delete: jest.fn(),
+      };
+      const h = setup({ cache, config: { defaults: { parcelShippingId: 8 } } });
+      h.post.mockRejectedValueOnce(methodRefused());
+
+      await expect(
+        h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
+      ).resolves.toEqual({ outcome: 'applied' });
+
+      expect(postedShippingIds(h.post)).toEqual([1, 8]);
+    });
+
+    it('should not fall back on any other 400, and remember nothing', async () => {
+      const cache = new InMemoryCacheAdapter();
+      const h = setup({ cache, config: { defaults: { parcelShippingId: 8 } } });
+      h.post.mockRejectedValueOnce(new ShoperApiError(400, 'invalid_request', 'shipping_code: too long'));
+
+      const result = await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(result).toEqual({ outcome: 'rejected', detail: expect.stringContaining('too long') });
+      expect(postedShippingIds(h.post)).toEqual([1]);
+      const refusals = new ShoperParcelShippingRefusalProvider({ cache, keyPrefix: REFUSAL_KEY_PREFIX });
+      await expect(refusals.isRefused(1)).resolves.toBe(false);
+    });
+
+    it('should not fall back when the parcel call fails other than with a 400', async () => {
+      const h = setup({ config: { defaults: { parcelShippingId: 8 } } });
+      h.post.mockRejectedValueOnce(new ShoperApiError(503, 'server_error', 'unavailable'));
+
+      const result = await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(result).toEqual({ outcome: 'rejected', detail: expect.stringContaining('unavailable') });
+      expect(postedShippingIds(h.post)).toEqual([1]);
+    });
+
+    it('should go straight to the fallback for an order with no shipping method', async () => {
+      const h = setup({ order: { order_id: '10', shipping_id: null, status_id: '2' } });
+
+      await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
+
+      expect(postedShippingIds(h.post)).toEqual([8]);
+    });
+
+    it('should reject, naming the config key, when the order carrier is refused and the shop has no plain method', async () => {
       const h = setup({ shippings: [{ shipping_id: '1', engine: 'inpost', active: '1' }] });
+      h.post.mockRejectedValueOnce(methodRefused());
 
       const result = await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
 
       expect(result.outcome).toBe('rejected');
       expect(result.detail).toContain('defaults.parcelShippingId');
-      expect(h.post).not.toHaveBeenCalled();
+      expect(postedShippingIds(h.post)).toEqual([1]);
     });
 
-    it("should turn Shoper's 400 for a refused method into a rejection naming the config key", async () => {
+    it('should reject, naming the config key, when the configured fallback is refused too', async () => {
       const h = setup({ config: { defaults: { parcelShippingId: 4 } } });
-      h.post.mockRejectedValue(new ShoperApiError(400, 'invalid_request', 'Nie znaleziono wartości'));
+      h.post.mockRejectedValue(methodRefused());
 
       const result = await h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' });
 
       expect(result.outcome).toBe('rejected');
       expect(result.detail).toContain('Nie znaleziono wartości');
       expect(result.detail).toContain('defaults.parcelShippingId');
+      // One try of the order carrier, one of the fallback; never a loop.
+      expect(postedShippingIds(h.post)).toEqual([1, 4]);
+    });
+
+    it('should not write a parcel when the order already has one for this dispatch, whatever its carrier', async () => {
+      const h = setup({ parcels: [{ parcel_id: '5', order_id: '10', shipping_code: 'T1' }] });
+      h.post.mockRejectedValue(methodRefused());
+
+      await expect(
+        h.writer.write({ type: 'dispatched', externalOrderId: '10', trackingNumber: 'T1' }),
+      ).resolves.toEqual({ outcome: 'applied' });
+      expect(h.post).not.toHaveBeenCalled();
     });
 
     it('should report a non-400 parcel failure as rejected with the reason', async () => {

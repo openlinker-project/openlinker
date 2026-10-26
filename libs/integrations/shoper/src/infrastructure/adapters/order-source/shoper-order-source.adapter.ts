@@ -91,6 +91,7 @@ import type { ShoperOrderParcels } from '../../readers/shoper-order-parcels.read
 import { readShoperOrderParcels } from '../../readers/shoper-order-parcels.reader';
 import type { ShoperOrderReferenceProvider } from '../../shop-context/shoper-order-reference.provider';
 import type { ShoperShopContextProvider } from '../../shop-context/shoper-shop-context.provider';
+import type { ShoperParcelShippingRefusalProvider } from '../../shop-context/shoper-parcel-shipping-refusal.provider';
 import { ShoperOrderStatusWriter } from '../order-status/shoper-order-status-writer';
 
 /** Shoper order ids are positive integers; anything else is refused before a URL is built. */
@@ -127,8 +128,10 @@ export class ShoperOrderSourceAdapter
     private readonly reference: ShoperOrderReferenceProvider,
     private readonly shopContext: ShoperShopContextProvider,
     private readonly connection: Connection,
+    /** Shared with the order processor by the factory; see `ShoperParcelShippingRefusalProvider`. */
+    parcelShippingRefusals?: ShoperParcelShippingRefusalProvider,
   ) {
-    this.statusWriter = new ShoperOrderStatusWriter(client, connection, reference);
+    this.statusWriter = new ShoperOrderStatusWriter(client, connection, reference, parcelShippingRefusals);
   }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
