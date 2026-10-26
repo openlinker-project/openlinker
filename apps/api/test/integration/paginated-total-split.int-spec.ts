@@ -42,7 +42,7 @@ import type { OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '@openlinker/core/listings';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
 import { IdentifierMappingOrmEntity } from '@openlinker/core/identifier-mapping/orm-entities';
-import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
+import { InventoryItemOrmEntity, ReservationOrmEntity } from '@openlinker/core/inventory/orm-entities';
 
 const CONNECTION_A = '11111111-1111-4111-8111-111111111111';
 const CONNECTION_B = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -431,23 +431,70 @@ describe('Paginated total split (integration, #2944)', () => {
       // Rows inserted directly rather than through `createTestInventoryItem`:
       // that fixture mints a parent product of its own, which would add rows
       // this block's counts are asserting exact numbers about.
-      const inventory = harness.getDataSource().getRepository(InventoryItemOrmEntity);
+      //
+      // `out` / `low` read AVAILABLE TO PROMISE (#3621, G-5), so every product
+      // needs a variant, the positions are variant-keyed, and the holds go in the
+      // reservations ledger.
+      const ds = harness.getDataSource();
+      await ds.getRepository(ProductOrmEntity).save(
+        ds.getRepository(ProductOrmEntity).create({ id: 'ol_product_split_4', name: 'No Variants', sku: 'NV-1' })
+      );
+      const variants = ds.getRepository(ProductVariantOrmEntity);
+      await variants.save([
+        variants.create({ id: 'ol_variant_atp_1', productId: 'ol_product_split_1' }),
+        variants.create({ id: 'ol_variant_atp_2', productId: 'ol_product_split_2' }),
+        variants.create({ id: 'ol_variant_atp_3', productId: 'ol_product_split_3' }),
+      ]);
+      const inventory = ds.getRepository(InventoryItemOrmEntity);
       await inventory.save([
+        // master 40, 37 held by a published hold -> ATP 3 -> low. A diagnostic
+        // hold of 10 restricts nothing, and the stale position is not counted.
         inventory.create({
           id: 'ol_inventory_split_1',
           productId: 'ol_product_split_1',
-          availableQuantity: 50,
+          productVariantId: 'ol_variant_atp_1',
+          availableQuantity: 40,
           reservedQuantity: 0,
         }),
         inventory.create({
+          id: 'ol_inventory_split_1_stale',
+          productId: 'ol_product_split_1',
+          productVariantId: 'ol_variant_atp_1',
+          availableQuantity: 500,
+          reservedQuantity: 0,
+          isStale: true,
+        }),
+        // master 2, 2 held -> ATP 0 -> out (master alone would read "low").
+        inventory.create({
           id: 'ol_inventory_split_2',
           productId: 'ol_product_split_2',
+          productVariantId: 'ol_variant_atp_2',
           availableQuantity: 2,
           reservedQuantity: 0,
         }),
       ]);
-      // The third product has no inventory row at all: it joins to NULL and
-      // `COALESCE(stock.total, 0)` reads it as out of stock.
+      const reservations = ds.getRepository(ReservationOrmEntity);
+      const hold = (
+        inventoryItemId: string,
+        quantity: number,
+        atpEffect: 'published' | 'diagnostic'
+      ): ReservationOrmEntity =>
+        reservations.create({
+          orderRecordId: `ol_order_${inventoryItemId}_${atpEffect}`,
+          orderLineId: 'line-1',
+          inventoryItemId,
+          quantity,
+          status: 'held',
+          expiresAt: new Date('2099-01-01T00:00:00Z'),
+          atpEffect,
+        });
+      await reservations.save([
+        hold('ol_inventory_split_1', 37, 'published'),
+        hold('ol_inventory_split_1', 10, 'diagnostic'),
+        hold('ol_inventory_split_2', 2, 'published'),
+      ]);
+      // Product 3 has a variant but no position: a known zero, out. Product 4 has
+      // no variant at all: its badge is "Unknown", so it is in neither filter.
 
       // Each of these predicates is expressed against the joined alias, so the
       // count MUST carry the join. If `buildFilteredQuery` ever stopped adding
@@ -463,7 +510,10 @@ describe('Paginated total split (integration, #2944)', () => {
       }
 
       expect(await repository.countMany({ stock: 'low' })).toBe(1);
-      expect(await repository.countMany({ stock: 'out' })).toBe(1);
+      expect(await repository.countMany({ stock: 'out' })).toBe(2);
+      expect((await repository.findManyRows({ stock: 'low' }, PAGE)).map((p) => p.id)).toEqual([
+        'ol_product_split_1',
+      ]);
     });
   });
 

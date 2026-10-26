@@ -121,9 +121,11 @@ export interface VariantPhysicalDimensionsFill {
 /**
  * Product stock-bucket filter values (#1720 - products catalog cockpit).
  *
- * Buckets are derived from the product's total available stock summed across
- * its inventory rows: `out` = 0 (including products with no inventory rows),
- * `low` = 0 < total <= LOW_STOCK_THRESHOLD, `oversold` = total < 0.
+ * `out` / `low` are derived from the product's available to promise (#3621, G-5):
+ * per variant `max(0, Σ available[live positions] - Σ published holds)`, summed,
+ * so they agree with the list badge. `out` = 0 (including variants with no
+ * positions), `low` = 0 < ATP <= LOW_STOCK_THRESHOLD; a product with no variants
+ * is in neither. `oversold` stays on the master total (< 0): ATP is clamped at 0.
  */
 export const ProductStockFilterValues = ['out', 'low', 'oversold'] as const;
 export type ProductStockFilter = (typeof ProductStockFilterValues)[number];
