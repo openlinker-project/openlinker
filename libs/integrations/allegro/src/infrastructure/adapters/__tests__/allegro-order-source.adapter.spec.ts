@@ -616,6 +616,38 @@ describe('AllegroOrderSourceAdapter', () => {
       expect(incoming.paymentMethod).toBe('online');
     });
 
+    it.each([
+      ['a text', '  Please leave at the door  ', 'Please leave at the door'],
+      ['an absent field', undefined, null],
+      ['a blank field', '   ', null],
+    ])(
+      'should report the buyer note from messageToSeller: %s (#3538)',
+      async (_label, messageToSeller, expected) => {
+        const checkoutForm: AllegroCheckoutForm = {
+          id: 'checkout-note',
+          status: 'READY_FOR_PROCESSING',
+          updatedAt: '2024-01-02T00:00:00Z',
+          buyer: { id: 'b9', email: 'b9@example.com', login: 'b9' },
+          lineItems: [
+            {
+              id: 'l1',
+              offer: { id: 'o1', name: 'O1' },
+              quantity: 1,
+              price: { amount: '10.00', currency: 'PLN' },
+            },
+          ],
+          summary: { totalToPay: { amount: '10.00', currency: 'PLN' } },
+          payment: { type: 'ONLINE', finishedAt: '2024-01-02T00:00:00Z' },
+          ...(messageToSeller === undefined ? {} : { messageToSeller }),
+        };
+        httpClient.get.mockResolvedValueOnce({ data: checkoutForm, status: 200, headers: {} });
+
+        const incoming = await adapter.getOrder({ externalOrderId: 'checkout-note' });
+
+        expect(incoming.buyerNote).toBe(expected);
+      }
+    );
+
     it('should report an unmapped payment type as unknown, never a guess (#3294)', async () => {
       const checkoutForm: AllegroCheckoutForm = {
         id: 'checkout-wallet',

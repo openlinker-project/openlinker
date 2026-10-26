@@ -32,6 +32,12 @@ export interface WooCommerceOrder {
    * (see `deriveWooCommercePaymentMethod`). Absent on a payload that omits it.
    */
   payment_method?: string;
+  /**
+   * The buyer's checkout note to the seller (#3538). WooCommerce core always
+   * returns the field, as `''` when the buyer wrote nothing; absent only on a
+   * payload that omits it, which reads as unknown.
+   */
+  customer_note?: string;
   customer_id: number; // 0 = guest
   billing: WooCommerceBillingAddress;
   shipping: WooCommerceShippingAddress;
