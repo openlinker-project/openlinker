@@ -9,20 +9,23 @@
  *   1. loads the order record (`IOrderRecordService`) → resolved variant ids;
  *   2. resolves the distinct external offer ids for those variants on the source
  *      connection (`OfferMappingRepositoryPort.findMany`);
- *   3. reads the absolute master-inventory target per variant
+ *   3. reads the absolute available-to-promise per variant
  *      (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) — master is
- *      authoritative, including 0 — and applies the connection's stock publish
- *      policy to it (reserve #1844, zero threshold #2610), so a cancellation
- *      restores the buffered quantity rather than wiping the reserve (#2610);
- *   4. builds `OfferStockRestoreTarget[]` and dispatches the destination
- *      `OfferStockRestorer` capability (no-op when honestly absent).
+ *      authoritative, including 0 — together with the stock observation it was
+ *      derived from;
+ *   4. when the connection declares the `OfferStockRestorer` capability (no-op
+ *      when honestly absent), writes those quantities through
+ *      `IInventorySyncService.updateOfferQuantities` - the ordered write every
+ *      propagation uses (#2617), which also applies the connection's publish
+ *      Controls (reserve #1844, zero threshold #2610), so a cancellation
+ *      restores the buffered quantity rather than wiping the reserve.
  *
  * ORDERING IS THE POINT, and it is enforced three ways:
  *
  *   1. `releaseHolds()` runs FIRST and UNCONDITIONALLY — before the
- *      `OfferStockRestorer` lookup, not after. Most connections expose no
- *      restorer (Allegro restores its own stock), so a release placed behind
- *      that short-circuit would leak a hold on every Allegro cancellation.
+ *      `OfferStockRestorer` lookup, not after. Many connections expose no
+ *      restorer (their marketplace restores its own stock), so a release placed
+ *      behind that short-circuit would leak a hold on every such cancellation.
  *   2. `publishRestoredAtp()` takes the release's own `CloseForOrderResult` as
  *      its first parameter, so the ordering is expressed in the SIGNATURE
  *      rather than in a comment. Note the honest limit of that (#2628 review):
@@ -78,12 +81,12 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import {
-  AVAILABILITY_SERVICE_TOKEN,
-  IAvailabilityService,
   IInventoryQueryService,
   IInventorySaleReversalService,
+  IInventorySyncService,
   INVENTORY_QUERY_SERVICE_TOKEN,
   INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
+  INVENTORY_SYNC_SERVICE_TOKEN,
   IReservationService,
   RESERVATION_SERVICE_TOKEN,
   type CloseForOrderResult,
@@ -96,22 +99,52 @@ import {
 import { IOrderRecordService, ORDER_RECORD_SERVICE_TOKEN } from '@openlinker/core/orders';
 import type {
   OfferManagerPort,
-  OfferStockRestorer,
-  OfferStockRestoreTarget,
+  UpdateOfferQuantitiesBatchResult,
+  UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
 import { isOfferStockRestorer, OfferMappingRepositoryPort } from '@openlinker/core/listings';
+import { ContendedWriteError } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
 import type { IOfferStockRestoreService } from '../interfaces/offer-stock-restore.service.interface';
 import type { OfferStockRestoreResult } from '../types/offer-stock-restore.types';
 import { OfferStockRestoreReleaseIncompleteError } from '../../domain/exceptions/offer-stock-restore-release-incomplete.error';
 import { OfferStockRestoreReversalIncompleteError } from '../../domain/exceptions/offer-stock-restore-reversal-incomplete.error';
+import { OfferStockRestoreWriteIncompleteError } from '../../domain/exceptions/offer-stock-restore-write-incomplete.error';
 
 /**
  * Offer-mapping lookups are scoped per-variant (`internalId` filter), so a
  * variant maps to at most a handful of offer rows; a small page suffices.
  */
 const OFFER_MAPPING_PAGE_LIMIT = 10;
+
+/**
+ * The restore's idempotency key, which a command-keyed destination (Allegro)
+ * turns into its command id.
+ *
+ * Carries the QUANTITY and the OBSERVATION, not only `(order, offer)`: a retry
+ * after stock moved must be a different command, or the destination answers it
+ * with the first command and the new figure never lands. Carries the ORDER so
+ * the restore never shares a command with a propagation of the same figure,
+ * which a destination that already sold the unit would swallow as a replay
+ * (#2285). The connection's Controls are applied after this key is built, so a
+ * Control edited between two retries reuses the command; the next propagation
+ * corrects that rare case.
+ */
+function stockRestoreIdempotencyKey(
+  internalOrderId: string,
+  externalOfferId: string,
+  quantity: number,
+  observedAt: string | undefined
+): string {
+  return `stock-restore:${internalOrderId}:${externalOfferId}:${quantity}:${observedAt ?? 'unobserved'}`;
+}
+
+/** ISO form of a stock observation, or `undefined` when there is none to quote. */
+function toObservation(stamp: Date | null | undefined): string | undefined {
+  if (!(stamp instanceof Date) || Number.isNaN(stamp.getTime())) return undefined;
+  return stamp.toISOString();
+}
 
 @Injectable()
 export class OfferStockRestoreService implements IOfferStockRestoreService {
@@ -126,8 +159,8 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     private readonly offerMappings: OfferMappingRepositoryPort,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
     private readonly inventoryQuery: IInventoryQueryService,
-    @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService,
+    @Inject(INVENTORY_SYNC_SERVICE_TOKEN)
+    private readonly inventorySync: IInventorySyncService,
     @Inject(RESERVATION_SERVICE_TOKEN)
     private readonly reservations: IReservationService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
@@ -141,7 +174,7 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     internalOrderId: string,
   ): Promise<OfferStockRestoreResult> {
     // STEP 1 — RELEASE, first and unconditionally. Deliberately ABOVE the
-    // `OfferStockRestorer` short-circuit: most connections have no restorer, and
+    // `OfferStockRestorer` short-circuit: many connections have no restorer, and
     // a release behind that guard would leak this order's hold forever on every
     // one of them.
     const release = await this.releaseHolds(internalOrderId);
@@ -295,23 +328,17 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
           `[connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
     }
-    // Resolve the destination restorer before the per-variant reads below: the
-    // ingestion hook enqueues this job on every `→ cancelled` transition
-    // regardless of marketplace, so most invocations are for connections that
-    // restore their own stock (Allegro) or expose no `OfferStockRestorer` at
-    // all. A capability that is unsupported / disabled on the connection is a
-    // routine no-op — not a job failure that should dead-letter.
-    const restorer = await this.resolveStockRestorer(connectionId, internalOrderId);
-    if (!restorer) {
+    // Ask whether the destination participates before the per-variant reads
+    // below: the ingestion hook enqueues this job on every `→ cancelled`
+    // transition regardless of marketplace, and many connections restore their
+    // own stock or expose no `OfferStockRestorer` at all. A capability that is
+    // unsupported / disabled on the connection is a routine no-op — not a job
+    // failure that should dead-letter. The capability is the participation
+    // declaration only: the write itself goes through the ordered seam below.
+    if (!(await this.participatesInRestore(connectionId, internalOrderId))) {
       return this.skipped(release, 'skipped-no-restorer');
     }
 
-    // #2610 — the restore writes an ABSOLUTE quantity, so it has to reproduce
-    // the same publish policy the ordinary write-back applies. Without this the
-    // first cancellation replaced the buffered quantity with the raw master
-    // count, silently removing the operator's oversell reserve until the next
-    // full sync. Read once per order (single connection); an unconfigured
-    // connection resolves 0/0 and the restore is byte-identical to before.
     const record = await this.orderRecordService.getOrderRecord(internalOrderId);
     if (!record) {
       this.logger.debug(
@@ -346,57 +373,38 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     // holds. #2348 — and this read happens strictly AFTER `releaseHolds`, which
     // is why the cancelled order's own hold is no longer among them. On an empty
     // ledger the two numbers are identical, so no restore changes today.
-    const targetByVariant = new Map(
-      availability
-        .filter((row): row is typeof row & { availableToPromise: number } =>
-          row.availableToPromise !== null,
-        )
-        .map((row) => [row.productVariantId, row.availableToPromise]),
-    );
+    const availabilityByVariant = new Map(availability.map((row) => [row.productVariantId, row]));
 
-    const targets: OfferStockRestoreTarget[] = [];
-    const restorable: { externalOfferId: string; masterQuantity: number }[] = [];
+    // `stockUpdatedAt` is the observation the #2617 freshness guard compares,
+    // read from the SAME database clock `inventory.propagateToMarketplaces`
+    // quotes. A zero-filled variant with no positions carries none, and its
+    // known-zero write then goes out unguarded, as a legacy propagation does.
+    const items: UpdateOfferQuantityCommand[] = [];
     for (const [variantId, externalOfferIds] of externalOfferIdsByVariant) {
-      const masterQuantity = targetByVariant.get(variantId);
+      const row = availabilityByVariant.get(variantId);
       // OMITTED, not zeroed, when availability is unknown. `getAvailability
       // ByVariantIds` zero-fills every id it can answer for, so an absent entry
-      // means OL does not know — and writing 0 there would DEACTIVATE a live
-      // offer (#1689 uses exactly that primitive to pause one) on the strength
-      // of a failed read. This is why the read is not defaulted to 0.
-      if (masterQuantity === undefined) continue;
+      // or a `null` ATP means OL does not know - and writing 0 there would
+      // DEACTIVATE a live offer (#1689 uses exactly that primitive to pause one)
+      // on the strength of a failed read. This is why the read is not defaulted.
+      if (row === undefined || row.availableToPromise === null) continue;
+      const observedAt = toObservation(row.stockUpdatedAt);
       for (const externalOfferId of externalOfferIds) {
-        restorable.push({ externalOfferId, masterQuantity });
+        items.push({
+          offerId: externalOfferId,
+          quantity: row.availableToPromise,
+          idempotencyKey: stockRestoreIdempotencyKey(
+            internalOrderId,
+            externalOfferId,
+            row.availableToPromise,
+            observedAt
+          ),
+          ...(observedAt ? { observedAt } : {}),
+        });
       }
     }
 
-    // Master is authoritative including 0, but what the destination is TOLD is
-    // the master figure under the connection's publish Controls — so a
-    // cancellation restores the buffered quantity rather than wiping the
-    // reserve (#2610). The threshold's 0 is a deliberate operator choice about
-    // what the destination may sell, not a post-sale hold: the same Controls
-    // produced the quantity published before the order arrived.
-    //
-    // Asked of the availability seam, never of the buffer helpers: #2323 made
-    // `IAvailabilityService` their one reader precisely so a second Control
-    // cannot be added in one place and missed here.
-    const controls = await this.availabilityService.applyPublishControlsBatch({
-      quantities: restorable.map((entry) => entry.masterQuantity),
-      scope: { kind: 'channel', connectionId },
-    });
-    for (const [index, entry] of restorable.entries()) {
-      const quantity = controls[index]?.quantity;
-      // Same rule as an unknown availability, one term further along: publishing
-      // the unbuffered figure would restore straight through the operator's
-      // cushion, and publishing 0 would deactivate a live offer.
-      if (typeof quantity !== 'number') continue;
-      targets.push({
-        externalOfferId: entry.externalOfferId,
-        quantity,
-        idempotencyKey: `stock-restore:${internalOrderId}:${entry.externalOfferId}`,
-      });
-    }
-
-    if (targets.length === 0) {
+    if (items.length === 0) {
       this.logger.debug(
         `Stock-restore skipped: availability unknown for every mapped variant [connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
@@ -404,16 +412,59 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     }
 
     this.logger.debug(
-      `Restoring marketplace stock for ${targets.length} offer(s) [connectionId=${connectionId}, orderId=${internalOrderId}]`,
+      `Restoring marketplace stock for ${items.length} offer(s) [connectionId=${connectionId}, orderId=${internalOrderId}]`,
     );
-    await restorer.restoreStockOnCancellation(targets);
+    // The restore is an ABSOLUTE set, so it goes through the same ordered write
+    // every propagation uses (#2617, ADR-067), never straight to the adapter: a
+    // propagation for the same offer can carry a newer observation, and an
+    // unguarded restore landing after it would roll the listing back to an
+    // older figure - overselling when that figure is the higher one. The seam
+    // also applies the connection's publish Controls (#1844 reserve, #2610 zero
+    // threshold), which is why the raw ATP is passed here and not a buffered
+    // number: buffering it here too would hold the reserve back twice.
+    const result = await this.inventorySync.updateOfferQuantities(connectionId, { items });
+    this.throwIfIncomplete(result, internalOrderId);
 
     return {
       released: release.closed,
       alreadyTerminal: release.alreadyTerminal,
-      offersRestored: targets.length,
+      offersRestored: result.succeeded.length,
       outcome: 'restored',
     };
+  }
+
+  /**
+   * Fail the job when any offer was not written, after every offer was tried.
+   *
+   * The write seam reports per-offer failures instead of stopping at the first,
+   * so one rejected offer never leaves its siblings unwritten; throwing here
+   * then puts the whole idempotent sequence back on the retry ladder, where the
+   * offers that did land are re-sent under the same keys and observation (a
+   * no-op for a command-keyed destination) and the failed ones get another go.
+   *
+   * When EVERY failure is contention - a peer holds the offer's write lock - the
+   * guard is working, not the job failing, so it surfaces as the core
+   * `ContendedWriteError` the runner defers without spending an attempt (the
+   * `marketplace.offerQuantity.update` handler's rule, #2617 review).
+   */
+  private throwIfIncomplete(
+    result: UpdateOfferQuantitiesBatchResult,
+    internalOrderId: string
+  ): void {
+    if (result.failed.length === 0) return;
+    const codes = [...new Set(result.failed.map((failure) => failure.errorCode))];
+    this.logger.error(
+      `cancellation_restore_write_incomplete order=${internalOrderId} ` +
+        `written=${String(result.succeeded.length)} failed=${String(result.failed.length)} ` +
+        `codes=${codes.join(',')}`,
+    );
+    if (result.failed.every((failure) => failure.errorCode === 'write_contended')) {
+      throw new ContendedWriteError(
+        `Stock restore for order ${internalOrderId} contended on ${result.failed.length} offer(s)`,
+        result.failed[0].offerId,
+      );
+    }
+    throw new OfferStockRestoreWriteIncompleteError(internalOrderId, result.failed.length, codes);
   }
 
   /** A non-restoring exit that still reports what the release did. */
@@ -431,22 +482,21 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
 
 
   /**
-   * Resolve the connection's `OfferManager` adapter and narrow it to an
-   * `OfferStockRestorer`, or return `null` when the source marketplace does not
-   * participate in core-driven stock restore. All three "doesn't participate"
-   * paths are routine no-ops, logged at debug — never `warn` (this fires on
-   * every cancellation platform-wide) and never thrown (a thrown capability
-   * error would fail the job and dead-letter it):
+   * Whether the source marketplace participates in core-driven stock restore:
+   * its `OfferManager` adapter declares `OfferStockRestorer`. All three
+   * "doesn't participate" paths are routine no-ops, logged at debug — never
+   * `warn` (this fires on every cancellation platform-wide) and never thrown (a
+   * thrown capability error would fail the job and dead-letter it):
    *   - `OfferManager` not supported by the adapter, or not enabled on the
    *     connection → `CapabilityNotSupportedException` (and its
    *     `CapabilityNotEnabledException` subclass);
-   *   - adapter present but does not implement `OfferStockRestorer` (e.g.
-   *     Allegro, which restores its own stock on cancellation).
+   *   - adapter present but does not implement `OfferStockRestorer` (its
+   *     marketplace restores its own stock on cancellation).
    */
-  private async resolveStockRestorer(
+  private async participatesInRestore(
     connectionId: string,
     internalOrderId: string,
-  ): Promise<(OfferManagerPort & OfferStockRestorer) | null> {
+  ): Promise<boolean> {
     let adapter: OfferManagerPort;
     try {
       adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
@@ -458,7 +508,7 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
         this.logger.debug(
           `Stock-restore skipped: connection does not support/enable OfferManager [connectionId=${connectionId}, orderId=${internalOrderId}]`,
         );
-        return null;
+        return false;
       }
       throw error;
     }
@@ -467,10 +517,10 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       this.logger.debug(
         `Stock-restore skipped: adapter does not implement OfferStockRestorer (marketplace restores its own stock) [connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
-      return null;
+      return false;
     }
 
-    return adapter;
+    return true;
   }
 
   /**
