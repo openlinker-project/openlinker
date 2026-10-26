@@ -458,22 +458,25 @@ export class OrderCancellationService implements IOrderCancellationService {
     otherParticipantsRelayFailed: boolean,
     voidedShipmentIds: readonly string[]
   ): Promise<CancelOrderResult> {
-    const confirmed = await this.changes.confirm(change.id, input.actorUserId);
-    const claimed = confirmed ? await this.changes.claimApplied(change.id) : false;
-    if (!claimed) {
-      // A peer applied it between our gate and here; its side effects are theirs.
-      this.logger.warn(`order_cancel_apply_lost_race order=${order.internalOrderId} change=${change.id}`);
-    }
+    // A peer may have confirmed first: the source's own cancellation webhook can
+    // reach ingestion (which confirms the open request from observation) before
+    // this call gets here. The effects below are all idempotent - `markCancelled`
+    // is first-write-wins, the stock-restore job dedupes on a shared key, work
+    // cancellation is a guarded UPDATE and the proposal is `openOrReuse` - so
+    // they run regardless of who won the confirm, rather than being skipped and
+    // leaving work live or the credit unproposed.
+    await this.changes.confirm(change.id, input.actorUserId);
+    await this.changes.claimApplied(change.id);
 
     const cancelledAt = new Date();
     await this.orderRecords.markCancelled(order.internalOrderId, cancelledAt);
 
-    const stockRestoreEnqueued = claimed ? await this.enqueueStockRestore(order) : false;
-    const cancelledWorkIds = claimed ? await this.cancelWork(order.internalOrderId, cancelledAt) : [];
+    const stockRestoreEnqueued = await this.enqueueStockRestore(order);
+    const cancelledWorkIds = await this.cancelWork(order.internalOrderId, cancelledAt);
 
     let correctionProposal: CancelCorrectionProposal | null = null;
     let correctionUnavailableReason: CancelCorrectionUnavailableReason | null = null;
-    if (claimed && latestInvoice && latestInvoice.status === 'issued') {
+    if (latestInvoice && latestInvoice.status === 'issued') {
       const proposed = await this.proposeCreditCorrection(order, latestInvoice, input);
       correctionProposal = proposed.proposal;
       correctionUnavailableReason = proposed.unavailable;

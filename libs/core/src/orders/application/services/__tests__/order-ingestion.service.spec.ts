@@ -6,6 +6,7 @@
  * @module libs/core/src/orders/application/services/__tests__
  */
 
+import type { IOrderChangeService } from '../order-change.service.interface';
 import { OrderIngestionService } from '../order-ingestion.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OrderSourcePort } from '@openlinker/core/orders';
@@ -81,6 +82,9 @@ describe('OrderIngestionService', () => {
   // `selectPrimaryFulfillmentRouter` returns `no-claimant` and `route` is never
   // reached. Every pre-existing spec therefore asserts the pass-through.
   let routingCommit: jest.Mocked<IRoutingCommitService>;
+  let orderChanges: jest.Mocked<
+    Pick<IOrderChangeService, 'findOpenByOrder' | 'confirm' | 'claimApplied'>
+  >;
   let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
 
   const connectionId = 'connection-123';
@@ -217,6 +221,11 @@ describe('OrderIngestionService', () => {
     } as unknown as jest.Mocked<IRoutingCommitService>;
     connections = { list: jest.fn().mockResolvedValue([]) };
 
+    orderChanges = {
+      findOpenByOrder: jest.fn().mockResolvedValue([]),
+      confirm: jest.fn().mockResolvedValue(true),
+      claimApplied: jest.fn().mockResolvedValue(true),
+    };
     service = new OrderIngestionService(
       integrationsService,
       syncCursors as unknown as ISyncCursorsService,
@@ -236,7 +245,8 @@ describe('OrderIngestionService', () => {
       fulfillmentRouting,
       routingCommit,
       connections as unknown as ConnectionPort,
-      routerResolver
+      routerResolver,
+      orderChanges as unknown as IOrderChangeService
     );
   });
 
@@ -1800,6 +1810,68 @@ describe('OrderIngestionService', () => {
       await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
 
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('dest-conn-1=rejected'));
+    });
+  });
+
+  describe('syncOrderFromSource – inbound cancel confirms an open operator request (#3540)', () => {
+    const externalOrderId = 'checkout-cancel-3540';
+    const openRequest = { id: 'change-1', kind: 'order.cancel_request' };
+
+    beforeEach(() => {
+      identifierMapping.getInternalId.mockResolvedValue('ol_order_cancel');
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+      } as unknown as OrderRecord);
+      orderLifecycleRelay.relay.mockResolvedValue({ targets: [] });
+    });
+
+    it('confirms and claims an open cancel request, attributing it to the source', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderRecordService.markCancelled).toHaveBeenCalled();
+      expect(orderChanges.confirm).toHaveBeenCalledWith('change-1', `source:${connectionId}`);
+      expect(orderChanges.claimApplied).toHaveBeenCalledWith('change-1');
+    });
+
+    it('leaves every other open change alone', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([
+        { id: 'c2', kind: 'order.cancel_correction' },
+        { id: 'c3', kind: 'return.decline' },
+      ] as never);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.confirm).not.toHaveBeenCalled();
+    });
+
+    it('does not claim application when a peer already confirmed the row', async () => {
+      orderChanges.findOpenByOrder.mockResolvedValue([openRequest] as never);
+      orderChanges.confirm.mockResolvedValue(false);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.claimApplied).not.toHaveBeenCalled();
+    });
+
+    it('never fails ingestion, and still relays, when confirming throws', async () => {
+      orderChanges.findOpenByOrder.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).resolves.toEqual([]);
+      expect(orderLifecycleRelay.relay).toHaveBeenCalled();
+    });
+
+    it('does not look for a request on a destination-echo cancel', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'other-source',
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+
+      expect(orderChanges.findOpenByOrder).not.toHaveBeenCalled();
     });
   });
 

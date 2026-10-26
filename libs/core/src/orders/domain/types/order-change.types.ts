@@ -72,33 +72,46 @@ export const OrderChangeKindValues = [
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
 
 /**
- * The kinds that are an operator MUTATING THE ORDER ITSELF (#3540), as opposed to
- * a `return.*` proposal about a return.
+ * The kinds that are an operator ASKING A CHANNEL to change the order (#3540):
+ * a request that stays open until the channel answers (or the TTL expires).
  *
- * `order.cancel_request` (targetRef `cancel:{internalOrderId}`) is the operator's
- * request that the SOURCE cancel the order; `order.cancel_correction` (targetRef
- * `correction:cancel:{internalOrderId}:{invoiceRecordId}`) is the credit-note
- * proposal a cancelled, invoiced order leaves behind. Both namespaces are disjoint
- * from every `return.*` targetRef, which is what the shared unique index needs
- * (it carries no `kind`).
- *
- * Only these count as an open AMENDMENT for the derived `amending` lifecycle
- * phase (named "mutation" here because `OrderAmendmentChangeKind` already means the
- * ingestion line-diff observation, see the file header): an open `return.decline` is about a return, not about the order, and
- * must not make the order read `amending`.
+ * Only these drive the derived `amending` lifecycle phase. A `return.*` change is
+ * about a return, and a correction proposal (below) is a proposal the OPERATOR
+ * confirms, not a change awaiting a channel - counting either would show a
+ * "change pending" state for something nobody is waiting on. (Named "request"
+ * because `OrderAmendmentChangeKind` already means the ingestion line-diff
+ * observation, see the file header.)
  */
-export const OrderMutationChangeKindValues = [
+export const OrderAmendmentRequestKindValues = [
   'order.cancel_request',
+] as const satisfies readonly OrderChangeKind[];
+
+export type OrderAmendmentRequestKind = (typeof OrderAmendmentRequestKindValues)[number];
+
+/** Pure coercion. Edit in the same commit as {@link OrderAmendmentRequestKindValues}. */
+export function isOrderAmendmentRequestKind(value: unknown): value is OrderAmendmentRequestKind {
+  return (
+    typeof value === 'string' &&
+    (OrderAmendmentRequestKindValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The kinds that are an operator-confirmable CORRECTION proposal (#3540):
+ * `order.cancel_correction` (targetRef `correction:cancel:{order}:{invoice}`) is
+ * the credit a cancelled, invoiced order leaves behind. The confirm endpoint
+ * switches over this list; none of them is an amendment awaiting a channel.
+ */
+export const OrderCorrectionChangeKindValues = [
   'order.cancel_correction',
 ] as const satisfies readonly OrderChangeKind[];
 
-export type OrderMutationChangeKind = (typeof OrderMutationChangeKindValues)[number];
+export type OrderCorrectionChangeKind = (typeof OrderCorrectionChangeKindValues)[number];
 
-/** Pure coercion. Edit in the same commit as {@link OrderMutationChangeKindValues}. */
-export function isOrderMutationChangeKind(value: unknown): value is OrderMutationChangeKind {
+export function isOrderCorrectionChangeKind(value: unknown): value is OrderCorrectionChangeKind {
   return (
     typeof value === 'string' &&
-    (OrderMutationChangeKindValues as readonly string[]).includes(value)
+    (OrderCorrectionChangeKindValues as readonly string[]).includes(value)
   );
 }
 

@@ -82,6 +82,7 @@ import {
   ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
+import { OrderChangesModule } from './order-changes.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
@@ -154,6 +155,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // The edge is directional: importing the leaf here does not give the leaf
     // any of these dependencies.
     OrderHoldsModule,
+    // Leaf (#3540): an inbound cancel confirms an operator's open cancel request.
+    OrderChangesModule,
     // One-way edge to a ZERO-SIBLING-EDGE LEAF (#2401): FulfillmentDispatchRelayService
     // injects FULFILLMENT_RELAY_GATE_SERVICE_TOKEN to take the work's at-most-once
     // dispatch-relay claim. `fulfillment` imports NO sibling core context at all

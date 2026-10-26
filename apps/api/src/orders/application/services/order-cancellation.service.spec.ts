@@ -437,13 +437,16 @@ describe('OrderCancellationService (#3540)', () => {
       expect(result.stockRestoreEnqueued).toBe(false);
     });
 
-    it('should run no side effects when a peer already applied the change', async () => {
+    it('should still run the idempotent effects when a peer already confirmed the change', async () => {
+      // The source webhook can confirm the open request via ingestion first.
+      changes.confirm.mockResolvedValue(false);
       changes.claimApplied.mockResolvedValue(false);
 
       const result = await service.cancelOrder(input);
 
-      expect(jobQueue.enqueue).not.toHaveBeenCalled();
-      expect(fulfillment.cancelAllForOrder).not.toHaveBeenCalled();
+      expect(orderRecords.markCancelled).toHaveBeenCalled();
+      expect(jobQueue.enqueue).toHaveBeenCalled();
+      expect(fulfillment.cancelAllForOrder).toHaveBeenCalled();
       expect(result.status).toBe('cancelled');
     });
   });

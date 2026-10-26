@@ -24,7 +24,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, QueryFailedError, Repository } from 'typeorm';
+import { In, IsNull, MoreThan, QueryFailedError, Repository } from 'typeorm';
 import { OrderChange } from '../../../domain/entities/order-change.entity';
 import { OrderChangeVocabularyError } from '../../../domain/exceptions/order-change-vocabulary.error';
 import type {
@@ -65,9 +65,13 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
-  async findOpenByOrder(internalOrderId: string): Promise<OrderChange[]> {
+  async findOpenByOrder(internalOrderId: string, openSince: Date): Promise<OrderChange[]> {
     const entities = await this.repository.find({
-      where: { internalOrderId, status: In([...OPEN_ORDER_CHANGE_STATUSES]) },
+      where: {
+        internalOrderId,
+        status: In([...OPEN_ORDER_CHANGE_STATUSES]),
+        requestedAt: MoreThan(openSince),
+      },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
     return entities.map((entity) => this.toDomain(entity));
@@ -75,7 +79,8 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
 
   async findOrderIdsWithOpenChanges(
     internalOrderIds: readonly string[],
-    kinds: readonly OrderChangeKind[]
+    kinds: readonly OrderChangeKind[],
+    openSince: Date
   ): Promise<Set<string>> {
     if (internalOrderIds.length === 0 || kinds.length === 0) {
       return new Set();
@@ -86,6 +91,7 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
       .where('oc."internalOrderId" IN (:...ids)', { ids: [...internalOrderIds] })
       .andWhere('oc.status IN (:...statuses)', { statuses: [...OPEN_ORDER_CHANGE_STATUSES] })
       .andWhere('oc.kind IN (:...kinds)', { kinds: [...kinds] })
+      .andWhere('oc."requestedAt" > :openSince', { openSince })
       .getRawMany<{ internalOrderId: string }>();
     return new Set(rows.map((row) => row.internalOrderId));
   }
