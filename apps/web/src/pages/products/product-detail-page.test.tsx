@@ -137,13 +137,52 @@ async function findAvailableKpiCard(): Promise<HTMLElement> {
   return kpiCard;
 }
 
-function renderDetailPage(apiClient: ReturnType<typeof createMockApiClient>): void {
+/**
+ * `signedIn` renders as an admin, who holds `inventory:read` and so sees the
+ * available-to-promise figures; the default anonymous session reads none, which
+ * is the master-count fallback.
+ */
+function renderDetailPage(apiClient: ReturnType<typeof createMockApiClient>, signedIn = false): void {
   renderWithProviders(
     <Routes>
       <Route path="/products/:id" element={<ProductDetailPage />} />
     </Routes>,
-    { apiClient, route: '/products/ol_product_abc123' },
+    {
+      apiClient,
+      route: '/products/ol_product_abc123',
+      sessionAdapter: signedIn ? createAuthenticatedSessionAdapter() : undefined,
+    },
   );
+}
+
+function stockViewOf(atpByVariant: Record<string, number | null>): unknown {
+  return {
+    productId: 'ol_product_abc123',
+    productName: 'Test Product',
+    productSku: 'SKU-001',
+    staleSyncThreshold: { hours: 6, ms: 21_600_000, source: 'default' },
+    channelsStatus: 'ok',
+    generatedAt: '2026-01-15T10:00:00.000Z',
+    variants: Object.entries(atpByVariant).map(([id, atp]) => ({
+      productVariantId: id,
+      sku: id,
+      attributes: {},
+      masterAvailable: 40,
+      masterReserved: 0,
+      availableToPromise: atp,
+      provenance: atp === null ? 'unknown' : 'computed',
+      observedAt: '2026-01-15T10:00:00.000Z',
+      stalenessMs: 0,
+      olHeldNotReflected: null,
+      heldCounted: atp === null ? null : 37,
+      heldRecordedOnly: 0,
+      livePositionCount: 1,
+      isStaleSync: false,
+      positions: [],
+      holds: [],
+      channels: [],
+    })),
+  };
 }
 
 describe('ProductDetailPage', () => {
@@ -178,7 +217,7 @@ describe('ProductDetailPage', () => {
 
     // Single variant → "Listed on" panel (no variants table). The metadata
     // grid surfaces attribute chips, the variant id, and the EAN/GTIN.
-    expect(screen.getByRole('heading', { name: 'Listed on' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Variants & stock' })).toBeInTheDocument();
     expect(screen.getByText('Attributes')).toBeInTheDocument();
     expect(screen.getByText('ol_product_var1')).toBeInTheDocument();
     expect(screen.getByText('1234567890123')).toBeInTheDocument();
@@ -261,14 +300,74 @@ describe('ProductDetailPage', () => {
         list: vi.fn().mockResolvedValue(
           paginatedInventory([inventoryItem({ availableQuantity: -5, reservedQuantity: 2 })]),
         ),
+        stockView: vi.fn().mockResolvedValue(stockViewOf({ ol_product_var1: 0 })),
+      },
+    });
+
+    renderDetailPage(mockApi, true);
+
+    const kpiCard = await findAvailableKpiCard();
+    await waitFor(() => expect(kpiCard).toHaveClass('kpi-card--error'));
+    expect(within(kpiCard).getByText('0')).toBeInTheDocument();
+  });
+
+  it('should show Unknown, neutral, in the hero badge and the Available KPI when available to promise is unknown', async () => {
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+      inventory: {
+        list: vi.fn().mockResolvedValue(paginatedInventory([inventoryItem({ availableQuantity: 40 })])),
+        stockView: vi.fn().mockResolvedValue(stockViewOf({ ol_product_var1: null })),
+      },
+    });
+
+    renderDetailPage(mockApi, true);
+
+    expect(await screen.findByTestId('product-stock-badge-unknown')).toHaveTextContent('Stock unknown');
+    const kpiCard = await findAvailableKpiCard();
+    expect(within(kpiCard).getByText('Unknown')).toBeInTheDocument();
+    expect(kpiCard).not.toHaveClass('kpi-card--success');
+    expect(within(kpiCard).queryByText('40')).not.toBeInTheDocument();
+  });
+
+  it('should drive the hero badge from available to promise, not the master count', async () => {
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+      inventory: {
+        list: vi.fn().mockResolvedValue(paginatedInventory([inventoryItem({ availableQuantity: 40 })])),
+        stockView: vi.fn().mockResolvedValue(stockViewOf({ ol_product_var1: 3 })),
+      },
+    });
+
+    renderDetailPage(mockApi, true);
+
+    expect(await screen.findByText('Low stock')).toBeInTheDocument();
+    expect(screen.queryByText('In stock')).not.toBeInTheDocument();
+  });
+
+  it('should fall back to the master count, without a stock view request, for a session that cannot read it', async () => {
+    const stockView = vi.fn();
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+      inventory: {
+        list: vi.fn().mockResolvedValue(paginatedInventory([inventoryItem({ availableQuantity: 40 })])),
+        stockView,
       },
     });
 
     renderDetailPage(mockApi);
 
-    const kpiCard = await findAvailableKpiCard();
-    expect(kpiCard).toHaveClass('kpi-card--error');
-    expect(within(kpiCard).getByText('-5')).toBeInTheDocument();
+    expect(await screen.findByText('In stock')).toBeInTheDocument();
+    expect(stockView).not.toHaveBeenCalled();
+    expect(screen.getByTestId('stock-restricted-notice')).toBeInTheDocument();
+    expect(screen.queryByTestId('stock-unknown-alert')).not.toBeInTheDocument();
+  });
+
+  it('should carry the back link test id', async () => {
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+    });
+    renderDetailPage(mockApi);
+    expect(await screen.findByTestId('stock-back-to-products')).toHaveAttribute('href', '/products');
   });
 
   it('should render the stock panel as out-of-stock (not low-stock) when available to promise is exactly zero, and no stock column in the listings table', async () => {
@@ -314,7 +413,11 @@ describe('ProductDetailPage', () => {
       <Routes>
         <Route path="/products/:id" element={<ProductDetailPage />} />
       </Routes>,
-      { apiClient: mockApi, route: '/products/ol_product_abc123' },
+      {
+        apiClient: mockApi,
+        route: '/products/ol_product_abc123',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      },
     );
 
     const atp = await screen.findByTestId('stock-atp-SKU-001-M');
@@ -379,15 +482,16 @@ describe('ProductDetailPage', () => {
             inventoryItem({ id: 'ol_inv_2', productVariantId: 'ol_product_var2', availableQuantity: 10 }),
           ]),
         ),
+        stockView: vi.fn().mockResolvedValue(stockViewOf({ ol_product_var1: 0, ol_product_var2: 8 })),
       },
     });
 
-    renderDetailPage(mockApi);
+    renderDetailPage(mockApi, true);
 
     const kpiCard = await findAvailableKpiCard();
-    expect(kpiCard).toHaveClass('kpi-card--warning');
+    await waitFor(() => expect(kpiCard).toHaveClass('kpi-card--warning'));
     expect(within(kpiCard).getByText('8')).toBeInTheDocument();
-    expect(within(kpiCard).getByText('1 oversold')).toBeInTheDocument();
+    expect(within(kpiCard).getByText(/1 oversold/)).toBeInTheDocument();
   });
 
   it('should toggle the variant drawer and render the matching per-listing detail', async () => {
@@ -496,8 +600,8 @@ describe('ProductDetailPage', () => {
       { apiClient: mockApi, route: '/products/ol_product_abc123' },
     );
 
-    expect(await screen.findByRole('heading', { name: 'Listed on' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /Variants & stock/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Variants & stock' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Variants & stock \(/ })).not.toBeInTheDocument();
     expect(container.querySelector('.variant-stock-table')).toBeNull();
   });
 
@@ -515,7 +619,7 @@ describe('ProductDetailPage', () => {
       { apiClient: mockApi, route: '/products/ol_product_abc123' },
     );
 
-    await screen.findByRole('heading', { name: 'Listed on' });
+    await screen.findByRole('heading', { name: 'Variants & stock' });
     const panel = container.querySelector('.variant-drawer--flush') as HTMLElement;
     expect(within(panel).getByText('Tax rate')).toBeInTheDocument();
     expect(within(panel).getByText('23%')).toBeInTheDocument();
@@ -536,7 +640,7 @@ describe('ProductDetailPage', () => {
       { apiClient: mockApi, route: '/products/ol_product_abc123' },
     );
 
-    await screen.findByRole('heading', { name: 'Listed on' });
+    await screen.findByRole('heading', { name: 'Variants & stock' });
     const panel = container.querySelector('.variant-drawer--flush') as HTMLElement;
     expect(within(panel).getByText('No tax rate')).toBeInTheDocument();
   });
@@ -585,7 +689,7 @@ describe('ProductDetailPage', () => {
     );
 
     expect(await screen.findByRole('heading', { name: 'Variants & stock (2)' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Listed on' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Variants & stock' })).not.toBeInTheDocument();
     expect(container.querySelector('.variant-stock-table')).not.toBeNull();
   });
 

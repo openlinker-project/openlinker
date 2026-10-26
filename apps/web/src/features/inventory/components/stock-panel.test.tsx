@@ -2,6 +2,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuthenticatedSessionAdapter, createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import { PermissionValues } from '../../../shared/auth/session.types';
 import type { StockView, StockViewVariant } from '../api/inventory.types';
 import { StockPanel, type StockPanelVariant } from './stock-panel';
@@ -69,16 +70,28 @@ function view(vs: StockViewVariant[]): StockView {
   };
 }
 
-function renderPanel(options: { stock?: StockView | Promise<StockView>; viewer?: boolean; reject?: boolean }): void {
-  const stockView = options.reject
+function renderPanel(options: {
+  stock?: StockView | Promise<StockView>;
+  viewer?: boolean;
+  reject?: boolean;
+  packer?: boolean;
+  forbidden?: boolean;
+  masterConnectionId?: string;
+  connections?: Array<{ id: string; name: string }>;
+}): { stockView: ReturnType<typeof vi.fn> } {
+  const stockView = options.forbidden
+    ? vi.fn().mockRejectedValue(new ApiError('Forbidden', 403, { message: 'Forbidden' }))
+    : options.reject
     ? vi.fn().mockRejectedValue(new Error('boom'))
     : vi.fn().mockReturnValue(options.stock ?? new Promise(() => undefined));
   const user = {
     id: 'u',
     username: 'u',
     email: null,
-    role: options.viewer ? 'viewer' : 'admin',
-    permissions: PermissionValues.filter((p) => !options.viewer || p !== 'inventory:write'),
+    role: options.packer ? 'packer' : options.viewer ? 'viewer' : 'admin',
+    permissions: options.packer
+      ? ['bench:write' as const]
+      : PermissionValues.filter((p) => !options.viewer || p !== 'inventory:write'),
     analyticsConsent: true,
   };
   renderWithProviders(
@@ -86,14 +99,36 @@ function renderPanel(options: { stock?: StockView | Promise<StockView>; viewer?:
         productId="p1"
         variants={variants}
         inventoryItems={[]}
-        canAdjust={!options.viewer}
+        canAdjust={!options.viewer && !options.packer}
         onAdjust={vi.fn()}
+        masterConnectionId={options.masterConnectionId}
     />,
     {
-      apiClient: createMockApiClient({ inventory: { stockView } }),
+      apiClient: createMockApiClient({
+        inventory: { stockView },
+        ...(options.connections
+          ? {
+              connections: {
+                list: vi.fn().mockResolvedValue(
+                  options.connections.map((c) => ({
+                    id: c.id,
+                    name: c.name,
+                    platformType: 'prestashop',
+                    status: 'active',
+                    adapterKey: 'prestashop.webservice.v1',
+                    config: {},
+                    createdAt: '2026-01-15T10:00:00.000Z',
+                    updatedAt: '2026-01-15T10:00:00.000Z',
+                  })),
+                ),
+              },
+            }
+          : {}),
+      }),
       sessionAdapter: createAuthenticatedSessionAdapter(user),
     },
   );
+  return { stockView };
 }
 
 describe('StockPanel', () => {
@@ -241,5 +276,59 @@ describe('StockPanel', () => {
       ]),
     });
     expect(await screen.findByTestId('stock-summary-master')).toHaveTextContent('1 oversold');
+  });
+
+  it('should show master stock and an access notice, without a stock view read, for a role without inventory:read', async () => {
+    const { stockView } = renderPanel({ packer: true });
+    expect(await screen.findByTestId('stock-restricted-notice')).toBeInTheDocument();
+    expect(stockView).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('stock-unknown-alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stock-retry')).not.toBeInTheDocument();
+    expect(screen.getByTestId('stock-summary-atp')).toHaveTextContent('—');
+    expect(screen.getByTestId('stock-atp-KCN-WHT')).not.toHaveTextContent('Unknown');
+  });
+
+  it('should treat a 403 from the stock view as an access notice, not as unknown with a retry', async () => {
+    renderPanel({ forbidden: true });
+    expect(await screen.findByTestId('stock-restricted-notice')).toBeInTheDocument();
+    expect(screen.queryByTestId('stock-unknown-alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stock-retry')).not.toBeInTheDocument();
+  });
+
+  it('should name the connection in the stale alert', async () => {
+    renderPanel({
+      connections: [{ id: 'conn_ps', name: 'PrestaShop - Ceramika Nowak' }],
+      stock: view([
+        stockVariant({ productVariantId: 'v1', sku: 'KCN-WHT', isStaleSync: true, stalenessMs: 7 * 3_600_000 }),
+        stockVariant({ productVariantId: 'v2', sku: 'KCN-GRY', isStaleSync: true, stalenessMs: 7 * 3_600_000 }),
+      ]),
+    });
+    expect(await screen.findByTestId('stock-stale-alert')).toHaveTextContent('from PrestaShop - Ceramika Nowak');
+  });
+
+  it('should offer the master connection as the next step in the empty state', async () => {
+    renderPanel({
+      masterConnectionId: 'conn_ps',
+      connections: [{ id: 'conn_ps', name: 'PrestaShop - Ceramika Nowak' }],
+      stock: view([
+        stockVariant({ productVariantId: 'v1', sku: 'KCN-WHT', positions: [], livePositionCount: 0, masterAvailable: 0, availableToPromise: 0, heldCounted: 0 }),
+        stockVariant({ productVariantId: 'v2', sku: 'KCN-GRY', positions: [], livePositionCount: 0, masterAvailable: 0, availableToPromise: 0, heldCounted: 0 }),
+      ]),
+    });
+    expect(await screen.findByTestId('stock-empty-open-connection')).toHaveAttribute('href', '/connections/conn_ps');
+    expect(screen.getByTestId('stock-empty')).toHaveTextContent('PrestaShop - Ceramika Nowak');
+  });
+
+  it('should carry the variants table test id and a visible reason beside a viewer button', async () => {
+    renderPanel({
+      viewer: true,
+      stock: view([
+        stockVariant({ productVariantId: 'v1', sku: 'KCN-WHT' }),
+        stockVariant({ productVariantId: 'v2', sku: 'KCN-GRY' }),
+      ]),
+    });
+    expect(await screen.findByTestId('stock-variants-table')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-viewer-notice')).toHaveTextContent('Only admins and operators can adjust stock.');
+    expect(screen.getByTestId('stock-adjust-KCN-WHT')).toHaveAttribute('aria-describedby', 'stock-viewer-hint');
   });
 });
