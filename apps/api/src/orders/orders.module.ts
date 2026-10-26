@@ -38,6 +38,7 @@ import { OrderCancellationService } from './application/services/order-cancellat
 import { ORDER_CANCELLATION_SERVICE_TOKEN } from './application/interfaces/order-cancellation.service.interface';
 import { OrderEditService } from './application/services/order-edit.service';
 import { ORDER_EDIT_SERVICE_TOKEN } from './application/interfaces/order-edit.service.interface';
+import { OrderBulkActionsController } from './http/order-bulk-actions.controller';
 import { OrderEditsController } from './http/order-edits.controller';
 import { IntegrationsModule } from '../integrations/integrations.module';
 
@@ -103,6 +104,8 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     OrderColumnPresetsController,
     OrderExportsController,
     OrderEditsController,
+    // #3545 - static `orders/bulk` prefix; must precede `OrdersController` (see above).
+    OrderBulkActionsController,
     OrdersController,
     RefundsController,
     SalesDocumentsController,
