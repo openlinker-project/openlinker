@@ -90,7 +90,9 @@ import {
   IOrderProvisioningResumeService,
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   IOrderTestFixtureService,
-  TestFixturesDisabledException} from '@openlinker/core/orders';
+  TestFixturesDisabledException,
+  classifyBuyerNoteForList,
+  buildBuyerNotePreview} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderRecordFilters,
@@ -1408,6 +1410,8 @@ export class OrdersController {
       // Buyer-note list facts (#3538) and the D7 country / repeat-buyer scalars.
       // The note TEXT is deliberately not here - `getOrder` sets it.
       hasBuyerNote: order.hasBuyerNote,
+      buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
+      buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
       shippingCountry: order.shippingCountry,
       billingCountry: order.billingCountry,
       buyerOrderCount: order.buyerOrderCount,

@@ -695,6 +695,37 @@ describe('BenchWorkService (#2416)', () => {
     });
   });
 
+  describe('buyer note facts on the rail (#3538, D12)', () => {
+    it('should flag a row whose order has a buyer note and carry this parcel acknowledgement', async () => {
+      const { service } = harness({
+        orders: [orderRecord({ hasBuyerNote: true } as Partial<OrderRecord>)],
+        page: {
+          works: [
+            workView({
+              buyerNoteAcknowledgedAt: new Date('2026-09-25T14:31:00Z'),
+            } as unknown as Partial<FulfillmentWorkView>),
+          ],
+        },
+      });
+
+      const row = (await service.listBenchWork('viewer-1', true)).works[0];
+
+      expect(row.hasBuyerNote).toBe(true);
+      expect(row.buyerNoteAcknowledgedAt).toBe('2026-09-25T14:31:00.000Z');
+    });
+
+    it('should report no note and no acknowledgement when the order has none', async () => {
+      const { service } = harness({ orders: [orderRecord({ hasBuyerNote: false } as Partial<OrderRecord>)] });
+
+      const row = (await service.listBenchWork('viewer-1', true)).works[0];
+
+      expect(row.hasBuyerNote).toBe(false);
+      expect(row.buyerNoteAcknowledgedAt).toBeNull();
+      // The rail never carries the text itself.
+      expect(Object.keys(row)).not.toContain('buyerNote');
+    });
+  });
+
   describe('listPackedToday (#3413)', () => {
     it('projects the page, newest-closed first, and reports the reference/buyer name', async () => {
       const older = workView({

@@ -313,6 +313,26 @@ export class OrderRecordResponseDto {
   })
   hasBuyerNote!: boolean;
 
+  @ApiProperty({
+    enum: ['present', 'none', 'unknown'],
+    description:
+      'What the list can say about the buyer note without its text (#3538). `present` = `hasBuyerNote`; ' +
+      '`none` = the source asserted the buyer left no note; `unknown` = the source could not say. Under ' +
+      '`OL_STORE_PII=false` no note text is stored, so a row with no note cannot tell none from unknown and ' +
+      'reads `unknown`. On the SHARED projection (list and detail).',
+  })
+  buyerNoteState!: 'present' | 'none' | 'unknown';
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'First non-empty line of the buyer note, trimmed and cut to 120 characters (#3538), with no ellipsis ' +
+      'added - the client truncates visually. null when the text is not stored or there is no note. The list ' +
+      'already shows buyer identity, so a one-line preview is not a new disclosure class. Never returned by MCP.',
+  })
+  buyerNotePreview!: string | null;
+
   @ApiPropertyOptional({
     nullable: true,
     description:
