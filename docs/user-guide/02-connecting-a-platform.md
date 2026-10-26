@@ -1,6 +1,6 @@
 # Connecting a Platform
 
-OpenLinker works by connecting to your existing platforms — a **master shop** (PrestaShop or WooCommerce) that is the source of truth for products and inventory, and one or more **marketplace** connections (Allegro) where offers are created and orders are ingested. This section walks you through the full connection flow using PrestaShop and Allegro as worked examples.
+OpenLinker works by connecting to your existing platforms — a **master shop** (PrestaShop, WooCommerce or Shoper) that is the source of truth for products and inventory, and one or more **marketplace** connections (Allegro) where offers are created and orders are ingested. This section walks you through the full connection flow using PrestaShop and Allegro as worked examples.
 
 For WooCommerce-specific wizard steps, see the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)**.
 
@@ -158,6 +158,7 @@ Beyond the PrestaShop/Allegro worked example above:
 | **PrestaShop** | `prestashop.webservice.v1` | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner | Worked example above |
 | **Allegro** | `allegro.publicapi.v1` | OrderSource, OfferManager, ShippingProviderManager, CategoryBrowser, EanCategoryMatcher, OfferCreator, OfferEventReader | Worked example above |
 | **WooCommerce** | `woocommerce.restapi.v3` | ProductMaster, InventoryMaster, OrderProcessorManager, OrderSource, ProductPublisher, CategoryProvisioner, OfferManager | See the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)** |
+| **Shoper** | `shoper.restapi.v1` | ProductMaster, InventoryMaster, ProductPublisher, CategoryProvisioner, OrderProcessorManager, OrderSource | Polish SaaS shop platform. Only ProductMaster and InventoryMaster are enabled by default; enable the rest on the connection when Shoper should also receive orders, send its own orders or take published products. No invoices: the Shoper API has none. See the [adapter README](../../libs/integrations/shoper/README.md) |
 | **Erli** | `erli.shopapi.v1` | OfferManager, OrderSource, OfferCreator | Reconciliation-first marketplace adapter; reuses an existing PrestaShop → Allegro category/attribute mapping rather than requiring a separate one (borrowed-taxonomy model). Static API-key auth — no OAuth step. |
 | **InPost** | `inpost.shipx.v1` | ShippingProviderManager | Generates shipment labels and paczkomat (parcel-locker) tracking, surfaced in the order's [Shipment panel](./06-orders.md#shipment-panel) |
 | **DPD Polska** | `dpd.polska.rest.v1` | ShippingProviderManager | Same shipment-panel integration point as InPost |
@@ -165,11 +166,11 @@ Beyond the PrestaShop/Allegro worked example above:
 | **Subiekt GT** (Sfera GT bridge) | `subiekt.gt.v1` | Invoicing, ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager | InsERT GT, reached through COM automation. Serves the catalogue, stock and orders as well as invoices; see the **[Subiekt GT setup guide](../../libs/integrations/subiekt/docs/setup-guide.md)** |
 | **Subiekt nexo** (Sfera bridge) | `subiekt.nexo.v1` | Invoicing | A **different** InsERT product on a **different** bridge — not a variant of Subiekt GT. Invoicing only; see the **[Subiekt nexo setup guide](../../libs/integrations/subiekt-nexo/docs/setup-guide.md)** |
 | **inFakt** | `infakt.accounting.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
-| **eparagony.pl** | `eparagony.documents.v3` | Fiscalization | Registers Polish fiscal e-receipts with your own fiscal printer; see [Fiscal receipts](./04a-fiscal-receipts.md) |
+| **eparagony.pl** | `eparagony.documents.v3` | Fiscalization, Invoicing | Registers Polish fiscal e-receipts with your own fiscal printer; see [Fiscal receipts](./04a-fiscal-receipts.md). Since #3192 the same connection can also issue invoices (the vendor relays them to KSeF); the invoice lane is enabled separately |
 
 ### Invoicing providers
 
-To issue invoices for orders, add a connection to any one of the **Invoicing**-role adapters above (KSeF, Subiekt GT, Subiekt nexo, or inFakt) the same way you'd add a shop or marketplace connection: **New connection** → pick the provider → fill in its credentials form → **Test connection**. KSeF in particular requires a Polish NIP and a KSeF authorization token generated from the taxpayer's own KSeF portal — see the [KSeF setup guide](../../libs/integrations/ksef/docs/setup-guide.md) for the full flow and current limitations.
+To issue invoices for orders, add a connection to any one of the **Invoicing**-role adapters above (KSeF, Subiekt GT, Subiekt nexo, inFakt, or eparagony.pl) the same way you'd add a shop or marketplace connection: **New connection** → pick the provider → fill in its credentials form → **Test connection**. KSeF in particular requires a Polish NIP and a KSeF authorization token generated from the taxpayer's own KSeF portal — see the [KSeF setup guide](../../libs/integrations/ksef/docs/setup-guide.md) for the full flow and current limitations.
 
 Once the connection is `active` and has `Invoicing` in its enabled capabilities, the **Invoice** panel appears on every order's detail page. See [Invoices](./04-invoices.md) for the full walkthrough.
 

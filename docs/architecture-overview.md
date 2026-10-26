@@ -1885,9 +1885,16 @@ openlinker/
 │       ├── ai/
 │       ├── allegro/
 │       ├── dpd-polska/
+│       ├── eparagony/
 │       ├── erli/
+│       ├── fx/
+│       ├── infakt/
 │       ├── inpost/
+│       ├── ksef/
 │       ├── prestashop/
+│       ├── shoper/
+│       ├── subiekt/
+│       ├── subiekt-nexo/
 │       └── woocommerce/
 │
 ├── schema.yaml                      # Unified Data Schema (OpenAPI)

@@ -69,8 +69,8 @@ export const apiPlugins: PluginEntry[] = [
   // 'Fiscalization' capability so an operator can register a completed sale
   // as a Polish fiscal e-receipt.
   EparagonyIntegrationModule,
-  // #3639: Shoper shop platform - connection skeleton only (tester + shape
-  // validators); capabilities land with the rest of the Shoper milestone.
+  // #3639: Shoper shop platform - ProductMaster, InventoryMaster, ProductPublisher,
+  // CategoryProvisioner, OrderProcessorManager and OrderSource, plus webhooks.
   ShoperIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB). NOT a plugin - it
   // registers no adapter manifest and exposes no capability; it appears here
