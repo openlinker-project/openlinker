@@ -868,6 +868,17 @@ export class PrestashopWebserviceClient {
    * means "this shop does not carry that currency", which a spec turns into a
    * precise skip instead of an order silently created in the shop default.
    */
+  /**
+   * The shop's conversion rate for a currency (units of it per one unit of the
+   * shop's default currency), which is what the cart applies to catalogue
+   * prices when an order is denominated in that currency.
+   */
+  async getCurrencyConversionRate(currencyId: string): Promise<number | null> {
+    const body = await this.get(`/api/currencies/${encodeURIComponent(currencyId)}`);
+    const rate = Number(pick(asRecord(pick(body, 'currency')), 'conversion_rate'));
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  }
+
   async getCurrencyIdByIso(iso: string): Promise<string | null> {
     const body = await this.get(`/api/currencies?filter[iso_code]=${encodeURIComponent(iso)}`);
     const currencies = asArray(pick(body, 'currencies'));
@@ -1060,6 +1071,24 @@ export class PrestashopWebserviceClient {
       );
     }
     return { id };
+  }
+
+  /**
+   * Move an order to another state by appending an `order_histories` row, the
+   * way the back office does (H-02, DEF-26). `6` is PrestaShop's stock
+   * "Canceled" state; a shop that renumbered its states passes its own id.
+   */
+  async setOrderState(orderId: string, orderStateId = '6'): Promise<void> {
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<prestashop>',
+      '  <order_history>',
+      `    <id_order>${escapeXml(orderId)}</id_order>`,
+      `    <id_order_state>${escapeXml(orderStateId)}</id_order_state>`,
+      '  </order_history>',
+      '</prestashop>',
+    ].join('\n');
+    await this.send('POST', '/api/order_histories', xml);
   }
 
   async createOrder(input: CreateOrderInput): Promise<{ id: string }> {

@@ -292,7 +292,21 @@ export interface SalesDocumentView {
    * from it — a row must never read `null` here as "no rule decided this".
    */
   readonly matchedRule: SalesDocumentMatchedRuleView | null;
+  /**
+   * DEF-26: the sale changed after its document was made, so it may need a
+   * correction. Derived by the backend on every read, never stored. Optional
+   * so a payload from an older API reads as "nothing to flag".
+   */
+  readonly afterIssueAttention?: SalesDocumentAfterIssueAttention | null;
 }
+
+/** Mirror of the backend's `SalesDocumentAfterIssueAttentionValues` (DEF-26). */
+export const SalesDocumentAfterIssueAttentionValues = [
+  'order-cancelled-after-issue',
+  'order-fully-refunded-after-issue',
+  'order-partially-refunded-after-issue',
+] as const;
+export type SalesDocumentAfterIssueAttention = (typeof SalesDocumentAfterIssueAttentionValues)[number];
 
 // ── Mapping-aware delivery (epic #1776) ─────────────────────────────────────
 // Hand-mirrored from the BE order response DTOs (`OrderDeliveryResolutionDto`
