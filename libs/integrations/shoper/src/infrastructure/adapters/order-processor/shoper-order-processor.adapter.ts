@@ -112,14 +112,16 @@ import type { ShoperTaxTableProvider } from '../../shop-context/shoper-tax-table
 const SUM_TOLERANCE = 0.011;
 
 /**
- * Sent when the source order carries no phone. Shoper refuses an empty one, and
- * all zeros cannot be mistaken for a buyer's number.
+ * Sent when the source order carries no phone. Shoper refuses an empty phone and
+ * also validates its format: all zeros and too-short values are rejected (live,
+ * 26 Oct 2026), while this value passes for PL, DE and CZ addresses. In Poland a
+ * leading 1 is never a subscriber number, so it cannot reach a real person.
  */
-export const SHOPER_PHONE_PLACEHOLDER = '000000000';
+export const SHOPER_PHONE_PLACEHOLDER = '100000000';
 
 /** The order note that explains the placeholder to whoever opens the order in Shoper. */
 export const SHOPER_PHONE_PLACEHOLDER_NOTE =
-  'Phone number 000000000 is a placeholder: the marketplace did not provide the buyer\'s phone (for example, the order was not paid yet).';
+  `Phone number ${SHOPER_PHONE_PLACEHOLDER} is a placeholder: the marketplace did not provide the buyer's phone (for example, the order was not paid yet).`;
 
 export class ShoperOrderProcessorAdapter
   implements
