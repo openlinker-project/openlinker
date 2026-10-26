@@ -73,6 +73,13 @@ export interface BenchWork {
    * `groupBenchWork`.
    */
   completedAt: string | null;
+  /**
+   * Whether the order has a buyer note (#3538, D12). A boolean only: the rail
+   * says a note exists and the text is read through the parcel view.
+   */
+  hasBuyerNote: boolean;
+  /** When THIS parcel's buyer note was first acknowledged at the bench, or `null`. */
+  buyerNoteAcknowledgedAt: string | null;
 }
 
 /** Whether packing work can reach this bench at all. */

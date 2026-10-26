@@ -14,6 +14,21 @@ describe('OrderBuyerNoteHint (#3539)', () => {
     expect(screen.getByTestId('order-buyer-note-hint')).toHaveTextContent('Buyer note');
   });
 
+  it('should show the one-line preview, with the label kept for assistive tech', () => {
+    render(<OrderBuyerNoteHint hasBuyerNote preview="Proszę o kubki w kolorze czerwonym" />);
+
+    const hint = screen.getByTestId('order-buyer-note-hint');
+    expect(hint).toHaveTextContent('Proszę o kubki w kolorze czerwonym');
+    expect(hint).toHaveAttribute('title', 'Proszę o kubki w kolorze czerwonym');
+    expect(hint.querySelector('.sr-only')).toHaveTextContent('Buyer note:');
+  });
+
+  it('should fall back to the label when no preview is stored', () => {
+    render(<OrderBuyerNoteHint hasBuyerNote preview={null} />);
+
+    expect(screen.getByTestId('order-buyer-note-hint')).toHaveTextContent(/^Buyer note$/);
+  });
+
   it('should render the card variant under its own test id', () => {
     render(<OrderBuyerNoteHint hasBuyerNote layout="card" />);
     expect(screen.getByTestId('order-buyer-note-hint-card')).toBeInTheDocument();

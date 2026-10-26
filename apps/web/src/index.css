@@ -31101,3 +31101,17 @@ legend.analytics-settings-dialog__label {
 .bench-buyer-note--read .bench-buyer-note__foot .button {
   min-height: 2.25rem;
 }
+
+.bench-work-row__buyer-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.bench-work-row__buyer-note strong {
+  font-weight: 600;
+  color: var(--status-info-fg);
+}
