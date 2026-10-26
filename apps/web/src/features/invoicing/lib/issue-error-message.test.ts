@@ -14,6 +14,7 @@ import {
   isConnectionSetupIncompleteError,
   readAcknowledgementRequest,
   isConnectionSettingError,
+  readConnectionSettingErrorCode,
 } from './issue-error-message';
 import { ApiError } from '../../../shared/api/api-error';
 
@@ -179,5 +180,36 @@ describe('isConnectionSettingError', () => {
       ),
     ).toBe(false);
     expect(isConnectionSettingError(new Error('x'))).toBe(false);
+  });
+});
+
+describe('readConnectionSettingErrorCode', () => {
+  it('should name which of the two connection-setting 422s it is', () => {
+    for (const failureCode of ['connection-setup-incomplete', 'connection-setting-rejected'] as const) {
+      expect(
+        readConnectionSettingErrorCode(
+          new ApiError('x', 422, { error: 'InvoiceIssueRejected', failureCode }),
+        ),
+      ).toBe(failureCode);
+    }
+  });
+
+  it('should return null for an order-side rejection, another status, or a non-API error', () => {
+    expect(
+      readConnectionSettingErrorCode(
+        new ApiError('x', 422, { error: 'InvoiceIssueRejected', failureCode: 'provider-rejected' }),
+      ),
+    ).toBeNull();
+    expect(
+      readConnectionSettingErrorCode(
+        new ApiError('x', 422, { error: 'SomethingElse', failureCode: 'connection-setting-rejected' }),
+      ),
+    ).toBeNull();
+    expect(
+      readConnectionSettingErrorCode(
+        new ApiError('x', 400, { error: 'InvoiceIssueRejected', failureCode: 'connection-setting-rejected' }),
+      ),
+    ).toBeNull();
+    expect(readConnectionSettingErrorCode(new Error('x'))).toBeNull();
   });
 });

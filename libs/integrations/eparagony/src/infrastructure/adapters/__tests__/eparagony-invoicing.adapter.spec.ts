@@ -563,9 +563,10 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
   });
 
   it('reports a replayed request key as rejected when the vendor positively holds no document', async () => {
-    // The stuck-record path: the vendor remembers a key it refused. Its own
-    // "unknown document" answer for our token is the positive evidence that
-    // nothing was created, so the sale may be retried.
+    // The vendor remembers a key it refused. Its own "unknown document" answer
+    // for our token is the positive evidence that nothing was created. The key
+    // is derived from the exact body, so a retry re-sends the same key: the
+    // copy must not promise that Retry fixes it, and the arm is an `error`.
     const client = makeClient(
       [new EparagonyApiError('unknown token', 404, { errorCode: 92 })],
       new EparagonyApiError('replayed', 422, { errorCode: 3 }),
@@ -574,9 +575,12 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
       failureMode: 'rejected',
       reasonIsOperatorSafe: true,
       reason:
-        'eparagony refused the request as a repeat of an earlier attempt with different data, and holds no document for this sale, so nothing was issued. Retry to send it again (code 3).',
+        'eparagony reports this request key was used with different data, which OpenLinker never sends. Nothing was issued. Retrying will not help - check the connection or contact support (code 3).',
     });
     expect(client.get).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('eparagony_idempotency_key_body_mismatch'),
+    );
   });
 
   it('keeps a replayed request key IN DOUBT, declared as an answer rather than a timeout, when the token cannot be read', async () => {

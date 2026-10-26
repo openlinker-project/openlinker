@@ -67,8 +67,12 @@ export interface IOfferStatusSyncService {
   /**
    * Re-read and upsert the snapshot for a single offer (#1760). Returns the
    * observed publication status, or `null` when the adapter does not support
-   * `OfferStatusReader` or the marketplace reports the offer as not found.
-   * Backs both the post-terminal reconcile job and the manual refresh action.
+   * `OfferStatusReader`. An offer the marketplace reports as not found is
+   * recorded and returned as `ended` once its mapping is older than
+   * `OFFER_GONE_MIN_MAPPING_AGE_MS`; a younger (or undatable) one returns
+   * `null` and leaves the snapshot alone, since a just-created offer can
+   * briefly read as not found. Backs both the post-terminal reconcile job and
+   * the manual refresh action.
    */
   refreshOne(
     connectionId: string,

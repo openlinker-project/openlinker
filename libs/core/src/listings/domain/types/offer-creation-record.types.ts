@@ -95,6 +95,16 @@ export const OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE = 'POLL_TIMEOUT';
 export const OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE = 'OFFER_POLL_NOT_SUPPORTED';
 
 /**
+ * Code an adapter reports when the marketplace removed the product details of
+ * an inactive offer and gave no reason for it (E2E-11): the offer is still on
+ * the marketplace, and nothing on record says it was refused. The seller is
+ * told to activate it in the marketplace panel to learn why, which can put it
+ * live, so it is an unknown outcome, not a refusal. The value predates this
+ * constant and is kept so records already stored keep their meaning.
+ */
+export const OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE = 'PRODUCT_REMOVED';
+
+/**
  * The `failed` record codes that do NOT mean the marketplace refused the
  * offer - OpenLinker stopped watching, and the offer's real outcome is
  * unknown (E2E-25).
@@ -108,6 +118,7 @@ export const OFFER_CREATION_UNKNOWN_OUTCOME_ERROR_CODES: readonly string[] = [
   OFFER_CREATION_JOB_DEAD_ERROR_CODE,
   OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE,
   OFFER_CREATION_POLL_NOT_SUPPORTED_ERROR_CODE,
+  OFFER_PRODUCT_REMOVED_WITHOUT_REASON_ERROR_CODE,
 ];
 
 /**

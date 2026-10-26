@@ -114,6 +114,7 @@ describe('BulkListingSubmitService', () => {
       // Default: no batch holds any key yet.
       findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       clearIdempotencyKey: jest.fn().mockResolvedValue(undefined),
+      reclassifySucceededChildAsFailed: jest.fn(),
     };
     offerCreationRecords = {
       create: jest.fn(),

@@ -51,19 +51,6 @@ export class BulkBatchAdvancementRepository implements BulkBatchAdvancementRepos
     return { created: Array.isArray(result.raw) && result.raw.length > 0 };
   }
 
-  async reclassifySucceededAsFailed(
-    bulkBatchId: string,
-    offerCreationRecordId: string
-  ): Promise<{ reclassified: boolean }> {
-    // The `outcome = 'succeeded'` guard IS the at-most-once gate: a replayed
-    // call finds the row already `failed` and affects nothing.
-    const result = await this.repository.update(
-      { bulkBatchId, offerCreationRecordId, outcome: 'succeeded' },
-      { outcome: 'failed' }
-    );
-    return { reclassified: (result.affected ?? 0) > 0 };
-  }
-
   async deleteForRecord(
     bulkBatchId: string,
     offerCreationRecordId: string,

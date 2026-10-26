@@ -26,6 +26,15 @@
  * read as base rows, so the rule then degrades to "every row is a variant",
  * never to dropping one.
  *
+ * Upgrade consequence, deliberate: on an install that synced a variant
+ * product before this rule existed, its base row was already a
+ * `ProductVariant`. The next master sync no longer reports it, the variant
+ * prune marks it stale, and the stale-variant chain (#1689) pauses - zeroes
+ * the quantity of - any marketplace offer listed against it, with no operator
+ * action. That offer sold an item that does not exist, so pausing it is the
+ * right outcome; the remediation is to list the product again per colour/size
+ * variant. The package README carries the same upgrade note.
+ *
  * @module libs/integrations/shoper/src/domain/policies
  */
 import type { ShoperStock } from '../types/shoper-api.types';

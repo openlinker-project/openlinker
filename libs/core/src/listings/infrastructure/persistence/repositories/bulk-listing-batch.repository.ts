@@ -22,6 +22,7 @@ import type {
   BulkBatchStatus,
   CreateBulkListingBatchInput,
 } from '../../../domain/types/bulk-listing-batch.types';
+import { BulkBatchAdvancementOrmEntity } from '../entities/bulk-batch-advancement.orm-entity';
 import { BulkListingBatchOrmEntity } from '../entities/bulk-listing-batch.orm-entity';
 
 /** PostgreSQL `unique_violation`. Matched by code, never by message. */
@@ -70,17 +71,60 @@ export class BulkListingBatchRepository implements BulkListingBatchRepositoryPor
     id: string,
     deltas: { succeeded?: number; failed?: number },
   ): Promise<BulkListingBatch> {
-    if (deltas.succeeded !== undefined && deltas.succeeded !== 0) {
-      const result = await this.repository.increment({ id }, 'succeededCount', deltas.succeeded);
-      if (result.affected === 0) {
-        throw new BulkListingBatchNotFoundException(id);
+    return this.applyCounterDeltas(this.repository, id, deltas);
+  }
+
+  async reclassifySucceededChildAsFailed(
+    batchId: string,
+    offerCreationRecordId: string,
+  ): Promise<BulkListingBatch | null> {
+    // One transaction for the gate and the counters: the advancement flip is
+    // the at-most-once gate, so a crash after it but before the counter move
+    // would leave every replay finding the row already `failed` and the batch
+    // one short of its total for ever. Rolled back together, a crash leaves
+    // the row `succeeded` and the next poll simply redoes the whole move.
+    return this.repository.manager.transaction(async (manager) => {
+      const flip = await manager
+        .getRepository(BulkBatchAdvancementOrmEntity)
+        .update(
+          { bulkBatchId: batchId, offerCreationRecordId, outcome: 'succeeded' },
+          { outcome: 'failed' },
+        );
+      // The `outcome = 'succeeded'` guard IS the replay gate: a second call
+      // finds the row already `failed` (or no row, or a legacy NULL-outcome
+      // row) and must leave the counters alone.
+      if ((flip.affected ?? 0) === 0) {
+        return null;
       }
-    }
-    if (deltas.failed !== undefined && deltas.failed !== 0) {
-      const result = await this.repository.increment({ id }, 'failedCount', deltas.failed);
-      if (result.affected === 0) {
-        throw new BulkListingBatchNotFoundException(id);
-      }
+      return this.applyCounterDeltas(
+        manager.getRepository(BulkListingBatchOrmEntity),
+        batchId,
+        { succeeded: -1, failed: 1 },
+      );
+    });
+  }
+
+  async updateStatus(id: string, status: BulkBatchStatus): Promise<BulkListingBatch> {
+    return this.updateColumns(id, { status });
+  }
+
+  async updateTotalCount(id: string, totalCount: number): Promise<BulkListingBatch> {
+    return this.updateColumns(id, { totalCount });
+  }
+
+  /**
+   * A narrow UPDATE of exactly the named columns, never a load-then-save of
+   * the whole row: a sibling's counter increment landing between the load and
+   * the save would be written back with the stale value, silently dropping
+   * that child from the batch.
+   */
+  private async updateColumns(
+    id: string,
+    columns: { status?: BulkBatchStatus; totalCount?: number },
+  ): Promise<BulkListingBatch> {
+    const result = await this.repository.update({ id }, columns);
+    if ((result.affected ?? 0) === 0) {
+      throw new BulkListingBatchNotFoundException(id);
     }
     const refreshed = await this.repository.findOne({ where: { id } });
     if (!refreshed) {
@@ -89,24 +133,46 @@ export class BulkListingBatchRepository implements BulkListingBatchRepositoryPor
     return this.toDomain(refreshed);
   }
 
-  async updateStatus(id: string, status: BulkBatchStatus): Promise<BulkListingBatch> {
-    const entity = await this.repository.findOne({ where: { id } });
-    if (!entity) {
+  /**
+   * Applies every non-zero delta in ONE `UPDATE` statement, so the row never
+   * holds a half-applied move (`-1 succeeded` without its `+1 failed`) that a
+   * concurrent reader or a crash could observe. Deltas are bound parameters,
+   * never interpolated. Takes the repository explicitly so the reclassification
+   * can run it on its transaction's manager.
+   */
+  private async applyCounterDeltas(
+    repository: Repository<BulkListingBatchOrmEntity>,
+    id: string,
+    deltas: { succeeded?: number; failed?: number },
+  ): Promise<BulkListingBatch> {
+    // Raw-SQL setters, the shape TypeORM's own `increment` uses.
+    const set: { succeededCount?: () => string; failedCount?: () => string } = {};
+    const parameters: Record<string, number> = {};
+    if (deltas.succeeded !== undefined && deltas.succeeded !== 0) {
+      set.succeededCount = () => '"succeededCount" + :succeededDelta';
+      parameters.succeededDelta = deltas.succeeded;
+    }
+    if (deltas.failed !== undefined && deltas.failed !== 0) {
+      set.failedCount = () => '"failedCount" + :failedDelta';
+      parameters.failedDelta = deltas.failed;
+    }
+    if (Object.keys(set).length > 0) {
+      const result = await repository
+        .createQueryBuilder()
+        .update(BulkListingBatchOrmEntity)
+        .set(set)
+        .where('id = :id')
+        .setParameters({ id, ...parameters })
+        .execute();
+      if ((result.affected ?? 0) === 0) {
+        throw new BulkListingBatchNotFoundException(id);
+      }
+    }
+    const refreshed = await repository.findOne({ where: { id } });
+    if (!refreshed) {
       throw new BulkListingBatchNotFoundException(id);
     }
-    entity.status = status;
-    const saved = await this.repository.save(entity);
-    return this.toDomain(saved);
-  }
-
-  async updateTotalCount(id: string, totalCount: number): Promise<BulkListingBatch> {
-    const entity = await this.repository.findOne({ where: { id } });
-    if (!entity) {
-      throw new BulkListingBatchNotFoundException(id);
-    }
-    entity.totalCount = totalCount;
-    const saved = await this.repository.save(entity);
-    return this.toDomain(saved);
+    return this.toDomain(refreshed);
   }
 
   private buildOrmEntity(input: CreateBulkListingBatchInput): BulkListingBatchOrmEntity {

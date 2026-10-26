@@ -117,6 +117,7 @@ describe('BulkListingRetryService', () => {
       updateTotalCount: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       clearIdempotencyKey: jest.fn(),
+      reclassifySucceededChildAsFailed: jest.fn(),
     };
     records = {
       create: jest.fn(),
@@ -136,7 +137,6 @@ describe('BulkListingRetryService', () => {
     };
     advancements = {
       markAdvancedIfNotExists: jest.fn(),
-      reclassifySucceededAsFailed: jest.fn(),
       deleteForRecord: jest.fn().mockResolvedValue(undefined),
     };
     const adapter = { createOffer: jest.fn() } as unknown as OfferManagerPort;

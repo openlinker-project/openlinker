@@ -17,7 +17,9 @@
  * offer asynchronously: the creation poller terminalises such a record as
  * `failed` minutes after the batch may already read COMPLETED. The
  * correction is gated the same way, by a conditional UPDATE on the
- * advancement row's recorded outcome, so a replayed poll never double-adjusts.
+ * advancement row's recorded outcome, so a replayed poll never double-adjusts;
+ * that gate and the counter move commit in one transaction, so a crash between
+ * them cannot strand the batch one short of its total.
  *
  * @module libs/core/src/listings/application/services
  * @implements {IBulkListingProgressService}
@@ -77,11 +79,11 @@ export class BulkListingProgressService implements IBulkListingProgressService {
     batchId: string,
     offerCreationRecordId: string
   ): Promise<BulkListingBatch | null> {
-    const { reclassified } = await this.advancementRepository.reclassifySucceededAsFailed(
+    const batch = await this.bulkBatchRepository.reclassifySucceededChildAsFailed(
       batchId,
       offerCreationRecordId
     );
-    if (!reclassified) {
+    if (!batch) {
       // Not counted yet (the poller won a race against the create handler's
       // advance), already counted as failed, or a legacy row with no recorded
       // outcome. The first case needs the child counted as failed now - the
@@ -93,12 +95,6 @@ export class BulkListingProgressService implements IBulkListingProgressService {
     this.logger.log(
       `Reclassified bulk child as failed after an asynchronous rejection. batchId=${batchId} recordId=${offerCreationRecordId}`
     );
-    // `incrementCounters` applies the succeeded delta before the failed one,
-    // so a concurrent sibling never observes a transiently "finished" batch.
-    const batch = await this.bulkBatchRepository.incrementCounters(batchId, {
-      succeeded: -1,
-      failed: 1,
-    });
     return this.settleIfFinished(batchId, batch);
   }
 
